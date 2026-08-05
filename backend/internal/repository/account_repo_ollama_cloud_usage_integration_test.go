@@ -229,7 +229,7 @@ func TestLockAndMergeAccountProbeExtraCoalescesNullableOllamaGroupIdentity(t *te
 	loaded, err := newAccountRepositoryWithSQL(tx.Client(), tx, nil).GetByID(ctx, account.ID)
 	require.NoError(t, err)
 
-	merged, err := lockAndMergeAccountProbeExtra(ctx, tx.Client(), loaded, nil)
+	merged, err := lockAndMergeAccountProbeExtra(ctx, tx.Client(), loaded, nil, nil)
 
 	require.NoError(t, err, "a NULL Ollama eligibility expression must scan as false")
 	require.NotContains(t, merged, service.OllamaCloudUsageSessionExtraKey)

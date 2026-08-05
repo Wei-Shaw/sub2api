@@ -1683,6 +1683,10 @@ func (r *stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*serv
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubUserSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }

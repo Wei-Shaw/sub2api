@@ -146,6 +146,9 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	}
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
+		ProfitControlEnabled:        g.ProfitControlEnabled,
+		ProfitMinMargin:             g.ProfitMinMargin,
+		ProfitSafetyBuffer:          g.ProfitSafetyBuffer,
 		ModelRouting:                g.ModelRouting,
 		ModelRoutingEnabled:         g.ModelRoutingEnabled,
 		MCPXMLInject:                g.MCPXMLInject,

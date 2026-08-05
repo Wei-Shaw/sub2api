@@ -75,6 +75,18 @@ func (r *userSubscriptionRepository) GetByID(ctx context.Context, id int64) (*se
 	return userSubscriptionEntityToService(m), nil
 }
 
+func (r *userSubscriptionRepository) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	client := clientFromContext(ctx, r.client)
+	m, err := client.UserSubscription.Query().
+		Where(usersubscription.IDEQ(id)).
+		ForUpdate().
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	}
+	return userSubscriptionEntityToService(m), nil
+}
+
 func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	queryCtx := mixins.SkipSoftDelete(ctx)
@@ -358,12 +370,18 @@ func (r *userSubscriptionRepository) UpdateNotes(ctx context.Context, subscripti
 
 func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
 	client := clientFromContext(ctx, r.client)
-	_, err := client.UserSubscription.UpdateOneID(id).
+	n, err := client.UserSubscription.Update().
+		Where(
+			usersubscription.IDEQ(id),
+			usersubscription.DailyWindowStartIsNil(),
+			usersubscription.WeeklyWindowStartIsNil(),
+			usersubscription.MonthlyWindowStartIsNil(),
+		).
 		SetDailyWindowStart(start).
 		SetWeeklyWindowStart(start).
 		SetMonthlyWindowStart(start).
 		Save(ctx)
-	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	return r.translateConditionalWindowReset(ctx, client, id, n, err)
 }
 
 func (r *userSubscriptionRepository) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error {

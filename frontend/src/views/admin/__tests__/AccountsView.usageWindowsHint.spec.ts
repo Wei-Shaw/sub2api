@@ -75,6 +75,9 @@ const DataTableStub = {
           <slot :name="'header-' + column.key" :column="column" />
         </div>
       </template>
+      <div v-for="row in data" :key="row.id" data-test="account-rate">
+        <slot name="cell-rate_multiplier" :row="row" />
+      </div>
     </div>
   `
 }
@@ -188,5 +191,36 @@ describe('admin AccountsView usage windows hint', () => {
     )).toBe(true)
     const columns = wrapper.getComponent(DataTableStub).props('columns') as Array<{ key: string; sortable: boolean }>
     expect(columns.find(column => column.key === 'upstream_billing_rate')?.sortable).toBe(true)
+  })
+
+  it('shows account multipliers with enough precision to match declared rates', async () => {
+    listAccounts.mockResolvedValueOnce({
+      items: [{
+        id: 7,
+        name: 'precision-account',
+        platform: 'gemini',
+        type: 'apikey',
+        status: 'active',
+        schedulable: true,
+        rate_multiplier: 0.065,
+        extra: {
+          upstream_billing_probe_enabled: true,
+          upstream_billing_rate_sync_enabled: true
+        },
+        created_at: '2026-07-13T00:00:00Z',
+        updated_at: '2026-07-13T00:00:00Z'
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
+    const indicator = wrapper.get('[data-testid="account-rate-sync-indicator"]')
+    expect(indicator.attributes('title')).toBe('admin.accounts.upstreamBilling.syncedRateTooltip')
   })
 })

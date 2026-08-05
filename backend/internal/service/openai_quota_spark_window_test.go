@@ -27,7 +27,9 @@ import (
 // stubQuotaAccountRepo 是多账号 AccountRepository stub，仅实现 GetByID。
 type stubQuotaAccountRepo struct {
 	AccountRepository
-	accounts map[int64]*Account
+	accounts       map[int64]*Account
+	extraUpdates   map[int64]map[string]any
+	extraUpdateErr error
 }
 
 func (r *stubQuotaAccountRepo) GetByID(_ context.Context, id int64) (*Account, error) {
@@ -44,6 +46,17 @@ func (r *stubQuotaAccountRepo) UpdateCredentials(_ context.Context, id int64, cr
 		return fmt.Errorf("account %d not found", id)
 	}
 	acc.Credentials = credentials
+	return nil
+}
+
+func (r *stubQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	if r.extraUpdateErr != nil {
+		return r.extraUpdateErr
+	}
+	if r.extraUpdates == nil {
+		r.extraUpdates = make(map[int64]map[string]any)
+	}
+	r.extraUpdates[id] = updates
 	return nil
 }
 
@@ -535,6 +548,14 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 		{ExpiresAt: "2026-07-03T04:05:06Z"},
 		{ExpiresAt: "2026-07-04T04:05:06Z"},
 	}, usage.RateLimitResetCredits.Credits)
+	require.NoError(t, svc.CacheResetCreditsSnapshot(ctx, 100, usage.RateLimitResetCredits))
+	require.Equal(t, &OpenAIRateLimitResetCredits{
+		AvailableCount: 2,
+		Credits: []OpenAIRateLimitResetCreditDetail{
+			{ExpiresAt: "2026-07-03T04:05:06Z"},
+			{ExpiresAt: "2026-07-04T04:05:06Z"},
+		},
+	}, repo.extraUpdates[100][openaiQuotaResetCreditsKey])
 
 	encoded, err := json.Marshal(usage)
 	require.NoError(t, err)
@@ -584,6 +605,67 @@ func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
 	require.Equal(t, 1, usage.RateLimitResetCredits.AvailableCount)
 	require.Equal(t, 1, detailCalls)
 	require.Empty(t, usage.RateLimitResetCredits.Credits)
+
+	// A count without expiration details must not be persisted (the reader could
+	// never age it out), and the previous snapshot must survive untouched.
+	require.Error(t, svc.CacheResetCreditsSnapshot(ctx, 100, usage.RateLimitResetCredits))
+	require.Empty(t, repo.extraUpdates)
+}
+
+func TestCacheResetCreditsSnapshot(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("zero count allows an empty expiration list", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+		credits := &OpenAIRateLimitResetCredits{AvailableCount: 0}
+
+		require.NoError(t, svc.CacheResetCreditsSnapshot(ctx, 100, credits))
+		require.Equal(t, credits, repo.extraUpdates[100][openaiQuotaResetCreditsKey])
+	})
+
+	t.Run("missing expiration list preserves the cache", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+
+		err := svc.CacheResetCreditsSnapshot(ctx, 100, &OpenAIRateLimitResetCredits{AvailableCount: 1})
+
+		require.Error(t, err)
+		require.Empty(t, repo.extraUpdates)
+	})
+
+	t.Run("empty expiration list with a positive count preserves the cache", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+
+		err := svc.CacheResetCreditsSnapshot(ctx, 100, &OpenAIRateLimitResetCredits{
+			AvailableCount: 2,
+			Credits:        []OpenAIRateLimitResetCreditDetail{},
+		})
+
+		require.Error(t, err)
+		require.Empty(t, repo.extraUpdates)
+	})
+
+	t.Run("nil snapshot preserves the cache", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+
+		require.Error(t, svc.CacheResetCreditsSnapshot(ctx, 100, nil))
+		require.Empty(t, repo.extraUpdates)
+	})
+
+	t.Run("repository errors are returned", func(t *testing.T) {
+		repo := &stubQuotaAccountRepo{extraUpdateErr: errors.New("database unavailable")}
+		svc := &OpenAIQuotaService{accountRepo: repo}
+
+		err := svc.CacheResetCreditsSnapshot(ctx, 100, &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: "2026-07-03T04:05:06Z"}},
+		})
+
+		require.ErrorContains(t, err, "database unavailable")
+	})
 }
 
 // TestResetCreditGetByIDError_FailsClosed 验证守卫「失败关闭」语义：

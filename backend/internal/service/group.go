@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -98,6 +99,14 @@ type Group struct {
 	MaxReasoningEffort string
 	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping
+
+	// 分组利润控制（五个 token 计费平台可启用）。
+	// 调度准入条件：账号倍率 U 满足 U <= D*(1-margin-buffer)，
+	// D 为请求用户当刻有效下游倍率（用户覆盖 ?? 分组默认，再乘高峰因子）。
+	// 只过滤候选账号，不改变既有排序/评分/粘性/熔断。
+	ProfitControlEnabled bool
+	ProfitMinMargin      float64 // 最低毛利率，小数存储（0.30=30%）
+	ProfitSafetyBuffer   float64 // 安全缓冲，小数，与 margin 相加后从 D 中扣除
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -335,4 +344,73 @@ func computePeakAwareMultipliers(apiKey *APIKey, base float64, now time.Time) (t
 	}
 	text = base * peak
 	return
+}
+
+// validProfitControlRatio 判定 margin/buffer 是否为可落库的合法小数：[0,1) 且非 NaN/Inf。
+func validProfitControlRatio(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v < 1
+}
+
+// NormalizeGroupPlatform 把创建分组时省略的 platform 归一化为默认平台。
+// handler 的入参预校验必须与 CreateGroup 落库时用同一个归一化结果，否则
+// 「省略 platform + 启用利润控制」会被 handler 以「平台不支持」400 掉，
+// 而该分组本会被建成受支持的 anthropic 分组。
+func NormalizeGroupPlatform(platform string) string {
+	if platform == "" {
+		return PlatformAnthropic
+	}
+	return platform
+}
+
+// ValidateProfitControlConfig 是分组利润控制配置的唯一校验来源，handler 与 service 层共用。
+// enabled=true 时仅允许五个可计费平台分组；margin/buffer 各自 ∈ [0,1)，且 margin+buffer < 1
+// （相加 >=1 时阈值 <=0，所有可核价账号都会被排除，视为配置错误而不是静默全黑）。
+// enabled=false 时放行（不关心平台），由 Normalize 兜底清洗数值。
+func ValidateProfitControlConfig(platform string, enabled bool, minMargin, safetyBuffer float64) error {
+	if !enabled {
+		return nil
+	}
+	if !profitControlPlatformSupported(platform) {
+		return errors.New("利润控制仅支持 openai、anthropic、gemini、grok、antigravity 平台分组")
+	}
+	if !validProfitControlRatio(minMargin) {
+		return fmt.Errorf("profit_min_margin 应为 [0,1) 的小数，got %v", minMargin)
+	}
+	if !validProfitControlRatio(safetyBuffer) {
+		return fmt.Errorf("profit_safety_buffer 应为 [0,1) 的小数，got %v", safetyBuffer)
+	}
+	if minMargin+safetyBuffer >= 1 {
+		return errors.New("profit_min_margin 与 profit_safety_buffer 之和必须小于 1，否则将排除全部账号")
+	}
+	return nil
+}
+
+// NormalizeProfitControlConfig 归一化最终落库的利润控制配置，CreateGroup 与 UpdateGroup 共用（唯一收口）：
+//   - 非五个平台分组不携带利润控制，一律重置为默认（关、0、0）；
+//   - 支持平台关闭开关时保留合法数值（便于再次启用），清洗 NaN/Inf/越界脏值。
+//
+// 与 ValidateProfitControlConfig 的分工同高峰倍率：先归一化、后校验，
+// 使"openai 转其他平台"这类更新能静默清空利润配置而不是被校验拒绝。
+func NormalizeProfitControlConfig(platform string, enabled bool, minMargin, safetyBuffer float64) (bool, float64, float64) {
+	if !profitControlPlatformSupported(platform) {
+		return false, 0, 0
+	}
+	if !enabled {
+		if !validProfitControlRatio(minMargin) {
+			minMargin = 0
+		}
+		if !validProfitControlRatio(safetyBuffer) {
+			safetyBuffer = 0
+		}
+	}
+	return enabled, minMargin, safetyBuffer
+}
+
+func profitControlPlatformSupported(platform string) bool {
+	switch platform {
+	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformGrok, PlatformAntigravity:
+		return true
+	default:
+		return false
+	}
 }

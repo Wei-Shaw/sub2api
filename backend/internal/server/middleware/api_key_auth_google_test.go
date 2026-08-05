@@ -176,6 +176,10 @@ func (f fakeGoogleSubscriptionRepo) GetByID(ctx context.Context, id int64) (*ser
 	}
 	return nil, errors.New("not implemented")
 }
+
+func (f fakeGoogleSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return f.GetByID(ctx, id)
+}
 func (f fakeGoogleSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }

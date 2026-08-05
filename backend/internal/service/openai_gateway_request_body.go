@@ -132,7 +132,14 @@ func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep
 	}
 
 	itemType, _ := inputItem["type"].(string)
-	if strings.TrimSpace(itemType) != "reasoning" {
+	switch strings.TrimSpace(itemType) {
+	case "compaction", "compaction_summary":
+		if _, encrypted := inputItem["encrypted_content"]; encrypted {
+			return nil, true, false
+		}
+		return item, false, true
+	case "reasoning":
+	default:
 		return item, false, true
 	}
 
@@ -364,7 +371,27 @@ func resolveOpenAICompactSessionID(c *gin.Context) string {
 	return uuid.NewString()
 }
 
+// openAIResponsesRequestPathSuffix 返回可拼接到上游 /responses URL 后面的子路径。
+// 不可转发的子路径返回空串（退化为裸 /responses）；真正的拒绝由入口守卫
+// IsForwardableOpenAIResponsesRequestPath 负责。这样即便将来新增路由漏挂守卫，
+// 拼进上游 URL 的也只会是合规片段。
 func openAIResponsesRequestPathSuffix(c *gin.Context) string {
+	suffix, ok := sanitizedUpstreamPathSuffix(rawOpenAIResponsesRequestPathSuffix(c))
+	if !ok {
+		return ""
+	}
+	return suffix
+}
+
+// IsForwardableOpenAIResponsesRequestPath 判断入站请求携带的 /responses 子路径
+// 是否可以安全转发。路由层用它在鉴权后、调度前直接拒绝畸形子路径。
+func IsForwardableOpenAIResponsesRequestPath(c *gin.Context) bool {
+	_, ok := sanitizedUpstreamPathSuffix(rawOpenAIResponsesRequestPathSuffix(c))
+	return ok
+}
+
+// rawOpenAIResponsesRequestPathSuffix 仅做提取，不做任何安全判断。
+func rawOpenAIResponsesRequestPathSuffix(c *gin.Context) string {
 	if c == nil || c.Request == nil || c.Request.URL == nil {
 		return ""
 	}
@@ -388,8 +415,9 @@ func openAIResponsesRequestPathSuffix(c *gin.Context) string {
 
 func appendOpenAIResponsesRequestPathSuffix(baseURL, suffix string) string {
 	trimmedBase := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	trimmedSuffix := strings.TrimSpace(suffix)
-	if trimmedBase == "" || trimmedSuffix == "" {
+	// 兜底：调用方漏了校验时，这里也不会把不合规的片段拼进上游 URL。
+	trimmedSuffix, ok := sanitizedUpstreamPathSuffix(suffix)
+	if !ok || trimmedBase == "" || trimmedSuffix == "" {
 		return trimmedBase
 	}
 	return trimmedBase + trimmedSuffix
@@ -756,14 +784,13 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 }
 
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
-	model := strings.ToLower(strings.TrimSpace(reqModel))
-	if !strings.Contains(model, "codex") {
+	if !isOpenAICodexModel(reqModel) {
 		return ""
 	}
 
 	instructions := gjson.GetBytes(body, "instructions")
 	if !instructions.Exists() {
-		return "instructions_missing"
+		return ""
 	}
 	if instructions.Type != gjson.String {
 		return "instructions_not_string"
@@ -772,6 +799,10 @@ func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byt
 		return "instructions_empty"
 	}
 	return ""
+}
+
+func isOpenAICodexModel(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "codex")
 }
 
 // extractOpenAIReasoningEffortFromBody 按优先级传入模型候选（如 upstreamModel,

@@ -225,6 +225,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
     "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
     "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
+    "admin.settings.security.passkeyDeploymentHint":
+      "请由服务器运维在部署配置中将 webauthn.enabled 设为 true，填写 webauthn.rp_id（仅域名）与 webauthn.rp_origins（完整 HTTPS 来源），然后重启服务。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -376,6 +378,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
   table_page_size_options: [10, 20, 50, 100],
@@ -393,6 +396,11 @@ const baseSettingsResponse = {
   turnstile_enabled: false,
   turnstile_site_key: "",
   turnstile_secret_key_configured: false,
+  tencent_captcha_enabled: false,
+  tencent_captcha_app_id: "",
+  tencent_captcha_app_secret_key_configured: false,
+  tencent_captcha_cloud_secret_id_configured: false,
+  tencent_captcha_cloud_secret_key_configured: false,
   api_key_acl_trust_forwarded_ip: true,
   forwarded_client_ip_headers: [],
   linuxdo_connect_enabled: false,
@@ -678,6 +686,22 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("submits the compact home page toggle", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get('[data-testid="compact-home-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ compact_home_enabled: true }),
+    );
+  });
+
   it("renders panel rate limit card and saves settings", async () => {
     getPanelRateLimitSettings.mockClear();
     updatePanelRateLimitSettings.mockClear();
@@ -737,6 +761,7 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(toggle.attributes("disabled")).toBeUndefined();
     expect(settings.text()).toContain("sub3.nebula-spaces.com");
     expect(settings.text()).toContain("https://sub3.nebula-spaces.com");
+    expect(settings.text()).not.toContain("webauthn.enabled");
 
     await toggle.setValue(false);
     await wrapper.find("form").trigger("submit.prevent");
@@ -744,6 +769,122 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ passkey_enabled: false }),
+    );
+  });
+
+  it("人机验证切换到腾讯天御并保存四项配置", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    await masterToggle.setValue(true);
+    // 默认选中 Turnstile
+    expect(wrapper.text()).toContain("admin.settings.turnstile.siteKey");
+
+    await wrapper.get('[data-testid="captcha-provider-tencent"]').trigger("click");
+    await flushPromises();
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.captcha.title"));
+    expect(card).toBeDefined();
+    expect(card!.text()).not.toContain("admin.settings.turnstile.siteKey");
+    expect(card!.get('a[href="https://console.cloud.tencent.com/captcha"]').exists()).toBe(true);
+    expect(card!.get('a[href="https://console.cloud.tencent.com/cam/capi"]').exists()).toBe(true);
+    expect(
+      card!.get('a[href="https://cloud.tencent.com/document/product/1110/36841"]').exists(),
+    ).toBe(true);
+    const inputs = card!.findAll("input").filter((input) => input.attributes("type") !== "checkbox");
+    await inputs[0]!.setValue("123456789");
+    await inputs[1]!.setValue("app-secret-value");
+    await inputs[2]!.setValue("cloud-secret-id-value");
+    await inputs[3]!.setValue("cloud-secret-key-value");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: true,
+        aliyun_captcha_enabled: false,
+        tencent_captcha_app_id: "123456789",
+        tencent_captcha_app_secret_key: "app-secret-value",
+        tencent_captcha_cloud_secret_id: "cloud-secret-id-value",
+        tencent_captcha_cloud_secret_key: "cloud-secret-key-value",
+      }),
+    );
+  });
+
+  it("人机验证切换到阿里云并保存配置", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    await masterToggle.setValue(true);
+
+    await wrapper.get('[data-testid="captcha-provider-aliyun"]').trigger("click");
+    await flushPromises();
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.captcha.title"));
+    expect(card).toBeDefined();
+    expect(card!.text()).toContain("admin.settings.aliyunCaptcha.region");
+    expect(card!.text()).not.toContain("admin.settings.turnstile.siteKey");
+    const inputs = card!.findAll("input").filter((input) => input.attributes("type") !== "checkbox");
+    await inputs[0]!.setValue("prefix-1");
+    await inputs[1]!.setValue("scene-1");
+    await inputs[2]!.setValue("ak-id");
+    await inputs[3]!.setValue("ak-secret-value");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: false,
+        aliyun_captcha_enabled: true,
+        aliyun_captcha_prefix: "prefix-1",
+        aliyun_captcha_scene_id: "scene-1",
+        aliyun_captcha_access_key_id: "ak-id",
+        aliyun_captcha_access_key_secret: "ak-secret-value",
+        aliyun_captcha_region: "cn",
+      }),
+    );
+  });
+
+  it("关闭人机验证总开关会同时关闭所有服务商", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      tencent_captcha_enabled: true,
+      tencent_captcha_app_id: "123456789",
+      tencent_captcha_app_secret_key_configured: true,
+      tencent_captcha_cloud_secret_id_configured: true,
+      tencent_captcha_cloud_secret_key_configured: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    const masterToggle = wrapper.get('[data-testid="captcha-enabled-toggle"]');
+    expect((masterToggle.element as HTMLInputElement).checked).toBe(true);
+    // 加载后选中项跟随已启用的服务商
+    expect(wrapper.text()).toContain("admin.settings.tencentCaptcha.appId");
+
+    await masterToggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        turnstile_enabled: false,
+        tencent_captcha_enabled: false,
+        aliyun_captcha_enabled: false,
+      }),
     );
   });
 
@@ -762,9 +903,14 @@ describe("admin SettingsView payment visible method controls", () => {
 
     const settings = wrapper.get('[data-testid="passkey-settings"]');
     expect(settings.get('[data-testid="passkey-toggle"]').attributes("disabled")).toBeDefined();
-    expect(settings.get('[data-testid="passkey-config-status"]').text()).toContain(
+    const status = settings.get('[data-testid="passkey-config-status"]');
+    expect(status.text()).toContain(
       "admin.settings.security.passkeyNotConfigured",
     );
+    expect(status.text()).toContain("webauthn.enabled");
+    expect(status.text()).toContain("webauthn.rp_id");
+    expect(status.text()).toContain("webauthn.rp_origins");
+    expect(status.text()).toContain("然后重启服务");
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {

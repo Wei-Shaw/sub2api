@@ -316,27 +316,27 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-terra"] = &ModelPricing{
-		InputPricePerToken:                 2.5e-6,
-		InputPricePerTokenPriority:         5e-6,
-		OutputPricePerToken:                15e-6,
-		OutputPricePerTokenPriority:        30e-6,
-		CacheCreationPricePerToken:         3.125e-6,
-		CacheCreationPricePerTokenPriority: 6.25e-6,
-		CacheReadPricePerToken:             0.25e-6,
-		CacheReadPricePerTokenPriority:     0.5e-6,
+		InputPricePerToken:                 2e-6,
+		InputPricePerTokenPriority:         4e-6,
+		OutputPricePerToken:                12e-6,
+		OutputPricePerTokenPriority:        24e-6,
+		CacheCreationPricePerToken:         2.5e-6,
+		CacheCreationPricePerTokenPriority: 5e-6,
+		CacheReadPricePerToken:             0.2e-6,
+		CacheReadPricePerTokenPriority:     0.4e-6,
 		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
 		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-luna"] = &ModelPricing{
-		InputPricePerToken:                 1e-6,
-		InputPricePerTokenPriority:         2e-6,
-		OutputPricePerToken:                6e-6,
-		OutputPricePerTokenPriority:        12e-6,
-		CacheCreationPricePerToken:         1.25e-6,
-		CacheCreationPricePerTokenPriority: 2.5e-6,
-		CacheReadPricePerToken:             0.1e-6,
-		CacheReadPricePerTokenPriority:     0.2e-6,
+		InputPricePerToken:                 0.2e-6,
+		InputPricePerTokenPriority:         0.4e-6,
+		OutputPricePerToken:                1.2e-6,
+		OutputPricePerTokenPriority:        2.4e-6,
+		CacheCreationPricePerToken:         0.25e-6,
+		CacheCreationPricePerTokenPriority: 0.5e-6,
+		CacheReadPricePerToken:             0.02e-6,
+		CacheReadPricePerTokenPriority:     0.04e-6,
 		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
 		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
@@ -403,6 +403,13 @@ func (s *BillingService) initFallbackPricing() {
 	// Source: https://docs.z.ai/guides/overview/pricing (USD per 1M tokens)
 	// 注意：CacheReadPricePerToken 即"缓存命中"价格，CacheCreationPricePerToken 留空（智谱未公开写入价，按 0 处理）。
 	// GLM-4.6 与 GLM-4.5 在 z.ai 国际版上定价一致；GLM-4.5 国内按 ¥0.8/¥2，汇率换算后约 $0.112/$0.28，与国际版 $0.6/$2.2 不同，本分支采用国际版 USD 口径与现有 Claude/GPT 一致。
+	// GLM-5.2 与 GLM-5.1 在 z.ai 上同价。
+	s.fallbackPrices["glm-5.2"] = &ModelPricing{
+		InputPricePerToken:     1.4e-6, // $1.40 per MTok
+		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
+		CacheReadPricePerToken: 0.26e-6,
+		SupportsCacheBreakdown: false,
+	}
 	s.fallbackPrices["glm-5.1"] = &ModelPricing{
 		InputPricePerToken:     1.4e-6, // $1.40 per MTok
 		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
@@ -670,8 +677,12 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// 匹配策略：长 key 优先（具体模型 → 系列 / 厂商），未知型号不回退以避免误计价。
 	// 与 DeepSeek 一样采用"白名单"语义：未在本表命中的国产模型 alias 一律不返回兜底价。
 
-	// 智谱 GLM（z.ai 公开 SKU：glm-5.1 / glm-5 / glm-5-turbo / glm-4.7 / glm-4.6 / glm-4.5 等）
+	// 智谱 GLM（z.ai 公开 SKU：glm-5.2 / glm-5.1 / glm-5 / glm-5-turbo / glm-4.7 / glm-4.6 / glm-4.5 等）
 	// 匹配顺序：先判别最高 tier，再依次降级。
+	// 注意：带小数点的型号必须排在裸 "glm-5" 之前，否则会被 strings.Contains 抢走。
+	if strings.Contains(modelLower, "glm-5.2") {
+		return s.fallbackPrices["glm-5.2"]
+	}
 	if strings.Contains(modelLower, "glm-5.1") {
 		return s.fallbackPrices["glm-5.1"]
 	}

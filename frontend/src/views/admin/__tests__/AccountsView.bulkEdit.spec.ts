@@ -10,7 +10,10 @@ const {
   getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
-  probeUpstreamBillingBatch
+  probeUpstreamBilling,
+  probeUpstreamBillingBatch,
+  showError,
+  showSuccess
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -18,7 +21,10 @@ const {
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
-  probeUpstreamBillingBatch: vi.fn()
+  probeUpstreamBilling: vi.fn(),
+  probeUpstreamBillingBatch: vi.fn(),
+  showError: vi.fn(),
+  showSuccess: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -31,6 +37,7 @@ vi.mock('@/api/admin', () => ({
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
+      probeUpstreamBilling,
       probeUpstreamBillingBatch,
       toggleSchedulable: vi.fn()
     },
@@ -45,8 +52,8 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn(),
+    showError,
+    showSuccess,
     showInfo: vi.fn()
   })
 }))
@@ -75,6 +82,19 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.id">
         <div data-test="select-row"><slot name="cell-select" :row="row" /></div>
         <slot name="cell-created_at" :value="row.created_at" :row="row" />
+        <div data-test="account-rate"><slot name="cell-rate_multiplier" :row="row" /></div>
+      </div>
+    </div>
+  `
+}
+
+const ProbeDataTableStub = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.id">
+        <div data-test="account-rate"><slot name="cell-rate_multiplier" :row="row" /></div>
+        <slot name="cell-upstream_billing_rate" :row="row" />
       </div>
     </div>
   `
@@ -111,7 +131,10 @@ describe('admin AccountsView bulk edit scope', () => {
     getUpstreamBillingProbeSettings.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
+    probeUpstreamBilling.mockReset()
     probeUpstreamBillingBatch.mockReset()
+    showError.mockReset()
+    showSuccess.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -129,6 +152,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getUpstreamBillingProbeSettings.mockResolvedValue({ enabled: true, interval_minutes: 30 })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
+    probeUpstreamBilling.mockResolvedValue({})
     probeUpstreamBillingBatch.mockResolvedValue([])
   })
 
@@ -376,32 +400,109 @@ describe('admin AccountsView bulk edit scope', () => {
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7, 11])
   })
 
-  it('reloads the server-sorted list after a batch probe changes a snapshot', async () => {
-    localStorage.setItem('account-table-sort', JSON.stringify({ key: 'upstream_billing_rate', order: 'asc' }))
-    const account = (id: number) => ({
+  it('refreshes the current page after a batch probe and displays the synced rate', async () => {
+    const account = (id: number, rateMultiplier: number) => ({
       id,
       name: `account-${id}`,
       platform: 'openai',
       type: 'apikey',
       status: 'active',
       schedulable: true,
+      rate_multiplier: rateMultiplier,
       created_at: '2026-07-13T00:00:00Z',
       updated_at: '2026-07-13T00:00:00Z'
     })
     listAccounts
-      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 })
-      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [account(7, 0.25)], total: 2, page: 1, page_size: 1, pages: 2 })
+      .mockResolvedValueOnce({ items: [account(11, 0.25)], total: 2, page: 2, page_size: 1, pages: 2 })
+      .mockResolvedValueOnce({ items: [account(11, 0.065)], total: 2, page: 2, page_size: 1, pages: 2 })
     probeUpstreamBillingBatch.mockResolvedValue([
       {
-        account_id: 7,
+        account_id: 11,
         snapshot: {
           status: 'ok',
-          data: { effective_rate_multiplier: 0.5 },
+          data: { effective_rate_multiplier: 0.065 },
           last_attempt_at: '2026-07-13T00:00:00Z',
           next_probe_at: '2026-07-13T00:30:00Z'
         }
       }
     ])
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /><slot name="pagination" /></div>' },
+          DataTable: DataTableStub,
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountActionMenu: true,
+          Pagination: PaginationStub,
+          ConfirmDialog: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="next-page"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="select-row"] input').trigger('change')
+    await wrapper.get('[data-test="probe-upstream-billing"]').trigger('click')
+    await flushPromises()
+
+    expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([11])
+    expect(listAccounts).toHaveBeenCalledTimes(3)
+    expect(listAccounts.mock.calls[2]?.[0]).toBe(2)
+    expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
+  })
+
+  it('does not report a successful batch probe as failed when the list refresh fails', async () => {
+    const account = {
+      id: 7,
+      name: 'account-7',
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active',
+      schedulable: true,
+      rate_multiplier: 0.25,
+      created_at: '2026-07-13T00:00:00Z',
+      updated_at: '2026-07-13T00:00:00Z'
+    }
+    listAccounts
+      .mockResolvedValueOnce({ items: [account], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockRejectedValueOnce(new Error('refresh failed'))
+    probeUpstreamBillingBatch.mockResolvedValue([
+      {
+        account_id: 7,
+        snapshot: {
+          status: 'ok',
+          data: { effective_rate_multiplier: 0.065 },
+          last_attempt_at: '2026-07-13T00:00:00Z',
+          next_probe_at: '2026-07-13T00:30:00Z'
+        }
+      }
+    ])
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const wrapper = mount(AccountsView, {
       global: {
@@ -443,7 +544,78 @@ describe('admin AccountsView bulk edit scope', () => {
     await wrapper.get('[data-test="probe-upstream-billing"]').trigger('click')
     await flushPromises()
 
-    expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7])
+    expect(showError).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.upstreamBilling.batchCompleted')
+    consoleError.mockRestore()
+  })
+
+  it('refreshes the account row after a successful single-account probe', async () => {
+    const account = (rateMultiplier: number) => ({
+      id: 7,
+      name: 'account-7',
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active',
+      schedulable: true,
+      rate_multiplier: rateMultiplier,
+      extra: { upstream_billing_probe_enabled: true },
+      created_at: '2026-07-13T00:00:00Z',
+      updated_at: '2026-07-13T00:00:00Z'
+    })
+    listAccounts
+      .mockResolvedValueOnce({ items: [account(0.25)], total: 1, page: 1, page_size: 20, pages: 1 })
+      .mockResolvedValueOnce({ items: [account(0.065)], total: 1, page: 1, page_size: 20, pages: 1 })
+    probeUpstreamBilling.mockResolvedValue({
+      account_id: 7,
+      snapshot: {
+        status: 'ok',
+        data: { effective_rate_multiplier: 0.065 },
+        last_attempt_at: '2026-07-13T00:00:00Z',
+        next_probe_at: '2026-07-13T00:30:00Z'
+      }
+    })
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /></div>' },
+          DataTable: ProbeDataTableStub,
+          AccountBulkActionsBar: true,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountActionMenu: true,
+          Pagination: true,
+          ConfirmDialog: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: true,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-testid="upstream-billing-probe"]').trigger('click')
+    await flushPromises()
+
+    expect(probeUpstreamBilling).toHaveBeenCalledWith(7)
     expect(listAccounts).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-test="account-rate"]').text()).toBe('0.065x')
   })
 })

@@ -491,6 +491,46 @@ func TestOpenAILegacyUpstreamRateOrderRequiresComparableRates(t *testing.T) {
 	require.Negative(t, distinct.compare(&Account{ID: 2}, &Account{ID: 3}))
 }
 
+// 探测资格已放宽到全部 API-key 平台，但调度侧的信任面没有跟着扩大：
+// 只有 OpenAI 平台账号的上游自报倍率参与 legacy 低倍率优先排序，
+// 否则中转方自报低价即可吸走流量，而实际结算走本地倍率。
+// 本用例钉死 newOpenAILegacyUpstreamRateOrder 与 openAIUpstreamCostFactors
+// 使用同一道平台门控。
+func TestOpenAILegacyUpstreamRateOrderIgnoresNonOpenAIPlatforms(t *testing.T) {
+	now := time.Now()
+	nonOpenAI := func(id int64, platform string, rate float64) *Account {
+		account := upstreamCostTestAccount(id, UpstreamBillingProbeStatusOK, rate, now.Add(-time.Minute), 30*time.Minute)
+		account.Platform = platform
+		return account
+	}
+	grokCheap := nonOpenAI(1, PlatformGrok, 0.01)
+	anthropicExpensive := nonOpenAI(2, PlatformAnthropic, 0.9)
+
+	order := newOpenAILegacyUpstreamRateOrder([]*Account{grokCheap, anthropicExpensive, nil}, now, defaultOpenAIOAuthSchedulingRateMultiplier)
+	require.False(t, order.enabled)
+	require.Empty(t, order.rates)
+	require.Zero(t, order.compare(grokCheap, anthropicExpensive))
+
+	factors := openAIUpstreamCostFactors([]*Account{grokCheap, anthropicExpensive}, now, defaultOpenAIOAuthSchedulingRateMultiplier)
+	require.Equal(t, openAIUpstreamCostNeutralFactor, factors[grokCheap.ID])
+	require.Equal(t, openAIUpstreamCostNeutralFactor, factors[anthropicExpensive.ID])
+
+	// 混合候选集里，非 OpenAI 账号既不进 rates 也不影响 OpenAI 账号之间的排序。
+	openAICheap := upstreamCostTestAccount(3, UpstreamBillingProbeStatusOK, 0.02, now.Add(-time.Minute), 30*time.Minute)
+	openAIExpensive := upstreamCostTestAccount(4, UpstreamBillingProbeStatusOK, 0.12, now.Add(-time.Minute), 30*time.Minute)
+	mixed := newOpenAILegacyUpstreamRateOrder(
+		[]*Account{grokCheap, openAICheap, anthropicExpensive, openAIExpensive},
+		now, defaultOpenAIOAuthSchedulingRateMultiplier,
+	)
+	require.True(t, mixed.enabled)
+	require.Len(t, mixed.rates, 2)
+	require.NotContains(t, mixed.rates, grokCheap.ID)
+	require.NotContains(t, mixed.rates, anthropicExpensive.ID)
+	require.Negative(t, mixed.compare(openAICheap, openAIExpensive))
+	// 自报 0.01 的 grok 账号没有已知倍率，排在有倍率的 OpenAI 账号之后。
+	require.Positive(t, mixed.compare(grokCheap, openAIExpensive))
+}
+
 func TestOpenAISchedulingRatePlacesOAuthAtConfiguredReference(t *testing.T) {
 	now := time.Now()
 	cheap := upstreamCostTestAccount(1, UpstreamBillingProbeStatusOK, 0.02, now.Add(-time.Minute), 30*time.Minute)
