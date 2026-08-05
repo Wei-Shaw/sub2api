@@ -39,7 +39,8 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 // `{base_url}/v1/chat/completions`，**不**做 CC↔Responses 协议转换。
 //
 // 适用场景：account.platform=openai && account.type=apikey && 上游已被探测确认
-// 不支持 /v1/responses 端点（如 DeepSeek/Kimi/GLM/Qwen 等第三方 OpenAI 兼容上游）。
+// 不支持 /v1/responses 端点（如 Kimi/GLM/Qwen 等第三方 OpenAI 兼容上游；DeepSeek
+// v4 系列已支持 Responses API，是否走 /v1/responses 由账号能力探测决定）。
 //
 // 与 ForwardAsChatCompletions 的关键差异：
 //

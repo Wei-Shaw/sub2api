@@ -30,6 +30,17 @@ func TestWSPassthroughUsageMeta_InitFromFirstFrame_NonGPT56FallsBackToXHigh(t *t
 	require.Equal(t, "xhigh", *got, "non-5.6 model should normalize max to xhigh")
 }
 
+func TestWSPassthroughUsageMeta_InitFromFirstFrame_DeepSeekPreservesMax(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"deepseek-v4-flash","reasoning":{"effort":"max"}}`)
+
+	meta := newOpenAIWSPassthroughUsageMeta("deepseek-v4-flash", body)
+	meta.initFromFirstFrame(body, "deepseek-v4-flash")
+
+	got := meta.reasoningEffort.Load()
+	require.NotNil(t, got, "reasoning effort should be set")
+	require.Equal(t, "max", *got, "DeepSeek should preserve max")
+}
+
 func TestWSPassthroughUsageMeta_UpdateFromResponseCreate_MappedModelCandidate(t *testing.T) {
 	body := []byte(`{"type":"response.create","model":"sol","reasoning":{"effort":"max"}}`)
 

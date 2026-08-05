@@ -1,9 +1,10 @@
 // Package openai_compat 提供 OpenAI 协议族在不同上游间的能力差异判定工具。
 //
 // 背景：sub2api 的 OpenAI APIKey 账号通过 base_url 接入多种第三方 OpenAI 兼容上游
-// （DeepSeek、Kimi、GLM、Qwen 等）。这些上游普遍只支持 /v1/chat/completions，
-// 不存在 /v1/responses 端点。但网关历史代码无差别走 CC→Responses 转换并打到
-// /v1/responses，导致兼容上游 404。
+// （DeepSeek、Kimi、GLM、Qwen 等）。早期这些上游普遍只支持 /v1/chat/completions，
+// 不存在 /v1/responses 端点；DeepSeek v4 系列现已提供 Responses API（v4-flash 已
+// 支持、v4-pro 陆续开放），是否可用以账号探测结果为准，不做静态厂商白名单。
+// 但网关历史代码无差别走 CC→Responses 转换并打到 /v1/responses，导致兼容上游 404。
 //
 // 本包提供基于"账号探测标记"的能力判定，配合
 // internal/service/openai_apikey_responses_probe.go 在创建/修改账号时一次性

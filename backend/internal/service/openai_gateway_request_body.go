@@ -1469,8 +1469,23 @@ func normalizeOpenAIReasoningEffort(raw string) string {
 	}
 }
 
+// isOpenAIMaxReasoningEffortModel 判断模型是否原生支持独立的 max 推理档位。
+// 目前只有 GPT-5.6 系列和 DeepSeek v4 系列（deepseek-*，Chat Completions 与
+// Responses API 均支持 reasoning_effort: low/high/max）保留 max；
+// 其他模型仍把 max 折叠为 xhigh。
+func isOpenAIMaxReasoningEffortModel(model string) bool {
+	if isOpenAIGPT56Model(model) {
+		return true
+	}
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
+		normalized = normalized[idx+1:]
+	}
+	return strings.HasPrefix(normalized, "deepseek-")
+}
+
 func normalizeOpenAIReasoningEffortForModel(raw, model string) string {
-	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIGPT56Model(model) {
+	if strings.EqualFold(strings.TrimSpace(raw), "max") && isOpenAIMaxReasoningEffortModel(model) {
 		return "max"
 	}
 	return normalizeOpenAIReasoningEffort(raw)
