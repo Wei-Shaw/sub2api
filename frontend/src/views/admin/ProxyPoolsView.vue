@@ -275,7 +275,19 @@ async function openDetail(pool: ProxyPoolWithStats) {
 }
 function closeDetail() { detailPool.value = null; detailProxies.value = []; logs.value = [] }
 async function refreshDetail() { if (!detailPool.value) return; [detailProxies.value, logs.value] = await Promise.all([adminAPI.proxyPools.listProxies(detailPool.value.id), adminAPI.proxyPools.rebindLogs(detailPool.value.id)]) }
-async function runRebind() { if (!detailPool.value) return; rebinding.value = true; try { const count = await adminAPI.proxyPools.rebind(detailPool.value.id); appStore.showSuccess(t('admin.proxyPools.rebindDone', { count })); await Promise.all([refreshDetail(), loadPools()]) } catch { appStore.showError(t('admin.proxyPools.rebindFailed')) } finally { rebinding.value = false } }
+async function runRebind() {
+  if (!detailPool.value) return
+  rebinding.value = true
+  try {
+    const result = await adminAPI.proxyPools.rebind(detailPool.value.id)
+    appStore.showSuccess(t(result.started ? 'admin.proxyPools.checkStarted' : 'admin.proxyPools.checkRunning'))
+    await Promise.all([refreshDetail(), loadPools()])
+  } catch {
+    appStore.showError(t('admin.proxyPools.rebindFailed'))
+  } finally {
+    rebinding.value = false
+  }
+}
 async function openAssign() {
   selectedProxyIds.value = new Set()
   proxySearch.value = ''

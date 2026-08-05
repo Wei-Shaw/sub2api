@@ -27,12 +27,19 @@ type ProxyPoolService struct {
 	stopOnce     sync.Once
 	wg           sync.WaitGroup
 	poolRuns     sync.Map
+	bindRuns     sync.Map
 }
 
 const (
-	proxyPoolSweepInterval = 30 * time.Second
-	proxyPoolProbeLimit    = 4
-	proxyPoolLockTTL       = 15 * time.Minute
+	proxyPoolSweepInterval          = 30 * time.Second
+	proxyPoolRunTimeout             = 10 * time.Minute
+	proxyPoolProbeLimit             = 32
+	proxyPoolBindHealthyWait        = 20 * time.Second
+	proxyPoolBindHealthyPollInterval = 250 * time.Millisecond
+	proxyPoolLockAcquireTimeout     = 2 * time.Second
+	proxyPoolLockTTL                = 15 * time.Minute
+	proxyPoolHealthWriteTimeout     = 5 * time.Second
+	proxyPoolPostProcessTimeout     = 30 * time.Second
 )
 
 func NewProxyPoolService(repo ProxyPoolRepository, prober ProxyExitInfoProber, latencyCache ProxyLatencyCache, rdb *redis.Client, db *sql.DB) *ProxyPoolService {
@@ -77,7 +84,7 @@ func (s *ProxyPoolService) Stop() {
 }
 
 func (s *ProxyPoolService) runOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), proxyPoolRunTimeout)
 	defer cancel()
 
 	pools, err := s.repo.ListPools(ctx)
@@ -127,14 +134,14 @@ func (s *ProxyPoolService) acquireDistributedLock(ctx context.Context, key strin
 	return nil, false
 }
 
-func (s *ProxyPoolService) acquirePoolRun(ctx context.Context, poolID int64) (func(), bool) {
-	value, _ := s.poolRuns.LoadOrStore(poolID, &sync.Mutex{})
+func (s *ProxyPoolService) acquireScopedPoolRun(ctx context.Context, runs *sync.Map, scope string, poolID int64) (func(), bool) {
+	value, _ := runs.LoadOrStore(poolID, &sync.Mutex{})
 	local := value.(*sync.Mutex)
 	if !local.TryLock() {
 		return nil, false
 	}
 
-	releaseDistributed, ok := s.acquireDistributedLock(ctx, fmt.Sprintf("sub2api:proxy-pool:run:%d", poolID))
+	releaseDistributed, ok := s.acquireDistributedLock(ctx, fmt.Sprintf("sub2api:proxy-pool:%s:%d", scope, poolID))
 	if !ok {
 		local.Unlock()
 		return nil, false
@@ -143,6 +150,14 @@ func (s *ProxyPoolService) acquirePoolRun(ctx context.Context, poolID int64) (fu
 		releaseDistributed()
 		local.Unlock()
 	}, true
+}
+
+func (s *ProxyPoolService) acquirePoolRun(ctx context.Context, poolID int64) (func(), bool) {
+	return s.acquireScopedPoolRun(ctx, &s.poolRuns, "run", poolID)
+}
+
+func (s *ProxyPoolService) acquirePoolBind(ctx context.Context, poolID int64) (func(), bool) {
+	return s.acquireScopedPoolRun(ctx, &s.bindRuns, "bind", poolID)
 }
 
 // RunPool executes one health-probe and failover round synchronously.
@@ -163,6 +178,46 @@ func (s *ProxyPoolService) runPool(ctx context.Context, pool *ProxyPool, forcePr
 	return s.runPoolLocked(ctx, pool, forceProbe), true
 }
 
+// startPoolRun acquires the health-check lock before returning, then performs
+// the potentially long scan independently of the admin request lifetime.
+func (s *ProxyPoolService) startPoolRun(pool *ProxyPool, forceProbe bool) bool {
+	if s == nil || s.repo == nil || pool == nil || !pool.IsActive() {
+		return false
+	}
+	select {
+	case <-s.stopCh:
+		return false
+	default:
+	}
+
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), proxyPoolLockAcquireTimeout)
+	release, ok := s.acquirePoolRun(lockCtx, pool.ID)
+	lockCancel()
+	if !ok {
+		return false
+	}
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		defer release()
+
+		runCtx, cancel := context.WithTimeout(context.Background(), proxyPoolRunTimeout)
+		defer cancel()
+		watchDone := make(chan struct{})
+		defer close(watchDone)
+		go func() {
+			select {
+			case <-s.stopCh:
+				cancel()
+			case <-watchDone:
+			}
+		}()
+		s.runPoolLocked(runCtx, pool, forceProbe)
+	}()
+	return true
+}
+
 func (s *ProxyPoolService) runPoolLocked(ctx context.Context, pool *ProxyPool, forceProbe bool) int {
 	proxies, err := s.repo.ListPoolProxies(ctx, pool.ID)
 	if err != nil {
@@ -170,41 +225,9 @@ func (s *ProxyPoolService) runPoolLocked(ctx context.Context, pool *ProxyPool, f
 		return 0
 	}
 	now := time.Now()
-	threshold := pool.FailureThresholdValue()
-	needCheck := make([]*ProxyPoolProxy, 0, len(proxies))
-	for i := range proxies {
-		proxy := &proxies[i]
-		if proxy.Status != StatusActive {
-			continue
-		}
-		if forceProbe || proxy.PoolCheckedAt == nil || now.Sub(*proxy.PoolCheckedAt) >= pool.HealthInterval() || proxy.PoolHealth == ProxyPoolHealthUnhealthy {
-			needCheck = append(needCheck, proxy)
-		}
-	}
-	results := s.probeAll(ctx, needCheck)
-	for _, proxy := range needCheck {
-		result, ok := results[proxy.ID]
-		if !ok {
-			continue
-		}
-		failures := proxy.PoolFailures
-		health := proxy.PoolHealth
-		if result.ok {
-			failures = 0
-			health = ProxyPoolHealthHealthy
-		} else {
-			failures++
-			if failures >= threshold {
-				health = ProxyPoolHealthUnhealthy
-			}
-		}
-		proxy.PoolFailures = failures
-		proxy.PoolHealth = health
-		proxy.PoolCheckedAt = &now
-		if err := s.repo.UpdateProxyPoolHealth(ctx, pool.ID, proxy.ID, health, failures, now); err != nil {
-			log.Printf("[ProxyPool] update health for proxy %d failed: %v", proxy.ID, err)
-		}
-	}
+	s.applyCachedPoolHealth(ctx, pool, proxies, now)
+	needCheck := poolProxiesDueForProbe(proxies, pool, forceProbe, now)
+	s.probePoolMembers(ctx, pool, needCheck)
 
 	healthy := make([]*ProxyPoolProxy, 0, len(proxies))
 	for i := range proxies {
@@ -216,64 +239,186 @@ func (s *ProxyPoolService) runPoolLocked(ctx context.Context, pool *ProxyPool, f
 		return 0
 	}
 	sort.SliceStable(healthy, func(i, j int) bool { return healthy[i].ID < healthy[j].ID })
+	postCtx, cancel := context.WithTimeout(context.Background(), proxyPoolPostProcessTimeout)
+	defer cancel()
+	releaseBind, ok := s.acquirePoolBind(postCtx, pool.ID)
+	if !ok {
+		return 0
+	}
+	defer releaseBind()
 
 	changed := 0
 	if pool.AutoRebind {
-		changed += s.rebindUnhealthy(ctx, pool, proxies, healthy)
+		changed += s.rebindUnhealthy(postCtx, pool, proxies, healthy)
 	}
-	changed += s.assignUnassigned(ctx, pool, healthy)
+	changed += s.assignUnassigned(postCtx, pool, healthy)
 	return changed
 }
 
-type poolProbeResult struct {
-	ok        bool
-	latencyMs int64
+func poolProxiesDueForProbe(proxies []ProxyPoolProxy, pool *ProxyPool, forceProbe bool, now time.Time) []*ProxyPoolProxy {
+	needCheck := make([]*ProxyPoolProxy, 0, len(proxies))
+	for i := range proxies {
+		proxy := &proxies[i]
+		if proxy.Status != StatusActive {
+			continue
+		}
+		if forceProbe || proxy.PoolCheckedAt == nil || now.Sub(*proxy.PoolCheckedAt) >= pool.HealthInterval() || proxy.PoolHealth == ProxyPoolHealthUnhealthy {
+			needCheck = append(needCheck, proxy)
+		}
+	}
+	sort.SliceStable(needCheck, func(i, j int) bool {
+		left, right := needCheck[i], needCheck[j]
+		if left.PoolCheckedAt == nil && right.PoolCheckedAt != nil {
+			return true
+		}
+		if left.PoolCheckedAt != nil && right.PoolCheckedAt == nil {
+			return false
+		}
+		if left.PoolCheckedAt != nil && right.PoolCheckedAt != nil && !left.PoolCheckedAt.Equal(*right.PoolCheckedAt) {
+			return left.PoolCheckedAt.Before(*right.PoolCheckedAt)
+		}
+		return left.ID < right.ID
+	})
+	return needCheck
 }
 
-func (s *ProxyPoolService) probeAll(ctx context.Context, proxies []*ProxyPoolProxy) map[int64]poolProbeResult {
-	results := make(map[int64]poolProbeResult, len(proxies))
-	if s.prober == nil || len(proxies) == 0 {
-		return results
+func (s *ProxyPoolService) probePoolMembers(ctx context.Context, pool *ProxyPool, proxies []*ProxyPoolProxy) {
+	s.probeAll(ctx, proxies, func(proxy *ProxyPoolProxy, result poolProbeResult, checkedAt time.Time) {
+		s.applyPoolProbeResult(pool, proxy, result, checkedAt)
+	})
+}
+
+func (s *ProxyPoolService) applyPoolProbeResult(pool *ProxyPool, proxy *ProxyPoolProxy, result poolProbeResult, checkedAt time.Time) {
+	if pool == nil || proxy == nil {
+		return
 	}
-	sem := make(chan struct{}, proxyPoolProbeLimit)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	for _, proxy := range proxies {
-		proxy := proxy
-		wg.Add(1)
+	failures := proxy.PoolFailures
+	health := proxy.PoolHealth
+	if result.ok {
+		failures = 0
+		health = ProxyPoolHealthHealthy
+	} else {
+		failures++
+		if failures >= pool.FailureThresholdValue() {
+			health = ProxyPoolHealthUnhealthy
+		}
+	}
+	proxy.PoolFailures = failures
+	proxy.PoolHealth = health
+	proxy.PoolCheckedAt = &checkedAt
+
+	writeCtx, cancel := context.WithTimeout(context.Background(), proxyPoolHealthWriteTimeout)
+	defer cancel()
+	if err := s.repo.UpdateProxyPoolHealth(writeCtx, pool.ID, proxy.ID, health, failures, checkedAt); err != nil {
+		log.Printf("[ProxyPool] update health for proxy %d failed: %v", proxy.ID, err)
+	}
+}
+
+// applyCachedPoolHealth consumes fresh results produced by the existing proxy
+// batch-test UI before scheduling any additional network probes.
+func (s *ProxyPoolService) applyCachedPoolHealth(ctx context.Context, pool *ProxyPool, proxies []ProxyPoolProxy, now time.Time) {
+	if s == nil || s.latencyCache == nil || pool == nil || len(proxies) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(proxies))
+	for i := range proxies {
+		if proxies[i].Status == StatusActive {
+			ids = append(ids, proxies[i].ID)
+		}
+	}
+	latencies, err := s.latencyCache.GetProxyLatencies(ctx, ids)
+	if err != nil {
+		log.Printf("[ProxyPool] load cached proxy test results failed: %v", err)
+		return
+	}
+	for i := range proxies {
+		proxy := &proxies[i]
+		info := latencies[proxy.ID]
+		if proxy.Status != StatusActive || info == nil || info.UpdatedAt.IsZero() {
+			continue
+		}
+		if info.UpdatedAt.After(now.Add(time.Minute)) || now.Sub(info.UpdatedAt) > pool.HealthInterval() {
+			continue
+		}
+		if proxy.PoolCheckedAt != nil && !info.UpdatedAt.After(*proxy.PoolCheckedAt) {
+			continue
+		}
+		s.applyPoolProbeResult(pool, proxy, poolProbeResult{ok: info.Success}, info.UpdatedAt)
+	}
+}
+
+type poolProbeResult struct {
+	ok bool
+}
+
+type poolProbeOutcome struct {
+	proxy     *ProxyPoolProxy
+	result    poolProbeResult
+	checkedAt time.Time
+}
+
+func (s *ProxyPoolService) probeAll(ctx context.Context, proxies []*ProxyPoolProxy, onResult func(*ProxyPoolProxy, poolProbeResult, time.Time)) {
+	if s.prober == nil || len(proxies) == 0 {
+		return
+	}
+	workerCount := min(proxyPoolProbeLimit, len(proxies))
+	jobs := make(chan *ProxyPoolProxy)
+	outcomes := make(chan poolProbeOutcome, workerCount)
+	var workers sync.WaitGroup
+	for range workerCount {
+		workers.Add(1)
 		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			defer cancel()
-			info, latency, err := s.prober.ProbeProxy(probeCtx, proxy.URL())
-			if err != nil && ctx.Err() != nil {
-				return
-			}
-			result := poolProbeResult{ok: err == nil, latencyMs: latency}
-			cacheInfo := &ProxyLatencyInfo{Success: err == nil, UpdatedAt: time.Now()}
-			if err != nil {
-				cacheInfo.Message = err.Error()
-			} else {
-				cacheInfo.LatencyMs = &latency
-				cacheInfo.Message = "Proxy is accessible"
-				if info != nil {
-					cacheInfo.IPAddress = info.IP
-					cacheInfo.Country = info.Country
-					cacheInfo.CountryCode = info.CountryCode
-					cacheInfo.Region = info.Region
-					cacheInfo.City = info.City
+			defer workers.Done()
+			for proxy := range jobs {
+				if ctx.Err() != nil {
+					return
 				}
+				probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+				info, latency, err := s.prober.ProbeProxy(probeCtx, proxy.URL())
+				cancel()
+				if err != nil && ctx.Err() != nil {
+					return
+				}
+				checkedAt := time.Now()
+				result := poolProbeResult{ok: err == nil}
+				cacheInfo := &ProxyLatencyInfo{Success: err == nil, UpdatedAt: checkedAt}
+				if err != nil {
+					cacheInfo.Message = err.Error()
+				} else {
+					cacheInfo.LatencyMs = &latency
+					cacheInfo.Message = "Proxy is accessible"
+					if info != nil {
+						cacheInfo.IPAddress = info.IP
+						cacheInfo.Country = info.Country
+						cacheInfo.CountryCode = info.CountryCode
+						cacheInfo.Region = info.Region
+						cacheInfo.City = info.City
+					}
+				}
+				outcomes <- poolProbeOutcome{proxy: proxy, result: result, checkedAt: checkedAt}
+				cacheCtx, cacheCancel := context.WithTimeout(context.Background(), proxyPoolHealthWriteTimeout)
+				s.saveProxyLatency(cacheCtx, proxy.ID, cacheInfo)
+				cacheCancel()
 			}
-			s.saveProxyLatency(ctx, proxy.ID, cacheInfo)
-			mu.Lock()
-			results[proxy.ID] = result
-			mu.Unlock()
 		}()
 	}
-	wg.Wait()
-	return results
+	go func() {
+		defer close(jobs)
+		for _, proxy := range proxies {
+			select {
+			case jobs <- proxy:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() {
+		workers.Wait()
+		close(outcomes)
+	}()
+	for outcome := range outcomes {
+		onResult(outcome.proxy, outcome.result, outcome.checkedAt)
+	}
 }
 
 func (s *ProxyPoolService) saveProxyLatency(ctx context.Context, proxyID int64, info *ProxyLatencyInfo) {
@@ -405,28 +550,30 @@ func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accou
 	if !pool.IsActive() {
 		return nil, ErrProxyPoolDisabled
 	}
-	release, ok := s.acquirePoolRun(ctx, poolID)
+	release, ok := s.acquirePoolBind(ctx, poolID)
 	if !ok {
-		return nil, ErrProxyPoolBusy
+		return nil, ErrProxyPoolBindBusy
 	}
 	defer release()
 
-	// Probe unknown or stale members so a new pool can be used without waiting for the worker.
-	s.runPoolLocked(ctx, pool, false)
 	proxies, err := s.repo.ListPoolProxies(ctx, poolID)
 	if err != nil {
 		return nil, err
 	}
-	healthy := make([]*ProxyPoolProxy, 0, len(proxies))
-	for i := range proxies {
-		if proxies[i].Status == StatusActive && proxies[i].PoolHealth == ProxyPoolHealthHealthy {
-			healthy = append(healthy, &proxies[i])
+	s.applyCachedPoolHealth(ctx, pool, proxies, time.Now())
+	healthy := healthyPoolProxies(proxies)
+	if len(healthy) == 0 && s.prober != nil {
+		// A new pool may not have a snapshot yet. Start (or join) the background
+		// scan and wait briefly for its first incrementally persisted healthy IP.
+		s.startPoolRun(pool, false)
+		healthy, err = s.waitForHealthyPoolProxies(ctx, poolID)
+		if err != nil {
+			return nil, err
 		}
 	}
 	if len(healthy) == 0 {
 		return nil, ErrProxyPoolNoHealthyProxy
 	}
-	sort.SliceStable(healthy, func(i, j int) bool { return healthy[i].ID < healthy[j].ID })
 	counts, err := s.repo.CountAccountsByProxyIDs(ctx, proxyIDs(healthy))
 	if err != nil {
 		return nil, err
@@ -450,6 +597,42 @@ func (s *ProxyPoolService) BindAccounts(ctx context.Context, poolID int64, accou
 		return nil, err
 	}
 	return &ProxyPoolBindResult{Assigned: len(applied), Failed: len(assignments) - len(applied), Results: applied}, nil
+}
+
+func healthyPoolProxies(proxies []ProxyPoolProxy) []*ProxyPoolProxy {
+	healthy := make([]*ProxyPoolProxy, 0, len(proxies))
+	for i := range proxies {
+		if proxies[i].Status == StatusActive && proxies[i].PoolHealth == ProxyPoolHealthHealthy {
+			healthy = append(healthy, &proxies[i])
+		}
+	}
+	sort.SliceStable(healthy, func(i, j int) bool { return healthy[i].ID < healthy[j].ID })
+	return healthy
+}
+
+func (s *ProxyPoolService) waitForHealthyPoolProxies(ctx context.Context, poolID int64) ([]*ProxyPoolProxy, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, proxyPoolBindHealthyWait)
+	defer cancel()
+	ticker := time.NewTicker(proxyPoolBindHealthyPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, nil
+		case <-ticker.C:
+			proxies, err := s.repo.ListPoolProxies(waitCtx, poolID)
+			if err != nil {
+				return nil, err
+			}
+			if healthy := healthyPoolProxies(proxies); len(healthy) > 0 {
+				return healthy, nil
+			}
+		}
+	}
 }
 
 // CRUD and pool membership operations used by the admin handler.
@@ -589,19 +772,15 @@ func (s *ProxyPoolService) RemoveProxies(ctx context.Context, poolID int64, prox
 	return s.repo.RemoveProxiesFromPool(ctx, poolID, proxyIDs)
 }
 
-func (s *ProxyPoolService) RunPoolNow(ctx context.Context, poolID int64) (int, error) {
+func (s *ProxyPoolService) RunPoolNow(ctx context.Context, poolID int64) (bool, error) {
 	pool, err := s.repo.GetPoolByID(ctx, poolID)
 	if err != nil {
-		return 0, err
+		return false, err
 	}
 	if !pool.IsActive() {
-		return 0, ErrProxyPoolDisabled
+		return false, ErrProxyPoolDisabled
 	}
-	changed, acquired := s.runPool(ctx, pool, true)
-	if !acquired {
-		return 0, ErrProxyPoolBusy
-	}
-	return changed, nil
+	return s.startPoolRun(pool, true), nil
 }
 
 func (s *ProxyPoolService) RebindLogs(ctx context.Context, poolID int64, limit int) ([]ProxyPoolRebindLog, error) {

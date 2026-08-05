@@ -219,6 +219,35 @@ func (p *blockingProxyPoolServiceTestProber) ProbeProxy(ctx context.Context, _ s
 	}
 }
 
+type selectiveBlockingProxyPoolServiceTestProber struct {
+	blockedURL string
+	started    chan struct{}
+	release    chan struct{}
+	once       sync.Once
+}
+
+func (p *selectiveBlockingProxyPoolServiceTestProber) ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error) {
+	if proxyURL != p.blockedURL {
+		return &ProxyExitInfo{IP: "203.0.113.10"}, 10, nil
+	}
+	p.once.Do(func() { close(p.started) })
+	select {
+	case <-p.release:
+		return &ProxyExitInfo{IP: "203.0.113.11"}, 11, nil
+	case <-ctx.Done():
+		return nil, 0, ctx.Err()
+	}
+}
+
+type countingProxyPoolServiceTestProber struct {
+	calls int
+}
+
+func (p *countingProxyPoolServiceTestProber) ProbeProxy(_ context.Context, _ string) (*ProxyExitInfo, int64, error) {
+	p.calls++
+	return &ProxyExitInfo{IP: "203.0.113.10"}, 10, nil
+}
+
 type proxyPoolServiceTestLatencyCache struct {
 	values map[int64]*ProxyLatencyInfo
 	err    error
@@ -319,44 +348,120 @@ func TestProxyPoolRunPoolDoesNotRebindBelowFailureThreshold(t *testing.T) {
 	require.Empty(t, repo.assignments)
 }
 
-func TestProxyPoolRunPoolNowRejectsConcurrentCheck(t *testing.T) {
+func TestProxyPoolRunPoolNowCoalescesConcurrentCheck(t *testing.T) {
 	pool := &ProxyPool{ID: 1, Status: ProxyPoolStatusActive, HealthIntervalSeconds: 30, FailureThreshold: 2, AutoRebind: true}
 	repo := newProxyPoolServiceTestRepo(pool, proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthUnknown, nil))
 	prober := &blockingProxyPoolServiceTestProber{started: make(chan struct{}), release: make(chan struct{})}
 	service := NewProxyPoolService(repo, prober, nil, nil, nil)
-
-	firstDone := make(chan error, 1)
-	go func() {
-		_, err := service.RunPoolNow(context.Background(), pool.ID)
-		firstDone <- err
+	released := false
+	defer func() {
+		if !released {
+			close(prober.release)
+		}
 	}()
+
+	started, err := service.RunPoolNow(context.Background(), pool.ID)
+	require.NoError(t, err)
+	require.True(t, started)
 	<-prober.started
 
-	_, err := service.RunPoolNow(context.Background(), pool.ID)
-	require.ErrorIs(t, err, ErrProxyPoolBusy)
+	started, err = service.RunPoolNow(context.Background(), pool.ID)
+	require.NoError(t, err)
+	require.False(t, started)
 
 	close(prober.release)
-	require.NoError(t, <-firstDone)
+	released = true
+	require.Eventually(t, func() bool {
+		repo.mu.Lock()
+		defer repo.mu.Unlock()
+		return len(repo.healthUpdates) == 1
+	}, time.Second, 10*time.Millisecond)
 }
 
-func TestProxyPoolBindAccountsRejectsConcurrentCheck(t *testing.T) {
+func TestProxyPoolBindAccountsDuringHealthCheck(t *testing.T) {
+	now := time.Now()
 	pool := &ProxyPool{ID: 1, Status: ProxyPoolStatusActive, HealthIntervalSeconds: 30, FailureThreshold: 2, AutoRebind: true}
-	repo := newProxyPoolServiceTestRepo(pool, proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthUnknown, nil))
+	repo := newProxyPoolServiceTestRepo(
+		pool,
+		proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthHealthy, &now),
+		proxyPoolServiceTestProxy(2, 1, ProxyPoolHealthUnknown, nil),
+	)
 	prober := &blockingProxyPoolServiceTestProber{started: make(chan struct{}), release: make(chan struct{})}
 	service := NewProxyPoolService(repo, prober, nil, nil, nil)
+	released := false
+	defer func() {
+		if !released {
+			close(prober.release)
+		}
+	}()
 
-	firstDone := make(chan error, 1)
+	started, err := service.RunPoolNow(context.Background(), pool.ID)
+	require.NoError(t, err)
+	require.True(t, started)
+	<-prober.started
+
+	result, err := service.BindAccounts(context.Background(), pool.ID, []int64{100})
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Assigned)
+	require.Equal(t, int64(1), repo.accountProxy[100])
+
+	close(prober.release)
+	released = true
+}
+
+func TestProxyPoolPersistsCompletedProbeBeforeWholePoolFinishes(t *testing.T) {
+	pool := &ProxyPool{ID: 1, Status: ProxyPoolStatusActive, HealthIntervalSeconds: 30, FailureThreshold: 2, AutoRebind: true}
+	fast := proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthUnknown, nil)
+	blocked := proxyPoolServiceTestProxy(2, 1, ProxyPoolHealthUnknown, nil)
+	repo := newProxyPoolServiceTestRepo(pool, fast, blocked)
+	prober := &selectiveBlockingProxyPoolServiceTestProber{
+		blockedURL: blocked.URL(),
+		started:    make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	service := NewProxyPoolService(repo, prober, nil, nil, nil)
+	done := make(chan struct{})
 	go func() {
-		_, err := service.RunPoolNow(context.Background(), pool.ID)
-		firstDone <- err
+		service.RunPool(context.Background(), pool)
+		close(done)
 	}()
 	<-prober.started
 
-	_, err := service.BindAccounts(context.Background(), pool.ID, []int64{100})
-	require.ErrorIs(t, err, ErrProxyPoolBusy)
+	require.Eventually(t, func() bool {
+		repo.mu.Lock()
+		defer repo.mu.Unlock()
+		return repo.proxies[fast.ID].PoolHealth == ProxyPoolHealthHealthy
+	}, time.Second, 10*time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("pool run completed before the blocked proxy was released")
+	default:
+	}
 
 	close(prober.release)
-	require.NoError(t, <-firstDone)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("pool run did not complete")
+	}
+}
+
+func TestProxyPoolReusesFreshBatchTestCache(t *testing.T) {
+	pool := &ProxyPool{ID: 1, Status: ProxyPoolStatusActive, HealthIntervalSeconds: 300, FailureThreshold: 2, AutoRebind: true}
+	proxy := proxyPoolServiceTestProxy(1, 1, ProxyPoolHealthUnknown, nil)
+	repo := newProxyPoolServiceTestRepo(pool, proxy)
+	latency := int64(18)
+	cache := &proxyPoolServiceTestLatencyCache{values: map[int64]*ProxyLatencyInfo{
+		proxy.ID: {Success: true, LatencyMs: &latency, UpdatedAt: time.Now()},
+	}}
+	prober := &countingProxyPoolServiceTestProber{}
+	service := NewProxyPoolService(repo, prober, cache, nil, nil)
+
+	service.RunPool(context.Background(), pool)
+
+	require.Zero(t, prober.calls)
+	require.Equal(t, ProxyPoolHealthHealthy, repo.proxies[proxy.ID].PoolHealth)
+	require.Len(t, repo.healthUpdates, 1)
 }
 
 func TestProxyPoolCancelledProbeDoesNotCountAsFailure(t *testing.T) {

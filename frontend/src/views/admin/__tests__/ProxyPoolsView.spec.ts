@@ -130,7 +130,7 @@ describe('ProxyPoolsView', () => {
       }
     ])
     rebindLogs.mockResolvedValue([])
-    rebind.mockResolvedValue(2)
+    rebind.mockResolvedValue({ started: true, already_running: false })
     getAllProxies.mockResolvedValue([
       { id: 11, name: 'exit-a', host: 'proxy.example', port: 8080 },
       { id: 12, name: 'exit-b', host: 'proxy-b.example', port: 8081 },
@@ -174,7 +174,22 @@ describe('ProxyPoolsView', () => {
 
     expect(rebind).toHaveBeenCalledWith(1)
     expect(listProxies).toHaveBeenCalledTimes(2)
-    expect(showSuccess).toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.proxyPools.checkStarted')
+  })
+
+  it('treats an existing background health check as an idempotent success', async () => {
+    rebind.mockResolvedValue({ started: false, already_running: true })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('button[title="admin.proxyPools.details"]').trigger('click')
+    await flushPromises()
+
+    const checkButton = wrapper.findAll('button').find((button) => button.text().includes('admin.proxyPools.checkNow'))
+    await checkButton!.trigger('click')
+    await flushPromises()
+
+    expect(showError).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.proxyPools.checkRunning')
   })
 
   it('selects and assigns all available proxies', async () => {

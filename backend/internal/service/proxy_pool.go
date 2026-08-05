@@ -22,6 +22,7 @@ var (
 	ErrProxyPoolNoHealthyProxy = infraerrors.Conflict("PROXY_POOL_NO_HEALTHY_PROXY", "proxy pool has no healthy proxy")
 	ErrProxyPoolDisabled       = infraerrors.Conflict("PROXY_POOL_DISABLED", "proxy pool is disabled")
 	ErrProxyPoolBusy           = infraerrors.Conflict("PROXY_POOL_BUSY", "proxy pool health check is already running")
+	ErrProxyPoolBindBusy       = infraerrors.Conflict("PROXY_POOL_BIND_BUSY", "proxy pool account binding is already running")
 	ErrProxyPoolNameRequired   = infraerrors.BadRequest("PROXY_POOL_NAME_REQUIRED", "proxy pool name is required")
 	ErrProxyPoolInvalidStatus  = infraerrors.BadRequest("PROXY_POOL_INVALID_STATUS", "invalid proxy pool status")
 )

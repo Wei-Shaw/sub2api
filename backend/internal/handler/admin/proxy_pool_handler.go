@@ -230,12 +230,16 @@ func (h *ProxyPoolHandler) Rebind(c *gin.Context) {
 	if !ok {
 		return
 	}
-	rebound, err := h.service.RunPoolNow(c.Request.Context(), id)
+	started, err := h.service.RunPoolNow(c.Request.Context(), id)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"rebound_accounts": rebound})
+	response.Success(c, gin.H{
+		"rebound_accounts": 0,
+		"started":          started,
+		"already_running":  !started,
+	})
 }
 
 func (h *ProxyPoolHandler) RebindLogs(c *gin.Context) {

@@ -266,6 +266,8 @@ export default {
       checkedAt: '最近检测',
       failures: '连续失败 {count} 次',
       checkNow: '立即检测并切换',
+      checkStarted: '代理池检测已在后台启动，健康状态会逐步更新',
+      checkRunning: '代理池检测正在进行，无需重复启动',
       addProxies: '添加代理',
       addSelected: '添加选中代理',
       removeProxy: '移出代理池',

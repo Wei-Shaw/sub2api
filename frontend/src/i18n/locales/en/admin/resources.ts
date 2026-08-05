@@ -268,6 +268,8 @@ export default {
       checkedAt: 'Last Checked',
       failures: '{count} consecutive failures',
       checkNow: 'Check and Rebind Now',
+      checkStarted: 'Proxy pool check started in the background; health results will update progressively',
+      checkRunning: 'The proxy pool check is already running; no restart is needed',
       addProxies: 'Add Proxies',
       addSelected: 'Add Selected',
       removeProxy: 'Remove from Pool',

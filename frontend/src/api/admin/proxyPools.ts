@@ -70,9 +70,16 @@ export async function unbindAccounts(id: number, accountIds: number[]): Promise<
   return data.unbound ?? 0
 }
 
-export async function rebind(id: number): Promise<number> {
-  const { data } = await apiClient.post<{ rebound_accounts: number }>(`/admin/proxy-pools/${id}/rebind`)
-  return data.rebound_accounts ?? 0
+export async function rebind(id: number): Promise<{ started: boolean; already_running: boolean }> {
+  const { data } = await apiClient.post<{
+    rebound_accounts: number
+    started?: boolean
+    already_running?: boolean
+  }>(`/admin/proxy-pools/${id}/rebind`)
+  return {
+    started: data.started !== false,
+    already_running: data.already_running === true
+  }
 }
 
 export async function rebindLogs(id: number, limit = 50): Promise<ProxyPoolRebindLog[]> {
