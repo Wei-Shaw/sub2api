@@ -673,6 +673,12 @@ export default {
     basicsDescription: 'Keep your public profile details and avatar aligned.',
     linkedProfileSources: 'Profile Sources',
     linkedProfileSourcesDescription: 'Some profile details may stay synced from third-party sign-in methods.',
+    web3Identity: {
+      title: 'Web3 Identity',
+      description: 'This EVM wallet is the login identity associated with your account.',
+      connected: 'Connected',
+      address: 'Wallet Address'
+    },
     securityTitle: 'Security Settings',
     securityDescription: 'Password, two-factor authentication, and alerts live in the right rail.',
     administrator: 'Administrator',

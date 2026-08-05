@@ -10,6 +10,7 @@
           {{ t('auth.signUpToStart', { siteName }) }}
         </p>
       </div>
+      <AuthMethodTabs active="email" context="register" />
 
       <!-- Registration Disabled Message -->
       <div
@@ -328,6 +329,7 @@ import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
+import AuthMethodTabs from '@/components/auth/AuthMethodTabs.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'

@@ -27,9 +27,14 @@ type AuthHandler struct {
 	redeemService        *service.RedeemService
 	totpService          *service.TotpService
 	userAttributeService *service.UserAttributeService
+	web3IdentityRepo     service.Web3IdentityRepository
 
 	dingTalkClientInstance *DingTalkClient
 	dingTalkClientMu       sync.Mutex
+}
+
+func (h *AuthHandler) SetWeb3IdentityRepository(repository service.Web3IdentityRepository) {
+	h.web3IdentityRepo = repository
 }
 
 // NewAuthHandler creates a new AuthHandler
@@ -435,8 +440,14 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
+	profile := userProfileResponseFromService(user, identities)
+	if err := populateUserProfileWeb3Address(c.Request.Context(), h.web3IdentityRepo, subject.UserID, &profile); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	response.Success(c, UserResponse{
-		userProfileResponse: userProfileResponseFromService(user, identities),
+		userProfileResponse: profile,
 		RunMode:             runMode,
 	})
 }

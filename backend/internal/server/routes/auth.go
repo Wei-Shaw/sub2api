@@ -38,6 +38,18 @@ func RegisterAuthRoutes(
 		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login)
+		auth.POST("/web3/login/challenge", rateLimiter.LimitWithOptions("web3-login-challenge", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Web3Auth.CreateLoginChallenge)
+		auth.POST("/web3/login/verify", rateLimiter.LimitWithOptions("web3-login-verify", 20, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Web3Auth.VerifyLogin)
+		auth.POST("/web3/register/challenge", rateLimiter.LimitWithOptions("web3-register-challenge", 5, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Web3Auth.CreateRegistrationChallenge)
+		auth.POST("/web3/register/verify", rateLimiter.LimitWithOptions("web3-register-verify", 5, time.Minute, middleware.RateLimitOptions{
+			FailureMode: middleware.RateLimitFailClose,
+		}), h.Web3Auth.VerifyRegistration)
 		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login2FA)

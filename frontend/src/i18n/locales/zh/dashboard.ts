@@ -678,6 +678,12 @@ export default {
     basicsDescription: '维护公开展示信息，并保持头像与昵称风格一致。',
     linkedProfileSources: '资料来源',
     linkedProfileSourcesDescription: '部分头像和昵称可能同步自第三方登录方式。',
+    web3Identity: {
+      title: 'Web3 身份',
+      description: '该 EVM 钱包是当前账户关联的登录身份。',
+      connected: '已连接',
+      address: '钱包地址'
+    },
     securityTitle: '安全设置',
     securityDescription: '密码、双因素认证和通知提醒集中放在右侧。',
     administrator: '管理员',
