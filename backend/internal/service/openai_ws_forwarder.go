@@ -207,6 +207,10 @@ func (e *OpenAIWSClientCloseError) Reason() string {
 
 // OpenAIWSIngressHooks 定义入站 WS 每个 turn 的生命周期回调。
 type OpenAIWSIngressHooks struct {
+	// ClientLifecycleContext is the request context before an ingress lease
+	// adds its independent cancellation signal. Downstream writes bind to it
+	// so shutdown and disconnect cancellation remain direct during lease loss.
+	ClientLifecycleContext context.Context
 	// InitialRequestModel is the client-facing model from the first frame,
 	// before channel or account mapping. Ingress modes preserve it for usage
 	// attribution while MapRequestModel determines the upstream model.
