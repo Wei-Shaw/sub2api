@@ -429,7 +429,11 @@ export default {
         collapseExpirations: '收起重置次数到期时间',
         expirationDetails: '重置次数到期明细',
         noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windows} 个窗口',
+        resetSuccess: '已重置 {windows} 个窗口，次数和账号状态已更新',
+        resetCacheRefreshFailed: '窗口已重置、账号状态已恢复，但重置次数未能回读，请重新查询次数。',
+        resetAccountRecoveryFailed: '窗口已重置，但账号状态恢复失败，请手动恢复账号状态。',
+        resetAccountRefreshFailed: '窗口、账号状态和重置次数缓存已更新，但无法加载最新账号显示。',
+        refreshCachePersistFailed: '已显示实时次数，但到期明细获取失败，仍保留原有缓存明细。',
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
       },
