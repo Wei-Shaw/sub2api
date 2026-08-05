@@ -178,7 +178,11 @@ export default {
       upstreamBilling: {
         trustWarning: '此倍率由上游站点针对当前 API Key 自行声明。Sub2API 无法验证该值是否与实际扣费一致；上游站点或中间代理可能返回伪造、过期或被篡改的数据。请结合账单、余额变化和实际用量自行核验。',
         autoProbe: '自动探测上游声明倍率',
-        autoProbeHint: '启用后按全局探测周期查询此账号的上游声明倍率；全局探测关闭时不会执行。',
+        autoProbeHint: '启用后按全局周期刷新上游声明倍率；此开关本身不会修改账号倍率。',
+        syncRate: '同步上游声明倍率',
+        syncRateHint: '成功探测后自动更新账号倍率，同步的是不含高峰的基准倍率；探测失败或声明超出允许范围时保持不变。开启本项会同时打开“自动探测上游声明倍率”。',
+        syncRateManagedHint: '当前倍率由上游声明的基准倍率（不含高峰）自动维护。',
+        syncedRateTooltip: '该账号倍率由上游声明的基准倍率（不含高峰）自动同步',
         manualProbe: '立即探测上游倍率',
         stale: '已过期',
         unsupported: '不支持',
@@ -203,7 +207,7 @@ export default {
         enabled: '打开',
         disabled: '关闭',
         probeFailed: '探测上游倍率失败',
-        noEligibleAccounts: '请选择 OpenAI API Key 账号',
+        noEligibleAccounts: '请选择 API Key 账号',
         batchLimit: '每次最多探测 20 个账号',
         batchCompleted: '已完成 {count} 个账号的倍率探测',
         batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
@@ -425,7 +429,11 @@ export default {
         collapseExpirations: '收起重置次数到期时间',
         expirationDetails: '重置次数到期明细',
         noCreditsAvailable: '没有可用的重置次数',
-        resetSuccess: '已重置 {windows} 个窗口',
+        resetSuccess: '已重置 {windows} 个窗口，次数和账号状态已更新',
+        resetCacheRefreshFailed: '窗口已重置、账号状态已恢复，但重置次数未能回读，请重新查询次数。',
+        resetAccountRecoveryFailed: '窗口已重置，但账号状态恢复失败，请手动恢复账号状态。',
+        resetAccountRefreshFailed: '窗口、账号状态和重置次数缓存已更新，但无法加载最新账号显示。',
+        refreshCachePersistFailed: '已显示实时次数，但到期明细获取失败，仍保留原有缓存明细。',
         confirmTitle: '确认重置周限',
         confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
       },
@@ -488,6 +496,8 @@ export default {
         failed: '批量更新失败',
         noSelection: '请选择要编辑的账号',
         noFieldsSelected: '请至少选择一个要更新的字段',
+        rateSyncWarning: '已开启上游倍率同步的账号不能批量手工修改倍率，请先在账号编辑页关闭同步。',
+        rateSyncConflict: '无法修改账号倍率：{count} 个目标账号已开启上游倍率同步。',
         mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
       },
       bulkDeleteTitle: '批量删除账号',
