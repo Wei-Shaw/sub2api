@@ -752,6 +752,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 		}
 		targetURL = buildOpenAIImagesURL(validatedURL, endpoint)
 	}
+	body = rewriteOpenAIFinalUpstreamBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

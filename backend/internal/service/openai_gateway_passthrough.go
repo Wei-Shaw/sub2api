@@ -99,6 +99,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if policyModel == "" {
 		policyModel = reqModel
 	}
+	upstreamPassthroughModel = policyModel
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, policyModel, body)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
@@ -232,7 +233,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 		}
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody, upstreamPassthroughModel)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -254,7 +255,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, openAIFinalUpstreamModel(account, upstreamPassthroughModel))
 		if err != nil {
 			return nil, err
 		}
@@ -352,6 +353,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	body = rewriteOpenAIFinalUpstreamBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -611,6 +613,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 	responseBody []byte,
+	upstreamModel string,
 ) error {
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
@@ -624,6 +627,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 			Code:           cyberCode,
 			Message:        cyberMsg,
 			Body:           truncateString(string(body), 4096),
+			UpstreamModel:  upstreamModel,
 			UpstreamStatus: resp.StatusCode,
 		})
 	}
@@ -1112,7 +1116,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	defer putSSEScannerBuf64K(scanBuf)
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
 
-	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
+	responseModel := openAIFinalUpstreamModel(account, mappedModel)
+	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(responseModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(responseModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
@@ -1130,8 +1135,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
-			if needModelReplace && strings.Contains(data, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			if needModelReplace && strings.Contains(data, responseModel) {
+				line = s.replaceModelInSSELine(line, responseModel, originalModel)
 				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
 					dataBytes = []byte(replacedData)
 					trimmedData = strings.TrimSpace(replacedData)
@@ -1170,6 +1175,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						Code:           code,
 						Message:        msg,
 						Body:           truncateString(string(dataBytes), 4096),
+						UpstreamModel:  mappedModel,
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,

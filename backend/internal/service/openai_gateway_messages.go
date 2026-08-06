@@ -438,7 +438,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, foErr
 		}
 		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
+		return s.handleAnthropicErrorResponse(resp, c, account, upstreamModel)
 	}
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
 		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
@@ -557,6 +557,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 				Code:           code,
 				Message:        msg,
 				Body:           truncateString(string(payload), 4096),
+				UpstreamModel:  upstreamModel,
 				UpstreamStatus: http.StatusOK,
 				UpstreamInTok:  usage.InputTokens,
 				UpstreamOutTok: usage.OutputTokens,
@@ -904,6 +905,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						Code:           code,
 						Message:        msg,
 						Body:           truncateString(payload, 4096),
+						UpstreamModel:  upstreamModel,
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,

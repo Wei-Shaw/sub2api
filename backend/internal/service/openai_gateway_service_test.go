@@ -3579,7 +3579,7 @@ func TestStreamingPassthroughCyberPolicyMarksAndPassesThrough(t *testing.T) {
 		Header: http.Header{"X-Request-Id": []string{"rid-cyber"}},
 	}
 
-	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", "m")
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", openAISolModel)
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr), "cyber must NOT failover")
@@ -3587,6 +3587,7 @@ func TestStreamingPassthroughCyberPolicyMarksAndPassesThrough(t *testing.T) {
 	mark := GetOpsCyberPolicy(c)
 	require.NotNil(t, mark)
 	require.Equal(t, "flagged for cyber policy", mark.Message)
+	require.Equal(t, openAISolModel, mark.UpstreamModel)
 }
 
 func TestHandleStreamingResponseCyberPolicyMarks(t *testing.T) {
@@ -3608,11 +3609,13 @@ func TestHandleStreamingResponseCyberPolicyMarks(t *testing.T) {
 		}, "\n"))),
 		Header: http.Header{"X-Request-Id": []string{"rid"}},
 	}
-	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", "m")
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, time.Now(), "m", openAISolModel)
 	require.Error(t, err)
 	var fo *UpstreamFailoverError
 	require.False(t, errors.As(err, &fo))
-	require.NotNil(t, GetOpsCyberPolicy(c))
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark)
+	require.Equal(t, openAISolModel, mark.UpstreamModel)
 }
 
 func TestHandleErrorResponseCyberPolicyPassthrough(t *testing.T) {
@@ -3627,13 +3630,14 @@ func TestHandleErrorResponseCyberPolicyPassthrough(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"rid"}},
 		Body:       io.NopCloser(strings.NewReader(cyberBody)),
 	}
-	_, err := svc.handleErrorResponse(context.Background(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, nil)
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, nil, openAISolModel)
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code, "passthrough upstream 400, not rewrapped 502")
 	require.Contains(t, rec.Body.String(), "cyber_policy", "client sees original cyber body")
 	require.NotContains(t, rec.Body.String(), "Upstream request failed", "must not 502-rewrap")
 	mark := GetOpsCyberPolicy(c)
 	require.NotNil(t, mark)
+	require.Equal(t, openAISolModel, mark.UpstreamModel)
 	require.Equal(t, http.StatusBadRequest, mark.UpstreamStatus)
 }
 
@@ -3655,11 +3659,13 @@ func TestHandleCompatErrorResponseCyberPolicyEarlyReturn(t *testing.T) {
 		gotStatus, gotType, gotMsg = statusCode, errType, message
 	}
 	// cyber 命中应早返回(写兼容错误 + 不冷却账号)，而非落到通用 "Upstream request failed"。
-	_, err := svc.handleCompatErrorResponse(resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, writeError)
+	_, err := svc.handleCompatErrorResponse(resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "a"}, writeError, openAISolModel)
 	require.Error(t, err)
 	require.Equal(t, http.StatusBadRequest, gotStatus)
 	require.Equal(t, "invalid_request_error", gotType)
 	require.Contains(t, gotMsg, "flagged for cyber policy")
 	require.NotContains(t, gotMsg, "Upstream request failed")
-	require.NotNil(t, GetOpsCyberPolicy(c))
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark)
+	require.Equal(t, openAISolModel, mark.UpstreamModel)
 }

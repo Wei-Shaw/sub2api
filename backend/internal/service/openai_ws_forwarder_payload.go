@@ -179,6 +179,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSCreatePayload(reqBody map[string]any
 	if account != nil && account.Type == AccountTypeOAuth && !s.isOpenAIWSStoreRecoveryAllowed(account) {
 		payload["store"] = false
 	}
+	rewriteOpenAIFinalUpstreamPayload(account, payload)
 	return payload
 }
 

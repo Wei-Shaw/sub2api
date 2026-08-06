@@ -19,12 +19,14 @@ func TestMarkAndGetOpsCyberPolicy(t *testing.T) {
 		Code:           "cyber_policy",
 		Message:        "This request was flagged for cyber policy.",
 		Body:           `{"error":{"code":"cyber_policy"}}`,
+		UpstreamModel:  "  gpt-5.6-sol  ",
 		UpstreamStatus: 400,
 	})
 
 	got := GetOpsCyberPolicy(c)
 	require.NotNil(t, got)
 	require.Equal(t, "cyber_policy", got.Code)
+	require.Equal(t, "gpt-5.6-sol", got.UpstreamModel)
 	require.Equal(t, 400, got.UpstreamStatus)
 }
 

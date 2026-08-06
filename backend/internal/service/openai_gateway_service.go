@@ -240,8 +240,8 @@ type OpenAIForwardResult struct {
 	// This is set by the Anthropic Messages conversion path where
 	// the mapped upstream model differs from the client-facing model.
 	BillingModel string
-	// UpstreamModel is the actual model sent to the upstream provider after mapping.
-	// Empty when no mapping was applied (requested model was used as-is).
+	// UpstreamModel is the logical model after configured mapping, before internal
+	// wire-only overrides. Empty when no configured mapping was applied.
 	UpstreamModel string
 	// UpstreamEndpoint is the actual upstream API path used for this request.
 	// It avoids guessing when one downstream protocol can use multiple upstream endpoints.

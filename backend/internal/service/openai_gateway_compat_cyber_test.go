@@ -97,13 +97,13 @@ func TestForwardAsAnthropic_BufferedCyberPolicyNoFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	body := []byte(`{"model":"gpt-5.5","max_tokens":1024,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
+	body := []byte(`{"model":"claude-fable-5","max_tokens":1024,"messages":[{"role":"user","content":"hi"}],"stream":false}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	svc := &OpenAIGatewayService{httpUpstream: compatCyberUpstreamRecorder()}
 
-	result, err := svc.ForwardAsAnthropic(context.Background(), c, compatCyberOAuthAccount(), body, "", "gpt-5.5")
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, compatCyberOAuthAccount(), body, "", openAISolModel)
 	require.Error(t, err)
 	require.Nil(t, result, "cyber must drop result so handler writes tokens=0 free row")
 	var failoverErr *UpstreamFailoverError
@@ -111,6 +111,7 @@ func TestForwardAsAnthropic_BufferedCyberPolicyNoFailover(t *testing.T) {
 	mark := GetOpsCyberPolicy(c)
 	require.NotNil(t, mark, "cyber mark must be set")
 	require.Equal(t, "cyber_policy", mark.Code)
+	require.Equal(t, openAISolModel, mark.UpstreamModel, "messages dispatch must preserve the logical model snapshot")
 	require.True(t, c.Writer.Written(), "anthropic cyber error must be written to client")
 	require.Contains(t, rec.Body.String(), `"type":"error"`, "must use anthropic error envelope")
 }

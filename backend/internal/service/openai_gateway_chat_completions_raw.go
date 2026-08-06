@@ -214,7 +214,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
-		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
@@ -263,6 +263,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientOutputStarted := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+	finalUpstreamModel := openAIFinalUpstreamModel(account, upstreamModel)
 
 	writeLine := func(line string) {
 		if clientDisconnected {
@@ -313,6 +314,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			}
 		}
 
+		if finalUpstreamModel != upstreamModel {
+			line = s.replaceModelInSSELine(line, finalUpstreamModel, upstreamModel)
+		}
 		writeLine(line)
 		if line == "" {
 			if !clientDisconnected && clientOutputStarted {
@@ -409,6 +413,7 @@ func extractCCStreamUsage(payload string) *OpenAIUsage {
 func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -429,6 +434,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	var usage OpenAIUsage
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
+	}
+	if finalUpstreamModel := openAIFinalUpstreamModel(account, upstreamModel); finalUpstreamModel != upstreamModel {
+		respBody = s.replaceModelInResponseBody(respBody, finalUpstreamModel, upstreamModel)
 	}
 
 	if s.responseHeaderFilter != nil {

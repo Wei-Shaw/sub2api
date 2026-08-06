@@ -16,7 +16,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE:-ghcr.io/dextok/sub2api:latest}
     container_name: sub2api
     restart: unless-stopped
     security_opt:
@@ -52,6 +52,7 @@ services:
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
+      - UPDATE_REPOSITORY=${UPDATE_REPOSITORY:-dextok/sub2api}
       - ALIPAY_MOBILE_PRECREATE_DEEP_LINK=${ALIPAY_MOBILE_PRECREATE_DEEP_LINK:-}
 
       # =======================================================================

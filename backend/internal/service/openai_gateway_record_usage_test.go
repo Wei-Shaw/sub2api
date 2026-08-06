@@ -103,6 +103,51 @@ func TestRecordCyberPolicyUsageLog_BillsRealUpstreamTokens(t *testing.T) {
 	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
 }
 
+func TestRecordCyberPolicyUsageLog_SolToTerraUsesSolPricing(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		openAISolModel: {
+			InputCostPerToken:  5e-6,
+			OutputCostPerToken: 30e-6,
+		},
+	}})
+	usage := OpenAIUsage{InputTokens: 100, OutputTokens: 10}
+	groupID := int64(56)
+	user := &User{ID: 2056}
+
+	svc.RecordCyberPolicyUsageLog(context.Background(), CyberPolicyUsageInput{
+		APIKey: &APIKey{
+			ID:      1056,
+			User:    user,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1.25},
+		},
+		Account:       &Account{ID: 3056, Platform: PlatformOpenAI},
+		RequestID:     "resp_cyber_sol_to_terra_hidden_multiplier",
+		Model:         openAISolModel,
+		UpstreamModel: openAISolModel,
+		InputTokens:   usage.InputTokens,
+		OutputTokens:  usage.OutputTokens,
+	})
+
+	require.Equal(t, 1, usageRepo.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	expected := expectedOpenAICost(t, svc, openAISolModel, usage, 1.25)
+	require.InDelta(t, expected.InputCost, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, expected.OutputCost, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
+	require.InDelta(t, 1.25, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.Equal(t, openAISolModel, usageRepo.lastLog.Model)
+	require.Equal(t, openAISolModel, usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, openAISolModel, *usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, RequestTypeCyberBlocked, usageRepo.lastLog.RequestType)
+}
+
 func TestRecordCyberPolicyUsageLog_NonStreamZeroTokensZeroCost(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
@@ -1070,6 +1115,207 @@ func TestOpenAIGatewayServiceRecordUsage_GPT56SeparatesCacheWriteForBillingAndSt
 	require.InDelta(t, 100*0.5e-6, usageRepo.lastLog.CacheReadCost, 1e-12)
 	require.InDelta(t, 50*30e-6, usageRepo.lastLog.OutputCost, 1e-12)
 	require.InDelta(t, usageRepo.lastLog.TotalCost*1.1, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_SolToTerraUsesSolPricing(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		openAISolModel: {
+			InputCostPerToken:  5e-6,
+			OutputCostPerToken: 30e-6,
+		},
+	}})
+	usage := OpenAIUsage{InputTokens: 100, OutputTokens: 10}
+	groupID := int64(56)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_sol_to_terra_hidden_multiplier",
+			Model:         openAISolModel,
+			UpstreamModel: openAISolModel,
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1056,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1.25},
+		},
+		User:    &User{ID: 2056},
+		Account: &Account{ID: 3056, Platform: PlatformOpenAI},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	expected := expectedOpenAICost(t, svc, openAISolModel, usage, 1.25)
+	require.InDelta(t, expected.InputCost, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, expected.OutputCost, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
+	require.InDelta(t, 1.25, usageRepo.lastLog.RateMultiplier, 1e-12,
+		"usage display must keep the configured multiplier")
+	require.Equal(t, openAISolModel, usageRepo.lastLog.Model)
+	require.Equal(t, openAISolModel, usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, openAISolModel, *usageRepo.lastLog.UpstreamModel)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_SolPricingBasisUsesSolPricing(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		openAISolModel: {
+			InputCostPerToken:  5e-6,
+			OutputCostPerToken: 30e-6,
+		},
+	}})
+
+	groupID := int64(3058)
+	statsInputPrice := 7e-6
+	statsOutputPrice := 11e-6
+	channelCache := newEmptyChannelCache()
+	channelCache.channelByGroupID[groupID] = &Channel{
+		ID:     3058,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{
+			{
+				GroupIDs: []int64{groupID},
+				Pricing: []ChannelModelPricing{
+					{
+						Models:      []string{openAISolModel},
+						InputPrice:  &statsInputPrice,
+						OutputPrice: &statsOutputPrice,
+					},
+				},
+			},
+		},
+	}
+	channelCache.groupPlatform[groupID] = PlatformOpenAI
+	channelCache.loadedAt = time.Now()
+	svc.channelService = &ChannelService{}
+	svc.channelService.cache.Store(channelCache)
+
+	accountRate := 1.5
+	usage := OpenAIUsage{InputTokens: 100, OutputTokens: 10}
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_sol_pricing_basis",
+			Model:         openAISolModel,
+			UpstreamModel: openAISolModel,
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1058,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1.25},
+		},
+		User: &User{ID: 2058},
+		Account: &Account{
+			ID:             3058,
+			Platform:       PlatformOpenAI,
+			Type:           AccountTypeAPIKey,
+			RateMultiplier: &accountRate,
+			Extra:          map[string]any{"quota_limit": 100.0},
+		},
+		ChannelUsageFields: ChannelUsageFields{
+			OriginalModel:      openAISolModel,
+			ChannelMappedModel: openAISolModel,
+			BillingModelSource: BillingModelSourceRequested,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	expected := expectedOpenAICost(t, svc, openAISolModel, usage, 1.25)
+	expectedAccountStatsCost := float64(usage.InputTokens)*statsInputPrice + float64(usage.OutputTokens)*statsOutputPrice
+	require.InDelta(t, expected.InputCost, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, expected.OutputCost, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expectedAccountStatsCost, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+	require.InDelta(t, 1.25, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expected.TotalCost*accountRate, billingRepo.lastCmd.AccountQuotaCost, 1e-8)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_SolToTerraUsesSolPricingForAccountStatsAndQuota(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: map[string]*LiteLLMModelPricing{
+		openAISolModel: {
+			InputCostPerToken:  5e-6,
+			OutputCostPerToken: 30e-6,
+		},
+	}})
+
+	groupID := int64(3057)
+	statsInputPrice := 7e-6
+	statsOutputPrice := 11e-6
+	channelCache := newEmptyChannelCache()
+	channelCache.channelByGroupID[groupID] = &Channel{
+		ID:     3057,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{
+			{
+				GroupIDs: []int64{groupID},
+				Pricing: []ChannelModelPricing{
+					{
+						Models:      []string{openAISolModel},
+						InputPrice:  &statsInputPrice,
+						OutputPrice: &statsOutputPrice,
+					},
+				},
+			},
+		},
+	}
+	channelCache.groupPlatform[groupID] = PlatformOpenAI
+	channelCache.loadedAt = time.Now()
+	svc.channelService = &ChannelService{}
+	svc.channelService.cache.Store(channelCache)
+	accountRate := 1.5
+	usage := OpenAIUsage{InputTokens: 100, OutputTokens: 10}
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_sol_to_terra_account_cost",
+			Model:         openAISolModel,
+			UpstreamModel: openAISolModel,
+			Usage:         usage,
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1057,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
+		},
+		User: &User{ID: 2057},
+		Account: &Account{
+			ID:             3057,
+			Platform:       PlatformOpenAI,
+			Type:           AccountTypeAPIKey,
+			RateMultiplier: &accountRate,
+			Extra:          map[string]any{"quota_limit": 100.0},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	expected := expectedOpenAICost(t, svc, openAISolModel, usage, 1)
+	expectedBaseCost := expected.TotalCost
+	expectedAccountStatsCost := float64(usage.InputTokens)*statsInputPrice + float64(usage.OutputTokens)*statsOutputPrice
+	require.InDelta(t, expectedBaseCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedAccountStatsCost, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+	require.InDelta(t, expected.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.0, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expectedBaseCost*accountRate, billingRepo.lastCmd.AccountQuotaCost, 1e-8)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_Gpt54LongContextBillingDisabledByDefault(t *testing.T) {

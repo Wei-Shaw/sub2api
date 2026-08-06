@@ -283,6 +283,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	wroteDownstream := false
 	clientDisconnected := false
 	mappedModel := ""
+	responseModel := ""
 	needModelReplace := false
 	var mappedModelBytes []byte
 	if originalModel != "" {
@@ -290,9 +291,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		if mappedModel == "" {
 			mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
 		}
-		needModelReplace = mappedModel != "" && mappedModel != originalModel
+		responseModel = openAIFinalUpstreamModel(account, mappedModel)
+		needModelReplace = responseModel != "" && responseModel != originalModel
 		if needModelReplace {
-			mappedModelBytes = []byte(mappedModel)
+			mappedModelBytes = []byte(responseModel)
 		}
 	}
 
@@ -377,8 +379,8 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		imageCounter.AddSSEData(upstreamMessage)
 
-		if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && strings.Contains(trimmedData, mappedModel) {
-			upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+		if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && strings.Contains(trimmedData, responseModel) {
+			upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, responseModel, originalModel)
 		}
 		if s.toolCorrector != nil && openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 			if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {

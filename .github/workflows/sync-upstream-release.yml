@@ -1,0 +1,67 @@
+name: Sync Upstream Release
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          check-latest: false
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Merge and verify latest upstream release
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_REPO: Wei-Shaw/sub2api
+          FORK_REPO: dextok/sub2api
+          FORK_BRANCH: main
+          SYNC_VERIFY_COMMAND: >-
+            (cd backend && make test-unit && make test-integration) &&
+            pnpm --dir frontend install --frozen-lockfile &&
+            make test-frontend
+        run: ./scripts/sync-upstream-release.sh
+
+      # Pushes made with GITHUB_TOKEN do not emit another push-triggered workflow.
+      - name: Dispatch fork release build
+        if: ${{ steps.sync.outputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.sync.outputs.tag }}
+        run: |
+          gh workflow run release.yml \
+            --repo dextok/sub2api \
+            --ref main \
+            --field tag="$RELEASE_TAG" \
+            --field simple_release=false

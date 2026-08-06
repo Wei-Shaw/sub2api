@@ -358,6 +358,7 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 		APIKeyID:   22,
 		UserID:     33,
 		LeaseID:    "lease-1",
+		Model:      openAISolModel,
 		CreatedAt:  time.Now(),
 		ExpiresAt:  time.Now().Add(time.Minute),
 		Controller: LiveControllerPending,
@@ -400,10 +401,10 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	require.NoError(t, client.Write(ctx, coderws.MessageText, []byte(`{"type":"client.text"}`)))
+	require.NoError(t, client.Write(ctx, coderws.MessageText, []byte(`{"type":"session.update","session":{"model":"gpt-5.6-sol"}}`)))
 	clientText := <-upstream.writes
 	require.Equal(t, coderws.MessageText, clientText.messageType)
-	require.JSONEq(t, `{"type":"client.text"}`, string(clientText.payload))
+	require.JSONEq(t, `{"type":"session.update","session":{"model":"gpt-5.6-terra"}}`, string(clientText.payload))
 
 	require.NoError(t, client.Write(ctx, coderws.MessageBinary, []byte{1, 2, 3}))
 	clientBinary := <-upstream.writes
@@ -426,6 +427,10 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 	require.Equal(t, "Bearer test-access-token", dialer.headers.Get("Authorization"))
 	require.Equal(t, "acct_test", dialer.headers.Get("Chatgpt-Account-Id"))
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.sideband"}`, dialer.headers.Get(liveAttestationHeader))
+	require.Equal(t, openAISolModel, record.Model)
+	loaded, err := store.GetLiveCall(context.Background(), record.CallHash)
+	require.NoError(t, err)
+	require.Equal(t, openAISolModel, loaded.Model)
 	upstream.reads <- liveTestFrame{err: coderws.CloseError{Code: coderws.StatusNormalClosure}}
 	require.ErrorIs(t, <-proxyResult, ErrLiveCallNotFound)
 }

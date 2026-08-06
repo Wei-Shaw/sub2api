@@ -790,7 +790,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
-		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
+		wirePayload := rewriteOpenAIFinalUpstreamBody(account, payload)
+		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(wirePayload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
 				fmt.Errorf("write upstream websocket request: %w", err),
@@ -803,7 +804,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				account.ID,
 				turn,
 				truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
-				payloadBytes,
+				len(wirePayload),
 			)
 		}
 
@@ -826,15 +827,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		needModelReplace := false
 		clientDisconnected := false
 		mappedModel := ""
+		responseModel := ""
 		var mappedModelBytes []byte
 		if originalModel != "" {
 			mappedModel = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
 			if mappedModel == "" {
 				mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
 			}
-			needModelReplace = mappedModel != "" && mappedModel != originalModel
+			responseModel = openAIFinalUpstreamModel(account, mappedModel)
+			needModelReplace = responseModel != "" && responseModel != originalModel
 			if needModelReplace {
-				mappedModelBytes = []byte(mappedModel)
+				mappedModelBytes = []byte(responseModel)
 			}
 		}
 		for {
@@ -956,6 +959,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						Code:           code,
 						Message:        msg,
 						Body:           truncateString(string(upstreamMessage), 4096),
+						UpstreamModel:  mappedModel,
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,
@@ -965,7 +969,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
-					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, responseModel, originalModel)
 				}
 				if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 					if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {

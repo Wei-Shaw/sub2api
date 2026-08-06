@@ -299,7 +299,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
-		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+		return s.handleChatCompletionsErrorResponse(resp, c, account, upstreamModel)
 	}
 
 	// 9. Handle normal response
@@ -428,6 +428,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 				Code:           code,
 				Message:        msg,
 				Body:           truncateString(string(payload), 4096),
+				UpstreamModel:  upstreamModel,
 				UpstreamStatus: http.StatusOK,
 				UpstreamInTok:  usage.InputTokens,
 				UpstreamOutTok: usage.OutputTokens,
@@ -584,6 +585,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					Code:           code,
 					Message:        msg,
 					Body:           truncateString(string(payloadBytes), 4096),
+					UpstreamModel:  upstreamModel,
 					UpstreamStatus: http.StatusOK,
 					UpstreamInTok:  usage.InputTokens,
 					UpstreamOutTok: usage.OutputTokens,

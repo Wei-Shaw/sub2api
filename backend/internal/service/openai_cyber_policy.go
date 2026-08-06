@@ -24,6 +24,7 @@ type CyberPolicyMark struct {
 	Code           string // 固定 "cyber_policy"
 	Message        string // 上游 error.message
 	Body           string // 上游 response.failed / 400 原始 body（已截断；未脱敏，ops_error 落库由 sanitizeErrorBodyForStorage、风控日志由 redactContentModerationSecrets 统一脱敏）
+	UpstreamModel  string // wire-only override 前的最终逻辑模型
 	UpstreamStatus int    // 上游 HTTP 状态（流式=200，非流式=400）
 	UpstreamInTok  int    // 上游已报 input tokens（如有）
 	UpstreamOutTok int    // 上游已报 output tokens（如有）
@@ -41,6 +42,7 @@ func MarkOpsCyberPolicy(c *gin.Context, mark CyberPolicyMark) {
 	mark.Code = "cyber_policy"
 	mark.Message = strings.TrimSpace(mark.Message)
 	mark.Body = strings.TrimSpace(mark.Body)
+	mark.UpstreamModel = strings.TrimSpace(mark.UpstreamModel)
 	c.Set(opsCyberPolicyKey, &mark)
 }
 
@@ -68,6 +70,15 @@ func ClearOpsCyberPolicy(c *gin.Context) {
 		return
 	}
 	c.Set(opsCyberPolicyKey, (*CyberPolicyMark)(nil))
+}
+
+func resolveCyberPolicyUpstreamModel(requestBody []byte, candidates ...string) string {
+	for _, candidate := range candidates {
+		if model := strings.TrimSpace(candidate); model != "" {
+			return model
+		}
+	}
+	return strings.TrimSpace(gjson.GetBytes(requestBody, "model").String())
 }
 
 // detectOpenAICyberPolicy 精确识别 cyber_policy（对齐 codex api_bridge.rs:145 /

@@ -228,6 +228,9 @@ func openAIWSTrimmedStringPtr(value string) *string {
 
 func openAIWSDifferentModel(requestModel, upstreamModel string) string {
 	upstreamModel = strings.TrimSpace(upstreamModel)
+	if upstreamModel == openAISolModel {
+		return upstreamModel
+	}
 	if upstreamModel == "" || upstreamModel == strings.TrimSpace(requestModel) {
 		return ""
 	}
@@ -767,6 +770,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage, capturedSessionModel)
+	wireFirstClientMessage := rewriteOpenAIFinalUpstreamBody(account, firstClientMessage)
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -914,7 +918,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				return payload
 			}
 			requestModel, upstreamModel := usageMeta.turnModels("")
-			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
+			return replaceOpenAIWSMessageModel(payload, openAIFinalUpstreamModel(account, upstreamModel), requestModel)
 		},
 	}
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
@@ -1025,6 +1029,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				acceptedTurn = true
 			}
+			if policyErr == nil && blocked == nil {
+				out = rewriteOpenAIFinalUpstreamBody(account, out)
+			}
 			return out, blocked, policyErr
 		},
 		onBlock: func(blocked *OpenAIFastBlockedError) {
@@ -1043,7 +1050,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	upstreamFirstMessageSent := false
 	firstWriteCtx, cancelFirstWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
-	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
+	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, wireFirstClientMessage)
 	cancelFirstWrite()
 	if firstWriteErr != nil {
 		return wrapOpenAIWSIngressTurnError(

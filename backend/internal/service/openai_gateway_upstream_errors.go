@@ -331,6 +331,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			Code:           code,
 			Message:        cyberMsg,
 			Body:           truncateString(string(body), 4096),
+			UpstreamModel:  resolveCyberPolicyUpstreamModel(requestBody, requestedModel...),
 			UpstreamStatus: resp.StatusCode,
 		})
 		setOpsUpstreamError(c, resp.StatusCode, cyberMsg, truncateString(string(body), 2048))
@@ -559,6 +560,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			Code:           code,
 			Message:        cyberMsg,
 			Body:           truncateString(string(body), 4096),
+			UpstreamModel:  resolveCyberPolicyUpstreamModel(nil, requestedModel...),
 			UpstreamStatus: resp.StatusCode,
 		})
 		setOpsUpstreamError(c, resp.StatusCode, cyberMsg, truncateString(string(body), 2048))

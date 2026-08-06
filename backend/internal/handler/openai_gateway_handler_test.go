@@ -1388,7 +1388,7 @@ func TestOpenAIResponsesWebSocket_PassthroughTracksModelPerTurn(t *testing.T) {
 	})
 
 	require.Len(t, got.upstreamPayloads, 2)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
 	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
 	require.Len(t, got.clientEvents, 2)
 	require.Equal(t, "sol", gjson.GetBytes(got.clientEvents[0], "response.model").String())
@@ -1425,8 +1425,8 @@ func TestOpenAIResponsesWebSocket_UnchangedChannelTargetOutsideAccountMappingKey
 	})
 
 	require.Len(t, got.upstreamPayloads, 2)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
 	require.Len(t, got.clientEvents, 2)
 	require.Equal(t, "public-alias", gjson.GetBytes(got.clientEvents[0], "response.model").String())
 	require.Equal(t, "public-alias", gjson.GetBytes(got.clientEvents[1], "response.model").String())
@@ -1461,7 +1461,7 @@ func TestOpenAIResponsesWebSocket_PassthroughKeepsTurnMappingSnapshot(t *testing
 	})
 
 	require.Len(t, got.upstreamPayloads, 2)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
 	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
 
 	require.Len(t, got.logs, 2)
@@ -1494,8 +1494,8 @@ func TestOpenAIResponsesWebSocket_CtxPoolAppliesPerTurnMappingAndPreservesReques
 	})
 
 	require.Len(t, got.upstreamPayloads, 2)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[0], "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.upstreamPayloads[1], "model").String())
 	require.Len(t, got.clientEvents, 2)
 	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(got.clientEvents[0], "response.model").String())
 	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(got.clientEvents[1], "response.model").String())

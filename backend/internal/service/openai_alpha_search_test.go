@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type alphaSearchAccountStateRepo struct {
@@ -90,7 +91,9 @@ func TestForwardAlphaSearchOAuthPreservesWire(t *testing.T) {
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("Version"))
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
-	require.JSONEq(t, string(body), string(upstream.lastBody))
+	expectedBody, err := sjson.SetBytes(body, "model", openAITerraModel)
+	require.NoError(t, err)
+	require.JSONEq(t, string(expectedBody), string(upstream.lastBody))
 }
 
 func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
@@ -162,7 +165,7 @@ func TestForwardAlphaSearchPATUsesResponsesWebSearchFallback(t *testing.T) {
 	require.Empty(t, upstream.lastReq.Header.Get("Accept-Language"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
