@@ -42,13 +42,31 @@ function makeAccount(overrides: Partial<Account>): Account {
   }
 }
 
-const position = { top: 100, left: 100 }
+const position = { top: null, bottom: 104, left: 100, width: 208, maxHeight: 320 }
 
 // AccountActionMenu uses <Teleport to="body">; content is rendered in document.body, not in wrapper.
 const getBodyText = () => document.body.textContent ?? ''
 const getBodyButtons = () => Array.from(document.body.querySelectorAll('button'))
 
 describe('AccountActionMenu — spark shadow 按钮可见性', () => {
+  it('applies viewport-bounded position and scroll height', () => {
+    const account = makeAccount({ platform: 'openai', type: 'oauth', parent_account_id: null })
+    const wrapper = mount(AccountActionMenu, {
+      props: { show: true, account, position },
+      attachTo: document.body,
+    })
+
+    const menu = document.body.querySelector<HTMLElement>('.action-menu-content')
+    expect(menu).not.toBeNull()
+    expect(menu?.style.top).toBe('')
+    expect(menu?.style.bottom).toBe('104px')
+    expect(menu?.style.width).toBe('208px')
+    expect(menu?.style.maxHeight).toBe('320px')
+    expect(menu?.classList.contains('overflow-y-auto')).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('普通账号显示「复制账号」按钮', () => {
     const account = makeAccount({ platform: 'anthropic', type: 'apikey', parent_account_id: null })
     const wrapper = mount(AccountActionMenu, {

@@ -98,6 +98,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-last_used_at" :value="row.last_used_at" :row="row" />
+        <slot name="cell-actions" :value="row.actions" :row="row" />
       </div>
     </div>
   `
@@ -118,6 +119,9 @@ const BulkEditUserModalStub = {
     </div>
   `
 }
+
+const originalInnerWidth = window.innerWidth
+const originalInnerHeight = window.innerHeight
 
 describe('admin UsersView', () => {
   beforeEach(() => {
@@ -145,6 +149,9 @@ describe('admin UsersView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalInnerWidth })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: originalInnerHeight })
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {
@@ -292,6 +299,77 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('opens the last-row action menu upward within the viewport', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if ((this as HTMLElement).classList.contains('action-menu-trigger')) {
+        return {
+          x: 1160,
+          y: 700,
+          top: 700,
+          right: 1200,
+          bottom: 740,
+          left: 1160,
+          width: 40,
+          height: 40,
+          toJSON: () => ({})
+        } as DOMRect
+      }
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        toJSON: () => ({})
+      } as DOMRect
+    })
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          BulkEditUserModal: BulkEditUserModalStub,
+          UserPlatformQuotaModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('.action-menu-trigger').trigger('click')
+
+    const menu = wrapper.get<HTMLElement>('.action-menu-content')
+    expect(menu.element.style.top).toBe('')
+    expect(menu.element.style.bottom).toBe('104px')
+    expect(menu.element.style.width).toBe('192px')
+    expect(menu.element.style.maxHeight).toBe('640px')
+    expect(menu.classes()).toContain('overflow-y-auto')
   })
 
   it('keeps selected user IDs across pages and clears them after a successful bulk update', async () => {

@@ -666,8 +666,14 @@
     <Teleport to="body">
       <div
         v-if="activeMenuId !== null && menuPosition"
-        class="action-menu-content fixed z-[9999] w-48 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
-        :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px' }"
+        class="action-menu-content fixed z-[9999] overflow-y-auto rounded-xl bg-white shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        :style="{
+          top: menuPosition.top === null ? undefined : menuPosition.top + 'px',
+          bottom: menuPosition.bottom === null ? undefined : menuPosition.bottom + 'px',
+          left: menuPosition.left + 'px',
+          width: menuPosition.width + 'px',
+          maxHeight: menuPosition.maxHeight + 'px'
+        }"
       >
         <div class="py-1">
           <template v-for="user in users" :key="user.id">
@@ -778,6 +784,7 @@ import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { formatDateTime } from '@/utils/format'
+import { getFloatingActionMenuPosition, type FloatingPanelPosition } from '@/utils/floatingPanel'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -1428,7 +1435,7 @@ const refreshCurrentPageSecondaryData = () => {
 
 // Action Menu State
 const activeMenuId = ref<number | null>(null)
-const menuPosition = ref<{ top: number; left: number } | null>(null)
+const menuPosition = ref<FloatingPanelPosition | null>(null)
 
 const openActionMenu = (user: AdminUser, e: MouseEvent) => {
   if (activeMenuId.value === user.id) {
@@ -1441,44 +1448,12 @@ const openActionMenu = (user: AdminUser, e: MouseEvent) => {
     }
 
     const rect = target.getBoundingClientRect()
-    const menuWidth = 200
-    const menuHeight = 240
-    const padding = 8
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-
-    let left, top
-
-    if (viewportWidth < 768) {
-      // 居中显示,水平位置
-      left = Math.max(padding, Math.min(
-        rect.left + rect.width / 2 - menuWidth / 2,
-        viewportWidth - menuWidth - padding
-      ))
-
-      // 优先显示在按钮下方
-      top = rect.bottom + 4
-
-      // 如果下方空间不够,显示在上方
-      if (top + menuHeight > viewportHeight - padding) {
-        top = rect.top - menuHeight - 4
-        // 如果上方也不够,就贴在视口顶部
-        if (top < padding) {
-          top = padding
-        }
-      }
-    } else {
-      left = Math.max(padding, Math.min(
-        e.clientX - menuWidth,
-        viewportWidth - menuWidth - padding
-      ))
-      top = e.clientY
-      if (top + menuHeight > viewportHeight - padding) {
-        top = viewportHeight - menuHeight - padding
-      }
-    }
-
-    menuPosition.value = { top, left }
+    menuPosition.value = getFloatingActionMenuPosition(
+      rect,
+      document.documentElement.clientWidth || window.innerWidth,
+      window.innerHeight,
+      192
+    )
     activeMenuId.value = user.id
   }
 }
