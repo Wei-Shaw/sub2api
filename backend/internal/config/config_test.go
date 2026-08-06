@@ -59,9 +59,19 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	require.False(t, cfg.Server.TrustedProxiesConfigured)
 	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
 	require.Equal(t, int64(32*1024*1024), cfg.Gateway.TextMaxBodySize)
+	require.False(t, cfg.Gateway.RequestResponseCaptureEnabled)
 	require.True(t, cfg.APIKeyAuth.InvalidAbuse.Enabled)
 	require.Equal(t, 120, cfg.APIKeyAuth.InvalidAbuse.Threshold)
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
+}
+
+func TestLoadRequestResponseCaptureCanBeEnabled(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	viper.Set("gateway.request_response_capture_enabled", true)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.RequestResponseCaptureEnabled)
 }
 
 func TestNormalizeForwardedClientIPHeaders(t *testing.T) {
