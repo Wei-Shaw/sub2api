@@ -40,7 +40,10 @@ func RegisterGatewayRoutes(
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
-	captureReqResp := middleware.RequestResponseCapture(requestResponseLogRepo)
+	captureReqResp := gin.HandlerFunc(func(c *gin.Context) { c.Next() })
+	if cfg.Gateway.RequestResponseCaptureEnabled {
+		captureReqResp = middleware.RequestResponseCapture(requestResponseLogRepo)
+	}
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
 
