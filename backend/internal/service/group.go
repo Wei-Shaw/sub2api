@@ -38,6 +38,9 @@ type Group struct {
 	DailyLimitUSD       *float64
 	WeeklyLimitUSD      *float64
 	MonthlyLimitUSD     *float64
+	DailyLimitTokens    *int64
+	WeeklyLimitTokens   *int64
+	MonthlyLimitTokens  *int64
 	DefaultValidityDays int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
@@ -121,8 +124,17 @@ func (g *Group) IsActive() bool {
 	return g.Status == StatusActive
 }
 
+func IsSubscriptionTypeLiteral(subscriptionType string) bool {
+	return subscriptionType == SubscriptionTypeSubscription ||
+		subscriptionType == SubscriptionTypeSubscriptionToken
+}
+
 func (g *Group) IsSubscriptionType() bool {
-	return g.SubscriptionType == SubscriptionTypeSubscription
+	return IsSubscriptionTypeLiteral(g.SubscriptionType)
+}
+
+func (g *Group) IsSubscriptionTokenType() bool {
+	return g.SubscriptionType == SubscriptionTypeSubscriptionToken
 }
 
 func (g *Group) HasDailyLimit() bool {
@@ -135,6 +147,18 @@ func (g *Group) HasWeeklyLimit() bool {
 
 func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
+}
+
+func (g *Group) HasDailyTokenLimit() bool {
+	return g.DailyLimitTokens != nil && *g.DailyLimitTokens > 0
+}
+
+func (g *Group) HasWeeklyTokenLimit() bool {
+	return g.WeeklyLimitTokens != nil && *g.WeeklyLimitTokens > 0
+}
+
+func (g *Group) HasMonthlyTokenLimit() bool {
+	return g.MonthlyLimitTokens != nil && *g.MonthlyLimitTokens > 0
 }
 
 // GetImagePrice 根据 image_size 返回对应的图片生成价格
@@ -283,7 +307,7 @@ func ValidatePeakRateConfig(subscriptionType string, enabled bool, start, end st
 	if !enabled {
 		return nil
 	}
-	if subscriptionType != SubscriptionTypeSubscription {
+	if !IsSubscriptionTypeLiteral(subscriptionType) {
 		return errors.New("高峰时段倍率仅支持订阅类型分组")
 	}
 	if start == "" || end == "" {
@@ -315,7 +339,7 @@ func ValidatePeakRateConfig(subscriptionType string, enabled bool, start, end st
 // enabled=false 时校验放行，由本函数兜底清洗。调用顺序为先归一化、后校验，
 // 使"订阅转标准"这类更新能静默清空高峰配置而不是被校验拒绝。
 func NormalizePeakRateConfig(subscriptionType string, enabled bool, start, end string, multiplier float64) (bool, string, string, float64) {
-	if subscriptionType != SubscriptionTypeSubscription {
+	if !IsSubscriptionTypeLiteral(subscriptionType) {
 		return false, "", "", 1.0
 	}
 	if !enabled {

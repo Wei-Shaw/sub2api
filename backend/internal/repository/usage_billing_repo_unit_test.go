@@ -14,12 +14,14 @@ import (
 )
 
 const (
-	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
-	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
-	reserveBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance, frozen_balance`
-	captureBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
-	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
-	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
+	conditionalBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
+	overdraftBalanceDeductSQL     = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
+	reserveBatchImageHoldSQL      = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance, frozen_balance`
+	captureBatchImageHoldSQL      = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
+	releaseBatchImageHoldSQL      = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
+	userExistsForBillingSQL       = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
+	incrementSubscriptionTokenSQL = `(?s)UPDATE user_subscriptions us\s+SET\s+daily_usage_tokens = us.daily_usage_tokens \+ \$1,\s+weekly_usage_tokens = us.weekly_usage_tokens \+ \$1,\s+monthly_usage_tokens = us.monthly_usage_tokens \+ \$1,\s+updated_at = NOW\(\)\s+FROM groups g\s+WHERE us.id = \$2\s+AND us.deleted_at IS NULL\s+AND us.group_id = g.id\s+AND g.deleted_at IS NULL`
+	incrementSubscriptionUSDSQL   = `(?s)UPDATE user_subscriptions us\s+SET\s+daily_usage_usd = us.daily_usage_usd \+ \$1,\s+weekly_usage_usd = us.weekly_usage_usd \+ \$1,\s+monthly_usage_usd = us.monthly_usage_usd \+ \$1,\s+updated_at = NOW\(\)\s+FROM groups g\s+WHERE us.id = \$2\s+AND us.deleted_at IS NULL\s+AND us.group_id = g.id\s+AND g.deleted_at IS NULL`
 )
 
 func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
@@ -256,6 +258,73 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, err)
 	require.Nil(t, result.NewBalance)
 	require.Nil(t, result.FrozenBalance)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestApplyUsageBillingEffects_TokenSubscriptionAccumulatesTokens verifies the
+// *_usage_usd increment's "> 0" guard: when cmd.IsSubscriptionToken &&
+// SubscriptionTokens>0 && SubscriptionCost==0, effects dispatch ONLY the *_usage_tokens
+// increment (args: tokens, subscriptionID) and skip USD. sqlmock fails the test if the
+// USD SQL executes. 并行计量（SubscriptionCost>0）由
+// TestApplyUsageBillingEffects_TokenSubscriptionAccumulatesTokensAndUSD 覆盖。
+func TestApplyUsageBillingEffects_TokenSubscriptionAccumulatesTokens(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	subID := int64(9)
+	mock.ExpectExec(incrementSubscriptionTokenSQL).
+		WithArgs(int64(400), subID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		SubscriptionID:      &subID,
+		IsSubscriptionToken: true,
+		SubscriptionTokens:  400,
+	}, result)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestApplyUsageBillingEffects_TokenSubscriptionAccumulatesTokensAndUSD verifies
+// parallel metering for token-type subscriptions: when cmd.IsSubscriptionToken &&
+// SubscriptionTokens>0 && SubscriptionCost>0, effects dispatch BOTH the *_usage_tokens
+// increment (限额依据) and the *_usage_usd increment (对账/分析，与 USD 型订阅同口径)。
+// sqlmock fails the test unless both SQLs execute in order (token，then USD)。
+func TestApplyUsageBillingEffects_TokenSubscriptionAccumulatesTokensAndUSD(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	subID := int64(9)
+	mock.ExpectExec(incrementSubscriptionTokenSQL).
+		WithArgs(int64(400), subID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(incrementSubscriptionUSDSQL).
+		WithArgs(2.0, subID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		SubscriptionID:      &subID,
+		IsSubscriptionToken: true,
+		SubscriptionTokens:  400,
+		SubscriptionCost:    2.0,
+	}, result)
+	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 }

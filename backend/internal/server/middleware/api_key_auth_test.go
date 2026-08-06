@@ -1764,6 +1764,14 @@ func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, boo
 	return errors.New("not implemented")
 }
 
+func (r *stubUserSubscriptionRepo) ResetUsageUSDByGroupID(context.Context, int64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubUserSubscriptionRepo) ResetUsageTokensByGroupID(context.Context, int64) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	if r.resetDaily != nil {
 		return r.resetDaily(ctx, id, newWindowStart)
@@ -1786,6 +1794,9 @@ func (r *stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int
 }
 
 func (r *stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
+	return errors.New("not implemented")
+}
+func (r *stubUserSubscriptionRepo) IncrementUsageTokens(context.Context, int64, int64) error {
 	return errors.New("not implemented")
 }
 

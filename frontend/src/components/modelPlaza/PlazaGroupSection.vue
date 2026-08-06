@@ -26,7 +26,7 @@
           {{ t('modelPlaza.badges.exclusive') }}
         </span>
         <span
-          v-if="group.subscription_type === 'subscription'"
+          v-if="group.subscription_type === 'subscription' || group.subscription_type === 'subscription_token'"
           class="inline-flex items-center rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-900/20 dark:text-violet-400"
         >
           {{ t('modelPlaza.badges.subscription') }}

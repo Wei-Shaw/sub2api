@@ -48,6 +48,11 @@ func (b *billingCacheWorkerStub) UpdateSubscriptionUsage(ctx context.Context, us
 	return nil
 }
 
+func (b *billingCacheWorkerStub) UpdateSubscriptionUsageTokens(ctx context.Context, userID, groupID int64, tokens int64) error {
+	atomic.AddInt64(&b.subscriptionUpdates, 1)
+	return nil
+}
+
 func (b *billingCacheWorkerStub) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
 	return nil
 }
@@ -129,4 +134,30 @@ func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 		amount: 1,
 	})
 	require.False(t, enqueued)
+}
+
+// tokenEligibilityCacheStub 暴露固定的订阅缓存快照，用于 checkSubscriptionEligibility
+// 的 token 分支测试：嵌入 billingCacheWorkerStub 复用其余 BillingCache 方法。
+type tokenEligibilityCacheStub struct {
+	billingCacheWorkerStub
+	sub *SubscriptionCacheData
+}
+
+func (t *tokenEligibilityCacheStub) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
+	return t.sub, nil
+}
+
+func TestCheckSubscriptionEligibility_TokenOverLimit(t *testing.T) {
+	daily := int64(1000)
+	grp := &Group{SubscriptionType: SubscriptionTypeSubscriptionToken, DailyLimitTokens: &daily}
+	cache := &tokenEligibilityCacheStub{sub: &SubscriptionCacheData{
+		Status:           SubscriptionStatusActive,
+		ExpiresAt:        time.Now().Add(24 * time.Hour),
+		DailyUsageTokens: 1000,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	t.Cleanup(svc.Stop)
+
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, grp, nil)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }

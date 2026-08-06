@@ -301,6 +301,16 @@ export function formatCompactNumber(
   return num.toString()
 }
 
+// formatTokenCount 格式化 token 数量：≥1M 压缩（1.2M、10B），否则千分位。
+export function formatTokenCount(tokens: number | null | undefined): string {
+  const n = tokens ?? 0
+  const abs = Math.abs(n)
+  const div = (d: number) => Math.round((n / d) * 10) / 10
+  if (abs >= 1_000_000_000) return `${div(1_000_000_000)}B`
+  if (abs >= 1_000_000) return `${div(1_000_000)}M`
+  return n.toLocaleString()
+}
+
 /**
  * 格式化倒计时（从现在到目标时间的剩余时间）
  * @param targetDate 目标日期字符串或 Date 对象

@@ -21870,6 +21870,12 @@ type GroupMutation struct {
 	addweekly_limit_usd                     *float64
 	monthly_limit_usd                       *float64
 	addmonthly_limit_usd                    *float64
+	daily_limit_tokens                      *int64
+	adddaily_limit_tokens                   *int64
+	weekly_limit_tokens                     *int64
+	addweekly_limit_tokens                  *int64
+	monthly_limit_tokens                    *int64
+	addmonthly_limit_tokens                 *int64
 	default_validity_days                   *int
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
@@ -22876,6 +22882,216 @@ func (m *GroupMutation) ResetMonthlyLimitUsd() {
 	m.monthly_limit_usd = nil
 	m.addmonthly_limit_usd = nil
 	delete(m.clearedFields, group.FieldMonthlyLimitUsd)
+}
+
+// SetDailyLimitTokens sets the "daily_limit_tokens" field.
+func (m *GroupMutation) SetDailyLimitTokens(i int64) {
+	m.daily_limit_tokens = &i
+	m.adddaily_limit_tokens = nil
+}
+
+// DailyLimitTokens returns the value of the "daily_limit_tokens" field in the mutation.
+func (m *GroupMutation) DailyLimitTokens() (r int64, exists bool) {
+	v := m.daily_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDailyLimitTokens returns the old "daily_limit_tokens" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDailyLimitTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyLimitTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyLimitTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyLimitTokens: %w", err)
+	}
+	return oldValue.DailyLimitTokens, nil
+}
+
+// AddDailyLimitTokens adds i to the "daily_limit_tokens" field.
+func (m *GroupMutation) AddDailyLimitTokens(i int64) {
+	if m.adddaily_limit_tokens != nil {
+		*m.adddaily_limit_tokens += i
+	} else {
+		m.adddaily_limit_tokens = &i
+	}
+}
+
+// AddedDailyLimitTokens returns the value that was added to the "daily_limit_tokens" field in this mutation.
+func (m *GroupMutation) AddedDailyLimitTokens() (r int64, exists bool) {
+	v := m.adddaily_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearDailyLimitTokens clears the value of the "daily_limit_tokens" field.
+func (m *GroupMutation) ClearDailyLimitTokens() {
+	m.daily_limit_tokens = nil
+	m.adddaily_limit_tokens = nil
+	m.clearedFields[group.FieldDailyLimitTokens] = struct{}{}
+}
+
+// DailyLimitTokensCleared returns if the "daily_limit_tokens" field was cleared in this mutation.
+func (m *GroupMutation) DailyLimitTokensCleared() bool {
+	_, ok := m.clearedFields[group.FieldDailyLimitTokens]
+	return ok
+}
+
+// ResetDailyLimitTokens resets all changes to the "daily_limit_tokens" field.
+func (m *GroupMutation) ResetDailyLimitTokens() {
+	m.daily_limit_tokens = nil
+	m.adddaily_limit_tokens = nil
+	delete(m.clearedFields, group.FieldDailyLimitTokens)
+}
+
+// SetWeeklyLimitTokens sets the "weekly_limit_tokens" field.
+func (m *GroupMutation) SetWeeklyLimitTokens(i int64) {
+	m.weekly_limit_tokens = &i
+	m.addweekly_limit_tokens = nil
+}
+
+// WeeklyLimitTokens returns the value of the "weekly_limit_tokens" field in the mutation.
+func (m *GroupMutation) WeeklyLimitTokens() (r int64, exists bool) {
+	v := m.weekly_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeeklyLimitTokens returns the old "weekly_limit_tokens" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldWeeklyLimitTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyLimitTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyLimitTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyLimitTokens: %w", err)
+	}
+	return oldValue.WeeklyLimitTokens, nil
+}
+
+// AddWeeklyLimitTokens adds i to the "weekly_limit_tokens" field.
+func (m *GroupMutation) AddWeeklyLimitTokens(i int64) {
+	if m.addweekly_limit_tokens != nil {
+		*m.addweekly_limit_tokens += i
+	} else {
+		m.addweekly_limit_tokens = &i
+	}
+}
+
+// AddedWeeklyLimitTokens returns the value that was added to the "weekly_limit_tokens" field in this mutation.
+func (m *GroupMutation) AddedWeeklyLimitTokens() (r int64, exists bool) {
+	v := m.addweekly_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWeeklyLimitTokens clears the value of the "weekly_limit_tokens" field.
+func (m *GroupMutation) ClearWeeklyLimitTokens() {
+	m.weekly_limit_tokens = nil
+	m.addweekly_limit_tokens = nil
+	m.clearedFields[group.FieldWeeklyLimitTokens] = struct{}{}
+}
+
+// WeeklyLimitTokensCleared returns if the "weekly_limit_tokens" field was cleared in this mutation.
+func (m *GroupMutation) WeeklyLimitTokensCleared() bool {
+	_, ok := m.clearedFields[group.FieldWeeklyLimitTokens]
+	return ok
+}
+
+// ResetWeeklyLimitTokens resets all changes to the "weekly_limit_tokens" field.
+func (m *GroupMutation) ResetWeeklyLimitTokens() {
+	m.weekly_limit_tokens = nil
+	m.addweekly_limit_tokens = nil
+	delete(m.clearedFields, group.FieldWeeklyLimitTokens)
+}
+
+// SetMonthlyLimitTokens sets the "monthly_limit_tokens" field.
+func (m *GroupMutation) SetMonthlyLimitTokens(i int64) {
+	m.monthly_limit_tokens = &i
+	m.addmonthly_limit_tokens = nil
+}
+
+// MonthlyLimitTokens returns the value of the "monthly_limit_tokens" field in the mutation.
+func (m *GroupMutation) MonthlyLimitTokens() (r int64, exists bool) {
+	v := m.monthly_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlyLimitTokens returns the old "monthly_limit_tokens" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldMonthlyLimitTokens(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyLimitTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyLimitTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyLimitTokens: %w", err)
+	}
+	return oldValue.MonthlyLimitTokens, nil
+}
+
+// AddMonthlyLimitTokens adds i to the "monthly_limit_tokens" field.
+func (m *GroupMutation) AddMonthlyLimitTokens(i int64) {
+	if m.addmonthly_limit_tokens != nil {
+		*m.addmonthly_limit_tokens += i
+	} else {
+		m.addmonthly_limit_tokens = &i
+	}
+}
+
+// AddedMonthlyLimitTokens returns the value that was added to the "monthly_limit_tokens" field in this mutation.
+func (m *GroupMutation) AddedMonthlyLimitTokens() (r int64, exists bool) {
+	v := m.addmonthly_limit_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMonthlyLimitTokens clears the value of the "monthly_limit_tokens" field.
+func (m *GroupMutation) ClearMonthlyLimitTokens() {
+	m.monthly_limit_tokens = nil
+	m.addmonthly_limit_tokens = nil
+	m.clearedFields[group.FieldMonthlyLimitTokens] = struct{}{}
+}
+
+// MonthlyLimitTokensCleared returns if the "monthly_limit_tokens" field was cleared in this mutation.
+func (m *GroupMutation) MonthlyLimitTokensCleared() bool {
+	_, ok := m.clearedFields[group.FieldMonthlyLimitTokens]
+	return ok
+}
+
+// ResetMonthlyLimitTokens resets all changes to the "monthly_limit_tokens" field.
+func (m *GroupMutation) ResetMonthlyLimitTokens() {
+	m.monthly_limit_tokens = nil
+	m.addmonthly_limit_tokens = nil
+	delete(m.clearedFields, group.FieldMonthlyLimitTokens)
 }
 
 // SetDefaultValidityDays sets the "default_validity_days" field.
@@ -25097,7 +25313,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 55)
+	fields := make([]string, 0, 58)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -25151,6 +25367,15 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.monthly_limit_usd != nil {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
+	}
+	if m.daily_limit_tokens != nil {
+		fields = append(fields, group.FieldDailyLimitTokens)
+	}
+	if m.weekly_limit_tokens != nil {
+		fields = append(fields, group.FieldWeeklyLimitTokens)
+	}
+	if m.monthly_limit_tokens != nil {
+		fields = append(fields, group.FieldMonthlyLimitTokens)
 	}
 	if m.default_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
@@ -25307,6 +25532,12 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.WeeklyLimitUsd()
 	case group.FieldMonthlyLimitUsd:
 		return m.MonthlyLimitUsd()
+	case group.FieldDailyLimitTokens:
+		return m.DailyLimitTokens()
+	case group.FieldWeeklyLimitTokens:
+		return m.WeeklyLimitTokens()
+	case group.FieldMonthlyLimitTokens:
+		return m.MonthlyLimitTokens()
 	case group.FieldDefaultValidityDays:
 		return m.DefaultValidityDays()
 	case group.FieldAllowImageGeneration:
@@ -25426,6 +25657,12 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWeeklyLimitUsd(ctx)
 	case group.FieldMonthlyLimitUsd:
 		return m.OldMonthlyLimitUsd(ctx)
+	case group.FieldDailyLimitTokens:
+		return m.OldDailyLimitTokens(ctx)
+	case group.FieldWeeklyLimitTokens:
+		return m.OldWeeklyLimitTokens(ctx)
+	case group.FieldMonthlyLimitTokens:
+		return m.OldMonthlyLimitTokens(ctx)
 	case group.FieldDefaultValidityDays:
 		return m.OldDefaultValidityDays(ctx)
 	case group.FieldAllowImageGeneration:
@@ -25634,6 +25871,27 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMonthlyLimitUsd(v)
+		return nil
+	case group.FieldDailyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDailyLimitTokens(v)
+		return nil
+	case group.FieldWeeklyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeeklyLimitTokens(v)
+		return nil
+	case group.FieldMonthlyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlyLimitTokens(v)
 		return nil
 	case group.FieldDefaultValidityDays:
 		v, ok := value.(int)
@@ -25917,6 +26175,15 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addmonthly_limit_usd != nil {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
 	}
+	if m.adddaily_limit_tokens != nil {
+		fields = append(fields, group.FieldDailyLimitTokens)
+	}
+	if m.addweekly_limit_tokens != nil {
+		fields = append(fields, group.FieldWeeklyLimitTokens)
+	}
+	if m.addmonthly_limit_tokens != nil {
+		fields = append(fields, group.FieldMonthlyLimitTokens)
+	}
 	if m.adddefault_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
 	}
@@ -25989,6 +26256,12 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedWeeklyLimitUsd()
 	case group.FieldMonthlyLimitUsd:
 		return m.AddedMonthlyLimitUsd()
+	case group.FieldDailyLimitTokens:
+		return m.AddedDailyLimitTokens()
+	case group.FieldWeeklyLimitTokens:
+		return m.AddedWeeklyLimitTokens()
+	case group.FieldMonthlyLimitTokens:
+		return m.AddedMonthlyLimitTokens()
 	case group.FieldDefaultValidityDays:
 		return m.AddedDefaultValidityDays()
 	case group.FieldImageRateMultiplier:
@@ -26068,6 +26341,27 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMonthlyLimitUsd(v)
+		return nil
+	case group.FieldDailyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDailyLimitTokens(v)
+		return nil
+	case group.FieldWeeklyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWeeklyLimitTokens(v)
+		return nil
+	case group.FieldMonthlyLimitTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlyLimitTokens(v)
 		return nil
 	case group.FieldDefaultValidityDays:
 		v, ok := value.(int)
@@ -26221,6 +26515,15 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldMonthlyLimitUsd) {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
 	}
+	if m.FieldCleared(group.FieldDailyLimitTokens) {
+		fields = append(fields, group.FieldDailyLimitTokens)
+	}
+	if m.FieldCleared(group.FieldWeeklyLimitTokens) {
+		fields = append(fields, group.FieldWeeklyLimitTokens)
+	}
+	if m.FieldCleared(group.FieldMonthlyLimitTokens) {
+		fields = append(fields, group.FieldMonthlyLimitTokens)
+	}
 	if m.FieldCleared(group.FieldImagePrice1k) {
 		fields = append(fields, group.FieldImagePrice1k)
 	}
@@ -26282,6 +26585,15 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldMonthlyLimitUsd:
 		m.ClearMonthlyLimitUsd()
+		return nil
+	case group.FieldDailyLimitTokens:
+		m.ClearDailyLimitTokens()
+		return nil
+	case group.FieldWeeklyLimitTokens:
+		m.ClearWeeklyLimitTokens()
+		return nil
+	case group.FieldMonthlyLimitTokens:
+		m.ClearMonthlyLimitTokens()
 		return nil
 	case group.FieldImagePrice1k:
 		m.ClearImagePrice1k()
@@ -26374,6 +26686,15 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMonthlyLimitUsd:
 		m.ResetMonthlyLimitUsd()
+		return nil
+	case group.FieldDailyLimitTokens:
+		m.ResetDailyLimitTokens()
+		return nil
+	case group.FieldWeeklyLimitTokens:
+		m.ResetWeeklyLimitTokens()
+		return nil
+	case group.FieldMonthlyLimitTokens:
+		m.ResetMonthlyLimitTokens()
 		return nil
 	case group.FieldDefaultValidityDays:
 		m.ResetDefaultValidityDays()
@@ -54005,6 +54326,12 @@ type UserSubscriptionMutation struct {
 	addweekly_usage_usd     *float64
 	monthly_usage_usd       *float64
 	addmonthly_usage_usd    *float64
+	daily_usage_tokens      *int64
+	adddaily_usage_tokens   *int64
+	weekly_usage_tokens     *int64
+	addweekly_usage_tokens  *int64
+	monthly_usage_tokens    *int64
+	addmonthly_usage_tokens *int64
 	assigned_at             *time.Time
 	notes                   *string
 	clearedFields           map[string]struct{}
@@ -54736,6 +55063,174 @@ func (m *UserSubscriptionMutation) ResetMonthlyUsageUsd() {
 	m.addmonthly_usage_usd = nil
 }
 
+// SetDailyUsageTokens sets the "daily_usage_tokens" field.
+func (m *UserSubscriptionMutation) SetDailyUsageTokens(i int64) {
+	m.daily_usage_tokens = &i
+	m.adddaily_usage_tokens = nil
+}
+
+// DailyUsageTokens returns the value of the "daily_usage_tokens" field in the mutation.
+func (m *UserSubscriptionMutation) DailyUsageTokens() (r int64, exists bool) {
+	v := m.daily_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDailyUsageTokens returns the old "daily_usage_tokens" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldDailyUsageTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDailyUsageTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDailyUsageTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDailyUsageTokens: %w", err)
+	}
+	return oldValue.DailyUsageTokens, nil
+}
+
+// AddDailyUsageTokens adds i to the "daily_usage_tokens" field.
+func (m *UserSubscriptionMutation) AddDailyUsageTokens(i int64) {
+	if m.adddaily_usage_tokens != nil {
+		*m.adddaily_usage_tokens += i
+	} else {
+		m.adddaily_usage_tokens = &i
+	}
+}
+
+// AddedDailyUsageTokens returns the value that was added to the "daily_usage_tokens" field in this mutation.
+func (m *UserSubscriptionMutation) AddedDailyUsageTokens() (r int64, exists bool) {
+	v := m.adddaily_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDailyUsageTokens resets all changes to the "daily_usage_tokens" field.
+func (m *UserSubscriptionMutation) ResetDailyUsageTokens() {
+	m.daily_usage_tokens = nil
+	m.adddaily_usage_tokens = nil
+}
+
+// SetWeeklyUsageTokens sets the "weekly_usage_tokens" field.
+func (m *UserSubscriptionMutation) SetWeeklyUsageTokens(i int64) {
+	m.weekly_usage_tokens = &i
+	m.addweekly_usage_tokens = nil
+}
+
+// WeeklyUsageTokens returns the value of the "weekly_usage_tokens" field in the mutation.
+func (m *UserSubscriptionMutation) WeeklyUsageTokens() (r int64, exists bool) {
+	v := m.weekly_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeeklyUsageTokens returns the old "weekly_usage_tokens" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldWeeklyUsageTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeeklyUsageTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeeklyUsageTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeeklyUsageTokens: %w", err)
+	}
+	return oldValue.WeeklyUsageTokens, nil
+}
+
+// AddWeeklyUsageTokens adds i to the "weekly_usage_tokens" field.
+func (m *UserSubscriptionMutation) AddWeeklyUsageTokens(i int64) {
+	if m.addweekly_usage_tokens != nil {
+		*m.addweekly_usage_tokens += i
+	} else {
+		m.addweekly_usage_tokens = &i
+	}
+}
+
+// AddedWeeklyUsageTokens returns the value that was added to the "weekly_usage_tokens" field in this mutation.
+func (m *UserSubscriptionMutation) AddedWeeklyUsageTokens() (r int64, exists bool) {
+	v := m.addweekly_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetWeeklyUsageTokens resets all changes to the "weekly_usage_tokens" field.
+func (m *UserSubscriptionMutation) ResetWeeklyUsageTokens() {
+	m.weekly_usage_tokens = nil
+	m.addweekly_usage_tokens = nil
+}
+
+// SetMonthlyUsageTokens sets the "monthly_usage_tokens" field.
+func (m *UserSubscriptionMutation) SetMonthlyUsageTokens(i int64) {
+	m.monthly_usage_tokens = &i
+	m.addmonthly_usage_tokens = nil
+}
+
+// MonthlyUsageTokens returns the value of the "monthly_usage_tokens" field in the mutation.
+func (m *UserSubscriptionMutation) MonthlyUsageTokens() (r int64, exists bool) {
+	v := m.monthly_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonthlyUsageTokens returns the old "monthly_usage_tokens" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldMonthlyUsageTokens(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonthlyUsageTokens is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonthlyUsageTokens requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonthlyUsageTokens: %w", err)
+	}
+	return oldValue.MonthlyUsageTokens, nil
+}
+
+// AddMonthlyUsageTokens adds i to the "monthly_usage_tokens" field.
+func (m *UserSubscriptionMutation) AddMonthlyUsageTokens(i int64) {
+	if m.addmonthly_usage_tokens != nil {
+		*m.addmonthly_usage_tokens += i
+	} else {
+		m.addmonthly_usage_tokens = &i
+	}
+}
+
+// AddedMonthlyUsageTokens returns the value that was added to the "monthly_usage_tokens" field in this mutation.
+func (m *UserSubscriptionMutation) AddedMonthlyUsageTokens() (r int64, exists bool) {
+	v := m.addmonthly_usage_tokens
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMonthlyUsageTokens resets all changes to the "monthly_usage_tokens" field.
+func (m *UserSubscriptionMutation) ResetMonthlyUsageTokens() {
+	m.monthly_usage_tokens = nil
+	m.addmonthly_usage_tokens = nil
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (m *UserSubscriptionMutation) SetAssignedBy(i int64) {
 	m.assigned_by_user = &i
@@ -55052,7 +55547,7 @@ func (m *UserSubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserSubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, usersubscription.FieldCreatedAt)
 	}
@@ -55094,6 +55589,15 @@ func (m *UserSubscriptionMutation) Fields() []string {
 	}
 	if m.monthly_usage_usd != nil {
 		fields = append(fields, usersubscription.FieldMonthlyUsageUsd)
+	}
+	if m.daily_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldDailyUsageTokens)
+	}
+	if m.weekly_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldWeeklyUsageTokens)
+	}
+	if m.monthly_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldMonthlyUsageTokens)
 	}
 	if m.assigned_by_user != nil {
 		fields = append(fields, usersubscription.FieldAssignedBy)
@@ -55140,6 +55644,12 @@ func (m *UserSubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.WeeklyUsageUsd()
 	case usersubscription.FieldMonthlyUsageUsd:
 		return m.MonthlyUsageUsd()
+	case usersubscription.FieldDailyUsageTokens:
+		return m.DailyUsageTokens()
+	case usersubscription.FieldWeeklyUsageTokens:
+		return m.WeeklyUsageTokens()
+	case usersubscription.FieldMonthlyUsageTokens:
+		return m.MonthlyUsageTokens()
 	case usersubscription.FieldAssignedBy:
 		return m.AssignedBy()
 	case usersubscription.FieldAssignedAt:
@@ -55183,6 +55693,12 @@ func (m *UserSubscriptionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldWeeklyUsageUsd(ctx)
 	case usersubscription.FieldMonthlyUsageUsd:
 		return m.OldMonthlyUsageUsd(ctx)
+	case usersubscription.FieldDailyUsageTokens:
+		return m.OldDailyUsageTokens(ctx)
+	case usersubscription.FieldWeeklyUsageTokens:
+		return m.OldWeeklyUsageTokens(ctx)
+	case usersubscription.FieldMonthlyUsageTokens:
+		return m.OldMonthlyUsageTokens(ctx)
 	case usersubscription.FieldAssignedBy:
 		return m.OldAssignedBy(ctx)
 	case usersubscription.FieldAssignedAt:
@@ -55296,6 +55812,27 @@ func (m *UserSubscriptionMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetMonthlyUsageUsd(v)
 		return nil
+	case usersubscription.FieldDailyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDailyUsageTokens(v)
+		return nil
+	case usersubscription.FieldWeeklyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeeklyUsageTokens(v)
+		return nil
+	case usersubscription.FieldMonthlyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonthlyUsageTokens(v)
+		return nil
 	case usersubscription.FieldAssignedBy:
 		v, ok := value.(int64)
 		if !ok {
@@ -55334,6 +55871,15 @@ func (m *UserSubscriptionMutation) AddedFields() []string {
 	if m.addmonthly_usage_usd != nil {
 		fields = append(fields, usersubscription.FieldMonthlyUsageUsd)
 	}
+	if m.adddaily_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldDailyUsageTokens)
+	}
+	if m.addweekly_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldWeeklyUsageTokens)
+	}
+	if m.addmonthly_usage_tokens != nil {
+		fields = append(fields, usersubscription.FieldMonthlyUsageTokens)
+	}
 	return fields
 }
 
@@ -55348,6 +55894,12 @@ func (m *UserSubscriptionMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedWeeklyUsageUsd()
 	case usersubscription.FieldMonthlyUsageUsd:
 		return m.AddedMonthlyUsageUsd()
+	case usersubscription.FieldDailyUsageTokens:
+		return m.AddedDailyUsageTokens()
+	case usersubscription.FieldWeeklyUsageTokens:
+		return m.AddedWeeklyUsageTokens()
+	case usersubscription.FieldMonthlyUsageTokens:
+		return m.AddedMonthlyUsageTokens()
 	}
 	return nil, false
 }
@@ -55377,6 +55929,27 @@ func (m *UserSubscriptionMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddMonthlyUsageUsd(v)
+		return nil
+	case usersubscription.FieldDailyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDailyUsageTokens(v)
+		return nil
+	case usersubscription.FieldWeeklyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWeeklyUsageTokens(v)
+		return nil
+	case usersubscription.FieldMonthlyUsageTokens:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMonthlyUsageTokens(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UserSubscription numeric field %s", name)
@@ -55485,6 +56058,15 @@ func (m *UserSubscriptionMutation) ResetField(name string) error {
 		return nil
 	case usersubscription.FieldMonthlyUsageUsd:
 		m.ResetMonthlyUsageUsd()
+		return nil
+	case usersubscription.FieldDailyUsageTokens:
+		m.ResetDailyUsageTokens()
+		return nil
+	case usersubscription.FieldWeeklyUsageTokens:
+		m.ResetWeeklyUsageTokens()
+		return nil
+	case usersubscription.FieldMonthlyUsageTokens:
+		m.ResetMonthlyUsageTokens()
 		return nil
 	case usersubscription.FieldAssignedBy:
 		m.ResetAssignedBy()

@@ -11,7 +11,7 @@ import (
 // --- Task 5: 验证 calculateProgress 纯函数行为正确 ---
 
 func newTestSubscriptionService() *SubscriptionService {
-	return &SubscriptionService{}
+	return &SubscriptionService{now: time.Now}
 }
 
 func ptrFloat64(v float64) *float64  { return &v }

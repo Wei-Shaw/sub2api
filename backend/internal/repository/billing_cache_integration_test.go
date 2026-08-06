@@ -167,12 +167,15 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 				subKey := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
 
 				data := &service.SubscriptionCacheData{
-					Status:       "active",
-					ExpiresAt:    time.Now().Add(1 * time.Hour),
-					DailyUsage:   1.0,
-					WeeklyUsage:  2.0,
-					MonthlyUsage: 3.0,
-					Version:      7,
+					Status:             "active",
+					ExpiresAt:          time.Now().Add(1 * time.Hour),
+					DailyUsage:         1.0,
+					WeeklyUsage:        2.0,
+					MonthlyUsage:       3.0,
+					DailyUsageTokens:   100,
+					WeeklyUsageTokens:  200,
+					MonthlyUsageTokens: 300,
+					Version:            7,
 				}
 				require.NoError(s.T(), cache.SetSubscriptionCache(ctx, userID, groupID, data), "SetSubscriptionCache")
 
@@ -181,10 +184,41 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 				require.Equal(s.T(), "active", gotSub.Status)
 				require.Equal(s.T(), int64(7), gotSub.Version)
 				require.Equal(s.T(), 1.0, gotSub.DailyUsage)
+				require.Equal(s.T(), int64(100), gotSub.DailyUsageTokens)
+				require.Equal(s.T(), int64(200), gotSub.WeeklyUsageTokens)
+				require.Equal(s.T(), int64(300), gotSub.MonthlyUsageTokens)
 
 				ttl, err := rdb.TTL(ctx, subKey).Result()
 				require.NoError(s.T(), err, "TTL subKey")
 				s.AssertTTLWithin(ttl, 1*time.Second, billingCacheTTL)
+			},
+		},
+		{
+			name: "update_usage_tokens_increments_all_fields",
+			fn: func(ctx context.Context, rdb *redis.Client, cache service.BillingCache) {
+				userID := int64(14)
+				groupID := int64(24)
+
+				data := &service.SubscriptionCacheData{
+					Status:             "active",
+					ExpiresAt:          time.Now().Add(1 * time.Hour),
+					DailyUsage:         1.0,
+					WeeklyUsage:        2.0,
+					MonthlyUsage:       3.0,
+					DailyUsageTokens:   100,
+					WeeklyUsageTokens:  200,
+					MonthlyUsageTokens: 300,
+					Version:            1,
+				}
+				require.NoError(s.T(), cache.SetSubscriptionCache(ctx, userID, groupID, data), "SetSubscriptionCache")
+
+				require.NoError(s.T(), cache.UpdateSubscriptionUsageTokens(ctx, userID, groupID, 50), "UpdateSubscriptionUsageTokens")
+
+				gotSub, err := cache.GetSubscriptionCache(ctx, userID, groupID)
+				require.NoError(s.T(), err, "GetSubscriptionCache after token update")
+				require.Equal(s.T(), int64(150), gotSub.DailyUsageTokens)
+				require.Equal(s.T(), int64(250), gotSub.WeeklyUsageTokens)
+				require.Equal(s.T(), int64(350), gotSub.MonthlyUsageTokens)
 			},
 		},
 		{

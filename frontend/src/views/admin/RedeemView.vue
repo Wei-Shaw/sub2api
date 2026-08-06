@@ -656,7 +656,7 @@ const subscriptionGroups = ref<Group[]>([])
 // 订阅类型分组选项
 const subscriptionGroupOptions = computed(() => {
   return subscriptionGroups.value
-    .filter((g) => g.subscription_type === 'subscription')
+    .filter((g) => g.subscription_type === 'subscription' || g.subscription_type === 'subscription_token')
     .map((g) => ({
       value: g.id,
       label: g.name,

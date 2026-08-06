@@ -47,6 +47,10 @@ func (s *billingCacheMissStub) UpdateSubscriptionUsage(ctx context.Context, user
 	return nil
 }
 
+func (s *billingCacheMissStub) UpdateSubscriptionUsageTokens(ctx context.Context, userID, groupID int64, tokens int64) error {
+	return nil
+}
+
 func (s *billingCacheMissStub) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
 	return nil
 }

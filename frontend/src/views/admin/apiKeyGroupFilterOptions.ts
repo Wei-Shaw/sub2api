@@ -49,7 +49,7 @@ export function buildApiKeyGroupFilterOptions(
     const item: ApiKeyGroupFilterOption = { value: grp.id, label: grp.name }
     if (grp.status !== 'active') {
       disabledGroups.push(item)
-    } else if (grp.subscription_type === 'subscription') {
+    } else if (grp.subscription_type === 'subscription' || grp.subscription_type === 'subscription_token') {
       subscription.push(item)
     } else if (grp.is_exclusive) {
       exclusive.push(item)

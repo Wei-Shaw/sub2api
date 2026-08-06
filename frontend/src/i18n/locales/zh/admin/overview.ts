@@ -955,7 +955,11 @@ export default {
         typeNotEditable: '分组创建后无法修改计费类型。',
         standard: '标准（余额）',
         subscription: '订阅（配额）',
+        subscriptionToken: '订阅（token）',
         dailyLimit: '每日限额（USD）',
+        dailyLimitTokens: '每日 token 上限',
+        weeklyLimitTokens: '每周 token 上限',
+        monthlyLimitTokens: '每月 token 上限',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
@@ -1001,7 +1005,8 @@ export default {
         peakStart: '高峰开始',
         peakEnd: '高峰结束',
         peakMultiplier: '高峰倍率',
-        multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
+        multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费',
+        tokenQuotaNote: '提示：高峰倍率对 token 型订阅同样生效——高峰时段的 token 配额消耗会按此倍率加快（如 1.5 倍时，1000 个实际 token 计为 1500 配额）。'
       },
       profitControl: {
         enable: '启用利润控制',

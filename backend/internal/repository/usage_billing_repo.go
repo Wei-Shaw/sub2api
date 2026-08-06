@@ -172,9 +172,16 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
-	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
-			return err
+	if cmd.SubscriptionID != nil {
+		if cmd.IsSubscriptionToken && cmd.SubscriptionTokens > 0 {
+			if err := incrementUsageBillingSubscriptionTokens(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionTokens); err != nil {
+				return err
+			}
+		}
+		if cmd.SubscriptionCost > 0 {
+			if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -227,6 +234,34 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			AND g.deleted_at IS NULL
 	`
 	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	return service.ErrSubscriptionNotFound
+}
+
+func incrementUsageBillingSubscriptionTokens(ctx context.Context, tx *sql.Tx, subscriptionID int64, tokens int64) error {
+	const updateSQL = `
+		UPDATE user_subscriptions us
+		SET
+			daily_usage_tokens = us.daily_usage_tokens + $1,
+			weekly_usage_tokens = us.weekly_usage_tokens + $1,
+			monthly_usage_tokens = us.monthly_usage_tokens + $1,
+			updated_at = NOW()
+		FROM groups g
+		WHERE us.id = $2
+			AND us.deleted_at IS NULL
+			AND us.group_id = g.id
+			AND g.deleted_at IS NULL
+	`
+	res, err := tx.ExecContext(ctx, updateSQL, tokens, subscriptionID)
 	if err != nil {
 		return err
 	}

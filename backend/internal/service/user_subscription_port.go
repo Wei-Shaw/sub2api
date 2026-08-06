@@ -35,6 +35,11 @@ type UserSubscriptionRepository interface {
 	ResetWeeklyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
 	ResetMonthlyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
 	IncrementUsage(ctx context.Context, id int64, costUSD float64) error
+	IncrementUsageTokens(ctx context.Context, id int64, tokens int64) error
+	// ResetUsageUSDByGroupID / ResetUsageTokensByGroupID 批量清零指定分组下所有订阅的
+	// 某一维度用量，用于订阅计费维度（USD↔token）切换时清除残留用量。
+	ResetUsageUSDByGroupID(ctx context.Context, groupID int64) error
+	ResetUsageTokensByGroupID(ctx context.Context, groupID int64) error
 
 	BatchUpdateExpiredStatus(ctx context.Context) (int64, error)
 }

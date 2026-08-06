@@ -69,6 +69,16 @@ func (UserSubscription) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
 			Default(0),
 
+		field.Int64("daily_usage_tokens").
+			Default(0).
+			Comment("订阅(token)型：当前日窗口累计 token 用量"),
+		field.Int64("weekly_usage_tokens").
+			Default(0).
+			Comment("订阅(token)型：当前周窗口累计 token 用量"),
+		field.Int64("monthly_usage_tokens").
+			Default(0).
+			Comment("订阅(token)型：当前月窗口累计 token 用量"),
+
 		field.Int64("assigned_by").
 			Optional().
 			Nillable(),

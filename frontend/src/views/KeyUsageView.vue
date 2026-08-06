@@ -423,7 +423,7 @@ import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildGatewayUrl } from '@/api/client'
-import { formatDateLocalInput } from '@/utils/format'
+import { formatDateLocalInput, formatTokenCount } from '@/utils/format'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t, locale } = useI18n()
@@ -635,15 +635,23 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
-      const limits = [
-        { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
-        { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
-        { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
-      ]
+      const token = data.unit === 'tokens'
+      const fmt = token ? formatTokenCount : usd
+      const limits = token
+        ? [
+            { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_tokens, limit: sub.daily_limit_tokens },
+            { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_tokens, limit: sub.weekly_limit_tokens },
+            { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_tokens, limit: sub.monthly_limit_tokens },
+          ]
+        : [
+            { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
+            { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
+            { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
+          ]
       for (const l of limits) {
         if (l.limit != null && l.limit > 0) {
           const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+          items.push({ title: l.label, pct, amount: `${fmt(l.usage)} / ${fmt(l.limit)}`, iconType: 'calendar' })
         }
       }
     }
@@ -681,11 +689,14 @@ const detailRows = computed<DetailRow[]>(() => {
   const data = resultData.value
   if (!data) return []
 
+  const isTokenMetric = data.unit === 'tokens'
+
   const rows: DetailRow[] = []
   const ICON_SHIELD = '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
   const ICON_CALENDAR = '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'
   const ICON_DOLLAR = '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'
   const ICON_CHECK = '<polyline points="20 6 9 17 4 12"/>'
+  const ICON_TOKEN = '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>'
 
   if (data.mode === 'quota_limited') {
     if (data.quota) {
@@ -733,26 +744,26 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.daily_limit_usd > 0) {
-        const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.weekly_limit_usd > 0) {
-        const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.monthly_limit_usd > 0) {
-        const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
+      const fmt = isTokenMetric ? formatTokenCount : usd
+      const windows = isTokenMetric
+        ? [
+            { zh: '日', en: 'D', usage: sub.daily_usage_tokens, limit: sub.daily_limit_tokens, bg: 'bg-primary-500/10', color: 'text-primary-500' },
+            { zh: '周', en: 'W', usage: sub.weekly_usage_tokens, limit: sub.weekly_limit_tokens, bg: 'bg-indigo-500/10', color: 'text-indigo-500' },
+            { zh: '月', en: 'M', usage: sub.monthly_usage_tokens, limit: sub.monthly_limit_tokens, bg: 'bg-emerald-500/10', color: 'text-emerald-500' },
+          ]
+        : [
+            { zh: '日', en: 'D', usage: sub.daily_usage_usd, limit: sub.daily_limit_usd, bg: 'bg-primary-500/10', color: 'text-primary-500' },
+            { zh: '周', en: 'W', usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd, bg: 'bg-indigo-500/10', color: 'text-indigo-500' },
+            { zh: '月', en: 'M', usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd, bg: 'bg-emerald-500/10', color: 'text-emerald-500' },
+          ]
+      for (const w of windows) {
+        if (w.limit > 0) {
+          const pct = (w.usage / w.limit) * 100
+          rows.push({
+            iconBg: w.bg, iconColor: w.color, iconSvg: isTokenMetric ? ICON_TOKEN : ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? w.zh : w.en})`, value: `${fmt(w.usage)} / ${fmt(w.limit)}`, valueClass: getUsageColor(pct),
+          })
+        }
       }
       if (sub.expires_at) {
         rows.push({
@@ -767,7 +778,7 @@ const detailRows = computed<DetailRow[]>(() => {
       : ''
     rows.push({
       iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_SHIELD,
-      label: t('keyUsage.remainingQuota'), value: data.remaining != null ? usd(data.remaining) : '-', valueClass: remainColor,
+      label: t('keyUsage.remainingQuota'), value: data.remaining != null ? (isTokenMetric ? formatTokenCount(data.remaining) : usd(data.remaining)) : '-', valueClass: remainColor,
     })
   }
 

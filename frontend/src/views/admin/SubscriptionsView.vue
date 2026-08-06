@@ -214,23 +214,17 @@
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
               <!-- Daily Usage -->
-              <div v-if="row.group?.daily_limit_usd" class="usage-row">
+              <div v-if="hasWindowLimit(row, 'daily')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.daily') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
-                      :style="{
-                        width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd)
-                      }"
+                      :class="progressBarClass(windowPercentage(row, 'daily'))"
+                      :style="{ width: progressBarWidth(windowPercentage(row, 'daily')) }"
                     ></div>
                   </div>
-                  <span class="usage-amount">
-                    ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
-                    ${{ row.group?.daily_limit_usd?.toFixed(2) }}
-                  </span>
+                  <span class="usage-amount">{{ formatWindowUsage(row, 'daily') }}</span>
                 </div>
                 <div class="reset-info" v-if="row.daily_window_start">
                   <svg
@@ -251,23 +245,17 @@
               </div>
 
               <!-- Weekly Usage -->
-              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
+              <div v-if="hasWindowLimit(row, 'weekly')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
-                      :style="{
-                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
-                      }"
+                      :class="progressBarClass(windowPercentage(row, 'weekly'))"
+                      :style="{ width: progressBarWidth(windowPercentage(row, 'weekly')) }"
                     ></div>
                   </div>
-                  <span class="usage-amount">
-                    ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
-                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
-                  </span>
+                  <span class="usage-amount">{{ formatWindowUsage(row, 'weekly') }}</span>
                 </div>
                 <div class="reset-info" v-if="row.weekly_window_start">
                   <svg
@@ -288,23 +276,17 @@
               </div>
 
               <!-- Monthly Usage -->
-              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
+              <div v-if="hasWindowLimit(row, 'monthly')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
-                      :style="{
-                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
-                      }"
+                      :class="progressBarClass(windowPercentage(row, 'monthly'))"
+                      :style="{ width: progressBarWidth(windowPercentage(row, 'monthly')) }"
                     ></div>
                   </div>
-                  <span class="usage-amount">
-                    ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
-                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
-                  </span>
+                  <span class="usage-amount">{{ formatWindowUsage(row, 'monthly') }}</span>
                 </div>
                 <div class="reset-info" v-if="row.monthly_window_start">
                   <svg
@@ -326,11 +308,7 @@
 
               <!-- No Limits - Unlimited badge -->
               <div
-                v-if="
-                  !row.group?.daily_limit_usd &&
-                  !row.group?.weekly_limit_usd &&
-                  !row.group?.monthly_limit_usd
-                "
+                v-if="isSubscriptionUnlimited(row)"
                 class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
                 <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
@@ -788,6 +766,14 @@ import {
   isOneTimeDailyQuota,
   type RemainingDurationParts
 } from '@/utils/subscriptionQuota'
+import {
+  hasWindowLimit,
+  windowPercentage,
+  formatWindowUsage,
+  isSubscriptionUnlimited,
+  progressBarClass,
+  progressBarWidth
+} from '@/utils/subscriptionMetric'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1005,7 +991,11 @@ const platformFilterOptions = computed(() => [
 // Group options for assign (only subscription type groups)
 const subscriptionGroupOptions = computed(() =>
   groups.value
-    .filter((g) => g.subscription_type === 'subscription' && g.status === 'active')
+    .filter(
+      (g) =>
+        (g.subscription_type === 'subscription' || g.subscription_type === 'subscription_token') &&
+        g.status === 'active'
+    )
     .map((g) => ({
       value: g.id,
       label: g.name,
@@ -1362,22 +1352,6 @@ const formatRemainingExpiry = (expiresAt: string): string | null => {
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)
   return days !== null && days <= 7
-}
-
-const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
-  if (!limit || limit === 0) return '0%'
-  const usedValue = used ?? 0
-  const percentage = Math.min((usedValue / limit) * 100, 100)
-  return `${percentage}%`
-}
-
-const getProgressClass = (used: number | null | undefined, limit: number | null): string => {
-  if (!limit || limit === 0) return 'bg-gray-400'
-  const usedValue = used ?? 0
-  const percentage = (usedValue / limit) * 100
-  if (percentage >= 90) return 'bg-red-500'
-  if (percentage >= 70) return 'bg-orange-500'
-  return 'bg-green-500'
 }
 
 const formatResetDuration = (parts: RemainingDurationParts): string => {

@@ -133,7 +133,7 @@ const validityUnitOptions = computed(() => [
 
 const groupOptions = computed(() =>
   props.groups
-    .filter(g => g.subscription_type === 'subscription')
+    .filter(g => g.subscription_type === 'subscription' || g.subscription_type === 'subscription_token')
     .map(g => ({
       value: g.id,
       label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,

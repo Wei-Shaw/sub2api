@@ -68,6 +68,9 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableDailyLimitTokens(groupIn.DailyLimitTokens).
+		SetNillableWeeklyLimitTokens(groupIn.WeeklyLimitTokens).
+		SetNillableMonthlyLimitTokens(groupIn.MonthlyLimitTokens).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
@@ -240,6 +243,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
+		SetNillableDailyLimitTokens(groupIn.DailyLimitTokens).
+		SetNillableWeeklyLimitTokens(groupIn.WeeklyLimitTokens).
+		SetNillableMonthlyLimitTokens(groupIn.MonthlyLimitTokens).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
@@ -291,6 +297,21 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetMonthlyLimitUsd(*groupIn.MonthlyLimitUSD)
 	} else {
 		builder = builder.ClearMonthlyLimitUsd()
+	}
+	if groupIn.DailyLimitTokens != nil {
+		builder = builder.SetDailyLimitTokens(*groupIn.DailyLimitTokens)
+	} else {
+		builder = builder.ClearDailyLimitTokens()
+	}
+	if groupIn.WeeklyLimitTokens != nil {
+		builder = builder.SetWeeklyLimitTokens(*groupIn.WeeklyLimitTokens)
+	} else {
+		builder = builder.ClearWeeklyLimitTokens()
+	}
+	if groupIn.MonthlyLimitTokens != nil {
+		builder = builder.SetMonthlyLimitTokens(*groupIn.MonthlyLimitTokens)
+	} else {
+		builder = builder.ClearMonthlyLimitTokens()
 	}
 	if groupIn.ImagePrice1K != nil {
 		builder = builder.SetImagePrice1k(*groupIn.ImagePrice1K)

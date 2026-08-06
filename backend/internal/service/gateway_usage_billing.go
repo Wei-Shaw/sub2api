@@ -72,16 +72,18 @@ type usageLogBestEffortWriter interface {
 
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
-	Cost                  *CostBreakdown
-	User                  *User
-	APIKey                *APIKey
-	Account               *Account
-	Subscription          *UserSubscription
-	RequestPayloadHash    string
-	IsSubscriptionBill    bool
-	AccountRateMultiplier float64
-	APIKeyService         APIKeyQuotaUpdater
-	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	Cost                     *CostBreakdown
+	User                     *User
+	APIKey                   *APIKey
+	Account                  *Account
+	Subscription             *UserSubscription
+	RequestPayloadHash       string
+	IsSubscriptionBill       bool
+	AccountRateMultiplier    float64
+	APIKeyService            APIKeyQuotaUpdater
+	Platform                 string  // 来自 APIKey 关联 Group 的平台标识
+	EffectiveTokenMultiplier float64 // token 计费的 text 倍率（含用户分组倍率 + 高峰因子）
+	SubscriptionTokens       int64   // token 型订阅本次累加的有效 token，由 computeSubscriptionTokens 预填
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -139,9 +141,13 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	cost := p.Cost
 
 	if p.IsSubscriptionBill {
-		// Subscription usage tracked by ActualCost so group rate multiplier
-		// consumes the quota at the expected speed.
-		if cost.ActualCost > 0 {
+		if p.APIKey != nil && p.APIKey.Group != nil && p.APIKey.Group.IsSubscriptionTokenType() {
+			if p.SubscriptionTokens > 0 {
+				if err := deps.userSubRepo.IncrementUsageTokens(billingCtx, p.Subscription.ID, p.SubscriptionTokens); err != nil {
+					slog.Error("increment subscription token usage failed", "subscription_id", p.Subscription.ID, "error", err)
+				}
+			}
+		} else if cost.ActualCost > 0 {
 			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 			}
@@ -269,9 +275,16 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	// user-specific) rate multiplier consumes subscription quota at the expected
 	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
 	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.IsSubscriptionBill && p.Subscription != nil {
 		cmd.SubscriptionID = &p.Subscription.ID
-		cmd.SubscriptionCost = p.Cost.ActualCost
+		if p.APIKey != nil && p.APIKey.Group != nil && p.APIKey.Group.IsSubscriptionTokenType() {
+			if p.SubscriptionTokens > 0 {
+				cmd.IsSubscriptionToken = true
+				cmd.SubscriptionTokens = p.SubscriptionTokens
+			}
+		} else if p.Cost.TotalCost > 0 {
+			cmd.SubscriptionCost = p.Cost.ActualCost
+		}
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -288,6 +301,26 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 
 	cmd.Normalize()
 	return cmd
+}
+
+// computeSubscriptionTokens 返回 token 型订阅本次累加的有效 token（TotalTokens × 倍率）。
+// 免费模型 TotalCost 为 0 但仍要计 token，所以门槛不能用 TotalCost > 0。
+func computeSubscriptionTokens(usageLog *UsageLog, p *postUsageBillingParams) int64 {
+	if p == nil || !p.IsSubscriptionBill || p.Subscription == nil {
+		return 0
+	}
+	if p.APIKey == nil || p.APIKey.Group == nil || !p.APIKey.Group.IsSubscriptionTokenType() {
+		return 0
+	}
+	var totalTokens int64
+	if usageLog != nil {
+		totalTokens = int64(usageLog.InputTokens + usageLog.OutputTokens +
+			usageLog.CacheCreationTokens + usageLog.CacheReadTokens)
+	}
+	if totalTokens <= 0 {
+		return 0
+	}
+	return int64(float64(totalTokens) * p.EffectiveTokenMultiplier)
 }
 
 func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog, p *postUsageBillingParams, deps *billingDeps, repo UsageBillingRepository) (bool, error) {
@@ -330,8 +363,14 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+		if p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+			if p.APIKey.Group != nil && p.APIKey.Group.IsSubscriptionTokenType() {
+				if p.SubscriptionTokens > 0 {
+					deps.billingCacheService.QueueUpdateSubscriptionUsageTokens(p.User.ID, *p.APIKey.GroupID, p.SubscriptionTokens)
+				}
+			} else if p.Cost.ActualCost > 0 {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+			}
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
@@ -772,18 +811,21 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		}
 	}
 	requestID := usageLog.RequestID
-	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-		Cost:                  cost,
-		User:                  user,
-		APIKey:                apiKey,
-		Account:               account,
-		Subscription:          subscription,
-		RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-		IsSubscriptionBill:    isSubscriptionBilling,
-		AccountRateMultiplier: accountRateMultiplier,
-		APIKeyService:         input.APIKeyService,
-		Platform:              quotaPlatform,
-	}, s.billingDeps(), s.usageBillingRepo)
+	billingParams := &postUsageBillingParams{
+		Cost:                     cost,
+		User:                     user,
+		APIKey:                   apiKey,
+		Account:                  account,
+		Subscription:             subscription,
+		RequestPayloadHash:       resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:       isSubscriptionBilling,
+		AccountRateMultiplier:    accountRateMultiplier,
+		APIKeyService:            input.APIKeyService,
+		Platform:                 quotaPlatform,
+		EffectiveTokenMultiplier: multiplier,
+	}
+	billingParams.SubscriptionTokens = computeSubscriptionTokens(usageLog, billingParams)
+	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, billingParams, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0

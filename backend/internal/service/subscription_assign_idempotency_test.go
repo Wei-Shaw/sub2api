@@ -175,6 +175,15 @@ func (userSubRepoNoop) ResetMonthlyUsage(context.Context, int64, *time.Time, tim
 func (userSubRepoNoop) IncrementUsage(context.Context, int64, float64) error {
 	panic("unexpected IncrementUsage call")
 }
+func (userSubRepoNoop) IncrementUsageTokens(context.Context, int64, int64) error {
+	panic("unexpected IncrementUsageTokens call")
+}
+func (userSubRepoNoop) ResetUsageUSDByGroupID(context.Context, int64) error {
+	return nil
+}
+func (userSubRepoNoop) ResetUsageTokensByGroupID(context.Context, int64) error {
+	return nil
+}
 func (userSubRepoNoop) BatchUpdateExpiredStatus(context.Context) (int64, error) {
 	panic("unexpected BatchUpdateExpiredStatus call")
 }

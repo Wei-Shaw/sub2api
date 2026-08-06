@@ -110,6 +110,15 @@ func (r *subscriptionExpiryRepoStub) ResetMonthlyUsage(context.Context, int64, *
 func (r *subscriptionExpiryRepoStub) IncrementUsage(context.Context, int64, float64) error {
 	return nil
 }
+func (r *subscriptionExpiryRepoStub) IncrementUsageTokens(context.Context, int64, int64) error {
+	return nil
+}
+func (r *subscriptionExpiryRepoStub) ResetUsageUSDByGroupID(context.Context, int64) error {
+	return nil
+}
+func (r *subscriptionExpiryRepoStub) ResetUsageTokensByGroupID(context.Context, int64) error {
+	return nil
+}
 
 func (r *subscriptionExpiryRepoStub) BatchUpdateExpiredStatus(context.Context) (int64, error) {
 	return 0, nil

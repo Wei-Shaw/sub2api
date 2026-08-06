@@ -90,3 +90,31 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 	require.Nil(t, group.GetImagePrice("2K"))
 	require.Nil(t, group.GetImagePrice("4K"))
 }
+
+func TestGroupTokenLimitPredicates(t *testing.T) {
+	daily := int64(1_000_000)
+	g := &Group{SubscriptionType: SubscriptionTypeSubscriptionToken, DailyLimitTokens: &daily}
+
+	if !g.IsSubscriptionType() {
+		t.Error("token 订阅应被 IsSubscriptionType() 视为订阅")
+	}
+	if !g.IsSubscriptionTokenType() {
+		t.Error("IsSubscriptionTokenType() 应为 true")
+	}
+	if !g.HasDailyTokenLimit() {
+		t.Error("HasDailyTokenLimit() 应为 true")
+	}
+	if g.HasWeeklyTokenLimit() || g.HasMonthlyTokenLimit() {
+		t.Error("未设置的周/月 token 限额应为 false")
+	}
+}
+
+func TestGroupUSDSubscriptionStillRecognized(t *testing.T) {
+	g := &Group{SubscriptionType: SubscriptionTypeSubscription}
+	if !g.IsSubscriptionType() {
+		t.Error("USD 订阅仍应被识别为订阅")
+	}
+	if g.IsSubscriptionTokenType() {
+		t.Error("USD 订阅不应是 token 订阅")
+	}
+}

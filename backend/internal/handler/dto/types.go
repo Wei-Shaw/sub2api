@@ -100,6 +100,10 @@ type Group struct {
 	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	// 订阅（token）计费类型限额；仅 subscription_token 分组使用
+	DailyLimitTokens   *int64 `json:"daily_limit_tokens"`
+	WeeklyLimitTokens  *int64 `json:"weekly_limit_tokens"`
+	MonthlyLimitTokens *int64 `json:"monthly_limit_tokens"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
@@ -633,6 +637,10 @@ type UserSubscription struct {
 	DailyUsageUSD   float64 `json:"daily_usage_usd"`
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
+
+	DailyUsageTokens   int64 `json:"daily_usage_tokens"`
+	WeeklyUsageTokens  int64 `json:"weekly_usage_tokens"`
+	MonthlyUsageTokens int64 `json:"monthly_usage_tokens"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`

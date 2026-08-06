@@ -334,6 +334,10 @@ func (m *mockBillingCache) SetSubscriptionCache(context.Context, int64, int64, *
 func (m *mockBillingCache) UpdateSubscriptionUsage(context.Context, int64, int64, float64) error {
 	return nil
 }
+
+func (m *mockBillingCache) UpdateSubscriptionUsageTokens(context.Context, int64, int64, int64) error {
+	return nil
+}
 func (m *mockBillingCache) InvalidateSubscriptionCache(context.Context, int64, int64) error {
 	return nil
 }

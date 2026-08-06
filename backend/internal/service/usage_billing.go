@@ -36,6 +36,8 @@ type UsageBillingCommand struct {
 
 	BalanceCost         float64
 	SubscriptionCost    float64
+	IsSubscriptionToken bool  // token 型订阅：累加 SubscriptionTokens 而非 SubscriptionCost
+	SubscriptionTokens  int64 // token 型订阅本次有效 token（已乘倍率）
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64

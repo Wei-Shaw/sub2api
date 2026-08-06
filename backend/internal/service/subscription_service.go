@@ -390,6 +390,9 @@ func renewedSubscriptionTerm(existingSub *UserSubscription, notes string, starts
 	renewed.DailyUsageUSD = 0
 	renewed.WeeklyUsageUSD = 0
 	renewed.MonthlyUsageUSD = 0
+	renewed.DailyUsageTokens = 0
+	renewed.WeeklyUsageTokens = 0
+	renewed.MonthlyUsageTokens = 0
 	renewed.Notes = appendSubscriptionNotes(existingSub.Notes, notes)
 	return &renewed
 }
@@ -817,16 +820,19 @@ func normalizeExpiredWindowsAt(subs []UserSubscription, now time.Time) {
 		if sub.canAutomaticallyResetDailyAt(now) {
 			sub.DailyWindowStart = nil
 			sub.DailyUsageUSD = 0
+			sub.DailyUsageTokens = 0
 		}
 		// 周窗口过期：清零展示数据
 		if sub.canAutomaticallyResetWeeklyAt(now) {
 			sub.WeeklyWindowStart = nil
 			sub.WeeklyUsageUSD = 0
+			sub.WeeklyUsageTokens = 0
 		}
 		// 月窗口过期：清零展示数据
 		if sub.canAutomaticallyResetMonthlyAt(now) {
 			sub.MonthlyWindowStart = nil
 			sub.MonthlyUsageUSD = 0
+			sub.MonthlyUsageTokens = 0
 		}
 	}
 }
@@ -898,6 +904,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		}
 		sub.DailyWindowStart = &windowStart
 		sub.DailyUsageUSD = 0
+		sub.DailyUsageTokens = 0
 		needsInvalidateCache = true
 	}
 
@@ -909,6 +916,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		}
 		sub.WeeklyWindowStart = &windowStart
 		sub.WeeklyUsageUSD = 0
+		sub.WeeklyUsageTokens = 0
 		needsInvalidateCache = true
 	}
 
@@ -920,6 +928,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		}
 		sub.MonthlyWindowStart = &windowStart
 		sub.MonthlyUsageUSD = 0
+		sub.MonthlyUsageTokens = 0
 		needsInvalidateCache = true
 	}
 
@@ -963,6 +972,18 @@ func (s *SubscriptionService) EnsureWindowMaintenance(ctx context.Context, sub *
 // CheckUsageLimits 检查使用限额（返回错误如果超限）
 // 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
+	if group.IsSubscriptionTokenType() {
+		if !sub.CheckDailyTokenLimit(group, 0) {
+			return ErrDailyLimitExceeded
+		}
+		if !sub.CheckWeeklyTokenLimit(group, 0) {
+			return ErrWeeklyLimitExceeded
+		}
+		if !sub.CheckMonthlyTokenLimit(group, 0) {
+			return ErrMonthlyLimitExceeded
+		}
+		return nil
+	}
 	if !sub.CheckDailyLimit(group, additionalCost) {
 		return ErrDailyLimitExceeded
 	}
@@ -995,14 +1016,17 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 	//    调用方随后同步推进 DB 窗口，并用回读快照重新校验。
 	if sub.canAutomaticallyResetDailyAt(now) {
 		sub.DailyUsageUSD = 0
+		sub.DailyUsageTokens = 0
 		needsMaintenance = true
 	}
 	if sub.canAutomaticallyResetWeeklyAt(now) {
 		sub.WeeklyUsageUSD = 0
+		sub.WeeklyUsageTokens = 0
 		needsMaintenance = true
 	}
 	if sub.canAutomaticallyResetMonthlyAt(now) {
 		sub.MonthlyUsageUSD = 0
+		sub.MonthlyUsageTokens = 0
 		needsMaintenance = true
 	}
 	if !sub.IsWindowActivated() {
@@ -1010,6 +1034,18 @@ func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, grou
 	}
 
 	// 3. 检查用量限额
+	if group.IsSubscriptionTokenType() {
+		if !sub.CheckDailyTokenLimit(group, 0) {
+			return needsMaintenance, ErrDailyLimitExceeded
+		}
+		if !sub.CheckWeeklyTokenLimit(group, 0) {
+			return needsMaintenance, ErrWeeklyLimitExceeded
+		}
+		if !sub.CheckMonthlyTokenLimit(group, 0) {
+			return needsMaintenance, ErrMonthlyLimitExceeded
+		}
+		return needsMaintenance, nil
+	}
 	if !sub.CheckDailyLimit(group, 0) {
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
@@ -1086,6 +1122,10 @@ type UsageWindowProgress struct {
 	LimitUSD        float64   `json:"limit_usd"`
 	UsedUSD         float64   `json:"used_usd"`
 	RemainingUSD    float64   `json:"remaining_usd"`
+	LimitTokens     int64     `json:"limit_tokens,omitempty"`
+	UsedTokens      int64     `json:"used_tokens,omitempty"`
+	RemainingTokens int64     `json:"remaining_tokens,omitempty"`
+	IsTokenMetric   bool      `json:"is_token_metric,omitempty"`
 	Percentage      float64   `json:"percentage"`
 	WindowStart     time.Time `json:"window_start"`
 	ResetsAt        time.Time `json:"resets_at"`
@@ -1117,6 +1157,84 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 		GroupName:     group.Name,
 		ExpiresAt:     sub.ExpiresAt,
 		ExpiresInDays: sub.DaysRemaining(),
+	}
+
+	if group.IsSubscriptionTokenType() {
+		if group.HasDailyTokenLimit() && sub.DailyWindowStart != nil {
+			limit := *group.DailyLimitTokens
+			resetsAt := sub.DailyWindowStart.Add(24 * time.Hour)
+			progress.Daily = &UsageWindowProgress{
+				LimitTokens:     limit,
+				UsedTokens:      sub.DailyUsageTokens,
+				RemainingTokens: limit - sub.DailyUsageTokens,
+				IsTokenMetric:   true,
+				Percentage:      float64(sub.DailyUsageTokens) / float64(limit) * 100,
+				WindowStart:     *sub.DailyWindowStart,
+				ResetsAt:        resetsAt,
+				ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
+			}
+			if progress.Daily.RemainingTokens < 0 {
+				progress.Daily.RemainingTokens = 0
+			}
+			if progress.Daily.Percentage > 100 {
+				progress.Daily.Percentage = 100
+			}
+			if progress.Daily.ResetsInSeconds < 0 {
+				progress.Daily.ResetsInSeconds = 0
+			}
+		}
+
+		// 周进度
+		if group.HasWeeklyTokenLimit() && sub.WeeklyWindowStart != nil {
+			limit := *group.WeeklyLimitTokens
+			resetsAt := sub.WeeklyWindowStart.Add(7 * 24 * time.Hour)
+			progress.Weekly = &UsageWindowProgress{
+				LimitTokens:     limit,
+				UsedTokens:      sub.WeeklyUsageTokens,
+				RemainingTokens: limit - sub.WeeklyUsageTokens,
+				IsTokenMetric:   true,
+				Percentage:      float64(sub.WeeklyUsageTokens) / float64(limit) * 100,
+				WindowStart:     *sub.WeeklyWindowStart,
+				ResetsAt:        resetsAt,
+				ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
+			}
+			if progress.Weekly.RemainingTokens < 0 {
+				progress.Weekly.RemainingTokens = 0
+			}
+			if progress.Weekly.Percentage > 100 {
+				progress.Weekly.Percentage = 100
+			}
+			if progress.Weekly.ResetsInSeconds < 0 {
+				progress.Weekly.ResetsInSeconds = 0
+			}
+		}
+
+		// 月进度
+		if group.HasMonthlyTokenLimit() && sub.MonthlyWindowStart != nil {
+			limit := *group.MonthlyLimitTokens
+			resetsAt := sub.MonthlyWindowStart.Add(30 * 24 * time.Hour)
+			progress.Monthly = &UsageWindowProgress{
+				LimitTokens:     limit,
+				UsedTokens:      sub.MonthlyUsageTokens,
+				RemainingTokens: limit - sub.MonthlyUsageTokens,
+				IsTokenMetric:   true,
+				Percentage:      float64(sub.MonthlyUsageTokens) / float64(limit) * 100,
+				WindowStart:     *sub.MonthlyWindowStart,
+				ResetsAt:        resetsAt,
+				ResetsInSeconds: int64(time.Until(resetsAt).Seconds()),
+			}
+			if progress.Monthly.RemainingTokens < 0 {
+				progress.Monthly.RemainingTokens = 0
+			}
+			if progress.Monthly.Percentage > 100 {
+				progress.Monthly.Percentage = 100
+			}
+			if progress.Monthly.ResetsInSeconds < 0 {
+				progress.Monthly.ResetsInSeconds = 0
+			}
+		}
+
+		return progress
 	}
 
 	// 日进度

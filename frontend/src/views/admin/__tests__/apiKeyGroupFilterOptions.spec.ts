@@ -47,6 +47,14 @@ describe('buildApiKeyGroupFilterOptions', () => {
     expect(opts.find((o) => o.label === 'Exclusive')).toBeUndefined()
   })
 
+  it('treats subscription_type=subscription_token as subscription (not public)', () => {
+    const groups = [g({ id: 10, name: 'TokenSub', subscription_type: 'subscription_token' })]
+    const opts = buildApiKeyGroupFilterOptions(groups, labels)
+    expect(opts).toContainEqual({ value: 10, label: 'TokenSub' })
+    expect(opts.find((o) => o.label === 'Subscription')).toBeDefined()
+    expect(opts.find((o) => o.label === 'Public')).toBeUndefined()
+  })
+
   it('skips empty section headers', () => {
     const groups = [g({ id: 2, name: 'Pub', is_exclusive: false, subscription_type: 'standard' })]
     const opts = buildApiKeyGroupFilterOptions(groups, labels)

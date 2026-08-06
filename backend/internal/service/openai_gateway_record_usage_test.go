@@ -176,6 +176,16 @@ func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id in
 	return s.incrementErr
 }
 
+func (s *openAIRecordUsageSubRepoStub) IncrementUsageTokens(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+func (s *openAIRecordUsageSubRepoStub) ResetUsageUSDByGroupID(_ context.Context, _ int64) error {
+	return nil
+}
+func (s *openAIRecordUsageSubRepoStub) ResetUsageTokensByGroupID(_ context.Context, _ int64) error {
+	return nil
+}
+
 type openAIRecordUsageAPIKeyQuotaStub struct {
 	quotaCalls          int
 	rateLimitCalls      int

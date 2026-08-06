@@ -107,6 +107,7 @@ func TestValidatePeakRateConfig(t *testing.T) {
 	}{
 		{"disabled passes through", "subscription", false, "", "", 0, false},
 		{"subscription enabled valid", "subscription", true, "14:00", "18:00", 3.0, false},
+		{"subscription_token enabled valid", "subscription_token", true, "14:00", "18:00", 3.0, false},
 		{"standard enabled rejected", "standard", true, "14:00", "18:00", 3.0, true},
 		{"empty type treated as standard", "", true, "14:00", "18:00", 3.0, true},
 		{"standard disabled passes", "standard", false, "", "", 0, false},
@@ -234,5 +235,34 @@ func TestPeakMultiplier_SnapshotRoundTrip(t *testing.T) {
 	}
 	if got := restored.Group.PeakMultiplierAt(at(20, 0)); got != 1.0 {
 		t.Fatalf("off-peak multiplier after round-trip: got %v, want 1.0", got)
+	}
+}
+
+func TestNormalizePeakRateConfig(t *testing.T) {
+	cases := []struct {
+		name               string
+		subType            string
+		enabled            bool
+		start, end         string
+		mult               float64
+		wantEnabled        bool
+		wantStart, wantEnd string
+		wantMult           float64
+	}{
+		{"subscription enabled keeps config", "subscription", true, "14:00", "18:00", 3.0, true, "14:00", "18:00", 3.0},
+		{"subscription_token enabled keeps config", "subscription_token", true, "14:00", "18:00", 3.0, true, "14:00", "18:00", 3.0},
+		{"standard clears config", "standard", true, "14:00", "18:00", 3.0, false, "", "", 1.0},
+		{"empty type clears config", "", true, "14:00", "18:00", 3.0, false, "", "", 1.0},
+		{"subscription disabled keeps valid window", "subscription", false, "14:00", "18:00", 1.0, false, "14:00", "18:00", 1.0},
+		{"subscription_token disabled cleans dirty window", "subscription_token", false, "99:99", "18:00", -1.0, false, "", "18:00", 1.0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			enabled, start, end, mult := NormalizePeakRateConfig(c.subType, c.enabled, c.start, c.end, c.mult)
+			if enabled != c.wantEnabled || start != c.wantStart || end != c.wantEnd || mult != c.wantMult {
+				t.Fatalf("NormalizePeakRateConfig(%q, enabled=%v): got (%v,%q,%q,%v), want (%v,%q,%q,%v)",
+					c.subType, c.enabled, enabled, start, end, mult, c.wantEnabled, c.wantStart, c.wantEnd, c.wantMult)
+			}
+		})
 	}
 }

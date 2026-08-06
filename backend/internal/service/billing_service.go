@@ -66,6 +66,7 @@ type BillingCache interface {
 	GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error)
 	SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error
 	UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error
+	UpdateSubscriptionUsageTokens(ctx context.Context, userID, groupID int64, tokens int64) error
 	InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error
 
 	// API Key rate limit operations

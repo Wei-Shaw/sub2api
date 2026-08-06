@@ -958,7 +958,11 @@ export default {
         typeNotEditable: 'Billing type cannot be changed after group creation.',
         standard: 'Standard (Balance)',
         subscription: 'Subscription (Quota)',
+        subscriptionToken: 'Subscription (Token)',
         dailyLimit: 'Daily Limit (USD)',
+        dailyLimitTokens: 'Daily Token Limit',
+        weeklyLimitTokens: 'Weekly Token Limit',
+        monthlyLimitTokens: 'Monthly Token Limit',
         weeklyLimit: 'Weekly Limit (USD)',
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
@@ -1004,7 +1008,8 @@ export default {
         peakStart: 'Peak start',
         peakEnd: 'Peak end',
         peakMultiplier: 'Peak multiplier',
-        multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
+        multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.',
+        tokenQuotaNote: 'Note: The peak multiplier also applies to token-based subscriptions — token quota consumption during peak hours is accelerated by this multiplier (e.g., at 1.5x, 1,000 actual tokens count as 1,500 against the quota).'
       },
       profitControl: {
         enable: 'Enable profit control',

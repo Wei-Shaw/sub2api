@@ -581,6 +581,76 @@ func (s *UserSubscriptionRepoSuite) TestResetMonthlyUsage() {
 	s.Require().WithinDuration(resetAt, *got.MonthlyWindowStart, time.Microsecond)
 }
 
+// --- Reset* 清零 token 列（订阅 token 计费类型）---
+
+func (s *UserSubscriptionRepoSuite) TestResetDailyUsage_ZeroesTokenColumn() {
+	user := s.mustCreateUser("resetd-tok@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-resetd-tok")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetDailyUsageTokens(500)
+		c.SetWeeklyUsageTokens(200)
+	})
+
+	resetAt := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, sub.ID, sub.DailyWindowStart, resetAt), "ResetDailyUsage")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), got.DailyUsageTokens, "daily_usage_tokens should be zeroed")
+	s.Require().Equal(int64(200), got.WeeklyUsageTokens, "weekly_usage_tokens should be untouched")
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetWeeklyUsage_ZeroesTokenColumn() {
+	user := s.mustCreateUser("resetw-tok@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-resetw-tok")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetWeeklyUsageTokens(300)
+		c.SetMonthlyUsageTokens(400)
+	})
+
+	resetAt := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	s.Require().NoError(s.repo.ResetWeeklyUsage(s.ctx, sub.ID, sub.WeeklyWindowStart, resetAt), "ResetWeeklyUsage")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), got.WeeklyUsageTokens, "weekly_usage_tokens should be zeroed")
+	s.Require().Equal(int64(400), got.MonthlyUsageTokens, "monthly_usage_tokens should be untouched")
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetMonthlyUsage_ZeroesTokenColumn() {
+	user := s.mustCreateUser("resetm-tok@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-resetm-tok")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetMonthlyUsageTokens(700)
+	})
+
+	resetAt := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
+	s.Require().NoError(s.repo.ResetMonthlyUsage(s.ctx, sub.ID, sub.MonthlyWindowStart, resetAt), "ResetMonthlyUsage")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), got.MonthlyUsageTokens, "monthly_usage_tokens should be zeroed")
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetUsageWindows_ZeroesTokenColumns() {
+	user := s.mustCreateUser("admin-reset-tok@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-admin-reset-tok")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetDailyUsageTokens(100)
+		c.SetWeeklyUsageTokens(200)
+		c.SetMonthlyUsageTokens(300)
+	})
+
+	resetAt := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	s.Require().NoError(s.repo.ResetUsageWindows(s.ctx, sub.ID, true, true, true, resetAt), "ResetUsageWindows")
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(0), got.DailyUsageTokens, "daily_usage_tokens should be zeroed")
+	s.Require().Equal(int64(0), got.WeeklyUsageTokens, "weekly_usage_tokens should be zeroed")
+	s.Require().Equal(int64(0), got.MonthlyUsageTokens, "monthly_usage_tokens should be zeroed")
+}
+
 // --- UpdateStatus / ExtendExpiry / UpdateNotes ---
 
 func (s *UserSubscriptionRepoSuite) TestUpdateStatus() {

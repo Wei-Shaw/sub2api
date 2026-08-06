@@ -1276,6 +1276,28 @@ func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsSubscription(t *t
 	require.Nil(t, repo.created)
 }
 
+// subscription_token 与 USD 订阅同属"带配额的订阅型"，应同样禁止设置 invalid-request fallback。
+func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsSubscriptionToken(t *testing.T) {
+	fallbackID := int64(10)
+	repo := &groupRepoStubForInvalidRequestFallback{
+		groups: map[int64]*Group{
+			fallbackID: {ID: fallbackID, Platform: PlatformAnthropic, SubscriptionType: SubscriptionTypeStandard},
+		},
+	}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                            "g1",
+		Platform:                        PlatformAnthropic,
+		RateMultiplier:                  1.0,
+		SubscriptionType:                SubscriptionTypeSubscriptionToken,
+		FallbackGroupIDOnInvalidRequest: &fallbackID,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "subscription groups cannot set invalid request fallback")
+	require.Nil(t, repo.created)
+}
+
 func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsFallbackGroup(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1295,6 +1317,11 @@ func TestAdminService_CreateGroup_InvalidRequestFallbackRejectsFallbackGroup(t *
 		{
 			name:        "subscription_group",
 			fallback:    &Group{ID: 10, Platform: PlatformAnthropic, SubscriptionType: SubscriptionTypeSubscription},
+			wantMessage: "fallback group cannot be subscription type",
+		},
+		{
+			name:        "subscription_token_group",
+			fallback:    &Group{ID: 10, Platform: PlatformAnthropic, SubscriptionType: SubscriptionTypeSubscriptionToken},
 			wantMessage: "fallback group cannot be subscription type",
 		},
 		{

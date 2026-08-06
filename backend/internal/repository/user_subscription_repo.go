@@ -38,6 +38,9 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetDailyUsageTokens(sub.DailyUsageTokens).
+		SetWeeklyUsageTokens(sub.WeeklyUsageTokens).
+		SetMonthlyUsageTokens(sub.MonthlyUsageTokens).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -149,6 +152,9 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetDailyUsageTokens(sub.DailyUsageTokens).
+		SetWeeklyUsageTokens(sub.WeeklyUsageTokens).
+		SetMonthlyUsageTokens(sub.MonthlyUsageTokens).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
@@ -388,13 +394,13 @@ func (r *userSubscriptionRepository) ResetUsageWindows(ctx context.Context, id i
 	client := clientFromContext(ctx, r.client)
 	update := client.UserSubscription.UpdateOneID(id)
 	if resetDaily {
-		update.SetDailyUsageUsd(0).SetDailyWindowStart(newWindowStart)
+		update.SetDailyUsageUsd(0).SetDailyUsageTokens(0).SetDailyWindowStart(newWindowStart)
 	}
 	if resetWeekly {
-		update.SetWeeklyUsageUsd(0).SetWeeklyWindowStart(newWindowStart)
+		update.SetWeeklyUsageUsd(0).SetWeeklyUsageTokens(0).SetWeeklyWindowStart(newWindowStart)
 	}
 	if resetMonthly {
-		update.SetMonthlyUsageUsd(0).SetMonthlyWindowStart(newWindowStart)
+		update.SetMonthlyUsageUsd(0).SetMonthlyUsageTokens(0).SetMonthlyWindowStart(newWindowStart)
 	}
 	_, err := update.Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
@@ -410,6 +416,7 @@ func (r *userSubscriptionRepository) ResetDailyUsage(ctx context.Context, id int
 	}
 	n, err := query.
 		SetDailyUsageUsd(0).
+		SetDailyUsageTokens(0).
 		SetDailyWindowStart(newWindowStart).
 		Save(ctx)
 	return r.translateConditionalWindowReset(ctx, client, id, n, err)
@@ -425,6 +432,7 @@ func (r *userSubscriptionRepository) ResetWeeklyUsage(ctx context.Context, id in
 	}
 	n, err := query.
 		SetWeeklyUsageUsd(0).
+		SetWeeklyUsageTokens(0).
 		SetWeeklyWindowStart(newWindowStart).
 		Save(ctx)
 	return r.translateConditionalWindowReset(ctx, client, id, n, err)
@@ -440,6 +448,7 @@ func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id i
 	}
 	n, err := query.
 		SetMonthlyUsageUsd(0).
+		SetMonthlyUsageTokens(0).
 		SetMonthlyWindowStart(newWindowStart).
 		Save(ctx)
 	return r.translateConditionalWindowReset(ctx, client, id, n, err)
@@ -500,6 +509,65 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 
 	// affected == 0：订阅不存在或已删除
 	return service.ErrSubscriptionNotFound
+}
+
+// IncrementUsageTokens 累加 token 型订阅用量（降级路径，生产走 incrementUsageBillingSubscriptionTokens）。
+func (r *userSubscriptionRepository) IncrementUsageTokens(ctx context.Context, id int64, tokens int64) error {
+	const updateSQL = `
+		UPDATE user_subscriptions us
+		SET
+			daily_usage_tokens = us.daily_usage_tokens + $1,
+			weekly_usage_tokens = us.weekly_usage_tokens + $1,
+			monthly_usage_tokens = us.monthly_usage_tokens + $1,
+			updated_at = NOW()
+		FROM groups g
+		WHERE us.id = $2
+			AND us.deleted_at IS NULL
+			AND us.group_id = g.id
+			AND g.deleted_at IS NULL
+	`
+
+	client := clientFromContext(ctx, r.client)
+	result, err := client.ExecContext(ctx, updateSQL, tokens, id)
+	if err != nil {
+		return err
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected > 0 {
+		return nil
+	}
+
+	// affected == 0：订阅不存在或已删除
+	return service.ErrSubscriptionNotFound
+}
+
+// ResetUsageUSDByGroupID 批量清零分组下订阅的 USD 用量（USD→token 切换时调用）。
+func (r *userSubscriptionRepository) ResetUsageUSDByGroupID(ctx context.Context, groupID int64) error {
+	const sql = `
+		UPDATE user_subscriptions
+		SET daily_usage_usd = 0, weekly_usage_usd = 0, monthly_usage_usd = 0, updated_at = NOW()
+		WHERE group_id = $1 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	_, err := client.ExecContext(ctx, sql, groupID)
+	return err
+}
+
+// ResetUsageTokensByGroupID 批量清零分组下订阅的 token 用量（token→USD 切换时调用）。
+func (r *userSubscriptionRepository) ResetUsageTokensByGroupID(ctx context.Context, groupID int64) error {
+	const sql = `
+		UPDATE user_subscriptions
+		SET daily_usage_tokens = 0, weekly_usage_tokens = 0, monthly_usage_tokens = 0, updated_at = NOW()
+		WHERE group_id = $1 AND deleted_at IS NULL
+	`
+	client := clientFromContext(ctx, r.client)
+	_, err := client.ExecContext(ctx, sql, groupID)
+	return err
 }
 
 func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
@@ -653,6 +721,9 @@ func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription,
 		DailyUsageUSD:      m.DailyUsageUsd,
 		WeeklyUsageUSD:     m.WeeklyUsageUsd,
 		MonthlyUsageUSD:    m.MonthlyUsageUsd,
+		DailyUsageTokens:   m.DailyUsageTokens,
+		WeeklyUsageTokens:  m.WeeklyUsageTokens,
+		MonthlyUsageTokens: m.MonthlyUsageTokens,
 		AssignedBy:         m.AssignedBy,
 		AssignedAt:         m.AssignedAt,
 		Notes:              derefString(m.Notes),

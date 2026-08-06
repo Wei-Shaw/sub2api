@@ -317,6 +317,87 @@ func (_u *GroupUpdate) ClearMonthlyLimitUsd() *GroupUpdate {
 	return _u
 }
 
+// SetDailyLimitTokens sets the "daily_limit_tokens" field.
+func (_u *GroupUpdate) SetDailyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.ResetDailyLimitTokens()
+	_u.mutation.SetDailyLimitTokens(v)
+	return _u
+}
+
+// SetNillableDailyLimitTokens sets the "daily_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableDailyLimitTokens(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetDailyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddDailyLimitTokens adds value to the "daily_limit_tokens" field.
+func (_u *GroupUpdate) AddDailyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.AddDailyLimitTokens(v)
+	return _u
+}
+
+// ClearDailyLimitTokens clears the value of the "daily_limit_tokens" field.
+func (_u *GroupUpdate) ClearDailyLimitTokens() *GroupUpdate {
+	_u.mutation.ClearDailyLimitTokens()
+	return _u
+}
+
+// SetWeeklyLimitTokens sets the "weekly_limit_tokens" field.
+func (_u *GroupUpdate) SetWeeklyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.ResetWeeklyLimitTokens()
+	_u.mutation.SetWeeklyLimitTokens(v)
+	return _u
+}
+
+// SetNillableWeeklyLimitTokens sets the "weekly_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableWeeklyLimitTokens(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetWeeklyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddWeeklyLimitTokens adds value to the "weekly_limit_tokens" field.
+func (_u *GroupUpdate) AddWeeklyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.AddWeeklyLimitTokens(v)
+	return _u
+}
+
+// ClearWeeklyLimitTokens clears the value of the "weekly_limit_tokens" field.
+func (_u *GroupUpdate) ClearWeeklyLimitTokens() *GroupUpdate {
+	_u.mutation.ClearWeeklyLimitTokens()
+	return _u
+}
+
+// SetMonthlyLimitTokens sets the "monthly_limit_tokens" field.
+func (_u *GroupUpdate) SetMonthlyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.ResetMonthlyLimitTokens()
+	_u.mutation.SetMonthlyLimitTokens(v)
+	return _u
+}
+
+// SetNillableMonthlyLimitTokens sets the "monthly_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMonthlyLimitTokens(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetMonthlyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddMonthlyLimitTokens adds value to the "monthly_limit_tokens" field.
+func (_u *GroupUpdate) AddMonthlyLimitTokens(v int64) *GroupUpdate {
+	_u.mutation.AddMonthlyLimitTokens(v)
+	return _u
+}
+
+// ClearMonthlyLimitTokens clears the value of the "monthly_limit_tokens" field.
+func (_u *GroupUpdate) ClearMonthlyLimitTokens() *GroupUpdate {
+	_u.mutation.ClearMonthlyLimitTokens()
+	return _u
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_u *GroupUpdate) SetDefaultValidityDays(v int) *GroupUpdate {
 	_u.mutation.ResetDefaultValidityDays()
@@ -1410,6 +1491,33 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.DailyLimitTokens(); ok {
+		_spec.SetField(group.FieldDailyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedDailyLimitTokens(); ok {
+		_spec.AddField(group.FieldDailyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.DailyLimitTokensCleared() {
+		_spec.ClearField(group.FieldDailyLimitTokens, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WeeklyLimitTokens(); ok {
+		_spec.SetField(group.FieldWeeklyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWeeklyLimitTokens(); ok {
+		_spec.AddField(group.FieldWeeklyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.WeeklyLimitTokensCleared() {
+		_spec.ClearField(group.FieldWeeklyLimitTokens, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.MonthlyLimitTokens(); ok {
+		_spec.SetField(group.FieldMonthlyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlyLimitTokens(); ok {
+		_spec.AddField(group.FieldMonthlyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.MonthlyLimitTokensCleared() {
+		_spec.ClearField(group.FieldMonthlyLimitTokens, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
@@ -2207,6 +2315,87 @@ func (_u *GroupUpdateOne) AddMonthlyLimitUsd(v float64) *GroupUpdateOne {
 // ClearMonthlyLimitUsd clears the value of the "monthly_limit_usd" field.
 func (_u *GroupUpdateOne) ClearMonthlyLimitUsd() *GroupUpdateOne {
 	_u.mutation.ClearMonthlyLimitUsd()
+	return _u
+}
+
+// SetDailyLimitTokens sets the "daily_limit_tokens" field.
+func (_u *GroupUpdateOne) SetDailyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.ResetDailyLimitTokens()
+	_u.mutation.SetDailyLimitTokens(v)
+	return _u
+}
+
+// SetNillableDailyLimitTokens sets the "daily_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableDailyLimitTokens(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetDailyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddDailyLimitTokens adds value to the "daily_limit_tokens" field.
+func (_u *GroupUpdateOne) AddDailyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.AddDailyLimitTokens(v)
+	return _u
+}
+
+// ClearDailyLimitTokens clears the value of the "daily_limit_tokens" field.
+func (_u *GroupUpdateOne) ClearDailyLimitTokens() *GroupUpdateOne {
+	_u.mutation.ClearDailyLimitTokens()
+	return _u
+}
+
+// SetWeeklyLimitTokens sets the "weekly_limit_tokens" field.
+func (_u *GroupUpdateOne) SetWeeklyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.ResetWeeklyLimitTokens()
+	_u.mutation.SetWeeklyLimitTokens(v)
+	return _u
+}
+
+// SetNillableWeeklyLimitTokens sets the "weekly_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableWeeklyLimitTokens(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetWeeklyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddWeeklyLimitTokens adds value to the "weekly_limit_tokens" field.
+func (_u *GroupUpdateOne) AddWeeklyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.AddWeeklyLimitTokens(v)
+	return _u
+}
+
+// ClearWeeklyLimitTokens clears the value of the "weekly_limit_tokens" field.
+func (_u *GroupUpdateOne) ClearWeeklyLimitTokens() *GroupUpdateOne {
+	_u.mutation.ClearWeeklyLimitTokens()
+	return _u
+}
+
+// SetMonthlyLimitTokens sets the "monthly_limit_tokens" field.
+func (_u *GroupUpdateOne) SetMonthlyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.ResetMonthlyLimitTokens()
+	_u.mutation.SetMonthlyLimitTokens(v)
+	return _u
+}
+
+// SetNillableMonthlyLimitTokens sets the "monthly_limit_tokens" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMonthlyLimitTokens(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMonthlyLimitTokens(*v)
+	}
+	return _u
+}
+
+// AddMonthlyLimitTokens adds value to the "monthly_limit_tokens" field.
+func (_u *GroupUpdateOne) AddMonthlyLimitTokens(v int64) *GroupUpdateOne {
+	_u.mutation.AddMonthlyLimitTokens(v)
+	return _u
+}
+
+// ClearMonthlyLimitTokens clears the value of the "monthly_limit_tokens" field.
+func (_u *GroupUpdateOne) ClearMonthlyLimitTokens() *GroupUpdateOne {
+	_u.mutation.ClearMonthlyLimitTokens()
 	return _u
 }
 
@@ -3332,6 +3521,33 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.DailyLimitTokens(); ok {
+		_spec.SetField(group.FieldDailyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedDailyLimitTokens(); ok {
+		_spec.AddField(group.FieldDailyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.DailyLimitTokensCleared() {
+		_spec.ClearField(group.FieldDailyLimitTokens, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.WeeklyLimitTokens(); ok {
+		_spec.SetField(group.FieldWeeklyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWeeklyLimitTokens(); ok {
+		_spec.AddField(group.FieldWeeklyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.WeeklyLimitTokensCleared() {
+		_spec.ClearField(group.FieldWeeklyLimitTokens, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.MonthlyLimitTokens(); ok {
+		_spec.SetField(group.FieldMonthlyLimitTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedMonthlyLimitTokens(); ok {
+		_spec.AddField(group.FieldMonthlyLimitTokens, field.TypeInt64, value)
+	}
+	if _u.mutation.MonthlyLimitTokensCleared() {
+		_spec.ClearField(group.FieldMonthlyLimitTokens, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)

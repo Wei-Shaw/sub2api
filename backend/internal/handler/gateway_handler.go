@@ -954,7 +954,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						if fallbackGroup.Platform != service.PlatformAnthropic ||
-							fallbackGroup.SubscriptionType == service.SubscriptionTypeSubscription ||
+							fallbackGroup.IsSubscriptionType() ||
 							fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
 							reqLog.Warn("gateway.fallback_group_invalid",
 								zap.Int64("fallback_group_id", fallbackGroup.ID),
@@ -1646,11 +1646,15 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any) {
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
+		isToken := apiKey.Group.IsSubscriptionTokenType()
 		resp := gin.H{
 			"mode":     "unrestricted",
 			"isValid":  true,
 			"planName": apiKey.Group.Name,
 			"unit":     "USD",
+		}
+		if isToken {
+			resp["unit"] = "tokens"
 		}
 
 		// 订阅信息可能不在 context 中（/v1/usage 路径跳过了中间件的计费检查）
@@ -1658,15 +1662,28 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if ok {
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
-			resp["subscription"] = gin.H{
-				"daily_usage_usd":     subscription.DailyUsageUSD,
-				"weekly_usage_usd":    subscription.WeeklyUsageUSD,
-				"monthly_usage_usd":   subscription.MonthlyUsageUSD,
-				"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
-				"weekly_window_start": subscription.WeeklyWindowStart,
-				"expires_at":          subscription.ExpiresAt,
+			if isToken {
+				resp["subscription"] = gin.H{
+					"daily_usage_tokens":   subscription.DailyUsageTokens,
+					"weekly_usage_tokens":  subscription.WeeklyUsageTokens,
+					"monthly_usage_tokens": subscription.MonthlyUsageTokens,
+					"daily_limit_tokens":   apiKey.Group.DailyLimitTokens,
+					"weekly_limit_tokens":  apiKey.Group.WeeklyLimitTokens,
+					"monthly_limit_tokens": apiKey.Group.MonthlyLimitTokens,
+					"weekly_window_start":  subscription.WeeklyWindowStart,
+					"expires_at":           subscription.ExpiresAt,
+				}
+			} else {
+				resp["subscription"] = gin.H{
+					"daily_usage_usd":     subscription.DailyUsageUSD,
+					"weekly_usage_usd":    subscription.WeeklyUsageUSD,
+					"monthly_usage_usd":   subscription.MonthlyUsageUSD,
+					"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
+					"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
+					"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
+					"weekly_window_start": subscription.WeeklyWindowStart,
+					"expires_at":          subscription.ExpiresAt,
+				}
 			}
 		}
 
@@ -1715,6 +1732,41 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 // 1. 如果日/周/月任一限额达到100%，返回0
 // 2. 否则返回所有已配置周期中剩余额度的最小值
 func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, sub *service.UserSubscription) float64 {
+	if group.IsSubscriptionTokenType() {
+		var tokenValues []float64
+		if group.HasDailyTokenLimit() {
+			remaining := float64(*group.DailyLimitTokens - sub.DailyUsageTokens)
+			if remaining <= 0 {
+				return 0
+			}
+			tokenValues = append(tokenValues, remaining)
+		}
+		if group.HasWeeklyTokenLimit() {
+			remaining := float64(*group.WeeklyLimitTokens - sub.WeeklyUsageTokens)
+			if remaining <= 0 {
+				return 0
+			}
+			tokenValues = append(tokenValues, remaining)
+		}
+		if group.HasMonthlyTokenLimit() {
+			remaining := float64(*group.MonthlyLimitTokens - sub.MonthlyUsageTokens)
+			if remaining <= 0 {
+				return 0
+			}
+			tokenValues = append(tokenValues, remaining)
+		}
+		if len(tokenValues) == 0 {
+			return -1
+		}
+		min := tokenValues[0]
+		for _, v := range tokenValues[1:] {
+			if v < min {
+				min = v
+			}
+		}
+		return min
+	}
+
 	var remainingValues []float64
 
 	// 检查日限额
