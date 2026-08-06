@@ -79,6 +79,11 @@ export function loadTencentCaptcha(
   if (window.TencentCaptcha && (loadedRegion === region || globalRegion === region)) {
     return Promise.resolve(window.TencentCaptcha)
   REDACTED
+  if (window.TencentCaptcha && loadedRegion !== null && loadedRegion !== region) {
+    // 两个站点共享 TencentCaptcha 全局且构造签名不兼容，不能在同一页面注入第二份 SDK。
+    // 管理员切换区域后由部署流程刷新页面，刷新前直接失败可避免全局构造函数被污染。
+    return Promise.reject(new Error('Tencent Captcha region changed; reload the page to apply it'))
+  REDACTED
   if (scriptPromise && loadedRegion === region) return scriptPromise
 
   loadedRegion = region

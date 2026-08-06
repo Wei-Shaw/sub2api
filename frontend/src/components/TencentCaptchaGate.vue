@@ -33,7 +33,11 @@ let instance: { show(): void; destroy(): void REDACTED | null = null
 let pending: Promise<TencentCaptchaProof | null> | null = null
 let cancelPending: (() => void) | null = null
 let cachedProof: TencentCaptchaProof | null = null
+let cachedProofCreatedAt = 0
 let isMounted = false
+
+// 腾讯国际站票据官方有效期为 5 分钟，提前 1 分钟放弃缓存，避免提交时刚好过期。
+const cachedProofMaxAgeMs = 4 * 60 * 1000
 
 function createVerificationPromise(revealInternational: boolean = true): Promise<TencentCaptchaProof | null> {
   return new Promise((resolve, reject) => {
@@ -106,9 +110,17 @@ REDACTED
 
 function verify(): Promise<TencentCaptchaProof | null> {
   if (cachedProof) {
-    const proof = cachedProof
-    cachedProof = null
-    return Promise.resolve(proof)
+    if (Date.now() - cachedProofCreatedAt >= cachedProofMaxAgeMs) {
+      // 过期票据不能再次提交；先同步销毁旧实例，再在本次调用中创建新验证。
+      reset(false)
+    REDACTED else {
+      const proof = cachedProof
+      cachedProof = null
+      cachedProofCreatedAt = 0
+      // 预加载 promise 已经完成，消费缓存时同步清除引用，避免同一票据被并发复用。
+      pending = null
+      return Promise.resolve(proof)
+    REDACTED
   REDACTED
 
   if (pending) {
@@ -119,7 +131,10 @@ function verify(): Promise<TencentCaptchaProof | null> {
       if (pending === verification) instance?.show()
     REDACTED)
     return verification.then((proof) => {
-      if (cachedProof === proof) cachedProof = null
+      if (cachedProof === proof) {
+        cachedProof = null
+        cachedProofCreatedAt = 0
+      REDACTED
       return proof
     REDACTED)
   REDACTED
@@ -146,7 +161,10 @@ function preload(): void {
   pending = verification
   void verification
     .then((proof) => {
-      if (proof) cachedProof = proof
+      if (proof) {
+        cachedProof = proof
+        cachedProofCreatedAt = Date.now()
+      REDACTED
     REDACTED)
     .catch(() => undefined)
     .finally(() => {
@@ -154,18 +172,19 @@ function preload(): void {
     REDACTED)
 REDACTED
 
-function reset(): void {
+function reset(reinitialize: boolean = true): void {
   instance?.destroy()
   instance = null
   cancelPending?.()
   cancelPending = null
   pending = null
   cachedProof = null
+  cachedProofCreatedAt = 0
   internationalContainerVisible.value = isInternational.value
 
   // 国际站的票据一次性使用，登录失败后需要立即创建新的 checkbox，
   // 不能等下一次点击登录才重新初始化。卸载阶段不再启动预加载。
-  if (isMounted && isInternational.value) {
+  if (reinitialize && isMounted && isInternational.value) {
     void nextTick().then(() => {
       if (isMounted) preload()
     REDACTED)
