@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 
 import HomeView from '../HomeView.vue'
+import enLanding from '@/i18n/locales/en/landing'
+import zhLanding from '@/i18n/locales/zh/landing'
 
 const { appStore, authStore } = vi.hoisted(() => ({
   appStore: {
@@ -66,16 +68,18 @@ function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
     ?.props('to')
 }
 
+function resetHomeState() {
+  authStore.isAuthenticated = false
+  authStore.isAdmin = false
+  authStore.user = null
+  authStore.checkAuth.mockClear()
+  appStore.fetchPublicSettings.mockClear()
+  localStorage.clear()
+  vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+}
+
 describe('HomeView compact mode', () => {
-  beforeEach(() => {
-    authStore.isAuthenticated = false
-    authStore.isAdmin = false
-    authStore.user = null
-    authStore.checkAuth.mockClear()
-    appStore.fetchPublicSettings.mockClear()
-    localStorage.clear()
-    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
-  })
+  beforeEach(resetHomeState)
 
   it('renders custom HTML ahead of compact mode', () => {
     const wrapper = mountHome({
@@ -180,5 +184,37 @@ describe('HomeView compact mode', () => {
     })
 
     expect(modelPlazaDestination(wrapper)).toBeUndefined()
+  })
+})
+
+describe('HomeView supported providers', () => {
+  beforeEach(resetHomeState)
+
+  it('renders all concrete providers and retains the coming-soon card', () => {
+    const text = mountHome().text()
+
+    expect(text).toContain('home.providers.claude')
+    expect(text).toContain('GPT')
+    expect(text).toContain('home.providers.gemini')
+    expect(text).toContain('home.providers.antigravity')
+    expect(text).toContain('home.providers.grok')
+    expect(text).toContain('home.providers.kimi')
+    expect(text).toContain('home.providers.zhipu')
+    expect(text).toContain('home.providers.deepseek')
+    expect(text.match(/home\.providers\.supported/g)).toHaveLength(8)
+    expect(text).toContain('home.providers.more')
+    expect(text).toContain('home.providers.soon')
+  })
+
+  it('defines every added provider label for all supported landing locales', () => {
+    const expectedLabels = {
+      grok: 'Grok',
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM',
+      deepseek: 'DeepSeek',
+    }
+
+    expect(zhLanding.home.providers).toMatchObject(expectedLabels)
+    expect(enLanding.home.providers).toMatchObject(expectedLabels)
   })
 })
