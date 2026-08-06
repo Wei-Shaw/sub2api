@@ -234,6 +234,20 @@ func (Group) Fields() []ent.Field {
 			Default([]domain.ReasoningEffortMapping{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
+
+		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
+		// 的 token 分组可启用，composite 分组不能直接启用。
+		field.Bool("profit_control_enabled").
+			Default(false).
+			Comment("是否启用利润控制：调度时仅允许账号计费倍率满足毛利率要求的账号进入候选池"),
+		field.Float("profit_min_margin").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0).
+			Comment("最低毛利率，小数（0.30=30%）；账号准入条件为 U <= D*(1-margin-buffer)"),
+		field.Float("profit_safety_buffer").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(0).
+			Comment("安全缓冲，小数；与 margin 相加后从下游倍率中扣除，默认 0"),
 	}
 }
 
