@@ -3,6 +3,7 @@ package service
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
@@ -405,7 +406,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			decision.SelectedAccountID = selection.Account.ID
 			decision.SelectedAccountType = selection.Account.Type
 			if req.SessionHash != "" {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
+				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
 			}
 			return selection, decision, nil
 		}
@@ -511,11 +512,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result != nil && result.Acquired {
 		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}, false, nil
+		}), false, nil
 	}
 
 	cfg := s.service.schedulingConfig()
@@ -531,7 +532,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			)
 			return nil, true, nil
 		}
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
@@ -539,7 +540,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}, false, nil
+		}), false, nil
 	}
 	return nil, false, nil
 }
@@ -1167,13 +1168,13 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			}
 		}
 		if req.SessionHash != "" && !req.PreserveStickyBinding {
-			_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, fresh.ID)
+			_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, fresh.ID)
 		}
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     fresh,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}, compactBlocked, nil
+		}), compactBlocked, nil
 	}
 	return nil, compactBlocked, nil
 }
@@ -1246,17 +1247,17 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		}
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" && !req.PreserveStickyBinding {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, account.ID)
+				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, account.ID)
 			}
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account:     account,
 				Acquired:    true,
 				ReleaseFunc: result.ReleaseFunc,
-			}, nil
+			}), nil
 		}
 		if s.service.concurrencyService != nil {
 			cfg := s.service.schedulingConfig()
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: account,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      account.ID,
@@ -1264,7 +1265,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 					Timeout:        cfg.StickySessionWaitTimeout,
 					MaxWaiting:     cfg.StickySessionMaxWaiting,
 				},
-			}, nil
+			}), nil
 		}
 	}
 	return nil, nil
@@ -1621,7 +1622,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				compactBlocked = true
 				continue
 			}
-			return &AccountSelectionResult{
+			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 				Account: fresh,
 				WaitPlan: &AccountWaitPlan{
 					AccountID:      fresh.ID,
@@ -1629,7 +1630,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 					Timeout:        cfg.FallbackWaitTimeout,
 					MaxWaiting:     cfg.FallbackMaxWaiting,
 				},
-			}, candidateCount, topK, loadSkew, nil
+			}), candidateCount, topK, loadSkew, nil
 		}
 	}
 
@@ -1678,6 +1679,9 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 		return false, "runtime_blocked"
 	}
+	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
+		return false, "proxy_stream_quarantined"
+	}
 	// Quota auto-pause must be evaluated during the initial filter too. Without it the
 	// TopK candidate pool can be filled with paused accounts and the later fresh/DB
 	// rechecks won't reach healthy accounts that fell outside TopK — manifesting as
@@ -1707,6 +1711,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
 		return false, "capability_mismatch"
+	}
+	// 分组利润控制：不合格账号在候选过滤与抢槽后终检阶段即被排除，
+	// 排序/评分/粘性/熔断只在合格账号之间工作；named reason 进入 filter stats。
+	if vetoed, reason := openAIProfitControlVetoReason(ctx, account); vetoed {
+		return false, reason
 	}
 	return true, ""
 }
@@ -2032,6 +2041,13 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	return selection, decision, err
 }
 
+// selectAccountWithScheduler wraps selectAccountWithSchedulerOnce with a
+// fail-open second pass for the proxy stream circuit (#5056): when the only
+// reason no account is available is that every candidate sits behind a
+// quarantined proxy, the quarantine must degrade to a preference instead of
+// zeroing out capacity. The retry re-runs the exact same selection with the
+// quarantine checks bypassed, so healthy proxies always win the first pass
+// and quarantined ones only serve when nothing else can.
 func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	ctx context.Context,
 	groupID *int64,
@@ -2047,7 +2063,52 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
+		return selection, decision, err
+	}
+	if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
+		return selection, decision, err
+	}
+	// The circuit only ever quarantines PlatformOpenAI accounts.
+	if normalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
+		return selection, decision, err
+	}
+	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
+	if blocked == 0 {
+		return selection, decision, err
+	}
+	s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
+	return s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
+	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
+	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
+	// 内部调用兜底。图片/视频调度不在利润门范围：requiredImageCapability 非空的
+	// Images 调度不装门；requiredCapability == OpenAIEndpointCapabilityResponses
+	// 当前仅显式生图意图的 /v1/responses 设置（HTTP openAIResponsesRequiredCapability
+	// 与 WS 桥同款判定），同样不装门——若未来把该 capability 用于非生图流量，
+	// 需要同步收窄本条件（有测试钉死该映射）。
+	if requiredImageCapability == "" && requiredCapability != OpenAIEndpointCapabilityResponses {
+		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+	}
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
@@ -2608,6 +2669,15 @@ func newOpenAILegacyUpstreamRateOrder(accounts []*Account, now time.Time, oauthS
 	var first float64
 	distinct := false
 	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		// 与 openAIUpstreamCostFactors 使用同一道平台门控：只有 OpenAI 平台账号
+		// 的倍率参与 legacy 低倍率优先排序。上游自报倍率来自中转方，不能让它对
+		// 其他平台的调度产生影响——否则自报低价即可吸走流量，而实际结算走本地倍率。
+		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuth() {
+			continue
+		}
 		rate, ok := openAISchedulingRate(account, now, oauthSchedulingRateMultiplier)
 		if !ok {
 			continue

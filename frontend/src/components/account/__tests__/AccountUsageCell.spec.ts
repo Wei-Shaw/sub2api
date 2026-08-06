@@ -72,6 +72,47 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('renders eligible Ollama Cloud state inside the unified usage cell', () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9001,
+          platform: 'openai',
+          type: 'apikey',
+          ollama_cloud_usage: {
+            account_id: 9001,
+            eligible: true,
+            configured: true,
+            auto_refresh_enabled: true,
+            encryption_key_configured: true,
+            snapshot: {
+              status: 'ok',
+              last_attempt_at: '2026-07-23T00:00:00Z',
+              next_refresh_at: '2026-07-23T01:00:00Z',
+              data: {
+                five_hour: { used_percent: 12 },
+                seven_day: { used_percent: 34 }
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            template: '<div data-test="embedded-ollama">{{ account.ollama_cloud_usage.snapshot.data.five_hour.used_percent }}</div>'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-test="embedded-ollama"]').text()).toBe('12')
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
@@ -469,6 +510,50 @@ describe('AccountUsageCell', () => {
 	await flushPromises()
 	expect(getUsage).toHaveBeenCalledTimes(2)
 	expect(wrapper.text()).toContain('5h|0|200')
+  })
+
+  it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 0,
+        resets_at: null,
+        remaining_seconds: 0
+      },
+      seven_day: null
+    })
+    const account = makeAccount({
+      id: 2004,
+      platform: 'openai',
+      type: 'oauth',
+      updated_at: '2026-03-07T10:00:00Z',
+      extra: {}
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          OpenAIQuotaResetCell: {
+            props: ['account'],
+            emits: ['account-updated'],
+            template: '<button data-test="quota-reset-result" @click="$emit(\'account-updated\', { ...account, updated_at: \'2026-03-07T10:01:00Z\' })" />'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-test="quota-reset-result"]').trigger('click')
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.updated_at).toBe('2026-03-07T10:01:00Z')
+
+    await wrapper.setProps({ account: updatedAccount as Account })
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(1)
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {

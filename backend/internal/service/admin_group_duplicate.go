@@ -88,6 +88,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,
 		PeakRateMultiplier:              source.PeakRateMultiplier,
+		ProfitControlEnabled:            source.ProfitControlEnabled,
+		ProfitMinMargin:                 source.ProfitMinMargin,
+		ProfitSafetyBuffer:              source.ProfitSafetyBuffer,
 		IsExclusive:                     source.IsExclusive,
 		Status:                          duplicateGroupInactiveStatus,
 		DuplicateOperationID:            operationID,
@@ -120,6 +123,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		SupportedModelScopes:            append([]string(nil), source.SupportedModelScopes...),
 		SortOrder:                       source.SortOrder,
 		AllowMessagesDispatch:           source.AllowMessagesDispatch,
+		AllowLive:                       source.AllowLive,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
 		DefaultMappedModel:              source.DefaultMappedModel,
@@ -128,7 +132,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelsListConfig.Enabled,
 			Models:  append([]string(nil), source.ModelsListConfig.Models...),
 		},
-		RPMLimit: source.RPMLimit,
+		RPMLimit:                source.RPMLimit,
+		MaxReasoningEffort:      source.MaxReasoningEffort,
+		ReasoningEffortMappings: append([]ReasoningEffortMapping(nil), source.ReasoningEffortMappings...),
 	}
 }
 
@@ -177,6 +183,7 @@ func (s *adminServiceImpl) DuplicateGroup(ctx context.Context, id int64, actorSc
 	}
 
 	duplicate := cloneGroupForDuplicate(source, duplicateGroupOperationID(id, actorScope, operationKey))
+	sanitizeGroupReasoningEffortPolicy(duplicate)
 	for copyNumber := 1; ; copyNumber++ {
 		duplicate.Name = duplicateGroupName(source.Name, copyNumber)
 		duplicate.ID = 0

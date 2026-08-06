@@ -115,6 +115,19 @@ export interface LoginRequest {
   email: string
   password: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
+}
+
+export interface TencentCaptchaRequestProof {
+  tencent_captcha_ticket: string
+  tencent_captcha_randstr: string
+}
+
+// 动作触发式验证码（OAuth 启动、passkey 等入口）的请求凭据：
+// 腾讯填 tencent_captcha_*，阿里云的 captchaVerifyParam 复用 turnstile_token 字段
+export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequestProof> {
+  turnstile_token?: string
 }
 
 export interface RegisterRequest {
@@ -122,6 +135,8 @@ export interface RegisterRequest {
   password: string
   verify_code?: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   promo_code?: string
   invitation_code?: string
   aff_code?: string
@@ -156,6 +171,8 @@ export interface AffiliateTransferResponse {
 export interface SendVerifyCodeRequest {
   email: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   pending_auth_token?: string
   pending_oauth_token?: string
 }
@@ -201,7 +218,14 @@ export interface PublicSettings {
   login_agreement_revision?: string
   login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
+  tencent_captcha_enabled?: boolean
+  tencent_captcha_app_id?: string
+  passkey_enabled?: boolean
   turnstile_site_key: string
+  aliyun_captcha_enabled?: boolean
+  aliyun_captcha_scene_id?: string
+  aliyun_captcha_prefix?: string
+  aliyun_captcha_region?: string
   site_name: string
   site_logo: string
   site_subtitle: string
@@ -209,6 +233,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
   risk_control_enabled: boolean
@@ -238,6 +263,8 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  model_plaza_enabled: boolean
+  model_plaza_require_auth: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
   allow_user_view_error_requests?: boolean
@@ -492,7 +519,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'composite'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -503,6 +530,11 @@ export interface OpenAIMessagesDispatchModelConfig {
   exact_model_mappings?: Record<string, string>
 }
 
+export interface ReasoningEffortMapping {
+  from: string
+  to: string
+}
+
 export interface Group {
   id: number
   name: string
@@ -510,6 +542,8 @@ export interface Group {
   platform: GroupPlatform
   rate_multiplier: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
+  max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
+  reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
@@ -544,6 +578,8 @@ export interface Group {
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
+  // OpenAI Live 接口开关
+  allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
@@ -553,6 +589,12 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
+  // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
+  profit_control_enabled: boolean
+  profit_min_margin: number
+  profit_safety_buffer: number
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
@@ -580,6 +622,63 @@ export interface AdminGroup extends Group {
 export interface ModelsListConfig {
   enabled: boolean
   models: string[]
+}
+
+export type CompositeRouteMatchType = 'exact' | 'prefix'
+
+export type CompositeRouteEndpoint =
+  | 'any'
+  | 'messages'
+  | 'count_tokens'
+  | 'responses'
+  | 'chat_completions'
+  | 'embeddings'
+  | 'images'
+  | 'gemini'
+
+export type CompositeRouteSource = 'route' | 'detector' | string
+
+export interface CompositeModelRoute {
+  id: number
+  group_id: number
+  public_model: string
+  match_type: CompositeRouteMatchType
+  target_platform: Exclude<GroupPlatform, 'composite'>
+  upstream_model: string
+  endpoint: CompositeRouteEndpoint
+  priority: number
+  enabled: boolean
+  notes: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CompositeModelRouteInput {
+  public_model: string
+  match_type: CompositeRouteMatchType
+  target_platform: Exclude<GroupPlatform, 'composite'>
+  upstream_model?: string
+  endpoint: CompositeRouteEndpoint
+  priority?: number
+  enabled?: boolean
+  notes?: string
+}
+
+export interface CompositeRoutePreviewRequest {
+  model: string
+  endpoint: CompositeRouteEndpoint
+}
+
+export interface CompositeRouteDecision {
+  matched: boolean
+  source: CompositeRouteSource
+  group_id: number
+  public_model: string
+  target_platform: Exclude<GroupPlatform, 'composite'> | ''
+  upstream_model: string
+  endpoint: CompositeRouteEndpoint
+  route?: CompositeModelRoute
+  reason?: string
 }
 
 export interface ApiKey {
@@ -671,6 +770,10 @@ export interface CreateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 分组利润控制（五个 token 平台；margin/buffer 为小数）
+  profit_control_enabled?: boolean
+  profit_min_margin?: number
+  profit_safety_buffer?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -678,11 +781,14 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
+  max_reasoning_effort?: string
+  reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   // 从指定分组复制账号
@@ -719,6 +825,10 @@ export interface UpdateGroupRequest {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  // 分组利润控制（五个 token 平台；margin/buffer 为小数）
+  profit_control_enabled?: boolean
+  profit_min_margin?: number
+  profit_safety_buffer?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -726,11 +836,14 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
+  allow_live?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
   model_routing_enabled?: boolean
   rpm_limit?: number
+  max_reasoning_effort?: string
+  reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
@@ -894,6 +1007,9 @@ export interface UpstreamBillingProbeSnapshot {
   failure_count?: number
   http_status?: number
   last_error?: string
+  // Value this probe wrote into the account rate multiplier; absent when the
+  // probe did not sync a rate.
+  synced_rate_multiplier?: number
 }
 
 export interface UpstreamBillingProbeSettings {
@@ -905,6 +1021,56 @@ export interface UpstreamBillingProbeResult {
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot
   error?: string
+}
+
+export type OllamaCloudUsageStatus = 'ok' | 'unauthorized' | 'failed'
+
+export interface OllamaCloudUsageWindow {
+  used_percent: number
+  reset_at?: string
+  reset_text?: string
+}
+
+export interface OllamaCloudUsageModel {
+  model: string
+  window: 'five_hour' | 'seven_day'
+  requests: number
+}
+
+export interface OllamaCloudUsageData {
+  plan?: string
+  five_hour?: OllamaCloudUsageWindow
+  seven_day?: OllamaCloudUsageWindow
+  balance?: string
+  models?: OllamaCloudUsageModel[]
+}
+
+export interface OllamaCloudUsageSnapshot {
+  status: OllamaCloudUsageStatus
+  data?: OllamaCloudUsageData
+  fetched_at?: string
+  last_attempt_at: string
+  next_refresh_at: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+}
+
+export interface OllamaCloudUsageState {
+  account_id: number
+  eligible: boolean
+  configured: boolean
+  auto_refresh_enabled: boolean
+  encryption_key_configured: boolean
+  snapshot?: OllamaCloudUsageSnapshot
+}
+
+export interface OllamaCloudUsageSettings {
+  enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
+  interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
+  debounce_minutes: number
 }
 
 export interface Account {
@@ -919,12 +1085,18 @@ export interface Account {
   // 改为通过 credentials_status.has_<key> 暴露存在性。
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
+  ollama_cloud_usage?: OllamaCloudUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
+    upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    codex_reset_credit_snapshot?: {
+      available_count?: number
+      credits?: { expires_at?: string }[]
+    }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1227,6 +1399,8 @@ export interface UpdateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  upstream_billing_probe_enabled?: boolean
+  upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1395,7 +1569,7 @@ export interface CodexSessionImportResult {
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
-export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
+export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber' | 'live'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 
@@ -1704,6 +1878,7 @@ export interface UserUsageTrendPoint {
 export interface UserSpendingRankingItem {
   user_id: number
   email: string
+  username: string
   actual_cost: number
   requests: number
   tokens: number

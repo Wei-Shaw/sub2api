@@ -54,6 +54,7 @@ type SettingHandler struct {
 	settingService           *service.SettingService
 	emailService             *service.EmailService
 	turnstileService         *service.TurnstileService
+	aliyunCaptchaService     *service.AliyunCaptchaService
 	opsService               *service.OpsService
 	paymentConfigService     *service.PaymentConfigService
 	paymentService           *service.PaymentService
@@ -80,6 +81,12 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetAliyunCaptchaService attaches the Aliyun captcha credential validator without
+// changing the constructor signature used by existing unit tests.
+func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.AliyunCaptchaService) {
+	h.aliyunCaptchaService = aliyunCaptchaService
 }
 
 // SetStepUpDeps attaches the services backing the step-up switch preconditions
@@ -123,6 +130,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	if paymentCfg == nil {
 		paymentCfg = &service.PaymentConfig{}
 	}
+	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
@@ -134,6 +142,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		InvitationCodeEnabled:                                  settings.InvitationCodeEnabled,
 		TotpEnabled:                                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:                            h.settingService.IsTotpEncryptionKeyConfigured(),
+		PasskeyEnabled:                                         settings.PasskeyEnabled,
+		PasskeyConfigured:                                      passkeyConfigured,
+		PasskeyRPID:                                            passkeyRPID,
+		PasskeyRPOrigins:                                       passkeyRPOrigins,
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
@@ -151,6 +163,17 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TurnstileEnabled:                                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           settings.TurnstileSecretKeyConfigured,
+		TencentCaptchaEnabled:                                  settings.TencentCaptchaEnabled,
+		TencentCaptchaAppID:                                    settings.TencentCaptchaAppID,
+		TencentCaptchaAppSecretKeyConfigured:                   settings.TencentCaptchaAppSecretKeyConfigured,
+		TencentCaptchaCloudSecretIDConfigured:                  settings.TencentCaptchaCloudSecretIDConfigured,
+		TencentCaptchaCloudSecretKeyConfigured:                 settings.TencentCaptchaCloudSecretKeyConfigured,
+		AliyunCaptchaEnabled:                                   settings.AliyunCaptchaEnabled,
+		AliyunCaptchaAccessKeyID:                               settings.AliyunCaptchaAccessKeyID,
+		AliyunCaptchaAccessKeySecretConfigured:                 settings.AliyunCaptchaAccessKeySecretConfigured,
+		AliyunCaptchaSceneID:                                   settings.AliyunCaptchaSceneID,
+		AliyunCaptchaPrefix:                                    settings.AliyunCaptchaPrefix,
+		AliyunCaptchaRegion:                                    settings.AliyunCaptchaRegion,
 		APIKeyACLTrustForwardedIP:                              settings.APIKeyACLTrustForwardedIP,
 		ForwardedClientIPHeaders:                               settings.ForwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                                  settings.LinuxDoConnectEnabled,
@@ -228,6 +251,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ContactInfo:                                            settings.ContactInfo,
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
+		CompactHomeEnabled:                                     settings.CompactHomeEnabled,
 		HideCcsImportButton:                                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                                settings.PurchaseSubscriptionURL,
@@ -273,6 +297,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableClientDatelineNormalization:                      settings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   settings.OpenAICodexUserAgent,
+		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
+		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
+		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,
@@ -339,11 +366,16 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentCancelRateLimitUnit:                             paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:                             paymentCfg.CancelRateLimitMode,
 		PaymentAlipayForceQRCode:                               paymentCfg.AlipayForceQRCode,
+		PaymentAlipayMobilePrecreateDeepLink:                   paymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+
+		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth: settings.ModelPlazaRequireAuth,
+		ModelPlazaDescription: settings.ModelPlazaDescription,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 

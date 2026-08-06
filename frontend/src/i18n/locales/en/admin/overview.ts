@@ -848,6 +848,21 @@ export default {
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
+        maxReasoningEffort: 'Max reasoning effort',
+        maxReasoningEffortUnlimited: 'Unlimited (follow request)',
+        maxReasoningEffortHint: 'Limits explicit OpenAI reasoning effort requests only. For Composite groups, it applies only to requests resolved to OpenAI. Higher values are capped; omitted effort stays omitted. The ceiling takes precedence over reasoning effort mappings.',
+        reasoningEffortMappings: 'Reasoning effort mappings',
+        addReasoningEffortMapping: 'Add mapping',
+        removeReasoningEffortMapping: 'Remove mapping',
+        reasoningEffortFrom: 'Request value',
+        reasoningEffortTo: 'Forwarded value',
+        reasoningEffortFromPlaceholder: 'Select A',
+        reasoningEffortToPlaceholder: 'Select B',
+        fromRequired: 'Select request value A',
+        toRequired: 'Select forwarded value B',
+        unsupportedFrom: 'Request value is not supported by this platform',
+        unsupportedTo: 'Forwarded value is not supported by this platform',
+        duplicateFrom: 'Request value A must be unique',
         exclusiveLabel: 'Exclusive Group',
         exclusiveHint: 'Exclusive group, can be manually assigned to users',
         platformLabel: 'Platform Restriction',
@@ -929,6 +944,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        composite: 'Composite',
       },
       deleteConfirm:
         "Are you sure you want to delete '{name}'? All associated API keys will no longer belong to any group.",
@@ -990,6 +1006,18 @@ export default {
         peakMultiplier: 'Peak multiplier',
         multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
       },
+      profitControl: {
+        enable: 'Enable profit control',
+        enabledHint: 'Scheduling only admits accounts whose account multiplier ≤ the request\'s effective downstream multiplier × (1 − min margin − safety buffer). Account multipliers may be maintained manually or synchronized from probes; existing ordering, stickiness and breakers keep working among qualified accounts. Image/video scheduling is not covered yet.',
+        disabledHint: 'When disabled, scheduling does no profit filtering: accounts whose account multiplier exceeds the downstream multiplier can still be selected, which may produce loss-making requests.',
+        minMargin: 'Min gross margin (%)',
+        minMarginHint: 'Percent input, e.g. 30 means 30%; stored as a decimal on the backend',
+        safetyBuffer: 'Safety buffer (%)',
+        safetyBufferHint: 'Added to min margin and deducted from the downstream multiplier; defaults to 0',
+        marginRangeError: 'Min gross margin must be between 0 and 99.99',
+        bufferRangeError: 'Safety buffer must be between 0 and 99.99',
+        sumTooHigh: 'Min gross margin plus safety buffer must be less than 100%, otherwise every account would be excluded'
+      },
       modelsList: {
         title: 'Custom /v1/models Model List',
         hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
@@ -998,6 +1026,56 @@ export default {
         selectedSummary: 'Selected {selected} / {total}',
         selectAll: 'Select all',
         invertSelection: 'Invert'
+      },
+      compositeRoutes: {
+        action: 'Routes',
+        title: 'Composite Routes',
+        titleWithGroup: 'Composite Routes: {name}',
+        routes: 'Saved Routes',
+        empty: 'No composite routes configured',
+        publicModel: 'Public Model',
+        target: 'Target',
+        scope: 'Scope',
+        priority: 'Priority',
+        addRoute: 'Add Route',
+        editRoute: 'Edit Route',
+        matchType: 'Match',
+        endpoint: 'Endpoint',
+        targetPlatform: 'Target Platform',
+        upstreamModel: 'Upstream Model',
+        upstreamModelHint: 'Leave empty to pass the original requested model through: under prefix match each matched model forwards verbatim (e.g. deepseek-v4-flash and deepseek-v4-pro each forwarded as-is); set a value to forward every matched request to that fixed model.',
+        notes: 'Notes',
+        enabled: 'Enabled',
+        preview: 'Preview',
+        matched: 'Matched',
+        notMatched: 'No Match',
+        publicModelRequired: 'Public model is required',
+        routeCreated: 'Composite route created',
+        routeUpdated: 'Composite route updated',
+        routeDeleted: 'Composite route deleted',
+        failedToLoad: 'Failed to load composite routes',
+        failedToSave: 'Failed to save composite route',
+        failedToDelete: 'Failed to delete composite route',
+        failedToPreview: 'Failed to preview composite route',
+        deleteConfirm: 'Delete this composite route?',
+        endpoints: {
+          any: 'Any',
+          messages: 'Messages',
+          countTokens: 'Count Tokens',
+          responses: 'Responses',
+          chatCompletions: 'Chat Completions',
+          embeddings: 'Embeddings',
+          images: 'Images',
+          gemini: 'Gemini Native'
+        },
+        match: {
+          exact: 'Exact',
+          prefix: 'Prefix'
+        },
+        sources: {
+          route: 'Route',
+          detector: 'Detector'
+        }
       },
       claudeCode: {
         title: 'Claude Code Client Restriction',
@@ -1029,6 +1107,14 @@ export default {
         targetModel: 'Target Model',
         targetModelPlaceholder: 'e.g., gpt-5.4',
         removeExactMapping: 'Remove Exact Mapping'
+      },
+      openaiLive: {
+        title: 'OpenAI Live',
+        allow: 'Allow Live access',
+        hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+        unsupportedTitle: 'Current server does not support Live',
+        unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+        enableAnyway: 'Enable anyway'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

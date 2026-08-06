@@ -5,34 +5,42 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
 type accountRepoStubForBulkUpdate struct {
 	accountRepoStub
-	bulkUpdateErr    error
-	bulkUpdateIDs    []int64
-	bindGroupErrByID map[int64]error
-	bindGroupsCalls  []int64
-	getByIDsAccounts []*Account
-	getByIDsErr      error
-	getByIDsCalled   bool
-	getByIDsIDs      []int64
-	getByIDAccounts  map[int64]*Account
-	getByIDErrByID   map[int64]error
-	getByIDCalled    []int64
-	listByGroupData  map[int64][]Account
-	listByGroupErr   map[int64]error
-	listData         []Account
-	listResult       *pagination.PaginationResult
-	listErr          error
-	listCalled       bool
-	lastListParams   pagination.PaginationParams
-	lastListFilters  struct {
+	bulkUpdateErr       error
+	bulkUpdateIDs       []int64
+	bindGroupErrByID    map[int64]error
+	bindGroupsCalls     []int64
+	bindGroupsByAccount map[int64][]int64
+	createAccount       *Account
+	createID            int64
+	createErr           error
+	updatedAccounts     []*Account
+	updateErr           error
+	getByIDsAccounts    []*Account
+	getByIDsErr         error
+	getByIDsCalled      bool
+	getByIDsIDs         []int64
+	getByIDAccounts     map[int64]*Account
+	getByIDErrByID      map[int64]error
+	getByIDCalled       []int64
+	listByGroupData     map[int64][]Account
+	listByGroupErr      map[int64]error
+	listData            []Account
+	listResult          *pagination.PaginationResult
+	listErr             error
+	listCalled          bool
+	lastListParams      pagination.PaginationParams
+	lastListFilters     struct {
 		platform    string
 		accountType string
 		status      string
@@ -50,8 +58,25 @@ func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64
 	return int64(len(ids)), nil
 }
 
-func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {
+func (s *accountRepoStubForBulkUpdate) Create(_ context.Context, account *Account) error {
+	s.createAccount = account
+	if s.createID > 0 {
+		account.ID = s.createID
+	}
+	return s.createErr
+}
+
+func (s *accountRepoStubForBulkUpdate) Update(_ context.Context, account *Account) error {
+	s.updatedAccounts = append(s.updatedAccounts, account)
+	return s.updateErr
+}
+
+func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, groupIDs []int64) error {
 	s.bindGroupsCalls = append(s.bindGroupsCalls, accountID)
+	if s.bindGroupsByAccount == nil {
+		s.bindGroupsByAccount = make(map[int64][]int64)
+	}
+	s.bindGroupsByAccount[accountID] = append([]int64{}, groupIDs...)
 	if err, ok := s.bindGroupErrByID[accountID]; ok {
 		return err
 	}
@@ -128,6 +153,38 @@ func TestAdminService_BulkUpdateAccounts_AllSuccessIDs(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2, 3}, result.SuccessIDs)
 	require.Empty(t, result.FailedIDs)
 	require.Len(t, result.Results, 3)
+}
+
+func TestAdminService_BulkUpdateAccounts_RejectsRateChangeForSyncedAccounts(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{
+			{
+				ID: 1,
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:    true,
+					UpstreamBillingRateSyncEnabledExtraKey: true,
+				},
+			},
+			{ID: 2, Extra: map[string]any{}},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+	rateMultiplier := 0.5
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:     []int64{1, 2},
+		RateMultiplier: &rateMultiplier,
+	})
+
+	require.Nil(t, result)
+	require.Error(t, err)
+	var appErr *infraerrors.ApplicationError
+	require.ErrorAs(t, err, &appErr)
+	require.Equal(t, int32(http.StatusConflict), appErr.Code)
+	require.Equal(t, "UPSTREAM_BILLING_RATE_SYNC_BULK_CONFLICT", appErr.Reason)
+	require.Equal(t, "1", appErr.Metadata["count"])
+	require.True(t, repo.getByIDsCalled)
+	require.Empty(t, repo.bulkUpdateIDs, "rate conflict must be rejected before any write")
 }
 
 // TestAdminService_BulkUpdateAccounts_PartialFailureIDs 验证部分失败时 success_ids/failed_ids 正确。

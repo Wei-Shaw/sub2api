@@ -19,11 +19,12 @@ const (
 	RequestTypeStream       RequestType = 2
 	RequestTypeWSV2         RequestType = 3
 	RequestTypeCyberBlocked RequestType = 4 // cyber_policy 命中（透传但被上游安全策略拒绝）
+	RequestTypeLive         RequestType = 5
 )
 
 func (t RequestType) IsValid() bool {
 	switch t {
-	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked:
+	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked, RequestTypeLive:
 		return true
 	default:
 		return false
@@ -47,6 +48,8 @@ func (t RequestType) String() string {
 		return "ws_v2"
 	case RequestTypeCyberBlocked:
 		return "cyber"
+	case RequestTypeLive:
+		return "live"
 	default:
 		return "unknown"
 	}
@@ -68,8 +71,10 @@ func ParseUsageRequestType(value string) (RequestType, error) {
 		return RequestTypeWSV2, nil
 	case "cyber":
 		return RequestTypeCyberBlocked, nil
+	case "live":
+		return RequestTypeLive, nil
 	default:
-		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber")
+		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live")
 	}
 }
 
@@ -165,6 +170,10 @@ type UsageLog struct {
 	FirstTokenMs *int
 	UserAgent    *string
 	IPAddress    *string
+	// SessionID is the explicit client-provided request correlation identifier
+	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
+	// valid session header. It is never derived from prompt_cache_key or content.
+	SessionID *string
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool

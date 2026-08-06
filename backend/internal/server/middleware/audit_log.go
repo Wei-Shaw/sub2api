@@ -124,6 +124,7 @@ var auditSensitiveReads = map[string]string{
 var auditActionOverrides = map[string]string{
 	"POST /api/v1/auth/login":                                 service.AuditActionLogin,
 	"POST /api/v1/auth/login/2fa":                             service.AuditActionLogin2FA,
+	"POST /api/v1/auth/passkey/login/finish":                  service.AuditActionLogin,
 	"POST /api/v1/auth/register":                              service.AuditActionRegister,
 	"POST /api/v1/auth/refresh":                               service.AuditActionTokenRefresh,
 	"POST /api/v1/user/totp/step-up":                          service.AuditActionStepUpVerify,
@@ -146,13 +147,16 @@ var auditActionOverrides = map[string]string{
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
 // 这类 body 的凭证内嵌在普通字符串值里，键级脱敏无法覆盖，整体不入库。
 var auditBodyOmittedRoutes = map[string]struct{}{
-	"POST /api/v1/admin/accounts/import/codex-session":        {},
-	"PUT /api/v1/admin/prompt-audit/config":                   {},
-	"POST /api/v1/admin/prompt-audit/endpoints/probe":         {},
-	"DELETE /api/v1/admin/prompt-audit/events/:id":            {},
-	"POST /api/v1/admin/prompt-audit/events/batch-delete":     {},
-	"POST /api/v1/admin/prompt-audit/events/delete-preview":   {},
-	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": {},
+	"POST /api/v1/auth/passkey/login/finish":                    {},
+	"POST /api/v1/user/passkeys/register/finish":                {},
+	"POST /api/v1/admin/accounts/import/codex-session":          {},
+	"PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session": {},
+	"PUT /api/v1/admin/prompt-audit/config":                     {},
+	"POST /api/v1/admin/prompt-audit/endpoints/probe":           {},
+	"DELETE /api/v1/admin/prompt-audit/events/:id":              {},
+	"POST /api/v1/admin/prompt-audit/events/batch-delete":       {},
+	"POST /api/v1/admin/prompt-audit/events/delete-preview":     {},
+	"POST /api/v1/admin/prompt-audit/events/delete-by-filter":   {},
 }
 
 // NewAuditLogMiddleware 创建审计中间件。

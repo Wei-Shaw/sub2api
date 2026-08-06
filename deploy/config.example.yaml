@@ -73,6 +73,22 @@ server:
     max_upload_buffer_per_stream: 524288
 
 # =============================================================================
+# WebAuthn / Passkey Configuration
+# WebAuthn / Passkey 配置
+# =============================================================================
+# Passkeys require HTTPS in production. The RP ID is the domain only (no scheme
+# or port), while RP origins are exact browser origins.
+# Passkey 在生产环境要求 HTTPS。RP ID 只填写域名（不含协议和端口），RP origins
+# 填写浏览器访问使用的完整 Origin。
+webauthn:
+  enabled: false
+  rp_display_name: "Sub2API"
+  # Example / 示例: "sub2api.example.com"
+  rp_id: ""
+  # Example / 示例: ["https://sub2api.example.com"]
+  rp_origins: []
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================
@@ -127,6 +143,8 @@ security:
       - "api.openai.com"
       - "api.anthropic.com"
       - "api.kimi.com"
+      - "api.moonshot.ai"
+      - "api.moonshot.cn"
       - "open.bigmodel.cn"
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
@@ -163,7 +181,7 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
@@ -251,6 +269,16 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Stop rewriting load-shed Codex originators to the official CLI identity.
+  # 关闭「把落在上游降载桶的 Codex originator 改写为官方 CLI 身份（codex_cli_rs）」。
+  #
+  # 上游 /backend-api/codex 按 originator 分桶调度容量：命中降载桶的请求即使 HTTP 200，
+  # 也会立刻推 server_is_overloaded 错误事件，网关据此判定瞬时上游故障并冷却账号，
+  # 对外表现为 Codex 账号频繁过载不可用。归一化只替换身份段，保留版本/OS/架构/终端指纹，
+  # 改写后 originator 与 User-Agent 首段仍然配套。
+  #
+  # 默认 false（即归一化开启）；仅当上游调整分桶、使归一化反而落入降载桶时才置 true。
+  disable_codex_originator_normalization: false
   # Enable Codex image-generation bridge injection for /openai/v1/responses.
   # 是否为 Codex /responses 请求自动注入 image_generation 工具与桥接指令。
   #
@@ -293,6 +321,9 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.4"
+  # ChatGPT Frameless Live 单会话硬上限（秒）。
+  live:
+    max_session_duration_seconds: 3600
   # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时忽略账号级 WS mode（包括 http_bridge），保持 legacy ctx_pool 行为。
@@ -401,6 +432,14 @@ gateway:
     fallback_error_threshold: 2
     fallback_window_seconds: 60
     fallback_ttl_seconds: 600
+  # OpenAI Responses SSE 代理断流熔断；按 proxy_id 跨账号隔离，仅影响下一次调度。
+  # 隔离是偏好而非硬闸：当全部候选账号都在被隔离代理下时自动放行（fail-open），
+  # 不会因熔断而返回"无可用账号"。3 秒内的并发断流合并为一次失败事件。
+  openai_proxy_stream_circuit:
+    disabled: false
+    failure_threshold: 2
+    window_seconds: 60
+    ttl_seconds: 600
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts

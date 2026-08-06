@@ -14,8 +14,10 @@ import (
 )
 
 type settingRepoStub struct {
-	values map[string]string
-	err    error
+	values           map[string]string
+	err              error
+	getValueCalls    int
+	getMultipleCalls int
 }
 
 func (s *settingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -23,6 +25,7 @@ func (s *settingRepoStub) Get(ctx context.Context, key string) (*Setting, error)
 }
 
 func (s *settingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	s.getValueCalls++
 	if s.err != nil {
 		return "", s.err
 	}
@@ -37,6 +40,7 @@ func (s *settingRepoStub) Set(ctx context.Context, key, value string) error {
 }
 
 func (s *settingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	s.getMultipleCalls++
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -363,6 +367,30 @@ func TestAuthService_Register_EmailExists(t *testing.T) {
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrEmailExists)
+}
+
+func TestAuthService_Register_AliasDuplicateRejected(t *testing.T) {
+	repo := &userRepoStub{aliasExists: true}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "some.one+bulk294@gmail.com", "password")
+	require.ErrorIs(t, err, ErrEmailExists)
+	require.Empty(t, repo.created)
+}
+
+func TestAuthService_Register_UsesAliasGuardedCreate(t *testing.T) {
+	// 注册必须走带别名兜底的创建路径：服务层前置查重与写入之间存在竞态窗口。
+	repo := &userRepoStub{nextID: 91}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "newuser@gmail.com", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, 1, repo.guardedCreates)
 }
 
 func TestAuthService_Register_CheckEmailError(t *testing.T) {

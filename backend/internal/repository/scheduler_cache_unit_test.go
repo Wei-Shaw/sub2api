@@ -442,6 +442,86 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testing.T) {
+	now := time.Now().UTC()
+	activeStart := now.Add(-time.Hour).Format(time.RFC3339)
+	expiredDailyStart := now.Add(-25 * time.Hour).Format(time.RFC3339)
+	expiredWeeklyStart := now.Add(-8 * 24 * time.Hour).Format(time.RFC3339)
+	weeklyResetDay := float64(now.AddDate(0, 0, 1).Weekday())
+
+	cases := []struct {
+		name          string
+		platform      string
+		typ           string
+		extra         map[string]any
+		quotaExceeded bool
+	}{
+		{
+			name: "anthropic api key total quota exhausted", platform: service.PlatformAnthropic, typ: service.AccountTypeAPIKey,
+			extra: map[string]any{"quota_limit": 10.0, "quota_used": 10.0}, quotaExceeded: true,
+		},
+		{
+			name: "gemini api key rolling daily quota exhausted", platform: service.PlatformGemini, typ: service.AccountTypeAPIKey,
+			extra: map[string]any{
+				"quota_daily_limit": 20.0, "quota_daily_used": 20.0,
+				"quota_daily_start": activeStart, "quota_daily_reset_mode": "rolling",
+			}, quotaExceeded: true,
+		},
+		{
+			name: "gemini api key expired rolling daily window", platform: service.PlatformGemini, typ: service.AccountTypeAPIKey,
+			extra: map[string]any{
+				"quota_daily_limit": 20.0, "quota_daily_used": 20.0,
+				"quota_daily_start": expiredDailyStart, "quota_daily_reset_mode": "rolling",
+			},
+		},
+		{
+			name: "bedrock fixed weekly quota exhausted", platform: service.PlatformAnthropic, typ: service.AccountTypeBedrock,
+			extra: map[string]any{
+				"quota_weekly_limit": 30.0, "quota_weekly_used": 30.0, "quota_weekly_start": activeStart,
+				"quota_weekly_reset_mode": "fixed", "quota_weekly_reset_day": weeklyResetDay,
+				"quota_weekly_reset_hour": 0.0, "quota_reset_timezone": "UTC",
+			}, quotaExceeded: true,
+		},
+		{
+			name: "bedrock expired fixed weekly window", platform: service.PlatformAnthropic, typ: service.AccountTypeBedrock,
+			extra: map[string]any{
+				"quota_weekly_limit": 30.0, "quota_weekly_used": 30.0, "quota_weekly_start": expiredWeeklyStart,
+				"quota_weekly_reset_mode": "fixed", "quota_weekly_reset_day": weeklyResetDay,
+				"quota_weekly_reset_hour": 0.0, "quota_reset_timezone": "UTC",
+			},
+		},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			extra := make(map[string]any, len(tc.extra)+1)
+			for key, value := range tc.extra {
+				extra[key] = value
+			}
+			extra["unrelated"] = "drop me"
+			account := service.Account{
+				ID: int64(46690 + i), Platform: tc.platform, Type: tc.typ, Extra: extra,
+				Status: service.StatusActive, Schedulable: true,
+			}
+			cache := newSchedulerCacheUnit(t)
+			ctx := context.Background()
+			bucket := service.SchedulerBucket{GroupID: int64(46690 + i), Platform: tc.platform, Mode: service.SchedulerModeSingle}
+			token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+			require.NoError(t, err)
+			require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+
+			snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+			require.NoError(t, err)
+			require.True(t, hit)
+			require.Len(t, snapshot, 1)
+			cached := snapshot[0]
+			require.Equal(t, tc.extra, cached.Extra)
+			require.NotContains(t, cached.Extra, "unrelated")
+			require.Equal(t, tc.quotaExceeded, cached.IsQuotaExceeded())
+			require.Equal(t, !tc.quotaExceeded, cached.IsSchedulable())
+		})
+	}
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
 	account := service.Account{
 		ID:       90,

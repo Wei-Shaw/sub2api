@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -154,7 +155,7 @@ func (s *UserRepoSuite) TestUpdate() {
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err, "GetByID after update")
@@ -232,7 +233,7 @@ func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpser
 	got, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
 	got.Username = "updated"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
 
 	updated, err := s.repo.GetByID(s.ctx, user.ID)
 	s.Require().NoError(err)
@@ -479,6 +480,30 @@ func (s *UserRepoSuite) TestDeductBalance_AllowsOverdraft() {
 	s.Require().InDelta(-5.0, got.Balance, 1e-6, "Balance should be -5.0 after overdraft")
 }
 
+func (s *UserRepoSuite) TestDeductAvailableBalance_ClampsToNonnegativeBalance() {
+	for _, tc := range []struct {
+		name        string
+		balance     float64
+		requested   float64
+		wantDeduct  float64
+		wantBalance float64
+	}{
+		{name: "enough balance", balance: 10, requested: 4, wantDeduct: 4, wantBalance: 6},
+		{name: "insufficient balance", balance: 5, requested: 10, wantDeduct: 5, wantBalance: 0},
+		{name: "negative balance unchanged", balance: -3, requested: 10, wantDeduct: 0, wantBalance: -3},
+	} {
+		s.Run(tc.name, func() {
+			user := s.mustCreateUser(&service.User{Email: "available-" + strings.ReplaceAll(tc.name, " ", "-") + "@test.com", Balance: tc.balance})
+			deducted, err := s.repo.DeductAvailableBalance(s.ctx, user.ID, tc.requested)
+			s.Require().NoError(err)
+			s.Require().InDelta(tc.wantDeduct, deducted, 1e-6)
+			got, err := s.repo.GetByID(s.ctx, user.ID)
+			s.Require().NoError(err)
+			s.Require().InDelta(tc.wantBalance, got.Balance, 1e-6)
+		})
+	}
+}
+
 // --- Concurrency ---
 
 func (s *UserRepoSuite) TestUpdateConcurrency() {
@@ -658,7 +683,7 @@ func (s *UserRepoSuite) TestCRUD_And_Filters_And_AtomicUpdates() {
 	s.Require().Equal(user2.ID, gotByEmail.ID, "GetByEmail ID mismatch")
 
 	got.Username = "Alice2"
-	s.Require().NoError(s.repo.Update(s.ctx, got), "Update")
+	s.Require().NoError(s.repo.Update(s.ctx, got, service.UserUpdateFields{Username: true}), "Update")
 	got2, err := s.repo.GetByID(s.ctx, user1.ID)
 	s.Require().NoError(err, "GetByID after update")
 	s.Require().Equal("Alice2", got2.Username, "Update did not persist")

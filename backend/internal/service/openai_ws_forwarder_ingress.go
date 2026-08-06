@@ -25,6 +25,21 @@ func (s *OpenAIGatewayService) openAIWSIngressInterTurnIdleTimeout() time.Durati
 	return time.Duration(s.cfg.Gateway.OpenAIWS.IngressInterTurnIdleTimeoutSeconds) * time.Second
 }
 
+// newOpenAIWSDownstreamWriteContext binds writes directly to the client
+// lifecycle while excluding the separate ingress-lease cancellation signal.
+// This lets a lease-loss path finish its current client write before
+// ReadOpenAIWSClientMessage sends the retryable close frame.
+func newOpenAIWSDownstreamWriteContext(controlCtx context.Context, hooks *OpenAIWSIngressHooks, timeout time.Duration) (context.Context, context.CancelFunc) {
+	writeParent := controlCtx
+	if hooks != nil && hooks.ClientLifecycleContext != nil {
+		writeParent = hooks.ClientLifecycleContext
+	}
+	if writeParent == nil {
+		writeParent = context.Background()
+	}
+	return context.WithTimeout(writeParent, timeout)
+}
+
 func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	ctx context.Context,
 	c *gin.Context,
@@ -77,6 +92,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 				return fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport)
 			}
+			// 注意：透传 relay 只回调 hooks.AfterTurn，没有 turn 起始回调，
+			// 因此下面这条路径永远不会触发 hooks.BeforeTurn——分组利润控制的
+			// turn 级复核与 turn 级 pricingAt 冻结都不覆盖透传 ingress，
+			// 只有建连时的准入门生效。handler 侧据此把 turn 定价留作零值，
+			// 由 RecordUsage 回退到记录时刻（见 openAIWSTurnPricing 注释）。
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,
@@ -163,7 +183,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return rebuilt, nil
 	}
 
-	parseClientPayload := func(raw []byte) (openAIWSClientPayload, error) {
+	parseClientPayload := func(turn int, raw []byte) (openAIWSClientPayload, error) {
 		trimmed := bytes.TrimSpace(raw)
 		if len(trimmed) == 0 {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "empty websocket request payload", nil)
@@ -196,6 +216,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				fmt.Sprintf("unsupported websocket request type: %s", eventType),
 				nil,
 			)
+		}
+		if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
+			if capped, changed := ApplyOpenAIReasoningEffortPolicy(normalized, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+				normalized = capped
+			}
 		}
 
 		originalModel := strings.TrimSpace(values[1].String())
@@ -283,7 +308,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				normalized = rebuilt
 			}
 		}
-		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
+		requestModel := originalModel
+		if hooks != nil && hooks.MapRequestModel != nil {
+			mappedModel, mapErr := hooks.MapRequestModel(turn, originalModel)
+			if mapErr != nil {
+				return openAIWSClientPayload{}, mapErr
+			}
+			if mappedModel = strings.TrimSpace(mappedModel); mappedModel != "" {
+				requestModel = mappedModel
+			}
+		}
+		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(requestModel))
 		if modelMissing || upstreamModel != originalModel {
 			next, setErr := applyPayloadMutation(normalized, "model", upstreamModel)
 			if setErr != nil {
@@ -349,7 +384,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			// the kernel send buffer before any close frame is queued.
 			eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
 			if eventBytes != nil {
-				writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+				writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 				_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
 				cancel()
 			}
@@ -376,7 +411,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	writeClientMessage := func(message []byte) error {
-		writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 	}
@@ -407,7 +442,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return payload, nil
 	}
 
-	firstPayload, err := parseClientPayload(firstClientMessage)
+	firstPayload, err := parseClientPayload(1, firstClientMessage)
 	if err != nil {
 		return err
 	}
@@ -508,7 +543,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			grokCacheIdentity := ""
 			if account.Platform == PlatformGrok {
-				grokCacheIdentity, err = resolveGrokWSCacheIdentity(c, account, grokCacheSeedPayload, currentBridgePayload.originalModel)
+				grokCacheIdentity, err = resolveGrokWSCacheIdentity(
+					c,
+					account,
+					grokCacheSeedPayload,
+					currentBridgePayload.payloadRaw,
+					currentBridgePayload.originalModel,
+				)
 				if err != nil {
 					return fmt.Errorf("resolve Grok websocket cache identity: %w", err)
 				}
@@ -568,7 +609,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				return fmt.Errorf("read client websocket request: %w", readErr)
 			}
-			nextPayload, parseErr := parseClientPayload(nextClientMessage)
+			nextPayload, parseErr := parseClientPayload(turn+1, nextClientMessage)
 			if parseErr != nil {
 				return parseErr
 			}
@@ -787,7 +828,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		mappedModel := ""
 		var mappedModelBytes []byte
 		if originalModel != "" {
-			mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
+			mappedModel = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+			if mappedModel == "" {
+				mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
+			}
 			needModelReplace = mappedModel != "" && mappedModel != originalModel
 			if needModelReplace {
 				mappedModelBytes = []byte(mappedModel)
@@ -1584,7 +1628,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			return fmt.Errorf("read client websocket request: %w", readErr)
 		}
 
-		nextPayload, parseErr := parseClientPayload(nextClientMessage)
+		nextPayload, parseErr := parseClientPayload(turn+1, nextClientMessage)
 		if parseErr != nil {
 			return parseErr
 		}

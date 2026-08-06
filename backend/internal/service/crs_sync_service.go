@@ -1160,21 +1160,45 @@ func reconcileCRSUpstreamBillingProbeExtra(
 	targetCredentials map[string]any,
 	extra map[string]any,
 ) {
-	delete(extra, UpstreamBillingProbeEnabledExtraKey)
-	delete(extra, UpstreamBillingProbeExtraKey)
+	for _, key := range []string{
+		UpstreamBillingProbeEnabledExtraKey,
+		UpstreamBillingRateSyncEnabledExtraKey,
+		UpstreamBillingProbeExtraKey,
+		OllamaCloudUsageSessionExtraKey,
+		OllamaCloudUsageAutoRefreshExtraKey,
+		OllamaCloudUsageSnapshotExtraKey,
+	} {
+		delete(extra, key)
+	}
 	if existing == nil {
 		return
 	}
-	if targetPlatform != PlatformOpenAI || targetType != AccountTypeAPIKey {
-		return
-	}
-	if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
-		extra[UpstreamBillingProbeEnabledExtraKey] = enabled
-	}
 	target := &Account{Platform: targetPlatform, Type: targetType, Credentials: targetCredentials}
-	if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
-		if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
-			extra[UpstreamBillingProbeExtraKey] = snapshot
+	if IsUpstreamBillingProbeIdentity(targetPlatform, targetType) {
+		probeEnabled := false
+		if enabled, ok := existing.Extra[UpstreamBillingProbeEnabledExtraKey]; ok {
+			extra[UpstreamBillingProbeEnabledExtraKey] = enabled
+			probeEnabled, _ = enabled.(bool)
+		}
+		if enabled, ok := existing.Extra[UpstreamBillingRateSyncEnabledExtraKey].(bool); ok {
+			extra[UpstreamBillingRateSyncEnabledExtraKey] = enabled && probeEnabled
+		}
+		if reflect.DeepEqual(upstreamBillingProbeIdentity(existing), upstreamBillingProbeIdentity(target)) {
+			if snapshot, ok := existing.Extra[UpstreamBillingProbeExtraKey]; ok {
+				extra[UpstreamBillingProbeExtraKey] = snapshot
+			}
+		}
+	}
+	if IsOllamaCloudUsageAccount(existing) && IsOllamaCloudUsageAccount(target) &&
+		reflect.DeepEqual(ollamaCloudUsageIdentity(existing), ollamaCloudUsageIdentity(target)) {
+		if session, ok := existing.Extra[OllamaCloudUsageSessionExtraKey]; ok {
+			extra[OllamaCloudUsageSessionExtraKey] = session
+		}
+		if enabled, ok := existing.Extra[OllamaCloudUsageAutoRefreshExtraKey]; ok {
+			extra[OllamaCloudUsageAutoRefreshExtraKey] = enabled
+		}
+		if snapshot, ok := existing.Extra[OllamaCloudUsageSnapshotExtraKey]; ok {
+			extra[OllamaCloudUsageSnapshotExtraKey] = snapshot
 		}
 	}
 }

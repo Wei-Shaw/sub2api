@@ -13,6 +13,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,16 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+}
+
+// GetLiveCapability 返回当前服务端是否具备生成 Live attestation 的运行环境。
+func (h *GroupHandler) GetLiveCapability(c *gin.Context) {
+	err := liveattestation.NewProvider().Check(c.Request.Context())
+	result := gin.H{"supported": err == nil}
+	if err != nil {
+		result["reason"] = err.Error()
+	}
+	response.Success(c, result)
 }
 
 type optionalLimitField struct {
@@ -87,7 +98,7 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name             string             `json:"name" binding:"required"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok composite"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -107,6 +118,9 @@ type CreateGroupRequest struct {
 	PeakStart                       string   `json:"peak_start"`
 	PeakEnd                         string   `json:"peak_end"`
 	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            bool     `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -125,6 +139,7 @@ type CreateGroupRequest struct {
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
+	AllowLive                   bool                                      `json:"allow_live"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
@@ -132,6 +147,10 @@ type CreateGroupRequest struct {
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
+	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
+	MaxReasoningEffort string `json:"max_reasoning_effort"`
+	// OpenAI/Codex 推理强度精确映射。
+	ReasoningEffortMappings []service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -140,7 +159,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      *string            `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok"`
+	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok composite"`
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -161,6 +180,9 @@ type UpdateGroupRequest struct {
 	PeakStart                       *string  `json:"peak_start"`
 	PeakEnd                         *string  `json:"peak_end"`
 	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            *bool    `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
 	ImagePrice4K                    *float64 `json:"image_price_4k"`
@@ -179,6 +201,7 @@ type UpdateGroupRequest struct {
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
+	AllowLive                   *bool                                      `json:"allow_live"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
@@ -186,8 +209,28 @@ type UpdateGroupRequest struct {
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
+	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
+	MaxReasoningEffort *string `json:"max_reasoning_effort"`
+	// nil 不修改，空数组清空，非空数组替换。
+	ReasoningEffortMappings *[]service.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
+}
+
+type CompositeRouteRequest struct {
+	PublicModel    string `json:"public_model" binding:"required"`
+	MatchType      string `json:"match_type" binding:"omitempty,oneof=exact prefix"`
+	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok"`
+	UpstreamModel  string `json:"upstream_model"`
+	Endpoint       string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
+	Priority       int    `json:"priority"`
+	Enabled        *bool  `json:"enabled"`
+	Notes          string `json:"notes"`
+}
+
+type CompositeRoutePreviewRequest struct {
+	Model    string `json:"model" binding:"required"`
+	Endpoint string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
 }
 
 // List handles listing all groups with pagination
@@ -223,6 +266,133 @@ func (h *GroupHandler) List(c *gin.Context) {
 		outGroups = append(outGroups, *dto.GroupFromServiceAdmin(&groups[i]))
 	}
 	response.Paginated(c, outGroups, total, page, pageSize)
+}
+
+// ListCompositeRoutes handles listing composite model routes for one group.
+// GET /api/v1/admin/groups/:id/composite-routes
+func (h *GroupHandler) ListCompositeRoutes(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	routes, err := h.adminService.ListCompositeRoutes(c.Request.Context(), groupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, routes)
+}
+
+// CreateCompositeRoute handles creating one composite model route.
+// POST /api/v1/admin/groups/:id/composite-routes
+func (h *GroupHandler) CreateCompositeRoute(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req CompositeRouteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	route, err := h.adminService.CreateCompositeRoute(c.Request.Context(), groupID, compositeRouteRequestToInput(req, true))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Created(c, route)
+}
+
+// UpdateCompositeRoute handles replacing one composite model route.
+// PUT /api/v1/admin/groups/:id/composite-routes/:route_id
+func (h *GroupHandler) UpdateCompositeRoute(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	routeID, ok := parsePositiveIDParam(c, "route_id")
+	if !ok {
+		return
+	}
+	var req CompositeRouteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	route, err := h.adminService.UpdateCompositeRoute(c.Request.Context(), groupID, routeID, compositeRouteRequestToInput(req, true))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, route)
+}
+
+// DeleteCompositeRoute handles deleting one composite model route.
+// DELETE /api/v1/admin/groups/:id/composite-routes/:route_id
+func (h *GroupHandler) DeleteCompositeRoute(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	routeID, ok := parsePositiveIDParam(c, "route_id")
+	if !ok {
+		return
+	}
+	if err := h.adminService.DeleteCompositeRoute(c.Request.Context(), groupID, routeID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "Composite route deleted"})
+}
+
+// PreviewCompositeRoute resolves a model without mutating routes.
+// POST /api/v1/admin/groups/:id/composite-routes/preview
+func (h *GroupHandler) PreviewCompositeRoute(c *gin.Context) {
+	groupID, ok := parsePositiveIDParam(c, "id")
+	if !ok {
+		return
+	}
+	var req CompositeRoutePreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body: "+err.Error())
+		return
+	}
+	decision, err := h.adminService.PreviewCompositeRoute(c.Request.Context(), groupID, service.CompositeRoutePreviewRequest{
+		Model:    req.Model,
+		Endpoint: req.Endpoint,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, decision)
+}
+
+func compositeRouteRequestToInput(req CompositeRouteRequest, defaultEnabled bool) service.CompositeRouteInput {
+	enabled := defaultEnabled
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
+	return service.CompositeRouteInput{
+		PublicModel:    req.PublicModel,
+		MatchType:      req.MatchType,
+		TargetPlatform: req.TargetPlatform,
+		UpstreamModel:  req.UpstreamModel,
+		Endpoint:       req.Endpoint,
+		Priority:       req.Priority,
+		Enabled:        enabled,
+		Notes:          req.Notes,
+	}
+}
+
+func parsePositiveIDParam(c *gin.Context, name string) (int64, bool) {
+	raw := c.Param(name)
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid "+name)
+		return 0, false
+	}
+	return id, true
 }
 
 // GetAll handles getting all active groups without pagination.
@@ -311,6 +481,13 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		return
 	}
 
+	// platform 是 omitempty：预校验必须用与 CreateGroup 落库一致的归一化平台，
+	// 否则省略 platform 的请求会被误判成「平台不支持利润控制」。
+	if err := service.ValidateProfitControlConfig(service.NormalizeGroupPlatform(req.Platform), req.ProfitControlEnabled, float64ValueOrDefault(req.ProfitMinMargin, 0), float64ValueOrDefault(req.ProfitSafetyBuffer, 0)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
@@ -333,6 +510,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		ProfitControlEnabled:            req.ProfitControlEnabled,
+		ProfitMinMargin:                 req.ProfitMinMargin,
+		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -348,12 +528,15 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		AllowLive:                       req.AllowLive,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		MaxReasoningEffort:              req.MaxReasoningEffort,
+		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -449,6 +632,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
 		PeakRateMultiplier:              req.PeakRateMultiplier,
+		ProfitControlEnabled:            req.ProfitControlEnabled,
+		ProfitMinMargin:                 req.ProfitMinMargin,
+		ProfitSafetyBuffer:              req.ProfitSafetyBuffer,
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -464,12 +650,15 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		AllowLive:                       req.AllowLive,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
+		MaxReasoningEffort:              req.MaxReasoningEffort,
+		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

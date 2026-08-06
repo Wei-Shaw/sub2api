@@ -113,7 +113,7 @@ const (
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
 	grokFreeQuotaWindow     = 24 * time.Hour
-	openAICodexProbeVersion = "0.144.1"
+	openAICodexProbeVersion = codexCLIVersion // 与网关出站身份同源，避免两处硬编码版本各自漂移
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -345,6 +345,13 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 		return nil, fmt.Errorf("get account failed: %w", err)
 	}
 
+	// Dedicated UI load-test accounts must remain fully interactive without ever
+	// contacting Anthropic with synthetic credentials. Reuse the same persisted
+	// passive snapshot that the account table loads on mount.
+	if account.IsSyntheticUITest() && account.IsAnthropicOAuthOrSetupToken() {
+		return s.GetPassiveUsage(ctx, accountID)
+	}
+
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
 		usage, err := s.getOpenAIUsage(ctx, account, forceProbe)
 		if err == nil {
@@ -508,8 +515,28 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 
 	// 添加窗口统计
 	s.addWindowStats(ctx, account, info)
+	if account.IsSyntheticUITest() {
+		applySyntheticWindowStats(info, account.Extra)
+	}
 
 	return info, nil
+}
+
+func applySyntheticWindowStats(info *UsageInfo, extra map[string]any) {
+	if info == nil || info.FiveHour == nil || len(extra) == 0 {
+		return
+	}
+	raw, ok := extra["synthetic_window_stats"].(map[string]any)
+	if !ok {
+		return
+	}
+	info.FiveHour.WindowStats = &WindowStats{
+		Requests:     int64(parseExtraInt(raw["requests"])),
+		Tokens:       int64(parseExtraInt(raw["tokens"])),
+		Cost:         parseExtraFloat64(raw["cost"]),
+		StandardCost: parseExtraFloat64(raw["standard_cost"]),
+		UserCost:     parseExtraFloat64(raw["user_cost"]),
+	}
 }
 
 // buildPassiveUsageWindow 从 Extra 中的被动采样数据（utilization 为 0-1 小数、reset 为 Unix 秒）
@@ -740,9 +767,10 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
 		}
 	}
-	// 与真实转发一致：originator 与最终 User-Agent（可能来自指纹缓存，如 codex-tui）首段配套，
-	// 否则探针被上游 404（issue #3901）。
-	enforceCodexIdentityHeaders(req.Header)
+	// 与真实转发一致：账号级自定义 UA 同样作为管理员显式配置传入。
+	// 上面写进 header 的指纹缓存 UA 只在强制统一被关闭时才参与配对（保持回滚后的历史语义）；
+	// 强制统一开启时客户端身份不参与构造，探针与真实转发用同一套规范身份出站。
+	enforceCodexIdentityHeadersWithUA(req.Header, account.GetOpenAIUserAgent())
 	setOpenAIChatGPTAccountHeaders(req.Header, account)
 
 	proxyURL := ""

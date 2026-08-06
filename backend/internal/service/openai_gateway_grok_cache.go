@@ -102,24 +102,15 @@ func resolveGrokCacheIdentity(c *gin.Context, body []byte, explicitKey, upstream
 }
 
 func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) string {
-	seed := ""
-	if c != nil {
-		// Claude Code session is the most stable multi-turn identity for
-		// /v1/messages → Grok bridges. Prefer it over generic session headers
-		// so prompt cache routing matches CPA behavior.
-		seed = extractClaudeCodeSessionID(c, body)
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader("session_id"))
-		}
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader("conversation_id"))
-		}
-		if seed == "" {
-			seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
-		}
+	// Claude Code session is the most stable multi-turn identity for
+	// /v1/messages → Grok bridges. Prefer it over generic session headers so
+	// prompt cache routing matches CPA behavior.
+	seed := extractClaudeCodeSessionID(c, body)
+	if seed == "" {
+		seed = explicitOpenAIHeaderSessionID(c)
 	}
-	if seed == "" && len(body) > 0 {
-		seed = extractClaudeCodeSessionIDFromPayload(body)
+	if seed == "" && c != nil {
+		seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
 	if seed == "" && len(body) > 0 {
 		seed = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
@@ -133,6 +124,11 @@ func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) stri
 func isGrokRequestContext(c *gin.Context) bool {
 	if c == nil {
 		return false
+	}
+	if c.Request != nil {
+		if platform, ok := ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+			return platform == PlatformGrok
+		}
 	}
 	v, exists := c.Get("api_key")
 	if !exists {

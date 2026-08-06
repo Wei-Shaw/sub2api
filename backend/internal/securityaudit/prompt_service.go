@@ -156,7 +156,7 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 	if cfg.EffectiveMode() != ModeBlocking || !cfg.IncludesGroup(req.GroupID) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
-	snapshot, err := ExtractPromptSnapshot(req)
+	snapshot, err := ExtractBlockingPromptSnapshot(req, cfg.BlockingLatestTurnOnly)
 	if errors.Is(err, ErrNoPromptText) {
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
@@ -166,7 +166,7 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 	return s.evaluator.Evaluate(ctx, cfg, snapshot)
 }
 
-func (s *PromptService) GetConfig() PublicConfig { return s.config.Public() }
+func (s *PromptService) GetConfig() (PublicConfig, error) { return s.config.Public() }
 
 func (s *PromptService) SaveConfig(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
 	return s.config.Save(ctx, req, actorID)

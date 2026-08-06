@@ -30,6 +30,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/pluginrelay"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -77,7 +78,7 @@ const (
 	// allowing operators to bump it without waiting for a Sub2API release.
 	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
 	grokOfficialAPIHost    = "api.x.ai"
-	grokCLIStableVersion   = "0.2.93"
+	grokCLIStableVersion   = xai.CLIClientVersion
 	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
 	grokFallbackBodyLimit  = 64 << 10
 )

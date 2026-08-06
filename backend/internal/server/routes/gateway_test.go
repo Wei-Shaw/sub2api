@@ -16,7 +16,12 @@ import (
 )
 
 func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
-	return newGatewayRoutesTestRouterWithConfig(&config.Config{}, platform...)
+	return newGatewayRoutesTestRouterWithConfig(&config.Config{
+		Gateway: config.GatewayConfig{
+			MaxBodySize:     1024 * 1024,
+			TextMaxBodySize: 1024 * 1024,
+		},
+	}, platform...)
 }
 
 func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
@@ -27,7 +32,6 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 	if len(platform) > 0 && platform[0] != "" {
 		groupPlatform = platform[0]
 	}
-
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -43,6 +47,7 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 			})
 			c.Next()
 		}),
+		nil,
 		nil,
 		nil,
 		nil,
@@ -177,6 +182,56 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesCompositeVideoLookupsUseGrokHandler(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	for _, path := range []string{
+		"/v1/videos/request-123",
+		"/videos/request-123",
+		"/v1/videos/request-123/content",
+		"/videos/request-123/content",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Grok video lookup handler", path)
+		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+}
+
+func TestGatewayRoutesCompositeMessagesWithGrokModelUsesOpenAIGateway(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	require.NotEqual(t, http.StatusNotFound, w.Code)
+	require.NotContains(t, w.Body.String(), "not supported")
+	require.NotContains(t, w.Body.String(), "OpenAI-compatible endpoint")
+	require.NotContains(t, w.Body.String(), "composite groups")
+}
+
+func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	for _, path := range []string{"/v1/chat/completions", "/chat/completions"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s", path)
+		require.NotContains(t, w.Body.String(), "not supported")
+		require.NotContains(t, w.Body.String(), "OpenAI-compatible endpoint")
+		require.NotContains(t, w.Body.String(), "composite groups")
+	}
+}
+
 func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 
@@ -204,6 +259,24 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, w.Code, "method=%s path=%s", tc.method, tc.path)
 		require.Contains(t, w.Body.String(), "Videos API is not supported for this platform")
 	}
+}
+
+func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformComposite)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"gemini-2.5-pro","input":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/embeddings", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+	require.NotEqual(t, http.StatusNotFound, w.Code)
 }
 
 func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
@@ -257,6 +330,33 @@ func TestGatewayRoutesGrokAllowsCLICompatibilityEntrypoints(t *testing.T) {
 
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should still reach Responses handler", path)
+	}
+}
+
+// TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths 端到端锁定不变式：
+// /responses/*subpath 的子路径会被转发到上游同名端点之后，因此不合规的子路径必须
+// 在入口就被拒绝，不得进入调度与转发流程。
+func TestGatewayRoutesResponsesSubpathRejectsNonConformingSubpaths(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, path := range []string{
+		"/v1/responses/../../x/y",
+		"/v1/responses/..%2f..%2fx/y",
+		"/v1/responses/%2e%2e/%2e%2e/x",
+		"/responses/%2e%2e%2fx",
+		"/backend-api/codex/responses/..%2f..%2fx",
+		`/v1/responses/..\..\x`,
+		"/v1/responses/%3fa=b",
+		"/v1/responses/x%23frag",
+		"/v1/responses/compact%2f..",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusNotFound, w.Code, "path=%s must be rejected at the edge", path)
+		require.Contains(t, w.Body.String(), "Unsupported responses subpath", "path=%s", path)
 	}
 }
 

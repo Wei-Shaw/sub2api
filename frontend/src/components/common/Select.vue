@@ -7,7 +7,9 @@
       :disabled="disabled"
       :aria-expanded="isOpen"
       :aria-haspopup="true"
-      aria-label="Select option"
+      :id="id"
+      :aria-label="ariaLabel ?? 'Select option'"
+      :aria-describedby="ariaDescribedby"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
@@ -65,6 +67,7 @@
               v-model="searchQuery"
               type="text"
               :placeholder="searchPlaceholderText"
+              :aria-label="searchPlaceholderText"
               class="select-search-input"
               @click.stop
             />
@@ -148,6 +151,9 @@ interface Props {
   creatable?: boolean
   creatablePrefix?: string
   clearable?: boolean
+  id?: string
+  ariaLabel?: string
+  ariaDescribedby?: string
 }
 
 interface Emits {
@@ -178,6 +184,8 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const optionsListRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 const triggerRect = ref<DOMRect | null>(null)
+const dropdownViewportPadding = 8
+const dropdownMinimumWidth = 200
 
 // i18n placeholders
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
@@ -194,10 +202,19 @@ const dropdownStyle = computed(() => {
   if (!triggerRect.value) return {}
 
   const rect = triggerRect.value
+  const viewportRight = Math.max(dropdownViewportPadding, window.innerWidth - dropdownViewportPadding)
+  const left = Math.min(
+    Math.max(dropdownViewportPadding, rect.left),
+    viewportRight
+  )
+  const availableWidth = Math.max(0, viewportRight - left)
+  const preferredMinWidth = Math.max(dropdownMinimumWidth, rect.width)
+  const minWidth = Math.min(preferredMinWidth, availableWidth)
   const style: Record<string, string> = {
     position: 'fixed',
-    left: `${rect.left}px`,
-    minWidth: `${rect.width}px`,
+    left: `${left}px`,
+    minWidth: `${minWidth}px`,
+    maxWidth: `${availableWidth}px`,
     zIndex: '100000020'
   }
 

@@ -131,11 +131,25 @@ type AccountDuplicateRepository interface {
 	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
 }
 
+// AccountBillingSettingsRepository applies an admin edit without overwriting a
+// rate_multiplier that a successful upstream probe synchronized after the edit
+// form was loaded. A nil rateMultiplier means the request did not edit it.
+type AccountBillingSettingsRepository interface {
+	UpdateWithAccountBillingSettings(
+		ctx context.Context,
+		account *Account,
+		probeEnabled *bool,
+		rateSyncEnabled *bool,
+		rateMultiplier *float64,
+	) error
+}
+
 // AdminAccountRepository makes the account-duplication write capability an explicit
 // construction dependency without forcing read-only gateway test doubles to implement it.
 type AdminAccountRepository interface {
 	AccountRepository
 	AccountDuplicateRepository
+	AccountBillingSettingsRepository
 }
 
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
@@ -315,7 +329,14 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Extra != nil {
-		account.Extra = *req.Extra
+		extra := make(map[string]any, len(*req.Extra))
+		for key, value := range *req.Extra {
+			extra[key] = value
+		}
+		delete(extra, OllamaCloudUsageSessionExtraKey)
+		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
+		delete(extra, OllamaCloudUsageSnapshotExtraKey)
+		account.Extra = extra
 	}
 
 	if req.ProxyID != nil {

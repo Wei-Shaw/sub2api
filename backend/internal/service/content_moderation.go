@@ -21,6 +21,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
@@ -138,10 +139,12 @@ func ContentModerationCategories() []string {
 }
 
 type ContentModerationConfig struct {
-	Enabled              bool                         `json:"enabled"`
-	Mode                 string                       `json:"mode"`
-	BaseURL              string                       `json:"base_url"`
-	Model                string                       `json:"model"`
+	Enabled bool   `json:"enabled"`
+	Mode    string `json:"mode"`
+	BaseURL string `json:"base_url"`
+	Model   string `json:"model"`
+	// ProxyID 指定审计请求使用的代理服务器（IP管理-代理服务器），nil 表示直连。
+	ProxyID              *int64                       `json:"proxy_id,omitempty"`
 	APIKey               string                       `json:"api_key,omitempty"`
 	APIKeys              []string                     `json:"api_keys,omitempty"`
 	TimeoutMS            int                          `json:"timeout_ms"`
@@ -176,6 +179,7 @@ type ContentModerationConfigView struct {
 	Mode                           string                          `json:"mode"`
 	BaseURL                        string                          `json:"base_url"`
 	Model                          string                          `json:"model"`
+	ProxyID                        *int64                          `json:"proxy_id"`
 	APIKeyConfigured               bool                            `json:"api_key_configured"`
 	APIKeyMasked                   string                          `json:"api_key_masked"`
 	APIKeyCount                    int                             `json:"api_key_count"`
@@ -240,8 +244,10 @@ type TestContentModerationAPIKeysInput struct {
 	BaseURL   string   `json:"base_url"`
 	Model     string   `json:"model"`
 	TimeoutMS int      `json:"timeout_ms"`
-	Prompt    string   `json:"prompt"`
-	Images    []string `json:"images"`
+	// ProxyID nil 表示沿用已保存配置的代理；<=0 表示强制直连测试；>0 表示指定代理测试。
+	ProxyID *int64   `json:"proxy_id"`
+	Prompt  string   `json:"prompt"`
+	Images  []string `json:"images"`
 }
 
 type TestContentModerationAPIKeysResult struct {
@@ -260,10 +266,12 @@ type ContentModerationTestAuditResult struct {
 }
 
 type UpdateContentModerationConfigInput struct {
-	Enabled                        *bool                         `json:"enabled"`
-	Mode                           *string                       `json:"mode"`
-	BaseURL                        *string                       `json:"base_url"`
-	Model                          *string                       `json:"model"`
+	Enabled *bool   `json:"enabled"`
+	Mode    *string `json:"mode"`
+	BaseURL *string `json:"base_url"`
+	Model   *string `json:"model"`
+	// ProxyID nil 表示不修改；<=0 表示清除代理（恢复直连）；>0 表示指定代理。
+	ProxyID                        *int64                        `json:"proxy_id"`
 	APIKey                         *string                       `json:"api_key"`
 	APIKeys                        *[]string                     `json:"api_keys"`
 	APIKeysMode                    string                        `json:"api_keys_mode"`
@@ -495,9 +503,11 @@ type ContentModerationService struct {
 	hashCache                ContentModerationHashCache
 	groupRepo                GroupRepository
 	userRepo                 UserRepository
+	proxyRepo                ProxyRepository
 	authCacheInvalidator     APIKeyAuthCacheInvalidator
 	emailService             *EmailService
 	httpClient               *http.Client
+	moderationProxyCache     atomic.Pointer[moderationProxyURLCacheEntry]
 	asyncQueue               chan contentModerationTask
 	workerCount              int
 	apiKeyCursor             atomic.Uint64
@@ -566,6 +576,7 @@ func NewContentModerationService(
 	hashCache ContentModerationHashCache,
 	groupRepo GroupRepository,
 	userRepo UserRepository,
+	proxyRepo ProxyRepository,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	emailService *EmailService,
 ) *ContentModerationService {
@@ -575,6 +586,7 @@ func NewContentModerationService(
 		hashCache:            hashCache,
 		groupRepo:            groupRepo,
 		userRepo:             userRepo,
+		proxyRepo:            proxyRepo,
 		authCacheInvalidator: authCacheInvalidator,
 		emailService:         emailService,
 		httpClient:           servertiming.InstrumentClient(nil),
@@ -615,6 +627,14 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.Model != nil {
 		cfg.Model = strings.TrimSpace(*input.Model)
+	}
+	if input.ProxyID != nil {
+		if *input.ProxyID > 0 {
+			id := *input.ProxyID
+			cfg.ProxyID = &id
+		} else {
+			cfg.ProxyID = nil
+		}
 	}
 	if input.TimeoutMS != nil {
 		cfg.TimeoutMS = *input.TimeoutMS
@@ -716,6 +736,8 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 		return nil, fmt.Errorf("save content moderation config: %w", err)
 	}
 	s.replaceRuntimeConfig(cfg, raw)
+	// 代理选择可能已变化，丢弃已解析的代理 URL 缓存，下次调用即时生效。
+	s.moderationProxyCache.Store(nil)
 	return s.configView(cfg), nil
 }
 
@@ -738,6 +760,14 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 	}
 	if input.TimeoutMS > 0 {
 		cfg.TimeoutMS = input.TimeoutMS
+	}
+	if input.ProxyID != nil {
+		if *input.ProxyID > 0 {
+			id := *input.ProxyID
+			cfg.ProxyID = &id
+		} else {
+			cfg.ProxyID = nil
+		}
 	}
 	cfg.normalize()
 	testInput, imageCount, err := buildModerationTestInput(input.Prompt, input.Images)
@@ -1297,7 +1327,7 @@ func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) 
 	}
 	if user.Status != StatusActive {
 		user.Status = StatusActive
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
 			return nil, fmt.Errorf("update content moderation unban user: %w", err)
 		}
 	}
@@ -1631,6 +1661,11 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if _, err := url.ParseRequestURI(cfg.BaseURL); err != nil {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BASE_URL", "OpenAI Base URL 无效")
 	}
+	if cfg.ProxyID != nil && s.proxyRepo != nil {
+		if _, err := s.proxyRepo.GetByID(ctx, *cfg.ProxyID); err != nil {
+			return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_PROXY", fmt.Sprintf("代理服务器不存在: %d", *cfg.ProxyID))
+		}
+	}
 	if cfg.BlockStatus < 400 || cfg.BlockStatus > 599 {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_BLOCK_STATUS", "拦截 HTTP 状态码必须在 400-599 之间")
 	}
@@ -1723,9 +1758,9 @@ func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Conte
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := s.httpClient
-	if client == nil {
-		client = http.DefaultClient
+	client, err := s.moderationHTTPClient(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1748,6 +1783,73 @@ func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Conte
 		return nil, errors.New("moderation api returned empty results")
 	}
 	return &out.Results[0], nil
+}
+
+// moderationProxyURLCacheEntry 缓存 proxy_id 到代理 URL 的解析结果，
+// 避免审计热路径上每次调用都查询数据库。
+type moderationProxyURLCacheEntry struct {
+	proxyID   int64
+	url       string
+	expiresAt time.Time
+}
+
+const contentModerationProxyURLCacheTTL = time.Minute
+
+// moderationHTTPClient 返回本次审计调用应使用的 HTTP 客户端。
+// 未配置代理时沿用默认客户端；配置了代理时通过共享客户端池构建，
+// 代理解析/构建失败直接返回错误，绝不回退直连（避免 IP 关联风险）。
+func (s *ContentModerationService) moderationHTTPClient(ctx context.Context, cfg *ContentModerationConfig) (*http.Client, error) {
+	if cfg == nil || cfg.ProxyID == nil {
+		if s.httpClient == nil {
+			return http.DefaultClient, nil
+		}
+		return s.httpClient, nil
+	}
+	proxyURL, err := s.resolveModerationProxyURL(ctx, *cfg.ProxyID)
+	if err != nil {
+		return nil, err
+	}
+	client, err := httpclient.GetClient(httpclient.Options{ProxyURL: proxyURL})
+	if err != nil {
+		return nil, fmt.Errorf("build moderation proxy client: %w", err)
+	}
+	return client, nil
+}
+
+func (s *ContentModerationService) resolveModerationProxyURL(ctx context.Context, proxyID int64) (string, error) {
+	now := time.Now()
+	prev := s.moderationProxyCache.Load()
+	if prev != nil && prev.proxyID == proxyID && now.Before(prev.expiresAt) {
+		return prev.url, nil
+	}
+	if s.proxyRepo == nil {
+		return "", errors.New("moderation proxy repository unavailable")
+	}
+	px, err := s.proxyRepo.GetByID(ctx, proxyID)
+	if err != nil {
+		return "", fmt.Errorf("resolve moderation proxy %d: %w", proxyID, err)
+	}
+	if !px.IsActive() || px.IsExpired(now) {
+		slog.Warn("content_moderation.proxy_not_active",
+			"proxy_id", proxyID,
+			"proxy_name", px.Name,
+			"status", px.Status,
+			"expired", px.IsExpired(now))
+	}
+	proxyURL := px.URL()
+	if prev == nil || prev.proxyID != proxyID || prev.url != proxyURL {
+		// 不打印完整 URL（可能含认证信息），仅记录可定位的地址。
+		slog.Info("content_moderation.proxy_enabled",
+			"proxy_id", proxyID,
+			"proxy_name", px.Name,
+			"proxy_addr", fmt.Sprintf("%s://%s:%d", px.Protocol, px.Host, px.Port))
+	}
+	s.moderationProxyCache.Store(&moderationProxyURLCacheEntry{
+		proxyID:   proxyID,
+		url:       proxyURL,
+		expiresAt: now.Add(contentModerationProxyURLCacheTTL),
+	})
+	return proxyURL, nil
 }
 
 func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
@@ -1832,7 +1934,7 @@ func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Co
 		}
 		if user.Status != StatusDisabled {
 			user.Status = StatusDisabled
-			if err := s.userRepo.Update(ctx, user); err != nil {
+			if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
 				slog.Warn("content_moderation.ban_update_user_failed", "user_id", *log.UserID, "error", err)
 				return false
 			}
@@ -2013,6 +2115,7 @@ func cloneContentModerationConfig(cfg *ContentModerationConfig) *ContentModerati
 		return nil
 	}
 	clone := *cfg
+	clone.ProxyID = cloneInt64Ptr(cfg.ProxyID)
 	clone.APIKeys = append([]string(nil), cfg.APIKeys...)
 	clone.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	clone.BlockedKeywords = append([]string(nil), cfg.BlockedKeywords...)
@@ -2042,6 +2145,9 @@ func (cfg *ContentModerationConfig) normalize() {
 		cfg.Model = defaultContentModerationModel
 	}
 	cfg.Model = strings.TrimSpace(cfg.Model)
+	if cfg.ProxyID != nil && *cfg.ProxyID <= 0 {
+		cfg.ProxyID = nil
+	}
 	if cfg.TimeoutMS <= 0 {
 		cfg.TimeoutMS = defaultContentModerationTimeoutMS
 	}
@@ -2305,6 +2411,7 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		Mode:                           cfg.Mode,
 		BaseURL:                        cfg.BaseURL,
 		Model:                          cfg.Model,
+		ProxyID:                        cloneInt64Ptr(cfg.ProxyID),
 		APIKeyConfigured:               len(keys) > 0,
 		APIKeyMasked:                   apiKeyMasked,
 		APIKeyCount:                    len(keys),

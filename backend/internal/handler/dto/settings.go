@@ -36,9 +36,13 @@ type SystemSettings struct {
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
-	StepUpEnabled                    bool                     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA
-	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
+	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
+	PasskeyConfigured                bool                     `json:"passkey_configured"`
+	PasskeyRPID                      string                   `json:"passkey_rp_id"`
+	PasskeyRPOrigins                 []string                 `json:"passkey_rp_origins"`
+	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	StepUpEnabled                    bool                     `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
+	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
@@ -52,11 +56,22 @@ type SystemSettings struct {
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
-	TurnstileEnabled             bool     `json:"turnstile_enabled"`
-	TurnstileSiteKey             string   `json:"turnstile_site_key"`
-	TurnstileSecretKeyConfigured bool     `json:"turnstile_secret_key_configured"`
-	APIKeyACLTrustForwardedIP    bool     `json:"api_key_acl_trust_forwarded_ip"`
-	ForwardedClientIPHeaders     []string `json:"forwarded_client_ip_headers"`
+	TurnstileEnabled                       bool     `json:"turnstile_enabled"`
+	TurnstileSiteKey                       string   `json:"turnstile_site_key"`
+	TurnstileSecretKeyConfigured           bool     `json:"turnstile_secret_key_configured"`
+	TencentCaptchaEnabled                  bool     `json:"tencent_captcha_enabled"`
+	TencentCaptchaAppID                    string   `json:"tencent_captcha_app_id"`
+	TencentCaptchaAppSecretKeyConfigured   bool     `json:"tencent_captcha_app_secret_key_configured"`
+	TencentCaptchaCloudSecretIDConfigured  bool     `json:"tencent_captcha_cloud_secret_id_configured"`
+	TencentCaptchaCloudSecretKeyConfigured bool     `json:"tencent_captcha_cloud_secret_key_configured"`
+	AliyunCaptchaEnabled                   bool     `json:"aliyun_captcha_enabled"`
+	AliyunCaptchaAccessKeyID               string   `json:"aliyun_captcha_access_key_id"`
+	AliyunCaptchaAccessKeySecretConfigured bool     `json:"aliyun_captcha_access_key_secret_configured"`
+	AliyunCaptchaSceneID                   string   `json:"aliyun_captcha_scene_id"`
+	AliyunCaptchaPrefix                    string   `json:"aliyun_captcha_prefix"`
+	AliyunCaptchaRegion                    string   `json:"aliyun_captcha_region"`
+	APIKeyACLTrustForwardedIP              bool     `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders               []string `json:"forwarded_client_ip_headers"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
@@ -138,6 +153,7 @@ type SystemSettings struct {
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
+	CompactHomeEnabled          bool             `json:"compact_home_enabled"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
@@ -194,6 +210,9 @@ type SystemSettings struct {
 	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
+	OpenAICodexClientVersionSynced         string `json:"openai_codex_client_version_synced"`
+	OpenAICodexVersionAutoSyncEnabled      bool   `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -268,6 +287,8 @@ type SystemSettings struct {
 
 	// Force Alipay mobile clients to use QR code payment instead of mobile redirect
 	PaymentAlipayForceQRCode bool `json:"payment_alipay_force_qrcode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// 余额、订阅到期与账号限额通知
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
@@ -283,6 +304,11 @@ type SystemSettings struct {
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Model Plaza feature (public group/model pricing showcase)
+	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription string `json:"model_plaza_description"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -318,6 +344,7 @@ type PublicSettings struct {
 	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
 	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                      bool                     `json:"totp_enabled"` // TOTP 双因素认证
+	PasskeyEnabled                   bool                     `json:"passkey_enabled"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
@@ -325,6 +352,12 @@ type PublicSettings struct {
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
+	TencentCaptchaEnabled            bool                     `json:"tencent_captcha_enabled"`
+	TencentCaptchaAppID              string                   `json:"tencent_captcha_app_id"`
+	AliyunCaptchaEnabled             bool                     `json:"aliyun_captcha_enabled"`
+	AliyunCaptchaSceneID             string                   `json:"aliyun_captcha_scene_id"`
+	AliyunCaptchaPrefix              string                   `json:"aliyun_captcha_prefix"`
+	AliyunCaptchaRegion              string                   `json:"aliyun_captcha_region"`
 	SiteName                         string                   `json:"site_name"`
 	SiteLogo                         string                   `json:"site_logo"`
 	SiteSubtitle                     string                   `json:"site_subtitle"`
@@ -332,6 +365,7 @@ type PublicSettings struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
+	CompactHomeEnabled               bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string                   `json:"purchase_subscription_url"`
@@ -367,6 +401,9 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
+
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -390,6 +427,15 @@ type OverloadCooldownSettings struct {
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+// PanelRateLimitSettings 面板 API 限流配置 DTO
+type PanelRateLimitSettings struct {
+	Enabled     bool `json:"enabled"`
+	UserRPM     int  `json:"user_rpm"`
+	HeavyRPM    int  `json:"heavy_rpm"`
+	ExemptAdmin bool `json:"exempt_admin"`
+	PublicIPRPM int  `json:"public_ip_rpm"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

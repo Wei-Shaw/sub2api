@@ -391,6 +391,36 @@ func requestToJSONString(payload map[string]any) string {
 	return string(b)
 }
 
+func TestOpenAIGatewayService_BuildOpenAIWSHeadersPreservesCodexIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
+	c.Request.Header.Set("X-Codex-Window-ID", "window-ws")
+	c.Request.Header.Set("X-Codex-Installation-ID", "installation-ws")
+	c.Request.Header.Set("X-Test", "blocked")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	headers, _, err := svc.buildOpenAIWSHeaders(
+		context.Background(),
+		c,
+		account,
+		"token",
+		OpenAIWSProtocolDecision{Transport: OpenAIUpstreamTransportResponsesWebsocketV2},
+		true,
+		"",
+		"",
+		"",
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "window-ws", headers.Get("X-Codex-Window-ID"))
+	require.Equal(t, "installation-ws", headers.Get("X-Codex-Installation-ID"))
+	require.Empty(t, headers.Get("X-Test"))
+}
+
 func TestLogOpenAIWSBindResponseAccountWarn(t *testing.T) {
 	require.NotPanics(t, func() {
 		logOpenAIWSBindResponseAccountWarn(1, 2, "resp_ok", nil)
@@ -703,7 +733,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.1","stream":false,"store":true,"input":[{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.1","stream":false,"store":true,"input":[{"type":"input_text","text":"hello","namespace":"native-wsv2"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -715,6 +745,7 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.False(t, gjson.Get(requestJSON, "store").Bool(), "默认策略应将 OAuth store 置为 false")
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
+	require.Equal(t, "native-wsv2", gjson.Get(requestJSON, "input.0.namespace").String(), "OAuth WSv2 应保留原生 namespace")
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
 	require.Equal(t, "remote_compaction_v2", captureDialer.lastHeaders.Get("x-codex-beta-features"))
 	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
@@ -726,24 +757,25 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// 上游要求 originator 与最终 user-agent 首段配套（issue #3901）：
-	// originator 一律由最终 UA 推导；推导不出官方身份时整体回退默认 Codex CLI 身份。
+	// WS 握手头与 HTTP 出站共用身份收口：同样强制统一为网关规范身份，
+	// 客户端自报的 originator / user-agent 不参与构造（issue #3901 的配对不变式自然满足）。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantOriginator string
-		wantUA         string
+		name       string
+		userAgent  string
+		originator string
 	}{
-		{name: "official ua pairs originator", userAgent: "Codex Desktop/1.2.3", wantOriginator: "Codex Desktop", wantUA: "Codex Desktop/1.2.3"},
+		{name: "official desktop ua", userAgent: "Codex Desktop/1.2.3"},
 		{
-			name:           "mismatched originator repaired from ua",
-			userAgent:      "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
-			originator:     "codex_cli_rs",
-			wantOriginator: "codex-tui",
-			wantUA:         "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			name:       "mismatched originator",
+			userAgent:  "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)",
+			originator: "codex_cli_rs",
 		},
-		{name: "official originator without ua falls back to default identity", originator: "codex_vscode", wantOriginator: "codex_cli_rs", wantUA: codexCLIUserAgent},
+		{
+			name:       "tui identity",
+			userAgent:  "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)",
+			originator: "codex-tui",
+		},
+		{name: "official originator without ua", originator: "codex_vscode"},
 	}
 
 	for _, tt := range tests {
@@ -807,10 +839,80 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testi
 			result, err := svc.Forward(context.Background(), c, account, body)
 			require.NoError(t, err)
 			require.NotNil(t, result)
-			require.Equal(t, tt.wantOriginator, captureDialer.lastHeaders.Get("originator"))
-			require.Equal(t, tt.wantUA, captureDialer.lastHeaders.Get("user-agent"))
+			require.Equal(t, "codex_cli_rs", captureDialer.lastHeaders.Get("originator"))
+			require.Equal(t, codexCLIUserAgent, captureDialer.lastHeaders.Get("user-agent"))
+			require.Equal(t, codexCLIVersion, captureDialer.lastHeaders.Get("version"))
 		})
 	}
+}
+
+// 账号级自定义 UA 是管理员的显式配置，WS 握手与 HTTP 出站必须一视同仁地生效——
+// 否则同一个账号在两种传输上以不同身份出站。指纹保留、版本段重建、originator 配套。
+func TestOpenAIGatewayService_Forward_WSv2_OAuthHonorsAccountUserAgent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "luna/1.0.0")
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.AllowStoreRecovery = false
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+
+	captureConn := &openAIWSCaptureConn{
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_oauth_account_ua","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: captureConn}
+	pool := newOpenAIWSConnPool(cfg)
+	pool.setClientDialerForTest(captureDialer)
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+		openaiWSPool:     pool,
+	}
+	account := &Account{
+		ID:          130,
+		Name:        "openai-oauth-custom-ua",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "oauth-token-1",
+			// 填写于某个历史版本的账号级 UA：指纹要保留，版本段不能被逐字沿用。
+			"user_agent": "codex-tui/0.125.0 (Mac OS X 15.1.0; arm64) iTerm.app",
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.1","stream":false,"input":[{"type":"input_text","text":"hello"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "codex-tui", captureDialer.lastHeaders.Get("originator"))
+	require.Equal(t,
+		"codex-tui/"+codexCLIVersion+" (Mac OS X 15.1.0; arm64) iTerm.app",
+		captureDialer.lastHeaders.Get("user-agent"),
+	)
+	require.Equal(t, codexCLIVersion, captureDialer.lastHeaders.Get("version"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2_HeaderSessionFallbackFromPromptCacheKey(t *testing.T) {

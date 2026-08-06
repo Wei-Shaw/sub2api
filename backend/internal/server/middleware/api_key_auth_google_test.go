@@ -106,7 +106,7 @@ func (f fakeAPIKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIK
 func (f fakeAPIKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
 	return f.GetByKey(ctx, key)
 }
-func (f fakeAPIKeyRepo) Update(ctx context.Context, key *service.APIKey) error {
+func (f fakeAPIKeyRepo) Update(ctx context.Context, key *service.APIKey, _ service.APIKeyUpdateFields) error {
 	return errors.New("not implemented")
 }
 func (f fakeAPIKeyRepo) Delete(ctx context.Context, id int64) error {
@@ -175,6 +175,10 @@ func (f fakeGoogleSubscriptionRepo) GetByID(ctx context.Context, id int64) (*ser
 		return f.getByID(ctx, id)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (f fakeGoogleSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return f.GetByID(ctx, id)
 }
 func (f fakeGoogleSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")

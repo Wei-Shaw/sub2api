@@ -258,6 +258,11 @@ func (s *BillingService) initFallbackPricing() {
 	// Claude 4.7 Opus (暂与4.6同价，待官方定价更新)
 	s.fallbackPrices["claude-opus-4.7"] = s.fallbackPrices["claude-opus-4.6"]
 
+	// Claude 4.8 Opus / Claude Opus 5（官方同价：$5 输入 / $25 输出 per MTok）。
+	// 缺少这两条时 getFallbackPricing 会掉到 claude-3-opus（$15/$75），造成 3 倍超收。
+	s.fallbackPrices["claude-opus-4.8"] = s.fallbackPrices["claude-opus-4.7"]
+	s.fallbackPrices["claude-opus-5"] = s.fallbackPrices["claude-opus-4.8"]
+
 	// Gemini 3.1 Pro
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
 		InputPricePerToken:         2e-6,   // $2 per MTok
@@ -265,6 +270,17 @@ func (s *BillingService) initFallbackPricing() {
 		CacheCreationPricePerToken: 2e-6,   // $2 per MTok
 		CacheReadPricePerToken:     0.2e-6, // $0.20 per MTok
 		SupportsCacheBreakdown:     false,
+	}
+
+	// Gemini 3.6 Flash (Google AI pricing: $1.50 input / $7.50 output /
+	// $0.15 cached input per MTok). Antigravity's -high/-low/-medium/-tiered
+	// aliases are matched below so unavailable remote pricing never records
+	// token-bearing requests at $0.
+	s.fallbackPrices["gemini-3.6-flash"] = &ModelPricing{
+		InputPricePerToken:     1.5e-6,
+		OutputPricePerToken:    7.5e-6,
+		CacheReadPricePerToken: 0.15e-6,
+		SupportsCacheBreakdown: false,
 	}
 
 	// OpenAI GPT-5.4（业务指定价格）
@@ -300,27 +316,27 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-terra"] = &ModelPricing{
-		InputPricePerToken:                 2.5e-6,
-		InputPricePerTokenPriority:         5e-6,
-		OutputPricePerToken:                15e-6,
-		OutputPricePerTokenPriority:        30e-6,
-		CacheCreationPricePerToken:         3.125e-6,
-		CacheCreationPricePerTokenPriority: 6.25e-6,
-		CacheReadPricePerToken:             0.25e-6,
-		CacheReadPricePerTokenPriority:     0.5e-6,
+		InputPricePerToken:                 2e-6,
+		InputPricePerTokenPriority:         4e-6,
+		OutputPricePerToken:                12e-6,
+		OutputPricePerTokenPriority:        24e-6,
+		CacheCreationPricePerToken:         2.5e-6,
+		CacheCreationPricePerTokenPriority: 5e-6,
+		CacheReadPricePerToken:             0.2e-6,
+		CacheReadPricePerTokenPriority:     0.4e-6,
 		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
 		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
 	}
 	s.fallbackPrices["gpt-5.6-luna"] = &ModelPricing{
-		InputPricePerToken:                 1e-6,
-		InputPricePerTokenPriority:         2e-6,
-		OutputPricePerToken:                6e-6,
-		OutputPricePerTokenPriority:        12e-6,
-		CacheCreationPricePerToken:         1.25e-6,
-		CacheCreationPricePerTokenPriority: 2.5e-6,
-		CacheReadPricePerToken:             0.1e-6,
-		CacheReadPricePerTokenPriority:     0.2e-6,
+		InputPricePerToken:                 0.2e-6,
+		InputPricePerTokenPriority:         0.4e-6,
+		OutputPricePerToken:                1.2e-6,
+		OutputPricePerTokenPriority:        2.4e-6,
+		CacheCreationPricePerToken:         0.25e-6,
+		CacheCreationPricePerTokenPriority: 0.5e-6,
+		CacheReadPricePerToken:             0.02e-6,
+		CacheReadPricePerTokenPriority:     0.04e-6,
 		LongContextInputThreshold:          openAIGPT54LongContextInputThreshold,
 		LongContextInputMultiplier:         openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:        openAIGPT54LongContextOutputMultiplier,
@@ -387,6 +403,13 @@ func (s *BillingService) initFallbackPricing() {
 	// Source: https://docs.z.ai/guides/overview/pricing (USD per 1M tokens)
 	// 注意：CacheReadPricePerToken 即"缓存命中"价格，CacheCreationPricePerToken 留空（智谱未公开写入价，按 0 处理）。
 	// GLM-4.6 与 GLM-4.5 在 z.ai 国际版上定价一致；GLM-4.5 国内按 ¥0.8/¥2，汇率换算后约 $0.112/$0.28，与国际版 $0.6/$2.2 不同，本分支采用国际版 USD 口径与现有 Claude/GPT 一致。
+	// GLM-5.2 与 GLM-5.1 在 z.ai 上同价。
+	s.fallbackPrices["glm-5.2"] = &ModelPricing{
+		InputPricePerToken:     1.4e-6, // $1.40 per MTok
+		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
+		CacheReadPricePerToken: 0.26e-6,
+		SupportsCacheBreakdown: false,
+	}
 	s.fallbackPrices["glm-5.1"] = &ModelPricing{
 		InputPricePerToken:     1.4e-6, // $1.40 per MTok
 		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
@@ -469,6 +492,15 @@ func (s *BillingService) initFallbackPricing() {
 	//       交叉验证：https://www.tmtpost.com/7961404.html (USD 口径)
 	// Moonshot V1 (¥2/¥5/¥10 多 tier) 公开页未直接标注 USD 价，本分支不覆盖，避免误计价。
 	// K2-0905 / K2-0711 官方页面未保留定价，不覆盖。
+	// Kimi K3 国际站 USD 价目：https://platform.kimi.ai/docs/pricing/chat-k3.md
+	// Kimi Code bare aliases（k3 / k3-256k）官方无按 token 价目；复用 API Platform
+	// kimi-k3 档位作代理计费 fallback（同 kimi-for-coding 对 K2.6 的处理口径）。
+	s.fallbackPrices["kimi-k3"] = &ModelPricing{
+		InputPricePerToken:     3e-6,    // $3.00 per MTok (cache miss)
+		OutputPricePerToken:    15e-6,   // $15.00 per MTok
+		CacheReadPricePerToken: 0.30e-6, // $0.30 per MTok (cache hit)
+		SupportsCacheBreakdown: false,
+	}
 	s.fallbackPrices["kimi-k2.6"] = &ModelPricing{
 		InputPricePerToken:     0.95e-6, // $0.95 per MTok (cache miss)
 		OutputPricePerToken:    4e-6,    // $4.00 per MTok
@@ -588,6 +620,13 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
+		// "opus-5" 必须先判：不能用裸 "5" 匹配，否则 claude-opus-4-5 会被误判。
+		if strings.Contains(modelLower, "opus-5") || strings.Contains(modelLower, "opus5") {
+			return s.fallbackPrices["claude-opus-5"]
+		}
+		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
+			return s.fallbackPrices["claude-opus-4.8"]
+		}
 		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {
 			return s.fallbackPrices["claude-opus-4.7"]
 		}
@@ -618,6 +657,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
 	}
+	if strings.Contains(modelLower, "gemini-3.6-flash") || strings.Contains(modelLower, "gemini-3-6-flash") {
+		return s.fallbackPrices["gemini-3.6-flash"]
+	}
 
 	// DeepSeek V4 系列：仅匹配已知 V4 Pro/Flash 与官方兼容别名
 	// （deepseek-chat / deepseek-reasoner → V4 Flash），未知 deepseek-* 型号不回退，避免误计价。
@@ -635,8 +677,12 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// 匹配策略：长 key 优先（具体模型 → 系列 / 厂商），未知型号不回退以避免误计价。
 	// 与 DeepSeek 一样采用"白名单"语义：未在本表命中的国产模型 alias 一律不返回兜底价。
 
-	// 智谱 GLM（z.ai 公开 SKU：glm-5.1 / glm-5 / glm-5-turbo / glm-4.7 / glm-4.6 / glm-4.5 等）
+	// 智谱 GLM（z.ai 公开 SKU：glm-5.2 / glm-5.1 / glm-5 / glm-5-turbo / glm-4.7 / glm-4.6 / glm-4.5 等）
 	// 匹配顺序：先判别最高 tier，再依次降级。
+	// 注意：带小数点的型号必须排在裸 "glm-5" 之前，否则会被 strings.Contains 抢走。
+	if strings.Contains(modelLower, "glm-5.2") {
+		return s.fallbackPrices["glm-5.2"]
+	}
 	if strings.Contains(modelLower, "glm-5.1") {
 		return s.fallbackPrices["glm-5.1"]
 	}
@@ -677,10 +723,18 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["glm-4-32b-0414-128k"]
 	}
 
-	// 月之暗面 Kimi（kimi-k2.6 / kimi-for-coding / kimi-k2.5 / kimi-k2-thinking / kimi-k2）
+	// 月之暗面 Kimi（kimi-k3 / k3 / k3-256k / kimi-k2.6 / kimi-for-coding / kimi-k2.5 / kimi-k2-thinking / kimi-k2）
 	// K2-0905 / K2-0711 官方未保留定价，不进入 fallback。
+	// K3 规则置于 K2 前：API Platform 仅官方 kimi-k3（及 / 路径后缀）；
+	// Code bare aliases 仅精确 k3 / k3-256k 或 /k3|/k3-256k 后缀，避免 kimi-k30 等未知型号误命中。
+	// 注意：kimi-k3[1m] 是 Claude Code 上下文选择语法，不是 Kimi API 模型 ID，不进入 fallback。
 	if strings.Contains(modelLower, "kimi-for-coding") {
 		return s.fallbackPrices["kimi-for-coding"]
+	}
+	if modelLower == "kimi-k3" || strings.HasSuffix(modelLower, "/kimi-k3") ||
+		modelLower == "k3" || modelLower == "k3-256k" ||
+		strings.HasSuffix(modelLower, "/k3") || strings.HasSuffix(modelLower, "/k3-256k") {
+		return s.fallbackPrices["kimi-k3"]
 	}
 	if strings.Contains(modelLower, "kimi-k2.6") || strings.Contains(modelLower, "kimi-k2-6") {
 		return s.fallbackPrices["kimi-k2.6"]

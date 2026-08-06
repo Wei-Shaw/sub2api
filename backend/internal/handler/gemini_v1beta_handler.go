@@ -41,7 +41,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -88,7 +88,7 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	}
 	// 检查平台：优先使用强制平台（/antigravity 路由），否则要求 gemini 分组
 	forcePlatform, hasForcePlatform := middleware.GetForcePlatformFromContext(c)
-	if !hasForcePlatform && (apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini) {
+	if !hasForcePlatform && effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 		googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 		return
 	}
@@ -97,6 +97,15 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 	if modelName == "" {
 		googleError(c, http.StatusBadRequest, "Missing model in URL")
 		return
+	}
+	// 模型名会被拼进上游 URL 的 path，先在入口校验片段合规性，
+	// 见 service/upstream_path_guard.go。
+	if !service.IsSafeGeminiModelPathSegment(modelName) {
+		googleError(c, http.StatusBadRequest, "Invalid model in URL")
+		return
+	}
+	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
+		modelName = strings.TrimSpace(resolvedModel)
 	}
 
 	// 强制 antigravity 模式：返回 antigravity 模型信息
@@ -155,7 +164,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 检查平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则要求 gemini 分组
 	if !middleware.HasForcePlatform(c) {
-		if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformGemini {
+		if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformGemini {
 			googleError(c, http.StatusBadRequest, "API key group platform is not gemini")
 			return
 		}
@@ -165,6 +174,15 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if err != nil {
 		googleError(c, http.StatusNotFound, err.Error())
 		return
+	}
+	// URL 里的模型名最终会被拼进上游 /v1beta/models/{model}:{action}，
+	// 先在入口校验片段合规性，见 service/upstream_path_guard.go。
+	if !service.IsSafeGeminiModelPathSegment(modelName) {
+		googleError(c, http.StatusBadRequest, "Invalid model in URL")
+		return
+	}
+	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok && strings.TrimSpace(resolvedModel) != "" {
+		modelName = strings.TrimSpace(resolvedModel)
 	}
 
 	stream := action == "streamGenerateContent"
@@ -186,6 +204,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
+	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
+	c.Request = c.Request.WithContext(pricingCtx)
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && !decision.AllowNextStage {
 		googleSecurityAuditError(c, decision)
@@ -448,8 +468,30 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				geminiConcurrency.DecrementAccountWaitCount(c.Request.Context(), account.ID)
 				accountWaitCounted = false
 			}
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
-				reqLog.Warn("gemini.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		}
+		// 终检与准入后绑定使用选号结果携带的门（见 responses 同名注释）。
+		admissionCtx := service.ContextWithSelectionProfitGate(c.Request.Context(), selection)
+		latest, vetoed, reason := h.gatewayService.GatewayProfitControlVetoLatest(admissionCtx, account)
+		if vetoed {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Debug("gemini.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
+			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
+				reqLog.Warn("gemini.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
+				markOpsRoutingCapacityLimited(c)
+				googleError(c, http.StatusServiceUnavailable, profitVetoExhaustedMessage)
+				return
+			}
+			continue
+		}
+		account = latest
+		selection.Account = latest
+		// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已抢槽
+		// 的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
+		if selection.ProfitGateActive() || !selection.Acquired {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, apiKey.GroupID, sessionKey, account.ID); err != nil {
+				reqLog.Warn("gemini.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			}
 		}
 		// 账号槽位/等待计数需要在超时或断开时安全回收
@@ -526,6 +568,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 		forceCacheBilling := fs.ForceCacheBilling
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+		sessionID := service.ExtractClientSessionID(c)
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
@@ -534,6 +577,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				User:                  apiKey.User,
 				Account:               account,
 				Subscription:          subscription,
+				PricingAt:             pricingAt,
 				InboundEndpoint:       inboundEndpoint,
 				UpstreamEndpoint:      upstreamEndpoint,
 				UserAgent:             userAgent,
@@ -543,7 +587,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
 				ForceCacheBilling:     forceCacheBilling,
 				APIKeyService:         h.apiKeyService,
-				ChannelUsageFields:    channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				SessionID:             sessionID,
+				ChannelUsageFields:    clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.gemini_v1beta.models"),

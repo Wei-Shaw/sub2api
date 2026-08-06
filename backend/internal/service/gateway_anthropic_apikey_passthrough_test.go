@@ -523,7 +523,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFie
 	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
 	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
+		"max_tokens 作为生成参数应被 count_tokens 过滤剥离")
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationFields(t *testing.T) {
@@ -582,7 +583,8 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFiltersGenerationF
 	require.Equal(t, "sys", gjson.GetBytes(sentBody, "system.0.text").String())
 	require.Equal(t, "hello", gjson.GetBytes(sentBody, "messages.0.content").String())
 	require.Equal(t, "tool", gjson.GetBytes(sentBody, "tools.0.name").String())
-	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int())
+	require.False(t, gjson.GetBytes(sentBody, "max_tokens").Exists(),
+		"count_tokens 请求不得携带生成参数 max_tokens")
 	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String())
 }
 
@@ -798,11 +800,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name               string
-		body               string
-		wantModel          string
-		wantOriginalSystem string
-		wantMetadataUserID string
+		name                       string
+		body                       string
+		wantModel                  string
+		wantOriginalSystem         string
+		wantOriginalSystemCacheTTL string
+		wantMetadataUserID         string
 	}{
 		{
 			name:               "sonnet system array",
@@ -817,11 +820,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			wantOriginalSystem: "x-anthropic-billing-header keep",
 		},
 		{
-			name:               "haiku full mimicry",
-			body:               `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"},"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral"}}],"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
-			wantModel:          "claude-haiku-4-5-20251001",
-			wantOriginalSystem: "Pi project instructions",
-			wantMetadataUserID: "pi-session-metadata",
+			name:                       "haiku full mimicry",
+			body:                       `{"model":"claude-haiku-4-5","metadata":{"user_id":"pi-session-metadata"},"system":[{"type":"text","text":"Pi project instructions","cache_control":{"type":"ephemeral","ttl":"1h"}}],"thinking":{"type":"enabled","budget_tokens":1024},"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`,
+			wantModel:                  "claude-haiku-4-5-20251001",
+			wantOriginalSystem:         "Pi project instructions",
+			wantOriginalSystemCacheTTL: "1h",
+			wantMetadataUserID:         "pi-session-metadata",
 		},
 	}
 
@@ -912,6 +916,12 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 			firstMsg := messages.Array()[0]
 			require.Equal(t, "user", firstMsg.Get("role").String())
 			require.Contains(t, firstMsg.Get("content.0.text").String(), tt.wantOriginalSystem)
+			if tt.wantOriginalSystemCacheTTL != "" {
+				require.Equal(t, "ephemeral", firstMsg.Get("content.0.cache_control.type").String())
+				require.Equal(t, tt.wantOriginalSystemCacheTTL, firstMsg.Get("content.0.cache_control.ttl").String())
+			} else {
+				require.False(t, firstMsg.Get("content.0.cache_control").Exists())
+			}
 
 			if tt.wantMetadataUserID != "" {
 				require.Equal(t, tt.wantMetadataUserID, gjson.GetBytes(upstream.lastBody, "metadata.user_id").String())
@@ -1622,4 +1632,115 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingUpstreamReadErrorAft
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
 	require.Equal(t, 8, result.usage.InputTokens)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_TransportErrorRecordsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	upstream := &anthropicHTTPUpstreamRecorder{err: errors.New("dial tcp timeout")}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:    upstream,
+		deferredService: deferred,
+	}
+
+	ollama := &Account{
+		ID: 601, Name: "ollama-anthropic", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	other := newAnthropicAPIKeyAccountForTest()
+	other.ID = 602
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	require.Error(t, err)
+
+	rec2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(rec2)
+	c2.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	_, err = svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c2, other, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	require.Error(t, err)
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(601))
+	require.True(t, ok, "Anthropic passthrough transport error on Ollama account must record activity")
+	_, ok = deferred.lastUsedUpdates.Load(int64(602))
+	require.False(t, ok, "non-Ollama Anthropic passthrough transport error must not record Ollama activity")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_ContextCanceledSkipsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	upstream := &anthropicHTTPUpstreamRecorder{err: context.Canceled}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:    upstream,
+		deferredService: deferred,
+	}
+	ollama := &Account{
+		ID: 603, Name: "ollama-canceled", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+
+	require.Error(t, err)
+	_, ok := deferred.lastUsedUpdates.Load(int64(603))
+	require.False(t, ok, "context.Canceled on Anthropic passthrough must not count as Ollama activity")
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_Non2xxRecordsOllamaActivity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deferred := NewDeferredService(nil, nil, time.Second)
+	// 400 is non-retryable / non-failover for default API-key accounts, so it reaches handleErrorResponse.
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`)),
+		},
+	}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream:     upstream,
+		deferredService:  deferred,
+		rateLimitService: &RateLimitService{},
+	}
+	ollama := &Account{
+		ID: 604, Name: "ollama-400", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		Extra:       map[string]any{"anthropic_passthrough": true},
+		Status:      StatusActive, Schedulable: true,
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	_, _ = svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, ollama, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+
+	_, ok := deferred.lastUsedUpdates.Load(int64(604))
+	require.True(t, ok, "Anthropic passthrough non-2xx on Ollama account must record activity via handleErrorResponse")
 }
