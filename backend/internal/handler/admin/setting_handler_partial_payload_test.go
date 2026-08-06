@@ -65,3 +65,75 @@ func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
 
 	require.Equal(t, "new@example.com", repo.values[service.SettingKeySMTPFrom])
 }
+
+func TestUpdateSettingsRejectsTwoCaptchaProviders(t *testing.T) {
+	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyTurnstileEnabled:   "true",
+		service.SettingKeyTurnstileSiteKey:   "site-key",
+		service.SettingKeyTurnstileSecretKey: "turnstile-secret",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"turnstile_enabled":                true,
+		"turnstile_site_key":               "site-key",
+		"turnstile_secret_key":             "turnstile-secret",
+		"tencent_captcha_enabled":          true,
+		"tencent_captcha_app_id":           "123456789",
+		"tencent_captcha_app_secret_key":   "app-secret",
+		"tencent_captcha_cloud_secret_id":  "cloud-secret-id",
+		"tencent_captcha_cloud_secret_key": "cloud-secret-key",
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "cannot be enabled at the same time")
+}
+
+func TestUpdateSettingsRequiresFourTencentCaptchaCredentialsWhenEnabled(t *testing.T) {
+	h, _ := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"tencent_captcha_enabled": true,
+		"tencent_captcha_app_id":  "123456789",
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "AppSecretKey")
+}
+
+func TestUpdateSettingsRetainsStoredTencentCaptchaCredentialsWhenInputsEmpty(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyTencentCaptchaAppSecretKey:   "stored-app-secret",
+		service.SettingKeyTencentCaptchaCloudSecretID:  "stored-cloud-secret-id",
+		service.SettingKeyTencentCaptchaCloudSecretKey: "stored-cloud-secret-key",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"tencent_captcha_enabled":          true,
+		"tencent_captcha_app_id":           "123456789",
+		"tencent_captcha_app_secret_key":   "",
+		"tencent_captcha_cloud_secret_id":  "",
+		"tencent_captcha_cloud_secret_key": "",
+	}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "stored-app-secret", repo.values[service.SettingKeyTencentCaptchaAppSecretKey])
+	require.Equal(t, "stored-cloud-secret-id", repo.values[service.SettingKeyTencentCaptchaCloudSecretID])
+	require.Equal(t, "stored-cloud-secret-key", repo.values[service.SettingKeyTencentCaptchaCloudSecretKey])
+}
+
+func TestUpdateSettingsValidatesTencentCaptchaAppIDWhenEnabledFlagIsOmitted(t *testing.T) {
+	h, _ := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyTencentCaptchaEnabled:        "true",
+		service.SettingKeyTencentCaptchaAppID:          "123456789",
+		service.SettingKeyTencentCaptchaAppSecretKey:   "stored-app-secret",
+		service.SettingKeyTencentCaptchaCloudSecretID:  "stored-cloud-secret-id",
+		service.SettingKeyTencentCaptchaCloudSecretKey: "stored-cloud-secret-key",
+	})
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"tencent_captcha_app_id": "not-a-number",
+	}, nil)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "positive integer")
+}
