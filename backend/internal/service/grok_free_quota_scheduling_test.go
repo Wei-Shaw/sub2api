@@ -26,6 +26,25 @@ type grokFreeQuotaUsageRepoStub struct {
 	singleCalls  int
 }
 
+type grokFreeQuotaAccountRepoStub struct {
+	AccountRepository
+
+	rateLimitedCalls     int
+	lastRateLimitedID    int64
+	lastRateLimitResetAt time.Time
+}
+
+func (r *grokFreeQuotaAccountRepoStub) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
+	r.rateLimitedCalls++
+	r.lastRateLimitedID = id
+	r.lastRateLimitResetAt = resetAt
+	return nil
+}
+
+func (r *grokFreeQuotaAccountRepoStub) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
+	return r.SetRateLimited(ctx, id, resetAt)
+}
+
 func (r *grokFreeQuotaUsageRepoStub) GetAccountWindowStatsBatch(_ context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error) {
 	r.batchCalls++
 	r.batchIDs = append([]int64(nil), accountIDs...)
@@ -160,6 +179,111 @@ func TestGrokFreeRollingQuotaPrefetch_BatchFailureFailsOpen(t *testing.T) {
 	require.Zero(t, repo.singleCalls)
 }
 
+func TestPersistGrokFreeLocalUsageRateLimit(t *testing.T) {
+	now := time.Date(2026, 8, 6, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, 24*time.Hour, grokFreeLocalUsageCooldown)
+
+	tests := []struct {
+		name      string
+		account   Account
+		exhausted bool
+		known     bool
+		wantCalls int
+	}{
+		{
+			name:      "exhausted free account",
+			account:   schedulableGrokFreeQuotaTestAccount(12, 0),
+			exhausted: true,
+			known:     true,
+			wantCalls: 1,
+		},
+		{
+			name:      "usage below limit",
+			account:   schedulableGrokFreeQuotaTestAccount(13, 0),
+			exhausted: false,
+			known:     true,
+		},
+		{
+			name:      "usage unknown",
+			account:   schedulableGrokFreeQuotaTestAccount(14, 0),
+			exhausted: true,
+			known:     false,
+		},
+		{
+			name: "existing active rate limit",
+			account: func() Account {
+				account := schedulableGrokFreeQuotaTestAccount(15, 0)
+				resetAt := now.Add(time.Hour)
+				account.RateLimitResetAt = &resetAt
+				return account
+			}(),
+			exhausted: true,
+			known:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &grokFreeQuotaAccountRepoStub{}
+			persistGrokFreeLocalUsageRateLimit(context.Background(), repo, &tt.account, now, tt.exhausted, tt.known)
+
+			require.Equal(t, tt.wantCalls, repo.rateLimitedCalls)
+			if tt.wantCalls > 0 {
+				require.Equal(t, tt.account.ID, repo.lastRateLimitedID)
+				require.Equal(t, now.Add(grokFreeLocalUsageCooldown), repo.lastRateLimitResetAt)
+			}
+		})
+	}
+}
+
+func TestGrokFreeRollingQuotaServiceWrappersPersistLocalCooldown(t *testing.T) {
+	account := schedulableGrokFreeQuotaTestAccount(16, 0)
+	usageRepo := &grokFreeQuotaUsageRepoStub{singleResult: map[int64]*usagestats.AccountStats{
+		account.ID: {Tokens: xai.GrokFreeRolling24hTokenLimit},
+	}}
+
+	t.Run("openai gateway", func(t *testing.T) {
+		accountRepo := &grokFreeQuotaAccountRepoStub{}
+		svc := &OpenAIGatewayService{accountRepo: accountRepo, usageLogRepo: usageRepo}
+		before := time.Now()
+
+		exhausted, tokens, known := svc.grokFreeRollingQuotaExhausted(context.Background(), &account)
+
+		require.True(t, known)
+		require.True(t, exhausted)
+		require.Equal(t, xai.GrokFreeRolling24hTokenLimit, tokens)
+		require.Equal(t, 1, accountRepo.rateLimitedCalls)
+		require.WithinDuration(t, before.Add(grokFreeLocalUsageCooldown), accountRepo.lastRateLimitResetAt, time.Second)
+	})
+
+	t.Run("gateway", func(t *testing.T) {
+		accountRepo := &grokFreeQuotaAccountRepoStub{}
+		svc := &GatewayService{accountRepo: accountRepo, usageLogRepo: usageRepo}
+		before := time.Now()
+
+		exhausted, tokens, known := svc.grokFreeRollingQuotaExhausted(context.Background(), &account)
+
+		require.True(t, known)
+		require.True(t, exhausted)
+		require.Equal(t, xai.GrokFreeRolling24hTokenLimit, tokens)
+		require.Equal(t, 1, accountRepo.rateLimitedCalls)
+		require.WithinDuration(t, before.Add(grokFreeLocalUsageCooldown), accountRepo.lastRateLimitResetAt, time.Second)
+	})
+
+	t.Run("paid account remains exempt", func(t *testing.T) {
+		paid := account
+		paid.Credentials = map[string]any{"subscription_tier": "supergrok"}
+		accountRepo := &grokFreeQuotaAccountRepoStub{}
+		svc := &OpenAIGatewayService{accountRepo: accountRepo, usageLogRepo: usageRepo}
+
+		exhausted, _, known := svc.grokFreeRollingQuotaExhausted(context.Background(), &paid)
+
+		require.False(t, known)
+		require.False(t, exhausted)
+		require.Zero(t, accountRepo.rateLimitedCalls)
+	})
+}
+
 func TestOpenAIGatewayService_GrokFreeRollingQuota_LegacyAndStickySkipExhausted(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 	exhaustedAccount := schedulableGrokFreeQuotaTestAccount(21, 0)
@@ -181,7 +305,9 @@ func TestOpenAIGatewayService_GrokFreeRollingQuota_LegacyAndStickySkipExhausted(
 		cfg := &config.Config{}
 		cfg.Gateway.Scheduling.LoadBatchEnabled = false
 		return &OpenAIGatewayService{
-			accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+			accountRepo: &grokFreeQuotaAccountRepoStub{
+				AccountRepository: schedulerTestOpenAIAccountRepo{accounts: accounts},
+			},
 			usageLogRepo:       repo,
 			cache:              cache,
 			cfg:                cfg,
@@ -222,7 +348,9 @@ func TestDefaultOpenAIAccountScheduler_GrokFreeRollingQuotaSkipsExhausted(t *tes
 		healthyAccount.ID:   {Tokens: xai.GrokFreeRolling24hTokenLimit - 1},
 	}}
 	svc := &OpenAIGatewayService{
-		accountRepo:  schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedAccount, healthyAccount}},
+		accountRepo: &grokFreeQuotaAccountRepoStub{
+			AccountRepository: schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedAccount, healthyAccount}},
+		},
 		usageLogRepo: repo,
 		cfg:          &config.Config{},
 	}
