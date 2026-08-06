@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE="${IMAGE:-docker-registry.xinsulv.com/sub2api}"
 TAG="${TAG:-latest}"
 PLATFORM="${PLATFORM:-linux/amd64}"
-BUILDER="${BUILDER:-desktop-linux}"
+BUILDER="${BUILDER:-$(docker buildx inspect | awk 'NR==1{print $2}')}"
 
 # 用 Docker Desktop 自带的 docker 驱动 builder：它共享 daemon 的镜像加速器
 # (registry-mirrors) 与 insecure-registries 配置，能拉基础镜像、能推私有 insecure 仓库。
