@@ -1386,6 +1386,11 @@ func TestOpenAIStreamingPostOutputDisconnectQuarantinesSharedProxyWithoutSameStr
 		var failoverErr *UpstreamFailoverError
 		require.False(t, errors.As(err, &failoverErr), "post-output disconnect must not fail over inside the same stream")
 		require.Contains(t, rec.Body.String(), "partial")
+		// 透传的 error 事件 message 必须带可重试信号词（opencode 按消息匹配重试白名单），
+		// code 保持 stream_read_error 标识错误类别。
+		require.Contains(t, rec.Body.String(), `"message":"upstream connection error`)
+		require.Contains(t, rec.Body.String(), `"code":"stream_read_error"`)
+		require.Contains(t, rec.Body.String(), `"type":"upstream_error"`)
 	}
 
 	scheduler := &defaultOpenAIAccountScheduler{service: svc}

@@ -262,12 +262,15 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		eventStartsClientOutput = false
 		eventShouldFlush = false
 	}
-	sendErrorEvent := func(reason string) {
+	sendErrorEvent := func(reason, message string) {
 		if errorEventSent || clientDisconnected {
 			return
 		}
 		errorEventSent = true
-		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
+		if message == "" {
+			message = reason
+		}
+		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(message) + `,"code":` + strconv.Quote(reason) + `}}`
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 			return
@@ -379,7 +382,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		if errors.Is(scanErr, bufio.ErrTooLong) {
 			logger.LegacyPrintf("service.openai_gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, scanErr)
-			sendErrorEvent("response_too_large")
+			sendErrorEvent("response_too_large", "")
 			return resultWithUsage(), scanErr, true
 		}
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
@@ -394,7 +397,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr), true
 		}
 		s.recordOpenAIProxyStreamDisconnect(account, scanErr, upstreamRequestID)
-		sendErrorEvent("stream_read_error")
+		// message 必须带 "connection error" 可重试信号词：opencode 对中途断流的
+		// 错误事件只按错误消息匹配重试白名单（RETRYABLE_MESSAGE_PATTERNS 含
+		// connection error / network error 等），不带可识别词则直接中断不重试。
+		// code 保持 stream_read_error 标识错误类别；根因经 sanitizeStreamError
+		// 剥离地址后随 message 下发。
+		sendErrorEvent("stream_read_error", "upstream connection error: "+sanitizeStreamError(scanErr))
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processSSELine := func(line string, queueDrained bool) {
@@ -687,7 +695,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 			}
-			sendErrorEvent("stream_timeout")
+			sendErrorEvent("stream_timeout", "")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-firstOutputCh:

@@ -989,7 +989,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				// 注意:面向客户端的 disconnectMsg 必须用 sanitizeStreamError 剥离地址,
 				// 默认 *net.OpError 的 Error() 会泄露内部 IP/端口和上游地址。完整 ev.err
 				// 仅在下方 LegacyPrintf 内部日志中保留供运维诊断。
-				disconnectMsg := "upstream stream disconnected: " + sanitizeStreamError(ev.err)
+				// 文案必须带 "connection error" 可重试信号词：opencode 对中途断流的
+				// 错误事件只按错误消息匹配重试白名单（RETRYABLE_MESSAGE_PATTERNS 含
+				// connection error / upstream connect / network error 等），不带可识别词
+				// 则直接中断不重试。Claude Code 按标准 error 事件展示该文案，不受影响。
+				disconnectMsg := "upstream connection error: " + sanitizeStreamError(ev.err)
 				if !c.Writer.Written() {
 					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
 					body, _ := json.Marshal(map[string]any{
