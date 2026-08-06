@@ -13,6 +13,10 @@ type grokFreeQuotaUsageContextKeyType struct{}
 
 const grokFreeLocalUsageCooldown = 24 * time.Hour
 
+type grokRateLimitActivatingRepository interface {
+	SetRateLimitedIfInactive(ctx context.Context, id int64, resetAt time.Time) (bool, error)
+}
+
 type grokFreeQuotaUsageEntry struct {
 	tokens int64
 	known  bool
@@ -203,5 +207,17 @@ func persistGrokFreeLocalUsageRateLimit(
 	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) {
 		return
 	}
-	persistGrokRateLimit(ctx, repo, account, now.Add(grokFreeLocalUsageCooldown))
+	resetAt := now.Add(grokFreeLocalUsageCooldown)
+	if activatingRepo, ok := repo.(grokRateLimitActivatingRepository); ok {
+		stateCtx, cancel := openAIAccountStateContext(ctx)
+		defer cancel()
+		if _, err := activatingRepo.SetRateLimitedIfInactive(stateCtx, account.ID, resetAt); err != nil {
+			slog.Warn("persist_grok_free_local_quota_rate_limit_failed", "account_id", account.ID, "reset_at", resetAt.UTC(), "error", err)
+		}
+		return
+	}
+
+	// Compatibility fallback for non-production repository implementations.
+	// The production repository uses the atomic inactive-only operation above.
+	persistGrokRateLimit(ctx, repo, account, resetAt)
 }
