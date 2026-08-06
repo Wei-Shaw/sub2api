@@ -18,6 +18,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// OpenAICodexUsageObservedAtUnixNanoExtraKey orders concurrent quota snapshot
+// writes across gateway instances so an older observation cannot win last.
+const OpenAICodexUsageObservedAtUnixNanoExtraKey = "codex_usage_observed_at_unix_nano"
+
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
 	Result             *OpenAIForwardResult
@@ -733,7 +737,7 @@ func ParseCodexRateLimitHeaders(headers http.Header) *OpenAICodexUsageSnapshot {
 		return nil
 	}
 
-	snapshot.UpdatedAt = time.Now().Format(time.RFC3339)
+	snapshot.UpdatedAt = time.Now().Format(time.RFC3339Nano)
 	return snapshot
 }
 
@@ -794,6 +798,9 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 		updates["codex_primary_over_secondary_percent"] = *snapshot.PrimaryOverSecondaryPercent
 	}
 	updates["codex_usage_updated_at"] = baseTime.Format(time.RFC3339)
+	if !baseTime.IsZero() {
+		updates[OpenAICodexUsageObservedAtUnixNanoExtraKey] = baseTime.UnixNano()
+	}
 
 	// 归一化到 5h/7d 规范字段
 	if normalized := snapshot.Normalize(); normalized != nil {

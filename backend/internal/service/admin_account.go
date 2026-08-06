@@ -151,6 +151,7 @@ func duplicateAccountExtra(value map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	delete(cloned, OpenAICodexUsageObservedAtUnixNanoExtraKey)
 	for key := range duplicateAccountDiscardedExtraKeys {
 		delete(cloned, key)
 	}

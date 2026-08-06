@@ -64,9 +64,10 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
-	"codex_usage_updated_at":     {},
-	"grok_billing_snapshot":      {},
-	"session_window_utilization": {},
+	"codex_usage_updated_at":                           {},
+	service.OpenAICodexUsageObservedAtUnixNanoExtraKey: {},
+	"grok_billing_snapshot":                            {},
+	"session_window_utilization":                       {},
 }
 
 const postgresParameterBatchSize = 50000
@@ -2552,10 +2553,16 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if clearProbeSnapshot {
 		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 	}
+	args := []any{string(payload), id}
+	if observedAt, ok := updates[service.OpenAICodexUsageObservedAtUnixNanoExtraKey].(int64); ok && observedAt > 0 {
+		key := service.OpenAICodexUsageObservedAtUnixNanoExtraKey
+		extraExpression = "CASE WHEN COALESCE(CASE WHEN jsonb_typeof(COALESCE(extra, '{}'::jsonb)->'" + key + "') = 'number' THEN (extra->>'" + key + "')::numeric END, 0) <= $3::numeric THEN " + extraExpression + " ELSE COALESCE(extra, '{}'::jsonb) END"
+		args = append(args, observedAt)
+	}
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
-		string(payload), id,
+		args...,
 	)
 
 	if err != nil {
