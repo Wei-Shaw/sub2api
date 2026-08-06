@@ -22,6 +22,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
 	startTime := time.Now()
+	compactRequest := isOpenAIResponsesCompactPath(c) ||
+		(openAIResponsesRequestPathSuffix(c) == "" && HasCompactionTriggerInInput(body))
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
 	canonicalImageIntentBody := body
 
@@ -169,7 +171,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, mappedModel)
 		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, mappedModel)
-		return s.forwardOpenAIPassthrough(
+		result, err := s.forwardOpenAIPassthrough(
 			ctx,
 			c,
 			account,
@@ -181,6 +183,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			reqStream,
 			startTime,
 		)
+		if result != nil {
+			result.CompactRequest = compactRequest
+		}
+		return result, err
 	}
 
 	bodyModified := false
@@ -974,6 +980,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ReasoningEffort: reasoningEffort,
 			Stream:          reqStream,
 			OpenAIWSMode:    false,
+			CompactRequest:  compactRequest,
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    firstTokenMs,
 		}

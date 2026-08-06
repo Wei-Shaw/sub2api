@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -96,6 +97,23 @@ func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probe
 	}
 
 	return updates
+}
+
+// RecordOpenAICompactSuccess persists capability learned from a real compact request.
+func (s *OpenAIGatewayService) RecordOpenAICompactSuccess(account *Account) {
+	if s == nil || s.accountRepo == nil || account == nil || !account.IsOpenAI() {
+		return
+	}
+	if supported, ok := account.Extra["openai_compact_supported"].(bool); ok && supported {
+		return
+	}
+
+	updates := buildOpenAICompactProbeExtraUpdates(&http.Response{StatusCode: http.StatusOK}, nil, nil, time.Now())
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+	}()
 }
 
 func mergeExtraUpdates(base map[string]any, more map[string]any) map[string]any {

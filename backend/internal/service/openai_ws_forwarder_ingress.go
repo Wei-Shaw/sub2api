@@ -1035,6 +1035,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					Stream:                reqStream,
 					OpenAIWSMode:          true,
 					UpstreamTerminalEvent: terminalEvent,
+					CompactRequest:        HasCompactionTriggerInInput(payload),
 					ResponseHeaders:       lease.HandshakeHeaders(),
 					Duration:              time.Since(turnStart),
 					FirstTokenMs:          firstTokenMs,

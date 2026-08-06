@@ -1,11 +1,22 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"testing"
 	"time"
 )
+
+type openAICompactSuccessRepo struct {
+	AccountRepository
+	updates chan map[string]any
+}
+
+func (r *openAICompactSuccessRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updates <- updates
+	return nil
+}
 
 func TestNormalizeAccountTestMode(t *testing.T) {
 	tests := []struct {
@@ -118,5 +129,43 @@ func TestBuildOpenAICompactProbeExtraUpdates_EmptyFailureBodyFallsBackToHTTPStat
 	}
 	if got := updates["openai_compact_last_error"]; got != "HTTP 503" {
 		t.Fatalf("openai_compact_last_error = %v, want HTTP 503", got)
+	}
+}
+
+func TestRecordOpenAICompactSuccess(t *testing.T) {
+	repo := &openAICompactSuccessRepo{updates: make(chan map[string]any, 1)}
+	account := &Account{ID: 42, Platform: PlatformOpenAI}
+	(&OpenAIGatewayService{accountRepo: repo}).RecordOpenAICompactSuccess(account)
+
+	select {
+	case updates := <-repo.updates:
+		if updates["openai_compact_supported"] != true {
+			t.Fatalf("openai_compact_supported = %v, want true", updates["openai_compact_supported"])
+		}
+		if updates["openai_compact_last_status"] != http.StatusOK {
+			t.Fatalf("openai_compact_last_status = %v, want %d", updates["openai_compact_last_status"], http.StatusOK)
+		}
+		if updates["openai_compact_checked_at"] == "" {
+			t.Fatal("openai_compact_checked_at is empty")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for compact capability update")
+	}
+}
+
+func TestRecordOpenAICompactSuccessSkipsIneligibleAccounts(t *testing.T) {
+	repo := &openAICompactSuccessRepo{updates: make(chan map[string]any, 1)}
+	accounts := []*Account{
+		{ID: 42, Platform: PlatformOpenAI, Extra: map[string]any{"openai_compact_supported": true}},
+		{ID: 43, Platform: PlatformGrok},
+	}
+	for _, account := range accounts {
+		(&OpenAIGatewayService{accountRepo: repo}).RecordOpenAICompactSuccess(account)
+	}
+
+	select {
+	case updates := <-repo.updates:
+		t.Fatalf("unexpected compact capability update: %v", updates)
+	case <-time.After(20 * time.Millisecond):
 	}
 }

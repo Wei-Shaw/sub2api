@@ -136,6 +136,7 @@ func TestOpenAIGatewayServiceForwardPreservesGPT56MaxEffort(t *testing.T) {
 	require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "max", *result.ReasoningEffort)
+	require.False(t, result.CompactRequest)
 }
 
 func TestOpenAIGatewayServiceForwardPreservesMappedGPT56MaxEffort(t *testing.T) {
@@ -179,6 +180,7 @@ func TestOpenAIGatewayServiceForwardPreservesMappedGPT56MaxEffort(t *testing.T) 
 	require.Equal(t, "max", gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "max", *result.ReasoningEffort)
+	require.False(t, result.CompactRequest)
 }
 
 func TestOpenAIGatewayServiceForwardOAuthCompactDowngradesMaxEffort(t *testing.T) {
@@ -278,6 +280,7 @@ func TestOpenAIGatewayServiceForwardOAuthRemoteCompactV2PreservesResponsesWire(t
 	require.Contains(t, rec.Body.String(), `"encrypted_content":"summary"`)
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "max", *result.ReasoningEffort)
+	require.True(t, result.CompactRequest)
 }
 
 func TestOpenAIGatewayServiceForwardAPIKeyRemoteCompactV2PreservesResponsesWire(t *testing.T) {
@@ -336,4 +339,5 @@ func TestOpenAIGatewayServiceForwardAPIKeyRemoteCompactV2PreservesResponsesWire(
 	require.Contains(t, rec.Body.String(), `"encrypted_content":"summary"`)
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "max", *result.ReasoningEffort)
+	require.True(t, result.CompactRequest)
 }
