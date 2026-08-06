@@ -21,6 +21,7 @@ type userUsageFilters struct {
 	Filters   usagestats.UsageLogFilters
 	StartTime time.Time
 	EndTime   time.Time
+	Timezone  string
 }
 
 type userModelStat struct {
@@ -151,7 +152,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 	endDateStr := strings.TrimSpace(c.Query("end_date"))
 
 	if startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, err := timezone.ParseCivilDateStart(startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return nil, false
@@ -160,12 +161,12 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		startPtr = &startTime
 	}
 	if endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, err := timezone.NextCivilDateStart(endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return nil, false
 		}
-		endTime = t.AddDate(0, 0, 1)
+		endTime = t
 		endPtr = &endTime
 	}
 
@@ -209,6 +210,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		},
 		StartTime: derefTime(startPtr),
 		EndTime:   derefTime(endPtr),
+		Timezone:  derefTime(startPtr).Location().String(),
 	}, true
 }
 
@@ -277,7 +279,7 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 	// Date range (half-open [start, end)), reuse usage-list semantics.
 	userTZ := c.Query("timezone")
 	if startDateStr := c.Query("start_date"); startDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", startDateStr, userTZ)
+		t, err := timezone.ParseCivilDateStart(startDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
 			return
@@ -285,12 +287,11 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 		filter.StartTime = &t
 	}
 	if endDateStr := c.Query("end_date"); endDateStr != "" {
-		t, err := timezone.ParseInUserLocation("2006-01-02", endDateStr, userTZ)
+		t, err := timezone.NextCivilDateStart(endDateStr, userTZ)
 		if err != nil {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
 		}
-		t = t.AddDate(0, 0, 1)
 		filter.EndTime = &t
 	}
 
@@ -462,7 +463,7 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	}
 	granularity := c.DefaultQuery("granularity", "day")
 
-	trend, err := h.usageService.GetUsageTrendWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Filters)
+	trend, err := h.usageService.GetUsageTrendWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Timezone, parsed.Filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -471,7 +472,7 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	response.Success(c, gin.H{
 		"trend":       trend,
 		"start_date":  parsed.StartTime.Format("2006-01-02"),
-		"end_date":    parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":    parsed.EndTime.Add(-time.Nanosecond).Format("2006-01-02"),
 		"granularity": granularity,
 	})
 }
@@ -499,7 +500,7 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	response.Success(c, gin.H{
 		"models":     userModelStatsFromUsageStats(stats),
 		"start_date": parsed.StartTime.Format("2006-01-02"),
-		"end_date":   parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":   parsed.EndTime.Add(-time.Nanosecond).Format("2006-01-02"),
 	})
 }
 
@@ -531,12 +532,12 @@ func (h *UsageHandler) DashboardSnapshotV2(c *gin.Context) {
 	resp := gin.H{
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"start_date":   parsed.StartTime.Format("2006-01-02"),
-		"end_date":     parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":     parsed.EndTime.Add(-time.Nanosecond).Format("2006-01-02"),
 		"granularity":  granularity,
 	}
 
 	if includeTrend {
-		trend, err := h.usageService.GetUsageTrendWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Filters)
+		trend, err := h.usageService.GetUsageTrendWithFilters(c.Request.Context(), parsed.StartTime, parsed.EndTime, granularity, parsed.Timezone, parsed.Filters)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -698,7 +699,7 @@ func (h *UsageHandler) GetMyAPIKeyDailyUsage(c *gin.Context) {
 
 	userTZ := c.Query("timezone")
 	startTime, endTime := apiKeyDailyUsageRange(days, userTZ)
-	items, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime)
+	items, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), subject.UserID, apiKeyID, startTime, endTime, startTime.Location().String())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -708,6 +709,6 @@ func (h *UsageHandler) GetMyAPIKeyDailyUsage(c *gin.Context) {
 		"items":      items,
 		"days":       days,
 		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.AddDate(0, 0, -1).Format("2006-01-02"),
+		"end_date":   endTime.Add(-time.Nanosecond).Format("2006-01-02"),
 	})
 }

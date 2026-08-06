@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+const (
+	civilDateLayout              = "2006-01-02"
+	maxSkippedCivilDateLookahead = 7
+)
+
 var (
 	// location is the global timezone location
 	location *time.Location
@@ -140,6 +145,98 @@ func ParseInUserLocation(layout, value, userTZ string) (time.Time, error) {
 	return time.ParseInLocation(layout, value, loc)
 }
 
+// ParseCivilDateStart returns the first real instant belonging to the requested
+// civil date. It rejects dates that do not exist in the selected timezone.
+func ParseCivilDateStart(value, userTZ string) (time.Time, error) {
+	civilDate, err := time.Parse(civilDateLayout, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	loc := userLocation(userTZ)
+	if start, ok := firstValidCivilDateInstant(civilDate.Year(), civilDate.Month(), civilDate.Day(), loc); ok {
+		return start, nil
+	}
+	return time.Time{}, fmt.Errorf("civil date %s does not exist in timezone %s", value, loc)
+}
+
+// NextCivilDateStart returns the first real instant after the requested civil
+// date. Entirely skipped dates are crossed without normalizing into a prior day.
+func NextCivilDateStart(value, userTZ string) (time.Time, error) {
+	civilDate, err := time.Parse(civilDateLayout, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	loc := userLocation(userTZ)
+	for offset := 1; offset <= maxSkippedCivilDateLookahead; offset++ {
+		next := civilDate.AddDate(0, 0, offset)
+		if start, ok := firstValidCivilDateInstant(next.Year(), next.Month(), next.Day(), loc); ok {
+			return start, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("no valid civil date found after %s in timezone %s", value, loc)
+}
+
+// StartOfCivilDate returns the first real instant of t's civil date in userTZ.
+func StartOfCivilDate(t time.Time, userTZ string) (time.Time, error) {
+	loc := userLocation(userTZ)
+	local := t.In(loc)
+	if start, ok := firstValidCivilDateInstant(local.Year(), local.Month(), local.Day(), loc); ok {
+		return start, nil
+	}
+	return time.Time{}, fmt.Errorf("civil date %s does not exist in timezone %s", local.Format(civilDateLayout), loc)
+}
+
+func userLocation(userTZ string) *time.Location {
+	if userTZ != "" {
+		if loc, err := time.LoadLocation(userTZ); err == nil {
+			return loc
+		}
+	}
+	return Location()
+}
+
+func firstValidCivilDateInstant(year int, month time.Month, day int, loc *time.Location) (time.Time, bool) {
+	target := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	searchStart := target.Add(-36 * time.Hour)
+	searchEnd := target.Add(60 * time.Hour)
+	previous := searchStart
+
+	for probe := searchStart; !probe.After(searchEnd); probe = probe.Add(time.Minute) {
+		local := probe.In(loc)
+		if local.Year() != year || local.Month() != month || local.Day() != day {
+			previous = probe
+			continue
+		}
+
+		low, high := previous.Unix(), probe.Unix()
+		for low+1 < high {
+			mid := low + (high-low)/2
+			candidate := time.Unix(mid, 0).In(loc)
+			if civilDateBefore(candidate, year, month, day) {
+				low = mid
+			} else {
+				high = mid
+			}
+		}
+		start := time.Unix(high, 0).In(loc)
+		if start.Year() == year && start.Month() == month && start.Day() == day {
+			return start, true
+		}
+		return time.Time{}, false
+	}
+	return time.Time{}, false
+}
+
+func civilDateBefore(t time.Time, year int, month time.Month, day int) bool {
+	if t.Year() != year {
+		return t.Year() < year
+	}
+	if t.Month() != month {
+		return t.Month() < month
+	}
+	return t.Day() < day
+}
+
 // NowInUserLocation returns the current time in the user's timezone.
 // If userTZ is empty or invalid, falls back to the configured server timezone.
 func NowInUserLocation(userTZ string) time.Time {
@@ -155,12 +252,10 @@ func NowInUserLocation(userTZ string) time.Time {
 // StartOfDayInUserLocation returns the start of the given day in the user's timezone.
 // If userTZ is empty or invalid, falls back to the configured server timezone.
 func StartOfDayInUserLocation(t time.Time, userTZ string) time.Time {
-	loc := Location()
-	if userTZ != "" {
-		if userLoc, err := time.LoadLocation(userTZ); err == nil {
-			loc = userLoc
-		}
+	if start, err := StartOfCivilDate(t, userTZ); err == nil {
+		return start
 	}
+	loc := userLocation(userTZ)
 	t = t.In(loc)
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 }

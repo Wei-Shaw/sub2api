@@ -136,6 +136,42 @@ func TestDSTAwareness(t *testing.T) {
 	_ = StartOfDay(Now())
 }
 
+func TestParseCivilDateStartUsesFirstValidInstantAfterMidnightGap(t *testing.T) {
+	start, err := ParseCivilDateStart("2026-09-06", "America/Santiago")
+	if err != nil {
+		t.Fatalf("ParseCivilDateStart: %v", err)
+	}
+
+	if got := start.Format("2006-01-02 15:04 -07:00"); got != "2026-09-06 01:00 -03:00" {
+		t.Fatalf("unexpected civil date start: %s", got)
+	}
+}
+
+func TestNextCivilDateStartUsesFirstValidInstantAfterMidnightGap(t *testing.T) {
+	start, err := NextCivilDateStart("2026-09-05", "America/Santiago")
+	if err != nil {
+		t.Fatalf("NextCivilDateStart: %v", err)
+	}
+
+	if got := start.Format("2006-01-02 15:04 -07:00"); got != "2026-09-06 01:00 -03:00" {
+		t.Fatalf("unexpected next civil date start: %s", got)
+	}
+}
+
+func TestCivilDateHelpersHandleSkippedDates(t *testing.T) {
+	if _, err := ParseCivilDateStart("2011-12-30", "Pacific/Apia"); err == nil {
+		t.Fatal("expected a skipped civil date to be rejected")
+	}
+
+	start, err := NextCivilDateStart("2011-12-29", "Pacific/Apia")
+	if err != nil {
+		t.Fatalf("NextCivilDateStart: %v", err)
+	}
+	if got := start.Format("2006-01-02 15:04 -07:00"); got != "2011-12-31 00:00 +14:00" {
+		t.Fatalf("unexpected first instant after skipped date: %s", got)
+	}
+}
+
 func TestStartOfWeek_Boundaries(t *testing.T) {
 	if err := Init("Asia/Shanghai"); err != nil {
 		t.Fatalf("Init: %v", err)

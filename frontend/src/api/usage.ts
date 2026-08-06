@@ -216,12 +216,14 @@ export async function getStatsByDateRange(
  * @param startDate - Start date (YYYY-MM-DD format)
  * @param endDate - End date (YYYY-MM-DD format)
  * @param apiKeyId - Optional API key ID filter
+ * @param timezone - Optional IANA timezone for parsing local dates
  * @returns Usage logs within date range
  */
 export async function getByDateRange(
   startDate: string,
   endDate: string,
-  apiKeyId?: number
+  apiKeyId?: number,
+  timezone?: string
 ): Promise<PaginatedResponse<UsageLog>> {
   const params: UsageQueryParams = {
     start_date: startDate,
@@ -232,6 +234,10 @@ export async function getByDateRange(
 
   if (apiKeyId !== undefined) {
     params.api_key_id = apiKeyId
+  }
+
+  if (timezone) {
+    params.timezone = timezone
   }
 
   const { data } = await apiClient.get<PaginatedResponse<UsageLog>>('/usage', {

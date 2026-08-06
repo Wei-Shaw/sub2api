@@ -299,8 +299,8 @@ func (s *UsageService) GetUserDashboardStats(ctx context.Context, userID int64) 
 }
 
 // GetAPIKeyDashboardStats returns dashboard summary stats filtered by API Key.
-func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64) (*usagestats.UserDashboardStats, error) {
-	stats, err := s.usageRepo.GetAPIKeyDashboardStats(ctx, apiKeyID)
+func (s *UsageService) GetAPIKeyDashboardStats(ctx context.Context, apiKeyID int64, todayStart time.Time) (*usagestats.UserDashboardStats, error) {
+	stats, err := s.usageRepo.GetAPIKeyDashboardStats(ctx, apiKeyID, todayStart)
 	if err != nil {
 		return nil, fmt.Errorf("get api key dashboard stats: %w", err)
 	}
@@ -317,12 +317,12 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 }
 
 // GetUsageTrendWithFilters returns trend data using the shared usage filter shape.
-func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
+func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity, userTimezone string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
 	type usageTrendWithFiltersRepo interface {
-		GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)
+		GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity, userTimezone string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)
 	}
 	if filterRepo, ok := s.usageRepo.(usageTrendWithFiltersRepo); ok {
-		trend, err := filterRepo.GetUsageTrendWithUsageFilters(ctx, startTime, endTime, granularity, filters)
+		trend, err := filterRepo.GetUsageTrendWithUsageFilters(ctx, startTime, endTime, granularity, userTimezone, filters)
 		if err != nil {
 			return nil, fmt.Errorf("get usage trend with filters: %w", err)
 		}
@@ -403,8 +403,11 @@ func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, 
 }
 
 // GetAPIKeyDailyUsage returns daily usage stats for a user's API key.
-func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.APIKeyDailyUsagePoint, error) {
-	trend, err := s.usageRepo.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userID, apiKeyID, 0, 0, "", nil, nil, nil)
+func (s *UsageService) GetAPIKeyDailyUsage(ctx context.Context, userID, apiKeyID int64, startTime, endTime time.Time, userTimezone string) ([]usagestats.APIKeyDailyUsagePoint, error) {
+	trend, err := s.GetUsageTrendWithFilters(ctx, startTime, endTime, "day", userTimezone, usagestats.UsageLogFilters{
+		UserID:   userID,
+		APIKeyID: apiKeyID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("get api key daily usage: %w", err)
 	}
