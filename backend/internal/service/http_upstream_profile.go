@@ -7,8 +7,9 @@ import "context"
 type HTTPUpstreamProfile string
 
 const (
-	HTTPUpstreamProfileDefault HTTPUpstreamProfile = ""
-	HTTPUpstreamProfileOpenAI  HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileDefault         HTTPUpstreamProfile = ""
+	HTTPUpstreamProfileOpenAI          HTTPUpstreamProfile = "openai"
+	HTTPUpstreamProfileOllamaAnthropic HTTPUpstreamProfile = "ollama_anthropic"
 )
 
 type httpUpstreamProfileContextKey struct{}
@@ -35,11 +36,18 @@ func HTTPUpstreamProfileFromContext(ctx context.Context) HTTPUpstreamProfile {
 		return HTTPUpstreamProfileDefault
 	}
 	switch profile {
-	case HTTPUpstreamProfileOpenAI:
+	case HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileOllamaAnthropic:
 		return profile
 	default:
 		return HTTPUpstreamProfileDefault
 	}
+}
+
+func withOllamaAnthropicHTTPUpstreamProfile(ctx context.Context, account *Account) context.Context {
+	if account == nil || account.Platform != PlatformAnthropic || !IsOllamaCloudUsageAccount(account) {
+		return ctx
+	}
+	return WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOllamaAnthropic)
 }
 
 // WithHTTPUpstreamRedirectsDisabled prevents credential-bearing probes from

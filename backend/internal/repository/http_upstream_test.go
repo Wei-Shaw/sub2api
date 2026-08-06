@@ -645,6 +645,31 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
 	require.Equal(s.T(), 1800*time.Second, transport.ResponseHeaderTimeout)
 }
 
+func (s *HTTPUpstreamSuite) TestOllamaAnthropicProfileUsesHTTP2AndGenericHeaderTimeout() {
+	s.cfg.Gateway = config.GatewayConfig{
+		ResponseHeaderTimeout:       600,
+		OpenAIResponseHeaderTimeout: 1800,
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
+			Enabled: false,
+		},
+	}
+	svc := s.newService()
+	defaultEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileDefault, false, false)
+	require.NoError(s.T(), err)
+	openAIEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOpenAI, false, false)
+	require.NoError(s.T(), err)
+	ollamaEntry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileOllamaAnthropic, false, false)
+	require.NoError(s.T(), err)
+
+	transport, ok := ollamaEntry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.Equal(s.T(), 600*time.Second, transport.ResponseHeaderTimeout)
+	require.True(s.T(), transport.ForceAttemptHTTP2)
+	require.Equal(s.T(), upstreamProtocolModeOllamaAnthropicH2, ollamaEntry.protocolMode)
+	require.NotSame(s.T(), defaultEntry, ollamaEntry, "Ollama Anthropic must not share the default client pool")
+	require.NotSame(s.T(), openAIEntry, ollamaEntry, "Ollama Anthropic must not share the OpenAI client pool")
+}
+
 func (s *HTTPUpstreamSuite) TestOpenAIProfileTLSFingerprintDoesNotInheritGenericHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout: 600,

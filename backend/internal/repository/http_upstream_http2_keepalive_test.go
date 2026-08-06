@@ -24,17 +24,25 @@ func http2KeepAliveTestPoolSettings() poolSettings {
 // http2.Transport 默认 ReadIdleTimeout=0（不发健康 PING），无法检测这种死连接。
 // 必须显式启用主动 PING 探测，让死连接被提前剔除，而不是只靠 ResponseHeaderTimeout
 // 事后兜底。
-func TestEnableOpenAIHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
+func TestEnableHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
 	tr := &http.Transport{}
 
-	h2, err := enableOpenAIHTTP2KeepAlive(tr)
+	h2, err := enableHTTP2KeepAlive(tr)
 	require.NoError(t, err)
 	require.NotNil(t, h2, "必须返回已配置的 *http2.Transport")
 
 	require.Positive(t, h2.ReadIdleTimeout, "必须启用空闲 PING 探测以剔除死连接")
-	require.Equal(t, openAIHTTP2ReadIdleTimeout, h2.ReadIdleTimeout)
-	require.Equal(t, openAIHTTP2PingTimeout, h2.PingTimeout, "PING 无响应必须有超时判定")
+	require.Equal(t, upstreamHTTP2ReadIdleTimeout, h2.ReadIdleTimeout)
+	require.Equal(t, upstreamHTTP2PingTimeout, h2.PingTimeout, "PING 无响应必须有超时判定")
 	require.NotNil(t, tr.TLSNextProto["h2"], "http2 必须已挂到底层 http.Transport 上")
+}
+
+// Ollama Anthropic 专用模式复用同一套 H2 PING 健康探测，但不改变 default 模式。
+func TestBuildUpstreamTransport_OllamaAnthropicH2_EnablesPingHealthCheck(t *testing.T) {
+	tr, err := buildUpstreamTransport(http2KeepAliveTestPoolSettings(), nil, upstreamProtocolModeOllamaAnthropicH2)
+	require.NoError(t, err)
+	require.True(t, tr.ForceAttemptHTTP2, "Ollama Anthropic 专用模式必须启用 HTTP/2")
+	require.NotNil(t, tr.TLSNextProto["h2"], "专用模式必须显式配置 http2 keepalive")
 }
 
 // openai_h2 模式构建的 Transport 必须带上 H2 PING 健康探测，从源头剔除死连接。
