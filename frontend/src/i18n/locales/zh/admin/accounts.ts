@@ -570,6 +570,9 @@ export default {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
+        requestHeaderPassthrough: '透传客户端请求头',
+        requestHeaderPassthroughDesc:
+          '将客户端的 User-Agent、originator、version 及其他扩展请求头原样转发到上游；认证、连接控制和会话隔离头仍由网关管理。',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
