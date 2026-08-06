@@ -78,6 +78,27 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
+        <div
+          v-if="account.platform === 'openai'"
+          class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.countTokensMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.countTokensModeDesc') }}
+            </p>
+          </div>
+          <select
+            v-model="openAICountTokensMode"
+            class="input w-52 text-sm"
+            data-testid="openai-count-tokens-mode-select"
+            :aria-label="t('admin.accounts.openai.countTokensMode')"
+          >
+            <option value="remote">{{ t('admin.accounts.openai.countTokensModeRemote') }}</option>
+            <option value="local">{{ t('admin.accounts.openai.countTokensModeLocal') }}</option>
+          </select>
+        </div>
+
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2777,6 +2798,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const openAICountTokensMode = ref<'remote' | 'local'>('remote')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3367,6 +3389,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
+  openAICountTokensMode.value = 'remote'
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3555,6 +3578,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+    openAICountTokensMode.value =
+      credentials.openai_count_tokens_mode === 'local' ? 'local' : 'remote'
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4191,6 +4216,11 @@ const handleSubmit = async () => {
           newCredentials.compact_model_mapping = compactModelMapping
         } else {
           delete newCredentials.compact_model_mapping
+        }
+        if (openAICountTokensMode.value === 'local') {
+          newCredentials.openai_count_tokens_mode = 'local'
+        } else {
+          delete newCredentials.openai_count_tokens_mode
         }
       }
 

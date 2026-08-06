@@ -639,6 +639,29 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_responses_supported).toBe(false)
   })
 
+  it('loads and clears local token counting for OpenAI API key accounts', async () => {
+    const account = buildAccount()
+    account.credentials.openai_count_tokens_mode = 'local'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const select = wrapper.get<HTMLSelectElement>(
+      '[data-testid="openai-count-tokens-mode-select"]'
+    )
+    expect(select.element.value).toBe('local')
+
+    await select.setValue('remote')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
+      'openai_count_tokens_mode'
+    )
+  })
+
   it('submits the account upstream billing auto-probe setting', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
