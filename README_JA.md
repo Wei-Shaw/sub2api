@@ -156,6 +156,16 @@
 <td>本プロジェクトをご支援いただいている <a href="https://lanox.ai/?c=6">LanoX AI</a> に感謝します！LanoX AI は、開発者、チーム、企業向けに、安定性とコストパフォーマンスに優れたグローバルモデル接続サービスを提供しています。 🎁 新規ユーザー特典 — 数百万 Token を無料で獲得可能。さらに 500+ の無料モデルで、低コストなテスト、検証、デプロイをより簡単に 🧠 世界の主要モデル — GPT · Claude · Gemini · Qwen · Grok... 🎬 マルチモーダル制作 — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ エンタープライズ級の安定性 — 高可用性 💎 ネイティブ能力の出力 💎 性能劣化なし 💎 モデル混在なし 💎 利用量と課金が透明 💎 💰 より低い利用コスト — トップモデルを公式価格の 1 割から利用可能。明確なドキュメント、簡単な接続、請求書発行、企業向け一括利用に対応 🏢 企業に最適 — AI プロダクト、Agent、コンテンツプラットフォーム、大量利用する開発チームに最適</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.rapidproxy.io/?ref=sub2api"><img src="assets/partners/logos/rapidproxy.jpg" alt="RapidProxy" width="150"></a></td>
+<td><a href="https://www.rapidproxy.io/?ref=sub2api">RapidProxy</a> は開発者向けのデータ収集プロキシソリューションであり、安定して信頼できる住宅用プロキシサービスを提供します。9,000 万以上のグローバル住宅 IP と 200 以上の国・地域のカバー、インテリジェントなローテーション機構、精密な地域ターゲティング機能により、クローラー、AI データ学習、SEO モニタリング、EC データ分析などのプロジェクトがアクセス制限を突破し、データ収集の効率を高めます。Playwright、Selenium、Puppeteer などの主要な自動化フレームワークに対応し、料金は $0.65/GB から。<a href="https://www.rapidproxy.io/?ref=sub2api">今すぐ無料でお試しください</a>。</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://hao.ai"><img src="assets/partners/logos/haoai.svg" alt="hao.ai" width="150"></a></td>
+<td><a href="https://hao.ai">hao.ai</a> は、開発者とチーム向けの高速で安定した大規模モデル統合 API ゲートウェイです。1 つの API Key と統一されたインターフェースで、GPT、Claude、xAI Grok などの主要モデルに接続でき、OpenAI や Anthropic などの一般的なプロトコルと SDK に対応しています。プラットフォームはモデルルーティング、フェイルオーバー、チーム管理、完全な呼び出しログを提供し、モデル価格は公式参考価格の 1.5 割から。よりシンプルに、より安定して、より低コストに AI アプリケーションを構築できます。</td>
+</tr>
+
 </table>
 
 ## 概要
