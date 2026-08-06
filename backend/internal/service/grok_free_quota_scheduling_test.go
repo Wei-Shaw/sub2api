@@ -32,6 +32,8 @@ type grokFreeQuotaAccountRepoStub struct {
 	rateLimitedCalls     int
 	lastRateLimitedID    int64
 	lastRateLimitResetAt time.Time
+	activationCalls      int
+	active               bool
 }
 
 func (r *grokFreeQuotaAccountRepoStub) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
@@ -43,6 +45,15 @@ func (r *grokFreeQuotaAccountRepoStub) SetRateLimited(_ context.Context, id int6
 
 func (r *grokFreeQuotaAccountRepoStub) SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error {
 	return r.SetRateLimited(ctx, id, resetAt)
+}
+
+func (r *grokFreeQuotaAccountRepoStub) SetRateLimitedIfInactive(ctx context.Context, id int64, resetAt time.Time) (bool, error) {
+	r.activationCalls++
+	if r.active {
+		return false, nil
+	}
+	r.active = true
+	return true, r.SetRateLimited(ctx, id, resetAt)
 }
 
 func (r *grokFreeQuotaUsageRepoStub) GetAccountWindowStatsBatch(_ context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error) {
@@ -281,6 +292,26 @@ func TestGrokFreeRollingQuotaServiceWrappersPersistLocalCooldown(t *testing.T) {
 		require.False(t, known)
 		require.False(t, exhausted)
 		require.Zero(t, accountRepo.rateLimitedCalls)
+	})
+
+	t.Run("stale snapshot cannot extend active cooldown", func(t *testing.T) {
+		accountRepo := &grokFreeQuotaAccountRepoStub{}
+		svc := &OpenAIGatewayService{accountRepo: accountRepo, usageLogRepo: usageRepo}
+
+		firstBefore := time.Now()
+		firstExhausted, _, firstKnown := svc.grokFreeRollingQuotaExhausted(context.Background(), &account)
+		firstResetAt := accountRepo.lastRateLimitResetAt
+		time.Sleep(time.Millisecond)
+		secondExhausted, _, secondKnown := svc.grokFreeRollingQuotaExhausted(context.Background(), &account)
+
+		require.True(t, firstKnown)
+		require.True(t, firstExhausted)
+		require.True(t, secondKnown)
+		require.True(t, secondExhausted)
+		require.Equal(t, 2, accountRepo.activationCalls)
+		require.Equal(t, 1, accountRepo.rateLimitedCalls)
+		require.WithinDuration(t, firstBefore.Add(grokFreeLocalUsageCooldown), firstResetAt, time.Second)
+		require.Equal(t, firstResetAt, accountRepo.lastRateLimitResetAt)
 	})
 }
 

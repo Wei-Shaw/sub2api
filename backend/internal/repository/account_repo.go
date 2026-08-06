@@ -2170,6 +2170,37 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 	return nil
 }
 
+// SetRateLimitedIfInactive atomically starts a new account-level rate-limit
+// generation without extending one that is already active. Local rolling
+// quota checks can run concurrently with stale account snapshots, so repeated
+// checks must not keep moving the same cooldown boundary forward.
+func (r *accountRepository) SetRateLimitedIfInactive(ctx context.Context, id int64, resetAt time.Time) (bool, error) {
+	now := time.Now()
+	updated, err := r.client.Account.Update().
+		Where(
+			dbaccount.IDEQ(id),
+			dbaccount.Or(
+				dbaccount.RateLimitResetAtIsNil(),
+				dbaccount.RateLimitResetAtLTE(now),
+			),
+		).
+		SetRateLimitedAt(now).
+		SetRateLimitResetAt(resetAt).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if updated == 0 {
+		r.syncSchedulerAccountSnapshot(ctx, id)
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue activated rate limit failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return true, nil
+}
+
 // ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
 // by a successful request. Matching both timestamps prevents a stale success
 // from erasing a later clear/re-arm generation with an equal or shorter reset.
