@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -826,17 +827,18 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	return updates
 }
 
-// updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
-// updateCodexUsageSnapshot 把 /responses 的 x-codex-* 全局头快照写入账号 codex_* Extra。
-// ⚠️ 调用方必须排除 spark 影子账号(account.IsShadow()):影子的 codex_* 仅由 QueryUsage
-// (/wham/usage bengalfox 道)更新,不能被全局头口径污染(外审第7轮 P1)。本函数仅持 accountID,
-// 无法在此自检影子,故守卫前置到各调用点。
-func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot) {
+// updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field.
+// Callers must continue excluding spark shadow accounts: their codex_* fields are
+// refreshed only through the dimension-specific /wham/usage query.
+func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, account *Account, snapshot *OpenAICodexUsageSnapshot) {
 	if snapshot == nil {
 		return
 	}
-	if s == nil || s.accountRepo == nil {
+	if s == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
 		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	now := time.Now()
@@ -844,22 +846,70 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	if len(updates) == 0 {
 		return
 	}
-	if !s.getCodexSnapshotThrottle().Allow(accountID, now) {
+
+	throttle := s.getCodexSnapshotThrottle()
+	if s.codexSnapshotReachesAutoPauseThreshold(ctx, account, updates) {
+		unlockWrite, allowed := s.codexSnapshotWriteLocks.LockIfAllowed(account.ID, func() bool {
+			return throttle.AllowCritical(account.ID, now)
+		})
+		if !allowed {
+			return
+		}
+		defer unlockWrite()
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := s.accountRepo.UpdateExtra(persistCtx, account.ID, updates); err != nil {
+			throttle.CancelCritical(account.ID, now)
+			slog.Warn("openai_codex_auto_pause_snapshot_persist_failed", "account_id", account.ID, "error", err)
+		}
+		return
+	}
+	accountID := account.ID
+	unlockWrite, allowed := s.codexSnapshotWriteLocks.LockIfAllowed(accountID, func() bool {
+		return throttle.Allow(accountID, now)
+	})
+	if !allowed {
 		return
 	}
 
 	go func() {
+		defer unlockWrite()
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err != nil {
+			slog.Warn("openai_codex_snapshot_persist_failed", "account_id", accountID, "error", err)
+		}
 	}()
 }
 
-func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.Context, accountID int64, headers http.Header) {
-	if accountID <= 0 || headers == nil {
+func (s *OpenAIGatewayService) codexSnapshotReachesAutoPauseThreshold(ctx context.Context, account *Account, updates map[string]any) bool {
+	if account == nil || !account.IsOpenAI() || len(updates) == 0 {
+		return false
+	}
+	_, has5h := updates["codex_5h_used_percent"]
+	_, has7d := updates["codex_7d_used_percent"]
+	if !has5h && !has7d {
+		return false
+	}
+
+	mergedExtra := make(map[string]any, len(account.Extra)+len(updates))
+	for key, value := range account.Extra {
+		mergedExtra[key] = value
+	}
+	for key, value := range updates {
+		mergedExtra[key] = value
+	}
+	accountSnapshot := *account
+	accountSnapshot.Extra = mergedExtra
+	paused, _ := shouldAutoPauseOpenAIAccountByQuota(s.withOpenAIQuotaAutoPauseContext(ctx), &accountSnapshot)
+	return paused
+}
+
+func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.Context, account *Account, headers http.Header) {
+	if account == nil || account.ID <= 0 || headers == nil {
 		return
 	}
 	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
-		s.updateCodexUsageSnapshot(ctx, accountID, snapshot)
+		s.updateCodexUsageSnapshot(ctx, account, snapshot)
 	}
 }

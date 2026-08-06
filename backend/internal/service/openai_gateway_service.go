@@ -62,7 +62,8 @@ const (
 	// 官方身份时整体回退到本常量，因此它必须跟随官方 CLI 的当前发布版本，
 	// 落后多个版本会让这些请求稳定落在被优先丢弃的一侧。
 	codexCLIVersion = "0.146.0"
-	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
+	// 普通 Codex 限额快照不需要每个成功请求都立即落库；达到自动暂停阈值的
+	// 快照会绕过该节流并同步刷新调度缓存。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 	// 配额自动暂停时，超过该时长仍未刷新的 used% 快照视为陈旧，不再据此暂停账号。
 	// 被暂停的账号收不到流量，其快照永远不会从上游响应头刷新；该兜底让账号在快照
@@ -351,15 +352,67 @@ type openAIWSRetryMetrics struct {
 }
 
 type accountWriteThrottle struct {
-	minInterval time.Duration
-	mu          sync.Mutex
-	lastByID    map[int64]time.Time
+	minInterval      time.Duration
+	mu               sync.Mutex
+	lastByID         map[int64]time.Time
+	criticalLastByID map[int64]time.Time
+}
+
+type accountWriteLockEntry struct {
+	orderMu sync.Mutex
+	writeMu sync.Mutex
+	refs    int
+}
+
+type accountWriteLockMap struct {
+	mu    sync.Mutex
+	locks map[int64]*accountWriteLockEntry
+}
+
+// LockIfAllowed orders the throttle decision and write-lock acquisition for one
+// account. This prevents an older write that already passed throttling from being
+// overtaken by a newer critical write before it has claimed the write lock.
+func (m *accountWriteLockMap) LockIfAllowed(id int64, allow func() bool) (func(), bool) {
+	m.mu.Lock()
+	if m.locks == nil {
+		m.locks = make(map[int64]*accountWriteLockEntry)
+	}
+	entry := m.locks[id]
+	if entry == nil {
+		entry = &accountWriteLockEntry{}
+		m.locks[id] = entry
+	}
+	entry.refs++
+	m.mu.Unlock()
+
+	entry.orderMu.Lock()
+	if allow != nil && !allow() {
+		entry.orderMu.Unlock()
+		m.release(id, entry)
+		return nil, false
+	}
+	entry.writeMu.Lock()
+	entry.orderMu.Unlock()
+	return func() {
+		entry.writeMu.Unlock()
+		m.release(id, entry)
+	}, true
+}
+
+func (m *accountWriteLockMap) release(id int64, entry *accountWriteLockEntry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	entry.refs--
+	if entry.refs == 0 && m.locks[id] == entry {
+		delete(m.locks, id)
+	}
 }
 
 func newAccountWriteThrottle(minInterval time.Duration) *accountWriteThrottle {
 	return &accountWriteThrottle{
-		minInterval: minInterval,
-		lastByID:    make(map[int64]time.Time),
+		minInterval:      minInterval,
+		lastByID:         make(map[int64]time.Time),
+		criticalLastByID: make(map[int64]time.Time),
 	}
 }
 
@@ -375,17 +428,60 @@ func (t *accountWriteThrottle) Allow(id int64, now time.Time) bool {
 		return false
 	}
 	t.lastByID[id] = now
-
-	if len(t.lastByID) > 4096 {
-		cutoff := now.Add(-4 * t.minInterval)
-		for accountID, writtenAt := range t.lastByID {
-			if writtenAt.Before(cutoff) {
-				delete(t.lastByID, accountID)
-			}
-		}
-	}
+	t.pruneLocked(now)
 
 	return true
+}
+
+// AllowCritical lets one threshold-crossing write bypass a recent ordinary write.
+// Further critical writes are deduplicated for the same interval so a burst of
+// already in-flight responses cannot fan out into an unbounded number of DB writes.
+func (t *accountWriteThrottle) AllowCritical(id int64, now time.Time) bool {
+	if t == nil || id <= 0 || t.minInterval <= 0 {
+		return true
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if last, ok := t.criticalLastByID[id]; ok && now.Sub(last) < t.minInterval {
+		return false
+	}
+	t.criticalLastByID[id] = now
+	t.lastByID[id] = now
+	t.pruneLocked(now)
+	return true
+}
+
+func (t *accountWriteThrottle) CancelCritical(id int64, allowedAt time.Time) {
+	if t == nil || id <= 0 || t.minInterval <= 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if last, ok := t.criticalLastByID[id]; ok && last.Equal(allowedAt) {
+		delete(t.criticalLastByID, id)
+	}
+	if last, ok := t.lastByID[id]; ok && last.Equal(allowedAt) {
+		delete(t.lastByID, id)
+	}
+}
+
+func (t *accountWriteThrottle) pruneLocked(now time.Time) {
+	if len(t.lastByID) <= 4096 && len(t.criticalLastByID) <= 4096 {
+		return
+	}
+	cutoff := now.Add(-4 * t.minInterval)
+	for accountID, writtenAt := range t.lastByID {
+		if writtenAt.Before(cutoff) {
+			delete(t.lastByID, accountID)
+		}
+	}
+	for accountID, writtenAt := range t.criticalLastByID {
+		if writtenAt.Before(cutoff) {
+			delete(t.criticalLastByID, accountID)
+		}
+	}
 }
 
 var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
@@ -451,6 +547,7 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
+	codexSnapshotWriteLocks             accountWriteLockMap
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map

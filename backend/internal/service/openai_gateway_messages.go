@@ -443,6 +443,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
 		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
 	}
+	if account.Type == AccountTypeOAuth && !account.IsShadow() && account.Platform != PlatformGrok {
+		// Process quota headers before draining the always-streaming upstream body.
+		s.UpdateCodexUsageSnapshotFromHeaders(ctx, account, resp.Header)
+	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
 		if turnState := strings.TrimSpace(resp.Header.Get("x-codex-turn-state")); turnState != "" {
@@ -485,14 +489,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
-		}
-	}
-
-	// Extract and save Codex usage snapshot from response headers (for OAuth accounts).
-	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
-	if handleErr == nil && account.Type == AccountTypeOAuth && !account.IsShadow() && account.Platform != PlatformGrok {
-		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
 		}
 	}
 
