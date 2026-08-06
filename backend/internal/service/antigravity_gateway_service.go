@@ -652,6 +652,7 @@ func normalizeGeminiRequestForAntigravity(body []byte) ([]byte, error) {
 	}
 	return normalized, nil
 }
+
 // wrapV1InternalRequest 包装请求为 v1internal 格式
 func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model string, originalBody []byte) ([]byte, error) {
 	var request any
