@@ -13,7 +13,7 @@ import (
 
 const (
 	grokFreeUsageExhaustedCode      = "subscription:free-usage-exhausted"
-	grokFreeUsageExhaustionCooldown = 2 * time.Hour
+	grokFreeUsageExhaustionCooldown = 24 * time.Hour
 )
 
 var grokFreeUsageTokenPairPattern = regexp.MustCompile(`(?i)tokens?\s*(?:\(actual\s*/\s*limit\))?\s*[:=]?\s*(\d+)\s*/\s*(\d+)`)
