@@ -11,6 +11,8 @@ import (
 
 type grokFreeQuotaUsageContextKeyType struct{}
 
+const grokFreeLocalUsageCooldown = 24 * time.Hour
+
 type grokFreeQuotaUsageEntry struct {
 	tokens int64
 	known  bool
@@ -164,7 +166,10 @@ func (s *OpenAIGatewayService) grokFreeRollingQuotaExhausted(ctx context.Context
 	if s == nil {
 		return false, 0, false
 	}
-	return grokFreeRollingQuotaExhausted(ctx, s.usageLogRepo, account, time.Now())
+	now := time.Now()
+	exhausted, tokens, known := grokFreeRollingQuotaExhausted(ctx, s.usageLogRepo, account, now)
+	persistGrokFreeLocalUsageRateLimit(ctx, s.accountRepo, account, now, exhausted, known)
+	return exhausted, tokens, known
 }
 
 func (s *GatewayService) withGrokFreeQuotaUsagePrefetch(ctx context.Context, accounts []Account) context.Context {
@@ -178,5 +183,25 @@ func (s *GatewayService) grokFreeRollingQuotaExhausted(ctx context.Context, acco
 	if s == nil {
 		return false, 0, false
 	}
-	return grokFreeRollingQuotaExhausted(ctx, s.usageLogRepo, account, time.Now())
+	now := time.Now()
+	exhausted, tokens, known := grokFreeRollingQuotaExhausted(ctx, s.usageLogRepo, account, now)
+	persistGrokFreeLocalUsageRateLimit(ctx, s.accountRepo, account, now, exhausted, known)
+	return exhausted, tokens, known
+}
+
+func persistGrokFreeLocalUsageRateLimit(
+	ctx context.Context,
+	repo AccountRepository,
+	account *Account,
+	now time.Time,
+	exhausted bool,
+	known bool,
+) {
+	if !known || !exhausted || repo == nil || account == nil || account.ID <= 0 {
+		return
+	}
+	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) {
+		return
+	}
+	persistGrokRateLimit(ctx, repo, account, now.Add(grokFreeLocalUsageCooldown))
 }
