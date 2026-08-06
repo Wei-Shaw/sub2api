@@ -489,6 +489,41 @@ func TestHandleGeminiUpstreamError_GoogleOneCapacityExhaustedUsesTierCooldown(t 
 	require.True(t, repo.lastRateLimitReset.Before(after.Add(5*time.Minute).Add(2*time.Second)))
 }
 
+func TestHandleGeminiUpstreamError_VertexServiceAccountUsesShortCooldown(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	svc := &GeminiMessagesCompatService{
+		accountRepo: repo,
+	}
+
+	account := &Account{
+		ID:       812,
+		Platform: PlatformGemini,
+		Type:     AccountTypeServiceAccount,
+		Credentials: map[string]any{
+			"tier_id": "vertex",
+		},
+	}
+	// Vertex QPM 429 body: no quotaResetDelay, no "per day" wording.
+	body := []byte(`{"error":{"code":429,"message":"Resource has been exhausted (e.g. check quota).","status":"RESOURCE_EXHAUSTED"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, int64(812), repo.lastRateLimitID)
+	// Unknown tier → geminiCooldownForTier default 5 minutes (not PST midnight).
+	require.WithinDuration(t, before.Add(5*time.Minute), repo.lastRateLimitReset, 2*time.Second)
+	require.True(t, repo.lastRateLimitReset.After(before))
+	require.True(t, repo.lastRateLimitReset.Before(after.Add(5*time.Minute).Add(2*time.Second)))
+
+	// Sanity: must NOT be locked until next PST midnight (often many hours away).
+	pstMidnight := geminiDailyResetTime(before)
+	require.True(t, repo.lastRateLimitReset.Before(before.Add(30*time.Minute)),
+		"Vertex SA cooldown should be minutes-scale, got reset_at=%v (pst midnight would be %v)",
+		repo.lastRateLimitReset, pstMidnight)
+}
+
 type geminiErrorPolicyRepo struct {
 	mockAccountRepoForGemini
 	setErrorCalls            int
