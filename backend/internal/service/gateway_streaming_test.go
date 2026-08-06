@@ -253,7 +253,7 @@ func TestHandleStreamingResponse_StreamReadErrorBeforeOutput_TriggersFailover(t 
 	// 2) error.type 标记为 upstream_disconnected
 	extractedMsg := ExtractUpstreamErrorMessage(failoverErr.ResponseBody)
 	require.NotEmpty(t, extractedMsg, "ExtractUpstreamErrorMessage 必须从 ResponseBody 取到非空 message，否则 ops 日志会丢失诊断信息")
-	require.Contains(t, extractedMsg, "upstream stream disconnected")
+	require.Contains(t, extractedMsg, "upstream connection error")
 	require.Contains(t, string(failoverErr.ResponseBody), `"type":"error"`)
 	require.Contains(t, string(failoverErr.ResponseBody), `"upstream_disconnected"`)
 
@@ -297,7 +297,7 @@ func TestHandleStreamingResponse_StreamReadErrorAfterOutput_PassesThrough(t *tes
 	require.Contains(t, body, "event: error\n", "必须按 Anthropic SSE 标准发送 error 事件帧")
 	require.Contains(t, body, `"type":"error"`, "data 必须含 type:error 顶层字段（Anthropic 标准）")
 	require.Contains(t, body, `"stream_read_error"`, "error.type 必须为 stream_read_error")
-	require.Contains(t, body, "upstream stream disconnected", "error.message 必须包含具体根因，Claude Code 等客户端才能显示有效错误文案")
+	require.Contains(t, body, "upstream connection error", "error.message 必须包含具体根因与可重试信号词，Claude Code 等客户端才能显示有效错误文案")
 }
 
 // 默认 (*net.OpError).Error() 会拼接 Source/Addr 字段，泄露内部 IP/端口与上游
@@ -391,7 +391,7 @@ func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) 
 	require.NotContains(t, body, "443")
 	// 仍然包含可诊断的根因
 	require.Contains(t, body, "connection reset by peer")
-	require.Contains(t, body, "upstream stream disconnected")
+	require.Contains(t, body, "upstream connection error")
 }
 
 // 上游 HTTP 200 + SSE 流体内 event:error 帧应被识别为 *sseStreamErrorEventError，
