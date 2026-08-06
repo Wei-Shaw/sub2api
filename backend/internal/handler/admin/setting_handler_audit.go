@@ -122,6 +122,9 @@ REDACTED
 	if req.TencentCaptchaCloudSecretKey != "" {
 		changed = append(changed, "tencent_captcha_cloud_secret_key")
 REDACTED
+	if before.TencentCaptchaRegion != after.TencentCaptchaRegion {
+		changed = append(changed, "tencent_captcha_region")
+REDACTED
 	if before.AliyunCaptchaEnabled != after.AliyunCaptchaEnabled {
 		changed = append(changed, "aliyun_captcha_enabled")
 REDACTED

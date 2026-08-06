@@ -18,10 +18,21 @@ const (
 	NonceTemplate = "__CSP_NONCE__"
 	// CloudflareInsightsDomain is the domain for Cloudflare Web Analytics
 	CloudflareInsightsDomain = "https://static.cloudflareinsights.com"
-	// TencentCaptchaDomain is the Tencent Captcha 2.0 Web SDK domain.
+	// TencentCaptchaDomain is the Tencent Captcha 2.0 Web SDK domain (Chinese mainland site).
 	TencentCaptchaDomain = "https://turing.captcha.qcloud.com"
 	// TencentCaptchaStaticDomain is the Tencent Captcha static asset domain.
 	TencentCaptchaStaticDomain = "https://*.captcha.gtimg.com"
+	// TencentCaptchaCDNDomain 是天御国内站的核心 JS CDN 主机：
+	// 入口脚本 TJCaptcha.js 会再从这里加载 /1/tgJCap.*.js，缺失时会被 script-src 拦截。
+	TencentCaptchaCDNDomain = "https://turing.captcha.gtimg.com"
+	// TencentCaptchaGlobalDomain 是天御国际站的 Web SDK 与验证弹窗 iframe 主机。
+	TencentCaptchaGlobalDomain = "https://ca.turing.captcha.qcloud.com"
+	// TencentCaptchaGlobalCDNDomain 是天御国际站的核心 JS CDN 主机。
+	TencentCaptchaGlobalCDNDomain = "https://global.turing.captcha.gtimg.com"
+	// TencentCaptchaPrehandleDomain 是天御 SDK 动态预处理脚本与预处理接口主机。
+	TencentCaptchaPrehandleDomain = "https://www.tycaptcha.com"
+	// TencentCaptchaWorkerSource 是天御国际站创建验证码 Web Worker 时使用的来源。
+	TencentCaptchaWorkerSource = "blob:"
 	// StripeDomain is the domain for Stripe.js SDK
 	StripeDomain = "https://*.stripe.com"
 	// AirwallexStaticDomain 是 Airwallex 生产环境 SDK 脚本域名。
@@ -42,6 +53,15 @@ REDACTED{
 	{"script-src", TencentCaptchaDomainREDACTED,
 	{"frame-src", TencentCaptchaDomainREDACTED,
 	{"style-src", TencentCaptchaStaticDomainREDACTED,
+	{"script-src", TencentCaptchaCDNDomainREDACTED,
+	{"script-src", TencentCaptchaGlobalDomainREDACTED,
+	{"script-src", TencentCaptchaGlobalCDNDomainREDACTED,
+	{"script-src", TencentCaptchaPrehandleDomainREDACTED,
+	{"connect-src", TencentCaptchaDomainREDACTED,
+	{"connect-src", TencentCaptchaPrehandleDomainREDACTED,
+	{"frame-src", TencentCaptchaGlobalDomainREDACTED,
+	{"frame-src", TencentCaptchaPrehandleDomainREDACTED,
+	{"worker-src", TencentCaptchaWorkerSourceREDACTED,
 	{"script-src", StripeDomainREDACTED,
 	{"frame-src", StripeDomainREDACTED,
 	{"script-src", AirwallexStaticDomainREDACTED,
