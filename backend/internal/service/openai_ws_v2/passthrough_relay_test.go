@@ -202,7 +202,7 @@ REDACTED, true)
 	require.Equal(t, 7, result.Usage.InputTokens)
 	require.Equal(t, 3, result.Usage.OutputTokens)
 	require.Equal(t, 2, result.Usage.CacheReadInputTokens)
-	require.NotNil(t, result.FirstTokenMs)
+	require.Nil(t, result.FirstTokenMs)
 	require.Equal(t, int64(1), result.ClientToUpstreamFrames)
 	require.Equal(t, int64(1), result.UpstreamToClientFrames)
 	require.Equal(t, int64(0), result.DroppedDownstreamFrames)
@@ -863,6 +863,64 @@ REDACTED
 
 func (c *errorOnWriteFrameConn) Close() error {
 	return nil
+REDACTED
+
+func TestRelay_NoDeltaTerminalSequence_FirstTokenMsNil(t *testing.T) {
+	t.Parallel()
+
+	for _, terminalEvent := range []string{"response.completed", "response.done"REDACTED {
+		terminalEvent := terminalEvent
+		t.Run(terminalEvent, func(t *testing.T) {
+			t.Parallel()
+
+			clientConn := newPassthroughTestFrameConn(nil, false)
+			upstreamConn := newPassthroughTestFrameConn([]passthroughTestFrame{
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.created","response":{"id":"resp_no_delta"REDACTEDREDACTED`),
+			REDACTED,
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.in_progress","response":{"id":"resp_no_delta"REDACTEDREDACTED`),
+			REDACTED,
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.output_text.done","response_id":"resp_no_delta","text":""REDACTED`),
+			REDACTED,
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.content_part.done","response_id":"resp_no_delta"REDACTED`),
+			REDACTED,
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"response.output_item.done","response_id":"resp_no_delta"REDACTED`),
+			REDACTED,
+				{
+					msgType: coderws.MessageText,
+					payload: []byte(`{"type":"` + terminalEvent + `","response":{"id":"resp_no_delta","usage":{"input_tokens":2,"output_tokens":0REDACTEDREDACTEDREDACTED`),
+			REDACTED,
+		REDACTED, true)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			var turn RelayTurnResult
+			result, relayExit := Relay(
+				ctx,
+				clientConn,
+				upstreamConn,
+				[]byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]REDACTED`),
+				RelayOptions{OnTurnComplete: func(current RelayTurnResult) { turn = current REDACTEDREDACTED,
+			)
+
+			require.Nil(t, relayExit)
+			require.Equal(t, terminalEvent, turn.TerminalEventType)
+			require.Nil(t, turn.FirstTokenMs)
+			require.Equal(t, terminalEvent, result.TerminalEventType)
+			require.Nil(t, result.FirstTokenMs)
+			require.Equal(t, int64(6), result.UpstreamToClientFrames)
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestRelay_OnTurnComplete_RealOpenAIStream_FirstTokenMs(t *testing.T) {

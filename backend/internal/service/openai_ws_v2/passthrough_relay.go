@@ -953,23 +953,7 @@ REDACTED
 REDACTED
 
 func isTokenEvent(eventType string) bool {
-	if eventType == "" {
-		return false
-REDACTED
-	switch eventType {
-	case "response.created", "response.in_progress", "response.output_item.added", "response.output_item.done":
-		return false
-REDACTED
-	if strings.Contains(eventType, ".delta") {
-		return true
-REDACTED
-	if strings.HasPrefix(eventType, "response.output_text") {
-		return true
-REDACTED
-	if strings.HasPrefix(eventType, "response.output") {
-		return true
-REDACTED
-	return eventType == "response.completed" || eventType == "response.done"
+	return strings.HasSuffix(strings.TrimSpace(eventType), ".delta")
 REDACTED
 
 func minDuration(a, b time.Duration) time.Duration {
