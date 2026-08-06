@@ -975,8 +975,20 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// 3. 尝试从响应头解析重置时间（Anthropic 聚合头，向后兼容）
 	resetTimestamp := headers.Get("anthropic-ratelimit-unified-reset")
 
-	// 4. 如果响应头没有，尝试从响应体解析（OpenAI usage_limit_reached, Gemini）
+	// 4. 如果响应头没有，尝试从响应体解析（OpenAI usage_limit_reached, Gemini, ZhiPu 1310/1308）
 	if resetTimestamp == "" {
+		// 通用解析：优先检查智谱 (ZhiPu) 的 1310/1308 错误响应
+		if resetAt := parseZhipuRateLimitResetTime(responseBody); resetAt != nil {
+			resetTime := time.Unix(*resetAt, 0)
+			s.notifyAccountSchedulingBlocked(account, resetTime, "429")
+			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+				return
+			}
+			slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second), "reason", "zhipu_code_reset_time")
+			return
+		}
+
 		switch account.Platform {
 		case PlatformOpenAI:
 			// 尝试解析 OpenAI 的 usage_limit_reached 错误
@@ -1504,6 +1516,51 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 	if resetsInSeconds, ok := errObj["resets_in_seconds"].(string); ok {
 		if sec, err := strconv.ParseInt(resetsInSeconds, 10, 64); err == nil {
 			ts := time.Now().Unix() + sec
+			return &ts
+		}
+	}
+
+	return nil
+}
+
+// parseZhipuRateLimitResetTime 解析智谱(ZhiPu) 429 报错中的重置时间 (code 1310/1308)
+// 格式:
+//  {"error":{"code":"1310","message":"[1310][您已达到每周/每月使用上限，您的限额将在 2026-08-05 15:16:26 重置。][foo]"}}
+//  {"error":{"code":"1308","message":"[1308][已达到 5 小时的使用上限。您的限额将在 2026-08-04 18:50:36 重置。][bar]"}}
+var zhipuResetTimeRegex = regexp.MustCompile(`(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})`)
+
+func parseZhipuRateLimitResetTime(body []byte) *int64 {
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil
+	}
+
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	var codeStr string
+	switch c := errObj["code"].(type) {
+	case string:
+		codeStr = c
+	case float64:
+		codeStr = strconv.FormatInt(int64(c), 10)
+	}
+
+	if codeStr != "1310" && codeStr != "1308" {
+		return nil
+	}
+
+	msg, _ := errObj["message"].(string)
+	match := zhipuResetTimeRegex.FindStringSubmatch(msg)
+	if len(match) >= 2 {
+		loc, err := time.LoadLocation("Asia/Shanghai")
+		if err != nil {
+			loc = time.Local
+		}
+		if t, err := time.ParseInLocation("2006-01-02 15:04:05", match[1], loc); err == nil {
+			ts := t.Unix()
 			return &ts
 		}
 	}
