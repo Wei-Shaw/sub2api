@@ -89,6 +89,23 @@ webauthn:
   rp_origins: []
 
 # =============================================================================
+# Web3 Authentication Configuration
+# Web3 认证配置
+# =============================================================================
+web3_auth:
+  # Browser-session cookie SameSite policy: "lax" or "none".
+  # Use "none" only when the frontend and API are on different sites; this
+  # automatically forces the cookie Secure attribute and therefore requires HTTPS.
+  # Cross-site deployments must also list the exact frontend origin under
+  # cors.allowed_origins and keep cors.allow_credentials enabled.
+  # 浏览器会话 Cookie 的 SameSite 策略："lax" 或 "none"。
+  # 仅当前端与 API 位于不同站点时使用 "none"；该模式会自动强制 Secure，因而要求 HTTPS。
+  # 跨站部署还必须在 cors.allowed_origins 中配置精确前端 Origin，并保持
+  # cors.allow_credentials 开启。
+  # Environment / 环境变量: WEB3_AUTH_BROWSER_COOKIE_SAME_SITE=none
+  browser_cookie_same_site: "lax"
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================

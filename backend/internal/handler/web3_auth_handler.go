@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -22,23 +23,26 @@ const (
 )
 
 type Web3AuthHandler struct {
-	web3Service *service.Web3AuthService
-	authService *service.AuthService
-	totpService *service.TotpService
-	settingSvc  *service.SettingService
+	web3Service           *service.Web3AuthService
+	authService           *service.AuthService
+	totpService           *service.TotpService
+	settingSvc            *service.SettingService
+	browserCookieSameSite http.SameSite
 }
 
 func NewWeb3AuthHandler(
+	cfg *config.Config,
 	web3Service *service.Web3AuthService,
 	authService *service.AuthService,
 	totpService *service.TotpService,
 	settingSvc *service.SettingService,
 ) *Web3AuthHandler {
 	return &Web3AuthHandler{
-		web3Service: web3Service,
-		authService: authService,
-		totpService: totpService,
-		settingSvc:  settingSvc,
+		web3Service:           web3Service,
+		authService:           authService,
+		totpService:           totpService,
+		settingSvc:            settingSvc,
+		browserCookieSameSite: resolveWeb3BrowserCookieSameSite(cfg),
 	}
 }
 
@@ -79,7 +83,7 @@ func (h *Web3AuthHandler) createChallenge(c *gin.Context, registration bool) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	browserSession, err := ensureWeb3BrowserSession(c)
+	browserSession, err := ensureWeb3BrowserSession(c, h.browserCookieSameSite)
 	if err != nil {
 		response.InternalError(c, "Failed to create browser session")
 		return
@@ -176,7 +180,7 @@ func maskWeb3Address(address string) string {
 	return address[:6] + "..." + address[len(address)-4:]
 }
 
-func ensureWeb3BrowserSession(c *gin.Context) (string, error) {
+func ensureWeb3BrowserSession(c *gin.Context, sameSite http.SameSite) (string, error) {
 	if session := readWeb3BrowserSession(c); session != "" {
 		return session, nil
 	}
@@ -191,10 +195,17 @@ func ensureWeb3BrowserSession(c *gin.Context) (string, error) {
 		Path:     web3BrowserCookiePath,
 		MaxAge:   web3BrowserCookieMaxAge,
 		HttpOnly: true,
-		Secure:   isRequestHTTPS(c),
-		SameSite: http.SameSiteLaxMode,
+		Secure:   isRequestHTTPS(c) || sameSite == http.SameSiteNoneMode,
+		SameSite: sameSite,
 	})
 	return session, nil
+}
+
+func resolveWeb3BrowserCookieSameSite(cfg *config.Config) http.SameSite {
+	if cfg != nil && strings.EqualFold(strings.TrimSpace(cfg.Web3Auth.BrowserCookieSameSite), config.Web3BrowserCookieSameSiteNone) {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }
 
 func readWeb3BrowserSession(c *gin.Context) string {

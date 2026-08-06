@@ -2,7 +2,7 @@
 
 > 文档状态：第一版已实现，当前进入部署前回归验证
 > 适用版本：第一版 Web3 认证
-> 最后更新：2026-08-05
+> 最后更新：2026-08-06
 
 ## 1. Overview：总体架构
 
@@ -152,8 +152,10 @@ Chain ID 仍然必须进入 SIWE 消息，并在后端验证请求与 Challenge 
 
 ```text
 user_id UNIQUE / PRIMARY KEY  → 一个用户最多一个钱包
-address UNIQUE                → 一个钱包最多属于一个用户
+address UNIQUE WHERE active   → 一个钱包最多属于一个活跃用户
 ```
+
+同一地址可以对应多条历史软删除身份，但任意时刻最多只能有一条 `deleted_at IS NULL` 的活跃身份。
 
 第一版没有钱包替换流程。Web3 是用户唯一登录方式时，钱包或私钥丢失将导致账号无法恢复。前端应明确提示用户绑定真实邮箱或其他独立登录方式以降低风险；TOTP 只是第二验证因素，不能替代钱包作为账号恢复手段。
 
@@ -161,7 +163,7 @@ address UNIQUE                → 一个钱包最多属于一个用户
 
 ### 4.1 新增表 `web3_identities`
 
-实际实施使用带 Fork 命名空间的迁移 `194_tokenhive_web3_identities.sql`。数字前缀允许与上游迁移重复，完整文件名用于迁移身份和校验，因此该命名可以降低同步上游时的文件级冲突概率。
+实际实施使用 `194_tokenhive_web3_identities.sql` 创建身份表，并由 `195_web3_identity_soft_delete.sql` 增加身份软删除和活跃地址部分唯一索引。
 
 ```sql
 CREATE TABLE IF NOT EXISTS web3_identities (
@@ -173,12 +175,15 @@ CREATE TABLE IF NOT EXISTS web3_identities (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT web3_identities_address_format_check
-        CHECK (address ~ '^0x[0-9a-f]{40}$'),
+    deleted_at TIMESTAMPTZ,
 
-    CONSTRAINT web3_identities_address_key
-        UNIQUE (address)
+    CONSTRAINT web3_identities_address_format_check
+        CHECK (address ~ '^0x[0-9a-f]{40}$')
 );
+
+CREATE UNIQUE INDEX web3_identities_active_address_key
+    ON web3_identities (address)
+    WHERE deleted_at IS NULL;
 ```
 
 第一版不需要独立的自增 `id`：`user_id` 本身就是一对一身份记录的主键。
@@ -235,11 +240,12 @@ COMMIT
 
 ### 4.5 删除语义
 
-- 用户软删除：保留 `web3_identities`，该地址不能重新注册。
-- 用户恢复：原 Web3 身份继续有效。
+- 用户软删除：在同一事务中设置 `users.deleted_at` 和对应 `web3_identities.deleted_at`。
+- 地址复用：已软删除身份不参与地址唯一性约束，同一钱包可以注册新用户。
+- 历史保留：旧身份记录继续保留，通过 `user_id` 和 `deleted_at` 与新身份区分。
 - 用户物理删除：`ON DELETE CASCADE` 删除钱包身份。
 
-保留软删除用户的钱包归属更安全，可避免历史余额、订单和审计记录与新账号发生身份混淆。
+查询、登录和注册查重只读取 `deleted_at IS NULL` 的活跃身份。若未来增加用户恢复功能，不应自动恢复旧钱包身份，因为该地址可能已经归属新的活跃用户。
 
 ## 5. Redis Challenge 设计
 
@@ -484,6 +490,7 @@ backend/internal/service/web3_auth.go
 backend/internal/repository/web3_identity_repo.go
 backend/internal/repository/web3_challenge_store.go
 backend/migrations/194_tokenhive_web3_identities.sql
+backend/migrations/195_web3_identity_soft_delete.sql
 ```
 
 测试：
@@ -491,7 +498,9 @@ backend/migrations/194_tokenhive_web3_identities.sql
 ```text
 backend/internal/service/web3_auth_test.go
 backend/internal/repository/web3_identity_repo_test.go
+backend/internal/repository/web3_identity_soft_delete_integration_test.go
 backend/internal/repository/web3_challenge_store_test.go
+backend/migrations/web3_identity_soft_delete_migration_test.go
 backend/internal/handler/dto/web3_email_mapper_test.go
 backend/internal/handler/auth_current_user_test.go
 backend/internal/handler/user_handler_test.go
@@ -749,7 +758,7 @@ Challenge 已绑定匿名浏览器 Session Cookie 的哈希：
 - Challenge 创建时记录 `browser_session_hash`。
 - Verify 时要求同一浏览器 Session。
 - Cookie 名为 `web3_auth_browser_session`，Path 为 `/api/v1/auth/web3`，有效期 10 分钟。
-- Cookie 使用 `HttpOnly` 和 `SameSite=Lax`；HTTPS 请求下设置 `Secure`。
+- Cookie 使用 `HttpOnly`。`web3_auth.browser_cookie_same_site` 默认为 `lax`；当前端与 API 位于不同站点时配置为 `none`，并自动强制设置 `Secure`，因此该模式要求 HTTPS。跨站部署还必须在 `cors.allowed_origins` 中配置精确前端 Origin，并保持 `cors.allow_credentials: true`。
 
 即使 Challenge Token 被日志或浏览器扩展读取，也不能在另一浏览器直接消费。
 
@@ -801,7 +810,7 @@ Challenge 已绑定匿名浏览器 Session Cookie 的哈希：
 
 ### 12.2 并发注册
 
-两个不同 Challenge 同时注册同一个地址时，数据库 `UNIQUE(address)` 是最终一致性保护。失败请求转换为 `WEB3_IDENTITY_EXISTS`。
+两个不同 Challenge 同时注册同一个地址时，数据库活跃地址部分唯一索引 `UNIQUE(address) WHERE deleted_at IS NULL` 是最终一致性保护。失败请求转换为 `WEB3_IDENTITY_EXISTS`。
 
 ### 12.3 注册后初始化失败
 
@@ -901,7 +910,7 @@ web3_identities
 
 ### Phase 1：后端身份基础（已完成）
 
-- 新增 `web3_identities` 迁移。
+- 新增 `web3_identities` 迁移及身份软删除迁移。
 - 实现地址规范化和 Repository。
 - 实现 Redis Challenge Store。
 - 实现 SIWE 消息生成与 EOA 验证。
