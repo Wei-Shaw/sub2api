@@ -17,6 +17,7 @@ func web3TestUser() *service.User {
 func TestUserFacingMappersHideWeb3SyntheticEmail(t *testing.T) {
 	require.Empty(t, UserFromServiceShallow(web3TestUser()).Email)
 	require.Empty(t, UserFromService(web3TestUser()).Email)
+	require.Empty(t, APIKeyFromService(&service.APIKey{User: web3TestUser()}).User.Email)
 	require.Empty(t, RedeemCodeFromService(&service.RedeemCode{User: web3TestUser()}).User.Email)
 	require.Empty(t, UsageLogFromService(&service.UsageLog{User: web3TestUser()}).User.Email)
 	require.Empty(t, UserSubscriptionFromService(&service.UserSubscription{User: web3TestUser()}).User.Email)
@@ -26,6 +27,7 @@ func TestUserFacingMappersHideWeb3SyntheticEmail(t *testing.T) {
 // search Web3 accounts from every admin surface.
 func TestAdminMappersKeepWeb3SyntheticEmail(t *testing.T) {
 	require.Equal(t, web3TestEmail, UserFromServiceAdmin(web3TestUser()).Email)
+	require.Equal(t, web3TestEmail, APIKeyFromServiceAdmin(&service.APIKey{User: web3TestUser()}).User.Email)
 	require.Equal(t, web3TestEmail, RedeemCodeFromServiceAdmin(&service.RedeemCode{User: web3TestUser()}).User.Email)
 	require.Equal(t, web3TestEmail, UsageLogFromServiceAdmin(&service.UsageLog{User: web3TestUser()}).User.Email)
 	require.Equal(t, web3TestEmail, PromoCodeUsageFromService(&service.PromoCodeUsage{User: web3TestUser()}).User.Email)

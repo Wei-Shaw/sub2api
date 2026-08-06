@@ -146,6 +146,17 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	return out
 }
 
+// APIKeyFromServiceAdmin converts a service API key for admin responses.
+// Nested Web3 users keep their synthetic email so operators can identify them.
+func APIKeyFromServiceAdmin(k *service.APIKey) *APIKey {
+	out := APIKeyFromService(k)
+	if out == nil {
+		return nil
+	}
+	restoreAdminEmail(out.User, k.User)
+	return out
+}
+
 func GroupFromServiceShallow(g *service.Group) *Group {
 	if g == nil {
 		return nil

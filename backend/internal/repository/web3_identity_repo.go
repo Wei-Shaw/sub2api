@@ -24,7 +24,9 @@ func (r *web3IdentityRepository) GetUserIDByAddress(ctx context.Context, address
 		SELECT wi.user_id
 		FROM web3_identities wi
 		JOIN users u ON u.id = wi.user_id
-		WHERE wi.address = $1 AND u.deleted_at IS NULL
+		WHERE wi.address = $1
+		  AND wi.deleted_at IS NULL
+		  AND u.deleted_at IS NULL
 	`, address).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, service.ErrWeb3IdentityNotFound
@@ -40,7 +42,7 @@ func (r *web3IdentityRepository) GetAddressByUserID(ctx context.Context, userID 
 	err := r.db.QueryRowContext(ctx, `
 		SELECT address
 		FROM web3_identities
-		WHERE user_id = $1
+		WHERE user_id = $1 AND deleted_at IS NULL
 	`, userID).Scan(&address)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, nil
@@ -55,7 +57,9 @@ func (r *web3IdentityRepository) ExistsByAddress(ctx context.Context, address st
 	var exists bool
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM web3_identities WHERE address = $1
+			SELECT 1
+			FROM web3_identities
+			WHERE address = $1 AND deleted_at IS NULL
 		)
 	`, address).Scan(&exists); err != nil {
 		return false, fmt.Errorf("check web3 identity: %w", err)

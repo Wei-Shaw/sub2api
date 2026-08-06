@@ -95,7 +95,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	authHandler := handler.ProvideAuthHandler(configConfig, authService, userService, settingService, promoService, redeemService, totpService, userAttributeService, web3IdentityRepository)
 	web3ChallengeStore := repository.NewWeb3ChallengeStore(redisClient)
 	web3AuthService := service.NewWeb3AuthService(web3IdentityRepository, web3ChallengeStore, authService)
-	web3AuthHandler := handler.NewWeb3AuthHandler(web3AuthService, authService, totpService, settingService)
+	web3AuthHandler := handler.NewWeb3AuthHandler(configConfig, web3AuthService, authService, totpService, settingService)
 	userHandler := handler.ProvideUserHandler(userService, authService, emailService, emailCache, affiliateService, serviceUserPlatformQuotaRepository, web3IdentityRepository)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
