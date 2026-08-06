@@ -217,13 +217,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				nil,
 			)
 		}
+		if normalizedBody, changed, normalizeErr := NormalizeOpenAIModelEffortSuffix(normalized, true); normalizeErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid model reasoning effort", normalizeErr)
+		} else if changed {
+			normalized = normalizedBody
+		}
 		if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 			if capped, changed := ApplyOpenAIReasoningEffortPolicy(normalized, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 				normalized = capped
 			}
 		}
 
-		originalModel := strings.TrimSpace(values[1].String())
+		originalModel := strings.TrimSpace(gjson.GetBytes(normalized, "model").String())
 		modelMissing := originalModel == ""
 		if originalModel == "" {
 			// 入站 WS 长会话里，部分客户端只在第一轮 response.create 上声明

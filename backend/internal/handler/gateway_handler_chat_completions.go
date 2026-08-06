@@ -74,7 +74,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
-	reqModel := modelResult.String()
+	if normalizedBody, changed, normalizeErr := service.NormalizeOpenAIModelEffortSuffix(body, false); normalizeErr != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize model reasoning effort")
+		return
+	} else if changed {
+		body = normalizedBody
+	}
+	reqModel := gjson.GetBytes(body, "model").String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformResolved(c, apiKey, reqModel) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
