@@ -263,20 +263,50 @@ psql -U sub2api -h 127.0.0.1 -d sub2api -f migration.sql
 
 ### Git 操作
 
+#### 同步官方更新
+
+官方更新先进入独立同步分支，完成冲突处理和验证后，通过 PR 合并到 `main`。不要直接在共享的 `main` 或 `develop` 上解决冲突。
+
 ```bash
-# 同步上游
-git fetch upstream
-git checkout main
-git merge upstream/main
-git push origin main
+# 获取官方最新提交
+git fetch upstream --prune
 
-# 创建功能分支
-git checkout -b feature/xxx
+# 从当前生产基线创建本次同步分支
+git switch main
+git pull --ff-only origin main
+git switch -c sync/upstream-$(date +%Y%m%d)
 
-# Rebase 到最新 main
-git fetch upstream
-git rebase upstream/main
+# 合并官方更新；冲突只在该分支处理
+git merge --no-ff upstream/main
+
+# 通过测试和构建后推送，随后创建 sync/upstream-* -> main 的 PR
+git push -u origin HEAD
 ```
+
+PR 合并到 `main` 并确认通过后，再将已验证的生产基线同步到 `develop`：
+
+```bash
+git fetch origin
+git switch develop
+git merge --ff-only origin/main
+git push origin develop
+```
+
+本仓库已启用 Git 冲突记忆，重复冲突可自动复用之前的解决结果：
+
+```bash
+git config rerere.enabled true
+git config rerere.autoupdate true
+```
+
+#### 创建功能分支
+
+```bash
+git switch main
+git switch -c feature/xxx
+```
+
+共享分支已推送后不要使用 `rebase` 或 `reset` 改写历史；需要同步时使用 merge，并通过 PR 审核。
 
 ### 前端操作
 
