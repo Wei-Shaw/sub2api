@@ -606,40 +606,58 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 	return json.Marshal(request)
 }
 
-// normalizeGeminiRequestForAntigravity 将 Gemini 原生请求中客户端常用的
-// google_search 字段转换为 Antigravity v1internal 上游使用的 googleSearch。
+// normalizeGeminiRequestForAntigravity 将 Gemini 原生请求规范化为
+// Antigravity v1internal 上游接受的格式。
 //
 // Gemini AI Studio 与 Antigravity v1internal 对 Google Search 工具的 JSON
 // 字段命名并不一致。原生 Gemini 客户端可能发送 snake_case，而
 // Antigravity 的内部请求模型只接受 camelCase；不转换时上游会返回
-// INVALID_ARGUMENT。
+// INVALID_ARGUMENT。此外，Gemini 原生接口允许单轮 contents 省略 role，
+// 而 v1internal 要求显式的 user/model role。
 func normalizeGeminiRequestForAntigravity(body []byte) ([]byte, error) {
 	var request map[string]any
 	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, err
 	}
 
-	tools, ok := request["tools"].([]any)
-	if !ok || len(tools) == 0 {
-		return body, nil
+	modified := false
+	if contents, ok := request["contents"].([]any); ok {
+		for _, rawContent := range contents {
+			content, ok := rawContent.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			role, hasRole := content["role"]
+			if !hasRole || role == nil {
+				content["role"] = "user"
+				modified = true
+				continue
+			}
+			if roleString, ok := role.(string); ok && strings.TrimSpace(roleString) == "" {
+				content["role"] = "user"
+				modified = true
+			}
+		}
 	}
 
-	modified := false
-	for _, rawTool := range tools {
-		tool, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-		}
+	if tools, ok := request["tools"].([]any); ok {
+		for _, rawTool := range tools {
+			tool, ok := rawTool.(map[string]any)
+			if !ok {
+				continue
+			}
 
-		googleSearch, ok := tool["google_search"]
-		if !ok {
-			continue
+			googleSearch, ok := tool["google_search"]
+			if !ok {
+				continue
+			}
+			if _, hasCamelCase := tool["googleSearch"]; !hasCamelCase {
+				tool["googleSearch"] = googleSearch
+			}
+			delete(tool, "google_search")
+			modified = true
 		}
-		if _, hasCamelCase := tool["googleSearch"]; !hasCamelCase {
-			tool["googleSearch"] = googleSearch
-		}
-		delete(tool, "google_search")
-		modified = true
 	}
 
 	if !modified {
