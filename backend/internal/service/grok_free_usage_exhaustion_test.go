@@ -29,7 +29,7 @@ func TestParseGrokFreeUsageExhaustionRejectsGeneric429(t *testing.T) {
 	require.False(t, exhausted)
 }
 
-func TestParseGrokQuotaSnapshotWithBodyUsesRollingCooldown(t *testing.T) {
+func TestParseGrokQuotaSnapshotWithBodyUses24HourCooldown(t *testing.T) {
 	now := time.Date(2026, time.August, 6, 3, 0, 0, 0, time.UTC)
 	snapshot := parseGrokQuotaSnapshotWithBody(nil, http.StatusTooManyRequests, []byte(grokFreeUsageExhaustedTestBody), now)
 
@@ -42,5 +42,5 @@ func TestParseGrokQuotaSnapshotWithBodyUsesRollingCooldown(t *testing.T) {
 	require.NotNil(t, snapshot.Tokens.ResetUnix)
 	require.EqualValues(t, xai.GrokFreeRolling24hTokenLimit, *snapshot.Tokens.Limit)
 	require.Zero(t, *snapshot.Tokens.Remaining)
-	require.Equal(t, now.Add(grokFreeUsageExhaustionCooldown).Unix(), *snapshot.Tokens.ResetUnix)
+	require.Equal(t, now.Add(24*time.Hour).Unix(), *snapshot.Tokens.ResetUnix)
 }

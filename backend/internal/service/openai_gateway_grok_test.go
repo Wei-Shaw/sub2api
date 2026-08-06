@@ -2692,7 +2692,7 @@ func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
-func TestHandleGrokAccountUpstreamErrorFreeUsageExhaustionUsesRollingCooldown(t *testing.T) {
+func TestHandleGrokAccountUpstreamErrorFreeUsageExhaustionUses24HourCooldown(t *testing.T) {
 	account := &Account{ID: 631, Platform: PlatformGrok, Type: AccountTypeOAuth}
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}

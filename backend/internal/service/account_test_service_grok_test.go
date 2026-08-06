@@ -200,7 +200,7 @@ func TestAccountTestService_Grok429WithoutQuotaHeadersUsesFallback(t *testing.T)
 	require.WithinDuration(t, before.Add(grokRateLimitFallbackCooldown), repo.resetAt, time.Second)
 }
 
-func TestAccountTestService_GrokFreeUsageExhaustionUsesRollingCooldown(t *testing.T) {
+func TestAccountTestService_GrokFreeUsageExhaustionUses24HourCooldown(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	account := &Account{
 		ID: 17, Name: "grok-oauth-free-exhausted", Platform: PlatformGrok,
