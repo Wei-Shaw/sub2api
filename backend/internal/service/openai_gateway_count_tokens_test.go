@@ -124,6 +124,11 @@ REDACTED{
 			body:       `{"error":{"type":"invalid_request_error","code":"missing_scope","message":"Missing scopes: api.responses.write"REDACTEDREDACTED`,
 	REDACTED,
 		{
+			name:       "403_html_proxy_page",
+			statusCode: http.StatusForbidden,
+			body:       "<!doctype html><html><body>Forbidden</body></html>",
+	REDACTED,
+		{
 			name:       "404_input_tokens_unsupported",
 			statusCode: http.StatusNotFound,
 			body:       `{"error":{"type":"invalid_request_error","message":"The /v1/responses/input_tokens endpoint was not found"REDACTEDREDACTED`,
