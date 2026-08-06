@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -117,19 +118,54 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 		return system, []AnthropicMessage{{Role: "user", Content: content}}, nil
 	}
 
-	var items []ResponsesInputItem
-	if err := json.Unmarshal(inputRaw, &items); err != nil {
-		return nil, nil, fmt.Errorf("parse responses input: %w", err)
+	var rawItems []json.RawMessage
+	trimmedInput := bytes.TrimSpace(inputRaw)
+	switch {
+	case len(trimmedInput) == 0:
+		return nil, nil, fmt.Errorf("parse responses input: empty input")
+	case trimmedInput[0] == '[':
+		if err := json.Unmarshal(trimmedInput, &rawItems); err != nil {
+			return nil, nil, fmt.Errorf("parse responses input: %w", err)
+		}
+	case trimmedInput[0] == '{':
+		rawItems = []json.RawMessage{trimmedInput}
+	default:
+		return nil, nil, fmt.Errorf("parse responses input: expected string, object, or array")
 	}
 
 	var messages []AnthropicMessage
 
-	for _, item := range items {
+	for _, rawItem := range rawItems {
+		var item ResponsesInputItem
+		if err := json.Unmarshal(rawItem, &item); err != nil {
+			return nil, nil, fmt.Errorf("parse responses input item: %w", err)
+		}
+
 		switch {
 		case item.Role == "system" || item.Role == "developer":
 			text := extractTextFromContent(item.Content)
 			if text != "" {
 				systemParts = append(systemParts, text)
+			}
+
+		case item.Type == "input_text" || item.Type == "text":
+			blocks := convertResponsesContentPartToAnthropicRawBlocks(rawItem, false)
+			if len(blocks) > 0 {
+				content, _ := marshalAnthropicRawBlocks(blocks...)
+				messages = append(messages, AnthropicMessage{
+					Role:    "user",
+					Content: content,
+				})
+			}
+
+		case item.Type == "input_image" || item.Type == "image_url":
+			blocks := convertResponsesContentPartToAnthropicRawBlocks(rawItem, false)
+			if len(blocks) > 0 {
+				content, _ := marshalAnthropicRawBlocks(blocks...)
+				messages = append(messages, AnthropicMessage{
+					Role:    "user",
+					Content: content,
+				})
 			}
 
 		case item.Type == "function_call":
@@ -187,9 +223,13 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 		default:
 			// Unknown role/type — attempt as user message
 			if item.Content != nil {
+				content, err := convertResponsesUserToAnthropicContent(item.Content)
+				if err != nil {
+					return nil, nil, err
+				}
 				messages = append(messages, AnthropicMessage{
 					Role:    "user",
-					Content: item.Content,
+					Content: content,
 				})
 			}
 		}
@@ -404,38 +444,12 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 		return json.Marshal(s)
 	}
 
-	// Array of content parts → Anthropic content blocks.
-	var parts []ResponsesContentPart
-	if err := json.Unmarshal(raw, &parts); err != nil {
-		// Pass through as-is if we can't parse
-		return raw, nil
-	}
-
-	var blocks []AnthropicContentBlock
-	for _, p := range parts {
-		switch p.Type {
-		case "input_text", "text":
-			if p.Text != "" {
-				blocks = append(blocks, AnthropicContentBlock{
-					Type: "text",
-					Text: p.Text,
-				})
-			}
-		case "input_image":
-			src := dataURIToAnthropicImageSource(p.ImageURL)
-			if src != nil {
-				blocks = append(blocks, AnthropicContentBlock{
-					Type:   "image",
-					Source: src,
-				})
-			}
-		}
-	}
+	blocks := convertResponsesContentToAnthropicRawBlocks(raw, false)
 
 	if len(blocks) == 0 {
 		return json.Marshal("")
 	}
-	return json.Marshal(blocks)
+	return marshalAnthropicRawBlocks(blocks...)
 }
 
 // convertResponsesAssistantToAnthropicContent converts a Responses assistant
@@ -451,29 +465,161 @@ func convertResponsesAssistantToAnthropicContent(raw json.RawMessage) (json.RawM
 		return json.Marshal([]AnthropicContentBlock{{Type: "text", Text: s}})
 	}
 
-	// Array of content parts → Anthropic content blocks.
-	var parts []ResponsesContentPart
-	if err := json.Unmarshal(raw, &parts); err != nil {
-		return raw, nil
+	blocks := convertResponsesContentToAnthropicRawBlocks(raw, true)
+
+	if len(blocks) == 0 {
+		blocks = append(blocks, makeAnthropicTextRawBlock("", nil))
+	}
+	return marshalAnthropicRawBlocks(blocks...)
+}
+
+func convertResponsesContentToAnthropicRawBlocks(raw json.RawMessage, assistant bool) []json.RawMessage {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil
 	}
 
-	var blocks []AnthropicContentBlock
-	for _, p := range parts {
-		switch p.Type {
-		case "output_text", "text":
-			if p.Text != "" {
-				blocks = append(blocks, AnthropicContentBlock{
-					Type: "text",
-					Text: p.Text,
-				})
-			}
+	var parts []json.RawMessage
+	switch trimmed[0] {
+	case '[':
+		if err := json.Unmarshal(trimmed, &parts); err != nil {
+			return nil
+		}
+	case '{':
+		parts = []json.RawMessage{trimmed}
+	default:
+		var s string
+		if err := json.Unmarshal(trimmed, &s); err == nil {
+			return []json.RawMessage{makeAnthropicTextRawBlock(s, nil)}
+		}
+		return nil
+	}
+
+	var blocks []json.RawMessage
+	for _, part := range parts {
+		blocks = append(blocks, convertResponsesContentPartToAnthropicRawBlocks(part, assistant)...)
+	}
+	return blocks
+}
+
+func convertResponsesContentPartToAnthropicRawBlocks(raw json.RawMessage, assistant bool) []json.RawMessage {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return []json.RawMessage{makeAnthropicTextRawBlock(s, nil)}
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil
+	}
+
+	partType := rawJSONFieldString(obj, "type")
+	switch partType {
+	case "input_text", "output_text", "text":
+		if text := rawJSONFieldString(obj, "text"); text != "" {
+			return []json.RawMessage{makeAnthropicTextRawBlock(text, obj["cache_control"])}
+		}
+	case "input_image", "image_url":
+		if source := responsesImageSourceFromObject(obj); source != nil {
+			return []json.RawMessage{makeAnthropicImageRawBlock(source, obj["cache_control"])}
+		}
+	case "image":
+		if _, ok := obj["source"]; ok {
+			return []json.RawMessage{raw}
+		}
+		if source := responsesImageSourceFromObject(obj); source != nil {
+			return []json.RawMessage{makeAnthropicImageRawBlock(source, obj["cache_control"])}
+		}
+	case "tool_use":
+		if assistant {
+			return []json.RawMessage{raw}
+		}
+	case "tool_result":
+		if !assistant {
+			return []json.RawMessage{raw}
+		}
+	case "thinking":
+		if assistant {
+			return []json.RawMessage{raw}
+		}
+	case "document", "server_tool_use", "tool_reference", "web_search_tool_result":
+		return []json.RawMessage{raw}
+	}
+
+	if text := rawJSONFieldString(obj, "text"); text != "" {
+		return []json.RawMessage{makeAnthropicTextRawBlock(text, obj["cache_control"])}
+	}
+	return nil
+}
+
+func marshalAnthropicRawBlocks(blocks ...json.RawMessage) (json.RawMessage, error) {
+	return json.Marshal(blocks)
+}
+
+func makeAnthropicTextRawBlock(text string, cacheControl json.RawMessage) json.RawMessage {
+	obj := map[string]json.RawMessage{
+		"type": json.RawMessage(`"text"`),
+		"text": mustMarshalRaw(text),
+	}
+	if len(cacheControl) > 0 {
+		obj["cache_control"] = cacheControl
+	}
+	raw, _ := json.Marshal(obj)
+	return raw
+}
+
+func makeAnthropicImageRawBlock(source *AnthropicImageSource, cacheControl json.RawMessage) json.RawMessage {
+	obj := map[string]json.RawMessage{
+		"type":   json.RawMessage(`"image"`),
+		"source": mustMarshalRaw(source),
+	}
+	if len(cacheControl) > 0 {
+		obj["cache_control"] = cacheControl
+	}
+	raw, _ := json.Marshal(obj)
+	return raw
+}
+
+func responsesImageSourceFromObject(obj map[string]json.RawMessage) *AnthropicImageSource {
+	if rawSource, ok := obj["source"]; ok {
+		var source AnthropicImageSource
+		if err := json.Unmarshal(rawSource, &source); err == nil && source.Type != "" {
+			return &source
 		}
 	}
 
-	if len(blocks) == 0 {
-		blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: ""})
+	if url := rawJSONFieldString(obj, "image_url"); url != "" {
+		return dataURIToAnthropicImageSource(url)
 	}
-	return json.Marshal(blocks)
+
+	var imageURLObj map[string]json.RawMessage
+	if rawImageURL, ok := obj["image_url"]; ok && json.Unmarshal(rawImageURL, &imageURLObj) == nil {
+		if url := rawJSONFieldString(imageURLObj, "url"); url != "" {
+			return dataURIToAnthropicImageSource(url)
+		}
+	}
+
+	if url := rawJSONFieldString(obj, "url"); url != "" {
+		return dataURIToAnthropicImageSource(url)
+	}
+	return nil
+}
+
+func rawJSONFieldString(obj map[string]json.RawMessage, key string) string {
+	raw, ok := obj[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return ""
+	}
+	return s
+}
+
+func mustMarshalRaw(v any) json.RawMessage {
+	raw, _ := json.Marshal(v)
+	return raw
 }
 
 // fromResponsesCallIDToAnthropic converts an OpenAI function call ID back to

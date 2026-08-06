@@ -1341,6 +1341,102 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	assert.Equal(t, "get_weather", tc["name"])
 }
 
+func TestResponsesToAnthropicRequest_TopLevelInputTextItem(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[
+			{"type":"input_text","text":"Hello from Responses"}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "user", resp.Messages[0].Role)
+
+	var blocks []map[string]any
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "text", blocks[0]["type"])
+	assert.Equal(t, "Hello from Responses", blocks[0]["text"])
+	assert.NotContains(t, string(resp.Messages[0].Content), "input_text")
+}
+
+func TestResponsesToAnthropicRequest_NormalizesResponsesContentParts(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[
+			{
+				"role":"user",
+				"content":[
+					{"type":"input_text","text":"Describe this","cache_control":{"type":"ephemeral"}},
+					{"type":"input_image","image_url":"data:image/png;base64,iVBOR"},
+					{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,/9j/4AAQ"}}
+				]
+			}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []map[string]any
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 3)
+	assert.Equal(t, "text", blocks[0]["type"])
+	assert.Equal(t, "Describe this", blocks[0]["text"])
+	assert.Equal(t, map[string]any{"type": "ephemeral"}, blocks[0]["cache_control"])
+	assert.Equal(t, "image", blocks[1]["type"])
+	assert.Equal(t, "image", blocks[2]["type"])
+	assert.NotContains(t, string(resp.Messages[0].Content), "input_text")
+	assert.NotContains(t, string(resp.Messages[0].Content), "input_image")
+	assert.NotContains(t, string(resp.Messages[0].Content), "image_url")
+}
+
+func TestResponsesToAnthropicRequest_NormalizesFallbackMessageContent(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[
+			{
+				"type":"message",
+				"content":[
+					{"type":"input_text","text":"Fallback path should still normalize"}
+				]
+			}
+		]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+	assert.Equal(t, "user", resp.Messages[0].Role)
+
+	var blocks []map[string]any
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "text", blocks[0]["type"])
+	assert.Equal(t, "Fallback path should still normalize", blocks[0]["text"])
+	assert.NotContains(t, string(resp.Messages[0].Content), "input_text")
+}
+
+func TestResponsesToAnthropicRequest_SingleObjectInput(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`{"type":"input_text","text":"Single object input"}`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []map[string]any
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "text", blocks[0]["type"])
+	assert.Equal(t, "Single object input", blocks[0]["text"])
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------
