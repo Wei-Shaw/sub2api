@@ -77,12 +77,16 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	promptCacheKey string,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
+	headerPassthrough := account != nil && account.IsOpenAIRequestHeaderPassthroughEnabled()
 	if account == nil || !account.IsOpenAIAgentIdentity() {
 		headers.Set("authorization", "Bearer "+token)
 	}
 
 	sessionResolution := resolveOpenAIWSSessionHeaders(c, promptCacheKey)
 	if c != nil && c.Request != nil {
+		if headerPassthrough {
+			copyOpenAIInboundHeaders(headers, c.Request.Header, true, false)
+		}
 		if v := strings.TrimSpace(c.Request.Header.Get("accept-language")); v != "" {
 			headers.Set("accept-language", v)
 		}
@@ -125,32 +129,36 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
 			return nil, sessionResolution, fmt.Errorf("resolve chatgpt account headers: %w", err)
 		}
-		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		if !headerPassthrough {
+			headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
+		}
 	}
 
 	betaValue := openAIWSBetaV2Value
 	if decision.Transport == OpenAIUpstreamTransportResponsesWebsocket {
 		betaValue = openAIWSBetaV1Value
 	}
-	headers.Set("OpenAI-Beta", betaValue)
+	if !headerPassthrough || headers.Get("OpenAI-Beta") == "" {
+		headers.Set("OpenAI-Beta", betaValue)
+	}
 
 	customUA := ""
 	if account != nil {
 		customUA = account.GetOpenAIUserAgent()
 	}
-	if strings.TrimSpace(customUA) != "" {
+	if !headerPassthrough && strings.TrimSpace(customUA) != "" {
 		headers.Set("user-agent", customUA)
-	} else if c != nil {
+	} else if !headerPassthrough && c != nil {
 		if ua := strings.TrimSpace(c.GetHeader("User-Agent")); ua != "" {
 			headers.Set("user-agent", ua)
 		}
 	}
-	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+	if !headerPassthrough && s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
 	// 终态收口：WS 握手与 HTTP 出站共用同一套身份语义，账号级自定义 UA 同样作为
 	// 管理员显式配置传入（上面写进 headers 的值只在强制统一被关闭时才参与配对）。
-	if account != nil && account.Type == AccountTypeOAuth {
+	if account != nil && account.Type == AccountTypeOAuth && !headerPassthrough {
 		enforceCodexIdentityHeadersWithUA(headers, s.codexIdentityOverrideUA(account))
 	}
 

@@ -1039,12 +1039,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		}
 	}
 
-	// Whitelist passthrough headers
-	for key, values := range c.Request.Header {
-		lowerKey := strings.ToLower(key)
-		if openaiAllowedHeaders[lowerKey] {
-			for _, v := range values {
-				req.Header.Add(key, v)
+	headerPassthrough := account.IsOpenAIRequestHeaderPassthroughEnabled()
+	if headerPassthrough {
+		copyOpenAIInboundHeaders(req.Header, c.Request.Header, true, false)
+	} else {
+		for key, values := range c.Request.Header {
+			lowerKey := strings.ToLower(key)
+			if openaiAllowedHeaders[lowerKey] {
+				for _, v := range values {
+					req.Header.Add(key, v)
+				}
 			}
 		}
 	}
@@ -1056,9 +1060,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Del("session_id")
 
 		if compatMessagesBridge {
-			req.Header.Del("OpenAI-Beta")
-			req.Header.Del("originator")
-		} else {
+			if !headerPassthrough {
+				req.Header.Del("OpenAI-Beta")
+				req.Header.Del("originator")
+			}
+		} else if !headerPassthrough {
 			req.Header.Set("OpenAI-Beta", "responses=experimental")
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		}
@@ -1088,19 +1094,19 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// Apply custom User-Agent if configured
 	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
+	if !headerPassthrough && customUA != "" {
 		req.Header.Set("user-agent", customUA)
 	}
 
 	// 若开启 ForceCodexCLI，则强制将上游 User-Agent 伪装为 Codex CLI。
 	// 用于网关未透传/改写 User-Agent 时，仍能命中 Codex 侧识别逻辑。
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+	if !headerPassthrough && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
 
 	// 终态收口：强制统一 OAuth 出站身份（User-Agent / originator / version 同源自洽）。
 	// 客户端自报身份不参与构造，浏览器型 UA 也因此不会再到达上游（原浏览器 UA 兜底已被吸收）。
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth && !headerPassthrough {
 		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 	}
 

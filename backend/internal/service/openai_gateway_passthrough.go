@@ -362,15 +362,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// 透传客户端请求头（安全白名单）。
 	allowTimeoutHeaders := s.isOpenAIPassthroughTimeoutHeadersAllowed()
 	if c != nil && c.Request != nil {
-		for key, values := range c.Request.Header {
-			lower := strings.ToLower(strings.TrimSpace(key))
-			if !isOpenAIPassthroughAllowedRequestHeader(lower, allowTimeoutHeaders) {
-				continue
-			}
-			for _, v := range values {
-				req.Header.Add(key, v)
-			}
-		}
+		copyOpenAIInboundHeaders(req.Header, c.Request.Header, account.IsOpenAIRequestHeaderPassthroughEnabled(), allowTimeoutHeaders)
 	}
 
 	// 覆盖入站鉴权残留，并注入上游认证
@@ -437,15 +429,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// 透传模式也支持账户自定义 User-Agent 与 ForceCodexCLI 兜底。
 	customUA := account.GetOpenAIUserAgent()
-	if customUA != "" {
+	headerPassthrough := account.IsOpenAIRequestHeaderPassthroughEnabled()
+	if !headerPassthrough && customUA != "" {
 		req.Header.Set("user-agent", customUA)
 	}
-	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
+	if !headerPassthrough && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
 	// 终态收口：透传路径的 OAuth 与非透传完全一致，同样强制统一出站身份
 	// （User-Agent / originator / version 同源自洽），客户端自报身份不会到达上游。
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth && !headerPassthrough {
 		enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 	}
 
