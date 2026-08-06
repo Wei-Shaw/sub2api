@@ -10,15 +10,17 @@ import (
 
 func TestProxyPoolProxyFromServiceUsesAPIFieldsAndHidesPassword(t *testing.T) {
 	mapped := ProxyPoolProxyFromService(&service.ProxyPoolProxy{
-		Proxy:      service.Proxy{ID: 7, Name: "pool member", Password: "secret"},
-		PoolID:     2,
-		PoolHealth: service.ProxyPoolHealthHealthy,
+		Proxy:             service.Proxy{ID: 7, Name: "pool member", Password: "secret"},
+		PoolID:            2,
+		PoolHealth:        service.ProxyPoolHealthHealthy,
+		GrokQualityStatus: "pass",
 	})
 	payload, err := json.Marshal(mapped)
 	require.NoError(t, err)
 	require.Contains(t, string(payload), `"id":7`)
 	require.Contains(t, string(payload), `"pool_id":2`)
 	require.Contains(t, string(payload), `"pool_health":"healthy"`)
+	require.Contains(t, string(payload), `"grok_quality_status":"pass"`)
 	require.NotContains(t, string(payload), "secret")
 	require.NotContains(t, string(payload), "Password")
 }

@@ -4,12 +4,41 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProxyPoolRepositoryPersistsGrokQualityHealth(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	checkedAt := time.Now().UTC()
+	httpStatus := 401
+	mock.ExpectExec("UPDATE proxies[\\s\\S]+pool_grok_quality_status").
+		WithArgs(
+			int64(9), int64(7), service.ProxyPoolHealthHealthy, 0, checkedAt,
+			"pass", checkedAt, httpStatus, "HTTP 401 (target reachable)",
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	repo := NewProxyPoolRepository(db)
+	err = repo.UpdateProxyPoolHealth(context.Background(), 7, 9, service.ProxyPoolHealthSnapshot{
+		Health:                service.ProxyPoolHealthHealthy,
+		CheckedAt:             checkedAt,
+		GrokQualityStatus:     "pass",
+		GrokQualityCheckedAt:  &checkedAt,
+		GrokQualityHTTPStatus: &httpStatus,
+		GrokQualityMessage:    "HTTP 401 (target reachable)",
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestProxyPoolRepositoryCreateTranslatesDuplicateName(t *testing.T) {
 	db, mock, err := sqlmock.New()

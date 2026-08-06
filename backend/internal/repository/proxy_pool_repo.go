@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -126,7 +125,10 @@ func (r *proxyPoolRepository) DeletePool(ctx context.Context, id int64) error {
 	}
 	if _, err = tx.ExecContext(ctx, `
 		UPDATE proxies
-		SET pool_id = NULL, pool_health = 'unknown', pool_checked_at = NULL, pool_failures = 0, updated_at = NOW()
+		SET pool_id = NULL, pool_health = 'unknown', pool_checked_at = NULL, pool_failures = 0,
+			pool_grok_quality_status = 'unknown', pool_grok_quality_checked_at = NULL,
+			pool_grok_quality_http_status = NULL, pool_grok_quality_message = NULL,
+			updated_at = NOW()
 		WHERE pool_id = $1
 	`, id); err != nil {
 		return err
@@ -191,8 +193,14 @@ func (r *proxyPoolRepository) ListPoolsWithStats(ctx context.Context) ([]service
 		FROM proxy_pools pp
 		LEFT JOIN LATERAL (
 			SELECT COUNT(*) AS proxy_count,
-				COUNT(*) FILTER (WHERE p.pool_health = 'healthy' AND p.status = 'active') AS healthy_count,
-				COUNT(*) FILTER (WHERE p.pool_health = 'unhealthy' OR p.status <> 'active') AS unhealthy_count
+				COUNT(*) FILTER (
+					WHERE p.pool_health = 'healthy' AND p.status = 'active'
+						AND p.pool_grok_quality_status = 'pass'
+				) AS healthy_count,
+				COUNT(*) FILTER (
+					WHERE p.pool_health = 'unhealthy' OR p.status <> 'active'
+						OR p.pool_grok_quality_status NOT IN ('pass', 'unknown')
+				) AS unhealthy_count
 			FROM proxies p
 			WHERE p.pool_id = pp.id AND p.deleted_at IS NULL
 		) ps ON TRUE
@@ -239,7 +247,8 @@ func (r *proxyPoolRepository) ListPoolProxies(ctx context.Context, poolID int64)
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT p.id, p.name, p.protocol, p.host, p.port, p.username, p.password, p.status,
 			p.created_at, p.updated_at, p.pool_id, p.pool_health, p.pool_checked_at,
-			p.pool_failures, COUNT(a.id)
+			p.pool_failures, p.pool_grok_quality_status, p.pool_grok_quality_checked_at,
+			p.pool_grok_quality_http_status, p.pool_grok_quality_message, COUNT(a.id)
 		FROM proxies p
 		LEFT JOIN accounts a ON a.proxy_id = p.id AND a.pool_id = $1 AND a.deleted_at IS NULL
 		WHERE p.pool_id = $1 AND p.deleted_at IS NULL
@@ -254,15 +263,19 @@ func (r *proxyPoolRepository) ListPoolProxies(ctx context.Context, poolID int64)
 	result := make([]service.ProxyPoolProxy, 0)
 	for rows.Next() {
 		var (
-			item      service.ProxyPoolProxy
-			username  sql.NullString
-			password  sql.NullString
-			checkedAt sql.NullTime
+			item          service.ProxyPoolProxy
+			username      sql.NullString
+			password      sql.NullString
+			checkedAt     sql.NullTime
+			grokCheckedAt sql.NullTime
+			grokHTTP      sql.NullInt64
+			grokMessage   sql.NullString
 		)
 		if err := rows.Scan(
 			&item.ID, &item.Name, &item.Protocol, &item.Host, &item.Port,
 			&username, &password, &item.Status, &item.CreatedAt, &item.UpdatedAt,
-			&item.PoolID, &item.PoolHealth, &checkedAt, &item.PoolFailures, &item.AccountCount,
+			&item.PoolID, &item.PoolHealth, &checkedAt, &item.PoolFailures,
+			&item.GrokQualityStatus, &grokCheckedAt, &grokHTTP, &grokMessage, &item.AccountCount,
 		); err != nil {
 			return nil, err
 		}
@@ -274,6 +287,16 @@ func (r *proxyPoolRepository) ListPoolProxies(ctx context.Context, poolID int64)
 		}
 		if checkedAt.Valid {
 			item.PoolCheckedAt = &checkedAt.Time
+		}
+		if grokCheckedAt.Valid {
+			item.GrokQualityCheckedAt = &grokCheckedAt.Time
+		}
+		if grokHTTP.Valid {
+			status := int(grokHTTP.Int64)
+			item.GrokQualityHTTPStatus = &status
+		}
+		if grokMessage.Valid {
+			item.GrokQualityMessage = grokMessage.String
 		}
 		result = append(result, item)
 	}
@@ -310,7 +333,9 @@ func (r *proxyPoolRepository) AssignProxiesToPool(ctx context.Context, poolID in
 	result, err := tx.ExecContext(ctx, `
 		UPDATE proxies
 		SET pool_id = $1, pool_health = 'unknown', pool_checked_at = NULL,
-			pool_failures = 0, updated_at = NOW()
+			pool_failures = 0, pool_grok_quality_status = 'unknown',
+			pool_grok_quality_checked_at = NULL, pool_grok_quality_http_status = NULL,
+			pool_grok_quality_message = NULL, updated_at = NOW()
 		WHERE id = ANY($2) AND deleted_at IS NULL
 	`, poolID, pq.Array(proxyIDs))
 	if err != nil {
@@ -360,7 +385,9 @@ func (r *proxyPoolRepository) RemoveProxiesFromPool(ctx context.Context, poolID 
 	result, err := tx.ExecContext(ctx, `
 		UPDATE proxies
 		SET pool_id = NULL, pool_health = 'unknown', pool_checked_at = NULL,
-			pool_failures = 0, updated_at = NOW()
+			pool_failures = 0, pool_grok_quality_status = 'unknown',
+			pool_grok_quality_checked_at = NULL, pool_grok_quality_http_status = NULL,
+			pool_grok_quality_message = NULL, updated_at = NOW()
 		WHERE pool_id = $1 AND id = ANY($2) AND deleted_at IS NULL
 	`, poolID, pq.Array(proxyIDs))
 	if err != nil {
@@ -384,12 +411,17 @@ func (r *proxyPoolRepository) RemoveProxiesFromPool(ctx context.Context, poolID 
 	return affected, nil
 }
 
-func (r *proxyPoolRepository) UpdateProxyPoolHealth(ctx context.Context, poolID, proxyID int64, health string, failures int, checkedAt time.Time) error {
+func (r *proxyPoolRepository) UpdateProxyPoolHealth(ctx context.Context, poolID, proxyID int64, snapshot service.ProxyPoolHealthSnapshot) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE proxies
-		SET pool_health = $3, pool_failures = $4, pool_checked_at = $5, updated_at = NOW()
+		SET pool_health = $3, pool_failures = $4, pool_checked_at = $5,
+			pool_grok_quality_status = $6, pool_grok_quality_checked_at = $7,
+			pool_grok_quality_http_status = $8, pool_grok_quality_message = $9,
+			updated_at = NOW()
 		WHERE id = $1 AND pool_id = $2 AND deleted_at IS NULL
-	`, proxyID, poolID, health, failures, checkedAt)
+	`, proxyID, poolID, snapshot.Health, snapshot.Failures, snapshot.CheckedAt,
+		snapshot.GrokQualityStatus, snapshot.GrokQualityCheckedAt,
+		snapshot.GrokQualityHTTPStatus, snapshot.GrokQualityMessage)
 	return err
 }
 
@@ -489,6 +521,7 @@ func (r *proxyPoolRepository) BindAccountsToPool(ctx context.Context, poolID int
 					SELECT 1 FROM proxies p
 					WHERE p.id = $2 AND p.pool_id = $1 AND p.deleted_at IS NULL
 						AND p.status = 'active' AND p.pool_health = 'healthy'
+						AND p.pool_grok_quality_status = 'pass'
 				)
 			RETURNING a.id
 		`, poolID, proxyID, pq.Array(grouped[proxyID]))

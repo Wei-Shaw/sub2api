@@ -919,6 +919,10 @@ export interface ProxyPoolProxy extends Proxy {
   pool_health: 'unknown' | 'healthy' | 'unhealthy'
   pool_checked_at?: string | null
   pool_failures: number
+  grok_quality_status: 'unknown' | 'pass' | 'warn' | 'fail' | 'challenge'
+  grok_quality_checked_at?: string | null
+  grok_quality_http_status?: number | null
+  grok_quality_message?: string
   account_count: number
 }
 

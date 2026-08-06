@@ -19,6 +19,7 @@ import (
 type ProxyPoolService struct {
 	repo         ProxyPoolRepository
 	prober       ProxyExitInfoProber
+	grokProber   ProxyGrokQualityProber
 	latencyCache ProxyLatencyCache
 	rdb          *redis.Client
 	db           *sql.DB
@@ -34,6 +35,7 @@ const (
 	proxyPoolSweepInterval           = 30 * time.Second
 	proxyPoolRunTimeout              = 10 * time.Minute
 	proxyPoolProbeLimit              = 32
+	proxyPoolMemberProbeTimeout      = 30 * time.Second
 	proxyPoolBindHealthyWait         = 20 * time.Second
 	proxyPoolBindHealthyPollInterval = 250 * time.Millisecond
 	proxyPoolLockAcquireTimeout      = 2 * time.Second
@@ -42,10 +44,17 @@ const (
 	proxyPoolPostProcessTimeout      = 30 * time.Second
 )
 
+const (
+	proxyPoolGrokQualityPass = "pass"
+	proxyPoolGrokQualityFail = "fail"
+)
+
 func NewProxyPoolService(repo ProxyPoolRepository, prober ProxyExitInfoProber, latencyCache ProxyLatencyCache, rdb *redis.Client, db *sql.DB) *ProxyPoolService {
+	grokProber, _ := prober.(ProxyGrokQualityProber)
 	return &ProxyPoolService{
 		repo:         repo,
 		prober:       prober,
+		grokProber:   grokProber,
 		latencyCache: latencyCache,
 		rdb:          rdb,
 		db:           db,
@@ -229,16 +238,10 @@ func (s *ProxyPoolService) runPoolLocked(ctx context.Context, pool *ProxyPool, f
 	needCheck := poolProxiesDueForProbe(proxies, pool, forceProbe, now)
 	s.probePoolMembers(ctx, pool, needCheck)
 
-	healthy := make([]*ProxyPoolProxy, 0, len(proxies))
-	for i := range proxies {
-		if proxies[i].Status == StatusActive && proxies[i].PoolHealth == ProxyPoolHealthHealthy {
-			healthy = append(healthy, &proxies[i])
-		}
-	}
+	healthy := healthyPoolProxies(proxies)
 	if len(healthy) == 0 {
 		return 0
 	}
-	sort.SliceStable(healthy, func(i, j int) bool { return healthy[i].ID < healthy[j].ID })
 	postCtx, cancel := context.WithTimeout(context.Background(), proxyPoolPostProcessTimeout)
 	defer cancel()
 	releaseBind, ok := s.acquirePoolBind(postCtx, pool.ID)
@@ -262,7 +265,11 @@ func poolProxiesDueForProbe(proxies []ProxyPoolProxy, pool *ProxyPool, forceProb
 		if proxy.Status != StatusActive {
 			continue
 		}
-		if forceProbe || proxy.PoolCheckedAt == nil || now.Sub(*proxy.PoolCheckedAt) >= pool.HealthInterval() || proxy.PoolHealth == ProxyPoolHealthUnhealthy {
+		if forceProbe ||
+			proxy.PoolCheckedAt == nil ||
+			proxy.GrokQualityStatus != proxyPoolGrokQualityPass ||
+			now.Sub(*proxy.PoolCheckedAt) >= pool.HealthInterval() ||
+			proxy.PoolHealth == ProxyPoolHealthUnhealthy {
 			needCheck = append(needCheck, proxy)
 		}
 	}
@@ -292,6 +299,12 @@ func (s *ProxyPoolService) applyPoolProbeResult(pool *ProxyPool, proxy *ProxyPoo
 	if pool == nil || proxy == nil {
 		return
 	}
+	if result.grokItem.Status != proxyPoolGrokQualityPass {
+		result.ok = false
+	}
+	if result.grokCheckedAt.IsZero() {
+		result.grokCheckedAt = checkedAt
+	}
 	failures := proxy.PoolFailures
 	health := proxy.PoolHealth
 	if result.ok {
@@ -306,16 +319,43 @@ func (s *ProxyPoolService) applyPoolProbeResult(pool *ProxyPool, proxy *ProxyPoo
 	proxy.PoolFailures = failures
 	proxy.PoolHealth = health
 	proxy.PoolCheckedAt = &checkedAt
+	proxy.GrokQualityStatus = result.grokItem.Status
+	proxy.GrokQualityCheckedAt = &result.grokCheckedAt
+	proxy.GrokQualityMessage = truncateProxyPoolQualityMessage(result.grokItem.Message)
+	proxy.GrokQualityHTTPStatus = nil
+	if result.grokItem.HTTPStatus > 0 {
+		httpStatus := result.grokItem.HTTPStatus
+		proxy.GrokQualityHTTPStatus = &httpStatus
+	}
 
 	writeCtx, cancel := context.WithTimeout(context.Background(), proxyPoolHealthWriteTimeout)
 	defer cancel()
-	if err := s.repo.UpdateProxyPoolHealth(writeCtx, pool.ID, proxy.ID, health, failures, checkedAt); err != nil {
+	if err := s.repo.UpdateProxyPoolHealth(writeCtx, pool.ID, proxy.ID, ProxyPoolHealthSnapshot{
+		Health:                health,
+		Failures:              failures,
+		CheckedAt:             checkedAt,
+		GrokQualityStatus:     proxy.GrokQualityStatus,
+		GrokQualityCheckedAt:  proxy.GrokQualityCheckedAt,
+		GrokQualityHTTPStatus: proxy.GrokQualityHTTPStatus,
+		GrokQualityMessage:    proxy.GrokQualityMessage,
+	}); err != nil {
 		log.Printf("[ProxyPool] update health for proxy %d failed: %v", proxy.ID, err)
 	}
 }
 
-// applyCachedPoolHealth consumes fresh results produced by the existing proxy
-// batch-test UI before scheduling any additional network probes.
+func truncateProxyPoolQualityMessage(message string) string {
+	message = strings.TrimSpace(message)
+	const maxRunes = 512
+	runes := []rune(message)
+	if len(runes) <= maxRunes {
+		return message
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
+// applyCachedPoolHealth only consumes fresh results that explicitly include a
+// Grok quality item. Generic connectivity cache entries cannot mark a pool
+// member healthy.
 func (s *ProxyPoolService) applyCachedPoolHealth(ctx context.Context, pool *ProxyPool, proxies []ProxyPoolProxy, now time.Time) {
 	if s == nil || s.latencyCache == nil || pool == nil || len(proxies) == 0 {
 		return
@@ -334,21 +374,39 @@ func (s *ProxyPoolService) applyCachedPoolHealth(ctx context.Context, pool *Prox
 	for i := range proxies {
 		proxy := &proxies[i]
 		info := latencies[proxy.ID]
-		if proxy.Status != StatusActive || info == nil || info.UpdatedAt.IsZero() {
+		if proxy.Status != StatusActive || info == nil || info.GrokQualityCheckedAt == nil || info.GrokQualityStatus == "" {
 			continue
 		}
-		if info.UpdatedAt.After(now.Add(time.Minute)) || now.Sub(info.UpdatedAt) > pool.HealthInterval() {
+		qualityCheckedAt := info.GrokQualityCheckedAt.UTC()
+		if qualityCheckedAt.After(now.Add(time.Minute)) || now.Sub(qualityCheckedAt) > pool.HealthInterval() {
 			continue
 		}
-		if proxy.PoolCheckedAt != nil && !info.UpdatedAt.After(*proxy.PoolCheckedAt) {
+		if proxy.UpdatedAt.After(qualityCheckedAt) {
 			continue
 		}
-		s.applyPoolProbeResult(pool, proxy, poolProbeResult{ok: info.Success}, info.UpdatedAt)
+		if proxy.GrokQualityCheckedAt != nil && !qualityCheckedAt.After(*proxy.GrokQualityCheckedAt) {
+			continue
+		}
+		item := ProxyQualityCheckItem{
+			Target:  "grok",
+			Status:  info.GrokQualityStatus,
+			Message: info.GrokQualityMessage,
+		}
+		if info.GrokQualityHTTPStatus != nil {
+			item.HTTPStatus = *info.GrokQualityHTTPStatus
+		}
+		s.applyPoolProbeResult(pool, proxy, poolProbeResult{
+			ok:            info.Success && info.GrokQualityStatus == proxyPoolGrokQualityPass,
+			grokItem:      item,
+			grokCheckedAt: qualityCheckedAt,
+		}, qualityCheckedAt)
 	}
 }
 
 type poolProbeResult struct {
-	ok bool
+	ok            bool
+	grokItem      ProxyQualityCheckItem
+	grokCheckedAt time.Time
 }
 
 type poolProbeOutcome struct {
@@ -373,26 +431,68 @@ func (s *ProxyPoolService) probeAll(ctx context.Context, proxies []*ProxyPoolPro
 				if ctx.Err() != nil {
 					return
 				}
-				probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-				info, latency, err := s.prober.ProbeProxy(probeCtx, proxy.URL())
-				cancel()
-				if err != nil && ctx.Err() != nil {
+				probeCtx, cancel := context.WithTimeout(ctx, proxyPoolMemberProbeTimeout)
+				exitInfo, latency, baseErr := s.prober.ProbeProxy(probeCtx, proxy.URL())
+				grokItem := ProxyQualityCheckItem{
+					Target:  "grok",
+					Status:  proxyPoolGrokQualityFail,
+					Message: "Base connectivity failed before the Grok quality check",
+				}
+				var grokErr error
+				if baseErr == nil {
+					if s.grokProber == nil {
+						grokItem.Message = "Grok quality probe is unavailable"
+					} else {
+						grokItem, grokErr = s.grokProber.ProbeGrokQuality(probeCtx, proxy.URL())
+						if grokItem.Target == "" {
+							grokItem.Target = "grok"
+						}
+						if grokItem.Status == "" {
+							grokItem.Status = proxyPoolGrokQualityFail
+						}
+						if grokErr != nil && strings.TrimSpace(grokItem.Message) == "" {
+							grokItem.Message = grokErr.Error()
+						}
+					}
+				}
+				if ctx.Err() != nil {
+					cancel()
 					return
 				}
-				checkedAt := time.Now()
-				result := poolProbeResult{ok: err == nil}
-				cacheInfo := &ProxyLatencyInfo{Success: err == nil, UpdatedAt: checkedAt}
-				if err != nil {
-					cacheInfo.Message = err.Error()
+				checkedAt := time.Now().UTC()
+				cancel()
+				passed := baseErr == nil && grokErr == nil && grokItem.Status == proxyPoolGrokQualityPass
+				result := poolProbeResult{
+					ok:            passed,
+					grokItem:      grokItem,
+					grokCheckedAt: checkedAt,
+				}
+				cacheInfo := &ProxyLatencyInfo{
+					Success:              baseErr == nil,
+					GrokQualityStatus:    grokItem.Status,
+					GrokQualityCheckedAt: &checkedAt,
+					GrokQualityMessage:   truncateProxyPoolQualityMessage(grokItem.Message),
+					UpdatedAt:            checkedAt,
+				}
+				if grokItem.HTTPStatus > 0 {
+					httpStatus := grokItem.HTTPStatus
+					cacheInfo.GrokQualityHTTPStatus = &httpStatus
+				}
+				if baseErr != nil {
+					cacheInfo.Message = baseErr.Error()
 				} else {
 					cacheInfo.LatencyMs = &latency
-					cacheInfo.Message = "Proxy is accessible"
-					if info != nil {
-						cacheInfo.IPAddress = info.IP
-						cacheInfo.Country = info.Country
-						cacheInfo.CountryCode = info.CountryCode
-						cacheInfo.Region = info.Region
-						cacheInfo.City = info.City
+					if passed {
+						cacheInfo.Message = "Proxy is accessible and Grok quality passed"
+					} else {
+						cacheInfo.Message = "Grok quality check failed: " + truncateProxyPoolQualityMessage(grokItem.Message)
+					}
+					if exitInfo != nil {
+						cacheInfo.IPAddress = exitInfo.IP
+						cacheInfo.Country = exitInfo.Country
+						cacheInfo.CountryCode = exitInfo.CountryCode
+						cacheInfo.Region = exitInfo.Region
+						cacheInfo.City = exitInfo.City
 					}
 				}
 				outcomes <- poolProbeOutcome{proxy: proxy, result: result, checkedAt: checkedAt}
@@ -428,12 +528,7 @@ func (s *ProxyPoolService) saveProxyLatency(ctx context.Context, proxyID int64, 
 	merged := *info
 	if latencies, err := s.latencyCache.GetProxyLatencies(ctx, []int64{proxyID}); err == nil {
 		if existing := latencies[proxyID]; existing != nil {
-			merged.QualityStatus = existing.QualityStatus
-			merged.QualityScore = existing.QualityScore
-			merged.QualityGrade = existing.QualityGrade
-			merged.QualitySummary = existing.QualitySummary
-			merged.QualityCheckedAt = existing.QualityCheckedAt
-			merged.QualityCFRay = existing.QualityCFRay
+			mergeCachedProxyQuality(&merged, existing)
 		}
 	}
 	if err := s.latencyCache.SetProxyLatency(ctx, proxyID, &merged); err != nil {
@@ -628,7 +723,9 @@ func uniquePositiveIDs(ids []int64) []int64 {
 func healthyPoolProxies(proxies []ProxyPoolProxy) []*ProxyPoolProxy {
 	healthy := make([]*ProxyPoolProxy, 0, len(proxies))
 	for i := range proxies {
-		if proxies[i].Status == StatusActive && proxies[i].PoolHealth == ProxyPoolHealthHealthy {
+		if proxies[i].Status == StatusActive &&
+			proxies[i].PoolHealth == ProxyPoolHealthHealthy &&
+			proxies[i].GrokQualityStatus == proxyPoolGrokQualityPass {
 			healthy = append(healthy, &proxies[i])
 		}
 	}
@@ -704,6 +801,14 @@ func (s *ProxyPoolService) attachProxyLatency(ctx context.Context, proxies []Pro
 		proxies[i].IPAddress = info.IPAddress
 		proxies[i].Country = info.Country
 		proxies[i].CountryCode = info.CountryCode
+		if info.GrokQualityCheckedAt != nil &&
+			!proxies[i].UpdatedAt.After(*info.GrokQualityCheckedAt) &&
+			(proxies[i].GrokQualityCheckedAt == nil || info.GrokQualityCheckedAt.After(*proxies[i].GrokQualityCheckedAt)) {
+			proxies[i].GrokQualityStatus = info.GrokQualityStatus
+			proxies[i].GrokQualityCheckedAt = info.GrokQualityCheckedAt
+			proxies[i].GrokQualityHTTPStatus = info.GrokQualityHTTPStatus
+			proxies[i].GrokQualityMessage = info.GrokQualityMessage
+		}
 	}
 }
 

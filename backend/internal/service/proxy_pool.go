@@ -68,15 +68,29 @@ type ProxyPoolWithStats struct {
 
 type ProxyPoolProxy struct {
 	Proxy
-	PoolID        int64      `json:"pool_id"`
-	PoolHealth    string     `json:"pool_health"`
-	PoolCheckedAt *time.Time `json:"pool_checked_at,omitempty"`
-	PoolFailures  int        `json:"pool_failures"`
-	AccountCount  int64      `json:"account_count"`
-	LatencyMs     *int64     `json:"latency_ms,omitempty"`
-	IPAddress     string     `json:"ip_address,omitempty"`
-	Country       string     `json:"country,omitempty"`
-	CountryCode   string     `json:"country_code,omitempty"`
+	PoolID                int64      `json:"pool_id"`
+	PoolHealth            string     `json:"pool_health"`
+	PoolCheckedAt         *time.Time `json:"pool_checked_at,omitempty"`
+	PoolFailures          int        `json:"pool_failures"`
+	GrokQualityStatus     string     `json:"grok_quality_status"`
+	GrokQualityCheckedAt  *time.Time `json:"grok_quality_checked_at,omitempty"`
+	GrokQualityHTTPStatus *int       `json:"grok_quality_http_status,omitempty"`
+	GrokQualityMessage    string     `json:"grok_quality_message,omitempty"`
+	AccountCount          int64      `json:"account_count"`
+	LatencyMs             *int64     `json:"latency_ms,omitempty"`
+	IPAddress             string     `json:"ip_address,omitempty"`
+	Country               string     `json:"country,omitempty"`
+	CountryCode           string     `json:"country_code,omitempty"`
+}
+
+type ProxyPoolHealthSnapshot struct {
+	Health                string
+	Failures              int
+	CheckedAt             time.Time
+	GrokQualityStatus     string
+	GrokQualityCheckedAt  *time.Time
+	GrokQualityHTTPStatus *int
+	GrokQualityMessage    string
 }
 
 type ProxyPoolRebindLog struct {
@@ -132,7 +146,7 @@ type ProxyPoolRepository interface {
 	ListPoolProxies(ctx context.Context, poolID int64) ([]ProxyPoolProxy, error)
 	AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error)
 	RemoveProxiesFromPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error)
-	UpdateProxyPoolHealth(ctx context.Context, poolID, proxyID int64, health string, failures int, checkedAt time.Time) error
+	UpdateProxyPoolHealth(ctx context.Context, poolID, proxyID int64, snapshot ProxyPoolHealthSnapshot) error
 
 	ListPoolUnassignedAccountIDs(ctx context.Context, poolID int64) ([]int64, error)
 	ListAccountIDsByProxy(ctx context.Context, poolID, proxyID int64) ([]int64, error)

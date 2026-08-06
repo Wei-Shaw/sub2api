@@ -61,6 +61,8 @@ type proxyProbeService struct {
 	maxResponseBytes   int64
 }
 
+var _ service.ProxyGrokQualityProber = (*proxyProbeService)(nil)
+
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
 	client, err := httpclient.GetClient(httpclient.Options{
 		ProxyURL:           proxyURL,
@@ -83,6 +85,24 @@ func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*s
 	}
 
 	return nil, 0, fmt.Errorf("all probe URLs failed, last error: %w", lastErr)
+}
+
+func (s *proxyProbeService) ProbeGrokQuality(ctx context.Context, proxyURL string) (service.ProxyQualityCheckItem, error) {
+	client, err := httpclient.GetClient(httpclient.Options{
+		ProxyURL:           proxyURL,
+		Timeout:            defaultProxyProbeTimeout,
+		InsecureSkipVerify: s.insecureSkipVerify,
+		ValidateResolvedIP: s.validateResolvedIP,
+		AllowPrivateHosts:  s.allowPrivateHosts,
+	})
+	if err != nil {
+		return service.ProxyQualityCheckItem{
+			Target:  "grok",
+			Status:  "fail",
+			Message: fmt.Sprintf("failed to create Grok quality client: %v", err),
+		}, fmt.Errorf("failed to create Grok quality client: %w", err)
+	}
+	return service.RunGrokProxyQualityTarget(ctx, client), nil
 }
 
 func (s *proxyProbeService) probeWithURL(ctx context.Context, client *http.Client, url string, parser string) (*service.ProxyExitInfo, int64, error) {

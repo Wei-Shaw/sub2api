@@ -122,6 +122,10 @@ describe('ProxyPoolsView', () => {
         pool_health: 'healthy',
         pool_failures: 0,
         pool_checked_at: '2026-08-04T00:00:00Z',
+        grok_quality_status: 'pass',
+        grok_quality_checked_at: '2026-08-04T00:00:00Z',
+        grok_quality_http_status: 401,
+        grok_quality_message: 'HTTP 401 (target reachable)',
         account_count: 4,
         latency_ms: 42,
         ip_address: '203.0.113.25',
@@ -159,6 +163,8 @@ describe('ProxyPoolsView', () => {
     expect(wrapper.text()).toContain('203.0.113.25')
     expect(wrapper.text()).toContain('42ms')
     expect(wrapper.text()).toContain('Example')
+    expect(wrapper.text()).toContain('admin.proxyPools.grokQualityPassed')
+    expect(wrapper.text()).toContain('HTTP 401')
   })
 
   it('runs a forced health check and refreshes the detail', async () => {

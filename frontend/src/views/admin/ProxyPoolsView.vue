@@ -134,12 +134,25 @@
         <div v-if="detailProxies.length" class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="border-b border-gray-200 text-left text-xs uppercase text-gray-500 dark:border-dark-600 dark:text-gray-400">
-              <tr><th class="px-3 py-2">{{ t('admin.proxyPools.proxy') }}</th><th class="px-3 py-2">{{ t('admin.proxyPools.health') }}</th><th class="px-3 py-2">{{ t('admin.proxyPools.exit') }}</th><th class="px-3 py-2">{{ t('admin.proxyPools.latency') }}</th><th class="px-3 py-2">{{ t('admin.proxyPools.checkedAt') }}</th><th class="px-3 py-2">{{ t('admin.proxyPools.boundAccounts') }}</th><th class="px-3 py-2"></th></tr>
+              <tr>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.proxy') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.health') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.grokQuality') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.exit') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.latency') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.checkedAt') }}</th>
+                <th class="px-3 py-2">{{ t('admin.proxyPools.boundAccounts') }}</th>
+                <th class="px-3 py-2"></th>
+              </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-dark-600">
               <tr v-for="proxy in detailProxies" :key="proxy.id">
                 <td class="px-3 py-3"><div class="font-medium text-gray-900 dark:text-white">{{ proxy.name }}</div><code class="text-xs text-gray-500">{{ proxy.host }}:{{ proxy.port }}</code></td>
                 <td class="px-3 py-3"><span :class="healthClass(proxy.pool_health)">{{ healthLabel(proxy.pool_health) }}</span><div v-if="proxy.pool_failures" class="mt-1 text-xs text-red-500">{{ t('admin.proxyPools.failures', { count: proxy.pool_failures }) }}</div></td>
+                <td class="px-3 py-3" :title="proxy.grok_quality_message || undefined">
+                  <span :class="grokQualityClass(proxy.grok_quality_status)">{{ grokQualityLabel(proxy.grok_quality_status) }}</span>
+                  <div v-if="proxy.grok_quality_http_status" class="mt-1 text-xs text-gray-500">HTTP {{ proxy.grok_quality_http_status }}</div>
+                </td>
                 <td class="px-3 py-3"><div class="text-gray-700 dark:text-gray-200">{{ proxy.ip_address || '-' }}</div><div v-if="proxy.country" class="mt-0.5 text-xs text-gray-500">{{ proxy.country }}<span v-if="proxy.country_code"> ({{ proxy.country_code }})</span></div></td>
                 <td class="px-3 py-3 text-gray-600 dark:text-gray-300">{{ typeof proxy.latency_ms === 'number' ? `${proxy.latency_ms}ms` : '-' }}</td>
                 <td class="px-3 py-3 text-gray-600 dark:text-gray-300">{{ proxy.pool_checked_at ? formatDateTime(proxy.pool_checked_at) : '-' }}</td>
@@ -310,6 +323,14 @@ async function assignProxies() { if (!detailPool.value) return; assigning.value 
 async function removeProxy(id: number) { if (!detailPool.value) return; try { await adminAPI.proxyPools.removeProxies(detailPool.value.id, [id]); await Promise.all([refreshDetail(), loadPools()]) } catch { appStore.showError(t('admin.proxyPools.removeFailed')) } }
 function healthClass(health: string) { return ['badge', health === 'healthy' ? 'badge-success' : health === 'unhealthy' ? 'badge-danger' : 'badge-gray'] }
 function healthLabel(health: string) { return health === 'healthy' ? t('admin.proxyPools.healthy') : health === 'unhealthy' ? t('admin.proxyPools.unhealthy') : t('admin.proxyPools.unknown') }
+function grokQualityClass(status: string) { return ['badge', status === 'pass' ? 'badge-success' : status === 'warn' ? 'badge-warning' : status === 'fail' || status === 'challenge' ? 'badge-danger' : 'badge-gray'] }
+function grokQualityLabel(status: string) {
+  if (status === 'pass') return t('admin.proxyPools.grokQualityPassed')
+  if (status === 'warn') return t('admin.proxyPools.grokQualityWarn')
+  if (status === 'challenge') return t('admin.proxyPools.grokQualityChallenge')
+  if (status === 'fail') return t('admin.proxyPools.grokQualityFailed')
+  return t('admin.proxyPools.grokQualityPending')
+}
 
 onMounted(loadPools)
 </script>

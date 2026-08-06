@@ -551,16 +551,20 @@ func ProxyPoolProxyFromService(p *service.ProxyPoolProxy) *ProxyPoolProxy {
 		return nil
 	}
 	return &ProxyPoolProxy{
-		Proxy:         *ProxyFromService(&p.Proxy),
-		PoolID:        p.PoolID,
-		PoolHealth:    p.PoolHealth,
-		PoolCheckedAt: p.PoolCheckedAt,
-		PoolFailures:  p.PoolFailures,
-		AccountCount:  p.AccountCount,
-		LatencyMs:     p.LatencyMs,
-		IPAddress:     p.IPAddress,
-		Country:       p.Country,
-		CountryCode:   p.CountryCode,
+		Proxy:                 *ProxyFromService(&p.Proxy),
+		PoolID:                p.PoolID,
+		PoolHealth:            p.PoolHealth,
+		PoolCheckedAt:         p.PoolCheckedAt,
+		PoolFailures:          p.PoolFailures,
+		GrokQualityStatus:     p.GrokQualityStatus,
+		GrokQualityCheckedAt:  p.GrokQualityCheckedAt,
+		GrokQualityHTTPStatus: p.GrokQualityHTTPStatus,
+		GrokQualityMessage:    p.GrokQualityMessage,
+		AccountCount:          p.AccountCount,
+		LatencyMs:             p.LatencyMs,
+		IPAddress:             p.IPAddress,
+		Country:               p.Country,
+		CountryCode:           p.CountryCode,
 	}
 }
 
