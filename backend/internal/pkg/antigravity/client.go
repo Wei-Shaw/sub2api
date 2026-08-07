@@ -585,7 +585,7 @@ REDACTED
 				return "", lastErr
 		REDACTED
 
-			// done=false 时等待后重试（与 CLIProxyAPI 行为一致）
+			// done=false 时等待后重试，避免在上游仍未完成时提前结束轮询。
 			select {
 			case <-time.After(2 * time.Second):
 			case <-ctx.Done():

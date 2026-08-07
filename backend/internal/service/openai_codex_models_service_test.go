@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
@@ -193,7 +194,7 @@ REDACTED
 	if gotAccountID != "acc-123" {
 		t.Errorf("chatgpt-account-id header: got %q", gotAccountID)
 REDACTED
-	if gotOriginator != "codex_cli_rs" {
+	if gotOriginator != openai.CodexDefaultOriginator {
 		t.Errorf("originator header: got %q", gotOriginator)
 REDACTED
 	if gotClientVersion != "0.137.0" {
@@ -447,7 +448,7 @@ REDACTED
 	if gotRequest.Header.Get("Authorization") != "Bearer sk-upstream" {
 		t.Errorf("authorization header: got %q", gotRequest.Header.Get("Authorization"))
 REDACTED
-	if gotRequest.Header.Get("Originator") != "codex_cli_rs" {
+	if gotRequest.Header.Get("Originator") != openai.CodexDefaultOriginator {
 		t.Errorf("originator header: got %q", gotRequest.Header.Get("Originator"))
 REDACTED
 	if gotRequest.Header.Get("Version") != "0.144.0" {

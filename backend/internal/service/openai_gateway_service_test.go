@@ -3030,7 +3030,7 @@ REDACTED
 			isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator"))
 			req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"REDACTED`), "token", false, "", isCodexCLI)
 		REDACTED
-			require.Equal(t, "codex_cli_rs", req.Header.Get("originator"))
+			require.Equal(t, openai.CodexDefaultOriginator, req.Header.Get("originator"))
 			require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
 			require.Equal(t, codexCLIVersion, req.Header.Get("version"))
 	REDACTED)
