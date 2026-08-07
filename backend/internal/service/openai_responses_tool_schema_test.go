@@ -186,3 +186,64 @@ REDACTED
 	require.Equal(t, "none", decoded["tool_choice"])
 	require.Equal(t, false, decoded["store"])
 REDACTED
+
+// 输入 body 是调用方持有的缓冲区（Forward 里 canonicalImageIntentBody 与它同源），
+// 净化必须返回新切片，绝不能就地改写。
+func TestSanitizeOpenAIResponsesToolParameterTypes_DoesNotMutateInputBody(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","tools":[{"type":"function","name":"a","parameters":{"type":nullREDACTEDREDACTED]REDACTED`)
+	original := append([]byte(nil), body...)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(body)
+
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, string(original), string(body), "调用方的 body 不得被就地改写")
+	require.NotEqual(t, string(original), string(sanitized))
+REDACTED
+
+func buildToolSchemaNullTypeBody(t *testing.T, hits int) []byte {
+REDACTED
+	tools := make([]any, 0, hits)
+	for i := 0; i < hits; i++ {
+		tools = append(tools, map[string]any{
+			"type":       "function",
+			"name":       "automation_update",
+			"parameters": map[string]any{"type": nil, "properties": map[string]any{REDACTEDREDACTED,
+	REDACTED)
+REDACTED
+	body, err := json.Marshal(map[string]any{"model": "gpt-5.6-sol", "tools": toolsREDACTED)
+REDACTED
+	return body
+REDACTED
+
+// 复杂度守卫：重写次数必须与命中数无关。
+//
+// 逐个 sjson.SetBytes 的写法每命中一处就重扫并全量拷贝一次文档，命中 N 处即 N 次
+// 全量拷贝；/v1/responses 的 body 上限是 gateway.max_body_size（默认 256MB），
+// 构造请求可以塞进百万级命中，会被放大成 TB 级 memcpy。这里用分配次数锁死该行为：
+// 命中数放大 500 倍，分配次数不得随之增长。
+func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits(t *testing.T) {
+	small := buildToolSchemaNullTypeBody(t, 4)
+	large := buildToolSchemaNullTypeBody(t, 2000)
+
+	smallAllocs := testing.AllocsPerRun(2, func() {
+		_, _, _ = sanitizeOpenAIResponsesToolParameterTypes(small)
+REDACTED)
+	largeAllocs := testing.AllocsPerRun(2, func() {
+		_, _, _ = sanitizeOpenAIResponsesToolParameterTypes(large)
+REDACTED)
+
+	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
+	require.Less(t, largeAllocs, smallAllocs+40,
+		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
+
+	// 同时确认大 body 的结果确实全部修好了。
+	sanitized, changed, err := sanitizeOpenAIResponsesToolParameterTypes(large)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, 2000, int(gjson.GetBytes(sanitized, "tools.#").Int()))
+	gjson.GetBytes(sanitized, "tools").ForEach(func(_, tool gjson.Result) bool {
+		require.Equal(t, "object", tool.Get("parameters.type").String())
+		return true
+REDACTED)
+REDACTED
