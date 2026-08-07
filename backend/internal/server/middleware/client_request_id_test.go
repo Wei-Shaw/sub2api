@@ -66,3 +66,25 @@ func TestClientRequestIDPreservesExistingContextID(t *testing.T) {
 	require.Equal(t, "existing-client-request-id", w.Body.String())
 	require.Equal(t, "existing-client-request-id", w.Header().Get(clientRequestIDHeader))
 }
+
+func TestClientRequestIDPreservesValidHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(ClientRequestID())
+	router.GET("/", func(c *gin.Context) {
+		value, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+		c.String(http.StatusOK, value)
+	})
+
+	clientRequestID := "phase3-unavailable-model-diagnosis-1234567890abcdef12345678"
+	require.Len(t, clientRequestID, 59)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(clientRequestIDHeader, clientRequestID)
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, clientRequestID, w.Body.String())
+	require.Equal(t, clientRequestID, w.Header().Get(clientRequestIDHeader))
+}
