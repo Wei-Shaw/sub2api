@@ -1451,6 +1451,12 @@ REDACTED
 	if s.isAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil
 REDACTED
+	// Sticky / non-list selection must honor free soft-gate (same as listSchedulableAccounts).
+	if account.IsGrok() {
+		if gated := s.filterGrokFreeQuotaAccountsForGateway(ctx, []Account{*accountREDACTED); len(gated) == 0 {
+			return nil, nil
+	REDACTED
+REDACTED
 	return account, nil
 REDACTED
 
