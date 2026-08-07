@@ -1143,12 +1143,14 @@ type reasoningEffortOption struct {
 // modelsCapabilityFields 是 /v1/models 列表项的通用能力字段。
 // 客户端（opencode 插件等）直接消费生成 variants / 附件能力，不做本地推断；
 // 数据来自 service.ModelReasoningEfforts / ModelSupportsAttachments（服务端单边维护）。
+// 布尔能力字段不做 omitempty：客户端据此区分「新网关显式不支持」(false) 与
+// 「旧网关无字段」（兜底逻辑），字段缺失只可能是旧网关。
 type modelsCapabilityFields struct {
-	SupportsReasoningEffort bool                   `json:"supportsReasoningEffort,omitempty"`
+	SupportsReasoningEffort bool                   `json:"supportsReasoningEffort"`
 	ReasoningEffort         string                 `json:"reasoningEffort,omitempty"`
 	ReasoningEfforts        []reasoningEffortOption `json:"reasoningEfforts,omitempty"`
 	MaxReasoningEffort      string                 `json:"maxReasoningEffort,omitempty"`
-	SupportsAttachments     bool                   `json:"supportsAttachments,omitempty"`
+	SupportsAttachments     bool                   `json:"supportsAttachments"`
 }
 
 func modelCapabilityFields(modelID string, group *service.Group) modelsCapabilityFields {
