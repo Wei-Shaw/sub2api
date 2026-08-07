@@ -119,7 +119,7 @@ func codingPlanSummary(provider string, s *MonitorQuotaSnapshot) string {
 }
 
 // doCodingPlanGet 发起一次 GET 查询并读取响应体（限制大小），返回 body 与 HTTP status。
-// authScheme 为 "bearer" 时带 Authorization: ******"raw" 时带裸 key（智谱）。
+// authScheme 为 "bearer" 时带 Authorization: ****** "raw" 时带裸 key（智谱）。
 func doCodingPlanGet(ctx context.Context, endpoint, path, apiKey, authScheme string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, joinURL(endpoint, path), nil)
 	if err != nil {
@@ -170,6 +170,24 @@ func parseCodingPlanJSON(body []byte) (gjson.Result, string) {
 
 // ── DeepSeek（仅余额） ─────────────────────────────────────
 
+// balanceTierFromInfo 把一条 balance_infos 记录转为 balance tier。
+// total/currency 任一为空时返回 nil（视为无效记录）；字符串原样保留上游精度。
+func balanceTierFromInfo(info gjson.Result) *MonitorQuotaTier {
+	total := info.Get("total_balance").String()
+	currency := info.Get("currency").String()
+	if total == "" || currency == "" {
+		return nil
+	}
+	tier := &MonitorQuotaTier{Name: QuotaTierBalance, Balance: &total, Currency: &currency}
+	if granted := info.Get("granted_balance").String(); granted != "" {
+		tier.GrantedBalance = &granted
+	}
+	if toppedUp := info.Get("topped_up_balance").String(); toppedUp != "" {
+		tier.ToppedUp = &toppedUp
+	}
+	return tier
+}
+
 func queryDeepseekBalance(ctx context.Context, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
 	body, status, err := doCodingPlanGet(ctx, endpoint, codingPlanDeepseekBalancePath, apiKey, "bearer")
 	if msg, auth := classifyCodingPlanHTTP(status, body, err); msg != "" {
@@ -183,28 +201,14 @@ func queryDeepseekBalance(ctx context.Context, endpoint, apiKey string) (*Monito
 	available := root.Get("is_available").Bool()
 	snap := &MonitorQuotaSnapshot{Available: &available}
 
-	// 取第一条 balance_infos（通常 CNY）；保留字符串精度。
-	info := root.Get("balance_infos.0")
-	if info.Exists() {
-		total := info.Get("total_balance").String()
-		currency := info.Get("currency").String()
-		granted := info.Get("granted_balance").String()
-		toppedUp := info.Get("topped_up_balance").String()
-		tier := MonitorQuotaTier{Name: QuotaTierBalance}
-		if total != "" {
-			tier.Balance = &total
+	// 遍历全部 balance_infos：DeepSeek 账户可能同时持有 CNY/USD 多个币种子账户，
+	// 每个有效（非空）币种各生成一条 balance tier；字符串原样保留上游精度。
+	root.Get("balance_infos").ForEach(func(_, info gjson.Result) bool {
+		if tier := balanceTierFromInfo(info); tier != nil {
+			snap.Tiers = append(snap.Tiers, *tier)
 		}
-		if currency != "" {
-			tier.Currency = &currency
-		}
-		if granted != "" {
-			tier.GrantedBalance = &granted
-		}
-		if toppedUp != "" {
-			tier.ToppedUp = &toppedUp
-		}
-		snap.Tiers = append(snap.Tiers, tier)
-	}
+		return true
+	})
 	return snap, "", false
 }
 

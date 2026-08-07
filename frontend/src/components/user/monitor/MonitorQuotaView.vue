@@ -20,9 +20,12 @@
       </div>
     </div>
 
-    <!-- 余额（balance） -->
+    <!-- 余额（balance）：多币种账户每个币种一行（如 CNY + USD） -->
     <div v-for="(tier, idx) in balanceTiers" :key="`balance-${idx}`" class="flex items-baseline justify-between">
-      <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('monitorCommon.quota.balance') }}</span>
+      <span class="text-xs text-gray-500 dark:text-gray-400">
+        {{ t('monitorCommon.quota.balance') }}
+        <template v-if="balanceTiers.length > 1 && tier.currency"> ({{ tier.currency }})</template>
+      </span>
       <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">
         {{ tier.balance }} <span class="text-xs font-normal text-gray-400">{{ tier.currency }}</span>
       </span>

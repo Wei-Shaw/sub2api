@@ -65,6 +65,60 @@ func TestRunCodingPlanCheck_DeepseekBalance(t *testing.T) {
 	}
 }
 
+// DeepSeek 多币种账户：CNY/USD 并存时应为每个币种各生成一条 balance tier，
+// 即使某币种余额为 0 也不能丢弃（balance_infos.0 只取第一条会漏掉 USD）。
+func TestRunCodingPlanCheck_DeepseekMultiCurrency(t *testing.T) {
+	endpoint := codingPlanTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"is_available": true,
+			"balance_infos": [
+				{"currency": "CNY", "total_balance": "318.87", "granted_balance": "0.00", "topped_up_balance": "318.87"},
+				{"currency": "USD", "total_balance": "0.00", "granted_balance": "0.00", "topped_up_balance": "0.00"}
+			]
+		}`))
+	})
+
+	res := runCodingPlanCheck(context.Background(), MonitorProviderDeepseek, endpoint, "test-key", "balance")
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("status = %s, message=%q", res.Status, res.Message)
+	}
+	if res.Quota == nil || len(res.Quota.Tiers) != 2 {
+		t.Fatalf("expected 2 balance tiers, got %+v", res.Quota)
+	}
+	cny, usd := res.Quota.Tiers[0], res.Quota.Tiers[1]
+	if cny.Name != QuotaTierBalance || cny.Currency == nil || *cny.Currency != "CNY" || cny.Balance == nil || *cny.Balance != "318.87" {
+		t.Fatalf("cny tier = %+v", cny)
+	}
+	if usd.Name != QuotaTierBalance || usd.Currency == nil || *usd.Currency != "USD" || usd.Balance == nil || *usd.Balance != "0.00" {
+		t.Fatalf("usd tier = %+v", usd)
+	}
+}
+
+// 空/缺字段的 balance_infos 记录不应产生余额 tier。
+// is_available=false 仅影响快照 Available 徽章，不影响渠道可用性判定（仍是 operational）。
+func TestRunCodingPlanCheck_DeepseekSkipsEmptyBalanceInfo(t *testing.T) {
+	endpoint := codingPlanTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"is_available": false,
+			"balance_infos": [{}, {"currency": "USD", "total_balance": "1.50"}]
+		}`))
+	})
+
+	res := runCodingPlanCheck(context.Background(), MonitorProviderDeepseek, endpoint, "test-key", "balance")
+	if res.Status != MonitorStatusOperational {
+		t.Fatalf("status = %s, message=%q", res.Status, res.Message)
+	}
+	if len(res.Quota.Tiers) != 1 {
+		t.Fatalf("expected 1 tier, got %+v", res.Quota.Tiers)
+	}
+	tier := res.Quota.Tiers[0]
+	if tier.Currency == nil || *tier.Currency != "USD" || tier.Balance == nil || *tier.Balance != "1.50" {
+		t.Fatalf("tier = %+v", tier)
+	}
+}
+
 func TestRunCodingPlanCheck_DeepseekAuthError(t *testing.T) {
 	endpoint := codingPlanTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
