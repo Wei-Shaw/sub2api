@@ -5,6 +5,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 
 	"github.com/google/wire"
 )
@@ -266,6 +267,7 @@ var ProviderSet = wire.NewSet(
 	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
+	web3deposit.NewAddressAllocator,
 	NewWeb3DepositHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,

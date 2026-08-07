@@ -145,6 +145,7 @@ func validateWeb3DepositAccountXPub(raw string) (string, uint32, error) {
 func normalizeAndValidateWeb3DepositNetworks(cfg *Web3DepositConfig) (int, error) {
 	enabledNetworks := 0
 	enabledChainIDs := make(map[uint64]string)
+	enabledWalletID := ""
 	for _, networkKey := range sortedWeb3DepositKeys(cfg.Networks) {
 		path := "web3_deposit.networks." + networkKey
 		if err := validateWeb3DepositConfigKey(networkKey, "network"); err != nil {
@@ -168,6 +169,11 @@ func normalizeAndValidateWeb3DepositNetworks(cfg *Web3DepositConfig) (int, error
 		}
 		if network.Enabled {
 			enabledNetworks++
+			if enabledWalletID == "" {
+				enabledWalletID = network.WalletID
+			} else if network.WalletID != enabledWalletID {
+				return 0, fmt.Errorf("%s.wallet_id must match other enabled networks", path)
+			}
 			if existingNetwork, exists := enabledChainIDs[network.ChainID]; exists {
 				return 0, fmt.Errorf("%s.chain_id duplicates enabled network %q", path, existingNetwork)
 			}

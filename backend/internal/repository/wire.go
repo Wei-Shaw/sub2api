@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -95,6 +96,9 @@ var ProviderSet = wire.NewSet(
 	NewWeb3ScannerCursorRepository,
 	NewWeb3UserBalanceRepository,
 	NewWeb3BalanceTransferRepository,
+	wire.Bind(new(web3deposit.WalletMetadataStore), new(*Web3DepositWalletRepository)),
+	wire.Bind(new(web3deposit.DerivationIndexReserver), new(*Web3DepositWalletRepository)),
+	wire.Bind(new(web3deposit.DepositAddressStore), new(*Web3DepositAddressRepository)),
 	NewWeb3ChallengeStore,
 	NewPasskeyRepository,
 	NewPasskeySessionStore,

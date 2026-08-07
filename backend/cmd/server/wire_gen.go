@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
@@ -296,7 +297,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	}
 	passkeyHandler := handler.NewPasskeyHandler(passkeyService, authService, settingService)
 	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
-	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig)
+	web3DepositWalletRepository := repository.NewWeb3DepositWalletRepository(client)
+	web3DepositAddressRepository := repository.NewWeb3DepositAddressRepository(client)
+	addressAllocator := web3deposit.NewAddressAllocator(web3DepositWalletRepository, web3DepositWalletRepository, web3DepositAddressRepository)
+	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	modelPlazaHandler := handler.NewModelPlazaHandler(channelService, apiKeyService, settingService)

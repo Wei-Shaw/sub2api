@@ -334,6 +334,35 @@ func TestValidateWeb3DepositConfigAllowsEnabledNetworksToShareWallet(t *testing.
 	require.NoError(t, validateWeb3DepositConfig(&cfg))
 }
 
+func TestValidateWeb3DepositConfigRejectsDifferentWalletsAcrossEnabledNetworks(t *testing.T) {
+	cfg := validWeb3DepositConfig(t)
+	accountXPub, _ := testWeb3DepositAccountKeysForAccount(t, 1)
+	cfg.Wallets["other_wallet"] = Web3DepositWalletConfig{
+		AccountXPub: accountXPub,
+		AccountPath: "m/44'/60'/1'",
+	}
+	cfg.Networks["other_network"] = Web3DepositNetworkConfig{
+		Enabled:             true,
+		DisplayName:         "Other Network",
+		ChainID:             71,
+		WalletID:            "other_wallet",
+		RPCURLs:             []string{"https://rpc.example"},
+		PollIntervalSeconds: 10,
+		BlockBatchSize:      500,
+		OverlapBlocks:       20,
+		Assets: map[string]Web3DepositAssetConfig{
+			"usdt": {
+				ContractAddress: "0x1111111111111111111111111111111111111111",
+				Decimals:        6,
+				MinimumDeposit:  "1.000000",
+				AutoCreditLimit: "10000.000000",
+			},
+		},
+	}
+
+	require.ErrorContains(t, validateWeb3DepositConfig(&cfg), "wallet_id must match other enabled networks")
+}
+
 func TestValidateWeb3DepositConfigRejectsDuplicateEnabledChain(t *testing.T) {
 	cfg := validWeb3DepositConfig(t)
 	duplicate := cfg.Networks[DefaultWeb3DepositNetworkKey]

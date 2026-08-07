@@ -38,6 +38,7 @@ func RegisterPaymentRoutes(
 		web3 := authenticated.Group("/web3")
 		{
 			web3.GET("/config", web3DepositHandler.GetConfig)
+			web3.POST("/address", web3DepositHandler.GetOrCreateAddress)
 		}
 
 		orders := authenticated.Group("/orders")
