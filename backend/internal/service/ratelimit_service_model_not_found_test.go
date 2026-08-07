@@ -382,6 +382,49 @@ func TestRateLimitService_HandleUpstreamError_CodexPlanGatedModelIgnoresAPIKeyAc
 	require.Empty(t, repo.modelRateLimitCalls)
 REDACTED
 
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedImageModelSkipsCooldown(t *testing.T) {
+	for _, model := range []string{"gpt-image-1", "gpt-image-1.5", "gpt-image-2"REDACTED {
+		t.Run(model, func(t *testing.T) {
+			repo := &modelNotFoundAccountRepoStub{REDACTED
+			svc := &RateLimitService{accountRepo: repoREDACTED
+			account := openAICodexPlanGatedOAuthAccount()
+
+			handled := svc.HandleUpstreamError(
+				context.Background(),
+				account,
+				http.StatusBadRequest,
+				http.Header{REDACTED,
+				[]byte(`{"detail":"The '`+model+`' model is not supported when using Codex with a ChatGPT account."REDACTED`),
+				model,
+			)
+
+			require.True(t, handled, "attempt should still fail over")
+			require.Empty(t, repo.modelRateLimitCalls,
+				"image models must not be cooled down: the account still serves them over /v1/images/*")
+			require.Zero(t, repo.tempCalls)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestRateLimitService_HandleUpstreamError_CodexPlanGatedTextModelStillCoolsDown(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{REDACTED
+	svc := &RateLimitService{accountRepo: repoREDACTED
+	account := openAICodexPlanGatedOAuthAccount()
+
+	handled := svc.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusBadRequest,
+		http.Header{REDACTED,
+		[]byte(`{"detail":"The 'gpt-5.6-sol' model is not supported when using Codex with a ChatGPT account."REDACTED`),
+		"gpt-5.6-sol",
+	)
+
+	require.True(t, handled)
+	require.Len(t, repo.modelRateLimitCalls, 1, "non-image plan-gated models keep the existing cooldown")
+	require.Equal(t, upstreamCodexPlanGatedModelReason, repo.modelRateLimitCalls[0].reason)
+REDACTED
+
 func openAICodexPlanGatedOAuthAccount() *Account {
 REDACTED
 		ID:          202,
