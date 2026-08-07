@@ -11,10 +11,41 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+// ensureChatMessagesIDs 为 OpenAI Chat Completions 请求的每条 message 补齐
+// 顶层 id 字段（缺失时）。
+//
+// 为什么需要：opencode 官方 zen 网关（opencode.ai/zen/v1）的 serde 结构要求
+// message 必须带 id（opencode 客户端自身发送的消息始终带 id）。第三方客户端
+// （opencode 之外经 sub2api 转发的流量，尤其多模态 content 数组消息）不带 id
+// 会被拒为 400 "missing field `id`"。
+//
+// 对标准 OpenAI / DeepSeek 等上游无害：官方实现忽略消息的未知字段，id 是
+// 只读回显字段。
+func ensureChatMessagesIDs(body []byte) ([]byte, error) {
+	count := gjson.GetBytes(body, "messages.#").Int()
+	if count <= 0 {
+		return body, nil
+	}
+	out := body
+	for i := int64(0); i < count; i++ {
+		path := fmt.Sprintf("messages.%d.id", i)
+		if gjson.GetBytes(out, path).Exists() {
+			continue
+		}
+		next, err := sjson.SetBytes(out, path, "msg_"+strings.ReplaceAll(uuid.NewString(), "-", ""))
+		if err != nil {
+			return body, err
+		}
+		out = next
+	}
+	return out, nil
+}
 
 // openaiCCRawAllowedHeaders 是 CC 直转路径专用的客户端 header 透传白名单。
 //
@@ -92,6 +123,18 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
+	}
+
+	// 3b. 补齐 message id：部分上游（如 opencode zen 网关）serde 要求消息带 id。
+	// 标准 OpenAI 兼容上游忽略未知字段，补 id 无副作用。
+	if updated, err := ensureChatMessagesIDs(upstreamBody); err != nil {
+		logger.L().Warn("openai chat_completions raw: failed to ensure message ids, forwarding as-is",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_model", upstreamModel),
+			zap.Error(err),
+		)
+	} else {
+		upstreamBody = updated
 	}
 
 	// 4. Apply OpenAI fast policy on the CC body
