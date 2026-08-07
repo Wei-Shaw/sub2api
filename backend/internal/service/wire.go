@@ -15,8 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config) *GrokOAuthService {
-	return NewGrokOAuthService(proxyRepo, oauthClient, cfg)
+func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
+	return NewGrokOAuthService(proxyRepo, oauthClient, cfg).WithRedisSessionStore(redisClient)
 REDACTED
 
 // BuildInfo contains build information
