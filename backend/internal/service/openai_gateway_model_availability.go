@@ -53,17 +53,18 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
 	}
 
-	diag := ModelAvailabilityDiagnosis{}
-	for i := range accounts {
-		diag.HasAccountsInPool = true
-		// Mirrors the per-candidate filter used during account selection
-		// (openai_account_scheduler.isAccountRequestCompatible): empty
-		// model_mapping accepts everything; otherwise the explicit / wildcard
-		// mapping must match.
-		if accounts[i].IsModelSupported(requestedModel) {
-			diag.HasModelSupport = true
-			return diag
-		}
-	}
-	return diag
+	return diagnoseModelAvailabilityCandidates(
+		ctx,
+		accounts,
+		requestedModel,
+		platform == PlatformOpenAI,
+		nil,
+		func(account *Account, model string) bool {
+			// Mirrors the per-candidate filter used during account selection
+			// (openai_account_scheduler.isAccountRequestCompatible): empty
+			// model_mapping accepts everything; otherwise the explicit / wildcard
+			// mapping must match.
+			return account.IsModelSupported(model)
+		},
+	)
 }

@@ -488,6 +488,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
+				if cls.Status == http.StatusTooManyRequests && service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+					streamStarted = true
+				}
+				if !streamStarted && writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitOpenAI) {
+					return
+				}
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 				return
 			}
@@ -502,6 +508,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
+			}
+			if cls.Status == http.StatusTooManyRequests && service.StopOpenAICompactSSEKeepaliveCommitted(c) {
+				streamStarted = true
+			}
+			if !streamStarted && writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitOpenAI) {
+				return
 			}
 			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
 			return

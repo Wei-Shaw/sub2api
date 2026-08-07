@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -51,7 +52,7 @@ func (u *openAIResponsesFailoverCancelUpstream) calls() []int64 {
 
 func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUpstream) *OpenAIGatewayHandler {
 	t.Helper()
-	accounts := []service.Account{
+	return newOpenAIResponsesFailoverTestHandlerWithAccounts(t, upstream, []service.Account{
 		{
 			ID:          1,
 			Name:        "responses-account-1",
@@ -74,7 +75,11 @@ func newOpenAIResponsesFailoverTestHandler(t *testing.T, upstream service.HTTPUp
 			Priority:    1,
 			Credentials: map[string]any{"access_token": "token-2"},
 		},
-	}
+	})
+}
+
+func newOpenAIResponsesFailoverTestHandlerWithAccounts(t *testing.T, upstream service.HTTPUpstream, accounts []service.Account) *OpenAIGatewayHandler {
+	t.Helper()
 	accountRepo := openAIImagesFailoverAccountRepo{accounts: accounts}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	gatewayService := service.NewOpenAIGatewayService(
@@ -142,6 +147,52 @@ func newOpenAIResponsesFailoverTestContext(t *testing.T, ctx context.Context) (*
 	})
 	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 100, Concurrency: 0})
 	return c, rec
+}
+
+func TestOpenAIGatewayHandlerResponses_AllOpenAIAccountsRateLimitedReturnsResetMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetAt := time.Now().Add(30 * time.Minute)
+	accounts := []service.Account{
+		{
+			ID:               1,
+			Name:             "responses-rate-limited-1",
+			Platform:         service.PlatformOpenAI,
+			Type:             service.AccountTypeAPIKey,
+			Status:           service.StatusActive,
+			Schedulable:      true,
+			RateLimitResetAt: &resetAt,
+			Credentials:      map[string]any{"api_key": "sk-1", "model_mapping": map[string]any{"gpt-5.1": "gpt-5.1"}},
+		},
+		{
+			ID:               2,
+			Name:             "responses-rate-limited-2",
+			Platform:         service.PlatformOpenAI,
+			Type:             service.AccountTypeAPIKey,
+			Status:           service.StatusActive,
+			Schedulable:      true,
+			RateLimitResetAt: &resetAt,
+			Credentials:      map[string]any{"api_key": "sk-2", "model_mapping": map[string]any{"gpt-5.1": "gpt-5.1"}},
+		},
+	}
+	upstream := &openAIResponsesFailoverCancelUpstream{}
+	handler := newOpenAIResponsesFailoverTestHandlerWithAccounts(t, upstream, accounts)
+	c, rec := newOpenAIResponsesFailoverTestContext(t, nil)
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	require.True(t, ok)
+	apiKey.Group.Platform = service.PlatformComposite
+	c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformOpenAI))
+
+	handler.Responses(c)
+
+	require.Empty(t, upstream.calls(), "rate-limited accounts must be rejected before forwarding")
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.NotEmpty(t, rec.Header().Get("Retry-After"))
+	require.Equal(t, "rate_limit_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "rate_limit_exceeded", gjson.GetBytes(rec.Body.Bytes(), "error.code").String())
+	require.Greater(t, gjson.GetBytes(rec.Body.Bytes(), "error.resets_in_seconds").Int(), int64(0))
+	parsedReset, err := time.Parse(time.RFC3339, gjson.GetBytes(rec.Body.Bytes(), "error.resets_at").String())
+	require.NoError(t, err)
+	require.WithinDuration(t, resetAt, parsedReset, time.Second)
 }
 
 // TestOpenAIGatewayHandlerResponses_FailoverAbortsWhenClientDisconnected 复现

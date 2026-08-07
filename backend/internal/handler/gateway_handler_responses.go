@@ -179,8 +179,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				message := cls.Message
-				if !cls.ModelNotFound {
+				if !cls.ModelNotFound && cls.Status != http.StatusTooManyRequests {
 					message = "No available accounts: " + err.Error()
+				}
+				if writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitOpenAI) {
+					return
 				}
 				h.responsesErrorResponse(c, cls.Status, cls.ErrType, message)
 				return

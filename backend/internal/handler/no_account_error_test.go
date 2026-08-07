@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -154,18 +155,26 @@ func TestClassifyNoAccountError_HasModelSupport_KeepsRoutingMessageGenerationToC
 	require.False(t, cls.ModelNotFound)
 }
 
-func TestClassifyNoAccountError_ModelSupportedOnlyByRateLimitedAccount_Returns503(t *testing.T) {
+func TestClassifyNoAccountError_ModelSupportedOnlyByRateLimitedAccount_Returns429(t *testing.T) {
 	c := newTestGinContextWithRequest()
-	// The diagnoser's configured-state lookup still sees the model-supporting
-	// account even though normal scheduling has excluded it during cooldown.
-	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}}
+	resetAt := time.Now().Add(60 * time.Second)
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{
+		HasAccountsInPool:              true,
+		HasModelSupport:                true,
+		AllMatchingAccountsRateLimited: true,
+		MinRateLimitResetAt:            &resetAt,
+	}}
 	apiKey := &service.APIKey{GroupID: ptrInt64(7)}
 
 	cls := classifyNoAccountErrorFromGin(c, fd, apiKey, "claude-opus-4-8", "claude-opus-4-8", service.PlatformAnthropic)
 
-	require.Equal(t, http.StatusServiceUnavailable, cls.Status)
-	require.Equal(t, "api_error", cls.ErrType)
+	require.Equal(t, http.StatusTooManyRequests, cls.Status)
+	require.Equal(t, "rate_limit_error", cls.ErrType)
 	require.False(t, cls.ModelNotFound, "temporary account cooldown must remain retryable")
+	require.Greater(t, cls.RetryAfterSeconds, 0)
+	require.NotNil(t, cls.ResetsAt)
+	require.WithinDuration(t, resetAt, *cls.ResetsAt, time.Second)
+	require.NotEmpty(t, c.Writer.Header().Get("Retry-After"))
 }
 
 func TestClassifyNoAccountError_NoAccountsInPool_Stays503(t *testing.T) {
@@ -200,4 +209,30 @@ func TestClassifyNoAccountError_FromGin_NilContextStillSafe(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, cls.Status, "even with a nil gin context the classifier must still run and yield a coherent response")
 	require.True(t, cls.ModelNotFound)
+}
+
+func TestWriteAllAccountsRateLimitedError_AnthropicAndOpenAIShapes(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/test", nil)
+	resetTime := time.Now().Add(time.Minute)
+	cls := noAccountErrorClassification{
+		Status:            http.StatusTooManyRequests,
+		ErrType:           "rate_limit_error",
+		Message:           "All available accounts are rate limited. Try again in 60 seconds.",
+		RetryAfterSeconds: 60,
+		ResetsAt:          &resetTime,
+	}
+
+	require.True(t, writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitAnthropic))
+	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"resets_in_seconds":60`)
+	require.NotContains(t, recorder.Body.String(), `"param"`)
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/test", nil)
+	require.True(t, writeAllAccountsRateLimitedError(c, cls, noAccountRateLimitOpenAI))
+	require.Contains(t, recorder.Body.String(), `"code":"rate_limit_exceeded"`)
+	require.Contains(t, recorder.Body.String(), `"param":null`)
 }
