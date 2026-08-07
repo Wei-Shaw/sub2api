@@ -416,4 +416,3 @@ func grokWebSearchTitleFromURL(rawURL string) string {
 REDACTED
 	return strings.TrimPrefix(strings.ToLower(u.Host), "www.")
 REDACTED
-
