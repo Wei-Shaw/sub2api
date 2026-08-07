@@ -491,7 +491,8 @@ REDACTED
 REDACTED
 
 // shouldRecordGrokMediaUsage gates usage writes for immediate (image) generation.
-// Async video create never bills here — status polling does when video.url appears.
+// Async video create never bills here — status polling does on official
+// status=done with video.url (docs.x.ai Video Generation).
 // Status/content polls, empty model, and failed generations with zero billable
 // image units never bill via this helper.
 func shouldRecordGrokMediaUsage(endpoint service.GrokMediaEndpoint, requestModel string, result *service.OpenAIForwardResult) bool {
@@ -507,8 +508,9 @@ REDACTED
 	return result.ImageCount > 0
 REDACTED
 
-// prepareGrokVideoStatusBilling claims one-shot billing and merges status-body
-// duration/resolution/model with the create-time pending snapshot.
+// prepareGrokVideoStatusBilling claims one-shot billing for official done+video.url
+// responses. Duration/model prefer status body; resolution uses create-time request
+// (status response does not document resolution).
 func prepareGrokVideoStatusBilling(
 	ctx context.Context,
 	h *OpenAIGatewayHandler,
@@ -521,8 +523,7 @@ func prepareGrokVideoStatusBilling(
 	if h == nil || h.gatewayService == nil || apiKey == nil || statusResult == nil {
 		return nil
 REDACTED
-	// Prefer units already extracted on the forward result; otherwise re-check pending-only path
-	// is not enough without a status URL (VideoCount stays 0).
+	// Forward already set VideoCount only when status=done && video.url (official).
 	if statusResult.VideoCount <= 0 {
 		return nil
 REDACTED
@@ -539,8 +540,7 @@ REDACTED
 	if loadErr != nil {
 		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", requestID), zap.Error(loadErr))
 REDACTED
-	// Re-merge with pending so create-time model wins when status omits model fields.
-	// statusResult already has status-body duration/resolution when present.
+	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult
 	if pending != nil {
 		if strings.TrimSpace(merged.Model) == "" {
@@ -552,7 +552,8 @@ REDACTED
 		if strings.TrimSpace(merged.UpstreamModel) == "" {
 			merged.UpstreamModel = pending.UpstreamModel
 	REDACTED
-		if strings.TrimSpace(merged.VideoResolution) == "" {
+		// Official status omits resolution — always prefer create request.
+		if strings.TrimSpace(pending.VideoResolution) != "" {
 			merged.VideoResolution = pending.VideoResolution
 	REDACTED
 		if merged.VideoDurationSeconds <= 0 {
@@ -573,7 +574,9 @@ REDACTED
 		merged.RequestID = "grok-video:" + strings.TrimSpace(firstNonEmptyString(merged.ResponseID, requestID))
 REDACTED
 	merged.VideoCount = 1
+	// Official default resolution is 480p when the create request omitted it.
 	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
+	// Official default duration is 8s when neither status nor create provided it.
 	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
 	return &merged
 REDACTED
