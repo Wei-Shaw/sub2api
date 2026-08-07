@@ -71,6 +71,9 @@ import {
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
+  PROVIDER_DEEPSEEK,
+  PROVIDER_GLM,
+  PROVIDER_KIMI,
 } from '@/constants/channelMonitor'
 
 defineProps<{
@@ -96,6 +99,9 @@ const providerFilterOptions = computed(() => [
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
   { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') },
+  { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
+  { value: PROVIDER_GLM, label: t('monitorCommon.providers.glm') },
+  { value: PROVIDER_KIMI, label: t('monitorCommon.providers.kimi') },
 ])
 
 const enabledFilterOptions = computed(() => [

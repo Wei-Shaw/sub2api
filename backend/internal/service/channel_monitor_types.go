@@ -122,6 +122,8 @@ type CheckResult struct {
 	PingLatencyMs *int
 	Message       string
 	CheckedAt     time.Time
+	// Quota 仅 coding-plan provider（deepseek/glm/kimi）填充：套餐配额/余额快照。
+	Quota *MonitorQuotaSnapshot
 }
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
@@ -137,6 +139,8 @@ type UserMonitorView struct {
 	Availability7d       float64 // 0-100
 	ExtraModels          []ExtraModelStatus
 	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
+	// LatestQuota 主模型最近一次 coding-plan 配额快照（仅 deepseek/glm/kimi）。
+	LatestQuota *MonitorQuotaSnapshot
 }
 
 // UserMonitorTimelinePoint 用户视图 timeline 单点数据（去除 message 以减小响应体）。
@@ -183,6 +187,8 @@ type ChannelMonitorHistoryRow struct {
 	PingLatencyMs *int
 	Message       string
 	CheckedAt     time.Time
+	// Quota 仅 coding-plan provider 填充（JSON 序列化入 history.quota 列）。
+	Quota *MonitorQuotaSnapshot
 }
 
 // ChannelMonitorHistoryEntry 历史记录查询返回行（含 ent 主键 ID）。
@@ -194,6 +200,7 @@ type ChannelMonitorHistoryEntry struct {
 	PingLatencyMs *int
 	Message       string
 	CheckedAt     time.Time
+	Quota         *MonitorQuotaSnapshot
 }
 
 // ChannelMonitorLatest 最近一次检测的简明信息（用于 UserMonitorView 聚合）。
@@ -203,6 +210,7 @@ type ChannelMonitorLatest struct {
 	LatencyMs     *int
 	PingLatencyMs *int
 	CheckedAt     time.Time
+	Quota         *MonitorQuotaSnapshot
 }
 
 // ChannelMonitorAvailability 单个模型在某窗口内的可用率与平均延迟（用于 UserMonitorDetail 聚合）。

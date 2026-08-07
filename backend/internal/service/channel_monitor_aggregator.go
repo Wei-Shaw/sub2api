@@ -242,6 +242,7 @@ func buildUserViewFromSummary(
 	}
 	if primaryLatest != nil {
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
+		view.LatestQuota = primaryLatest.Quota
 	}
 	return view
 }

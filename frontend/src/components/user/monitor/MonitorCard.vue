@@ -54,6 +54,9 @@
       secondary-unit="ms"
     />
 
+    <!-- Coding Plan 配额（仅 deepseek/glm/kimi） -->
+    <MonitorQuotaView v-if="item.latest_quota" :snapshot="item.latest_quota" class="mt-3" />
+
     <!-- Divider -->
     <div class="mt-4 border-t border-gray-100 dark:border-dark-700/60"></div>
 
@@ -84,12 +87,16 @@ import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
+import MonitorQuotaView from './MonitorQuotaView.vue'
 
 const PROVIDER_TINT: Record<string, string> = {
   openai: 'text-emerald-600 dark:text-emerald-300',
   anthropic: 'text-orange-600 dark:text-orange-300',
   gemini: 'text-sky-600 dark:text-sky-300',
   grok: 'text-zinc-700 dark:text-zinc-200',
+  deepseek: 'text-indigo-600 dark:text-indigo-300',
+  glm: 'text-violet-600 dark:text-violet-300',
+  kimi: 'text-rose-600 dark:text-rose-300',
 }
 
 const props = defineProps<{

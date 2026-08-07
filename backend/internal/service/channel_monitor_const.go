@@ -62,8 +62,19 @@ const (
 	MonitorProviderGemini    = "gemini"
 	MonitorProviderGrok      = "grok"
 
+	// 国产 Coding Plan 配额监控 provider（也是 ent enum 的实际值）。
+	// 这类 provider 不发推理请求，而是定期查询厂商套餐配额/余额接口。
+	MonitorProviderDeepseek = "deepseek"
+	MonitorProviderGLM      = "glm"
+	MonitorProviderKimi     = "kimi"
+
 	// MonitorDefaultGrokModel 是新增 Grok 监控未显式指定模型时使用的轻量测活模型。
 	MonitorDefaultGrokModel = "grok-4.5"
+
+	// Coding Plan 监控的默认 endpoint（用户可覆盖为对应国际站 origin）。
+	MonitorDefaultDeepseekEndpoint = "https://api.deepseek.com"
+	MonitorDefaultGLMEndpoint      = "https://open.bigmodel.cn"
+	MonitorDefaultKimiEndpoint     = "https://api.kimi.com"
 
 	// MonitorStatusOperational 等监控状态字符串常量（与 ent enum 一致）。
 	MonitorStatusOperational = "operational"
@@ -118,7 +129,7 @@ var (
 		"CHANNEL_MONITOR_NOT_FOUND", "channel monitor not found",
 	)
 	ErrChannelMonitorInvalidProvider = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok",
+		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok/deepseek/glm/kimi",
 	)
 	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",

@@ -533,7 +533,9 @@ export default {
         jitterSeconds: 'Random Jitter (± seconds)',
         jitterSecondsHint: 'Each check fires at interval ± a random offset within this value; 0 means fixed interval. Interval minus jitter must be ≥ 15s',
         enabled: 'Enable monitor',
-        kindRequired: 'Please select a provider'
+        kindRequired: 'Please select a provider',
+        codingPlanHint: 'Coding Plan quota monitor: queries the provider plan quota/balance API instead of sending inference requests.',
+        codingPlanModelHint: 'Display name only (no inference request is sent); leave blank to use the default.'
       },
       runResultTitle: 'Check Result',
       noMonitorsYet: 'No monitors yet',

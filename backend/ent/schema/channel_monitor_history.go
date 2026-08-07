@@ -43,6 +43,10 @@ func (ChannelMonitorHistory) Fields() []ent.Field {
 			Optional().
 			Default("").
 			MaxLen(500),
+		// quota: coding-plan provider（deepseek/glm/kimi）最近一次检测的配额快照 JSON。
+		// 推理型 provider 恒为 NULL。结构见 service.MonitorQuotaSnapshot。
+		field.JSON("quota", map[string]any{}).
+			Optional(),
 		field.Time("checked_at").
 			Default(time.Now),
 	}

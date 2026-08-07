@@ -4,9 +4,9 @@
  */
 
 import { apiClient } from './client'
-import type { Provider, MonitorStatus } from './admin/channelMonitor'
+import type { Provider, MonitorStatus, MonitorQuotaSnapshot } from './admin/channelMonitor'
 
-export type { Provider, MonitorStatus } from './admin/channelMonitor'
+export type { Provider, MonitorStatus, MonitorQuotaSnapshot } from './admin/channelMonitor'
 
 export interface UserMonitorExtraModel {
   model: string
@@ -33,6 +33,8 @@ export interface UserMonitorView {
   availability_7d: number
   extra_models: UserMonitorExtraModel[]
   timeline: MonitorTimelinePoint[]
+  /** 最近一次 coding-plan 配额快照（仅 deepseek/glm/kimi） */
+  latest_quota?: MonitorQuotaSnapshot | null
 }
 
 export interface UserMonitorListResponse {

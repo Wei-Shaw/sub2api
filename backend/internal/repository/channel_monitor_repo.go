@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -237,6 +238,14 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 		if row.PingLatencyMs != nil {
 			c = c.SetPingLatencyMs(*row.PingLatencyMs)
 		}
+		if row.Quota != nil {
+			if m, mErr := json.Marshal(row.Quota); mErr == nil {
+				var v map[string]any
+				if json.Unmarshal(m, &v) == nil {
+					c = c.SetQuota(v)
+				}
+			}
+		}
 		bulk = append(bulk, c)
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
@@ -276,6 +285,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 			PingLatencyMs: row.PingLatencyMs,
 			Message:       row.Message,
 			CheckedAt:     row.CheckedAt,
+			Quota:         decodeMonitorQuota(row.Quota),
 		}
 		out = append(out, entry)
 	}
@@ -289,7 +299,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
 	const q = `
 		SELECT DISTINCT ON (model)
-		    model, status, latency_ms, ping_latency_ms, checked_at
+		    model, status, latency_ms, ping_latency_ms, checked_at, quota
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
@@ -304,11 +314,13 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 	for rows.Next() {
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var quotaRaw []byte
+		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt, &quotaRaw); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
 		}
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
+		l.Quota = decodeMonitorQuotaBytes(quotaRaw)
 		out = append(out, l)
 	}
 	return out, rows.Err()
@@ -322,6 +334,31 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 	}
 	v := int(n.Int64)
 	*dst = &v
+}
+
+// decodeMonitorQuota 把 ent JSON 字段（map[string]any）还原为 MonitorQuotaSnapshot。
+// ent JSON Optional 字段在 NULL 时返回 nil map，直接返回 nil。
+func decodeMonitorQuota(m map[string]any) *service.MonitorQuotaSnapshot {
+	if len(m) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	return decodeMonitorQuotaBytes(raw)
+}
+
+// decodeMonitorQuotaBytes 把原生 SQL 查出的 quota JSONB 字节还原为 MonitorQuotaSnapshot。
+func decodeMonitorQuotaBytes(raw []byte) *service.MonitorQuotaSnapshot {
+	if len(raw) == 0 {
+		return nil
+	}
+	var snap service.MonitorQuotaSnapshot
+	if err := json.Unmarshal(raw, &snap); err != nil {
+		return nil
+	}
+	return &snap
 }
 
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
@@ -396,7 +433,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	}
 	const q = `
 		SELECT DISTINCT ON (monitor_id, model)
-		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
+		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
 		ORDER BY monitor_id, model, checked_at DESC
@@ -411,11 +448,13 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		var monitorID int64
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var quotaRaw []byte
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt, &quotaRaw); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
+		l.Quota = decodeMonitorQuotaBytes(quotaRaw)
 		out[monitorID] = append(out[monitorID], l)
 	}
 	if err := rows.Err(); err != nil {

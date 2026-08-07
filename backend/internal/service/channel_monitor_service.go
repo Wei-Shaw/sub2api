@@ -435,9 +435,23 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 	if m.APIKeyDecryptFailed {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
-	results := s.runChecksConcurrent(ctx, m)
+	var results []*CheckResult
+	if isCodingPlanProvider(m.Provider) {
+		results = s.runCodingPlanCheckOnce(ctx, m)
+	} else {
+		results = s.runChecksConcurrent(ctx, m)
+	}
 	s.persistCheckResults(ctx, m, results)
 	return results, nil
+}
+
+// runCodingPlanCheckOnce 对 coding-plan provider 只跑一次配额查询（不区分模型）。
+// ping 结果仍记录，便于观察网络层延迟。
+func (s *ChannelMonitorService) runCodingPlanCheckOnce(ctx context.Context, m *ChannelMonitor) []*CheckResult {
+	pingMs := pingEndpointOrigin(ctx, m.Endpoint)
+	r := runCodingPlanCheck(ctx, m.Provider, m.Endpoint, m.APIKey, m.PrimaryModel)
+	r.PingLatencyMs = pingMs
+	return []*CheckResult{r}
 }
 
 // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
@@ -453,6 +467,7 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 			PingLatencyMs: r.PingLatencyMs,
 			Message:       r.Message,
 			CheckedAt:     r.CheckedAt,
+			Quota:         r.Quota,
 		})
 	}
 	if err := s.repo.InsertHistoryBatch(ctx, rows); err != nil {
@@ -673,6 +688,8 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 		existing.PrimaryModel = primaryModel
 	} else if providerChanged && existing.Provider == MonitorProviderGrok {
 		existing.PrimaryModel = MonitorDefaultGrokModel
+	} else if providerChanged && isCodingPlanProvider(existing.Provider) {
+		existing.PrimaryModel = codingPlanDefaultModel(existing.Provider)
 	}
 	if p.ExtraModels != nil {
 		existing.ExtraModels = normalizeModels(*p.ExtraModels)

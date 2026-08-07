@@ -10,9 +10,10 @@ import (
 // 校验失败一律返回 channel_monitor_const.go 中预定义的 Err* 错误，错误信息不含具体 IP/hostname，避免泄露内网拓扑。
 
 // validateProvider 校验 provider 字符串。
-// 唯一来源于 providerAdapters：新增 provider 只需要在 channel_monitor_checker.go 注册 adapter。
+// 推理型 provider 来源于 providerAdapters；coding-plan provider（deepseek/glm/kimi）
+// 不走 adapter（不发起推理请求），单独判定。
 func validateProvider(p string) error {
-	if !isSupportedProvider(p) {
+	if !isSupportedProvider(p) && !isCodingPlanProvider(p) {
 		return ErrChannelMonitorInvalidProvider
 	}
 	return nil
@@ -124,12 +125,20 @@ func normalizeModels(in []string) []string {
 	return out
 }
 
-// normalizeMonitorPrimaryModel applies the Grok health-check default while
+// normalizeMonitorPrimaryModel applies provider-specific defaults while
 // preserving the existing required-model behavior for every other provider.
+//   - grok: 默认轻量测活模型
+//   - coding-plan（deepseek/glm/kimi）: 占位名（不发起推理请求）
 func normalizeMonitorPrimaryModel(provider, model string) string {
 	model = strings.TrimSpace(model)
-	if model == "" && provider == MonitorProviderGrok {
+	if model != "" {
+		return model
+	}
+	if provider == MonitorProviderGrok {
 		return MonitorDefaultGrokModel
+	}
+	if isCodingPlanProvider(provider) {
+		return codingPlanDefaultModel(provider)
 	}
 	return model
 }

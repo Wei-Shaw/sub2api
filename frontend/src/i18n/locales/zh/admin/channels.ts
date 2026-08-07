@@ -533,7 +533,9 @@ export default {
         jitterSeconds: '随机抖动 (± 秒)',
         jitterSecondsHint: '每次检测在间隔基础上正负随机偏移该秒数，0 表示固定间隔；需满足 间隔 - 抖动 ≥ 15 秒',
         enabled: '启用监控',
-        kindRequired: '请选择供应商'
+        kindRequired: '请选择供应商',
+        codingPlanHint: 'Coding Plan 配额监控：定期查询厂商套餐配额/余额接口，不发送推理请求。',
+        codingPlanModelHint: '仅作为展示名称（不会发起推理请求），留空使用默认值。'
       },
       runResultTitle: '检测结果',
       noMonitorsYet: '暂无监控',

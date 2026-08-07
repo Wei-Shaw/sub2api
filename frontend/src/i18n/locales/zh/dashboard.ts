@@ -422,7 +422,23 @@ export default {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
-      grok: 'Grok'
+      grok: 'Grok',
+      deepseek: 'DeepSeek',
+      glm: '智谱 GLM',
+      kimi: 'Kimi'
+    },
+    quota: {
+      title: '套餐配额',
+      fiveHour: '5 小时窗口',
+      weekly: '每周窗口',
+      balance: '账户余额',
+      granted: '赠送',
+      toppedUp: '充值',
+      resetsAt: '重置于 {time}',
+      unavailable: '余额不足',
+      available: '余额充足',
+      used: '已用 {pct}%',
+      planLevel: '套餐：{level}'
     },
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',

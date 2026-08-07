@@ -145,6 +145,18 @@ func (_u *ChannelMonitorHistoryUpdate) ClearMessage() *ChannelMonitorHistoryUpda
 	return _u
 }
 
+// SetQuota sets the "quota" field.
+func (_u *ChannelMonitorHistoryUpdate) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryUpdate {
+	_u.mutation.SetQuota(v)
+	return _u
+}
+
+// ClearQuota clears the value of the "quota" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearQuota() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearQuota()
+	return _u
+}
+
 // SetCheckedAt sets the "checked_at" field.
 func (_u *ChannelMonitorHistoryUpdate) SetCheckedAt(v time.Time) *ChannelMonitorHistoryUpdate {
 	_u.mutation.SetCheckedAt(v)
@@ -266,6 +278,12 @@ func (_u *ChannelMonitorHistoryUpdate) sqlSave(ctx context.Context) (_node int, 
 	}
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.Quota(); ok {
+		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)
+	}
+	if _u.mutation.QuotaCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldQuota, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CheckedAt(); ok {
 		_spec.SetField(channelmonitorhistory.FieldCheckedAt, field.TypeTime, value)
@@ -435,6 +453,18 @@ func (_u *ChannelMonitorHistoryUpdateOne) ClearMessage() *ChannelMonitorHistoryU
 	return _u
 }
 
+// SetQuota sets the "quota" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.SetQuota(v)
+	return _u
+}
+
+// ClearQuota clears the value of the "quota" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearQuota() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearQuota()
+	return _u
+}
+
 // SetCheckedAt sets the "checked_at" field.
 func (_u *ChannelMonitorHistoryUpdateOne) SetCheckedAt(v time.Time) *ChannelMonitorHistoryUpdateOne {
 	_u.mutation.SetCheckedAt(v)
@@ -586,6 +616,12 @@ func (_u *ChannelMonitorHistoryUpdateOne) sqlSave(ctx context.Context) (_node *C
 	}
 	if _u.mutation.MessageCleared() {
 		_spec.ClearField(channelmonitorhistory.FieldMessage, field.TypeString)
+	}
+	if value, ok := _u.mutation.Quota(); ok {
+		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)
+	}
+	if _u.mutation.QuotaCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldQuota, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CheckedAt(); ok {
 		_spec.SetField(channelmonitorhistory.FieldCheckedAt, field.TypeTime, value)

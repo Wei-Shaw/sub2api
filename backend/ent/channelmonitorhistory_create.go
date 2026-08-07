@@ -83,6 +83,12 @@ func (_c *ChannelMonitorHistoryCreate) SetNillableMessage(v *string) *ChannelMon
 	return _c
 }
 
+// SetQuota sets the "quota" field.
+func (_c *ChannelMonitorHistoryCreate) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetQuota(v)
+	return _c
+}
+
 // SetCheckedAt sets the "checked_at" field.
 func (_c *ChannelMonitorHistoryCreate) SetCheckedAt(v time.Time) *ChannelMonitorHistoryCreate {
 	_c.mutation.SetCheckedAt(v)
@@ -225,6 +231,10 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 	if value, ok := _c.mutation.Message(); ok {
 		_spec.SetField(channelmonitorhistory.FieldMessage, field.TypeString, value)
 		_node.Message = value
+	}
+	if value, ok := _c.mutation.Quota(); ok {
+		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)
+		_node.Quota = value
 	}
 	if value, ok := _c.mutation.CheckedAt(); ok {
 		_spec.SetField(channelmonitorhistory.FieldCheckedAt, field.TypeTime, value)
@@ -401,6 +411,24 @@ func (u *ChannelMonitorHistoryUpsert) ClearMessage() *ChannelMonitorHistoryUpser
 	return u
 }
 
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsert) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldQuota, v)
+	return u
+}
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateQuota() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldQuota)
+	return u
+}
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsert) ClearQuota() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldQuota)
+	return u
+}
+
 // SetCheckedAt sets the "checked_at" field.
 func (u *ChannelMonitorHistoryUpsert) SetCheckedAt(v time.Time) *ChannelMonitorHistoryUpsert {
 	u.Set(channelmonitorhistory.FieldCheckedAt, v)
@@ -569,6 +597,27 @@ func (u *ChannelMonitorHistoryUpsertOne) UpdateMessage() *ChannelMonitorHistoryU
 func (u *ChannelMonitorHistoryUpsertOne) ClearMessage() *ChannelMonitorHistoryUpsertOne {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearMessage()
+	})
+}
+
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetQuota(v)
+	})
+}
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateQuota() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateQuota()
+	})
+}
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearQuota() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearQuota()
 	})
 }
 
@@ -906,6 +955,27 @@ func (u *ChannelMonitorHistoryUpsertBulk) UpdateMessage() *ChannelMonitorHistory
 func (u *ChannelMonitorHistoryUpsertBulk) ClearMessage() *ChannelMonitorHistoryUpsertBulk {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearMessage()
+	})
+}
+
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetQuota(v map[string]interface{}) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetQuota(v)
+	})
+}
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateQuota() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateQuota()
+	})
+}
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearQuota() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearQuota()
 	})
 }
 

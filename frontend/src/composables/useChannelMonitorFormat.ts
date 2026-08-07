@@ -17,6 +17,9 @@ import {
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
+  PROVIDER_DEEPSEEK,
+  PROVIDER_GLM,
+  PROVIDER_KIMI,
   STATUS_OPERATIONAL,
   STATUS_DEGRADED,
   STATUS_FAILED,
@@ -62,7 +65,10 @@ export function useChannelMonitorFormat() {
       p === PROVIDER_OPENAI ||
       p === PROVIDER_ANTHROPIC ||
       p === PROVIDER_GEMINI ||
-      p === PROVIDER_GROK
+      p === PROVIDER_GROK ||
+      p === PROVIDER_DEEPSEEK ||
+      p === PROVIDER_GLM ||
+      p === PROVIDER_KIMI
     ) {
       return t(`monitorCommon.providers.${p}`)
     }
@@ -79,6 +85,12 @@ export function useChannelMonitorFormat() {
         return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
       case PROVIDER_GROK:
         return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-500/15 dark:text-zinc-300'
+      case PROVIDER_DEEPSEEK:
+        return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+      case PROVIDER_GLM:
+        return 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+      case PROVIDER_KIMI:
+        return 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
       default:
         return NEUTRAL_BADGE
     }
@@ -107,6 +119,18 @@ export function useChannelMonitorFormat() {
         return active
           ? 'border-zinc-500 bg-zinc-50 text-zinc-800 dark:bg-zinc-500/15 dark:text-zinc-200 dark:border-zinc-400'
           : 'border-gray-200 bg-white text-gray-600 hover:border-zinc-400 hover:text-zinc-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-zinc-500/50'
+      case PROVIDER_DEEPSEEK:
+        return active
+          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-indigo-500/50'
+      case PROVIDER_GLM:
+        return active
+          ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-violet-300 hover:text-violet-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-violet-500/50'
+      case PROVIDER_KIMI:
+        return active
+          ? 'border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-rose-300 hover:text-rose-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-rose-500/50'
       default:
         return active
           ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
@@ -180,6 +204,12 @@ export function providerGradient(provider: string): string {
       return 'bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20'
     case PROVIDER_GROK:
       return 'bg-gradient-to-br from-zinc-50 to-neutral-200 dark:from-zinc-500/10 dark:to-neutral-500/20'
+    case PROVIDER_DEEPSEEK:
+      return 'bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-500/10 dark:to-indigo-500/20'
+    case PROVIDER_GLM:
+      return 'bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-500/10 dark:to-violet-500/20'
+    case PROVIDER_KIMI:
+      return 'bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-500/10 dark:to-rose-500/20'
     default:
       return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
   }

@@ -39,7 +39,7 @@ func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *Ch
 
 type channelMonitorCreateRequest struct {
 	Name             string            `json:"name" binding:"required,max=100"`
-	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok"`
+	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok deepseek glm kimi"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Endpoint         string            `json:"endpoint" binding:"required,max=500"`
 	APIKey           string            `json:"api_key" binding:"required,max=2000"`
@@ -57,7 +57,7 @@ type channelMonitorCreateRequest struct {
 
 type channelMonitorUpdateRequest struct {
 	Name             *string            `json:"name" binding:"omitempty,max=100"`
-	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok"`
+	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini grok deepseek glm kimi"`
 	APIMode          *string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
 	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
@@ -104,22 +104,24 @@ type channelMonitorResponse struct {
 }
 
 type channelMonitorCheckResultResponse struct {
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
+	Model         string                        `json:"model"`
+	Status        string                        `json:"status"`
+	LatencyMs     *int                          `json:"latency_ms"`
+	PingLatencyMs *int                          `json:"ping_latency_ms"`
+	Message       string                        `json:"message"`
+	CheckedAt     string                        `json:"checked_at"`
+	Quota         *service.MonitorQuotaSnapshot `json:"quota,omitempty"`
 }
 
 type channelMonitorHistoryItemResponse struct {
-	ID            int64  `json:"id"`
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
+	ID            int64                         `json:"id"`
+	Model         string                        `json:"model"`
+	Status        string                        `json:"status"`
+	LatencyMs     *int                          `json:"latency_ms"`
+	PingLatencyMs *int                          `json:"ping_latency_ms"`
+	Message       string                        `json:"message"`
+	CheckedAt     string                        `json:"checked_at"`
+	Quota         *service.MonitorQuotaSnapshot `json:"quota,omitempty"`
 }
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
@@ -180,6 +182,7 @@ func checkResultToResponse(r *service.CheckResult) channelMonitorCheckResultResp
 		PingLatencyMs: r.PingLatencyMs,
 		Message:       r.Message,
 		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
+		Quota:         r.Quota,
 	}
 }
 
@@ -192,6 +195,7 @@ func historyEntryToResponse(e *service.ChannelMonitorHistoryEntry) channelMonito
 		PingLatencyMs: e.PingLatencyMs,
 		Message:       e.Message,
 		CheckedAt:     e.CheckedAt.UTC().Format(time.RFC3339),
+		Quota:         e.Quota,
 	}
 }
 

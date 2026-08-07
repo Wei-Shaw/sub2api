@@ -417,7 +417,23 @@ export default {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
-      grok: 'Grok'
+      grok: 'Grok',
+      deepseek: 'DeepSeek',
+      glm: 'GLM',
+      kimi: 'Kimi'
+    },
+    quota: {
+      title: 'Plan Quota',
+      fiveHour: '5-hour window',
+      weekly: 'Weekly window',
+      balance: 'Balance',
+      granted: 'Granted',
+      toppedUp: 'Topped up',
+      resetsAt: 'Resets at {time}',
+      unavailable: 'Balance depleted',
+      available: 'Balance available',
+      used: '{pct}% used',
+      planLevel: 'Plan: {level}'
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',

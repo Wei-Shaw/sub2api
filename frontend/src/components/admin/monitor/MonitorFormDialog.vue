@@ -13,7 +13,7 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
           <button
             v-for="opt in providerOptions"
             :key="opt.value"
@@ -28,6 +28,10 @@
             <span>{{ opt.label }}</span>
           </button>
         </div>
+      </div>
+
+      <div v-if="isCodingPlan" class="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+        {{ t('admin.channelMonitor.form.codingPlanHint') }}
       </div>
 
       <div v-if="form.provider === PROVIDER_OPENAI" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
@@ -78,16 +82,21 @@
       </div>
 
       <div>
-        <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
+        <label class="input-label">
+          {{ t('admin.channelMonitor.form.primaryModel') }}<span v-if="!isCodingPlan" class="text-red-500"> *</span>
+        </label>
         <input
           v-model="form.primary_model"
           data-testid="monitor-primary-model"
           type="text"
-          required
+          :required="!isCodingPlan"
           class="input font-medium"
           :class="getPlatformTextClass(form.provider)"
           :placeholder="t('admin.channelMonitor.form.primaryModelPlaceholder')"
         />
+        <p v-if="isCodingPlan" class="mt-1 text-xs text-gray-400">
+          {{ t('admin.channelMonitor.form.codingPlanModelHint') }}
+        </p>
       </div>
 
       <div>
@@ -216,11 +225,18 @@ import {
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
+  PROVIDER_DEEPSEEK,
+  PROVIDER_GLM,
+  PROVIDER_KIMI,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
   DEFAULT_GROK_ENDPOINT,
   DEFAULT_GROK_MODEL,
+  DEFAULT_DEEPSEEK_ENDPOINT,
+  DEFAULT_GLM_ENDPOINT,
+  DEFAULT_KIMI_ENDPOINT,
   DEFAULT_INTERVAL_SECONDS,
+  isCodingPlanProvider,
 } from '@/constants/channelMonitor'
 
 const props = defineProps<{
@@ -402,7 +418,18 @@ const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
   { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') },
+  { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') },
+  { value: PROVIDER_GLM, label: t('monitorCommon.providers.glm') },
+  { value: PROVIDER_KIMI, label: t('monitorCommon.providers.kimi') },
 ])
+
+const CODING_PLAN_DEFAULTS: Partial<Record<Provider, { endpoint: string; model: string }>> = {
+  [PROVIDER_DEEPSEEK]: { endpoint: DEFAULT_DEEPSEEK_ENDPOINT, model: 'balance' },
+  [PROVIDER_GLM]: { endpoint: DEFAULT_GLM_ENDPOINT, model: 'coding-plan' },
+  [PROVIDER_KIMI]: { endpoint: DEFAULT_KIMI_ENDPOINT, model: 'kimi-for-coding' },
+}
+
+const isCodingPlan = computed(() => isCodingPlanProvider(form.provider))
 
 function selectProvider(provider: Provider) {
   if (form.provider === provider) return
@@ -411,14 +438,29 @@ function selectProvider(provider: Provider) {
     previousProvider === PROVIDER_GROK && form.endpoint === DEFAULT_GROK_ENDPOINT
   const clearGrokModel =
     previousProvider === PROVIDER_GROK && form.primary_model === DEFAULT_GROK_MODEL
+  const prevCodingDefault = CODING_PLAN_DEFAULTS[previousProvider]
+  const clearCodingEndpoint =
+    !!prevCodingDefault && form.endpoint === prevCodingDefault.endpoint
+  const clearCodingModel =
+    !!prevCodingDefault && form.primary_model === prevCodingDefault.model
   form.provider = provider
   if (provider === PROVIDER_GROK) {
     if (!form.endpoint.trim()) form.endpoint = DEFAULT_GROK_ENDPOINT
     if (!form.primary_model.trim()) form.primary_model = DEFAULT_GROK_MODEL
     return
   }
-  if (clearGrokEndpoint) form.endpoint = ''
-  if (clearGrokModel) form.primary_model = ''
+  const codingDefault = CODING_PLAN_DEFAULTS[provider]
+  if (codingDefault) {
+    if (!form.endpoint.trim() || clearGrokEndpoint || clearCodingEndpoint) {
+      form.endpoint = codingDefault.endpoint
+    }
+    if (!form.primary_model.trim() || clearGrokModel || clearCodingModel) {
+      form.primary_model = codingDefault.model
+    }
+    return
+  }
+  if (clearGrokEndpoint || clearCodingEndpoint) form.endpoint = ''
+  if (clearGrokModel || clearCodingModel) form.primary_model = ''
 }
 
 // Clear api_key whenever provider changes to avoid cross-provider key mismatch.

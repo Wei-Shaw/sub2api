@@ -5,8 +5,32 @@
 
 import { apiClient } from '../client'
 
-export type Provider = 'openai' | 'anthropic' | 'gemini' | 'grok'
+export type Provider =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'grok'
+  | 'deepseek'
+  | 'glm'
+  | 'kimi'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
+
+/** Coding Plan 配额快照（仅 deepseek/glm/kimi 监控返回） */
+export interface MonitorQuotaTier {
+  name: 'five_hour' | 'weekly_limit' | 'balance'
+  utilization?: number
+  resets_at?: string | null
+  balance?: string
+  currency?: string
+  granted_balance?: string
+  topped_up_balance?: string
+}
+
+export interface MonitorQuotaSnapshot {
+  tiers: MonitorQuotaTier[]
+  plan_level?: string
+  available?: boolean
+}
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'
 
@@ -101,6 +125,7 @@ export interface CheckResult {
   ping_latency_ms: number | null
   message: string
   checked_at: string
+  quota?: MonitorQuotaSnapshot | null
 }
 
 export interface RunNowResponse {
@@ -115,6 +140,7 @@ export interface HistoryItem {
   ping_latency_ms: number | null
   message: string
   checked_at: string
+  quota?: MonitorQuotaSnapshot | null
 }
 
 export interface HistoryParams {
