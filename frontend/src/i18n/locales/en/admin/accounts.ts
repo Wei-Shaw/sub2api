@@ -1013,7 +1013,7 @@ export default {
           emailPasswordDesc:
             'Sign in with a Grok web email and password. The server uses the password only to obtain an ephemeral SSO cookie, then converts it to Build OAuth credentials. Neither the password nor raw SSO is stored on the account.',
           emailPasswordInputLabel: 'email----password',
-          emailPasswordPlaceholder: 'user@example.com----your-password\nMultiple lines supported',
+          emailPasswordPlaceholder: "user{'@'REDACTEDexample.com----your-password\nMultiple lines supported",
           emailPasswordHint:
             'Format: email----password (password may contain -). Requires YesCaptcha keys; use a matching-region proxy when needed.',
           pleaseEnterPassword: 'Please enter email----password (one per line)',

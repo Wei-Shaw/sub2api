@@ -1066,7 +1066,7 @@ export default {
           emailPasswordDesc:
             '使用 Grok 网页邮箱与密码登录。服务端仅用密码换取临时 SSO 再转 Build OAuth；密码与 raw SSO 均不会写入账号凭据。',
           emailPasswordInputLabel: '邮箱----密码',
-          emailPasswordPlaceholder: 'user@example.com----your-password\n支持多个，每行一组',
+          emailPasswordPlaceholder: "user{'@'REDACTEDexample.com----your-password\n支持多个，每行一组",
           emailPasswordHint: '格式：email----password（密码可含 -）。需要配置 YesCaptcha 密钥；建议搭配代理。',
           pleaseEnterPassword: '请输入 email----password（每行一组）',
           pleaseEnterSSOToken: '请输入 SSO Token',
