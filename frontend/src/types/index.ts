@@ -991,6 +991,9 @@ export interface TempUnschedulableState {
   matched_keyword: string
   rule_index: number
   error_message: string
+  trigger_count?: number
+  trigger_threshold?: number
+  trigger_window_minutes?: number
 REDACTED
 
 export interface TempUnschedulableStatus {

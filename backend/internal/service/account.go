@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1310,25 +1311,67 @@ REDACTED
 // traffic (OAuth authorization and token refresh) always uses the official
 // auth endpoints regardless of this value.
 func (a *Account) GetGrokBaseURL() string {
-	if !a.IsGrok() {
+	if a == nil || !a.IsGrok() {
 		return ""
 REDACTED
-	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// Operators switch subscription traffic between the official CLI
-		// gateway, the official/regional API hosts and third-party relays
-		// (individual endpoints go down from time to time), so a stored
-		// value is always honored as-is. Only empty or unparseable values
-		// fall back to the default CLI gateway.
-		if baseURL == "" || !xai.IsParseableBaseURL(baseURL) {
-			return xai.DefaultCLIBaseURL
+		return a.GetGrokBaseURLOr(xai.DefaultCLIBaseURL)
+REDACTED
+	return a.GetGrokBaseURLOr(xai.DefaultBaseURL)
+REDACTED
+
+// GetGrokBaseURLOr resolves an explicit account endpoint, falling back to the
+// supplied default. Official OAuth endpoints are normalized here; custom
+// endpoints are retained for the request builder's operator URL policy.
+func (a *Account) GetGrokBaseURLOr(defaultBaseURL string) string {
+	if a == nil || !a.IsGrok() {
+		return ""
+REDACTED
+	defaultBaseURL = strings.TrimRight(strings.TrimSpace(defaultBaseURL), "/")
+	if defaultBaseURL == "" {
+		if a.IsGrokOAuth() {
+			defaultBaseURL = xai.DefaultCLIBaseURL
+	REDACTED else {
+			defaultBaseURL = xai.DefaultBaseURL
 	REDACTED
+REDACTED
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return defaultBaseURL
+REDACTED
+	if !a.IsGrokOAuth() {
 		return baseURL
 REDACTED
-	if baseURL != "" {
-		return baseURL
+	// Explicit regional/API or custom values remain pinned. Custom endpoints are checked by the
+	// operator URL policy at the request builder, which has access to config.
+	if validated, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
+		return validated
 REDACTED
-	return xai.DefaultBaseURL
+	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" &&
+		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" {
+		return strings.TrimRight(baseURL, "/")
+REDACTED
+	return defaultBaseURL
+REDACTED
+
+func isOfficialGrokAPIBaseURL(raw string) bool {
+	return isOfficialGrokBaseURL(raw, xai.DefaultBaseURL)
+REDACTED
+
+func isOfficialGrokBaseURL(raw, expected string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+REDACTED
+	want, err := url.Parse(expected)
+	if err != nil || !strings.EqualFold(parsed.Scheme, want.Scheme) || !strings.EqualFold(parsed.Hostname(), want.Hostname()) {
+		return false
+REDACTED
+	if port := parsed.Port(); port != "" && port != "443" {
+		return false
+REDACTED
+	path := strings.TrimRight(parsed.Path, "/")
+	return path == "" || path == strings.TrimRight(want.Path, "/")
 REDACTED
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.

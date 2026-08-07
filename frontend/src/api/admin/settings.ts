@@ -590,6 +590,7 @@ export interface SystemSettings {
   fallback_model_antigravity: string;
   grok_default_text_model: string;
   grok_cross_client_model_map_enabled: boolean;
+  grok_default_base_url_mode: string;
 
   // Per-platform account auto-pause thresholds (100 = disabled)
   account_scheduling_thresholds: AccountSchedulingThresholdsMap;
@@ -911,6 +912,7 @@ export interface UpdateSettingsRequest {
   fallback_model_antigravity?: string;
   grok_default_text_model?: string;
   grok_cross_client_model_map_enabled?: boolean;
+  grok_default_base_url_mode?: string;
   account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;

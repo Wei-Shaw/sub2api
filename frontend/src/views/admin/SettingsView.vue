@@ -5178,7 +5178,30 @@
                     data-testid="grok-cross-client-model-map-toggle"
                   />
                 </div>
-              </div>
+                </div>
+                <div class="md:col-span-2">
+                  <label
+                    for="grok-default-base-url-mode"
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLMode") REDACTEDREDACTED
+                  </label>
+                  <select
+                    id="grok-default-base-url-mode"
+                    v-model="form.grok_default_base_url_mode"
+                    class="input mt-2 w-full"
+                    data-testid="grok-default-base-url-mode"
+                  >
+                    <option value="cli">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeCLI") REDACTEDREDACTED</option>
+                    <option value="api">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeAPI") REDACTEDREDACTED</option>
+                    <option value="us-east-1">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeUSEast1") REDACTEDREDACTED</option>
+                    <option value="us-west-2">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeUSWest2") REDACTEDREDACTED</option>
+                    <option value="eu-west-1">{{ t("admin.settings.gatewayForwarding.grokBaseURLModeEUWest1") REDACTEDREDACTED</option>
+                  </select>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.grokDefaultBaseURLModeHint") REDACTEDREDACTED
+                  </p>
+                </div>
 
               <!-- Fingerprint Unification -->
               <div class="flex items-center justify-between">
@@ -9520,6 +9543,7 @@ const form = reactive<SettingsForm>({
   fallback_model_antigravity: "gemini-2.5-pro",
   grok_default_text_model: "grok-4.5",
   grok_cross_client_model_map_enabled: false,
+  grok_default_base_url_mode: "cli",
   // Identity patch (Claude -> Gemini)
   enable_identity_patch: true,
   identity_patch_prompt: "",
@@ -11102,6 +11126,7 @@ async function saveSettings() {
         form.grok_default_text_model.trim() || "grok-4.5",
       grok_cross_client_model_map_enabled:
         form.grok_cross_client_model_map_enabled,
+      grok_default_base_url_mode: form.grok_default_base_url_mode,
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
