@@ -222,6 +222,18 @@ export default {
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
       subscriptionExpires: '到期',
+      subscriptionExpiryQuery: '查询',
+      subscriptionExpiryQuerying: '查询中…',
+      subscriptionExpiryNotQueried: '尚未查询真实到期',
+      subscriptionExpiryUnavailable: '上游未返回真实到期',
+      subscriptionExpirySourceUpstream: '真实',
+      subscriptionExpirySourceLegacy: '已存真实',
+      subscriptionExpirySourceManual: '手填',
+      subscriptionExpiryCheckedAt: '查询于 {time}',
+      subscriptionExpiryQuerySuccess: '账号 #{id} 的订阅到期已更新',
+      subscriptionExpiryQueryFailed: '查询真实订阅到期失败',
+      subscriptionExpiryBatchCompleted: '已查询 {count} 个账号的订阅到期',
+      subscriptionExpiryBatchPartial: '订阅到期查询部分完成：成功 {success} 个，失败 {failed} 个',
       // 容量状态提示
       capacity: {
         windowCost: {
@@ -494,6 +506,7 @@ export default {
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
+        querySubscriptionExpiry: '查询订阅到期',
         probeUpstreamBilling: '探测上游倍率',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',

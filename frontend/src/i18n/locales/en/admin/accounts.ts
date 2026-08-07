@@ -274,6 +274,18 @@ export default {
       setPrivacy: 'Set Privacy',
       subscriptionAbnormal: 'Abnormal',
       subscriptionExpires: 'Expires',
+      subscriptionExpiryQuery: 'Query',
+      subscriptionExpiryQuerying: 'Querying…',
+      subscriptionExpiryNotQueried: 'Real expiry not queried',
+      subscriptionExpiryUnavailable: 'Upstream returned no real expiry',
+      subscriptionExpirySourceUpstream: 'Real',
+      subscriptionExpirySourceLegacy: 'Stored real',
+      subscriptionExpirySourceManual: 'Manual',
+      subscriptionExpiryCheckedAt: 'Queried at {time}',
+      subscriptionExpiryQuerySuccess: 'Subscription expiry updated for account #{id}',
+      subscriptionExpiryQueryFailed: 'Failed to query the real subscription expiry',
+      subscriptionExpiryBatchCompleted: 'Queried subscription expiry for {count} account(s)',
+      subscriptionExpiryBatchPartial: 'Subscription expiry query partially completed: {success} succeeded, {failed} failed',
       // Capacity status tooltips
       capacity: {
         windowCost: {
@@ -415,6 +427,7 @@ export default {
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
+        querySubscriptionExpiry: 'Query Subscription Expiry',
         probeUpstreamBilling: 'Probe Upstream Rate',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',

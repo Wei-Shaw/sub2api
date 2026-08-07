@@ -57,9 +57,23 @@
         <span>{{ privacyBadge.label }}</span>
       </span>
     </div>
-    <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
-    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
-      {{ expiresLabel }}
+    <!-- Row 3: Cached subscription expiration and explicit refresh action -->
+    <div
+      v-if="expiresLabel || subscriptionExpiryQueryable"
+      class="flex items-center gap-1 pl-0.5 text-[10px] leading-tight text-gray-400 dark:text-gray-500"
+      :title="expiryTitle"
+    >
+      <span>{{ expiresLabel || emptyExpiryLabel }}</span>
+      <button
+        v-if="subscriptionExpiryQueryable"
+        type="button"
+        class="rounded px-1 py-0.5 font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-wait disabled:opacity-60 dark:text-primary-400 dark:hover:bg-primary-900/30"
+        :disabled="subscriptionExpiryLoading"
+        data-testid="query-subscription-expiry"
+        @click.stop="emit('query-subscription-expiry')"
+      >
+        {{ subscriptionExpiryLoading ? t('admin.accounts.subscriptionExpiryQuerying') : t('admin.accounts.subscriptionExpiryQuery') }}
+      </button>
     </div>
   </div>
 </template>
@@ -71,6 +85,7 @@ import type { AccountPlatform, AccountType } from '@/types'
 import GrokFreeIcon from './GrokFreeIcon.vue'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatDateTimeToMinute } from '@/utils/format'
 
 const { t } = useI18n()
 
@@ -81,9 +96,16 @@ interface Props {
   planType?: string
   privacyMode?: string
   subscriptionExpiresAt?: string
+  subscriptionExpirySource?: 'upstream' | 'legacy' | 'manual' | 'none'
+  subscriptionExpiryCheckedAt?: string
+  subscriptionExpiryQueryable?: boolean
+  subscriptionExpiryLoading?: boolean
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+  'query-subscription-expiry': []
+}>()
 
 const platformLabel = computed(() => {
   if (props.platform === 'anthropic') return 'Anthropic'
@@ -232,20 +254,36 @@ const planBadgeClass = computed(() => {
   return typeClass.value
 })
 
-// Subscription expiration label (non-free only)
 const expiresLabel = computed(() => {
-  if (!props.subscriptionExpiresAt || !props.planType) return ''
-  if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') return ''
-  try {
-    const d = new Date(props.subscriptionExpiresAt)
-    if (isNaN(d.getTime())) return ''
-    const yyyy = d.getFullYear()
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const dd = String(d.getDate()).padStart(2, '0')
-    return `${t('admin.accounts.subscriptionExpires')} ${yyyy}-${mm}-${dd}`
-  } catch {
+  if (!props.subscriptionExpiryQueryable && (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic')) {
     return ''
   }
+  const formatted = formatDateTimeToMinute(props.subscriptionExpiresAt)
+  if (!formatted) return ''
+  const sourceKey = ({
+    upstream: 'admin.accounts.subscriptionExpirySourceUpstream',
+    legacy: 'admin.accounts.subscriptionExpirySourceLegacy',
+    manual: 'admin.accounts.subscriptionExpirySourceManual'
+  } as Record<string, string>)[props.subscriptionExpirySource || '']
+  const source = sourceKey ? ` · ${t(sourceKey)}` : ''
+  return `${t('admin.accounts.subscriptionExpires')} ${formatted}${source}`
+})
+
+const emptyExpiryLabel = computed(() =>
+  props.subscriptionExpiryCheckedAt
+    ? t('admin.accounts.subscriptionExpiryUnavailable')
+    : t('admin.accounts.subscriptionExpiryNotQueried')
+)
+
+const expiryTitle = computed(() => {
+  const parts: string[] = []
+  if (props.subscriptionExpiresAt) parts.push(props.subscriptionExpiresAt)
+  if (props.subscriptionExpiryCheckedAt) {
+    parts.push(t('admin.accounts.subscriptionExpiryCheckedAt', {
+      time: formatDateTimeToMinute(props.subscriptionExpiryCheckedAt)
+    }))
+  }
+  return parts.join(' · ')
 })
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting

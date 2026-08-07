@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -18,16 +20,21 @@ import (
 
 // OpenAIOAuthHandler handles OpenAI OAuth-related operations
 type OpenAIOAuthHandler struct {
-	openaiOAuthService *service.OpenAIOAuthService
-	adminService       service.AdminService
-	quotaService       openAIQuotaService
-	rateLimitService   openAIAccountStateRecoverer
+	openaiOAuthService        *service.OpenAIOAuthService
+	adminService              service.AdminService
+	quotaService              openAIQuotaService
+	subscriptionExpiryService openAISubscriptionExpiryService
+	rateLimitService          openAIAccountStateRecoverer
 }
 
 type openAIQuotaService interface {
 	QueryUsage(ctx context.Context, accountID int64) (*service.OpenAIQuotaUsage, error)
 	CacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *service.OpenAIRateLimitResetCredits) error
 	ResetCredit(ctx context.Context, accountID int64) (*service.OpenAIQuotaResetResult, error)
+}
+
+type openAISubscriptionExpiryService interface {
+	QuerySubscriptionExpiry(ctx context.Context, accountID int64) (*service.OpenAISubscriptionExpiryResult, error)
 }
 
 type openAIAccountStateRecoverer interface {
@@ -97,6 +104,7 @@ func NewOpenAIOAuthHandler(
 	// `== nil` capability guards below and panic instead of returning 400.
 	if quotaService != nil {
 		h.quotaService = quotaService
+		h.subscriptionExpiryService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService
@@ -535,6 +543,130 @@ func (h *OpenAIOAuthHandler) RefreshQuota(c *gin.Context) {
 	}
 	refreshResponse.CachePersisted = true
 	response.Success(c, refreshResponse)
+}
+
+// QuerySubscriptionExpiry queries and caches the real ChatGPT subscription
+// expiry for one OpenAI OAuth account. The cache is updated only by this
+// explicit POST action; accounts.expires_at is used only as the response's
+// manual effective fallback when upstream proves unavailable.
+// POST /api/v1/admin/openai/accounts/:id/subscription-expiry/query
+func (h *OpenAIOAuthHandler) QuerySubscriptionExpiry(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.subscriptionExpiryService == nil {
+		response.BadRequest(c, "openai subscription expiry service is not enabled")
+		return
+	}
+
+	result, err := h.subscriptionExpiryService.QuerySubscriptionExpiry(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if result == nil {
+		response.Error(c, http.StatusInternalServerError, "openai subscription expiry query returned an empty result")
+		return
+	}
+	response.Success(c, result)
+}
+
+const (
+	openAISubscriptionExpiryBatchLimit       = 100
+	openAISubscriptionExpiryBatchConcurrency = 4
+)
+
+type openAISubscriptionExpiryBatchRequest struct {
+	AccountIDs []int64 `json:"account_ids"`
+}
+
+type openAISubscriptionExpiryBatchItem struct {
+	AccountID          int64                                     `json:"account_id"`
+	Snapshot           *service.OpenAISubscriptionExpirySnapshot `json:"snapshot,omitempty"`
+	EffectiveExpiresAt string                                    `json:"effective_expires_at,omitempty"`
+	EffectiveSource    string                                    `json:"effective_source,omitempty"`
+	Error              string                                    `json:"error,omitempty"`
+}
+
+type openAISubscriptionExpiryBatchResponse struct {
+	Results []openAISubscriptionExpiryBatchItem `json:"results"`
+}
+
+// QuerySubscriptionExpiryBatch performs bounded, explicitly requested
+// subscription lookups. One failed account is represented in its result item;
+// it does not fail the rest of the batch.
+// POST /api/v1/admin/openai/accounts/subscription-expiry/query
+func (h *OpenAIOAuthHandler) QuerySubscriptionExpiryBatch(c *gin.Context) {
+	if h.subscriptionExpiryService == nil {
+		response.BadRequest(c, "openai subscription expiry service is not enabled")
+		return
+	}
+
+	var req openAISubscriptionExpiryBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	accountIDs := make([]int64, 0, len(req.AccountIDs))
+	seen := make(map[int64]struct{}, len(req.AccountIDs))
+	for _, accountID := range req.AccountIDs {
+		if _, ok := seen[accountID]; ok {
+			continue
+		}
+		seen[accountID] = struct{}{}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if len(accountIDs) == 0 {
+		response.BadRequest(c, "account_ids must contain at least one account ID")
+		return
+	}
+	if len(accountIDs) > openAISubscriptionExpiryBatchLimit {
+		response.BadRequest(c, "account_ids must contain no more than 100 unique account IDs")
+		return
+	}
+
+	items := make([]openAISubscriptionExpiryBatchItem, len(accountIDs))
+	sem := make(chan struct{}, openAISubscriptionExpiryBatchConcurrency)
+	var wg sync.WaitGroup
+	for i, accountID := range accountIDs {
+		items[i].AccountID = accountID
+		wg.Add(1)
+		go func(index int, id int64) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			result, err := h.subscriptionExpiryService.QuerySubscriptionExpiry(c.Request.Context(), id)
+			if err != nil {
+				items[index].Error = openAISubscriptionExpiryBatchError(err)
+				return
+			}
+			if result == nil {
+				items[index].Error = "openai subscription expiry query returned an empty result"
+				return
+			}
+			snapshot := result.Snapshot
+			items[index].Snapshot = &snapshot
+			items[index].EffectiveExpiresAt = result.EffectiveExpiresAt
+			items[index].EffectiveSource = result.EffectiveSource
+		}(i, accountID)
+	}
+	wg.Wait()
+
+	response.Success(c, openAISubscriptionExpiryBatchResponse{Results: items})
+}
+
+func openAISubscriptionExpiryBatchError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if message := infraerrors.Message(err); message != "" {
+		return message
+	}
+	return "openai subscription expiry query failed"
 }
 
 // CreateShadowRequest is the request body for CreateShadow.
