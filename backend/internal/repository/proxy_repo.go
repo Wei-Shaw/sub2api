@@ -231,8 +231,7 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 		WHERE proxy_id = $1
 			AND type = 'apikey'
 			AND (
-				(platform = 'openai'
-					AND extra ? 'upstream_billing_probe'
+				(extra ? 'upstream_billing_probe'
 					AND extra -> 'upstream_billing_probe' <> 'null'::jsonb)
 				OR (platform IN ('openai', 'anthropic')
 					AND extra ? 'ollama_cloud_usage_snapshot'
@@ -747,7 +746,7 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		rows, err = exec.QueryContext(ctx, `
 			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=$1,
 				extra=CASE
-					WHEN platform='openai' AND type='apikey' AND extra ? 'upstream_billing_probe'
+					WHEN type='apikey' AND extra ? 'upstream_billing_probe'
 					THEN extra - 'upstream_billing_probe'
 					ELSE extra
 				END,
@@ -758,7 +757,7 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		rows, err = exec.QueryContext(ctx, `
 			UPDATE accounts SET proxy_id=$2, proxy_fallback_origin_id=$1,
 				extra=CASE
-					WHEN platform='openai' AND type='apikey' AND extra ? 'upstream_billing_probe'
+					WHEN type='apikey' AND extra ? 'upstream_billing_probe'
 					THEN extra - 'upstream_billing_probe'
 					ELSE extra
 				END,
