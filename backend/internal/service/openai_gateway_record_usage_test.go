@@ -2218,6 +2218,53 @@ REDACTED
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_GroupVideoModelPriceOverridesFlatAndChannelPrice(t *testing.T) {
+	groupID := int64(129)
+	channelPrice := 0.201
+	flatVideoPrice720P := 0.037
+	modelVideoPrice720P := 0.123
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "grok-imagine-video-1.5-preview", channelPrice)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:            "resp_grok_video_model_price",
+			Model:                "grok-imagine-video-1.5-preview",
+			BillingModel:         "grok-imagine-video-1.5-preview",
+			ImageCount:           1,
+			VideoCount:           1,
+			VideoResolution:      VideoBillingResolution720P,
+			VideoDurationSeconds: 2,
+			Duration:             time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10129,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				Platform:             PlatformGrok,
+				RateMultiplier:       1,
+				VideoRateIndependent: true,
+				VideoRateMultiplier:  1,
+				VideoPrice720P:       &flatVideoPrice720P,
+				VideoModelPrices: map[string]map[string]float64{
+					VideoPriceFamilyGrokImagineVideo15: {VideoBillingResolution720P: modelVideoPrice720PREDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20129REDACTED,
+		Account: &Account{ID: 30129, Platform: PlatformGrokREDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, modelVideoPrice720P*2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, modelVideoPrice720P*2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_HydratesGroupImagePriceWhenAuthSnapshotOmitsIt(t *testing.T) {
 	groupID := int64(130)
 	groupImagePrice2K := 0.021

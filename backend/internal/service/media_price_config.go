@@ -20,14 +20,15 @@ func videoPriceConfigFromAPIKey(apiKey *APIKey) *VideoPriceConfig {
 		return nil
 REDACTED
 	return &VideoPriceConfig{
-		Price480P:  apiKey.Group.VideoPrice480P,
-		Price720P:  apiKey.Group.VideoPrice720P,
-		Price1080P: apiKey.Group.VideoPrice1080P,
+		Price480P:   apiKey.Group.VideoPrice480P,
+		Price720P:   apiKey.Group.VideoPrice720P,
+		Price1080P:  apiKey.Group.VideoPrice1080P,
+		ModelPrices: apiKey.Group.VideoModelPrices,
 REDACTED
 REDACTED
 
-func apiKeyHasConfiguredVideoPrice(apiKey *APIKey, resolution string) bool {
-	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetVideoPrice(resolution) != nil
+func apiKeyHasConfiguredVideoPrice(apiKey *APIKey, model, resolution string) bool {
+	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetVideoPriceForModel(model, resolution) != nil
 REDACTED
 
 func webSearchPricePerCallFromAPIKey(apiKey *APIKey) *float64 {
