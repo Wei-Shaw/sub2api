@@ -93,6 +93,8 @@ var ProviderSet = wire.NewSet(
 	NewWeb3DepositAddressRepository,
 	NewWeb3DepositRepository,
 	NewWeb3ScannerCursorRepository,
+	NewWeb3UserBalanceRepository,
+	NewWeb3BalanceTransferRepository,
 	NewWeb3ChallengeStore,
 	NewPasskeyRepository,
 	NewPasskeySessionStore,

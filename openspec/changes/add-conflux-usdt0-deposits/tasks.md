@@ -18,7 +18,7 @@
 - [ ] 3.2 新增 `web3_deposit_addresses`、唯一约束和历史地址查询索引。
 - [ ] 3.3 新增 `web3_deposits`、状态 CHECK、事件唯一键和 Worker claim 索引。
 - [ ] 3.4 新增 `web3_scanner_cursors` 和不可回退的初始化逻辑。
-- [ ] 3.5 新增 `balance_ledger_entries` 和唯一 `idempotency_key`。
+- [ ] 3.5 新增 `web3_user_balances`、`web3_balance_transfers` 和唯一 `idempotency_key`。
 - [ ] 3.6 增加 migration 空库、升级、约束和典型查询 `EXPLAIN` 测试。
 
 ## 4. 实现 HD 地址分配
@@ -57,11 +57,11 @@
 
 ## 8. 实现事务性余额入账
 
-- [ ] 8.1 新增 exact-decimal `CreditWeb3Deposit` 仓储事务，不调用 `AdjustBalance(float64)`。
-- [ ] 8.2 同一事务锁定充值和用户、写 ledger、增加 balance/total_recharged、标记 credited。
+- [ ] 8.1 新增 exact-decimal `CreditWeb3Deposit` 仓储事务，把 finalized 充值计入 `web3_user_balances`。
+- [ ] 8.2 新增 Web3 余额向 `users.balance` 的原子划转事务并写入 `web3_balance_transfers`。
 - [ ] 8.3 实现 credit lease 或条件 claim，支持多 Worker 和崩溃恢复。
 - [ ] 8.4 提交后失效余额缓存并发送充值成功通知。
-- [ ] 8.5 覆盖 100 路重复履约、ledger 唯一冲突、事务中断和通知失败测试。
+- [ ] 8.5 覆盖 100 路重复履约、划转幂等键冲突、事务中断和通知失败测试。
 - [ ] 8.6 确认 Web3 充值不创建 PaymentOrder、RedeemCode 或 affiliate rebate。
 
 ## 9. 实现用户 API 和页面

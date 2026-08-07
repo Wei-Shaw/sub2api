@@ -60,7 +60,7 @@
 #### Scenario: 重叠区间返回重复日志
 - **WHEN** overlap 重扫再次返回已持久化日志
 - **THEN** 系统 MUST 保留原充值记录
-- **THEN** 系统 MUST NOT 创建重复充值或重复余额流水
+- **THEN** 系统 MUST NOT 创建重复充值或重复增加 Web3 子账户余额
 
 ### Requirement: 扫描器必须支持多实例领导租约
 系统 SHALL 复用多实例领导锁，使同一 scanner key 在任意时刻只有一个实例推进游标。失去租约的实例 MUST NOT 以旧租约提交新的游标位置。
@@ -98,7 +98,7 @@
 #### Scenario: 区块重组导致日志消失
 - **WHEN** stored block hash 与 canonical block hash 不同，或 receipt 中目标日志不存在
 - **THEN** 系统 MUST 将未入账充值标记为 orphaned
-- **THEN** 系统 MUST NOT 创建余额流水
+- **THEN** 系统 MUST NOT 增加 Web3 子账户余额
 
 #### Scenario: finalized 验证通过
 - **WHEN** canonical block、receipt status、block hash 和目标日志全部匹配

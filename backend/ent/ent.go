@@ -51,10 +51,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3balancetransfer"
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
+	"github.com/Wei-Shaw/sub2api/ent/web3userbalance"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -154,10 +156,12 @@ func checkColumn(t, c string) error {
 			userattributevalue.Table:            userattributevalue.ValidColumn,
 			userplatformquota.Table:             userplatformquota.ValidColumn,
 			usersubscription.Table:              usersubscription.ValidColumn,
+			web3balancetransfer.Table:           web3balancetransfer.ValidColumn,
 			web3deposit.Table:                   web3deposit.ValidColumn,
 			web3depositaddress.Table:            web3depositaddress.ValidColumn,
 			web3depositwallet.Table:             web3depositwallet.ValidColumn,
 			web3scannercursor.Table:             web3scannercursor.ValidColumn,
+			web3userbalance.Table:               web3userbalance.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -45,10 +45,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3balancetransfer"
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
+	"github.com/Wei-Shaw/sub2api/ent/web3userbalance"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -2444,6 +2446,54 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	web3balancetransferFields := schema.Web3BalanceTransfer{}.Fields()
+	_ = web3balancetransferFields
+	// web3balancetransferDescAmount is the schema descriptor for amount field.
+	web3balancetransferDescAmount := web3balancetransferFields[3].Descriptor()
+	// web3balancetransfer.AmountValidator is a validator for the "amount" field. It is called by the builders before save.
+	web3balancetransfer.AmountValidator = web3balancetransferDescAmount.Validators[0].(func(string) error)
+	// web3balancetransferDescWeb3BalanceBefore is the schema descriptor for web3_balance_before field.
+	web3balancetransferDescWeb3BalanceBefore := web3balancetransferFields[4].Descriptor()
+	// web3balancetransfer.Web3BalanceBeforeValidator is a validator for the "web3_balance_before" field. It is called by the builders before save.
+	web3balancetransfer.Web3BalanceBeforeValidator = web3balancetransferDescWeb3BalanceBefore.Validators[0].(func(string) error)
+	// web3balancetransferDescWeb3BalanceAfter is the schema descriptor for web3_balance_after field.
+	web3balancetransferDescWeb3BalanceAfter := web3balancetransferFields[5].Descriptor()
+	// web3balancetransfer.Web3BalanceAfterValidator is a validator for the "web3_balance_after" field. It is called by the builders before save.
+	web3balancetransfer.Web3BalanceAfterValidator = web3balancetransferDescWeb3BalanceAfter.Validators[0].(func(string) error)
+	// web3balancetransferDescUserBalanceBefore is the schema descriptor for user_balance_before field.
+	web3balancetransferDescUserBalanceBefore := web3balancetransferFields[6].Descriptor()
+	// web3balancetransfer.UserBalanceBeforeValidator is a validator for the "user_balance_before" field. It is called by the builders before save.
+	web3balancetransfer.UserBalanceBeforeValidator = web3balancetransferDescUserBalanceBefore.Validators[0].(func(string) error)
+	// web3balancetransferDescUserBalanceAfter is the schema descriptor for user_balance_after field.
+	web3balancetransferDescUserBalanceAfter := web3balancetransferFields[7].Descriptor()
+	// web3balancetransfer.UserBalanceAfterValidator is a validator for the "user_balance_after" field. It is called by the builders before save.
+	web3balancetransfer.UserBalanceAfterValidator = web3balancetransferDescUserBalanceAfter.Validators[0].(func(string) error)
+	// web3balancetransferDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	web3balancetransferDescIdempotencyKey := web3balancetransferFields[8].Descriptor()
+	// web3balancetransfer.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	web3balancetransfer.IdempotencyKeyValidator = func() func(string) error {
+		validators := web3balancetransferDescIdempotencyKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(idempotency_key string) error {
+			for _, fn := range fns {
+				if err := fn(idempotency_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3balancetransferDescMetadata is the schema descriptor for metadata field.
+	web3balancetransferDescMetadata := web3balancetransferFields[9].Descriptor()
+	// web3balancetransfer.DefaultMetadata holds the default value on creation for the metadata field.
+	web3balancetransfer.DefaultMetadata = web3balancetransferDescMetadata.Default.(map[string]interface{})
+	// web3balancetransferDescCreatedAt is the schema descriptor for created_at field.
+	web3balancetransferDescCreatedAt := web3balancetransferFields[10].Descriptor()
+	// web3balancetransfer.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3balancetransfer.DefaultCreatedAt = web3balancetransferDescCreatedAt.Default.(func() time.Time)
 	web3depositMixin := schema.Web3Deposit{}.Mixin()
 	web3depositMixinFields0 := web3depositMixin[0].Fields()
 	_ = web3depositMixinFields0
@@ -2902,6 +2952,63 @@ func init() {
 			return nil
 		}
 	}()
+	web3userbalanceMixin := schema.Web3UserBalance{}.Mixin()
+	web3userbalanceMixinFields0 := web3userbalanceMixin[0].Fields()
+	_ = web3userbalanceMixinFields0
+	web3userbalanceFields := schema.Web3UserBalance{}.Fields()
+	_ = web3userbalanceFields
+	// web3userbalanceDescCreatedAt is the schema descriptor for created_at field.
+	web3userbalanceDescCreatedAt := web3userbalanceMixinFields0[0].Descriptor()
+	// web3userbalance.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3userbalance.DefaultCreatedAt = web3userbalanceDescCreatedAt.Default.(func() time.Time)
+	// web3userbalanceDescUpdatedAt is the schema descriptor for updated_at field.
+	web3userbalanceDescUpdatedAt := web3userbalanceMixinFields0[1].Descriptor()
+	// web3userbalance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	web3userbalance.DefaultUpdatedAt = web3userbalanceDescUpdatedAt.Default.(func() time.Time)
+	// web3userbalance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	web3userbalance.UpdateDefaultUpdatedAt = web3userbalanceDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// web3userbalanceDescAssetKey is the schema descriptor for asset_key field.
+	web3userbalanceDescAssetKey := web3userbalanceFields[2].Descriptor()
+	// web3userbalance.AssetKeyValidator is a validator for the "asset_key" field. It is called by the builders before save.
+	web3userbalance.AssetKeyValidator = func() func(string) error {
+		validators := web3userbalanceDescAssetKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(asset_key string) error {
+			for _, fn := range fns {
+				if err := fn(asset_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3userbalanceDescAvailableAmount is the schema descriptor for available_amount field.
+	web3userbalanceDescAvailableAmount := web3userbalanceFields[3].Descriptor()
+	// web3userbalance.DefaultAvailableAmount holds the default value on creation for the available_amount field.
+	web3userbalance.DefaultAvailableAmount = web3userbalanceDescAvailableAmount.Default.(string)
+	// web3userbalance.AvailableAmountValidator is a validator for the "available_amount" field. It is called by the builders before save.
+	web3userbalance.AvailableAmountValidator = web3userbalanceDescAvailableAmount.Validators[0].(func(string) error)
+	// web3userbalanceDescTotalDeposited is the schema descriptor for total_deposited field.
+	web3userbalanceDescTotalDeposited := web3userbalanceFields[4].Descriptor()
+	// web3userbalance.DefaultTotalDeposited holds the default value on creation for the total_deposited field.
+	web3userbalance.DefaultTotalDeposited = web3userbalanceDescTotalDeposited.Default.(string)
+	// web3userbalance.TotalDepositedValidator is a validator for the "total_deposited" field. It is called by the builders before save.
+	web3userbalance.TotalDepositedValidator = web3userbalanceDescTotalDeposited.Validators[0].(func(string) error)
+	// web3userbalanceDescTotalTransferred is the schema descriptor for total_transferred field.
+	web3userbalanceDescTotalTransferred := web3userbalanceFields[5].Descriptor()
+	// web3userbalance.DefaultTotalTransferred holds the default value on creation for the total_transferred field.
+	web3userbalance.DefaultTotalTransferred = web3userbalanceDescTotalTransferred.Default.(string)
+	// web3userbalance.TotalTransferredValidator is a validator for the "total_transferred" field. It is called by the builders before save.
+	web3userbalance.TotalTransferredValidator = web3userbalanceDescTotalTransferred.Validators[0].(func(string) error)
+	// web3userbalanceDescBalanceVersion is the schema descriptor for balance_version field.
+	web3userbalanceDescBalanceVersion := web3userbalanceFields[6].Descriptor()
+	// web3userbalance.DefaultBalanceVersion holds the default value on creation for the balance_version field.
+	web3userbalance.DefaultBalanceVersion = web3userbalanceDescBalanceVersion.Default.(int64)
+	// web3userbalance.BalanceVersionValidator is a validator for the "balance_version" field. It is called by the builders before save.
+	web3userbalance.BalanceVersionValidator = web3userbalanceDescBalanceVersion.Validators[0].(func(int64) error)
 }
 
 const (

@@ -144,12 +144,13 @@ feat(web3deposit): persist scanner cursors and leases
 ### Commit 13
 
 ```text
-feat(web3deposit): add balance ledger entries
+feat(web3deposit): persist web3 balances and transfers
 ```
 
-- 新增 `balance_ledger_entries`。
-- 添加唯一 `idempotency_key`。
-- 此提交不修改用户余额。
+- 复用已有 `web3_deposits` 作为链上入金事实。
+- 新增 `web3_user_balances` 作为按用户和资产聚合的 Web3 可用余额。
+- 新增 `web3_balance_transfers` 记录向 `users.balance` 的完成划转，并添加唯一 `idempotency_key`。
+- 此提交只建立持久化模型，不修改 `users.balance`。
 
 ## 4. 阶段三：HD 地址分配
 
@@ -361,9 +362,10 @@ feat(web3deposit): credit deposits in one transaction
 
 1. 锁定充值记录。
 2. 锁定用户记录。
-3. 创建唯一 ledger entry。
-4. 精确增加 `balance` 和 `total_recharged`。
-5. 将充值标记为 `credited`。
+3. 精确增加 `web3_user_balances.available_amount` 和 `total_deposited`。
+4. 将充值标记为 `credited`。
+
+后续用户发起划转时，在独立事务内锁定 Web3 余额与用户，减少 Web3 可用余额、增加 `users.balance`，并创建唯一 `web3_balance_transfers` 事实。
 
 不得调用基于 `float64` 的余额调整接口。
 
@@ -402,7 +404,7 @@ test(web3deposit): harden credit idempotency
 ```
 
 - 100 路重复履约只能入账一次。
-- ledger 唯一冲突不得重复增加余额。
+- 充值状态条件和划转幂等键冲突不得重复增加任一余额。
 - 覆盖事务各阶段故障注入。
 - 证明 Web3 充值不会创建 PaymentOrder、RedeemCode 或邀请返佣。
 
@@ -485,7 +487,7 @@ feat(web3deposit): retry failed deposit credits
 ```
 
 - 只允许合法状态进入重试。
-- 重试继续依赖 ledger 和事件唯一键保证幂等。
+- 重试继续依赖充值状态、划转幂等键和事件唯一键保证幂等。
 
 ### Commit 46
 
@@ -581,5 +583,5 @@ npm run build
 2. 关闭 `credit_enabled`，停止余额入账但保留链上观察和记录。
 3. 关闭 `scanner_enabled`，停止链上读取，保留已经发现的事实和游标。
 4. 最后关闭总 `enabled` 开关。
-5. 已创建的地址、充值事实、ledger 和游标不得通过功能回滚删除。
+5. 已创建的地址、充值事实、Web3 余额、划转事实和游标不得通过功能回滚删除。
 6. 已应用的 migration 不修改、不删除；通过新的向前 migration 修复数据库问题。

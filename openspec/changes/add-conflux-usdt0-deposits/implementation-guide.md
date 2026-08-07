@@ -7,7 +7,7 @@
 1. 链上金额不得经过 `float64`。
 2. 主服务不得拥有任何可签名私钥。
 3. 充值事实不得存入 `payment_orders` 或 `redeem_codes`。
-4. 余额增加必须与 ledger、充值状态处于同一数据库事务。
+4. 充值入账必须与 Web3 子账户、充值状态处于同一事务；向主余额划转必须与 transfer 事实处于另一原子事务。
 5. 只有 `finalized` 且重新验证通过的日志可自动入账。
 6. 地址历史映射不得因用户停用、钱包轮换或功能关闭而删除。
 7. 所有重试都必须依赖数据库幂等约束，而不是进程内标记。
@@ -44,7 +44,8 @@ backend/ent/schema/web3_deposit_wallet.go
 backend/ent/schema/web3_deposit_address.go
 backend/ent/schema/web3_deposit.go
 backend/ent/schema/web3_scanner_cursor.go
-backend/ent/schema/balance_ledger_entry.go
+backend/ent/schema/web3_user_balance.go
+backend/ent/schema/web3_balance_transfer.go
 
 backend/internal/web3deposit/config.go
 backend/internal/web3deposit/domain.go
@@ -236,9 +237,9 @@ decoded raw amount == stored raw_amount
 
 ```go
 type CreditResult struct {
-    BalanceBefore decimal.Decimal
-    BalanceAfter  decimal.Decimal
-    AlreadyDone   bool
+    Web3BalanceBefore decimal.Decimal
+    Web3BalanceAfter  decimal.Decimal
+    AlreadyDone       bool
 }
 
 type BalanceCreditor interface {
@@ -251,14 +252,15 @@ type BalanceCreditor interface {
 推荐 SQL 使用行锁并返回精确值，不在 Go 中读取 float 再写回：
 
 ```sql
-UPDATE users
-SET balance = balance + $1::numeric,
-    total_recharged = total_recharged + $1::numeric
-WHERE id = $2
-RETURNING balance, total_recharged;
+UPDATE web3_user_balances
+SET available_amount = available_amount + $1::numeric,
+    total_deposited = total_deposited + $1::numeric,
+    balance_version = balance_version + 1
+WHERE user_id = $2 AND asset_key = $3
+RETURNING available_amount, total_deposited;
 ```
 
-为得到 `balance_before`，先在同一事务 `SELECT balance FOR UPDATE`，再更新并写 ledger。
+向 `users.balance` 划转时，先在同一事务分别锁定 `web3_user_balances` 和 `users`，再更新双方余额并写 `web3_balance_transfers`。
 
 ## 11. Runtime 生命周期
 
@@ -316,7 +318,7 @@ Wire 创建后由 provider 启动，统一 cleanup 调用 `Stop`。内部 gorout
 3. xpub 派生和地址 get-or-create。
 4. RPC 预检、scanner 和 cursor。
 5. finalizer/canonical verifier。
-6. exact-decimal ledger 和 credit worker。
+6. exact-decimal Web3 子账户、划转和 credit worker。
 7. 用户 API 与页面。
 8. 管理 API 与页面。
 9. metrics、告警、灰度开关和运行手册。
@@ -327,7 +329,7 @@ Wire 创建后由 provider 启动，统一 cleanup 调用 `Stop`。内部 gorout
 - 生产配置中没有助记词或私钥。
 - 已完成从备份种子重新派生测试用户地址的演练。
 - scanner 关闭重启后不漏扫、不重复入账。
-- 相同链上日志并发提交 100 次仍只有一条 ledger 和一次余额增加。
+- 相同链上日志并发提交 100 次仍只有一次 Web3 子账户入账。
 - 用户能看到真实小额充值从 confirming 到 credited。
 - 管理员可以批准大额充值并留下完整审计。
 - 功能关闭后历史地址与充值记录仍可查询。

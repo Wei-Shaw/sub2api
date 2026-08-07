@@ -477,6 +477,18 @@ func (f UserSubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserSubscriptionMutation", m)
 }
 
+// The Web3BalanceTransferFunc type is an adapter to allow the use of ordinary
+// function as Web3BalanceTransfer mutator.
+type Web3BalanceTransferFunc func(context.Context, *ent.Web3BalanceTransferMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f Web3BalanceTransferFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.Web3BalanceTransferMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.Web3BalanceTransferMutation", m)
+}
+
 // The Web3DepositFunc type is an adapter to allow the use of ordinary
 // function as Web3Deposit mutator.
 type Web3DepositFunc func(context.Context, *ent.Web3DepositMutation) (ent.Value, error)
@@ -523,6 +535,18 @@ func (f Web3ScannerCursorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.Web3ScannerCursorMutation", m)
+}
+
+// The Web3UserBalanceFunc type is an adapter to allow the use of ordinary
+// function as Web3UserBalance mutator.
+type Web3UserBalanceFunc func(context.Context, *ent.Web3UserBalanceMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f Web3UserBalanceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.Web3UserBalanceMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.Web3UserBalanceMutation", m)
 }
 
 // Condition is a hook condition function.

@@ -71,7 +71,7 @@
 
 #### Scenario: 管理员查看待处理充值
 - **WHEN** 管理员筛选 manual_review 或 failed
-- **THEN** 系统 MUST 返回链上事实、当前验证状态、失败原因和已有 ledger 关联
+- **THEN** 系统 MUST 返回链上事实、当前验证状态、失败原因和 Web3 子账户入账结果
 
 #### Scenario: 管理员查看 runtime
 - **WHEN** 管理员读取 runtime 状态

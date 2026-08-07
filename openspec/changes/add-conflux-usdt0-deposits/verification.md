@@ -11,7 +11,7 @@
 - raw amount、token amount 和 credited amount 全程不经过 `float64`。
 - 同一 `(chain_id, tx_hash, log_index)` 无论重复发现、并发履约或重启多少次，只增加一次余额。
 - 未 finalized、验证失败、orphaned、低于最低金额和未批准大额充值不能增加余额。
-- ledger、用户余额、`total_recharged` 和充值 `credited` 状态保持原子一致。
+- 充值与 Web3 子账户入账保持原子一致；Web3 向主余额的划转、`total_recharged` 和 transfer 事实保持原子一致。
 
 ## 2. HD 钱包验证
 
@@ -109,7 +109,7 @@ xprv
 ```text
 balance increase count = 1
 total_recharged increase count = 1
-ledger row count = 1
+credited deposit count = 1
 deposit status = credited
 ```
 
@@ -118,8 +118,8 @@ deposit status = credited
 分别在以下位置注入错误：
 
 1. 锁定充值后；
-2. 插入 ledger 前；
-3. 插入 ledger 后；
+2. 更新 Web3 子账户前；
+3. 更新 Web3 子账户后；
 4. 更新用户余额后；
 5. 更新充值状态前；
 6. commit 前；
@@ -141,7 +141,7 @@ deposit status = credited
 10000.000001     -> manual review
 ```
 
-数据库读取、ledger 和用户余额必须逐位相同。
+数据库读取、Web3 子账户和划转快照必须逐位相同。
 
 ## 7. 用户状态验证
 
@@ -207,7 +207,7 @@ deposit status = credited
 2. 发送一笔 `1.xxxxxx` USDT0。
 3. 对照 Conflux 浏览器和两个 RPC 节点确认 tx hash、log index、block hash 和 raw amount。
 4. 用户页面先显示 confirming。
-5. finalized 后只有一条 ledger，余额精确增加。
+5. finalized 后只有一次 Web3 子账户入账，余额精确增加。
 6. 重启全部应用实例并补扫包含该交易的区间，余额不再变化。
 7. 发送一笔低于 1 USDT0，确认不入账。
 8. 在测试或受控环境构造大于 10,000 的等价数据，完成管理员批准流程；不得为测试实际发送大额生产资金。

@@ -92,6 +92,8 @@ type Tx struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// Web3BalanceTransfer is the client for interacting with the Web3BalanceTransfer builders.
+	Web3BalanceTransfer *Web3BalanceTransferClient
 	// Web3Deposit is the client for interacting with the Web3Deposit builders.
 	Web3Deposit *Web3DepositClient
 	// Web3DepositAddress is the client for interacting with the Web3DepositAddress builders.
@@ -100,6 +102,8 @@ type Tx struct {
 	Web3DepositWallet *Web3DepositWalletClient
 	// Web3ScannerCursor is the client for interacting with the Web3ScannerCursor builders.
 	Web3ScannerCursor *Web3ScannerCursorClient
+	// Web3UserBalance is the client for interacting with the Web3UserBalance builders.
+	Web3UserBalance *Web3UserBalanceClient
 
 	// lazily loaded.
 	client     *Client
@@ -270,10 +274,12 @@ func (tx *Tx) init() {
 	tx.UserAttributeValue = NewUserAttributeValueClient(tx.config)
 	tx.UserPlatformQuota = NewUserPlatformQuotaClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
+	tx.Web3BalanceTransfer = NewWeb3BalanceTransferClient(tx.config)
 	tx.Web3Deposit = NewWeb3DepositClient(tx.config)
 	tx.Web3DepositAddress = NewWeb3DepositAddressClient(tx.config)
 	tx.Web3DepositWallet = NewWeb3DepositWalletClient(tx.config)
 	tx.Web3ScannerCursor = NewWeb3ScannerCursorClient(tx.config)
+	tx.Web3UserBalance = NewWeb3UserBalanceClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

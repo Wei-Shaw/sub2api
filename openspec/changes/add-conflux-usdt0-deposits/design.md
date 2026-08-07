@@ -395,51 +395,46 @@ WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS=https://rpc-1.example,http
 
 禁止把任意管理员 URL 直接交给 RPC Client，以减少 SSRF 和错误链风险。
 
-### 12. 余额流水是入账幂等事实
+### 12. Web3 资金使用三表子账户模型
 
-建议结构：
+- `web3_deposits`：不可变的链上充值事实；`credited` 表示金额已经进入 Web3 子账户。
+- `web3_user_balances`：按 `user_id + asset_key` 聚合的当前可用余额快照，并保存累计充值、累计划转和乐观锁版本。
+- `web3_balance_transfers`：从 Web3 子账户划转到 `users.balance` 的不可变完成事实，保存划转前后双方余额和唯一幂等键。
 
-```sql
-CREATE TABLE balance_ledger_entries (
-    id               BIGSERIAL PRIMARY KEY,
-    user_id          BIGINT NOT NULL REFERENCES users(id),
-    entry_type       VARCHAR(32) NOT NULL,
-    amount           DECIMAL(20,8) NOT NULL,
-    balance_before   DECIMAL(20,8) NOT NULL,
-    balance_after    DECIMAL(20,8) NOT NULL,
-    reference_type   VARCHAR(32) NOT NULL,
-    reference_id     BIGINT NOT NULL,
-    idempotency_key  VARCHAR(180) NOT NULL UNIQUE,
-    metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+`web3_balance_transfers.web3_balance_id + user_id` 必须通过复合外键引用同一条 `web3_user_balances`，数据库不得允许把一个用户的划转挂到另一个用户的 Web3 余额。
 
-Web3 entry：
+必须满足以下对账关系：
 
 ```text
-entry_type      = web3_deposit
-reference_type  = web3_deposit
-reference_id    = deposit.id
-idempotency_key = web3-deposit:{chain_id}:{tx_hash_lower}:{log_index}
+SUM(credited web3_deposits.credited_amount)
+- SUM(web3_balance_transfers.amount)
+= web3_user_balances.available_amount
+
+web3_user_balances.total_deposited
+- web3_user_balances.total_transferred
+= web3_user_balances.available_amount
 ```
 
-metadata 可以保存 wallet ID、Token 合约、raw amount、block number 和 tx hash，不保存 xpub。
+初始资产键为 `usdt`。各受支持链上的 USDT 或 USDT0 充值都映射到这个平台内部资产键，从而汇总到同一余额；独立余额表仍允许未来增加其他资产，而不向 `users` 表持续增加列。
 
-### 13. 入账必须在单个 PostgreSQL 事务内完成
+### 13. 充值入账与主余额划转分别保持事务原子性
 
-`CreditDeposit` 执行：
+`CreditDeposit` 在单个 PostgreSQL 事务内：
 
-1. `SELECT web3_deposits ... FOR UPDATE`。
-2. 若已 `credited`，读取对应 ledger 并幂等返回成功。
-3. 只允许 `ready_to_credit` 或已持有有效 credit lease 的 `crediting`。
-4. 原子占有 credit lease，防止两个 Worker 同时履约。
-5. `SELECT users ... FOR UPDATE`，确认用户存在并读取精确余额。
-6. 使用 SQL decimal 表达式计算 `balance_after`，不经 `float64`。
-7. 插入 `balance_ledger_entries`。
-8. 更新 `users.balance` 与 `users.total_recharged`。
-9. 更新充值为 `credited`，写入 `credited_amount/credited_at`。
-10. 提交事务。
+1. 锁定 `web3_deposits`，只接受可入账状态。
+2. 锁定或创建对应 `web3_user_balances`。
+3. 使用 SQL decimal 表达式增加 `available_amount` 与 `total_deposited`，不经 `float64`。
+4. 将充值标记为 `credited` 并写入 `credited_amount/credited_at`。
+5. 提交事务。
+
+`TransferToMainBalance` 在另一个 PostgreSQL 事务内：
+
+1. 使用唯一 `idempotency_key` 检查是否已经完成。
+2. 锁定 `web3_user_balances` 并校验可用金额。
+3. 锁定 `users`，使用 SQL decimal 表达式增加 `users.balance` 和 `total_recharged`。
+4. 减少 Web3 可用余额、增加 `total_transferred` 和 `balance_version`。
+5. 插入包含双方余额快照的 `web3_balance_transfers`。
+6. 提交事务。
 
 事务提交后再执行：
 
@@ -447,7 +442,7 @@ metadata 可以保存 wallet ID、Token 合约、raw amount、block number 和 t
 - 发送充值成功通知。
 - 写结构化日志和指标。
 
-通知失败不得回滚余额，也不得导致重复入账；使用 ledger 或独立通知幂等键重试。
+通知失败不得回滚余额，也不得导致重复划转；使用 transfer idempotency key 或独立通知幂等键重试。
 
 ### 14. 不复用充值码，不创建支付订单
 
@@ -498,7 +493,7 @@ type BalanceCreditPostProcessor interface {
 | Method | Path | 行为 |
 | --- | --- | --- |
 | GET | `/deposits` | 按状态、用户、地址、tx hash、时间筛选 |
-| GET | `/deposits/:id` | 查看链上事实、验证状态和余额流水 |
+| GET | `/deposits/:id` | 查看链上事实、验证状态和 Web3 子账户入账结果 |
 | POST | `/deposits/:id/approve` | 对 `manual_review` 重新链上验证后批准入账 |
 | POST | `/deposits/:id/retry` | 重试 `failed` 入账或验证 |
 | POST | `/deposits/:id/ignore` | 明确不入账，必须提供原因和二次确认 |
@@ -564,7 +559,7 @@ retry_count
 
 - **资金分散**：首期不归集，资金停留在用户 EOA；第二期需要为每个地址补充 CFX 并逐笔归集。
 - **xpub 隐私**：xpub 不能花费资金，但泄露会暴露整棵地址树和资金活动，应按敏感配置保护。
-- **余额历史不统一**：MVP ledger 只强制覆盖 Web3 充值；现有支付仍通过充值码和支付审计追踪。
+- **余额历史不统一**：MVP 只为 Web3 子账户和向主余额划转建立专用事实；现有支付仍通过充值码和支付审计追踪。
 - **finalized 延迟**：用户到账慢于 safe/near-head，但实现与风险语义更简单。
 - **小额资金滞留**：低于 1 USDT0 的充值不累计，资金仍在地址中；页面必须明确提示。
 - **RPC 供应商风险**：错误或滞后的 finalized 结果可能影响确认；启动预检、多个端点和链上重验证降低风险。
@@ -594,7 +589,7 @@ retry_count
 
 ### 阶段 3：入账和管理闭环
 
-1. 启用事务性 ledger 和余额入账。
+1. 启用 Web3 子账户入账和向主余额的事务性划转。
 2. 上线管理员查询、批准和重试。
 3. 验证缓存、通知和 `total_recharged`。
 

@@ -35,32 +35,53 @@
 - **THEN** 系统 MUST 将充值转换为 `manual_review`
 - **THEN** 系统 MUST NOT 在管理员批准前增加余额
 
-### Requirement: 余额入账必须具有数据库事务原子性
-系统 SHALL 在一个 PostgreSQL 事务内锁定充值和用户、创建余额流水、增加 `users.balance`、增加 `users.total_recharged` 并把充值标记为 `credited`。任一事务内步骤失败 MUST 回滚全部业务变更。
+### Requirement: 充值必须原子进入 Web3 子账户
+系统 SHALL 在一个 PostgreSQL 事务内锁定充值、锁定或创建 `web3_user_balances`、增加 Web3 可用余额和累计充值，并把充值标记为 `credited`。任一事务内步骤失败 MUST 回滚全部业务变更，且该事务 MUST NOT 修改 `users.balance`。
 
 #### Scenario: 入账事务成功
 - **WHEN** `ready_to_credit` 充值被成功履约
-- **THEN** 系统 MUST 创建一条 `web3_deposit` 类型余额流水
-- **THEN** 用户 balance 和 total_recharged MUST 增加相同 credited amount
+- **THEN** 对应资产的 `available_amount` 和 `total_deposited` MUST 增加相同 credited amount
 - **THEN** 充值 MUST 记录 credited amount 和 credited time 并进入 `credited`
 
 #### Scenario: 写入余额后提交失败
-- **WHEN** 事务在更新用户余额后、提交前失败
-- **THEN** 用户余额、total_recharged、ledger 和充值状态 MUST 全部保持事务前状态
+- **WHEN** 事务在更新 Web3 子账户后、提交前失败
+- **THEN** Web3 子账户和充值状态 MUST 全部保持事务前状态
 - **THEN** 后续重试 MUST 能重新完成完整入账
 
 ### Requirement: 链上事件必须最多入账一次
-系统 SHALL 为每个充值构造包含 `chain_id + lowercase tx_hash + log_index` 的稳定 idempotency key，并 MUST 使用充值行锁、状态条件和 ledger 唯一约束防止重复入账。
+系统 SHALL 使用 `chain_id + lowercase tx_hash + log_index` 的事件唯一键，并 MUST 使用充值行锁和状态条件防止同一充值重复增加 Web3 子账户余额。
 
 #### Scenario: 多个 Worker 并发履约
 - **WHEN** 多个实例或 Worker 同时尝试履约同一充值
-- **THEN** 最多一个调用 MUST 创建 ledger 并增加余额
+- **THEN** 最多一个调用 MUST 增加 Web3 子账户余额并把充值标记为 `credited`
 - **THEN** 其他调用 MUST 幂等返回已完成或冲突状态
 
 #### Scenario: 已入账充值被重复调用
 - **WHEN** `credited` 充值再次进入重试或管理员重复操作
-- **THEN** 系统 MUST 读取已有 ledger 并幂等返回
-- **THEN** 用户余额 MUST NOT 再次增加
+- **THEN** 系统 MUST 读取已有充值结果并幂等返回
+- **THEN** Web3 子账户余额 MUST NOT 再次增加
+
+### Requirement: Web3 余额必须可原子划转到主余额
+系统 SHALL 在单个 PostgreSQL 事务内锁定 `web3_user_balances` 和 `users`，减少 Web3 可用余额、增加 `users.balance` 和 `users.total_recharged`，并插入一条不可变 `web3_balance_transfers` 完成事实。
+
+#### Scenario: 用户划转 Web3 余额
+- **WHEN** 用户划转不超过其 Web3 可用余额的正数金额
+- **THEN** Web3 available amount MUST 减少该金额
+- **THEN** 用户 balance 和 total_recharged MUST 增加该金额
+- **THEN** transfer MUST 保存双方划转前后余额
+
+#### Scenario: Web3 可用余额不足
+- **WHEN** 用户请求划转的金额大于 Web3 available amount
+- **THEN** 系统 MUST 拒绝划转
+- **THEN** Web3 子账户、主余额和 transfer 表 MUST 全部保持不变
+
+### Requirement: 主余额划转必须幂等
+系统 SHALL 为每次划转接受稳定且唯一的 `idempotency_key`。同一 key 最多只能创建一条 `web3_balance_transfers`，重复请求 MUST 返回已有结果而不得再次修改任一余额。
+
+#### Scenario: 重复提交同一划转请求
+- **WHEN** 相同 `idempotency_key` 被并发或重复提交
+- **THEN** 最多一个事务 MUST 修改双方余额
+- **THEN** 后续请求 MUST 返回同一 transfer 事实
 
 ### Requirement: 入账失败必须可安全重试
 系统 SHALL 使用持久状态、retry count、next retry time 和有界退避处理暂时性入账错误。旧 Worker MUST NOT 覆盖新 Worker 或管理员已经完成的状态转换。
@@ -73,14 +94,14 @@
 #### Scenario: Worker 在 claim 后崩溃
 - **WHEN** Worker 将充值置为 `crediting` 后崩溃且未提交入账事务
 - **THEN** 租约过期后另一个 Worker MUST 能重新 claim
-- **THEN** 重试 MUST 仍受 ledger 唯一键保护
+- **THEN** 重试 MUST 仍受充值状态条件保护
 
 ### Requirement: Web3 充值不得伪装为普通支付订单
 系统 MUST NOT 为 Web3 充值创建 `PaymentOrder` 或 `RedeemCode`，MVP MUST NOT 触发现有基于 PaymentOrder 的邀请返佣。现有普通支付订单、订阅、退款和充值码行为 MUST 保持不变。
 
 #### Scenario: Web3 充值到账
 - **WHEN** Web3 充值成功进入 credited
-- **THEN** 数据库 MUST 存在 Web3 deposit 和 balance ledger 事实
+- **THEN** 数据库 MUST 存在 Web3 deposit，且对应金额 MUST 反映在 `web3_user_balances`
 - **THEN** 系统 MUST NOT 创建对应 PaymentOrder、RedeemCode 或 affiliate rebate 记录
 
 #### Scenario: 普通支付充值到账
@@ -88,18 +109,18 @@
 - **THEN** 系统 MUST 继续使用原 PaymentOrder 和充值履约流程
 - **THEN** Web3 Deposit 模块 MUST NOT 改变其状态或退款语义
 
-### Requirement: 缓存和通知必须在事务提交后处理
-系统 SHALL 在余额事务成功提交后失效用户余额缓存并发送充值成功通知。缓存或通知失败 MUST NOT 回滚余额，也 MUST NOT 导致重复入账。
+### Requirement: 缓存和通知必须在主余额划转提交后处理
+系统 SHALL 在 Web3 余额向主余额的划转事务成功提交后失效用户余额缓存并发送到账通知。缓存或通知失败 MUST NOT 回滚余额，也 MUST NOT 导致重复划转。
 
 #### Scenario: 缓存失效成功
-- **WHEN** Web3 余额事务提交成功
+- **WHEN** Web3 向主余额的划转事务提交成功
 - **THEN** 系统 MUST 请求失效对应用户的余额缓存
 - **THEN** 后续读取 MUST 最终观察到新余额
 
 #### Scenario: 通知发送失败
-- **WHEN** 余额已经提交但充值成功通知发送失败
-- **THEN** 充值 MUST 保持 credited
-- **THEN** 系统 MAY 重试通知但 MUST NOT 再次增加余额
+- **WHEN** 划转已经提交但到账通知发送失败
+- **THEN** transfer MUST 保持已完成事实
+- **THEN** 系统 MAY 重试通知但 MUST NOT 再次修改任一余额
 
 ### Requirement: 人工审核必须重新验证链上事实
 管理员批准 `manual_review` 充值前，系统 MUST 重新执行 finalized canonical verification。管理员 MUST NOT 修改充值金额、用户、Token、tx hash、log index 或 block hash。
@@ -112,4 +133,4 @@
 #### Scenario: 批准时链上验证失败
 - **WHEN** 管理员批准时 canonical block、receipt 或目标日志不再匹配
 - **THEN** 系统 MUST 拒绝批准
-- **THEN** 系统 MUST NOT 创建 ledger 或增加余额
+- **THEN** 系统 MUST NOT 增加 Web3 子账户余额
