@@ -110,6 +110,19 @@ REDACTED
 	require.True(t, ok)
 REDACTED
 
+func TestGrokOAuthServiceExternalFlowsRejectMissingClient(t *testing.T) {
+	svc := NewGrokOAuthService(nil, nil)
+	defer svc.Stop()
+
+	_, err := svc.RefreshToken(context.Background(), "refresh-token", "", "")
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
+
+	_, err = svc.ValidateSSOToken(context.Background(), "sso-token", nil)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
+REDACTED
+
 func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *testing.T) {
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{REDACTED)
 	defer svc.Stop()

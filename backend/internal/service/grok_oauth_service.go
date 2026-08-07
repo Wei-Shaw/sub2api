@@ -176,8 +176,8 @@ REDACTED
 			return nil, err
 	REDACTED
 REDACTED
-	if s.oauthClient == nil {
-		return nil, infraerrors.New(http.StatusInternalServerError, "GROK_OAUTH_CLIENT_NOT_CONFIGURED", "oauth client is not configured")
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
 REDACTED
 	if !s.sessionStore.TryConsumeSession(input.SessionID) {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_SESSION_ALREADY_USED", "oauth session has already been used")
@@ -195,10 +195,20 @@ REDACTED
 	return s.tokenInfoFromResponse(tokenResp, session.ClientID, nil), nil
 REDACTED
 
+func (s *GrokOAuthService) requireOAuthClient() error {
+	if s == nil || s.oauthClient == nil {
+		return infraerrors.New(http.StatusInternalServerError, "GROK_OAUTH_CLIENT_NOT_CONFIGURED", "oauth client is not configured")
+REDACTED
+	return nil
+REDACTED
+
 func (s *GrokOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*GrokTokenInfo, error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_REFRESH_TOKEN", "refresh_token is required")
+REDACTED
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
 REDACTED
 	tokenResp, err := s.oauthClient.RefreshToken(ctx, refreshToken, proxyURL, clientID)
 	if err != nil {
@@ -225,6 +235,9 @@ func (s *GrokOAuthService) ValidateSSOToken(ctx context.Context, ssoToken string
 	ssoToken = strings.TrimSpace(ssoToken)
 	if ssoToken == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_SSO_TOKEN", "sso_token is required")
+REDACTED
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
 REDACTED
 	proxyURL, err := s.proxyURL(ctx, proxyID)
 	if err != nil {
@@ -257,6 +270,9 @@ REDACTED
 REDACTED
 	if strings.TrimSpace(password) == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PASSWORD_REQUIRED", "password is required")
+REDACTED
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
 REDACTED
 	proxyURL, err := s.proxyURL(ctx, proxyID)
 	if err != nil {
