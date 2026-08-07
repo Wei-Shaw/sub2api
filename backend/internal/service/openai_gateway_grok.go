@@ -1356,6 +1356,19 @@ REDACTED
 REDACTED
 	now := time.Now()
 	s.updateGrokUsageSnapshot(ctx, account, parseGrokQuotaSnapshot(headers, statusCode, now))
+
+	// Body-first free-usage / empty / billing / capacity must run before the
+	// status switch so non-429 free-usage bodies still cool the account.
+	// Pool-mode still skips durable mutation unless an explicit temp rule matches.
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	if decision.ShouldCooldown && decision.Class != GrokFailureNone && decision.Class != GrokFailureRateLimit {
+		if account.IsPoolMode() {
+			// Allow configured temp rules (403) below; skip default body cools.
+	REDACTED else if s.applyGrokUpstreamFailureDecision(ctx, account, decision) {
+			return
+	REDACTED
+REDACTED
+
 	if statusCode == http.StatusForbidden && s.applyGrokForbiddenPolicy(ctx, account, responseBody) {
 		return
 REDACTED
@@ -1367,11 +1380,10 @@ REDACTED
 	case http.StatusUnauthorized:
 		s.tempUnscheduleGrok(ctx, account, 10*time.Minute, "grok credentials unauthorized")
 	case http.StatusPaymentRequired:
-		// 402: temporarily unschedulable with a clear payment-required reason.
+		// 402 without a body-classified billing decision: keep the legacy 30m cool.
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
 	case http.StatusForbidden:
-		// Spending-limit 403 (personal-team-blocked:spending-limit) is billing exhaustion,
-		// not a generic entitlement denial — still temp-unschedule with a distinct reason.
+		// Spending-limit already handled by body classifier when phrasing matches.
 		if isGrokSpendingLimitError(responseBody) {
 			s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok spending limit")
 			return
@@ -1379,6 +1391,7 @@ REDACTED
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs rate-limit state for non-pool accounts.
+		// Free-usage 429 was already cooled above via body classification.
 	default:
 		if statusCode >= 500 {
 			s.tempUnscheduleGrok(ctx, account, 2*time.Minute, "grok upstream temporary error")

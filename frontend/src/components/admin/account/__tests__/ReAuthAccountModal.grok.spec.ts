@@ -32,4 +32,13 @@ describe('ReAuthAccountModal Grok re-auth paths', () => {
     expect(source).toContain("method === 'email_password'")
     expect(source).toContain("method === 'refresh_token'")
   REDACTED)
+
+  it('prefills email---- and defaults to password method when email is known', () => {
+    expect(source).toContain('grokPrefillEmailPassword')
+    expect(source).toContain('grokInitialInputMethod')
+    expect(source).toContain(':initial-email-password="grokPrefillEmailPassword"')
+    expect(source).toContain(':initial-input-method="grokInitialInputMethod"')
+    expect(source).toContain('email----')
+    expect(source).toContain("return 'email_password'")
+  REDACTED)
 REDACTED)

@@ -924,6 +924,11 @@ interface Props {
   showEmailPasswordOption?: boolean
   showManualOption?: boolean
   initialInputMethod?: AuthInputMethod
+  /**
+   * Prefill for Grok email----password reauth. Password is never stored;
+   * pass only the email (or "email----") so the operator types the password.
+   */
+  initialEmailPassword?: string
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
@@ -949,6 +954,7 @@ const props = withDefaults(defineProps<Props>(), {
   showEmailPasswordOption: false,
   showManualOption: true,
   initialInputMethod: 'manual',
+  initialEmailPassword: '',
   platform: 'anthropic',
   showProjectId: true
 REDACTED)
@@ -1010,7 +1016,7 @@ const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
 const codexPATInput = ref('')
 const ssoCookieInput = ref('')
-const emailPasswordInput = ref('')
+const emailPasswordInput = ref(props.initialEmailPassword || '')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
@@ -1084,6 +1090,16 @@ REDACTED
 watch(() => props.initialInputMethod, (newVal) => {
   inputMethod.value = newVal
 REDACTED)
+
+watch(
+  () => props.initialEmailPassword,
+  (newVal) => {
+    // Only prefill when the field is empty so we never overwrite operator input.
+    if (newVal && !emailPasswordInput.value.trim()) {
+      emailPasswordInput.value = newVal
+    REDACTED
+  REDACTED
+)
 
 watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)

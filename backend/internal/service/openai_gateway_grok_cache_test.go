@@ -24,6 +24,36 @@ REDACTED
 	return c
 REDACTED
 
+func TestGrokPreviousResponseSessionSeed(t *testing.T) {
+	require.Equal(t, "grok-prev-resp:resp_abc123", grokPreviousResponseSessionSeed([]byte(`{"previous_response_id":"resp_abc123"REDACTED`)))
+	require.Empty(t, grokPreviousResponseSessionSeed([]byte(`{"previous_response_id":"msg_abc123"REDACTED`)))
+	require.Empty(t, grokPreviousResponseSessionSeed([]byte(`{"previous_response_id":""REDACTED`)))
+	require.Empty(t, grokPreviousResponseSessionSeed([]byte(`{REDACTED`)))
+REDACTED
+
+func TestResolveGrokCacheIdentityUsesPreviousResponseIDWhenNoOtherSeed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := newGrokCacheTestContext(301)
+	// No prompt_cache_key / headers / reusable prefix — only previous_response_id.
+	body := []byte(`{"model":"grok","input":[{"role":"user","content":"follow up"REDACTED],"previous_response_id":"resp_chain_001"REDACTED`)
+	got := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	require.NotEmpty(t, got)
+
+	// Same previous_response_id → same identity (model already in isolated seed).
+	again := resolveGrokCacheIdentity(c, body, "", "grok-4.5")
+	require.Equal(t, got, again)
+
+	// Different model → different identity (model scope).
+	otherModel := resolveGrokCacheIdentity(c, body, "", "grok-4.3")
+	require.NotEqual(t, got, otherModel)
+
+	// prompt_cache_key still wins over previous_response_id.
+	withCache := []byte(`{"model":"grok","prompt_cache_key":"client-session","previous_response_id":"resp_chain_001","input":[{"role":"user","content":"x"REDACTED]REDACTED`)
+	cacheID := resolveGrokCacheIdentity(c, withCache, "", "grok-4.5")
+	require.NotEmpty(t, cacheID)
+	require.NotEqual(t, got, cacheID)
+REDACTED
+
 func TestResolveGrokCacheIdentityStableAcrossAppendOnlyTurns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c := newGrokCacheTestContext(101)
