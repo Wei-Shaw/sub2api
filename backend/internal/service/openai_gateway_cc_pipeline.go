@@ -100,6 +100,14 @@ func (s *OpenAIGatewayService) failoverOpenAIUpstreamHTTPError(
 	if account != nil && account.Platform == PlatformGrok {
 		s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 	}
+	// opencode/zen 上游的账号级错误（CreditsError: No payment method /
+	// Insufficient balance）在此识别并停用账号，避免通用路径把账号级问题
+	// 当普通 401/403 处理、失效账号继续参与调度耗尽 failover 配额。
+	if account != nil && account.IsOpenCodeUpstream() {
+		if s.handleOpenCodeAccountUpstreamError(ctx, account, resp.StatusCode, respBody) {
+			shouldFailover = true
+		}
+	}
 	if !shouldFailover {
 		return nil
 	}

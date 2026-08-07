@@ -94,6 +94,20 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		upstreamBody = normalizedBody
 	}
 
+	// 3b. opencode/zen 上游适配：free 档次（/zen/v1）serde 要求 message 带
+	// 顶层 id，转发前补齐缺失 id；go 档次（/zen/go/v1）标准兼容，原样通过。
+	if account.IsOpenCodeUpstream() {
+		prepared, prepErr := OpenCodePrepareUpstreamBody(account, upstreamBody)
+		if prepErr != nil {
+			logger.L().Warn("opencode prepare upstream body failed",
+				zap.Int64("account_id", account.ID),
+				zap.Error(prepErr),
+			)
+		} else {
+			upstreamBody = prepared
+		}
+	}
+
 	// 4. Apply OpenAI fast policy on the CC body
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, upstreamBody)
 	if policyErr != nil {
