@@ -757,8 +757,17 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	if trimmed == "" {
 		return false
 REDACTED
-	if strings.TrimSpace(eventType) == "response.failed" {
+	switch strings.TrimSpace(eventType) {
+	case "response.failed":
 		return false
+	case "error":
+		// 上游降载/瞬时故障会先推 {"type":"error"REDACTED 帧、再以 response.failed 收尾。
+		// 可重试类错误帧不能算客户端输出：一旦把它当首输出 flush，
+		// clientOutputStarted 即被固化，随后的 failed 事件永远进不了 pre-output
+		// failover 分支，只能把致命错误原样转发给客户端。不可重试类
+		// （content_policy / invalid_request 等）维持原样转发，保留上游错误细节。
+		payload := []byte(trimmed)
+		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
 REDACTED
 	return !openAIStreamEventIsPreamble(eventType)
 REDACTED
@@ -783,6 +792,41 @@ func isOpenAIUpstreamCapacityShedEvent(payload []byte) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+// openAICapacityShedRetryableClientCode 是把上游容量降载错误转发给客户端时改写
+// 使用的错误码。Codex CLI 按闭集对错误码分类：server_is_overloaded / slow_down
+// 被判为致命错误（客户端提示 "Selected model is at capacity. Please try a
+// different model." 并直接终止会话），而 server_error 等致命集之外的错误码会进入
+// 客户端内置的退避重试。
+const openAICapacityShedRetryableClientCode = "server_error"
+
+// sanitizeOpenAICapacityShedErrorCodeForClient 把即将写给下游客户端的
+// error / response.failed 事件中的容量降载错误码改写为客户端可重试的错误码。
+// 走到转发这一步说明网关侧 failover 已不可用（流中途）或已用尽；保留原始降载码
+// 只会让客户端就地终止会话。错误消息原样保留；监控与账号状态判定都基于改写前
+// 的原始 payload，不受影响。rate_limit 等其他错误码一律不动（客户端依赖
+// rate_limit_exceeded 原码解析重试延时）。
+func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool) {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) || !isOpenAIUpstreamCapacityShedEvent(payload) {
+		return payload, false
+REDACTED
+	updated := payload
+	changed := false
+	for _, path := range []string{"response.error.code", "error.code"REDACTED {
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(updated, path).String())) {
+		case "server_is_overloaded", "slow_down":
+		default:
+			continue
+	REDACTED
+		next, err := sjson.SetBytes(updated, path, openAICapacityShedRetryableClientCode)
+		if err != nil {
+			return payload, false
+	REDACTED
+		updated = next
+		changed = true
+REDACTED
+	return updated, changed
 REDACTED
 
 func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
