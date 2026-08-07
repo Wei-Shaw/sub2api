@@ -1216,6 +1216,51 @@ REDACTED
 	require.Equal(t, 10, result.VideoDurationSeconds)
 REDACTED
 
+func TestForwardGrokMediaVideoGenerationReturnsTaskIDAsResponseID(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves"REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          63,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"task_id":"video-task-123"REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+REDACTED
+	require.Equal(t, "video-task-123", result.ResponseID)
+REDACTED
+
+func TestExtractGrokMediaVideoRequestIDPreservesExistingPrecedence(t *testing.T) {
+	body := []byte(`{
+		"request_id":"request-id",
+		"id":"id",
+		"task_id":"task-id",
+		"data":{"request_id":"data-request-id","id":"data-id","task_id":"data-task-id"REDACTED,
+		"video":{"request_id":"video-request-id","id":"video-id","task_id":"video-task-id"REDACTED
+REDACTED`)
+
+	require.Equal(t, "request-id", extractGrokMediaVideoRequestID(body))
+REDACTED
+
 func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
