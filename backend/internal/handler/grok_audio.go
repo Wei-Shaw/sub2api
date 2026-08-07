@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,15 @@ REDACTED
 		return
 REDACTED
 	if !h.ensureResponsesDependencies(c, nil) {
+		return
+REDACTED
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+	REDACTED
+		h.errorResponse(c, status, code, message)
 		return
 REDACTED
 
@@ -83,11 +93,11 @@ REDACTED
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))
 		_ = conn.Close(coderws.StatusInternalError, "upstream realtime websocket failed")
+		// Do not bill failed realtime sessions (avoids charging idle/error wall-clock).
+		return
 REDACTED
-	// Bill completed (or partially completed) realtime sessions by elapsed minutes
-	// when group audio_realtime_price_per_min is configured.
+	// Bill successful realtime sessions by elapsed minutes when group price is set.
 	if elapsed > 0 {
-		subscription, _ := middleware2.GetSubscriptionFromContext(c)
 		result := &service.OpenAIForwardResult{
 			Model:      model,
 			Duration:   elapsed,
@@ -105,6 +115,15 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 		return
 REDACTED
 	if !h.ensureResponsesDependencies(c, nil) {
+		return
+REDACTED
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+	REDACTED
+		h.errorResponse(c, status, code, message)
 		return
 REDACTED
 
@@ -167,7 +186,6 @@ REDACTED
 			return h.gatewayService.ForwardGrokVoice(c.Request.Context(), c, account, endpoint, body, contentType)
 	REDACTED()
 		if forwardErr == nil {
-			subscription, _ := middleware2.GetSubscriptionFromContext(c)
 			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result)
 			return
 	REDACTED

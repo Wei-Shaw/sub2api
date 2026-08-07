@@ -315,6 +315,11 @@ func (m *mockGatewayCacheForGemini) ClaimGrokVideoBilled(_ context.Context, _ st
 	return true, nil
 REDACTED
 
+func (m *mockGatewayCacheForGemini) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+REDACTED
+
+
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择
 func TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform(t *testing.T) {
 	ctx := context.Background()

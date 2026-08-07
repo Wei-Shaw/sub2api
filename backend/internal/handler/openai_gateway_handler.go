@@ -2415,7 +2415,8 @@ REDACTED()
 REDACTED
 
 func (h *OpenAIGatewayHandler) submitOpenAIUsageRecordTask(parent context.Context, result *service.OpenAIForwardResult, task service.UsageRecordTask) {
-	if result != nil && result.ImageCount > 0 {
+	// Image and async video bills are money-critical: never drop on pool overflow.
+	if result != nil && (result.ImageCount > 0 || result.VideoCount > 0) {
 		h.submitMandatoryUsageRecordTask(parent, task)
 		return
 REDACTED

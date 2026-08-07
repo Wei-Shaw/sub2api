@@ -485,6 +485,8 @@ type GatewayCache interface {
 	// ClaimGrokVideoBilled atomically marks a video request as billed (SetNX).
 	// Returns true when this caller won the claim; false when already billed or claim unavailable.
 	ClaimGrokVideoBilled(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	// ReleaseGrokVideoBilled clears a claim so a failed RecordUsage can retry billing.
+	ReleaseGrokVideoBilled(ctx context.Context, key string) error
 REDACTED
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil

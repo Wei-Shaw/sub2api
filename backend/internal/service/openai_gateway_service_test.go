@@ -674,6 +674,11 @@ func (c *stubGatewayCache) ClaimGrokVideoBilled(_ context.Context, _ string, _ t
 	return true, nil
 REDACTED
 
+func (c *stubGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+REDACTED
+
+
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {
 	now := time.Now()
 	resetAt := now.Add(10 * time.Minute)

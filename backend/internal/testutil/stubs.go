@@ -114,6 +114,11 @@ func (c StubGatewayCache) ClaimGrokVideoBilled(_ context.Context, _ string, _ ti
 	return true, nil
 REDACTED
 
+func (c StubGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+REDACTED
+
+
 
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现

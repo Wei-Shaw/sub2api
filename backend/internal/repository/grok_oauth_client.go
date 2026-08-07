@@ -35,7 +35,13 @@ const (
 )
 
 func NewGrokOAuthClient() service.GrokOAuthClient {
-	return &grokOAuthClient{tokenURL: xai.EffectiveTokenURL()REDACTED
+	// Prefer validated official/allowlisted token URL so env misconfig cannot
+	// exfiltrate auth codes / refresh tokens to an arbitrary host.
+	tokenURL, err := xai.ValidatedTokenURL()
+	if err != nil || strings.TrimSpace(tokenURL) == "" {
+		tokenURL = xai.EffectiveTokenURL()
+REDACTED
+	return &grokOAuthClient{tokenURL: tokenURLREDACTED
 REDACTED
 
 func (c *grokOAuthClient) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*xai.TokenResponse, error) {

@@ -287,6 +287,11 @@ func (m *mockGatewayCacheForPlatform) ClaimGrokVideoBilled(_ context.Context, _ 
 	return true, nil
 REDACTED
 
+func (m *mockGatewayCacheForPlatform) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+REDACTED
+
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int

@@ -2343,7 +2343,8 @@ REDACTED)
 	// Enabled by default because free detection requires an explicit free tier marker.
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_enabled", true)
 	viper.SetDefault("gateway.grok.password_auth_enabled", false)
-	viper.SetDefault("gateway.grok.free_quota_token_limit", int64(2_000_000))
+	// Align soft-gate nominal limit with current Free rolling quota (1M tokens / 24h).
+viper.SetDefault("gateway.grok.free_quota_token_limit", int64(1_000_000))
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
 	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 5)

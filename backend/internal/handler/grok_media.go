@@ -433,9 +433,12 @@ REDACTED
 				)
 		REDACTED
 	REDACTED
-		if endpoint == service.GrokMediaEndpointVideoStatus {
-			if billResult := prepareGrokVideoStatusBilling(requestCtx, h, reqLog, apiKey, subject, requestID, result); billResult != nil {
-				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, requestID)
+		// Status poll OR content download can observe official done+video.url.
+		// Both paths share the same claim key so the customer is charged once.
+		if endpoint == service.GrokMediaEndpointVideoStatus || endpoint == service.GrokMediaEndpointVideoContent {
+			taskID := strings.TrimSpace(requestID)
+			if billResult := prepareGrokVideoCompletionBilling(requestCtx, h, reqLog, apiKey, subject, taskID, result); billResult != nil {
+				recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, billResult, billResult.Model, body, taskID)
 		REDACTED
 	REDACTED else if shouldRecordGrokMediaUsage(endpoint, requestModel, result) {
 			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, requestModel, body, requestID)
@@ -508,16 +511,16 @@ REDACTED
 	return result.ImageCount > 0
 REDACTED
 
-// prepareGrokVideoStatusBilling claims one-shot billing for official done+video.url
-// responses. Duration/model prefer status body; resolution uses create-time request
-// (status response does not document resolution).
-func prepareGrokVideoStatusBilling(
+// prepareGrokVideoCompletionBilling claims one-shot billing for official done+video.url
+// observations (status poll or content download). Duration/model prefer status body;
+// resolution uses create-time request (status response does not document resolution).
+func prepareGrokVideoCompletionBilling(
 	ctx context.Context,
 	h *OpenAIGatewayHandler,
 	reqLog *zap.Logger,
 	apiKey *service.APIKey,
 	subject middleware2.AuthSubject,
-	requestID string,
+	taskRequestID string,
 	statusResult *service.OpenAIForwardResult,
 ) *service.OpenAIForwardResult {
 	if h == nil || h.gatewayService == nil || apiKey == nil || statusResult == nil {
@@ -527,18 +530,22 @@ REDACTED
 	if statusResult.VideoCount <= 0 {
 		return nil
 REDACTED
-	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, requestID, subject.UserID, apiKey.ID)
+	taskRequestID = strings.TrimSpace(firstNonEmptyString(taskRequestID, statusResult.ResponseID))
+	if taskRequestID == "" {
+		return nil
+REDACTED
+	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
 	if err != nil {
-		reqLog.Warn("grok_media.video_billing_claim_failed", zap.String("request_id", requestID), zap.Error(err))
+		reqLog.Warn("grok_media.video_billing_claim_failed", zap.String("request_id", taskRequestID), zap.Error(err))
 		return nil
 REDACTED
 	if !claimed {
-		reqLog.Debug("grok_media.video_billing_already_claimed", zap.String("request_id", requestID))
+		reqLog.Debug("grok_media.video_billing_already_claimed", zap.String("request_id", taskRequestID))
 		return nil
 REDACTED
-	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, requestID, subject.UserID, apiKey.ID)
+	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
 	if loadErr != nil {
-		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", requestID), zap.Error(loadErr))
+		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 REDACTED
 	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult
@@ -560,7 +567,7 @@ REDACTED
 			merged.VideoDurationSeconds = pending.VideoDurationSeconds
 	REDACTED
 		if strings.TrimSpace(merged.ResponseID) == "" {
-			merged.ResponseID = requestID
+			merged.ResponseID = taskRequestID
 	REDACTED
 REDACTED
 	if strings.TrimSpace(merged.Model) == "" {
@@ -569,11 +576,13 @@ REDACTED
 	if strings.TrimSpace(merged.BillingModel) == "" {
 		merged.BillingModel = merged.Model
 REDACTED
-	// Stable dedup key: same video task bills once across status polls.
-	if strings.TrimSpace(merged.RequestID) == "" {
-		merged.RequestID = "grok-video:" + strings.TrimSpace(firstNonEmptyString(merged.ResponseID, requestID))
-REDACTED
+	// Always force durable task id so usage_billing_dedup survives multi-poll +
+	// context-local request ids (do not prefer empty-only fill).
+	merged.RequestID = service.StableGrokVideoBillingRequestID(firstNonEmptyString(merged.ResponseID, taskRequestID))
+	merged.ResponseID = firstNonEmptyString(merged.ResponseID, taskRequestID)
 	merged.VideoCount = 1
+	// Pure video: do not keep legacy ImageCount (avoids image-path heuristics).
+	merged.ImageCount = 0
 	// Official default resolution is 480p when the create request omitted it.
 	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
 	// Official default duration is 8s when neither status nor create provided it.
@@ -620,6 +629,18 @@ REDACTED
 		OriginalModel:      clientRequestedModel(c, requestModel),
 		ChannelMappedModel: requestModel,
 REDACTED
+	// Async video: force durable task request id and release claim if billing fails.
+	videoTaskID := ""
+	if result != nil && result.VideoCount > 0 {
+		videoTaskID = strings.TrimSpace(firstNonEmptyString(requestID, result.ResponseID))
+		if stable := service.StableGrokVideoBillingRequestID(firstNonEmptyString(result.ResponseID, requestID)); stable != "" {
+			result.RequestID = stable
+	REDACTED
+		// Prefer task id hash for payload fingerprint stability across status/content.
+		if len(body) == 0 && videoTaskID != "" {
+			payloadForHash = []byte(videoTaskID)
+	REDACTED
+REDACTED
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
@@ -637,6 +658,14 @@ REDACTED
 			SessionID:          sessionID,
 			ChannelUsageFields: channelUsageFields,
 	REDACTED); err != nil {
+			if videoTaskID != "" {
+				if releaseErr := h.gatewayService.ReleaseGrokVideoBilling(ctx, videoTaskID, subject.UserID, apiKey.ID); releaseErr != nil {
+					reqLog.Warn("grok_media.video_billing_claim_release_failed",
+						zap.String("request_id", videoTaskID),
+						zap.Error(releaseErr),
+					)
+			REDACTED
+		REDACTED
 			logger.L().With(
 				zap.String("component", "handler.openai_gateway.grok_media"),
 				zap.Int64("user_id", subject.UserID),

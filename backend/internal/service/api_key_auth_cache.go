@@ -75,14 +75,15 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
 	VideoRateIndependent            bool     `json:"video_rate_independent"`
 	VideoRateMultiplier             float64  `json:"video_rate_multiplier"`
-	VideoPrice480P                  *float64 `json:"video_price_480p,omitempty"`
-	VideoPrice720P                  *float64 `json:"video_price_720p,omitempty"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p,omitempty"`
-	WebSearchPricePerCall           *float64 `json:"web_search_price_per_call,omitempty"`
-	SearchPricePer1k                *float64 `json:"search_price_per_1k,omitempty"`
-	AudioRealtimePricePerMin        *float64 `json:"audio_realtime_price_per_min,omitempty"`
-	AudioTTSPricePerMillionChars    *float64 `json:"audio_tts_price_per_million_chars,omitempty"`
-	AudioSTTPricePerHour            *float64 `json:"audio_stt_price_per_hour,omitempty"`
+	VideoPrice480P                  *float64                      `json:"video_price_480p,omitempty"`
+	VideoPrice720P                  *float64                      `json:"video_price_720p,omitempty"`
+	VideoPrice1080P                 *float64                      `json:"video_price_1080p,omitempty"`
+	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call,omitempty"`
+	SearchPricePer1k                *float64                      `json:"search_price_per_1k,omitempty"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min,omitempty"`
+	AudioTTSPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars,omitempty"`
+	AudioSTTPricePerHour            *float64                      `json:"audio_stt_price_per_hour,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`

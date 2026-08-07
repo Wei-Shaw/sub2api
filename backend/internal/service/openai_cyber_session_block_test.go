@@ -144,6 +144,11 @@ func (c *comboCacheAndStore) ClaimGrokVideoBilled(_ context.Context, _ string, _
 	return true, nil
 REDACTED
 
+func (c *comboCacheAndStore) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+REDACTED
+
+
 func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error {
 	return c.store.SetCyberSessionBlocked(ctx, key, ttl)
 REDACTED

@@ -116,6 +116,17 @@ REDACTED
 	return c.rdb.SetNX(ctx, grokVideoBilledPrefix+key, "1", ttl).Result()
 REDACTED
 
+func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+REDACTED
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("invalid grok video billed key")
+REDACTED
+	return c.rdb.Del(ctx, grokVideoBilledPrefix+key).Err()
+REDACTED
+
 // Compile-time assertion: gatewayCache must implement CyberSessionBlockStore.
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)

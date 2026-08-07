@@ -257,6 +257,18 @@ REDACTED
 			requestID = upstreamRequestID
 	REDACTED
 REDACTED
+	// Async Grok video: always use the stable task id for dedup (status + content polls
+	// share one bill). Context-local client/local IDs would otherwise create a new row
+	// per poll if Redis claim is lost.
+	if result.VideoCount > 0 {
+		if stable := StableGrokVideoBillingRequestID(firstNonEmpty(
+			strings.TrimPrefix(strings.TrimSpace(result.RequestID), "grok-video:"),
+			strings.TrimSpace(result.ResponseID),
+			strings.TrimPrefix(strings.TrimSpace(requestID), "grok-video:"),
+		)); stable != "" {
+			requestID = stable
+	REDACTED
+REDACTED
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model

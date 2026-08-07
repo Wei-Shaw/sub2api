@@ -346,11 +346,20 @@ REDACTED
 			inferredFreeSignal = true
 	REDACTED
 REDACTED
-	if tier := strings.TrimSpace(account.GetCredential("subscription_tier")); tier != "" {
-		if isGrokFreeSubscriptionTier(tier) {
-			freeSignal = true
-	REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
-			paidSignal = true
+	for _, key := range []string{"subscription_tier", "plan_type"REDACTED {
+		if tier := strings.TrimSpace(account.GetCredential(key)); tier != "" {
+			if isGrokFreeSubscriptionTier(tier) {
+				freeSignal = true
+		REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
+				paidSignal = true
+		REDACTED
+	REDACTED
+		if tier := strings.TrimSpace(account.GetExtraString(key)); tier != "" {
+			if isGrokFreeSubscriptionTier(tier) {
+				freeSignal = true
+		REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
+				paidSignal = true
+		REDACTED
 	REDACTED
 REDACTED
 	// Explicit paid evidence always wins over an inferred Free signal. This

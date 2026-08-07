@@ -449,7 +449,7 @@ gateway:
     # TurnstileTaskProxyless uses solver egress independent from the optional account proxy.
     password_auth_enabled: false
     free_quota_soft_gate_enabled: true
-    free_quota_token_limit: 2000000
+    free_quota_token_limit: 1000000
     free_quota_soft_gate_percent: 95
     free_quota_window_hours: 24
     free_quota_stats_cache_seconds: 5

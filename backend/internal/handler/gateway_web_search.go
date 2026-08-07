@@ -169,10 +169,18 @@ REDACTED
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	requestPayloadHash := service.HashUsageRequestPayload([]byte(req.Query))
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	// Unique per invocation (not hash(query) alone) so identical queries still bill.
+	searchRequestID := "web_search:" + service.HashUsageRequestPayload([]byte(req.Query+"|"+clientIP+"|"+userAgent))
+	if apiKey.Group != nil && (apiKey.Group.GetSearchPricePer1k() == nil || *apiKey.Group.GetSearchPricePer1k() <= 0) {
+		logger.L().With(
+			zap.String("component", "handler.gateway.web_search"),
+			zap.Int64("group_id", apiKey.Group.ID),
+		).Warn("gateway.web_search.search_price_per_1k_unset_free")
+REDACTED
 	h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result: &service.ForwardResult{
-				RequestID:   "web_search:" + service.HashUsageRequestPayload([]byte(req.Query)),
+				RequestID:   searchRequestID,
 				Model:       "grok-web-search",
 				SearchCount: 1,
 				Duration:    0,
