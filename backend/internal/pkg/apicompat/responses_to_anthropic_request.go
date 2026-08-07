@@ -164,10 +164,23 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
+		case item.Type == "reasoning":
+			// Anthropic 无法摄入 OpenAI 的 reasoning：encrypted_content 是不透明的，
+			// 而 thinking 块的重放需要 Anthropic 自己签发的 signature，无法伪造。
+			// Codex 常见形态（只带 summary + encrypted_content）本来就会被丢弃，
+			// 这里让带 content 数组的形态保持同样行为——否则 reasoning_text 块会被
+			// 原样塞进 Anthropic 请求体，上游直接回 400。
+
 		case item.Role == "user":
 			content, err := convertResponsesUserToAnthropicContent(item.Content)
 			if err != nil {
 				return nil, nil, err
+			}
+			// 内容里只有网关不认识的分片时，sanitize 会得到空串。Anthropic 拒收
+			// 空内容消息（"all messages must have non-empty content"），整条丢掉
+			// 比发一条必然 400 的消息更可用。
+			if anthropicContentIsEmpty(content) {
+				continue
 			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "user",
@@ -179,19 +192,35 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			if err != nil {
 				return nil, nil, err
 			}
+			// 同上：分片全不认识时会退化成单个空 text 块，而 Anthropic 拒收
+			// 空文本块（"text content blocks must contain non-whitespace text"）。
+			if anthropicContentIsEmpty(content) || anthropicContentIsOnlyBlankText(content) {
+				continue
+			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "assistant",
 				Content: content,
 			})
 
 		default:
-			// Unknown role/type — attempt as user message
-			if item.Content != nil {
-				messages = append(messages, AnthropicMessage{
-					Role:    "user",
-					Content: item.Content,
-				})
+			// 未知 role/type —— 尽量当作 user 消息保留其中的文本/图片。
+			// 必须走与真实 user 消息同一套白名单转换：直接透传 item.Content 会把
+			// Responses 专有的分片类型（reasoning_text、web_search_call 的载荷等）
+			// 原样发给 Anthropic，上游只会回 400 把整轮打挂。
+			if item.Content == nil {
+				continue
 			}
+			content, err := convertResponsesUserToAnthropicContent(item.Content)
+			if err != nil {
+				return nil, nil, err
+			}
+			if anthropicContentIsEmpty(content) {
+				continue
+			}
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: content,
+			})
 		}
 	}
 
@@ -393,6 +422,32 @@ func extractTextFromContent(raw json.RawMessage) string {
 
 // convertResponsesUserToAnthropicContent converts a Responses user message
 // content field into Anthropic content blocks JSON.
+// anthropicContentIsEmpty 判断转换结果是否为"空内容"。
+// convertResponsesUserToAnthropicContent 在没有任何可识别分片时返回 JSON 空串，
+// 而 Anthropic 拒收空内容消息。
+func anthropicContentIsEmpty(content json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(content))
+	switch trimmed {
+	case "", "null", `""`, "[]":
+		return true
+	}
+	return false
+}
+
+// anthropicContentIsOnlyBlankText 判断内容是否只由空白 text 块组成。
+func anthropicContentIsOnlyBlankText(content json.RawMessage) bool {
+	blocks := parseContentBlocks(content)
+	if len(blocks) == 0 {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type != "text" || strings.TrimSpace(b.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return json.Marshal("") // empty string content

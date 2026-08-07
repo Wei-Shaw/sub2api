@@ -33,10 +33,10 @@ func TestTencentCaptchaVerifierMapsCredentialsRequestAndResponse(t *testing.T) {
 			RequestId:   &requestID,
 		},
 	}}
-	var gotSecretID, gotSecretKey string
+	var gotSecretID, gotSecretKey, gotEndpoint string
 	verifier := &tencentCaptchaVerifier{
-		newClient: func(secretID, secretKey string) (tencentCaptchaAPI, error) {
-			gotSecretID, gotSecretKey = secretID, secretKey
+		newClient: func(secretID, secretKey, endpoint string) (tencentCaptchaAPI, error) {
+			gotSecretID, gotSecretKey, gotEndpoint = secretID, secretKey, endpoint
 			return client, nil
 		},
 	}
@@ -46,11 +46,14 @@ func TestTencentCaptchaVerifierMapsCredentialsRequestAndResponse(t *testing.T) {
 		AppSecretKey:   "app-secret",
 		CloudSecretID:  "cloud-secret-id",
 		CloudSecretKey: "cloud-secret-key",
+		Endpoint:       "captcha.intl.tencentcloudapi.com",
 	}, service.TencentCaptchaProof{Ticket: "ticket", Randstr: "@rand"}, "203.0.113.10")
 
 	require.NoError(t, err)
 	require.Equal(t, "cloud-secret-id", gotSecretID)
 	require.Equal(t, "cloud-secret-key", gotSecretKey)
+	// 接入点由 service 按站点下发，repository 不得再写死国内站
+	require.Equal(t, "captcha.intl.tencentcloudapi.com", gotEndpoint)
 	require.NotNil(t, client.request)
 	require.Equal(t, uint64(9), *client.request.CaptchaType)
 	require.Equal(t, uint64(123456789), *client.request.CaptchaAppId)
