@@ -345,6 +345,12 @@ export default {
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情'
       },
+      runtimeScheduling: {
+        disableTemp: '禁用临时不可调度状态',
+        disableTempDesc: '该账号不再创建或执行临时冷却状态。',
+        disableErrors: '禁用自动错误调度保护',
+        disableErrorsDesc: '上游错误、限流或过载后仍保持该账号可调度；上游错误仍会返回给调用方。',
+      },
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
