@@ -193,6 +193,7 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的
 |------|------|------|
 | ~~[Sub2ApiPay](https://github.com/touwaeriol/sub2apipay)~~ | ~~自助支付系统~~ | **已内置** — 支付功能已集成到 Sub2API 中，无需独立部署。详见 [支付配置指南](docs/PAYMENT_CN.md) |
 | [sub2api-mobile](https://github.com/ckken/sub2api-mobile) | 移动端管理控制台 | 跨平台应用（iOS/Android/Web），支持用户管理、账号管理、监控看板、多后端切换；基于 Expo + React Native 构建 |
+| [sub2api-lark-quota](https://github.com/XlSerena/sub2api-lark-quota) | 飞书审批自动加余额 | 机器人提额 → 飞书审批通过 → 调用 Admin API `balance` 自动 Deposit；按企业邮箱映射用户；可选多维表格流水 |
 
 ## 技术栈
 
