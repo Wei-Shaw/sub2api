@@ -131,3 +131,6 @@ type Web3DepositAddress func(*sql.Selector)
 
 // Web3DepositWallet is the predicate function for web3depositwallet builders.
 type Web3DepositWallet func(*sql.Selector)
+
+// Web3ScannerCursor is the predicate function for web3scannercursor builders.
+type Web3ScannerCursor func(*sql.Selector)

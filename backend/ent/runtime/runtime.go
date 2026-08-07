@@ -48,6 +48,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
+	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -2792,6 +2793,109 @@ func init() {
 		return func(status string) error {
 			for _, fn := range fns {
 				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	web3scannercursorMixin := schema.Web3ScannerCursor{}.Mixin()
+	web3scannercursorMixinFields0 := web3scannercursorMixin[0].Fields()
+	_ = web3scannercursorMixinFields0
+	web3scannercursorFields := schema.Web3ScannerCursor{}.Fields()
+	_ = web3scannercursorFields
+	// web3scannercursorDescCreatedAt is the schema descriptor for created_at field.
+	web3scannercursorDescCreatedAt := web3scannercursorMixinFields0[0].Descriptor()
+	// web3scannercursor.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3scannercursor.DefaultCreatedAt = web3scannercursorDescCreatedAt.Default.(func() time.Time)
+	// web3scannercursorDescUpdatedAt is the schema descriptor for updated_at field.
+	web3scannercursorDescUpdatedAt := web3scannercursorMixinFields0[1].Descriptor()
+	// web3scannercursor.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	web3scannercursor.DefaultUpdatedAt = web3scannercursorDescUpdatedAt.Default.(func() time.Time)
+	// web3scannercursor.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	web3scannercursor.UpdateDefaultUpdatedAt = web3scannercursorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// web3scannercursorDescScannerKey is the schema descriptor for scanner_key field.
+	web3scannercursorDescScannerKey := web3scannercursorFields[1].Descriptor()
+	// web3scannercursor.ScannerKeyValidator is a validator for the "scanner_key" field. It is called by the builders before save.
+	web3scannercursor.ScannerKeyValidator = func() func(string) error {
+		validators := web3scannercursorDescScannerKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(scanner_key string) error {
+			for _, fn := range fns {
+				if err := fn(scanner_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3scannercursorDescChainID is the schema descriptor for chain_id field.
+	web3scannercursorDescChainID := web3scannercursorFields[2].Descriptor()
+	// web3scannercursor.ChainIDValidator is a validator for the "chain_id" field. It is called by the builders before save.
+	web3scannercursor.ChainIDValidator = web3scannercursorDescChainID.Validators[0].(func(int64) error)
+	// web3scannercursorDescTokenContract is the schema descriptor for token_contract field.
+	web3scannercursorDescTokenContract := web3scannercursorFields[3].Descriptor()
+	// web3scannercursor.TokenContractValidator is a validator for the "token_contract" field. It is called by the builders before save.
+	web3scannercursor.TokenContractValidator = func() func(string) error {
+		validators := web3scannercursorDescTokenContract.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(token_contract string) error {
+			for _, fn := range fns {
+				if err := fn(token_contract); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3scannercursorDescScanStartBlock is the schema descriptor for scan_start_block field.
+	web3scannercursorDescScanStartBlock := web3scannercursorFields[4].Descriptor()
+	// web3scannercursor.ScanStartBlockValidator is a validator for the "scan_start_block" field. It is called by the builders before save.
+	web3scannercursor.ScanStartBlockValidator = web3scannercursorDescScanStartBlock.Validators[0].(func(int64) error)
+	// web3scannercursorDescLastScannedBlock is the schema descriptor for last_scanned_block field.
+	web3scannercursorDescLastScannedBlock := web3scannercursorFields[5].Descriptor()
+	// web3scannercursor.LastScannedBlockValidator is a validator for the "last_scanned_block" field. It is called by the builders before save.
+	web3scannercursor.LastScannedBlockValidator = web3scannercursorDescLastScannedBlock.Validators[0].(func(int64) error)
+	// web3scannercursorDescLastFinalizedBlock is the schema descriptor for last_finalized_block field.
+	web3scannercursorDescLastFinalizedBlock := web3scannercursorFields[6].Descriptor()
+	// web3scannercursor.LastFinalizedBlockValidator is a validator for the "last_finalized_block" field. It is called by the builders before save.
+	web3scannercursor.LastFinalizedBlockValidator = web3scannercursorDescLastFinalizedBlock.Validators[0].(func(int64) error)
+	// web3scannercursorDescLeaseOwner is the schema descriptor for lease_owner field.
+	web3scannercursorDescLeaseOwner := web3scannercursorFields[7].Descriptor()
+	// web3scannercursor.LeaseOwnerValidator is a validator for the "lease_owner" field. It is called by the builders before save.
+	web3scannercursor.LeaseOwnerValidator = func() func(string) error {
+		validators := web3scannercursorDescLeaseOwner.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(lease_owner string) error {
+			for _, fn := range fns {
+				if err := fn(lease_owner); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3scannercursorDescLeaseToken is the schema descriptor for lease_token field.
+	web3scannercursorDescLeaseToken := web3scannercursorFields[8].Descriptor()
+	// web3scannercursor.LeaseTokenValidator is a validator for the "lease_token" field. It is called by the builders before save.
+	web3scannercursor.LeaseTokenValidator = func() func(string) error {
+		validators := web3scannercursorDescLeaseToken.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(lease_token string) error {
+			for _, fn := range fns {
+				if err := fn(lease_token); err != nil {
 					return err
 				}
 			}

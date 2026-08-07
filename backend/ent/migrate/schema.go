@@ -2185,6 +2185,41 @@ var (
 		Columns:    Web3DepositWalletsColumns,
 		PrimaryKey: []*schema.Column{Web3DepositWalletsColumns[0]},
 	}
+	// Web3ScannerCursorsColumns holds the columns for the "web3_scanner_cursors" table.
+	Web3ScannerCursorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "scanner_key", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "chain_id", Type: field.TypeInt64},
+		{Name: "token_contract", Type: field.TypeString, Size: 42},
+		{Name: "scan_start_block", Type: field.TypeInt64},
+		{Name: "last_scanned_block", Type: field.TypeInt64},
+		{Name: "last_finalized_block", Type: field.TypeInt64},
+		{Name: "lease_owner", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_token", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_success_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3ScannerCursorsTable holds the schema information for the "web3_scanner_cursors" table.
+	Web3ScannerCursorsTable = &schema.Table{
+		Name:       "web3_scanner_cursors",
+		Columns:    Web3ScannerCursorsColumns,
+		PrimaryKey: []*schema.Column{Web3ScannerCursorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3scannercursor_chain_id_token_contract",
+				Unique:  true,
+				Columns: []*schema.Column{Web3ScannerCursorsColumns[4], Web3ScannerCursorsColumns[5]},
+			},
+			{
+				Name:    "web3scannercursor_lease_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3ScannerCursorsColumns[11]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
@@ -2229,6 +2264,7 @@ var (
 		Web3DepositsTable,
 		Web3DepositAddressesTable,
 		Web3DepositWalletsTable,
+		Web3ScannerCursorsTable,
 	}
 )
 
@@ -2394,5 +2430,8 @@ func init() {
 	}
 	Web3DepositWalletsTable.Annotation = &entsql.Annotation{
 		Table: "web3_deposit_wallets",
+	}
+	Web3ScannerCursorsTable.Annotation = &entsql.Annotation{
+		Table: "web3_scanner_cursors",
 	}
 }

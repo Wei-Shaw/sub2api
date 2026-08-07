@@ -54,6 +54,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
+	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -156,6 +157,7 @@ func checkColumn(t, c string) error {
 			web3deposit.Table:                   web3deposit.ValidColumn,
 			web3depositaddress.Table:            web3depositaddress.ValidColumn,
 			web3depositwallet.Table:             web3depositwallet.ValidColumn,
+			web3scannercursor.Table:             web3scannercursor.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

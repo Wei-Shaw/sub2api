@@ -55,6 +55,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
+	"github.com/Wei-Shaw/sub2api/ent/web3scannercursor"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -109,6 +110,7 @@ const (
 	TypeWeb3Deposit                   = "Web3Deposit"
 	TypeWeb3DepositAddress            = "Web3DepositAddress"
 	TypeWeb3DepositWallet             = "Web3DepositWallet"
+	TypeWeb3ScannerCursor             = "Web3ScannerCursor"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -59240,4 +59242,1217 @@ func (m *Web3DepositWalletMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *Web3DepositWalletMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Web3DepositWallet edge %s", name)
+}
+
+// Web3ScannerCursorMutation represents an operation that mutates the Web3ScannerCursor nodes in the graph.
+type Web3ScannerCursorMutation struct {
+	config
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	scanner_key             *string
+	chain_id                *int64
+	addchain_id             *int64
+	token_contract          *string
+	scan_start_block        *int64
+	addscan_start_block     *int64
+	last_scanned_block      *int64
+	addlast_scanned_block   *int64
+	last_finalized_block    *int64
+	addlast_finalized_block *int64
+	lease_owner             *string
+	lease_token             *string
+	lease_expires_at        *time.Time
+	last_error              *string
+	last_success_at         *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*Web3ScannerCursor, error)
+	predicates              []predicate.Web3ScannerCursor
+}
+
+var _ ent.Mutation = (*Web3ScannerCursorMutation)(nil)
+
+// web3scannercursorOption allows management of the mutation configuration using functional options.
+type web3scannercursorOption func(*Web3ScannerCursorMutation)
+
+// newWeb3ScannerCursorMutation creates new mutation for the Web3ScannerCursor entity.
+func newWeb3ScannerCursorMutation(c config, op Op, opts ...web3scannercursorOption) *Web3ScannerCursorMutation {
+	m := &Web3ScannerCursorMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeWeb3ScannerCursor,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withWeb3ScannerCursorID sets the ID field of the mutation.
+func withWeb3ScannerCursorID(id int64) web3scannercursorOption {
+	return func(m *Web3ScannerCursorMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Web3ScannerCursor
+		)
+		m.oldValue = func(ctx context.Context) (*Web3ScannerCursor, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Web3ScannerCursor.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withWeb3ScannerCursor sets the old Web3ScannerCursor of the mutation.
+func withWeb3ScannerCursor(node *Web3ScannerCursor) web3scannercursorOption {
+	return func(m *Web3ScannerCursorMutation) {
+		m.oldValue = func(context.Context) (*Web3ScannerCursor, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m Web3ScannerCursorMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m Web3ScannerCursorMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Web3ScannerCursor entities.
+func (m *Web3ScannerCursorMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *Web3ScannerCursorMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *Web3ScannerCursorMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Web3ScannerCursor.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *Web3ScannerCursorMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *Web3ScannerCursorMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *Web3ScannerCursorMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *Web3ScannerCursorMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *Web3ScannerCursorMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *Web3ScannerCursorMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetScannerKey sets the "scanner_key" field.
+func (m *Web3ScannerCursorMutation) SetScannerKey(s string) {
+	m.scanner_key = &s
+}
+
+// ScannerKey returns the value of the "scanner_key" field in the mutation.
+func (m *Web3ScannerCursorMutation) ScannerKey() (r string, exists bool) {
+	v := m.scanner_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScannerKey returns the old "scanner_key" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldScannerKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScannerKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScannerKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScannerKey: %w", err)
+	}
+	return oldValue.ScannerKey, nil
+}
+
+// ResetScannerKey resets all changes to the "scanner_key" field.
+func (m *Web3ScannerCursorMutation) ResetScannerKey() {
+	m.scanner_key = nil
+}
+
+// SetChainID sets the "chain_id" field.
+func (m *Web3ScannerCursorMutation) SetChainID(i int64) {
+	m.chain_id = &i
+	m.addchain_id = nil
+}
+
+// ChainID returns the value of the "chain_id" field in the mutation.
+func (m *Web3ScannerCursorMutation) ChainID() (r int64, exists bool) {
+	v := m.chain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChainID returns the old "chain_id" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldChainID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChainID: %w", err)
+	}
+	return oldValue.ChainID, nil
+}
+
+// AddChainID adds i to the "chain_id" field.
+func (m *Web3ScannerCursorMutation) AddChainID(i int64) {
+	if m.addchain_id != nil {
+		*m.addchain_id += i
+	} else {
+		m.addchain_id = &i
+	}
+}
+
+// AddedChainID returns the value that was added to the "chain_id" field in this mutation.
+func (m *Web3ScannerCursorMutation) AddedChainID() (r int64, exists bool) {
+	v := m.addchain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChainID resets all changes to the "chain_id" field.
+func (m *Web3ScannerCursorMutation) ResetChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+}
+
+// SetTokenContract sets the "token_contract" field.
+func (m *Web3ScannerCursorMutation) SetTokenContract(s string) {
+	m.token_contract = &s
+}
+
+// TokenContract returns the value of the "token_contract" field in the mutation.
+func (m *Web3ScannerCursorMutation) TokenContract() (r string, exists bool) {
+	v := m.token_contract
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenContract returns the old "token_contract" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldTokenContract(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenContract is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenContract requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenContract: %w", err)
+	}
+	return oldValue.TokenContract, nil
+}
+
+// ResetTokenContract resets all changes to the "token_contract" field.
+func (m *Web3ScannerCursorMutation) ResetTokenContract() {
+	m.token_contract = nil
+}
+
+// SetScanStartBlock sets the "scan_start_block" field.
+func (m *Web3ScannerCursorMutation) SetScanStartBlock(i int64) {
+	m.scan_start_block = &i
+	m.addscan_start_block = nil
+}
+
+// ScanStartBlock returns the value of the "scan_start_block" field in the mutation.
+func (m *Web3ScannerCursorMutation) ScanStartBlock() (r int64, exists bool) {
+	v := m.scan_start_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldScanStartBlock returns the old "scan_start_block" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldScanStartBlock(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScanStartBlock is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScanStartBlock requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScanStartBlock: %w", err)
+	}
+	return oldValue.ScanStartBlock, nil
+}
+
+// AddScanStartBlock adds i to the "scan_start_block" field.
+func (m *Web3ScannerCursorMutation) AddScanStartBlock(i int64) {
+	if m.addscan_start_block != nil {
+		*m.addscan_start_block += i
+	} else {
+		m.addscan_start_block = &i
+	}
+}
+
+// AddedScanStartBlock returns the value that was added to the "scan_start_block" field in this mutation.
+func (m *Web3ScannerCursorMutation) AddedScanStartBlock() (r int64, exists bool) {
+	v := m.addscan_start_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetScanStartBlock resets all changes to the "scan_start_block" field.
+func (m *Web3ScannerCursorMutation) ResetScanStartBlock() {
+	m.scan_start_block = nil
+	m.addscan_start_block = nil
+}
+
+// SetLastScannedBlock sets the "last_scanned_block" field.
+func (m *Web3ScannerCursorMutation) SetLastScannedBlock(i int64) {
+	m.last_scanned_block = &i
+	m.addlast_scanned_block = nil
+}
+
+// LastScannedBlock returns the value of the "last_scanned_block" field in the mutation.
+func (m *Web3ScannerCursorMutation) LastScannedBlock() (r int64, exists bool) {
+	v := m.last_scanned_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastScannedBlock returns the old "last_scanned_block" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLastScannedBlock(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastScannedBlock is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastScannedBlock requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastScannedBlock: %w", err)
+	}
+	return oldValue.LastScannedBlock, nil
+}
+
+// AddLastScannedBlock adds i to the "last_scanned_block" field.
+func (m *Web3ScannerCursorMutation) AddLastScannedBlock(i int64) {
+	if m.addlast_scanned_block != nil {
+		*m.addlast_scanned_block += i
+	} else {
+		m.addlast_scanned_block = &i
+	}
+}
+
+// AddedLastScannedBlock returns the value that was added to the "last_scanned_block" field in this mutation.
+func (m *Web3ScannerCursorMutation) AddedLastScannedBlock() (r int64, exists bool) {
+	v := m.addlast_scanned_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastScannedBlock resets all changes to the "last_scanned_block" field.
+func (m *Web3ScannerCursorMutation) ResetLastScannedBlock() {
+	m.last_scanned_block = nil
+	m.addlast_scanned_block = nil
+}
+
+// SetLastFinalizedBlock sets the "last_finalized_block" field.
+func (m *Web3ScannerCursorMutation) SetLastFinalizedBlock(i int64) {
+	m.last_finalized_block = &i
+	m.addlast_finalized_block = nil
+}
+
+// LastFinalizedBlock returns the value of the "last_finalized_block" field in the mutation.
+func (m *Web3ScannerCursorMutation) LastFinalizedBlock() (r int64, exists bool) {
+	v := m.last_finalized_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastFinalizedBlock returns the old "last_finalized_block" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLastFinalizedBlock(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastFinalizedBlock is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastFinalizedBlock requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastFinalizedBlock: %w", err)
+	}
+	return oldValue.LastFinalizedBlock, nil
+}
+
+// AddLastFinalizedBlock adds i to the "last_finalized_block" field.
+func (m *Web3ScannerCursorMutation) AddLastFinalizedBlock(i int64) {
+	if m.addlast_finalized_block != nil {
+		*m.addlast_finalized_block += i
+	} else {
+		m.addlast_finalized_block = &i
+	}
+}
+
+// AddedLastFinalizedBlock returns the value that was added to the "last_finalized_block" field in this mutation.
+func (m *Web3ScannerCursorMutation) AddedLastFinalizedBlock() (r int64, exists bool) {
+	v := m.addlast_finalized_block
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLastFinalizedBlock resets all changes to the "last_finalized_block" field.
+func (m *Web3ScannerCursorMutation) ResetLastFinalizedBlock() {
+	m.last_finalized_block = nil
+	m.addlast_finalized_block = nil
+}
+
+// SetLeaseOwner sets the "lease_owner" field.
+func (m *Web3ScannerCursorMutation) SetLeaseOwner(s string) {
+	m.lease_owner = &s
+}
+
+// LeaseOwner returns the value of the "lease_owner" field in the mutation.
+func (m *Web3ScannerCursorMutation) LeaseOwner() (r string, exists bool) {
+	v := m.lease_owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseOwner returns the old "lease_owner" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLeaseOwner(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseOwner is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseOwner requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseOwner: %w", err)
+	}
+	return oldValue.LeaseOwner, nil
+}
+
+// ClearLeaseOwner clears the value of the "lease_owner" field.
+func (m *Web3ScannerCursorMutation) ClearLeaseOwner() {
+	m.lease_owner = nil
+	m.clearedFields[web3scannercursor.FieldLeaseOwner] = struct{}{}
+}
+
+// LeaseOwnerCleared returns if the "lease_owner" field was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) LeaseOwnerCleared() bool {
+	_, ok := m.clearedFields[web3scannercursor.FieldLeaseOwner]
+	return ok
+}
+
+// ResetLeaseOwner resets all changes to the "lease_owner" field.
+func (m *Web3ScannerCursorMutation) ResetLeaseOwner() {
+	m.lease_owner = nil
+	delete(m.clearedFields, web3scannercursor.FieldLeaseOwner)
+}
+
+// SetLeaseToken sets the "lease_token" field.
+func (m *Web3ScannerCursorMutation) SetLeaseToken(s string) {
+	m.lease_token = &s
+}
+
+// LeaseToken returns the value of the "lease_token" field in the mutation.
+func (m *Web3ScannerCursorMutation) LeaseToken() (r string, exists bool) {
+	v := m.lease_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseToken returns the old "lease_token" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLeaseToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseToken: %w", err)
+	}
+	return oldValue.LeaseToken, nil
+}
+
+// ClearLeaseToken clears the value of the "lease_token" field.
+func (m *Web3ScannerCursorMutation) ClearLeaseToken() {
+	m.lease_token = nil
+	m.clearedFields[web3scannercursor.FieldLeaseToken] = struct{}{}
+}
+
+// LeaseTokenCleared returns if the "lease_token" field was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) LeaseTokenCleared() bool {
+	_, ok := m.clearedFields[web3scannercursor.FieldLeaseToken]
+	return ok
+}
+
+// ResetLeaseToken resets all changes to the "lease_token" field.
+func (m *Web3ScannerCursorMutation) ResetLeaseToken() {
+	m.lease_token = nil
+	delete(m.clearedFields, web3scannercursor.FieldLeaseToken)
+}
+
+// SetLeaseExpiresAt sets the "lease_expires_at" field.
+func (m *Web3ScannerCursorMutation) SetLeaseExpiresAt(t time.Time) {
+	m.lease_expires_at = &t
+}
+
+// LeaseExpiresAt returns the value of the "lease_expires_at" field in the mutation.
+func (m *Web3ScannerCursorMutation) LeaseExpiresAt() (r time.Time, exists bool) {
+	v := m.lease_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseExpiresAt: %w", err)
+	}
+	return oldValue.LeaseExpiresAt, nil
+}
+
+// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
+func (m *Web3ScannerCursorMutation) ClearLeaseExpiresAt() {
+	m.lease_expires_at = nil
+	m.clearedFields[web3scannercursor.FieldLeaseExpiresAt] = struct{}{}
+}
+
+// LeaseExpiresAtCleared returns if the "lease_expires_at" field was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) LeaseExpiresAtCleared() bool {
+	_, ok := m.clearedFields[web3scannercursor.FieldLeaseExpiresAt]
+	return ok
+}
+
+// ResetLeaseExpiresAt resets all changes to the "lease_expires_at" field.
+func (m *Web3ScannerCursorMutation) ResetLeaseExpiresAt() {
+	m.lease_expires_at = nil
+	delete(m.clearedFields, web3scannercursor.FieldLeaseExpiresAt)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *Web3ScannerCursorMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *Web3ScannerCursorMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLastError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *Web3ScannerCursorMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[web3scannercursor.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[web3scannercursor.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *Web3ScannerCursorMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, web3scannercursor.FieldLastError)
+}
+
+// SetLastSuccessAt sets the "last_success_at" field.
+func (m *Web3ScannerCursorMutation) SetLastSuccessAt(t time.Time) {
+	m.last_success_at = &t
+}
+
+// LastSuccessAt returns the value of the "last_success_at" field in the mutation.
+func (m *Web3ScannerCursorMutation) LastSuccessAt() (r time.Time, exists bool) {
+	v := m.last_success_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSuccessAt returns the old "last_success_at" field's value of the Web3ScannerCursor entity.
+// If the Web3ScannerCursor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3ScannerCursorMutation) OldLastSuccessAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSuccessAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSuccessAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSuccessAt: %w", err)
+	}
+	return oldValue.LastSuccessAt, nil
+}
+
+// ClearLastSuccessAt clears the value of the "last_success_at" field.
+func (m *Web3ScannerCursorMutation) ClearLastSuccessAt() {
+	m.last_success_at = nil
+	m.clearedFields[web3scannercursor.FieldLastSuccessAt] = struct{}{}
+}
+
+// LastSuccessAtCleared returns if the "last_success_at" field was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) LastSuccessAtCleared() bool {
+	_, ok := m.clearedFields[web3scannercursor.FieldLastSuccessAt]
+	return ok
+}
+
+// ResetLastSuccessAt resets all changes to the "last_success_at" field.
+func (m *Web3ScannerCursorMutation) ResetLastSuccessAt() {
+	m.last_success_at = nil
+	delete(m.clearedFields, web3scannercursor.FieldLastSuccessAt)
+}
+
+// Where appends a list predicates to the Web3ScannerCursorMutation builder.
+func (m *Web3ScannerCursorMutation) Where(ps ...predicate.Web3ScannerCursor) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the Web3ScannerCursorMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *Web3ScannerCursorMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Web3ScannerCursor, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *Web3ScannerCursorMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *Web3ScannerCursorMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Web3ScannerCursor).
+func (m *Web3ScannerCursorMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *Web3ScannerCursorMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.created_at != nil {
+		fields = append(fields, web3scannercursor.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, web3scannercursor.FieldUpdatedAt)
+	}
+	if m.scanner_key != nil {
+		fields = append(fields, web3scannercursor.FieldScannerKey)
+	}
+	if m.chain_id != nil {
+		fields = append(fields, web3scannercursor.FieldChainID)
+	}
+	if m.token_contract != nil {
+		fields = append(fields, web3scannercursor.FieldTokenContract)
+	}
+	if m.scan_start_block != nil {
+		fields = append(fields, web3scannercursor.FieldScanStartBlock)
+	}
+	if m.last_scanned_block != nil {
+		fields = append(fields, web3scannercursor.FieldLastScannedBlock)
+	}
+	if m.last_finalized_block != nil {
+		fields = append(fields, web3scannercursor.FieldLastFinalizedBlock)
+	}
+	if m.lease_owner != nil {
+		fields = append(fields, web3scannercursor.FieldLeaseOwner)
+	}
+	if m.lease_token != nil {
+		fields = append(fields, web3scannercursor.FieldLeaseToken)
+	}
+	if m.lease_expires_at != nil {
+		fields = append(fields, web3scannercursor.FieldLeaseExpiresAt)
+	}
+	if m.last_error != nil {
+		fields = append(fields, web3scannercursor.FieldLastError)
+	}
+	if m.last_success_at != nil {
+		fields = append(fields, web3scannercursor.FieldLastSuccessAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *Web3ScannerCursorMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case web3scannercursor.FieldCreatedAt:
+		return m.CreatedAt()
+	case web3scannercursor.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case web3scannercursor.FieldScannerKey:
+		return m.ScannerKey()
+	case web3scannercursor.FieldChainID:
+		return m.ChainID()
+	case web3scannercursor.FieldTokenContract:
+		return m.TokenContract()
+	case web3scannercursor.FieldScanStartBlock:
+		return m.ScanStartBlock()
+	case web3scannercursor.FieldLastScannedBlock:
+		return m.LastScannedBlock()
+	case web3scannercursor.FieldLastFinalizedBlock:
+		return m.LastFinalizedBlock()
+	case web3scannercursor.FieldLeaseOwner:
+		return m.LeaseOwner()
+	case web3scannercursor.FieldLeaseToken:
+		return m.LeaseToken()
+	case web3scannercursor.FieldLeaseExpiresAt:
+		return m.LeaseExpiresAt()
+	case web3scannercursor.FieldLastError:
+		return m.LastError()
+	case web3scannercursor.FieldLastSuccessAt:
+		return m.LastSuccessAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *Web3ScannerCursorMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case web3scannercursor.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case web3scannercursor.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case web3scannercursor.FieldScannerKey:
+		return m.OldScannerKey(ctx)
+	case web3scannercursor.FieldChainID:
+		return m.OldChainID(ctx)
+	case web3scannercursor.FieldTokenContract:
+		return m.OldTokenContract(ctx)
+	case web3scannercursor.FieldScanStartBlock:
+		return m.OldScanStartBlock(ctx)
+	case web3scannercursor.FieldLastScannedBlock:
+		return m.OldLastScannedBlock(ctx)
+	case web3scannercursor.FieldLastFinalizedBlock:
+		return m.OldLastFinalizedBlock(ctx)
+	case web3scannercursor.FieldLeaseOwner:
+		return m.OldLeaseOwner(ctx)
+	case web3scannercursor.FieldLeaseToken:
+		return m.OldLeaseToken(ctx)
+	case web3scannercursor.FieldLeaseExpiresAt:
+		return m.OldLeaseExpiresAt(ctx)
+	case web3scannercursor.FieldLastError:
+		return m.OldLastError(ctx)
+	case web3scannercursor.FieldLastSuccessAt:
+		return m.OldLastSuccessAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Web3ScannerCursor field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *Web3ScannerCursorMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case web3scannercursor.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case web3scannercursor.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case web3scannercursor.FieldScannerKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScannerKey(v)
+		return nil
+	case web3scannercursor.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChainID(v)
+		return nil
+	case web3scannercursor.FieldTokenContract:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenContract(v)
+		return nil
+	case web3scannercursor.FieldScanStartBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetScanStartBlock(v)
+		return nil
+	case web3scannercursor.FieldLastScannedBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastScannedBlock(v)
+		return nil
+	case web3scannercursor.FieldLastFinalizedBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastFinalizedBlock(v)
+		return nil
+	case web3scannercursor.FieldLeaseOwner:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseOwner(v)
+		return nil
+	case web3scannercursor.FieldLeaseToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseToken(v)
+		return nil
+	case web3scannercursor.FieldLeaseExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseExpiresAt(v)
+		return nil
+	case web3scannercursor.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case web3scannercursor.FieldLastSuccessAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSuccessAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Web3ScannerCursor field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *Web3ScannerCursorMutation) AddedFields() []string {
+	var fields []string
+	if m.addchain_id != nil {
+		fields = append(fields, web3scannercursor.FieldChainID)
+	}
+	if m.addscan_start_block != nil {
+		fields = append(fields, web3scannercursor.FieldScanStartBlock)
+	}
+	if m.addlast_scanned_block != nil {
+		fields = append(fields, web3scannercursor.FieldLastScannedBlock)
+	}
+	if m.addlast_finalized_block != nil {
+		fields = append(fields, web3scannercursor.FieldLastFinalizedBlock)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *Web3ScannerCursorMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case web3scannercursor.FieldChainID:
+		return m.AddedChainID()
+	case web3scannercursor.FieldScanStartBlock:
+		return m.AddedScanStartBlock()
+	case web3scannercursor.FieldLastScannedBlock:
+		return m.AddedLastScannedBlock()
+	case web3scannercursor.FieldLastFinalizedBlock:
+		return m.AddedLastFinalizedBlock()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *Web3ScannerCursorMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case web3scannercursor.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChainID(v)
+		return nil
+	case web3scannercursor.FieldScanStartBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddScanStartBlock(v)
+		return nil
+	case web3scannercursor.FieldLastScannedBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastScannedBlock(v)
+		return nil
+	case web3scannercursor.FieldLastFinalizedBlock:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLastFinalizedBlock(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Web3ScannerCursor numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *Web3ScannerCursorMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(web3scannercursor.FieldLeaseOwner) {
+		fields = append(fields, web3scannercursor.FieldLeaseOwner)
+	}
+	if m.FieldCleared(web3scannercursor.FieldLeaseToken) {
+		fields = append(fields, web3scannercursor.FieldLeaseToken)
+	}
+	if m.FieldCleared(web3scannercursor.FieldLeaseExpiresAt) {
+		fields = append(fields, web3scannercursor.FieldLeaseExpiresAt)
+	}
+	if m.FieldCleared(web3scannercursor.FieldLastError) {
+		fields = append(fields, web3scannercursor.FieldLastError)
+	}
+	if m.FieldCleared(web3scannercursor.FieldLastSuccessAt) {
+		fields = append(fields, web3scannercursor.FieldLastSuccessAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *Web3ScannerCursorMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *Web3ScannerCursorMutation) ClearField(name string) error {
+	switch name {
+	case web3scannercursor.FieldLeaseOwner:
+		m.ClearLeaseOwner()
+		return nil
+	case web3scannercursor.FieldLeaseToken:
+		m.ClearLeaseToken()
+		return nil
+	case web3scannercursor.FieldLeaseExpiresAt:
+		m.ClearLeaseExpiresAt()
+		return nil
+	case web3scannercursor.FieldLastError:
+		m.ClearLastError()
+		return nil
+	case web3scannercursor.FieldLastSuccessAt:
+		m.ClearLastSuccessAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Web3ScannerCursor nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *Web3ScannerCursorMutation) ResetField(name string) error {
+	switch name {
+	case web3scannercursor.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case web3scannercursor.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case web3scannercursor.FieldScannerKey:
+		m.ResetScannerKey()
+		return nil
+	case web3scannercursor.FieldChainID:
+		m.ResetChainID()
+		return nil
+	case web3scannercursor.FieldTokenContract:
+		m.ResetTokenContract()
+		return nil
+	case web3scannercursor.FieldScanStartBlock:
+		m.ResetScanStartBlock()
+		return nil
+	case web3scannercursor.FieldLastScannedBlock:
+		m.ResetLastScannedBlock()
+		return nil
+	case web3scannercursor.FieldLastFinalizedBlock:
+		m.ResetLastFinalizedBlock()
+		return nil
+	case web3scannercursor.FieldLeaseOwner:
+		m.ResetLeaseOwner()
+		return nil
+	case web3scannercursor.FieldLeaseToken:
+		m.ResetLeaseToken()
+		return nil
+	case web3scannercursor.FieldLeaseExpiresAt:
+		m.ResetLeaseExpiresAt()
+		return nil
+	case web3scannercursor.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case web3scannercursor.FieldLastSuccessAt:
+		m.ResetLastSuccessAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Web3ScannerCursor field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *Web3ScannerCursorMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *Web3ScannerCursorMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *Web3ScannerCursorMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *Web3ScannerCursorMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *Web3ScannerCursorMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *Web3ScannerCursorMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *Web3ScannerCursorMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Web3ScannerCursor unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *Web3ScannerCursorMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Web3ScannerCursor edge %s", name)
 }

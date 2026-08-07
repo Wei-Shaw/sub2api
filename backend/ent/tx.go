@@ -98,6 +98,8 @@ type Tx struct {
 	Web3DepositAddress *Web3DepositAddressClient
 	// Web3DepositWallet is the client for interacting with the Web3DepositWallet builders.
 	Web3DepositWallet *Web3DepositWalletClient
+	// Web3ScannerCursor is the client for interacting with the Web3ScannerCursor builders.
+	Web3ScannerCursor *Web3ScannerCursorClient
 
 	// lazily loaded.
 	client     *Client
@@ -271,6 +273,7 @@ func (tx *Tx) init() {
 	tx.Web3Deposit = NewWeb3DepositClient(tx.config)
 	tx.Web3DepositAddress = NewWeb3DepositAddressClient(tx.config)
 	tx.Web3DepositWallet = NewWeb3DepositWalletClient(tx.config)
+	tx.Web3ScannerCursor = NewWeb3ScannerCursorClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
