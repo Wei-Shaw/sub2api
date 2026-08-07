@@ -24,32 +24,54 @@ func countGrokNativeSearchCallsFromSSEBody(body string) int {
 	if strings.TrimSpace(body) == "" {
 		return 0
 REDACTED
-	total := 0
 	seen := make(map[string]struct{REDACTED)
+	total := 0
 	forEachOpenAISSEDataPayload(body, func(data []byte) {
-		n, keys := countGrokNativeSearchCallsInSSEDataWithKeys(data)
-		if n <= 0 {
-			return
-	REDACTED
-		// Dedup stream item.added / item.done for the same call id.
-		if len(keys) == 0 {
-			total += n
-			return
-	REDACTED
-		for _, k := range keys {
-			if _, ok := seen[k]; ok {
-				continue
-		REDACTED
-			seen[k] = struct{REDACTED{REDACTED
-			total++
-	REDACTED
+		total += countGrokNativeSearchCallsInSSEDataDedup(data, seen)
 REDACTED)
 	return total
 REDACTED
 
+// countGrokNativeSearchCallsInSSEData counts search tool calls in one SSE
+// payload without cross-event dedup. Prefer countGrokNativeSearchCallsInSSEDataDedup
+// for live streams so item.done + response.completed do not double-bill.
 func countGrokNativeSearchCallsInSSEData(data []byte) int {
 	n, _ := countGrokNativeSearchCallsInSSEDataWithKeys(data)
 	return n
+REDACTED
+
+// countGrokNativeSearchCallsInSSEDataDedup increments only unseen call ids.
+// Callers must reuse the same seen map for the full stream lifetime.
+func countGrokNativeSearchCallsInSSEDataDedup(data []byte, seen map[string]struct{REDACTED) int {
+	if seen == nil {
+		return countGrokNativeSearchCallsInSSEData(data)
+REDACTED
+	n, keys := countGrokNativeSearchCallsInSSEDataWithKeys(data)
+	if n <= 0 {
+		return 0
+REDACTED
+	// No stable id: fall back to raw count once (cannot dedup across events).
+	if len(keys) == 0 {
+		return n
+REDACTED
+	// Intra-event + cross-event dedup by call_id/id.
+	added := 0
+	local := make(map[string]struct{REDACTED, len(keys))
+	for _, k := range keys {
+		if k == "" {
+			continue
+	REDACTED
+		if _, ok := local[k]; ok {
+			continue
+	REDACTED
+		local[k] = struct{REDACTED{REDACTED
+		if _, ok := seen[k]; ok {
+			continue
+	REDACTED
+		seen[k] = struct{REDACTED{REDACTED
+		added++
+REDACTED
+	return added
 REDACTED
 
 func countGrokNativeSearchCallsInSSEDataWithKeys(data []byte) (int, []string) {

@@ -30,16 +30,19 @@ REDACTED
 	require.NotContains(t, out, "cookie")
 REDACTED
 
-func TestSanitizeStoredCredentials_NonGrokKeepsCookieButDropsPassword(t *testing.T) {
-	creds := map[string]any{
-		"cookie":   "session",
-		"password": "x",
-		"api_key":  "k",
+func TestSanitizeStoredCredentials_AlwaysStripsCookie(t *testing.T) {
+	// Bulk paths may pass empty platform; cookie must never persist next to tokens.
+	for _, platform := range []string{PlatformOpenAI, PlatformGrok, ""REDACTED {
+		creds := map[string]any{
+			"cookie":   "session",
+			"password": "x",
+			"api_key":  "k",
+	REDACTED
+		out := SanitizeStoredCredentials(platform, creds)
+		require.Equal(t, "k", out["api_key"], platform)
+		require.NotContains(t, out, "password", platform)
+		require.NotContains(t, out, "cookie", platform)
 REDACTED
-	out := SanitizeStoredCredentials(PlatformOpenAI, creds)
-	require.Equal(t, "session", out["cookie"])
-	require.Equal(t, "k", out["api_key"])
-	require.NotContains(t, out, "password")
 REDACTED
 
 func TestSanitizeStoredCredentials_NilSafe(t *testing.T) {

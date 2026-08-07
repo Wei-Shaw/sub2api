@@ -363,23 +363,18 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
-	// Explicit free credentials (subscription_tier / plan_type free|basic) win over
-	// weak paid inference so weekly credit % cannot disable soft-gate / media block
-	// for real Free OAuth accounts. Strong paid evidence (named paid plan, monthly
-	// limit cents) still wins over *inferred* free only.
+	// Strong paid evidence always wins — including over stale free credentials
+	// left after SuperGrok upgrade (subscription_tier still "free" until re-import).
+	if paidSignal {
+		return false
+REDACTED
+	// Explicit free/basic tier (credentials or free plan string).
 	if freeSignal {
-		// Explicit free/basic tier from credentials or free plan string.
-		// Only override if we saw a clearly paid plan name (not mere usage %).
-		if paidSignal {
-			// paidSignal from MonthlyLimitCents or non-free Plan — treat as paid.
-			return false
-	REDACTED
 		return true
 REDACTED
-	// Explicit paid evidence always wins over an inferred Free signal. This
-	// protects upgraded/stale accounts whose previous quota snapshot still
-	// carries the historical 2M Free token limit.
-	return !paidSignal && inferredFreeSignal
+	// Inferred free (empty plan + successful monthly probe, or free token limit)
+	// only when there is no paid evidence.
+	return inferredFreeSignal
 REDACTED
 
 func isGrokFreeSubscriptionTier(tier string) bool {

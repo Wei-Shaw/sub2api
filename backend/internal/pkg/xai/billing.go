@@ -173,17 +173,14 @@ REDACTED
 	periodType := resolvePeriodType(period)
 	creditUsage := cloneFloat(config.CreditUsagePercent)
 
+	// Weekly period bounds must not fall back to monthly billing period ends —
+	// that would park accounts on a multi-week horizon when weekly UsagePercent
+	// is high (scheduler seven_day uses PeriodEnd).
 	periodStart := ""
 	periodEnd := ""
 	if period != nil {
 		periodStart = strings.TrimSpace(period.Start)
 		periodEnd = strings.TrimSpace(period.End)
-REDACTED
-	if periodStart == "" {
-		periodStart = strings.TrimSpace(config.BillingPeriodStart)
-REDACTED
-	if periodEnd == "" {
-		periodEnd = strings.TrimSpace(config.BillingPeriodEnd)
 REDACTED
 
 	products := make([]BillingProductSummary, 0, len(config.ProductUsage))
