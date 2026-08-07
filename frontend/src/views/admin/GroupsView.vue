@@ -1087,6 +1087,45 @@
               />
             </div>
           </div>
+          <div
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
+            data-testid="create-grok-video-model-prices"
+          >
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.videoPricing.modelOverridesTitle") REDACTEDREDACTED
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.videoPricing.modelOverridesDescription") REDACTEDREDACTED
+            </p>
+            <div class="mt-3 space-y-3">
+              <div
+                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+                :key="family.key"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+              >
+                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                  {{ family.label REDACTEDREDACTED
+                </div>
+                <label
+                  v-for="resolution in grokVideoPriceResolutions"
+                  :key="resolution.key"
+                  class="block"
+                >
+                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                    {{ resolution.label REDACTEDREDACTED ($/s)
+                  </span>
+                  <input
+                    v-model.number="createForm.video_model_prices[family.key][resolution.key]"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    :data-testid="`create-grok-video-price-${family.keyREDACTED-${resolution.keyREDACTED`"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t(videoPricingI18nKey("modeHint")) REDACTEDREDACTED
           </p>
@@ -2692,6 +2731,45 @@
               />
             </div>
           </div>
+          <div
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
+            data-testid="edit-grok-video-model-prices"
+          >
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.videoPricing.modelOverridesTitle") REDACTEDREDACTED
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.videoPricing.modelOverridesDescription") REDACTEDREDACTED
+            </p>
+            <div class="mt-3 space-y-3">
+              <div
+                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+                :key="family.key"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+              >
+                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                  {{ family.label REDACTEDREDACTED
+                </div>
+                <label
+                  v-for="resolution in grokVideoPriceResolutions"
+                  :key="resolution.key"
+                  class="block"
+                >
+                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                    {{ resolution.label REDACTEDREDACTED ($/s)
+                  </span>
+                  <input
+                    v-model.number="editForm.video_model_prices[family.key][resolution.key]"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    :data-testid="`edit-grok-video-price-${family.keyREDACTED-${resolution.keyREDACTED`"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t(videoPricingI18nKey("modeHint")) REDACTEDREDACTED
           </p>
@@ -4219,6 +4297,12 @@ import {
   supportsVideoPricingPlatform,
   videoPricingI18nKey,
 REDACTED from "./groupsImagePricing";
+import {
+  createVideoModelPricesForm,
+  grokVideoPriceResolutions,
+  serializeVideoModelPrices,
+  videoModelPriceFamilyRows,
+REDACTED from "./groupsVideoModelPricing";
 
 const { t REDACTED = useI18n();
 const appStore = useAppStore();
@@ -4719,6 +4803,7 @@ const createForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  video_model_prices: createVideoModelPricesForm(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
@@ -5073,6 +5158,7 @@ const editForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  video_model_prices: createVideoModelPricesForm(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
@@ -5523,6 +5609,7 @@ const closeCreateModal = () => {
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
+  createForm.video_model_prices = createVideoModelPricesForm();
   createForm.web_search_price_per_call = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
@@ -5608,9 +5695,16 @@ const handleCreateGroup = async () => {
   REDACTED
   submitting.value = true;
   try {
+    const {
+      video_model_prices: _createFormVideoModelPrices,
+      ...createGroupForm
+    REDACTED = createForm;
+    const videoModelPrices = serializeVideoModelPrices(
+      createForm.video_model_prices,
+    );
     // 构建请求数据，包含模型路由配置
     const requestData = {
-      ...createForm,
+      ...createGroupForm,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -5620,6 +5714,9 @@ const handleCreateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         createForm.monthly_limit_usd as number | string | null,
       ),
+      ...(Object.keys(videoModelPrices).length > 0
+        ? { video_model_prices: videoModelPrices REDACTED
+        : {REDACTED),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
@@ -5734,6 +5831,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_480p = group.video_price_480p;
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
+  editForm.video_model_prices = createVideoModelPricesForm(
+    group.video_model_prices,
+  );
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
@@ -5814,6 +5914,7 @@ const closeEditModal = () => {
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
+  editForm.video_model_prices = createVideoModelPricesForm();
   editForm.web_search_price_per_call = null;
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
@@ -5850,6 +5951,9 @@ const handleUpdateGroup = async () => {
       ),
       monthly_limit_usd: normalizeOptionalLimit(
         editForm.monthly_limit_usd as number | string | null,
+      ),
+      video_model_prices: serializeVideoModelPrices(
+        editForm.video_model_prices,
       ),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,

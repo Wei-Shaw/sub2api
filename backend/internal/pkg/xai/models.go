@@ -299,12 +299,10 @@ REDACTED
 func CanonicalImagineVideoModel(model string) string {
 	m := strings.ToLower(StripGrokProviderPrefix(model))
 	switch {
-	case m == "" || m == DefaultImagineVideoModel:
+	case m == "" || m == DefaultImagineVideoModel || m == "grok-imagine-video-preview":
 		return DefaultImagineVideoModel
 	case strings.HasPrefix(m, "grok-imagine-video-1.5") || m == "grok-video-1.5":
 		return DefaultImagineVideo15Model
-	case strings.HasPrefix(m, "grok-imagine-video"):
-		return DefaultImagineVideoModel
 	default:
 		return m
 REDACTED
