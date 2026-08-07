@@ -1395,6 +1395,14 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 					// rs_* id replayed under store=false 404s; strip it.
 					continue
 				}
+				if key == "content" {
+					if parts, ok := value.([]any); ok && len(parts) > 0 {
+						// 第三方 Responses provider 可能写入 reasoning_text。
+						// ChatGPT Codex OAuth 不接受非空 reasoning.content。
+						newItem["content"] = nil
+						continue
+					}
+				}
 				newItem[key] = value
 			}
 			if summary, ok := newItem["summary"]; !ok || summary == nil {
