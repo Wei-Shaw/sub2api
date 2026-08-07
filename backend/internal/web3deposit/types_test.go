@@ -47,6 +47,7 @@ func TestNewTransferEventCopiesRawAmount(t *testing.T) {
 func TestNewTransferEventValidatesRawAmount(t *testing.T) {
 	t.Parallel()
 
+	aboveUint256 := new(big.Int).Lsh(big.NewInt(1), 256)
 	tests := []struct {
 		name      string
 		rawAmount *big.Int
@@ -54,6 +55,7 @@ func TestNewTransferEventValidatesRawAmount(t *testing.T) {
 	}{
 		{name: "nil", wantErr: ErrRawAmountRequired},
 		{name: "negative", rawAmount: big.NewInt(-1), wantErr: ErrRawAmountNegative},
+		{name: "above uint256", rawAmount: aboveUint256, wantErr: ErrRawAmountExceedsUint256},
 		{name: "zero", rawAmount: new(big.Int)},
 	}
 	for _, test := range tests {

@@ -47,11 +47,8 @@ func NewTransferEvent(
 	to common.Address,
 	rawAmount *big.Int,
 ) (TransferEvent, error) {
-	if rawAmount == nil {
-		return TransferEvent{}, ErrRawAmountRequired
-	}
-	if rawAmount.Sign() < 0 {
-		return TransferEvent{}, ErrRawAmountNegative
+	if err := validateUint256(rawAmount); err != nil {
+		return TransferEvent{}, err
 	}
 	return TransferEvent{
 		ID:          id,
