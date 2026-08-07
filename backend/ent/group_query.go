@@ -439,9 +439,17 @@ func (_q *GroupQuery) Clone() *GroupQuery {
 	if _q == nil {
 		return nil
 	}
+	var ctx *QueryContext
+	if _q.ctx != nil {
+		ctx = _q.ctx.Clone()
+	}
+	var selector *sql.Selector
+	if _q.sql != nil {
+		selector = _q.sql.Clone()
+	}
 	return &GroupQuery{
 		config:                _q.config,
-		ctx:                   _q.ctx.Clone(),
+		ctx:                   ctx,
 		order:                 append([]group.OrderOption{}, _q.order...),
 		inters:                append([]Interceptor{}, _q.inters...),
 		predicates:            append([]predicate.Group{}, _q.predicates...),
@@ -454,7 +462,7 @@ func (_q *GroupQuery) Clone() *GroupQuery {
 		withAccountGroups:     _q.withAccountGroups.Clone(),
 		withUserAllowedGroups: _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
-		sql:  _q.sql.Clone(),
+		sql:  selector,
 		path: _q.path,
 	}
 }
