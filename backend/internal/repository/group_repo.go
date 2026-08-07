@@ -46,9 +46,6 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
 REDACTED
-	if saveErr := saveGroupVideoModelPrices(ctx, r.sql, groupIn.ID, groupIn.VideoModelPrices); saveErr != nil {
-		return fmt.Errorf("save group video_model_prices: %w", saveErr)
-REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 REDACTED
@@ -85,6 +82,7 @@ REDACTED
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
@@ -228,11 +226,7 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 REDACTED
-	out := groupEntityToService(m)
-	if prices, loadErr := loadGroupVideoModelPrices(ctx, r.sql, []int64{idREDACTED); loadErr == nil {
-		applyVideoModelPricesToGroup(out, prices)
-REDACTED
-	return out, nil
+	return groupEntityToService(m), nil
 REDACTED
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -261,6 +255,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -363,9 +358,6 @@ REDACTED
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 REDACTED
 	groupIn.UpdatedAt = updated.UpdatedAt
-	if err := saveGroupVideoModelPrices(ctx, r.sql, groupIn.ID, groupIn.VideoModelPrices); err != nil {
-		return fmt.Errorf("save group video_model_prices: %w", err)
-REDACTED
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 REDACTED

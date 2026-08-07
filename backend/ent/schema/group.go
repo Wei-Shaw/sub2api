@@ -148,6 +148,10 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED),
+		field.JSON("video_model_prices", map[string]map[string]float64{REDACTED).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
+			Comment("按模型族和分辨率覆盖视频每秒价格"),
 		field.Float("web_search_price_per_call").
 			Optional().
 			Nillable().
