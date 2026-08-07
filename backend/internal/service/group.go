@@ -55,6 +55,10 @@ type Group struct {
 	VideoPrice480P               *float64
 	VideoPrice720P               *float64
 	VideoPrice1080P              *float64
+	// VideoModelPrices is optional per-model-family per-second pricing
+	// (groups.video_model_prices JSONB). Shape: family → resolution → USD/s.
+	// When set for a model, overrides VideoPrice* for that model only.
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
 	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
 	WebSearchPricePerCall *float64
@@ -165,6 +169,30 @@ func (g *Group) GetVideoPrice(resolution string) *float64 {
 		return g.VideoPrice1080P
 	default:
 		return g.VideoPrice480P
+REDACTED
+REDACTED
+
+// GetVideoPriceForModel prefers VideoModelPrices for the model family, then flat columns.
+func (g *Group) GetVideoPriceForModel(model, resolution string) *float64 {
+	if g == nil {
+		return nil
+REDACTED
+	if price := LookupVideoModelPrice(g.VideoModelPrices, model, resolution); price != nil {
+		return price
+REDACTED
+	return g.GetVideoPrice(resolution)
+REDACTED
+
+// VideoPriceConfig builds billing config including optional per-model map.
+func (g *Group) VideoPriceConfig() *VideoPriceConfig {
+	if g == nil {
+		return nil
+REDACTED
+	return &VideoPriceConfig{
+		Price480P:   g.VideoPrice480P,
+		Price720P:   g.VideoPrice720P,
+		Price1080P:  g.VideoPrice1080P,
+		ModelPrices: NormalizeVideoModelPrices(g.VideoModelPrices),
 REDACTED
 REDACTED
 

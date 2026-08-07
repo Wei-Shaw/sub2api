@@ -169,9 +169,12 @@ REDACTED
 	mapping["grok-imagine-edit"] = "grok-imagine-edit"
 	mapping["grok-imagine-image"] = DefaultImagineImageFastModel
 	mapping["grok-imagine-image-quality"] = DefaultImagineImageQualityModel
+	// Keep official IDs as identity so client-requested model strings are not
+	// rewritten on the wire (pricing still canonicalizes 1.5* via CanonicalImagineVideoModel).
 	mapping["grok-imagine-video"] = DefaultImagineVideoModel
-	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15Model
+	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15LegacyModel
 	mapping["grok-imagine-video-1.5-preview"] = DefaultImagineVideo15Model
+	// Informal alias only:
 	mapping["grok-video-1.5"] = DefaultImagineVideo15Model
 
 	if opts.EnableCrossClientMap {
