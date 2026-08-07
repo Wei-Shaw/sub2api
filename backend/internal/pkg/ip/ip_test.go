@@ -154,6 +154,26 @@ REDACTED{
 			want: "4.4.4.4",
 	REDACTED,
 		{
+			name:         "invalid legacy values continue to a valid forwarded address",
+			trustForward: true,
+			requestHeaders: map[string]string{
+				"CF-Connecting-IP": "unknown",
+				"X-Real-IP":        "proxy.internal",
+				"X-Forwarded-For":  "also-invalid, 203.0.113.50",
+		REDACTED,
+			want: "203.0.113.50",
+	REDACTED,
+		{
+			name:         "all invalid legacy values fall back to the connection address",
+			trustForward: true,
+			requestHeaders: map[string]string{
+				"CF-Connecting-IP": "unknown",
+				"X-Real-IP":        "proxy.internal",
+				"X-Forwarded-For":  "also-invalid",
+		REDACTED,
+			want: "9.9.9.9",
+	REDACTED,
+		{
 			name:         "disabled mode ignores custom and legacy headers",
 			trustForward: false,
 			headers:      []string{"X-CDN-IP"REDACTED,
