@@ -2560,6 +2560,23 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestHandleGrokAccountUpstreamErrorSpendingLimit403TempUnschedules(t *testing.T) {
+	account := &Account{ID: 614, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	before := time.Now()
+	body := []byte(`{"code":"personal-team-blocked:spending-limit","error":"You have run out of credits"REDACTED`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, account.ID, repo.lastTempUnschedID)
+	require.Equal(t, "grok spending limit", repo.lastTempUnschedReason)
+	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.True(t, isGrokSpendingLimitError(body))
+REDACTED
+
 func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
 	t.Run("pool mode keeps scheduling state", func(t *testing.T) {
 		account := &Account{

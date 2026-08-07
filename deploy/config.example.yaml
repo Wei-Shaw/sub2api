@@ -440,6 +440,15 @@ gateway:
     failure_threshold: 2
     window_seconds: 60
     ttl_seconds: 600
+  # Grok free-tier local soft gate (scheduler filter only; admin QueryQuota/import probe bypasses it).
+  # Enabled by default because free detection requires an explicit subscription_tier/plan_type of "free".
+  # Stats/query failures fail open so DB issues do not block all Grok traffic.
+  grok:
+    free_quota_soft_gate_enabled: true
+    free_quota_token_limit: 2000000
+    free_quota_soft_gate_percent: 95
+    free_quota_window_hours: 24
+    free_quota_stats_cache_seconds: 5
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
