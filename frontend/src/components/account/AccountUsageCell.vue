@@ -365,7 +365,7 @@
             {{ grokEntitlementLabel REDACTEDREDACTED
           </span>
         </div>
-        <div v-if="grokLocalUsage" class="mb-0.5 flex items-center">
+        <div v-if="showGrokStandaloneLocalStats && grokLocalUsage" class="mb-0.5 flex items-center">
           <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
               {{ formatWindowRequests(grokLocalUsage) REDACTEDREDACTED req
@@ -405,6 +405,13 @@
           v-if="grokBillingMoneySummary"
           class="flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"
         >
+          <span
+            v-if="grokBillingMoneySummary.prepaid != null"
+            class="rounded bg-emerald-50 px-1 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+            :title="t('admin.accounts.usageWindow.grokPrepaid')"
+          >
+            {{ t('admin.accounts.usageWindow.grokPrepaid') REDACTEDREDACTED ${{ grokBillingMoneySummary.prepaid REDACTEDREDACTED
+          </span>
           <span :title="t('admin.accounts.usageWindow.grokMonthlyLimit')">
             {{ t('admin.accounts.usageWindow.grokUsed') REDACTEDREDACTED
             {{ grokBillingMoneySummary.used REDACTEDREDACTED/{{ grokBillingMoneySummary.limit REDACTEDREDACTED
@@ -414,6 +421,14 @@
             class="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800"
           >
             {{ grokBillingMoneySummary.usedPercent REDACTEDREDACTED%
+          </span>
+          <span
+            v-if="grokBillingMoneySummary.showOverage"
+            class="rounded bg-amber-50 px-1 py-0.5 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            :title="t('admin.accounts.usageWindow.grokOverage')"
+          >
+            {{ t('admin.accounts.usageWindow.grokOverageShort') REDACTEDREDACTED
+            {{ grokBillingMoneySummary.onDemandUsed REDACTEDREDACTED/{{ grokBillingMoneySummary.onDemandCap REDACTEDREDACTED
           </span>
         </div>
         <UsageProgressBar
@@ -1155,22 +1170,42 @@ const grokMonthlyBillingBar = computed((): GrokQuotaBarInfo | null => {
     resetsAt: billing.billing_period_end || billing.period_end || null
   REDACTED
 REDACTED)
-const formatGrokMoneyFromCents = (cents?: number | null) => {
-  if (cents == null || Number.isNaN(cents)) return '0'
-  const dollars = cents / 100
-  if (dollars >= 1000) return formatCompactNumber(dollars)
-  if (dollars >= 100) return dollars.toFixed(0)
-  if (dollars >= 10) return dollars.toFixed(1)
-  return dollars.toFixed(2)
+const formatGrokMoney = (value?: number | null) => {
+  if (value == null || Number.isNaN(value)) return '0'
+  if (value >= 1000) return formatCompactNumber(value)
+  if (value >= 100) return value.toFixed(0)
+  if (value >= 10) return value.toFixed(1)
+  return value.toFixed(2)
 REDACTED
-// Absolute monthly used/limit derived from cents fields already on GrokBillingSummary.
-// (personal-dev has separate prepaid/on_demand fields; HEAD only has cents.)
+// Absolute money: prefer prepaid/monthly_used fields; fall back to cents/100.
 const grokBillingMoneySummary = computed(() => {
   const billing = grokBilling.value
   if (!billing) return null
-  const limit = billing.monthly_limit_cents
-  const used = billing.used_cents
-  if ((limit == null || limit <= 0) && (used == null || used <= 0)) return null
+  const prepaid =
+    billing.prepaid_balance != null
+      ? billing.prepaid_balance
+      : null
+  const used =
+    billing.monthly_used != null
+      ? billing.monthly_used
+      : billing.used_cents != null
+        ? billing.used_cents / 100
+        : null
+  const limit =
+    billing.monthly_limit != null
+      ? billing.monthly_limit
+      : billing.monthly_limit_cents != null
+        ? billing.monthly_limit_cents / 100
+        : null
+  const onDemandUsed = billing.on_demand_used ?? null
+  const onDemandCap = billing.on_demand_cap ?? null
+  const hasAny =
+    (prepaid ?? 0) > 0 ||
+    (used ?? 0) > 0 ||
+    (limit ?? 0) > 0 ||
+    (onDemandCap ?? 0) > 0 ||
+    (onDemandUsed ?? 0) > 0
+  if (!hasAny) return null
   let usedPercent: number | null = null
   if (billing.used_percent != null && Number.isFinite(billing.used_percent)) {
     usedPercent = Math.round(Math.min(100, Math.max(0, billing.used_percent)))
@@ -1178,8 +1213,12 @@ const grokBillingMoneySummary = computed(() => {
     usedPercent = Math.round(Math.min(100, Math.max(0, (used / limit) * 100)))
   REDACTED
   return {
-    used: formatGrokMoneyFromCents(used ?? 0),
-    limit: formatGrokMoneyFromCents(limit ?? 0),
+    prepaid: prepaid != null ? formatGrokMoney(prepaid) : null,
+    used: formatGrokMoney(used ?? 0),
+    limit: formatGrokMoney(limit ?? 0),
+    onDemandUsed: formatGrokMoney(onDemandUsed ?? 0),
+    onDemandCap: formatGrokMoney(onDemandCap ?? 0),
+    showOverage: (onDemandCap ?? 0) > 0 || (onDemandUsed ?? 0) > 0,
     usedPercent
   REDACTED
 REDACTED)
@@ -1208,6 +1247,10 @@ const grokIsFree = computed(() => {
   return billing != null
 REDACTED)
 const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
+const showGrokStandaloneLocalStats = computed(() => {
+  // Official 7d/30d bars already embed window_stats — avoid duplicate local row.
+  return !usageInfo.value?.seven_day && !usageInfo.value?.thirty_day
+REDACTED)
 const grokLocalUsage = computed(() => {
   if (grokIsFree.value) return grokFreeQuotaUsage.value
   return props.todayStats ||

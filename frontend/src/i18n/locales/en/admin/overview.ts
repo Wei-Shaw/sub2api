@@ -994,6 +994,12 @@ export default {
         finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      explicitPricing: {
+        title: 'Grok Search & Voice Pricing',
+        description: 'Optional per-group prices for web_search (per 1k calls) and Voice realtime / TTS / STT (USD). Leave empty if unused.',
+        searchPricePer1k: 'Search price per 1k calls (USD)',
+        pricePlaceholder: 'optional'
+      REDACTED,
       voicePricing: {
         title: 'Grok Voice Pricing',
         description: 'Optional per-group prices for Voice realtime / TTS / STT (USD). Leave empty to leave unpriced.',

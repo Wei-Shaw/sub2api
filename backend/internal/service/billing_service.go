@@ -1464,6 +1464,70 @@ REDACTED
 REDACTED
 REDACTED
 
+// CalculateSearchCost bills search/tool invocations (e.g. web_search) per 1k calls.
+// Uses explicit group search_price_per_1k when set; otherwise returns zero cost.
+func (s *BillingService) CalculateSearchCost(numCalls int, groupPricePer1k *float64, rateMultiplier float64) *CostBreakdown {
+	if numCalls <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+	if groupPricePer1k == nil || *groupPricePer1k <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+REDACTED
+	unit := *groupPricePer1k / 1000.0
+	total := unit * float64(numCalls)
+	return &CostBreakdown{
+		TotalCost:   total,
+		ActualCost:  total * rateMultiplier,
+		BillingMode: string(BillingModePerRequest),
+REDACTED
+REDACTED
+
+type audioPriceConfig struct {
+	RealtimePerMin *float64
+	TTSPerMChars   *float64
+	STTPerHour     *float64
+REDACTED
+
+// CalculateAudioCost supports realtime (per min), tts (per M chars), stt (per hr).
+func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64, groupConfig *audioPriceConfig, rateMultiplier float64) *CostBreakdown {
+	if durationOrUnits <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+	var unitPrice float64
+	switch strings.ToLower(mode) {
+	case "realtime":
+		if groupConfig != nil && groupConfig.RealtimePerMin != nil {
+			unitPrice = *groupConfig.RealtimePerMin
+	REDACTED
+	case "tts":
+		if groupConfig != nil && groupConfig.TTSPerMChars != nil {
+			unitPrice = *groupConfig.TTSPerMChars
+	REDACTED
+	case "stt":
+		if groupConfig != nil && groupConfig.STTPerHour != nil {
+			unitPrice = *groupConfig.STTPerHour
+	REDACTED
+	default:
+		return &CostBreakdown{REDACTED
+REDACTED
+	if unitPrice <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+REDACTED
+	total := unitPrice * durationOrUnits
+	return &CostBreakdown{
+		TotalCost:   total,
+		ActualCost:  total * rateMultiplier,
+		BillingMode: string(BillingModePerRequest),
+REDACTED
+REDACTED
+
+
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
 // imageSize: 图片尺寸 "1K", "2K", "4K"

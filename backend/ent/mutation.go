@@ -21899,6 +21899,8 @@ type GroupMutation struct {
 	video_model_prices                      *map[string]map[string]float64
 	web_search_price_per_call               *float64
 	addweb_search_price_per_call            *float64
+	search_price_per_1k                     *float64
+	addsearch_price_per_1k                  *float64
 	audio_realtime_price_per_min            *float64
 	addaudio_realtime_price_per_min         *float64
 	audio_tts_price_per_million_chars       *float64
@@ -23848,6 +23850,76 @@ func (m *GroupMutation) ResetWebSearchPricePerCall() {
 	delete(m.clearedFields, group.FieldWebSearchPricePerCall)
 REDACTED
 
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (m *GroupMutation) SetSearchPricePer1k(f float64) {
+	m.search_price_per_1k = &f
+	m.addsearch_price_per_1k = nil
+REDACTED
+
+// SearchPricePer1k returns the value of the "search_price_per_1k" field in the mutation.
+func (m *GroupMutation) SearchPricePer1k() (r float64, exists bool) {
+	v := m.search_price_per_1k
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSearchPricePer1k returns the old "search_price_per_1k" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSearchPricePer1k(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSearchPricePer1k is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSearchPricePer1k requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSearchPricePer1k: %w", err)
+REDACTED
+	return oldValue.SearchPricePer1k, nil
+REDACTED
+
+// AddSearchPricePer1k adds f to the "search_price_per_1k" field.
+func (m *GroupMutation) AddSearchPricePer1k(f float64) {
+	if m.addsearch_price_per_1k != nil {
+		*m.addsearch_price_per_1k += f
+REDACTED else {
+		m.addsearch_price_per_1k = &f
+REDACTED
+REDACTED
+
+// AddedSearchPricePer1k returns the value that was added to the "search_price_per_1k" field in this mutation.
+func (m *GroupMutation) AddedSearchPricePer1k() (r float64, exists bool) {
+	v := m.addsearch_price_per_1k
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (m *GroupMutation) ClearSearchPricePer1k() {
+	m.search_price_per_1k = nil
+	m.addsearch_price_per_1k = nil
+	m.clearedFields[group.FieldSearchPricePer1k] = struct{REDACTED{REDACTED
+REDACTED
+
+// SearchPricePer1kCleared returns if the "search_price_per_1k" field was cleared in this mutation.
+func (m *GroupMutation) SearchPricePer1kCleared() bool {
+	_, ok := m.clearedFields[group.FieldSearchPricePer1k]
+	return ok
+REDACTED
+
+// ResetSearchPricePer1k resets all changes to the "search_price_per_1k" field.
+func (m *GroupMutation) ResetSearchPricePer1k() {
+	m.search_price_per_1k = nil
+	m.addsearch_price_per_1k = nil
+	delete(m.clearedFields, group.FieldSearchPricePer1k)
+REDACTED
+
 // SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
 func (m *GroupMutation) SetAudioRealtimePricePerMin(f float64) {
 	m.audio_realtime_price_per_min = &f
@@ -25363,7 +25435,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 59)
+	fields := make([]string, 0, 60)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -25468,6 +25540,9 @@ REDACTED
 REDACTED
 	if m.web_search_price_per_call != nil {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
+REDACTED
+	if m.search_price_per_1k != nil {
+		fields = append(fields, group.FieldSearchPricePer1k)
 REDACTED
 	if m.audio_realtime_price_per_min != nil {
 		fields = append(fields, group.FieldAudioRealtimePricePerMin)
@@ -25619,6 +25694,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoModelPrices()
 	case group.FieldWebSearchPricePerCall:
 		return m.WebSearchPricePerCall()
+	case group.FieldSearchPricePer1k:
+		return m.SearchPricePer1k()
 	case group.FieldAudioRealtimePricePerMin:
 		return m.AudioRealtimePricePerMin()
 	case group.FieldAudioTtsPricePerMillionChars:
@@ -25746,6 +25823,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldVideoModelPrices(ctx)
 	case group.FieldWebSearchPricePerCall:
 		return m.OldWebSearchPricePerCall(ctx)
+	case group.FieldSearchPricePer1k:
+		return m.OldSearchPricePer1k(ctx)
 	case group.FieldAudioRealtimePricePerMin:
 		return m.OldAudioRealtimePricePerMin(ctx)
 	case group.FieldAudioTtsPricePerMillionChars:
@@ -26048,6 +26127,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetWebSearchPricePerCall(v)
 		return nil
+	case group.FieldSearchPricePer1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSearchPricePer1k(v)
+		return nil
 	case group.FieldAudioRealtimePricePerMin:
 		v, ok := value.(float64)
 		if !ok {
@@ -26275,6 +26361,9 @@ REDACTED
 	if m.addweb_search_price_per_call != nil {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
 REDACTED
+	if m.addsearch_price_per_1k != nil {
+		fields = append(fields, group.FieldSearchPricePer1k)
+REDACTED
 	if m.addaudio_realtime_price_per_min != nil {
 		fields = append(fields, group.FieldAudioRealtimePricePerMin)
 REDACTED
@@ -26344,6 +26433,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedVideoPrice1080p()
 	case group.FieldWebSearchPricePerCall:
 		return m.AddedWebSearchPricePerCall()
+	case group.FieldSearchPricePer1k:
+		return m.AddedSearchPricePer1k()
 	case group.FieldAudioRealtimePricePerMin:
 		return m.AddedAudioRealtimePricePerMin()
 	case group.FieldAudioTtsPricePerMillionChars:
@@ -26490,6 +26581,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 	REDACTED
 		m.AddWebSearchPricePerCall(v)
 		return nil
+	case group.FieldSearchPricePer1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSearchPricePer1k(v)
+		return nil
 	case group.FieldAudioRealtimePricePerMin:
 		v, ok := value.(float64)
 		if !ok {
@@ -26603,6 +26701,9 @@ REDACTED
 	if m.FieldCleared(group.FieldWebSearchPricePerCall) {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
 REDACTED
+	if m.FieldCleared(group.FieldSearchPricePer1k) {
+		fields = append(fields, group.FieldSearchPricePer1k)
+REDACTED
 	if m.FieldCleared(group.FieldAudioRealtimePricePerMin) {
 		fields = append(fields, group.FieldAudioRealtimePricePerMin)
 REDACTED
@@ -26676,6 +26777,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldWebSearchPricePerCall:
 		m.ClearWebSearchPricePerCall()
+		return nil
+	case group.FieldSearchPricePer1k:
+		m.ClearSearchPricePer1k()
 		return nil
 	case group.FieldAudioRealtimePricePerMin:
 		m.ClearAudioRealtimePricePerMin()
@@ -26807,6 +26911,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldWebSearchPricePerCall:
 		m.ResetWebSearchPricePerCall()
+		return nil
+	case group.FieldSearchPricePer1k:
+		m.ResetSearchPricePer1k()
 		return nil
 	case group.FieldAudioRealtimePricePerMin:
 		m.ResetAudioRealtimePricePerMin()

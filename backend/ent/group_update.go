@@ -679,6 +679,33 @@ func (_u *GroupUpdate) ClearWebSearchPricePerCall() *GroupUpdate {
 	return _u
 REDACTED
 
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (_u *GroupUpdate) SetSearchPricePer1k(v float64) *GroupUpdate {
+	_u.mutation.ResetSearchPricePer1k()
+	_u.mutation.SetSearchPricePer1k(v)
+	return _u
+REDACTED
+
+// SetNillableSearchPricePer1k sets the "search_price_per_1k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSearchPricePer1k(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetSearchPricePer1k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSearchPricePer1k adds value to the "search_price_per_1k" field.
+func (_u *GroupUpdate) AddSearchPricePer1k(v float64) *GroupUpdate {
+	_u.mutation.AddSearchPricePer1k(v)
+	return _u
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (_u *GroupUpdate) ClearSearchPricePer1k() *GroupUpdate {
+	_u.mutation.ClearSearchPricePer1k()
+	return _u
+REDACTED
+
 // SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
 func (_u *GroupUpdate) SetAudioRealtimePricePerMin(v float64) *GroupUpdate {
 	_u.mutation.ResetAudioRealtimePricePerMin()
@@ -1397,6 +1424,11 @@ REDACTED
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.SearchPricePer1k(); ok {
+		if err := group.SearchPricePer1kValidator(v); err != nil {
+			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
 		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
 			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)REDACTED
@@ -1628,6 +1660,15 @@ REDACTED
 REDACTED
 	if _u.mutation.WebSearchPricePerCallCleared() {
 		_spec.ClearField(group.FieldWebSearchPricePerCall, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.SearchPricePer1k(); ok {
+		_spec.SetField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSearchPricePer1k(); ok {
+		_spec.AddField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.SearchPricePer1kCleared() {
+		_spec.ClearField(group.FieldSearchPricePer1k, field.TypeFloat64)
 REDACTED
 	if value, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
 		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
@@ -2713,6 +2754,33 @@ func (_u *GroupUpdateOne) ClearWebSearchPricePerCall() *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (_u *GroupUpdateOne) SetSearchPricePer1k(v float64) *GroupUpdateOne {
+	_u.mutation.ResetSearchPricePer1k()
+	_u.mutation.SetSearchPricePer1k(v)
+	return _u
+REDACTED
+
+// SetNillableSearchPricePer1k sets the "search_price_per_1k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSearchPricePer1k(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSearchPricePer1k(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSearchPricePer1k adds value to the "search_price_per_1k" field.
+func (_u *GroupUpdateOne) AddSearchPricePer1k(v float64) *GroupUpdateOne {
+	_u.mutation.AddSearchPricePer1k(v)
+	return _u
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (_u *GroupUpdateOne) ClearSearchPricePer1k() *GroupUpdateOne {
+	_u.mutation.ClearSearchPricePer1k()
+	return _u
+REDACTED
+
 // SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
 func (_u *GroupUpdateOne) SetAudioRealtimePricePerMin(v float64) *GroupUpdateOne {
 	_u.mutation.ResetAudioRealtimePricePerMin()
@@ -3444,6 +3512,11 @@ REDACTED
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.SearchPricePer1k(); ok {
+		if err := group.SearchPricePer1kValidator(v); err != nil {
+			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
 		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
 			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)REDACTED
@@ -3692,6 +3765,15 @@ REDACTED
 REDACTED
 	if _u.mutation.WebSearchPricePerCallCleared() {
 		_spec.ClearField(group.FieldWebSearchPricePerCall, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.SearchPricePer1k(); ok {
+		_spec.SetField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSearchPricePer1k(); ok {
+		_spec.AddField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.SearchPricePer1kCleared() {
+		_spec.ClearField(group.FieldSearchPricePer1k, field.TypeFloat64)
 REDACTED
 	if value, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
 		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)

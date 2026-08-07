@@ -89,6 +89,8 @@ type Group struct {
 	VideoModelPrices map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）
 	WebSearchPricePerCall *float64 `json:"web_search_price_per_call,omitempty"`
+	// 搜索工具价格 per 1000 calls（web_search 等）
+	SearchPricePer1k *float64 `json:"search_price_per_1k,omitempty"`
 	// Voice realtime 每分钟价格（USD）
 	AudioRealtimePricePerMin *float64 `json:"audio_realtime_price_per_min,omitempty"`
 	// TTS 每百万字符价格（USD）
@@ -247,7 +249,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -500,6 +502,13 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.WebSearchPricePerCall = new(float64)
 				*_m.WebSearchPricePerCall = value.Float64
+		REDACTED
+		case group.FieldSearchPricePer1k:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field search_price_per_1k", values[i])
+		REDACTED else if value.Valid {
+				_m.SearchPricePer1k = new(float64)
+				*_m.SearchPricePer1k = value.Float64
 		REDACTED
 		case group.FieldAudioRealtimePricePerMin:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -864,6 +873,11 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.WebSearchPricePerCall; v != nil {
 		builder.WriteString("web_search_price_per_call=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.SearchPricePer1k; v != nil {
+		builder.WriteString("search_price_per_1k=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 REDACTED
 	builder.WriteString(", ")

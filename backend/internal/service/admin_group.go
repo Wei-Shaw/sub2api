@@ -328,6 +328,7 @@ REDACTED
 	videoPrice720P := normalizePrice(input.VideoPrice720P)
 	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
 	webSearchPricePerCall := normalizePrice(input.WebSearchPricePerCall)
+	searchPricePer1k := normalizePrice(input.SearchPricePer1k)
 	audioRealtimePricePerMin := normalizePrice(input.AudioRealtimePricePerMin)
 	audioTTSPricePerMillionChars := normalizePrice(input.AudioTTSPricePerMillionChars)
 	audioSTTPricePerHour := normalizePrice(input.AudioSTTPricePerHour)
@@ -481,6 +482,7 @@ REDACTED
 		VideoPrice1080P:                 videoPrice1080P,
 		VideoModelPrices:                NormalizeVideoModelPrices(input.VideoModelPrices),
 		WebSearchPricePerCall:           webSearchPricePerCall,
+		SearchPricePer1k:                searchPricePer1k,
 		AudioRealtimePricePerMin:        audioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    audioTTSPricePerMillionChars,
 		AudioSTTPricePerHour:            audioSTTPricePerHour,
@@ -768,6 +770,9 @@ REDACTED
 REDACTED
 	if input.WebSearchPricePerCall != nil {
 		group.WebSearchPricePerCall = normalizePrice(input.WebSearchPricePerCall)
+REDACTED
+	if input.SearchPricePer1k != nil {
+		group.SearchPricePer1k = normalizePrice(input.SearchPricePer1k)
 REDACTED
 	if input.AudioRealtimePricePerMin != nil {
 		group.AudioRealtimePricePerMin = normalizePrice(input.AudioRealtimePricePerMin)

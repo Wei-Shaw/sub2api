@@ -84,6 +84,7 @@ REDACTED
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
+		SetNillableSearchPricePer1k(groupIn.SearchPricePer1k).
 		SetNillableAudioRealtimePricePerMin(groupIn.AudioRealtimePricePerMin).
 		SetNillableAudioTtsPricePerMillionChars(groupIn.AudioTTSPricePerMillionChars).
 		SetNillableAudioSttPricePerHour(groupIn.AudioSTTPricePerHour).
@@ -331,6 +332,11 @@ REDACTED
 		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
 REDACTED else {
 		builder = builder.ClearWebSearchPricePerCall()
+REDACTED
+	if groupIn.SearchPricePer1k != nil {
+		builder = builder.SetSearchPricePer1k(*groupIn.SearchPricePer1k)
+REDACTED else {
+		builder = builder.ClearSearchPricePer1k()
 REDACTED
 	if groupIn.AudioRealtimePricePerMin != nil {
 		builder = builder.SetAudioRealtimePricePerMin(*groupIn.AudioRealtimePricePerMin)

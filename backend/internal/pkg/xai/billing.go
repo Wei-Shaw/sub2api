@@ -45,14 +45,22 @@ type BillingProductUsage struct {
 REDACTED
 
 // BillingConfig is the nested config object from /v1/billing responses.
+// Weekly (`?format=credits`) and monthly (`/billing`) share this shape; absolute
+// money fields typically appear on the credits (prepaid/on-demand) or monthly
+// (limit/used) responses.
 type BillingConfig struct {
-	CurrentPeriod      *BillingPeriod        `json:"currentPeriod,omitempty"`
-	CreditUsagePercent *float64              `json:"creditUsagePercent,omitempty"`
-	ProductUsage       []BillingProductUsage `json:"productUsage,omitempty"`
-	MonthlyLimit       json.RawMessage       `json:"monthlyLimit,omitempty"`
-	Used               json.RawMessage       `json:"used,omitempty"`
-	BillingPeriodStart string                `json:"billingPeriodStart,omitempty"`
-	BillingPeriodEnd   string                `json:"billingPeriodEnd,omitempty"`
+	CurrentPeriod        *BillingPeriod        `json:"currentPeriod,omitempty"`
+	CreditUsagePercent   *float64              `json:"creditUsagePercent,omitempty"`
+	ProductUsage         []BillingProductUsage `json:"productUsage,omitempty"`
+	MonthlyLimit         json.RawMessage       `json:"monthlyLimit,omitempty"`
+	Used                 json.RawMessage       `json:"used,omitempty"`
+	OnDemandCap          json.RawMessage       `json:"onDemandCap,omitempty"`
+	OnDemandUsed         json.RawMessage       `json:"onDemandUsed,omitempty"`
+	PrepaidBalance       json.RawMessage       `json:"prepaidBalance,omitempty"`
+	IsUnifiedBillingUser bool                  `json:"isUnifiedBillingUser,omitempty"`
+	TopUpMethod          string                `json:"topUpMethod,omitempty"`
+	BillingPeriodStart   string                `json:"billingPeriodStart,omitempty"`
+	BillingPeriodEnd     string                `json:"billingPeriodEnd,omitempty"`
 REDACTED
 
 // BillingPayload is the top-level body from /v1/billing.
@@ -67,6 +75,8 @@ type BillingProductSummary struct {
 REDACTED
 
 // BillingSummary is the merged weekly + monthly billing view.
+// Cents fields remain the authoritative monthly numbers; dollar fields are the
+// operator-facing absolute money view (prepaid / on-demand / monthly $).
 type BillingSummary struct {
 	PeriodType         string                  `json:"period_type,omitempty"` // weekly | monthly | unknown
 	UsagePercent       *float64                `json:"usage_percent,omitempty"`
@@ -79,17 +89,26 @@ type BillingSummary struct {
 	BillingPeriodStart string                  `json:"billing_period_start,omitempty"`
 	BillingPeriodEnd   string                  `json:"billing_period_end,omitempty"`
 	UsedPercent        *float64                `json:"used_percent,omitempty"`
-	Plan               string                  `json:"plan,omitempty"` // SuperGrok | SuperGrok Heavy | ""
-	StatusCode         int                     `json:"status_code,omitempty"`
-	WeeklyStatusCode   int                     `json:"weekly_status_code,omitempty"`
-	MonthlyStatusCode  int                     `json:"monthly_status_code,omitempty"`
-	Source             string                  `json:"source,omitempty"`
-	FetchedAt          string                  `json:"fetched_at,omitempty"`
-	UpdatedAt          string                  `json:"updated_at,omitempty"`
-	WeeklyUpdatedAt    string                  `json:"weekly_updated_at,omitempty"`
-	MonthlyUpdatedAt   string                  `json:"monthly_updated_at,omitempty"`
-	Partial            bool                    `json:"partial,omitempty"`
-	FailedWindows      []string                `json:"failed_windows,omitempty"`
+	// Absolute money (USD). Prepaid/on-demand come from credits probe as dollars.
+	// MonthlyLimit/MonthlyUsed are cents/100 for consistent $ display.
+	PrepaidBalance       *float64 `json:"prepaid_balance,omitempty"`
+	MonthlyLimit         *float64 `json:"monthly_limit,omitempty"`
+	MonthlyUsed          *float64 `json:"monthly_used,omitempty"`
+	OnDemandCap          *float64 `json:"on_demand_cap,omitempty"`
+	OnDemandUsed         *float64 `json:"on_demand_used,omitempty"`
+	TopUpMethod          string   `json:"top_up_method,omitempty"`
+	IsUnifiedBillingUser bool     `json:"is_unified_billing_user,omitempty"`
+	Plan                 string   `json:"plan,omitempty"` // SuperGrok | SuperGrok Heavy | ""
+	StatusCode           int      `json:"status_code,omitempty"`
+	WeeklyStatusCode     int      `json:"weekly_status_code,omitempty"`
+	MonthlyStatusCode    int      `json:"monthly_status_code,omitempty"`
+	Source               string   `json:"source,omitempty"`
+	FetchedAt            string   `json:"fetched_at,omitempty"`
+	UpdatedAt            string   `json:"updated_at,omitempty"`
+	WeeklyUpdatedAt      string   `json:"weekly_updated_at,omitempty"`
+	MonthlyUpdatedAt     string   `json:"monthly_updated_at,omitempty"`
+	Partial              bool     `json:"partial,omitempty"`
+	FailedWindows        []string `json:"failed_windows,omitempty"`
 REDACTED
 
 // BuildBillingURL builds weekly or monthly billing URL against the CLI chat proxy.
@@ -181,6 +200,11 @@ REDACTED
 
 	monthlyLimit := parseCentValue(config.MonthlyLimit)
 	used := parseCentValue(config.Used)
+	// Absolute money on credits responses is dollar-denominated ({"val": 12REDACTED).
+	// Monthly limit/used are cents (same as MonthlyLimitCents / UsedCents).
+	prepaid := parseCentValue(config.PrepaidBalance)
+	onDemandCap := parseCentValue(config.OnDemandCap)
+	onDemandUsed := parseCentValue(config.OnDemandUsed)
 	billingStart := strings.TrimSpace(config.BillingPeriodStart)
 	billingEnd := strings.TrimSpace(config.BillingPeriodEnd)
 
@@ -200,7 +224,7 @@ REDACTED
 		usedPercent = &v
 REDACTED
 
-	hasWeekly := creditUsage != nil || periodType == "weekly" || len(products) > 0
+	hasWeekly := creditUsage != nil || periodType == "weekly" || len(products) > 0 || prepaid != nil || onDemandCap != nil || onDemandUsed != nil
 	hasMonthly := monthlyLimit != nil || used != nil || (!hasWeekly && billingEnd != "")
 	if !hasWeekly && !hasMonthly {
 		return nil
@@ -230,6 +254,24 @@ REDACTED
 		summary.BillingPeriodEnd = billingEnd
 REDACTED
 	summary.UsedPercent = usedPercent
+	summary.PrepaidBalance = prepaid
+	if onDemandCap != nil {
+		summary.OnDemandCap = onDemandCap
+REDACTED
+	if onDemandUsed != nil {
+		summary.OnDemandUsed = onDemandUsed
+REDACTED
+	// Expose monthly cents as dollars for UI absolute rows.
+	if monthlyLimit != nil {
+		v := *monthlyLimit / 100
+		summary.MonthlyLimit = &v
+REDACTED
+	if used != nil {
+		v := *used / 100
+		summary.MonthlyUsed = &v
+REDACTED
+	summary.TopUpMethod = strings.TrimSpace(config.TopUpMethod)
+	summary.IsUnifiedBillingUser = config.IsUnifiedBillingUser
 	summary.Plan = resolvePlan(monthlyLimit)
 	return summary
 REDACTED
@@ -259,6 +301,22 @@ REDACTED
 		out.PeriodStart = weekly.PeriodStart
 		out.PeriodEnd = weekly.PeriodEnd
 		out.ProductUsage = weekly.ProductUsage
+		// Absolute prepaid / on-demand usually ride the credits (weekly) response.
+		if weekly.PrepaidBalance != nil {
+			out.PrepaidBalance = weekly.PrepaidBalance
+	REDACTED
+		if weekly.OnDemandCap != nil {
+			out.OnDemandCap = weekly.OnDemandCap
+	REDACTED
+		if weekly.OnDemandUsed != nil {
+			out.OnDemandUsed = weekly.OnDemandUsed
+	REDACTED
+		if weekly.TopUpMethod != "" {
+			out.TopUpMethod = weekly.TopUpMethod
+	REDACTED
+		if weekly.IsUnifiedBillingUser {
+			out.IsUnifiedBillingUser = true
+	REDACTED
 		out.WeeklyUpdatedAt = now
 REDACTED
 	if monthlyOK && monthly != nil {
@@ -271,6 +329,15 @@ REDACTED
 		out.BillingPeriodStart = monthly.BillingPeriodStart
 		out.BillingPeriodEnd = monthly.BillingPeriodEnd
 		out.UsedPercent = monthly.UsedPercent
+		out.MonthlyLimit = monthly.MonthlyLimit
+		out.MonthlyUsed = monthly.MonthlyUsed
+		// Monthly probe may also carry on-demand cap when credits omitted it.
+		if monthly.OnDemandCap != nil && out.OnDemandCap == nil {
+			out.OnDemandCap = monthly.OnDemandCap
+	REDACTED
+		if monthly.OnDemandUsed != nil && out.OnDemandUsed == nil {
+			out.OnDemandUsed = monthly.OnDemandUsed
+	REDACTED
 		out.Plan = monthly.Plan
 		out.MonthlyUpdatedAt = now
 REDACTED

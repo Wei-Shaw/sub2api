@@ -991,6 +991,12 @@ export default {
         finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
       REDACTED,
+      explicitPricing: {
+        title: 'Grok 搜索与 Voice 定价',
+        description: '分组级 web_search（每千次）与 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+        searchPricePer1k: '搜索每千次价格（USD）',
+        pricePlaceholder: '可选'
+      REDACTED,
       voicePricing: {
         title: 'Grok Voice 定价',
         description: '分组级 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',

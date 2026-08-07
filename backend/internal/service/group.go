@@ -63,6 +63,8 @@ type Group struct {
 	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
 	WebSearchPricePerCall *float64
 
+	// 搜索工具显式定价（per 1k calls）。
+	SearchPricePer1k *float64
 	// Grok Voice 显式定价（分组级，不按文本 RateMultiplier）。
 	AudioRealtimePricePerMin     *float64
 	AudioTTSPricePerMillionChars *float64
@@ -446,4 +448,12 @@ func profitControlPlatformSupported(platform string) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+// GetSearchPricePer1k returns explicit search/tool price per 1k calls if configured.
+func (g *Group) GetSearchPricePer1k() *float64 {
+	if g == nil {
+		return nil
+REDACTED
+	return g.SearchPricePer1k
 REDACTED

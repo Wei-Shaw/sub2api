@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,10 +21,13 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
+	"github.com/gin-gonic/gin"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -570,6 +574,11 @@ type ClaudeUsage struct {
 REDACTED
 
 // ForwardResult 转发结果
+type AudioUsage struct {
+	Mode            string  // realtime | tts | stt
+	DurationOrUnits float64 // minutes / million-chars / hours
+REDACTED
+
 type ForwardResult struct {
 	RequestID string
 	Usage     ClaudeUsage
@@ -591,6 +600,8 @@ type ForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	SearchCount        int
+	AudioUsage         *AudioUsage
 REDACTED
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -1221,6 +1232,15 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 		return accessToken, "oauth", nil
 REDACTED
 
+	// Grok OAuth: prefer access_token from credentials (background refresher keeps it warm).
+	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth {
+		accessToken := account.GetGrokAccessToken()
+		if accessToken == "" {
+			return "", "", errors.New("grok access_token not found in credentials")
+	REDACTED
+		return accessToken, "oauth", nil
+REDACTED
+
 	// 其他情况（Gemini 有自己的 TokenProvider，setup-token 类型等）直接从账号读取
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
@@ -1232,6 +1252,67 @@ REDACTED
 
 // GetAvailableModels returns the list of models available for a group
 // It aggregates model_mapping keys from all schedulable accounts in the group
+
+// DoGrokNativeResponsesJSON POSTs a non-streaming Responses body to the account's
+// Grok upstream and returns the raw JSON body. Used by /v1/web_search.
+func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, c *gin.Context, account *Account, body []byte) ([]byte, error) {
+	if s == nil || s.httpUpstream == nil {
+		return nil, errors.New("http upstream not configured")
+REDACTED
+	if account == nil {
+		return nil, errors.New("account is required")
+REDACTED
+	if !account.IsGrok() {
+		return nil, errors.New("grok account required")
+REDACTED
+	token, _, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("get grok token: %w", err)
+REDACTED
+	targetURL, err := buildGrokResponsesURL(account, nil)
+	if err != nil {
+		return nil, err
+REDACTED
+	if json.Valid(body) {
+		if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model == "" {
+			if patched, patchErr := sjson.SetBytes(body, "model", xai.DefaultTextModel); patchErr == nil {
+				body = patched
+		REDACTED
+	REDACTED
+REDACTED
+	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build grok responses request: %w", err)
+REDACTED
+	upstreamReq.Header.Set("Authorization", "Bearer "+token)
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Accept", "application/json")
+	upstreamReq.Header.Set("User-Agent", resolveGrokUpstreamUserAgent(c))
+	applyGrokCLIHeaders(upstreamReq.Header)
+	account.ApplyHeaderOverrides(upstreamReq.Header)
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, fmt.Errorf("grok native search upstream: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+	respBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if readErr != nil {
+		return nil, fmt.Errorf("read grok native search response: %w", readErr)
+REDACTED
+	if resp.StatusCode >= 400 {
+		msg := string(respBytes)
+		if len(msg) > 200 {
+			msg = msg[:200]
+	REDACTED
+		return nil, fmt.Errorf("grok upstream %d: %s", resp.StatusCode, msg)
+REDACTED
+	return respBytes, nil
+REDACTED
+
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {

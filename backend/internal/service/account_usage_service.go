@@ -212,7 +212,9 @@ type UsageInfo struct {
 	GrokLocalUsage24h      *WindowStats        `json:"grok_local_usage_24h,omitempty"`
 	GrokLocalUsage7d       *WindowStats        `json:"grok_local_usage_7d,omitempty"`
 	GrokLocalUsageMonthly  *WindowStats        `json:"grok_local_usage_monthly,omitempty"`
-	GrokBilling            *xai.BillingSummary `json:"grok_billing,omitempty"`
+	// ThirtyDay is the official monthly billing window (used/monthlyLimit %).
+	ThirtyDay   *UsageProgress     `json:"thirty_day,omitempty"`
+	GrokBilling *xai.BillingSummary `json:"grok_billing,omitempty"`
 
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
@@ -1123,6 +1125,13 @@ REDACTED
 			usage.GrokLocalUsage24h, usage.GrokLocalUsage7d, usage.GrokLocalUsageMonthly = grokLocalUsageForQuota(
 				ctx, s.usageLogRepo, account.ID, usage.GrokBilling, time.Now().UTC(),
 			)
+	REDACTED
+		// Attach local window stats to official 7d/30d progress bars.
+		if usage.SevenDay != nil && usage.GrokLocalUsage7d != nil {
+			usage.SevenDay.WindowStats = usage.GrokLocalUsage7d
+	REDACTED
+		if usage.ThirtyDay != nil && usage.GrokLocalUsageMonthly != nil {
+			usage.ThirtyDay.WindowStats = usage.GrokLocalUsageMonthly
 	REDACTED
 REDACTED
 

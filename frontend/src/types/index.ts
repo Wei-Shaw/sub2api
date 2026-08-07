@@ -573,6 +573,7 @@ export interface Group {
   // Codex 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
   web_search_price_per_call: number | null
   // Grok Voice 显式定价（分组级）
+  search_price_per_1k: number | null
   audio_realtime_price_per_min: number | null
   audio_tts_price_per_million_chars: number | null
   audio_stt_price_per_hour: number | null
@@ -776,6 +777,7 @@ export interface CreateGroupRequest {
   video_price_1080p?: number | null
   video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
   audio_realtime_price_per_min?: number | null
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
@@ -835,6 +837,7 @@ export interface UpdateGroupRequest {
   video_price_1080p?: number | null
   video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
   audio_realtime_price_per_min?: number | null
   audio_tts_price_per_million_chars?: number | null
   audio_stt_price_per_hour?: number | null
@@ -1276,6 +1279,14 @@ export interface GrokBillingSummary {
   billing_period_start?: string
   billing_period_end?: string
   used_percent?: number | null
+  /** Absolute USD money from billing probes */
+  prepaid_balance?: number | null
+  monthly_limit?: number | null
+  monthly_used?: number | null
+  on_demand_cap?: number | null
+  on_demand_used?: number | null
+  top_up_method?: string
+  is_unified_billing_user?: boolean
   plan?: string
   status_code?: number
   source?: string
@@ -1294,6 +1305,7 @@ export interface AccountUsageInfo {
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
   seven_day_fable?: UsageProgress | null
+  thirty_day?: UsageProgress | null
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
