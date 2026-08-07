@@ -86,6 +86,9 @@ REDACTED
 func (s *GrokQuotaService) QueryQuota(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
 	billingResult, billingErr := s.ProbeBilling(ctx, accountID)
 	if billingErr == nil && billingResult != nil && grokBillingHasAuthoritativeQuota(billingResult.Billing) {
+		if acc, err := s.accountRepo.GetByID(ctx, accountID); err == nil {
+			s.scheduleGrokObservedModelsSync(acc)
+	REDACTED
 		return billingResult, nil
 REDACTED
 
@@ -110,6 +113,9 @@ REDACTED
 		probeResult.LocalUsage7d = billingResult.LocalUsage7d
 		probeResult.LocalUsageMonthly = billingResult.LocalUsageMonthly
 		probeResult.Persisted = probeResult.Persisted || billingResult.Persisted
+REDACTED
+	if acc, err := s.accountRepo.GetByID(ctx, accountID); err == nil {
+		s.scheduleGrokObservedModelsSync(acc)
 REDACTED
 	return probeResult, nil
 REDACTED

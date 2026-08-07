@@ -1200,6 +1200,10 @@ REDACTED
 	s.ensureOpenAIPrivacy(ctx, account)
 	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
 	s.ensureAntigravityPrivacy(ctx, account)
+	// Grok: clear soft reauth flag after a successful credential refresh.
+	if account != nil && account.Platform == PlatformGrok {
+		clearGrokNeedsReauthExtra(ctx, s.accountRepo, account.ID)
+REDACTED
 REDACTED
 
 func (s *TokenRefreshService) postRefreshStateSyncWithCleanup(parent context.Context, account *Account) {

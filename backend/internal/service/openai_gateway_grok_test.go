@@ -2501,6 +2501,23 @@ REDACTED, "\n")
 REDACTED
 REDACTED
 
+func TestHandleGrokAccountUpstreamErrorSpendingLimitUsesLongCool(t *testing.T) {
+	// Spending-limit now uses a 24h cool + reauth mark (was 30m). Keep a focused
+	// regression so ops timing changes are intentional.
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	account := &Account{ID: 2570, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	before := time.Now()
+	body := []byte(`{"code":"personal-team-blocked:spending-limit","error":"You have run out of credits"REDACTED`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, "grok spending limit", repo.lastTempUnschedReason)
+	require.Greater(t, repo.lastTempUnschedUntil, before.Add(23*time.Hour))
+	require.Less(t, repo.lastTempUnschedUntil, before.Add(25*time.Hour))
+REDACTED
+
 func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -2573,7 +2590,7 @@ func TestHandleGrokAccountUpstreamErrorSpendingLimit403TempUnschedules(t *testin
 	require.Equal(t, 1, repo.tempUnschedCalls)
 	require.Equal(t, account.ID, repo.lastTempUnschedID)
 	require.Equal(t, "grok spending limit", repo.lastTempUnschedReason)
-	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.WithinDuration(t, before.Add(24*time.Hour), repo.lastTempUnschedUntil, 2*time.Second)
 	require.True(t, isGrokSpendingLimitError(body))
 REDACTED
 

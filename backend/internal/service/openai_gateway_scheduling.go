@@ -138,6 +138,13 @@ REDACTED
 //  5. Header: x-grok-conv-id (Grok groups only)
 //  6. Body:   prompt_cache_key
 //  7. Body:   content-based fallback (model + system + tools + first user message)
+//
+// Grok sticky affinity is intentionally separate from the upstream
+// prompt_cache_key identity (resolveGrokCacheIdentity): sticky pins an OAuth
+// account for multi-turn routing, while the cache identity is tenant+model
+// isolated for xAI server-side prompt cache. For Grok groups we scope the
+// sticky seed with the client-requested model so switching models does not
+// inherit a stale account binding (grok2api affinityKey pattern).
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
@@ -151,9 +158,30 @@ REDACTED
 		return ""
 REDACTED
 
+	if isGrokRequestContext(c) {
+		sessionID = grokStickyAffinitySeed(sessionID, body)
+REDACTED
+
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
+REDACTED
+
+// grokStickyAffinitySeed scopes sticky routing by model without changing the
+// upstream prompt_cache_key written by applyGrokResponsesCacheIdentity.
+func grokStickyAffinitySeed(sessionID string, body []byte) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ""
+REDACTED
+	model := ""
+	if len(body) > 0 {
+		model = strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+REDACTED
+	if model == "" {
+		return "grok-affinity:v1:" + sessionID
+REDACTED
+	return "grok-affinity:v1:" + model + ":" + sessionID
 REDACTED
 
 // GenerateSessionHashWithFallback 先按常规信号生成会话哈希；
