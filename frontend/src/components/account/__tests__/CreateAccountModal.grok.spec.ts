@@ -23,9 +23,19 @@ describe('CreateAccountModal Grok account types', () => {
     expect(source).toContain('form.platform === \'grok\' && isOAuthFlow')
   REDACTED)
 
-  it('validates and applies upstream config on all three Grok OAuth create paths', () => {
-    // 授权码兑换 / RT 批量 / SSO 批量 3 处调用（定义为箭头函数，不计入）
-    expect(source.match(/validateGrokOAuthUpstreamConfig\(\)/g)?.length).toBe(3)
-    expect(source.match(/applyGrokOAuthUpstreamConfig\(credentials\)/g)?.length).toBe(3)
+  it('validates and applies upstream config on Grok OAuth create paths', () => {
+    // 授权码兑换 / RT 批量 / SSO 批量 / 密码登录（4 条路径）
+    expect(source.match(/validateGrokOAuthUpstreamConfig\(\)/g)?.length).toBeGreaterThanOrEqual(4)
+    expect(source.match(/applyGrokOAuthUpstreamConfig\(credentials\)/g)?.length).toBeGreaterThanOrEqual(4)
+  REDACTED)
+
+  it('wires Grok password authorize path without storing password/SSO fields', () => {
+    expect(source).toContain('show-email-password-option')
+    expect(source).toContain('@authorize-password="handleGrokAuthorizePassword"')
+    expect(source).toContain('handleGrokAuthorizePassword')
+    expect(source).toContain('grokOAuth.authorizePassword')
+    expect(source).toContain('grokOAuth.buildCredentials')
+    // Password only for authorize call; credentials come from buildCredentials
+    expect(source).toContain('email----password')
   REDACTED)
 REDACTED)

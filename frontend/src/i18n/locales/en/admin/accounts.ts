@@ -1009,6 +1009,17 @@ export default {
           ssoCookieLabel: 'Grok Web SSO Key',
           ssoCookiePlaceholder: 'One SSO key per line\nSupports multiple, one per line',
           ssoCookieHint: 'One SSO key per line. Multiple keys are imported with 3-way concurrency; expect about 90 seconds per batch. Use a matching-region proxy if needed.',
+          emailPasswordAuth: 'Email + password',
+          emailPasswordDesc:
+            'Sign in with a Grok web email and password. The server uses the password only to obtain an ephemeral SSO cookie, then converts it to Build OAuth credentials. Neither the password nor raw SSO is stored on the account.',
+          emailPasswordInputLabel: 'email----password',
+          emailPasswordPlaceholder: 'user@example.com----your-password\nMultiple lines supported',
+          emailPasswordHint:
+            'Format: email----password (password may contain -). Requires YesCaptcha keys; use a matching-region proxy when needed.',
+          pleaseEnterPassword: 'Please enter email----password (one per line)',
+          pleaseEnterSSOToken: 'Please enter an SSO token',
+          failedToValidateSSO: 'Failed to validate Grok SSO',
+          failedToAuthorizePassword: 'Grok password authorization failed',
           convertingSSO: 'Converting...',
           convertSSOAndCreate: 'Convert & Create Account',
           validating: 'Validating...',
