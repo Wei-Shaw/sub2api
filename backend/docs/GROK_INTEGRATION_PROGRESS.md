@@ -23,6 +23,20 @@
 - `capacity_provider_grok.go`：依赖 legacy 的通用容量预测子系统与迁移，无法独立纳入 Grok PR。
 - legacy merge/CI、重复 compact、跨平台大包和删除 main 能力的提交均未搬运。
 
+## personal-dev 覆盖矩阵
+
+| legacy 能力/路径 | 结论 |
+|---|---|
+| `pkg/xai/models`, OAuth/CLI identity、billing/quota | 已在 PR 按 main 接口重构，并补运行时模型映射配置、官方 CLI 身份和账单绝对金额 |
+| `pkg/xai/sso_device`, password/SSO admin flow | 已重构；raw SSO/密码不落库，CookieJar 隔离，token 限长，OAuth 凭证形状统一 |
+| `grok_token_provider`, `grok_credential_failure` | main 已有等价刷新和失败分类；PR 补 reauth、模型级 quota block、team cooldown 与刷新竞态保护 |
+| `grok_quota_*`, free gate、import probe | 已重构；本地 rolling usage、失败关闭媒体资格、管理探测绕过、有界去重队列均覆盖 |
+| `grok_media`, audio/voice、video billing | 已重构；模型族价格、参数规范化、status done 后原子一次性计费和错误语义均覆盖 |
+| `openai_gateway_grok*` chat/tools/cache/SSE | 以 main 的 Responses/chat bridge、tool protocol、cache、compact 为准增量增强；未搬运删除 compact 的分叉 |
+| web search、admin settings、前端 OAuth/SSO/password/monitor | 已在同一 PR 完成后端路由、计费字段、设置项、入口和回归测试 |
+| migration 157/176/181/182/190 | 旧分叉重复编号或清理迁移；main 已有 Grok schema，PR 新字段使用当前迁移序号，不复用旧编号 |
+| timeline、capacity provider、HTTP active-delta | 仅这三类明确排除，理由见上节；均非 main 基线功能正确性能力 |
+
 ## 原则
 
 以 main 为底重写，不整文件 pick personal-dev；migration 使用新序号（如 217）。
