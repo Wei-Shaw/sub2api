@@ -117,6 +117,26 @@ func TestNewConfluxRPCPoolRequiresEndpoints(t *testing.T) {
 	require.ErrorIs(t, err, ErrConfluxRPCUnavailable)
 }
 
+func TestNewConfluxRPCPoolIsolatesDialFailure(t *testing.T) {
+	healthy := successfulConfluxRPCCaller("0x406")
+	pool, err := NewConfluxRPCPool(context.Background(), []string{"https://bad.example", "https://good.example"}, ConfluxRPCPoolOptions{
+		dial: func(_ context.Context, rawURL string, _ *http.Client) (confluxRPCCaller, error) {
+			if rawURL == "https://bad.example" {
+				return nil, errors.New("dial failed for secret endpoint")
+			}
+			return healthy, nil
+		},
+	})
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+
+	var chainID string
+	require.NoError(t, pool.CallContext(context.Background(), &chainID, "eth_chainId"))
+	require.Equal(t, "0x406", chainID)
+	require.False(t, pool.EndpointStates()[0].Healthy)
+	require.True(t, pool.EndpointStates()[1].Healthy)
+}
+
 type confluxRPCCallerStub struct {
 	calls  atomic.Int32
 	call   func(context.Context, any, string, ...any) error

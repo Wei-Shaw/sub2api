@@ -17,6 +17,7 @@ import (
 type Web3DepositHandler struct {
 	cfg              *config.Config
 	addressAllocator web3DepositAddressAllocator
+	networkRuntime   *web3deposit.ConfluxNetworkRuntime
 }
 
 type web3DepositAddressAllocator interface {
@@ -28,8 +29,12 @@ type web3DepositAddressResponse struct {
 	Networks []string `json:"networks"`
 }
 
-func NewWeb3DepositHandler(cfg *config.Config, addressAllocator *web3deposit.AddressAllocator) *Web3DepositHandler {
-	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator}
+func NewWeb3DepositHandler(
+	cfg *config.Config,
+	addressAllocator *web3deposit.AddressAllocator,
+	networkRuntime *web3deposit.ConfluxNetworkRuntime,
+) *Web3DepositHandler {
+	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, networkRuntime: networkRuntime}
 }
 
 // GetConfig returns the publicly safe Web3 deposit configuration.
@@ -50,6 +55,10 @@ func (h *Web3DepositHandler) GetOrCreateAddress(c *gin.Context) {
 	wallet, networks, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+	if h.networkRuntime != nil && !h.networkRuntime.Ready() {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit network is temporarily unavailable"))
 		return
 	}
 	address, err := h.addressAllocator.GetOrCreate(c.Request.Context(), subject.UserID, wallet)

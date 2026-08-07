@@ -30,7 +30,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 				},
 			},
 		},
-	}}, nil)
+	}}, nil, nil)
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
 
@@ -129,6 +129,35 @@ func TestWeb3DepositHandlerAddressDisabledFeatureDoesNotAllocate(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
 	require.Contains(t, recorder.Body.String(), "WEB3_DEPOSIT_DISABLED")
+	require.Zero(t, allocator.calls)
+}
+
+func TestWeb3DepositHandlerUnhealthyNetworkDoesNotAllocate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	allocator := &web3DepositAddressAllocatorStub{}
+	cfg := &config.Config{Web3Deposit: config.Web3DepositConfig{
+		Enabled:          true,
+		UserEntryEnabled: true,
+		Wallets: map[string]config.Web3DepositWalletConfig{
+			"evm_wallet": {AccountXPub: "account_xpub", AccountPath: "m/44'/60'/0'"},
+		},
+		Networks: map[string]config.Web3DepositNetworkConfig{
+			"network": {Enabled: true, WalletID: "evm_wallet"},
+		},
+	}}
+	handler := &Web3DepositHandler{
+		cfg:              cfg,
+		addressAllocator: allocator,
+		networkRuntime:   web3deposit.NewConfluxNetworkRuntime(cfg),
+	}
+	router := authenticatedWeb3DepositTestRouter(handler)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/payment/web3/address", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "WEB3_DEPOSIT_UNAVAILABLE")
 	require.Zero(t, allocator.calls)
 }
 

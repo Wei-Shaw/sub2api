@@ -82,16 +82,20 @@ func NewConfluxRPCPool(ctx context.Context, rawURLs []string, options ConfluxRPC
 		failureCooldown: options.FailureCooldown,
 		now:             options.Now,
 	}
+	connectedEndpoints := 0
 	for index, rawURL := range rawURLs {
+		endpoint := &confluxRPCEndpoint{id: fmt.Sprintf("endpoint_%d", index+1)}
 		client, err := options.dial(ctx, rawURL, options.HTTPClient)
 		if err != nil {
-			pool.Close()
-			return nil, fmt.Errorf("create conflux rpc endpoint_%d: dial failed", index+1)
+			pool.endpoints = append(pool.endpoints, endpoint)
+			continue
 		}
-		pool.endpoints = append(pool.endpoints, &confluxRPCEndpoint{
-			id:     fmt.Sprintf("endpoint_%d", index+1),
-			client: client,
-		})
+		endpoint.client = client
+		connectedEndpoints++
+		pool.endpoints = append(pool.endpoints, endpoint)
+	}
+	if connectedEndpoints == 0 {
+		return nil, fmt.Errorf("create conflux rpc pool: %w", ErrConfluxRPCUnavailable)
 	}
 	return pool, nil
 }
@@ -129,7 +133,7 @@ func (p *ConfluxRPCPool) EndpointStates() []ConfluxRPCEndpointState {
 	for _, endpoint := range p.endpoints {
 		states = append(states, ConfluxRPCEndpointState{
 			ID:             endpoint.id,
-			Healthy:        !endpoint.unhealthyUntil.After(now),
+			Healthy:        endpoint.client != nil && !endpoint.unhealthyUntil.After(now),
 			UnhealthyUntil: endpoint.unhealthyUntil,
 		})
 	}
@@ -143,7 +147,9 @@ func (p *ConfluxRPCPool) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, endpoint := range p.endpoints {
-		endpoint.client.Close()
+		if endpoint.client != nil {
+			endpoint.client.Close()
+		}
 	}
 }
 
@@ -159,6 +165,9 @@ func (p *ConfluxRPCPool) candidates() []*confluxRPCEndpoint {
 	unhealthy := make([]*confluxRPCEndpoint, 0, endpointCount)
 	for offset := 0; offset < endpointCount; offset++ {
 		endpoint := p.endpoints[(start+offset)%endpointCount]
+		if endpoint.client == nil {
+			continue
+		}
 		if endpoint.unhealthyUntil.After(now) {
 			unhealthy = append(unhealthy, endpoint)
 			continue
