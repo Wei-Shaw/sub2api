@@ -88,3 +88,47 @@ func TestClientRequestIDPreservesValidHeader(t *testing.T) {
 	require.Equal(t, clientRequestID, w.Body.String())
 	require.Equal(t, clientRequestID, w.Header().Get(clientRequestIDHeader))
 }
+
+func TestClientRequestIDPrefersValidContextOverHeader(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(ClientRequestID())
+	router.GET("/", func(c *gin.Context) {
+		value, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+		c.String(http.StatusOK, value)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(clientRequestIDHeader, "header-client-request-id")
+	req = req.WithContext(context.WithValue(req.Context(), ctxkey.ClientRequestID, "context-client-request-id"))
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "context-client-request-id", w.Body.String())
+	require.Equal(t, "context-client-request-id", w.Header().Get(clientRequestIDHeader))
+}
+
+func TestClientRequestIDRejectsInvalidHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, header := range []string{"   ", strings.Repeat("x", maxPersistentRequestIDBytes+1)} {
+		t.Run(header, func(t *testing.T) {
+			router := gin.New()
+			router.Use(ClientRequestID())
+			router.GET("/", func(c *gin.Context) {
+				value, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+				c.String(http.StatusOK, value)
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set(clientRequestIDHeader, header)
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Len(t, w.Body.String(), 36)
+			require.NotEqual(t, strings.TrimSpace(header), w.Body.String())
+			require.Equal(t, w.Body.String(), w.Header().Get(clientRequestIDHeader))
+		})
+	}
+}
