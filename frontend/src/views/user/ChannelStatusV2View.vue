@@ -29,10 +29,17 @@
               </span>
               <span v-else class="text-gray-400">{{ t('common.loading') REDACTEDREDACTED</span>
               <span
-                v-if="snapshot && !snapshot.coverage.coverage_complete"
+                v-if="snapshot && !snapshot.coverage.coverage_complete && !bootstrapActive"
                 class="badge badge-warning"
               >
                 {{ t('channelMonitorV2.partialCoverage') REDACTEDREDACTED
+              </span>
+              <span
+                v-if="bootstrapActive"
+                class="badge badge-primary inline-flex items-center gap-1"
+              >
+                <LoadingSpinner size="sm" />
+                {{ t('channelMonitorV2.bootstrap.progress', { percent: bootstrapPercent REDACTED) REDACTEDREDACTED
               </span>
             </div>
           </div>
@@ -46,6 +53,41 @@
             <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
           </button>
         </header>
+
+        <!-- First-upgrade silent backfill: show until 30d product window is covered -->
+        <div
+          v-if="bootstrapActive"
+          class="border-b border-blue-100 bg-blue-50/90 px-5 py-3 dark:border-blue-900/40 dark:bg-blue-950/40 sm:px-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                {{ t('channelMonitorV2.bootstrap.title') REDACTEDREDACTED
+              </p>
+              <p class="mt-0.5 text-xs text-blue-800/80 dark:text-blue-200/80">
+                {{ t('channelMonitorV2.bootstrap.description') REDACTEDREDACTED
+              </p>
+            </div>
+            <span class="shrink-0 text-xs font-medium tabular-nums text-blue-700 dark:text-blue-300">
+              {{ t('channelMonitorV2.bootstrap.progress', { percent: bootstrapPercent REDACTED) REDACTEDREDACTED
+            </span>
+          </div>
+          <div
+            class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-blue-200/80 dark:bg-blue-900/60"
+            role="progressbar"
+            :aria-valuenow="bootstrapPercent"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-label="t('channelMonitorV2.bootstrap.working')"
+          >
+            <div
+              class="h-full rounded-full bg-blue-500 transition-[width] duration-500 ease-out dark:bg-blue-400"
+              :style="{ width: `${bootstrapPercentREDACTED%` REDACTED"
+            />
+          </div>
+        </div>
 
         <!-- Single compact toolbar row: range · filters · view controls -->
         <div class="monitor-toolbar flex flex-nowrap items-center gap-1.5 overflow-x-auto px-4 py-3 sm:gap-2 sm:px-5">
@@ -394,8 +436,20 @@
 
           <div v-if="tabLoading" class="empty-state py-10 text-sm text-gray-400">{{ t('common.loading') REDACTEDREDACTED</div>
           <div v-else-if="activeRowsEmpty" class="empty-state py-10">
-            <p class="empty-state-title text-base">{{ t('channelMonitorV2.empty.title') REDACTEDREDACTED</p>
-            <p class="empty-state-description">{{ t('channelMonitorV2.empty.description') REDACTEDREDACTED</p>
+            <p class="empty-state-title text-base">
+              {{
+                bootstrapActive
+                  ? t('channelMonitorV2.bootstrap.title')
+                  : t('channelMonitorV2.empty.title')
+              REDACTEDREDACTED
+            </p>
+            <p class="empty-state-description">
+              {{
+                bootstrapActive
+                  ? t('channelMonitorV2.bootstrap.description')
+                  : t('channelMonitorV2.empty.description')
+              REDACTEDREDACTED
+            </p>
           </div>
         </div>
       </section>
@@ -585,6 +639,13 @@ const activeRowsEmpty = computed(() =>
       ? errorRows.value.length === 0
       : userRows.value.length === 0
 )
+/** First-upgrade backfill toward 90m/24h/7d/30d; banner hides when backend omits bootstrap. */
+const bootstrapActive = computed(() => Boolean(snapshot.value?.coverage?.bootstrap?.active))
+const bootstrapPercent = computed(() => {
+  const raw = snapshot.value?.coverage?.bootstrap?.progress_percent
+  if (typeof raw !== 'number' || Number.isNaN(raw)) return 0
+  return Math.min(100, Math.max(0, Math.round(raw)))
+REDACTED)
 const matrixRows = computed(() => {
   const items = matrix.value?.items || []
   // platform_group views should only show real groups, never bare platform placeholders.
@@ -740,12 +801,15 @@ function scheduleAutoRefresh() {
     window.clearInterval(autoRefreshTimer)
     autoRefreshTimer = null
   REDACTED
-  const seconds = snapshot.value?.config?.refresh_interval_seconds || 300
+  // Poll faster while first-upgrade bootstrap is filling 90m→30d so the progress bar moves.
+  const seconds = bootstrapActive.value
+    ? 10
+    : snapshot.value?.config?.refresh_interval_seconds || 300
   autoRefreshTimer = window.setInterval(() => {
     if (!loading.value && !refreshing.value) {
       void reload(true)
     REDACTED
-  REDACTED, Math.max(60, seconds) * 1000)
+  REDACTED, Math.max(bootstrapActive.value ? 10 : 60, seconds) * 1000)
 REDACTED
 function drillModel(row: MonitorModelRow) {
   filter.value.platforms = [row.platform]

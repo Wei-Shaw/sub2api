@@ -76,6 +76,14 @@ export interface MonitorHealth {
   REDACTED
 REDACTED
 
+/** First-upgrade historical fill for 90m/24h/7d/30d; omitted when complete. */
+export interface MonitorBootstrap {
+  active: boolean
+  progress_percent: number
+  covered_from?: string
+  target_start?: string
+REDACTED
+
 export interface MonitorCoverage {
   requested_start: string
   coverage_start: string
@@ -84,6 +92,8 @@ export interface MonitorCoverage {
   aggregation_lag_seconds: number
   coverage_complete: boolean
   bucket_seconds: number
+  /** Present while initial aggregation has not covered the 30d product window. */
+  bootstrap?: MonitorBootstrap | null
 REDACTED
 
 export interface MonitorConfig {
