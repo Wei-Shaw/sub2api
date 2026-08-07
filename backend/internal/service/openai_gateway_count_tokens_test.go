@@ -306,6 +306,10 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("OPENAI_API_KEY not set")
 REDACTED
+	// Invalid/expired keys in local env must not fail the unit suite.
+	if strings.HasPrefix(apiKey, "sk-") && len(apiKey) < 20 {
+		t.Skip("OPENAI_API_KEY looks incomplete")
+REDACTED
 
 	client := &http.Client{Timeout: 30 * time.SecondREDACTED
 	cases := []struct {
@@ -340,6 +344,12 @@ REDACTED
 		REDACTED
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
+			if err != nil {
+				// Live-API comparison only; invalid/expired local keys should skip, not fail CI.
+				if strings.Contains(err.Error(), "status=401") || strings.Contains(err.Error(), "invalid_api_key") {
+					t.Skipf("OPENAI_API_KEY rejected by OpenAI: %v", err)
+			REDACTED
+			REDACTED
 		REDACTED
 
 			diff := estimated - actual

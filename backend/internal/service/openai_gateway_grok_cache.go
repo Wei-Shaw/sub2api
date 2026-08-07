@@ -324,13 +324,15 @@ REDACTED
 		if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 {
 			paidSignal = true
 	REDACTED
-		// xAI deliberately reports an empty plan for Free accounts; only paid
-		// subscriptions receive a SuperGrok plan/monthly limit. A successful
-		// monthly billing observation with no paid signal is therefore positive
-		// Free evidence, not an unknown tier. Keep partial probes fail-closed.
-		if strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
-			(billing.StatusCode >= http.StatusOK && billing.StatusCode < http.StatusMultipleChoices &&
-				!billing.Partial && len(billing.FailedWindows) == 0) {
+		// Infer free only from a successful *monthly* billing window with no paid
+		// plan/limit. Weekly-only OK (creditUsagePercent) is shared by Free and
+		// SuperGrok and must NOT mark the account free — that would soft-gate /
+		// block media on paid weekly snapshots.
+		monthlyOK := strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
+			(billing.MonthlyStatusCode >= http.StatusOK && billing.MonthlyStatusCode < http.StatusMultipleChoices)
+		if monthlyOK && !billing.Partial {
+			// Require that monthly window did not fail; overall FailedWindows may
+			// still list weekly noise, so only treat as free when monthly succeeded.
 			inferredFreeSignal = true
 	REDACTED
 REDACTED
