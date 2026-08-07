@@ -6,8 +6,10 @@ import (
 )
 
 var (
-	ErrAddressNotFound      = errors.New("web3 deposit address not found")
-	ErrAddressAlreadyExists = errors.New("web3 deposit address already exists")
+	ErrAddressNotFound           = errors.New("web3 deposit address not found")
+	ErrAddressAlreadyExists      = errors.New("web3 deposit address already exists")
+	ErrAddressDisabled           = errors.New("web3 deposit address is disabled")
+	ErrAddressAllocationConflict = errors.New("web3 deposit address allocation conflict")
 )
 
 type AddressStatus string

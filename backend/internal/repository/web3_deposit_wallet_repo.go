@@ -14,6 +14,7 @@ type Web3DepositWalletRepository struct {
 }
 
 var _ web3deposit.WalletMetadataStore = (*Web3DepositWalletRepository)(nil)
+var _ web3deposit.DerivationIndexReserver = (*Web3DepositWalletRepository)(nil)
 
 func NewWeb3DepositWalletRepository(client *dbent.Client) *Web3DepositWalletRepository {
 	return &Web3DepositWalletRepository{client: client}

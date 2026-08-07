@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
@@ -12,6 +13,8 @@ import (
 type Web3DepositAddressRepository struct {
 	client *dbent.Client
 }
+
+var _ web3deposit.DepositAddressStore = (*Web3DepositAddressRepository)(nil)
 
 func NewWeb3DepositAddressRepository(client *dbent.Client) *Web3DepositAddressRepository {
 	return &Web3DepositAddressRepository{client: client}
@@ -38,13 +41,21 @@ func (r *Web3DepositAddressRepository) Create(ctx context.Context, address web3d
 	}
 
 	entity, err := create.Save(ctx)
-	if dbent.IsConstraintError(err) {
+	if isWeb3DepositAddressUniqueConstraint(err) {
 		return web3deposit.DepositAddress{}, web3deposit.ErrAddressAlreadyExists
 	}
 	if err != nil {
 		return web3deposit.DepositAddress{}, fmt.Errorf("create web3 deposit address: %w", err)
 	}
 	return web3DepositAddressFromEnt(entity), nil
+}
+
+func isWeb3DepositAddressUniqueConstraint(err error) bool {
+	if !dbent.IsConstraintError(err) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "unique") && strings.Contains(message, "web3_deposit_addresses")
 }
 
 func (r *Web3DepositAddressRepository) GetByUserAndWallet(ctx context.Context, userID int64, walletID string) (web3deposit.DepositAddress, error) {
