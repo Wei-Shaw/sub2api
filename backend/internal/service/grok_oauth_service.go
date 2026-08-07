@@ -106,6 +106,13 @@ type GrokTokenInfo struct {
 	EntitlementStatus string `json:"entitlement_status,omitempty"`
 REDACTED
 
+// GrokPasswordLoginResult is an ephemeral password-login outcome.
+// SSOToken is never persisted and must only feed ConvertSSOToBuild.
+type GrokPasswordLoginResult struct {
+	Email    string `json:"email,omitempty"`
+	SSOToken string `json:"sso_token"`
+REDACTED
+
 func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchangeCodeInput) (*GrokTokenInfo, error) {
 	if input == nil {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_INPUT", "input is required")
@@ -176,7 +183,13 @@ REDACTED
 	return s.RefreshToken(ctx, refreshToken, proxyURL, xai.EffectiveClientID())
 REDACTED
 
-func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+// ValidateSSOToken converts a Web SSO cookie into Build OAuth tokens.
+// The raw sso_token is never stored on GrokTokenInfo or account credentials.
+func (s *GrokOAuthService) ValidateSSOToken(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	ssoToken = strings.TrimSpace(ssoToken)
+	if ssoToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_SSO_TOKEN", "sso_token is required")
+REDACTED
 	proxyURL, err := s.proxyURL(ctx, proxyID)
 	if err != nil {
 		return nil, err
@@ -185,7 +198,53 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
+		return nil, err
+REDACTED
 	return s.tokenInfoFromResponse(tokenResp, xai.DefaultClientID, nil), nil
+REDACTED
+
+// ConvertFromSSO is the batch-import entry point; same semantics as ValidateSSOToken.
+func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	return s.ValidateSSOToken(ctx, ssoToken, proxyID)
+REDACTED
+
+// AuthorizePassword logs in with email/password, converts the resulting SSO cookie
+// to Build OAuth, and returns OAuth tokens only. Password and raw SSO are never persisted.
+func (s *GrokOAuthService) AuthorizePassword(ctx context.Context, email, password string, proxyID *int64) (*GrokTokenInfo, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_EMAIL_REQUIRED", "email is required")
+REDACTED
+	if strings.TrimSpace(password) == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PASSWORD_REQUIRED", "password is required")
+REDACTED
+	proxyURL, err := s.proxyURL(ctx, proxyID)
+	if err != nil {
+		return nil, err
+REDACTED
+	loginResult, err := s.oauthClient.LoginWithPassword(ctx, email, password, proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	if loginResult == nil || strings.TrimSpace(loginResult.SSOToken) == "" {
+		return nil, infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_PASSWORD_LOGIN_FAILED", "grok password login did not return sso_token")
+REDACTED
+	info, err := s.ValidateSSOToken(ctx, loginResult.SSOToken, proxyID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if strings.TrimSpace(info.Email) == "" {
+		info.Email = loginResult.Email
+REDACTED
+	return info, nil
+REDACTED
+
+func validateGrokTokenResponse(tokenResp *xai.TokenResponse) error {
+	if tokenResp == nil || strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_INVALID_TOKEN_RESPONSE", "grok oauth token response missing access_token")
+REDACTED
+	return nil
 REDACTED
 
 func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error) {

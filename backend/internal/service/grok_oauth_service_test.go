@@ -16,6 +16,9 @@ import (
 type grokOAuthClientStub struct {
 	refreshResponse *xai.TokenResponse
 	ssoResponse     *xai.TokenResponse
+	loginResult     *GrokPasswordLoginResult
+	loginEmail      string
+	loginPassword   string
 	exchangeCalls   int
 REDACTED
 
@@ -26,6 +29,12 @@ REDACTED
 
 func (s *grokOAuthClientStub) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
 	return s.refreshResponse, nil
+REDACTED
+
+func (s *grokOAuthClientStub) LoginWithPassword(_ context.Context, email, password, _ string) (*GrokPasswordLoginResult, error) {
+	s.loginEmail = email
+	s.loginPassword = password
+	return s.loginResult, nil
 REDACTED
 
 func (s *grokOAuthClientStub) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
@@ -108,6 +117,55 @@ REDACTED
 	require.Equal(t, "user@example.com", credentials["email"])
 	require.Equal(t, "user-sub", credentials["sub"])
 	require.Equal(t, "team-1", credentials["team_id"])
+	require.NotContains(t, credentials, "sso_token")
+REDACTED
+
+func TestGrokOAuthServiceValidateSSOTokenReturnsOAuthTokensWithoutPersistingSSO(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-from-sso",
+			RefreshToken: "refresh-from-sso",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+	REDACTED,
+REDACTED)
+	defer svc.Stop()
+
+	info, err := svc.ValidateSSOToken(context.Background(), "sso-token", nil)
+REDACTED
+	require.Equal(t, "access-from-sso", info.AccessToken)
+	require.Equal(t, "refresh-from-sso", info.RefreshToken)
+
+	creds := svc.BuildAccountCredentials(info)
+	require.NotContains(t, creds, "sso_token")
+	require.NotContains(t, creds, "password")
+REDACTED
+
+func TestGrokOAuthServiceAuthorizePasswordUsesLoginThenSSOAuthorize(t *testing.T) {
+	client := &grokOAuthClientStub{
+		loginResult: &GrokPasswordLoginResult{
+			Email:    "user@example.com",
+			SSOToken: "password-derived-sso",
+	REDACTED,
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-from-password",
+			RefreshToken: "refresh-from-password",
+			ExpiresIn:    3600,
+	REDACTED,
+REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+
+	info, err := svc.AuthorizePassword(context.Background(), " user@example.com ", "  super-secret  ", nil)
+REDACTED
+	require.Equal(t, "user@example.com", info.Email)
+	require.Equal(t, "access-from-password", info.AccessToken)
+
+	creds := svc.BuildAccountCredentials(info)
+	require.NotContains(t, creds, "password")
+	require.NotContains(t, creds, "sso_token")
+	require.Equal(t, "user@example.com", client.loginEmail)
+	require.Equal(t, "  super-secret  ", client.loginPassword, "password bytes must be preserved for upstream login")
 REDACTED
 
 func makeGrokOAuthJWT(claims map[string]any) string {
