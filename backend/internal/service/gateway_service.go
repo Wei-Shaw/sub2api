@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/gatewaydebug"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
@@ -58,7 +59,6 @@ IMPORTANT: You must NEVER generate or guess URLs for the user unless you are con
 	defaultModelsListCacheTTL              = 15 * time.Second
 	postUsageBillingTimeout                = 15 * time.Second
 	claudeCodeNoopDeltaKeepaliveMinVersion = "2.1.193"
-	debugGatewayBodyEnv                    = "SUB2API_DEBUG_GATEWAY_BODY"
 	// 上游错误体只需要提取错误 JSON/日志摘要，默认 512KiB 避免错误风暴叠加大请求体。
 	gatewayUpstreamErrorBodyReadLimit int64 = 512 << 10
 )
@@ -734,7 +734,7 @@ type GatewayService struct {
 	channelService        *ChannelService
 	resolver              *ModelPricingResolver
 	compositeResolver     *CompositeRouteResolver
-	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
+	debugGatewayLogger    *gatewaydebug.Logger
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
@@ -817,9 +817,7 @@ func NewGatewayService(
 	)
 	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
 	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	if path := strings.TrimSpace(os.Getenv(debugGatewayBodyEnv)); path != "" {
-		svc.initDebugGatewayBodyFile(path)
-	}
+	svc.debugGatewayLogger = gatewaydebug.Default()
 	return svc
 }
 
@@ -1365,40 +1363,6 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	}
 }
 
-const debugGatewayBodyDefaultFilename = "gateway_debug.log"
-
-// initDebugGatewayBodyFile 初始化网关调试日志文件。
-//
-//   - "1"/"true" 等布尔值 → 当前目录下 gateway_debug.log
-//   - 已有目录路径        → 该目录下 gateway_debug.log
-//   - 其他               → 视为完整文件路径
-func (s *GatewayService) initDebugGatewayBodyFile(path string) {
-	if parseDebugEnvBool(path) {
-		path = debugGatewayBodyDefaultFilename
-	}
-
-	// 如果 path 指向一个已存在的目录，自动追加默认文件名
-	if info, err := os.Stat(path); err == nil && info.IsDir() {
-		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
-	}
-
-	// 确保父目录存在
-	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			slog.Error("failed to create gateway debug log directory", "dir", dir, "error", err)
-			return
-		}
-	}
-
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		slog.Error("failed to open gateway debug log file", "path", path, "error", err)
-		return
-	}
-	s.debugGatewayBodyFile.Store(f)
-	slog.Info("gateway debug logging enabled", "path", path)
-}
-
 // debugLogGatewaySnapshot 将网关请求的完整快照（headers + body）写入独立的调试日志文件，
 // 用于对比客户端原始请求和上游转发请求。
 //
@@ -1409,8 +1373,7 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 //
 // tag: "CLIENT_ORIGINAL" 或 "UPSTREAM_FORWARD"
 func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra map[string]string) {
-	f := s.debugGatewayBodyFile.Load()
-	if f == nil {
+	if s.debugGatewayLogger == nil {
 		return
 	}
 
@@ -1453,6 +1416,7 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 		}
 	}
 
-	// 写入文件（调试用，并发写入可能交错但不影响可读性）
-	_, _ = f.WriteString(buf.String())
+	s.debugGatewayLogger.Write(func(writer io.Writer) {
+		_, _ = io.WriteString(writer, buf.String())
+	})
 }

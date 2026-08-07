@@ -16,11 +16,93 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/gatewaydebug"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+func TestHTTPUpstreamDebugLogsRequestAndResponseWithoutConsumingBodies(t *testing.T) {
+	const (
+		requestBody    = `{"model":"gpt-image-1","prompt":"draw a lighthouse"}`
+		responseBody   = `{"created":123,"data":[{"b64_json":"image-data"}]}`
+		authorization  = "Bearer request-secret"
+		requestAPIKey  = "request-api-secret"
+		responseToken  = "response-token-secret"
+		queryAPIKey    = "query-api-secret"
+		visibleTraceID = "trace-visible"
+	)
+
+	var receivedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		receivedBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Response-Token", responseToken)
+		w.WriteHeader(http.StatusCreated)
+		_, err = io.WriteString(w, responseBody)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/v1/images/generations?api_key="+queryAPIKey+"&trace="+visibleTraceID, strings.NewReader(requestBody))
+	require.NoError(t, err)
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("X-Api-Key", requestAPIKey)
+	request.Header.Set("X-Trace-ID", visibleTraceID)
+
+	var debugLog bytes.Buffer
+	upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+	upstream.debugLogger = gatewaydebug.New(&debugLog)
+	response, err := upstream.Do(request, "", 42, 1)
+	require.NoError(t, err)
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+
+	require.Equal(t, requestBody, receivedBody)
+	require.Equal(t, responseBody, string(body))
+	logText := debugLog.String()
+	require.Contains(t, logText, "UPSTREAM_REQUEST id=1")
+	require.Contains(t, logText, "UPSTREAM_RESPONSE id=1")
+	require.Contains(t, logText, requestBody)
+	require.Contains(t, logText, responseBody)
+	require.Contains(t, logText, visibleTraceID)
+	require.Contains(t, logText, "Bearer [redacted]")
+	require.NotContains(t, logText, "request-secret")
+	require.NotContains(t, logText, requestAPIKey)
+	require.NotContains(t, logText, responseToken)
+	require.NotContains(t, logText, queryAPIKey)
+}
+
+func TestHTTPUpstreamDebugLogsRequestBodyWithoutGetBody(t *testing.T) {
+	const requestBody = "streamed-request-body"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Equal(t, requestBody, string(body))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequest(http.MethodPost, server.URL, nil)
+	require.NoError(t, err)
+	request.Body = io.NopCloser(strings.NewReader(requestBody))
+	request.ContentLength = int64(len(requestBody))
+	require.Nil(t, request.GetBody)
+
+	var debugLog bytes.Buffer
+	upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+	upstream.debugLogger = gatewaydebug.New(&debugLog)
+	response, err := upstream.Do(request, "", 7, 1)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+
+	require.Contains(t, debugLog.String(), requestBody)
+	require.Contains(t, debugLog.String(), "UPSTREAM_REQUEST_END id=1")
+}
 
 func TestHTTPUpstreamDoCanDisableRedirectsPerRequest(t *testing.T) {
 	var redirectedCalls atomic.Int64
