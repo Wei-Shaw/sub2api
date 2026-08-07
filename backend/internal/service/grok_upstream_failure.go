@@ -480,11 +480,10 @@ REDACTED
 		if decision.Model != "" && isGrokModelSpecificFreeUsage(low, decision.Model) {
 			until := time.Now().Add(decision.Cooldown)
 			markGrokModelQuotaBlock(account.ID, decision.Model, until)
-			// Account-wide cool is still applied as a safety net when the body
-			// does not isolate a model cleanly; for model-specific free we only
-			// model-block and skip the long account cool when BlockModel was set
-			// by the classifier... actually free-usage keeps BlockModel false.
-			// Prefer model block + shorter account cool via tempUnschedule below.
+			// The upstream explicitly scoped exhaustion to this model, so an
+			// account-wide cool would incorrectly take healthy sibling models out
+			// of rotation.
+			return true
 	REDACTED
 		coolUntil := time.Now().Add(decision.Cooldown)
 		markGrokFreeUsageRecovery(account.ID, coolUntil)

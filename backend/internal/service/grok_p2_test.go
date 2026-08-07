@@ -93,9 +93,9 @@ func TestApplyGrokUpstreamFailure_ModelSpecificFreeUsage(t *testing.T) {
 
 	svc.handleGrokAccountUpstreamError(context.Background(), account, 400, nil, body)
 
-	require.Equal(t, 1, repo.tempUnschedCalls)
-	require.Equal(t, "grok free usage exhausted", repo.lastTempUnschedReason)
+	require.Zero(t, repo.tempUnschedCalls, "model-scoped free usage must not cool sibling models")
 	require.True(t, isGrokModelQuotaBlocked(account.ID, "grok-4.5", time.Now()))
+	require.False(t, isGrokModelQuotaBlocked(account.ID, "grok-4.3", time.Now()))
 REDACTED
 
 func TestApplyGrokUpstreamFailure_SpendingLimitMarksReauth(t *testing.T) {
