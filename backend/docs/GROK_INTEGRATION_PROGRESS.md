@@ -32,3 +32,10 @@
    - 展示「邮箱密码登录」选项（Grok）
    - 每行 email----password → authorizePassword → buildCredentials → create
    - 中英文 i18n 补齐
+
+## 续：阶段 8 ReAuth（本地，未向上游开 PR）
+
+8. admin ReAuthAccountModal
+   - show SSO / email-password / refresh-token for Grok
+   - validateSSOToken / authorizePassword / validateRefreshToken → applyOAuthCredentials
+   - footer code-exchange hidden for those input methods
