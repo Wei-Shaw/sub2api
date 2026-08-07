@@ -27,14 +27,11 @@ func DeriveEVMAddress(accountXPub string, derivationIndex int64) (DerivedEVMAddr
 		return DerivedEVMAddress{}, ErrDerivationIndexOutOfRange
 	}
 
-	accountKey, err := hdkeychain.NewKeyFromString(strings.TrimSpace(accountXPub))
+	accountKey, err := parseAccountXPub(accountXPub)
 	if err != nil {
-		return DerivedEVMAddress{}, ErrAccountXPubInvalid
+		return DerivedEVMAddress{}, err
 	}
 	defer accountKey.Zero()
-	if accountKey.IsPrivate() || accountKey.Depth() != 3 || accountKey.ChildIndex() < hdkeychain.HardenedKeyStart {
-		return DerivedEVMAddress{}, ErrAccountXPubInvalid
-	}
 
 	externalKey, err := accountKey.Derive(0)
 	if err != nil {
@@ -60,4 +57,16 @@ func DeriveEVMAddress(accountXPub string, derivationIndex int64) (DerivedEVMAddr
 		Address:           address,
 		NormalizedAddress: strings.ToLower(address),
 	}, nil
+}
+
+func parseAccountXPub(accountXPub string) (*hdkeychain.ExtendedKey, error) {
+	accountKey, err := hdkeychain.NewKeyFromString(strings.TrimSpace(accountXPub))
+	if err != nil {
+		return nil, ErrAccountXPubInvalid
+	}
+	if accountKey.IsPrivate() || accountKey.Depth() != 3 || accountKey.ChildIndex() < hdkeychain.HardenedKeyStart {
+		accountKey.Zero()
+		return nil, ErrAccountXPubInvalid
+	}
+	return accountKey, nil
 }

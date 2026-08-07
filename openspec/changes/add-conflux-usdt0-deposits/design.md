@@ -126,7 +126,8 @@ m/44'/60'/0'/0/{index}
 
 约束：
 
-- 配置包含 `wallet_id`、`xpub`、`account_path` 和可选公钥指纹。
+- 配置包含 `wallet_id`、`xpub` 和 `account_path`，不接受人工填写的 fingerprint。
+- `xpub_fingerprint` 由服务计算为规范化账户级 xpub 字符串的 SHA-256 小写十六进制值。
 - 引用同一 `wallet_id` 的 EVM 网络共享同一套用户地址；地址分配身份不包含 `chain_id`。
 - `wallet_id` 一旦分配过地址，不得指向另一套 xpub。
 - 日志、错误、指标和管理 API 不得输出完整 xpub。

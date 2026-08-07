@@ -13,6 +13,8 @@ type Web3DepositWalletRepository struct {
 	client *dbent.Client
 }
 
+var _ web3deposit.WalletMetadataStore = (*Web3DepositWalletRepository)(nil)
+
 func NewWeb3DepositWalletRepository(client *dbent.Client) *Web3DepositWalletRepository {
 	return &Web3DepositWalletRepository{client: client}
 }

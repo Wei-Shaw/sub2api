@@ -8,8 +8,11 @@ import (
 const MaxDerivationIndexExclusive int64 = 1 << 31
 
 var (
-	ErrWalletNotFound      = errors.New("web3 deposit wallet not found")
-	ErrWalletAlreadyExists = errors.New("web3 deposit wallet already exists")
+	ErrWalletNotFound            = errors.New("web3 deposit wallet not found")
+	ErrWalletAlreadyExists       = errors.New("web3 deposit wallet already exists")
+	ErrWalletFingerprintMismatch = errors.New("web3 deposit wallet fingerprint mismatch")
+	ErrWalletAccountPathMismatch = errors.New("web3 deposit wallet account path mismatch")
+	ErrWalletDisabled            = errors.New("web3 deposit wallet is disabled")
 )
 
 type WalletStatus string
