@@ -1370,8 +1370,6 @@ REDACTED
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok payment required")
 	case http.StatusForbidden:
 		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok access or entitlement denied")
-	case http.StatusMethodNotAllowed:
-		s.tempUnscheduleGrok(ctx, account, 30*time.Minute, "grok endpoint not supported (405)")
 	case http.StatusTooManyRequests:
 		// updateGrokUsageSnapshot installs rate-limit state for non-pool accounts.
 	default:
