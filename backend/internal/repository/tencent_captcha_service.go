@@ -10,13 +10,11 @@ import (
 	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 )
 
-const tencentCaptchaEndpoint = "captcha.tencentcloudapi.com"
-
 type tencentCaptchaAPI interface {
 	DescribeCaptchaResultWithContext(context.Context, *captcha.DescribeCaptchaResultRequest) (*captcha.DescribeCaptchaResultResponse, error)
 }
 
-type tencentCaptchaClientFactory func(secretID, secretKey string) (tencentCaptchaAPI, error)
+type tencentCaptchaClientFactory func(secretID, secretKey, endpoint string) (tencentCaptchaAPI, error)
 
 type tencentCaptchaVerifier struct {
 	newClient tencentCaptchaClientFactory
@@ -26,16 +24,19 @@ func NewTencentCaptchaVerifier() service.TencentCaptchaVerifier {
 	return &tencentCaptchaVerifier{newClient: newTencentCaptchaSDKClient}
 }
 
-func newTencentCaptchaSDKClient(secretID, secretKey string) (tencentCaptchaAPI, error) {
+// newTencentCaptchaSDKClient 接入点由调用方按站点下发（中国站 / 国际站）。
+// service 层的 tencentCaptchaEndpoint 已保证 endpoint 非空；即便为空，
+// 腾讯 SDK 也会回落到服务默认域 captcha.tencentcloudapi.com（即中国站），不会失败。
+func newTencentCaptchaSDKClient(secretID, secretKey, endpoint string) (tencentCaptchaAPI, error) {
 	clientProfile := profile.NewClientProfile()
-	clientProfile.HttpProfile.Endpoint = tencentCaptchaEndpoint
+	clientProfile.HttpProfile.Endpoint = endpoint
 	clientProfile.HttpProfile.ReqMethod = "POST"
 	clientProfile.HttpProfile.ReqTimeout = 5
 	return captcha.NewClient(common.NewCredential(secretID, secretKey), "", clientProfile)
 }
 
 func (v *tencentCaptchaVerifier) VerifyTicket(ctx context.Context, credentials service.TencentCaptchaCredentials, proof service.TencentCaptchaProof, remoteIP string) (*service.TencentCaptchaVerifyResponse, error) {
-	client, err := v.newClient(credentials.CloudSecretID, credentials.CloudSecretKey)
+	client, err := v.newClient(credentials.CloudSecretID, credentials.CloudSecretKey, credentials.Endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("create tencent captcha client: %w", err)
 	}

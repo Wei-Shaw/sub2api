@@ -31,6 +31,8 @@ type Usage struct {
 
 type RelayResult struct {
 	RequestModel            string
+	ResponseModel           string
+	ResponseModelConflict   bool
 	Usage                   Usage
 	RequestID               string
 	TerminalEventType       string
@@ -91,6 +93,8 @@ type relayState struct {
 	requestModelMu    sync.RWMutex
 	requestModel      string
 	lastResponseID    string
+	lastResponseModel string
+	responseConflict  bool
 	terminalEventType string
 	firstTokenMs      *int
 	turnTimingByID    map[string]*relayTurnTiming
@@ -115,8 +119,11 @@ type observedUpstreamEvent struct {
 }
 
 type relayTurnTiming struct {
-	startAt      time.Time
-	firstTokenMs *int
+	startAt               time.Time
+	firstTokenMs          *int
+	firstResponseModel    string
+	terminalResponseModel string
+	responseModelConflict bool
 }
 
 func Relay(
@@ -687,15 +694,19 @@ func observeUpstreamMessage(
 		actualServiceTier: openAIWSRelayActualServiceTier(message),
 		usage:             parsedUsage,
 	}
+	var turnTiming *relayTurnTiming
 	if responseID != "" {
-		turnTiming := openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
+		turnTiming = openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
 		if turnTiming != nil && turnTiming.firstTokenMs == nil && isTokenEvent(eventType) {
 			ms := int(now.Sub(turnTiming.startAt).Milliseconds())
 			if ms >= 0 {
 				turnTiming.firstTokenMs = &ms
 			}
 		}
+	} else {
+		turnTiming = state.activeTurn
 	}
+	observeRelayTurnResponseModel(turnTiming, firstRelayResponseModel(message), isTerminalEvent(eventType))
 	if !isTerminalEvent(eventType) {
 		return observed
 	}
@@ -704,6 +715,10 @@ func observeUpstreamMessage(
 	if responseID != "" {
 		state.lastResponseID = responseID
 		if turnTiming, ok := openAIWSRelayDeleteTurnTiming(state, responseID); ok {
+			observed.responseModel = relayTurnResponseModel(&turnTiming)
+			observed.responseConflict = turnTiming.responseModelConflict
+			state.lastResponseModel = observed.responseModel
+			state.responseConflict = observed.responseConflict
 			duration := now.Sub(turnTiming.startAt)
 			if duration < 0 {
 				duration = 0
@@ -902,6 +917,8 @@ func enrichResult(result *RelayResult, state *relayState, duration time.Duration
 		return
 	}
 	result.RequestModel = state.currentRequestModel()
+	result.ResponseModel = state.lastResponseModel
+	result.ResponseModelConflict = state.responseConflict
 	result.Usage = state.usage
 	result.RequestID = state.lastResponseID
 	result.TerminalEventType = state.terminalEventType

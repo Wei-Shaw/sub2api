@@ -51,6 +51,11 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'usage.requestedModel': 'Requested',
+	'usage.sentUpstreamModel': 'Sent upstream',
+	'usage.upstreamResponseModel': 'Upstream response',
+	'usage.modelVariant': 'Possible version variant',
+	'usage.modelMismatch': 'Different model',
 }
 
 vi.mock('vue-i18n', async () => {

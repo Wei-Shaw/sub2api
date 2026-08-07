@@ -36,6 +36,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
+	responseModelObserver := &upstreamResponseModelObserver{}
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {
@@ -516,6 +517,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if eventType == "" {
 			continue
 		}
+		responseModelObserver.ObserveOpenAI(message, eventType)
 		eventCount++
 		if firstEventType == "" {
 			firstEventType = eventType
