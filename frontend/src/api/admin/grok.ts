@@ -170,4 +170,43 @@ export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<Gro
   return data
 REDACTED
 
-export default { generateAuthUrl, exchangeCode, refreshGrokToken, queryQuota, resetQuota, createFromSSO REDACTED
+/** Validate a browser SSO cookie and convert to Build OAuth tokens (no raw SSO stored). */
+export async function validateSSOToken(
+  ssoToken: string,
+  proxyId?: number | null
+): Promise<GrokTokenInfo> {
+  const payload: Record<string, unknown> = { sso_token: ssoToken REDACTED
+  if (proxyId) payload.proxy_id = proxyId
+  const { data REDACTED = await apiClient.post<GrokTokenInfo>('/admin/grok/oauth/sso-token', payload)
+  return data
+REDACTED
+
+/**
+ * Password login → ephemeral SSO → Build OAuth.
+ * Password is only sent over the wire for this call; never persist it in credentials.
+ */
+export async function authorizePassword(
+  emailAndPassword: string,
+  proxyId?: number | null
+): Promise<GrokTokenInfo> {
+  // Format: email----password (password may contain dashes).
+  const sep = '----'
+  const idx = emailAndPassword.indexOf(sep)
+  const email = (idx >= 0 ? emailAndPassword.slice(0, idx) : emailAndPassword).trim()
+  const password = idx >= 0 ? emailAndPassword.slice(idx + sep.length) : ''
+  const payload: Record<string, unknown> = { email, password REDACTED
+  if (proxyId) payload.proxy_id = proxyId
+  const { data REDACTED = await apiClient.post<GrokTokenInfo>('/admin/grok/oauth/password', payload)
+  return data
+REDACTED
+
+export default {
+  generateAuthUrl,
+  exchangeCode,
+  refreshGrokToken,
+  queryQuota,
+  resetQuota,
+  createFromSSO,
+  validateSSOToken,
+  authorizePassword,
+REDACTED
