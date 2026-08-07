@@ -1744,7 +1744,6 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	trustedProxiesEnv, trustedProxiesEnvConfigured := os.LookupEnv("SERVER_TRUSTED_PROXIES")
 	forwardedClientIPHeadersEnv, forwardedClientIPHeadersEnvConfigured := os.LookupEnv("SECURITY_FORWARDED_CLIENT_IP_HEADERS")
-	web3DepositRPCURLsEnv, web3DepositRPCURLsEnvConfigured := os.LookupEnv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS")
 	trustedProxiesConfigured := viper.InConfig("server.trusted_proxies") ||
 		viper.IsSet("server.trusted_proxies") || trustedProxiesEnvConfigured
 
@@ -1758,10 +1757,12 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if forwardedClientIPHeadersEnvConfigured {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
 	}
-	if web3DepositRPCURLsEnvConfigured {
-		network := cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey]
-		network.RPCURLs = normalizeStringSlice(strings.Split(web3DepositRPCURLsEnv, ","))
-		cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey] = network
+	for networkKey, network := range cfg.Web3Deposit.Networks {
+		envKey := "WEB3_DEPOSIT_NETWORKS_" + strings.ToUpper(networkKey) + "_RPC_URLS"
+		if rawRPCURLs, configured := os.LookupEnv(envKey); configured {
+			network.RPCURLs = normalizeStringSlice(strings.Split(rawRPCURLs, ","))
+			cfg.Web3Deposit.Networks[networkKey] = network
+		}
 	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {
@@ -2590,6 +2591,9 @@ func (c *Config) Validate() error {
 	case Web3BrowserCookieSameSiteLax, Web3BrowserCookieSameSiteNone:
 	default:
 		return fmt.Errorf("web3_auth.browser_cookie_same_site must be one of: lax/none")
+	}
+	if err := validateWeb3DepositConfig(&c.Web3Deposit); err != nil {
+		return err
 	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {

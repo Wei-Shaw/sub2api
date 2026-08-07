@@ -1367,23 +1367,24 @@ func TestLoadWeb3DepositDefaults(t *testing.T) {
 
 func TestLoadWeb3DepositFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
+	accountXPub, _ := testWeb3DepositAccountKeysForAccount(t, 1)
 	t.Setenv("WEB3_DEPOSIT_ENABLED", "true")
 	t.Setenv("WEB3_DEPOSIT_SCANNER_ENABLED", "true")
 	t.Setenv("WEB3_DEPOSIT_CREDIT_ENABLED", "true")
 	t.Setenv("WEB3_DEPOSIT_USER_ENTRY_ENABLED", "true")
-	t.Setenv("WEB3_DEPOSIT_WALLETS_CONFLUX_ESPACE_DEPOSIT_V1_ACCOUNT_XPUB", "xpub-test-value")
+	t.Setenv("WEB3_DEPOSIT_WALLETS_CONFLUX_ESPACE_DEPOSIT_V1_ACCOUNT_XPUB", accountXPub)
 	t.Setenv("WEB3_DEPOSIT_WALLETS_CONFLUX_ESPACE_DEPOSIT_V1_ACCOUNT_PATH", "m/44'/60'/1'")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ENABLED", "true")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_DISPLAY_NAME", "Conflux Test")
-	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_CHAIN_ID", "71")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_CHAIN_ID", "1030")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_WALLET_ID", "conflux_espace_deposit_v1")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_SCAN_START_BLOCK", "123456")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS", " https://rpc-1.example ,https://rpc-2.example ")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_POLL_INTERVAL_SECONDS", "30")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_BLOCK_BATCH_SIZE", "250")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_OVERLAP_BLOCKS", "12")
-	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_CONTRACT_ADDRESS", "0x1111111111111111111111111111111111111111")
-	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_DECIMALS", "18")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_CONTRACT_ADDRESS", "0xAf37E8B6C9ED7f6318979f56Fc287d76c30847ff")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_DECIMALS", "6")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_MINIMUM_DEPOSIT", "2.500000")
 	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_AUTO_CREDIT_LIMIT", "9000.000000")
 
@@ -1395,13 +1396,13 @@ func TestLoadWeb3DepositFromEnv(t *testing.T) {
 	require.True(t, cfg.Web3Deposit.UserEntryEnabled)
 
 	wallet := cfg.Web3Deposit.Wallets[DefaultWeb3DepositWalletKey]
-	require.Equal(t, "xpub-test-value", wallet.AccountXPub)
+	require.Equal(t, accountXPub, wallet.AccountXPub)
 	require.Equal(t, "m/44'/60'/1'", wallet.AccountPath)
 
 	network := cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey]
 	require.True(t, network.Enabled)
 	require.Equal(t, "Conflux Test", network.DisplayName)
-	require.Equal(t, uint64(71), network.ChainID)
+	require.Equal(t, DefaultWeb3DepositChainID, network.ChainID)
 	require.Equal(t, DefaultWeb3DepositWalletKey, network.WalletID)
 	require.Equal(t, uint64(123456), network.ScanStartBlock)
 	require.Equal(t, []string{"https://rpc-1.example", "https://rpc-2.example"}, network.RPCURLs)
@@ -1410,20 +1411,22 @@ func TestLoadWeb3DepositFromEnv(t *testing.T) {
 	require.Equal(t, uint64(12), network.OverlapBlocks)
 
 	asset := network.Assets[DefaultWeb3DepositAssetKey]
-	require.Equal(t, "0x1111111111111111111111111111111111111111", asset.ContractAddress)
-	require.Equal(t, int32(18), asset.Decimals)
+	require.Equal(t, DefaultWeb3DepositTokenAddress, asset.ContractAddress)
+	require.Equal(t, DefaultWeb3DepositTokenDecimals, asset.Decimals)
 	require.Equal(t, "2.500000", asset.MinimumDeposit)
 	require.Equal(t, "9000.000000", asset.AutoCreditLimit)
 }
 
 func TestLoadWeb3DepositMultipleNetworksFromConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
+	accountXPub, _ := testWeb3DepositAccountKeysForAccount(t, 2)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(`
+	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
 web3_deposit:
+  enabled: true
   wallets:
     ethereum_deposit_v1:
-      account_xpub: xpub-ethereum
+      account_xpub: %s
       account_path: m/44'/60'/2'
   networks:
     ethereum_mainnet:
@@ -1443,7 +1446,7 @@ web3_deposit:
           decimals: 6
           minimum_deposit: "5.000000"
           auto_credit_limit: "5000.000000"
-`), 0o600))
+`, accountXPub)), 0o600))
 	t.Setenv("CONFIG_FILE", configPath)
 
 	cfg, err := Load()
