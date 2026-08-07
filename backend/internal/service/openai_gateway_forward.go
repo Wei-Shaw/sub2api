@@ -1059,7 +1059,6 @@ REDACTED
 			req.Header.Del("OpenAI-Beta")
 			req.Header.Del("originator")
 	REDACTED else {
-			req.Header.Set("OpenAI-Beta", "responses=experimental")
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 	REDACTED
 		apiKeyID := getAPIKeyIDFromContext(c)
