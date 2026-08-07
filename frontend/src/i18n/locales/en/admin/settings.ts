@@ -436,6 +436,10 @@ export default {
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
+        grokDefaultTextModel: 'Default Grok text model',
+        grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
+        grokCrossClientMap: 'Map other clients to Grok',
+        grokCrossClientMapHint: 'Disabled by default. When enabled, GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above.',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',

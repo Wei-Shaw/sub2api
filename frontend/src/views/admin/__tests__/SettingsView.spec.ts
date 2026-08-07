@@ -444,6 +444,8 @@ const baseSettingsResponse = {
   fallback_model_openai: "",
   fallback_model_gemini: "",
   fallback_model_antigravity: "",
+  grok_default_text_model: "grok-4.5",
+  grok_cross_client_model_map_enabled: false,
   enable_identity_patch: false,
   identity_patch_prompt: "",
   ops_monitoring_enabled: false,
@@ -1263,6 +1265,34 @@ describe("admin SettingsView payment visible method controls", () => {
       interval_minutes: 60,
     REDACTED);
     expect(showSuccess).toHaveBeenCalledWith("上游倍率自动探测设置已保存");
+  REDACTED);
+
+  it("loads and saves configurable Grok cross-client model mapping", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      grok_default_text_model: "grok-4.1-fast",
+      grok_cross_client_model_map_enabled: true,
+    REDACTED);
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const modelInput = wrapper.get('[data-testid="grok-default-text-model"]');
+    const mappingToggle = wrapper.get(
+      '[data-testid="grok-cross-client-model-map-toggle"]',
+    );
+    expect((modelInput.element as HTMLInputElement).value).toBe("grok-4.1-fast");
+    expect((mappingToggle.element as HTMLInputElement).checked).toBe(true);
+
+    await modelInput.setValue("grok-custom-text");
+    await mappingToggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    const payload = updateSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(payload.grok_default_text_model).toBe("grok-custom-text");
+    expect(payload.grok_cross_client_model_map_enabled).toBe(false);
   REDACTED);
 
   it("loads fail-safe-off Ollama Cloud usage refresh settings and saves an explicit opt-in", async () => {
