@@ -130,14 +130,22 @@ REDACTEDREDACTED
 	require.Contains(t, rec.Body.String(), `"snapshot":`)
 	require.Contains(t, rec.Body.String(), `"headers_observed":true`)
 	require.NotContains(t, rec.Body.String(), "access-token")
+	require.Eventually(t, func() bool {
+		upstream.mu.Lock()
+		defer upstream.mu.Unlock()
+		return len(upstream.requests) == 4
+REDACTED, time.Second, 10*time.Millisecond)
 	upstream.mu.Lock()
 	requests := append([]*http.Request(nil), upstream.requests...)
 	bodies := append([][]byte(nil), upstream.bodies...)
 	upstream.mu.Unlock()
-	require.Len(t, requests, 3)
+	require.Len(t, requests, 4)
+	responsesProbeSeen := false
+	modelsSyncSeen := false
 	for i, upstreamReq := range requests {
 		require.Equal(t, "Bearer access-token", upstreamReq.Header.Get("Authorization"))
 		if upstreamReq.URL.String() == xai.DefaultCLIBaseURL+"/responses" {
+			responsesProbeSeen = true
 			require.Equal(t, "application/json, text/event-stream", upstreamReq.Header.Get("Accept"))
 			require.Contains(t, string(bodies[i]), `"model":"grok-4.5"`)
 			require.Contains(t, string(bodies[i]), `"input":"hi"`)
@@ -145,7 +153,12 @@ REDACTEDREDACTED
 			require.NotContains(t, string(bodies[i]), `"max_output_tokens"`)
 			require.NotContains(t, string(bodies[i]), `"store"`)
 	REDACTED
+		if upstreamReq.URL.String() == xai.DefaultCLIBaseURL+"/models" {
+			modelsSyncSeen = true
+	REDACTED
 REDACTED
+	require.True(t, responsesProbeSeen)
+	require.True(t, modelsSyncSeen)
 	require.NotNil(t, repo.updates[42])
 REDACTED
 
@@ -349,14 +362,12 @@ REDACTED, map[string]any{"base_url": "   "REDACTED)
 	require.Equal(t, "at-2", credentials["access_token"])
 REDACTED
 
-func TestGrokSSOImportWorkerRecoversPanic(t *testing.T) {
+func TestGrokSSOImportWorkerHandlesMissingOAuthService(t *testing.T) {
 	h := &GrokOAuthHandler{REDACTED
 	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{REDACTED, "token", 2, 3)
-	// Without a service, createAccountFromSSOToken would panic on nil service access.
-	// Recovery must convert that into a failed item and keep the worker alive.
 	require.False(t, result.created)
 	require.Equal(t, 2, result.item.Index)
-	require.Contains(t, result.item.Error, "internal worker panic")
+	require.Contains(t, result.item.Error, "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
 REDACTED
 
 func TestGrokOAuthHandlerReconcileDefaultsToDryRun(t *testing.T) {
