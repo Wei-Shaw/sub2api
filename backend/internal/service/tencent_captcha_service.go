@@ -25,6 +25,35 @@ type TencentCaptchaCredentials struct {
 	AppSecretKey   string
 	CloudSecretID  string
 	CloudSecretKey string
+	// Endpoint 服务端票据校验接入点，由地域推导，repository 层直接使用
+	Endpoint string
+}
+
+const (
+	// TencentCaptchaRegionCN 中国站（cloud.tencent.com）；TencentCaptchaRegionINTL 国际站（tencentcloud.com）。
+	// 该值同时决定前端加载的 SDK 脚本与服务端校验接入点，两端必须一致：
+	// 国际站 CaptchaAppId 配国内站 SDK 会被腾讯直接判为「appid 所属地域与实际使用地域不符」。
+	TencentCaptchaRegionCN   = "cn"
+	TencentCaptchaRegionINTL = "intl"
+
+	tencentCaptchaEndpointCN   = "captcha.tencentcloudapi.com"
+	tencentCaptchaEndpointINTL = "captcha.intl.tencentcloudapi.com"
+)
+
+// tencentCaptchaEndpoint 按后台配置的地域返回服务端接入点，未知值回退中国站
+func tencentCaptchaEndpoint(region string) string {
+	if region == TencentCaptchaRegionINTL {
+		return tencentCaptchaEndpointINTL
+	}
+	return tencentCaptchaEndpointCN
+}
+
+// normalizeTencentCaptchaRegion 非法值一律视为中国站
+func normalizeTencentCaptchaRegion(value string) string {
+	if value == TencentCaptchaRegionINTL {
+		return TencentCaptchaRegionINTL
+	}
+	return TencentCaptchaRegionCN
 }
 
 type TencentCaptchaVerifyResponse struct {
@@ -78,12 +107,31 @@ func (s *TencentCaptchaService) VerifyTicketWithConfig(ctx context.Context, conf
 
 	result, err := s.verifier.VerifyTicket(ctx, credentials, proof, remoteIP)
 	if err != nil {
-		logger.LegacyPrintf("service.tencent_captcha", "%s", "[TencentCaptcha] verification request failed")
+		logger.LegacyPrintf(
+			"service.tencent_captcha",
+			"[TencentCaptcha] verification request failed region=%s endpoint=%s error=%v",
+			normalizeTencentCaptchaRegion(config.Region),
+			credentials.Endpoint,
+			err,
+		)
 		return fmt.Errorf("%w: verifier request failed", ErrTencentCaptchaVerificationFailed)
 	}
 	if result == nil || result.CaptchaCode != 1 {
 		if result != nil {
-			logger.LegacyPrintf("service.tencent_captcha", "[TencentCaptcha] rejected code=%d request_id=%s", result.CaptchaCode, result.RequestID)
+			logger.LegacyPrintf(
+				"service.tencent_captcha",
+				"[TencentCaptcha] rejected region=%s code=%d message=%q request_id=%q",
+				normalizeTencentCaptchaRegion(config.Region),
+				result.CaptchaCode,
+				result.CaptchaMsg,
+				result.RequestID,
+			)
+		} else {
+			logger.LegacyPrintf(
+				"service.tencent_captcha",
+				"[TencentCaptcha] rejected region=%s empty_response=true",
+				normalizeTencentCaptchaRegion(config.Region),
+			)
 		}
 		return ErrTencentCaptchaVerificationFailed
 	}
@@ -100,6 +148,7 @@ func parseTencentCaptchaCredentials(config TencentCaptchaConfig) (TencentCaptcha
 		AppSecretKey:   strings.TrimSpace(config.AppSecretKey),
 		CloudSecretID:  strings.TrimSpace(config.CloudSecretID),
 		CloudSecretKey: strings.TrimSpace(config.CloudSecretKey),
+		Endpoint:       tencentCaptchaEndpoint(config.Region),
 	}
 	if credentials.AppSecretKey == "" || credentials.CloudSecretID == "" || credentials.CloudSecretKey == "" {
 		return TencentCaptchaCredentials{}, false
