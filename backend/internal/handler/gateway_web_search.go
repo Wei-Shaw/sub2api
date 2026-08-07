@@ -231,7 +231,7 @@ func (h *GatewayHandler) doGrokNativeWebSearch(ctx context.Context, c *gin.Conte
 REDACTED
 	bodyBytes, _ := json.Marshal(searchBody)
 
-	respBytes, err := h.gatewayService.DoGrokNativeResponsesJSON(ctx, c, account, bodyBytes)
+	respBytes, err := h.gatewayService.DoGrokNativeResponsesJSON(ctx, account, bodyBytes)
 	if err != nil {
 		return nil, "", err
 REDACTED

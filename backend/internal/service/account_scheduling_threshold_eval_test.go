@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -305,4 +306,39 @@ REDACTED, now)
 	require.Equal(t, 92.0, decision.UsedPercent)
 	require.NotNil(t, decision.Until)
 	require.True(t, wantUntil.Equal(*decision.Until))
+REDACTED
+
+func TestEvaluateAccountSchedulingThreshold_GrokBillingWindows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	weeklyEnd := now.Add(3 * time.Hour)
+	weeklyPct := 95.0
+	monthlyPct := 40.0
+	account := &Account{
+		Platform: PlatformGrok,
+		Extra: map[string]any{
+			// Header-based quota below threshold.
+			"grok_sched_utilization": 50.0,
+			"grok_sched_reset_at":    now.Add(time.Hour).Format(time.RFC3339),
+			// Official weekly billing above threshold (extra key used by probe persist).
+			grokBillingExtraKey: &xai.BillingSummary{
+				UsagePercent: &weeklyPct,
+				PeriodEnd:    weeklyEnd.Format(time.RFC3339),
+				UsedPercent:  &monthlyPct,
+				BillingPeriodEnd: now.Add(10 * 24 * time.Hour).Format(time.RFC3339),
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{
+		PlatformGrok: 90,
+REDACTED, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "grok_billing", decision.Scope)
+	require.Equal(t, "seven_day", decision.Window)
+	require.InDelta(t, 95.0, decision.UsedPercent, 1e-9)
+	require.NotNil(t, decision.Until)
+	require.True(t, weeklyEnd.Equal(*decision.Until))
 REDACTED

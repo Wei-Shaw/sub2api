@@ -11,7 +11,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
-	"github.com/redis/go-redis/v9"
 )
 
 const grokDefaultAccessTokenTTL = 6 * time.Hour
@@ -35,13 +34,15 @@ REDACTED
 	return service
 REDACTED
 
-// WithRedisSessionStore enables cross-instance, single-use OAuth callbacks.
-func (s *GrokOAuthService) WithRedisSessionStore(rdb *redis.Client) *GrokOAuthService {
-	if s != nil && rdb != nil {
+// WithSessionStore replaces the in-memory OAuth session store (e.g. Redis-backed
+// for cross-instance single-use callbacks). Redis wiring stays in Wire providers
+// so this service package does not import go-redis (depguard).
+func (s *GrokOAuthService) WithSessionStore(store *xai.SessionStore) *GrokOAuthService {
+	if s != nil && store != nil {
 		if s.sessionStore != nil {
 			s.sessionStore.Stop()
 	REDACTED
-		s.sessionStore = xai.NewRedisSessionStore(rdb)
+		s.sessionStore = store
 REDACTED
 	return s
 REDACTED
