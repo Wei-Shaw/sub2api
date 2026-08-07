@@ -679,6 +679,87 @@ func (_u *GroupUpdate) ClearWebSearchPricePerCall() *GroupUpdate {
 	return _u
 REDACTED
 
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdate) SetAudioRealtimePricePerMin(v float64) *GroupUpdate {
+	_u.mutation.ResetAudioRealtimePricePerMin()
+	_u.mutation.SetAudioRealtimePricePerMin(v)
+	return _u
+REDACTED
+
+// SetNillableAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAudioRealtimePricePerMin(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetAudioRealtimePricePerMin(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioRealtimePricePerMin adds value to the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdate) AddAudioRealtimePricePerMin(v float64) *GroupUpdate {
+	_u.mutation.AddAudioRealtimePricePerMin(v)
+	return _u
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdate) ClearAudioRealtimePricePerMin() *GroupUpdate {
+	_u.mutation.ClearAudioRealtimePricePerMin()
+	return _u
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdate) SetAudioTtsPricePerMillionChars(v float64) *GroupUpdate {
+	_u.mutation.ResetAudioTtsPricePerMillionChars()
+	_u.mutation.SetAudioTtsPricePerMillionChars(v)
+	return _u
+REDACTED
+
+// SetNillableAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAudioTtsPricePerMillionChars(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetAudioTtsPricePerMillionChars(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds value to the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdate) AddAudioTtsPricePerMillionChars(v float64) *GroupUpdate {
+	_u.mutation.AddAudioTtsPricePerMillionChars(v)
+	return _u
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdate) ClearAudioTtsPricePerMillionChars() *GroupUpdate {
+	_u.mutation.ClearAudioTtsPricePerMillionChars()
+	return _u
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdate) SetAudioSttPricePerHour(v float64) *GroupUpdate {
+	_u.mutation.ResetAudioSttPricePerHour()
+	_u.mutation.SetAudioSttPricePerHour(v)
+	return _u
+REDACTED
+
+// SetNillableAudioSttPricePerHour sets the "audio_stt_price_per_hour" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAudioSttPricePerHour(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetAudioSttPricePerHour(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioSttPricePerHour adds value to the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdate) AddAudioSttPricePerHour(v float64) *GroupUpdate {
+	_u.mutation.AddAudioSttPricePerHour(v)
+	return _u
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdate) ClearAudioSttPricePerHour() *GroupUpdate {
+	_u.mutation.ClearAudioSttPricePerHour()
+	return _u
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1316,6 +1397,21 @@ REDACTED
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
+		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
+			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.AudioTtsPricePerMillionChars(); ok {
+		if err := group.AudioTtsPricePerMillionCharsValidator(v); err != nil {
+			return &ValidationError{Name: "audio_tts_price_per_million_chars", err: fmt.Errorf(`ent: validator failed for field "Group.audio_tts_price_per_million_chars": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.AudioSttPricePerHour(); ok {
+		if err := group.AudioSttPricePerHourValidator(v); err != nil {
+			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)REDACTED
@@ -1532,6 +1628,33 @@ REDACTED
 REDACTED
 	if _u.mutation.WebSearchPricePerCallCleared() {
 		_spec.ClearField(group.FieldWebSearchPricePerCall, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
+		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioRealtimePricePerMin(); ok {
+		_spec.AddField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioRealtimePricePerMinCleared() {
+		_spec.ClearField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioTtsPricePerMillionChars(); ok {
+		_spec.SetField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioTtsPricePerMillionChars(); ok {
+		_spec.AddField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioTtsPricePerMillionCharsCleared() {
+		_spec.ClearField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioSttPricePerHour(); ok {
+		_spec.SetField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioSttPricePerHour(); ok {
+		_spec.AddField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioSttPricePerHourCleared() {
+		_spec.ClearField(group.FieldAudioSttPricePerHour, field.TypeFloat64)
 REDACTED
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -2590,6 +2713,87 @@ func (_u *GroupUpdateOne) ClearWebSearchPricePerCall() *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdateOne) SetAudioRealtimePricePerMin(v float64) *GroupUpdateOne {
+	_u.mutation.ResetAudioRealtimePricePerMin()
+	_u.mutation.SetAudioRealtimePricePerMin(v)
+	return _u
+REDACTED
+
+// SetNillableAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAudioRealtimePricePerMin(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAudioRealtimePricePerMin(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioRealtimePricePerMin adds value to the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdateOne) AddAudioRealtimePricePerMin(v float64) *GroupUpdateOne {
+	_u.mutation.AddAudioRealtimePricePerMin(v)
+	return _u
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (_u *GroupUpdateOne) ClearAudioRealtimePricePerMin() *GroupUpdateOne {
+	_u.mutation.ClearAudioRealtimePricePerMin()
+	return _u
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdateOne) SetAudioTtsPricePerMillionChars(v float64) *GroupUpdateOne {
+	_u.mutation.ResetAudioTtsPricePerMillionChars()
+	_u.mutation.SetAudioTtsPricePerMillionChars(v)
+	return _u
+REDACTED
+
+// SetNillableAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAudioTtsPricePerMillionChars(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAudioTtsPricePerMillionChars(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds value to the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdateOne) AddAudioTtsPricePerMillionChars(v float64) *GroupUpdateOne {
+	_u.mutation.AddAudioTtsPricePerMillionChars(v)
+	return _u
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (_u *GroupUpdateOne) ClearAudioTtsPricePerMillionChars() *GroupUpdateOne {
+	_u.mutation.ClearAudioTtsPricePerMillionChars()
+	return _u
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdateOne) SetAudioSttPricePerHour(v float64) *GroupUpdateOne {
+	_u.mutation.ResetAudioSttPricePerHour()
+	_u.mutation.SetAudioSttPricePerHour(v)
+	return _u
+REDACTED
+
+// SetNillableAudioSttPricePerHour sets the "audio_stt_price_per_hour" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAudioSttPricePerHour(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAudioSttPricePerHour(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddAudioSttPricePerHour adds value to the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdateOne) AddAudioSttPricePerHour(v float64) *GroupUpdateOne {
+	_u.mutation.AddAudioSttPricePerHour(v)
+	return _u
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (_u *GroupUpdateOne) ClearAudioSttPricePerHour() *GroupUpdateOne {
+	_u.mutation.ClearAudioSttPricePerHour()
+	return _u
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -3240,6 +3444,21 @@ REDACTED
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
+		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
+			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.AudioTtsPricePerMillionChars(); ok {
+		if err := group.AudioTtsPricePerMillionCharsValidator(v); err != nil {
+			return &ValidationError{Name: "audio_tts_price_per_million_chars", err: fmt.Errorf(`ent: validator failed for field "Group.audio_tts_price_per_million_chars": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _u.mutation.AudioSttPricePerHour(); ok {
+		if err := group.AudioSttPricePerHourValidator(v); err != nil {
+			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)REDACTED
@@ -3473,6 +3692,33 @@ REDACTED
 REDACTED
 	if _u.mutation.WebSearchPricePerCallCleared() {
 		_spec.ClearField(group.FieldWebSearchPricePerCall, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioRealtimePricePerMin(); ok {
+		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioRealtimePricePerMin(); ok {
+		_spec.AddField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioRealtimePricePerMinCleared() {
+		_spec.ClearField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioTtsPricePerMillionChars(); ok {
+		_spec.SetField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioTtsPricePerMillionChars(); ok {
+		_spec.AddField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioTtsPricePerMillionCharsCleared() {
+		_spec.ClearField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.AudioSttPricePerHour(); ok {
+		_spec.SetField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedAudioSttPricePerHour(); ok {
+		_spec.AddField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+REDACTED
+	if _u.mutation.AudioSttPricePerHourCleared() {
+		_spec.ClearField(group.FieldAudioSttPricePerHour, field.TypeFloat64)
 REDACTED
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

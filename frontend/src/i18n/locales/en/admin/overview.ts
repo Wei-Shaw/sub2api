@@ -994,6 +994,14 @@ export default {
         finalPricePreview: 'Final per-second price preview',
         notConfigured: 'Not configured'
       REDACTED,
+      voicePricing: {
+        title: 'Grok Voice Pricing',
+        description: 'Optional per-group prices for Voice realtime / TTS / STT (USD). Leave empty to leave unpriced.',
+        audioRealtimePerMin: 'Realtime price per minute (USD)',
+        audioTtsPerMillionChars: 'TTS price per million chars (USD)',
+        audioSttPerHour: 'STT price per hour (USD)',
+        pricePlaceholder: 'optional'
+      REDACTED,
       webSearchPricing: {
         title: 'Codex Web Search Pricing',
         pricePerCall: 'Price per search call (USD)',

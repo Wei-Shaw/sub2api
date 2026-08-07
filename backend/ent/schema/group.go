@@ -158,6 +158,26 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
 			Comment("Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）"),
 
+		// Grok Voice 显式定价（realtime / TTS / STT），不按文本 RateMultiplier。
+		field.Float("audio_realtime_price_per_min").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Comment("Voice realtime 每分钟价格（USD）"),
+		field.Float("audio_tts_price_per_million_chars").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Comment("TTS 每百万字符价格（USD）"),
+		field.Float("audio_stt_price_per_hour").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Comment("STT 每小时价格（USD）"),
+
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
 			Default(false).

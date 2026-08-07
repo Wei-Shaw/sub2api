@@ -129,6 +129,9 @@ type CreateGroupRequest struct {
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
 	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                      `json:"audio_stt_price_per_hour"`
 	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
@@ -192,6 +195,9 @@ type UpdateGroupRequest struct {
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
 	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                      `json:"audio_stt_price_per_hour"`
 	ClaudeCodeOnly                  *bool                         `json:"claude_code_only"`
 	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
@@ -523,6 +529,9 @@ REDACTED
 		VideoPrice1080P:                 req.VideoPrice1080P,
 		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -646,6 +655,9 @@ REDACTED
 		VideoPrice1080P:                 req.VideoPrice1080P,
 		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,

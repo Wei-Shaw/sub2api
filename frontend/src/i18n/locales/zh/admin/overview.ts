@@ -991,6 +991,14 @@ export default {
         finalPricePreview: '最终每秒价格预览',
         notConfigured: '未配置'
       REDACTED,
+      voicePricing: {
+        title: 'Grok Voice 定价',
+        description: '分组级 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+        audioRealtimePerMin: 'Realtime 每分钟价格（USD）',
+        audioTtsPerMillionChars: 'TTS 每百万字符价格（USD）',
+        audioSttPerHour: 'STT 每小时价格（USD）',
+        pricePlaceholder: '可选'
+      REDACTED,
       webSearchPricing: {
         title: 'Codex 网页搜索计费',
         pricePerCall: '搜索单次价格（USD/次）',
