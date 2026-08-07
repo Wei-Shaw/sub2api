@@ -144,11 +144,14 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
-	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
+	admissionCtx := h.gatewayService.WithOpenAICodexClientAdmission(c.Request.Context(), c, body)
+	c.Request = c.Request.WithContext(admissionCtx)
+	requestCtx := service.WithOpenAIImageGenerationIntent(admissionCtx)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	profitVetoCount := 0
+	clientVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
@@ -176,6 +179,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if lastFailoverErr == nil && h.handleOpenAICodexAdmissionError(c, err, streamStarted, false) {
+				return
+			}
+			if lastFailoverErr == nil && allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, service.PlatformOpenAI)
 				if !cls.ModelNotFound {
@@ -231,9 +241,21 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
+			return
+		}
+		if slotResult == openAISlotAcquireClientVetoed {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
+				return
+			}
+			continue
+		}
 		if slotResult != openAISlotAcquireOK {
 			return
 		}
+		account = selection.Account
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		if !parsed.Stream && !jsonKeepaliveStarted {
@@ -261,6 +283,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, streamStarted, false)
+				return
+			}
+			if errors.Is(err, service.ErrCodexClientRestricted) {
+				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+					h.handleOpenAIClientAdmissionExhausted(c, requestCtx, streamStarted, false)
+					return
+				}
+				continue
+			}
 			if result != nil && result.ImageCount > 0 {
 				reqLog.Warn("openai.images.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),

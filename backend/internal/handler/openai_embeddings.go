@@ -108,6 +108,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 
 	profitVetoCount := 0
+	clientVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
 	switchCount := 0
@@ -119,6 +120,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 
 	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。
 	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	embPricingCtx = h.gatewayService.WithOpenAICodexClientAdmission(embPricingCtx, c, body)
 	c.Request = c.Request.WithContext(embPricingCtx)
 
 	for {
@@ -144,6 +146,13 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if lastFailoverErr == nil && h.handleOpenAICodexAdmissionError(c, err, streamStarted, false) {
+				return
+			}
+			if lastFailoverErr == nil && allExcludedOpenAIAccountsWereClientVetoed(failedAccountIDs, clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformOpenAI)
 				if !cls.ModelNotFound {
@@ -179,9 +188,21 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			}
 			continue
 		}
+		if slotResult == openAISlotAcquireClientAdmissionUnavailable {
+			h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), false, false)
+			return
+		}
+		if slotResult == openAISlotAcquireClientVetoed {
+			if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+				h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+				return
+			}
+			continue
+		}
 		if slotResult != openAISlotAcquireOK {
 			return
 		}
+		account = selection.Account
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
@@ -209,6 +230,17 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
 		if err != nil {
+			if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) {
+				h.handleOpenAICodexAdmissionError(c, err, false, false)
+				return
+			}
+			if errors.Is(err, service.ErrCodexClientRestricted) {
+				if !recordOpenAIClientAdmissionVeto(failedAccountIDs, account.ID, &clientVetoCount) {
+					h.handleOpenAIClientAdmissionExhausted(c, c.Request.Context(), streamStarted, false)
+					return
+				}
+				continue
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				if c.Writer.Size() != writerSizeBeforeForward {

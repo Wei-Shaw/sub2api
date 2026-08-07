@@ -61,6 +61,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if account == nil {
 		return errors.New("account is nil")
 	}
+	if _, err := s.enforceOpenAICodexClientAdmissionBeforeUpstream(ctx, account); err != nil {
+		return err
+	}
 	if err := validateOpenAIWSBearerToken(account, token); err != nil {
 		return err
 	}
@@ -92,11 +95,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 				return fmt.Errorf("websocket ingress requires ws_v2 transport, got=%s", wsDecision.Transport)
 			}
-			// 注意：透传 relay 只回调 hooks.AfterTurn，没有 turn 起始回调，
-			// 因此下面这条路径永远不会触发 hooks.BeforeTurn——分组利润控制的
-			// turn 级复核与 turn 级 pricingAt 冻结都不覆盖透传 ingress，
-			// 只有建连时的准入门生效。handler 侧据此把 turn 定价留作零值，
-			// 由 RecordUsage 回退到记录时刻（见 openAIWSTurnPricing 注释）。
+			// Passthrough invokes the same BeforeTurn hook as the pooled ingress
+			// before every response.create frame. This keeps turn pricing, profit
+			// admission, and client restrictions aligned across ingress modes.
 			return s.proxyResponsesWebSocketV2Passthrough(
 				ctx,
 				c,

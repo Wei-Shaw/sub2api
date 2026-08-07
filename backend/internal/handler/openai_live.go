@@ -42,6 +42,8 @@ func (h *OpenAIGatewayHandler) Live(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	liveCtx := h.gatewayService.WithOpenAICodexClientAdmission(c.Request.Context(), c, request.Session)
+	c.Request = c.Request.WithContext(liveCtx)
 	model := strings.TrimSpace(gjson.GetBytes(request.Session, "model").String())
 	reqLog := requestLogger(
 		c,
@@ -166,6 +168,10 @@ func liveCallIdentity(
 
 func (h *OpenAIGatewayHandler) writeLiveCreateError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, service.ErrCodexClientAdmissionUnavailable):
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Account client policy is temporarily unavailable, please retry later")
+	case errors.Is(err, service.ErrCodexClientRestricted):
+		h.handleOpenAICodexAdmissionError(c, err, false, false)
 	case errors.Is(err, service.ErrLiveConcurrencyFull):
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Live concurrency limit reached")
 	case errors.Is(err, service.ErrLiveUnavailable):
@@ -200,6 +206,8 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", "Live is not enabled for this group")
 		return
 	}
+	sidebandCtx := h.gatewayService.WithOpenAICodexClientAdmission(c.Request.Context(), c, nil)
+	c.Request = c.Request.WithContext(sidebandCtx)
 	identity := service.LiveCallIdentity{
 		APIKeyID: apiKey.ID,
 		UserID:   subject.UserID,
@@ -214,6 +222,13 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "Live call not found")
 		return
 	}
+	if err := h.gatewayService.ValidateLiveSidebandClientAdmission(c.Request.Context(), record); err != nil {
+		if h.handleOpenAICodexAdmissionError(c, err, false, false) {
+			return
+		}
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Live account is unavailable")
+		return
+	}
 	downstream, err := coderws.Accept(c.Writer, c.Request, &coderws.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
@@ -222,6 +237,12 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 	}
 	defer func() { _ = downstream.CloseNow() }()
 	if err := h.gatewayService.ProxyLiveSideband(c.Request.Context(), record, downstream); err != nil {
+		if errors.Is(err, service.ErrCodexClientAdmissionUnavailable) || errors.Is(err, service.ErrCodexClientRestricted) {
+			result, _ := service.CodexClientRestrictionResultFromError(err)
+			status, message := openAIClientAdmissionWSClose(err, result)
+			_ = downstream.Close(status, message)
+			return
+		}
 		_ = downstream.Close(coderws.StatusInternalError, "live sideband closed")
 		return
 	}

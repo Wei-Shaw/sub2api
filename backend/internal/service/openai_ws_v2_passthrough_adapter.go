@@ -241,6 +241,13 @@ func openAIWSPassthroughRequestModelForFrame(payload []byte) string {
 	return strings.TrimSpace(gjson.GetBytes(payload, "model").String())
 }
 
+func openAIWSPassthroughIsResponseCreateFrame(msgType coderws.MessageType, payload []byte) bool {
+	if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
+		return false
+	}
+	return strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create"
+}
+
 func openAIWSPassthroughRequestModelFromSessionFrame(payload []byte) string {
 	if len(payload) == 0 || strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "session.update" {
 		return ""
@@ -453,7 +460,7 @@ func (c *openAIWSPassthroughFirstOutputFrameConn) WriteFrame(ctx context.Context
 		return errOpenAIWSConnClosed
 	}
 	generation := uint64(0)
-	if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
+	if openAIWSPassthroughIsResponseCreateFrame(msgType, payload) {
 		generation = c.armDeadline(payload)
 	}
 	if err := c.inner.WriteFrame(ctx, msgType, payload); err != nil {
@@ -752,6 +759,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	if hooks != nil && hooks.BeforeTurn != nil {
+		if err := hooks.BeforeTurn(1); err != nil {
+			return err
+		}
+	}
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter
@@ -924,7 +936,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		// capturedSessionModel 的读写都发生在该 goroutine 内，因此无需
 		// 加锁/原子化。
 		filter: func(msgType coderws.MessageType, payload []byte) (out []byte, blocked *OpenAIFastBlockedError, filterErr error) {
-			if msgType != coderws.MessageText {
+			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
@@ -967,6 +979,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				if hooks != nil && hooks.BeforeRequest != nil {
 					if err := hooks.BeforeRequest(turnNo, payload, requestModelForThisFrame); err != nil {
+						return payload, nil, err
+					}
+				}
+				if hooks != nil && hooks.BeforeTurn != nil {
+					if err := hooks.BeforeTurn(turnNo); err != nil {
 						return payload, nil, err
 					}
 				}
@@ -1060,8 +1077,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if readErr != nil {
 				return msgType, payload, readErr
 			}
-			if msgType == coderws.MessageText && strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
-				return msgType, payload, nil
+			if openAIWSPassthroughIsResponseCreateFrame(msgType, payload) {
+				// 首包在 handler 读取后已统一按 Text 写入上游；follow-up Binary
+				// JSON response.create 也规范化为 Text，使 relay 的 turn 计时、
+				// request model、usage 和生命周期状态机与 Text 请求完全一致。
+				// 其他 Binary 事件仍保留原 message type 走下方直接透传。
+				return coderws.MessageText, payload, nil
 			}
 			if writeErr := upstreamFrameConn.WriteFrame(readCtx, msgType, payload); writeErr != nil {
 				return msgType, payload, writeErr

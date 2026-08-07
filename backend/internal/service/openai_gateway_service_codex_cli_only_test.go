@@ -59,7 +59,7 @@ func TestOpenAIGatewayService_GetCodexClientRestrictionDetector(t *testing.T) {
 	})
 }
 
-func TestOpenAIGatewayService_Forward_VersionGateMessage(t *testing.T) {
+func TestOpenAIGatewayService_Forward_ReturnsTypedClientAdmissionErrorWithoutWriting(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	newCtx := func() (*httptest.ResponseRecorder, *gin.Context) {
@@ -73,7 +73,7 @@ func TestOpenAIGatewayService_Forward_VersionGateMessage(t *testing.T) {
 	}
 	body := []byte(`{"model":"gpt-5.1-codex"}`)
 
-	t.Run("版本太低：返回带版本号的差异化文案", func(t *testing.T) {
+	t.Run("版本太低：保留差异化结果供 handler 输出", func(t *testing.T) {
 		rec, c := newCtx()
 		svc := &OpenAIGatewayService{codexDetector: &stubCodexRestrictionDetector{result: CodexClientRestrictionDetectionResult{
 			Enabled:         true,
@@ -84,10 +84,12 @@ func TestOpenAIGatewayService_Forward_VersionGateMessage(t *testing.T) {
 		}}}
 
 		_, err := svc.Forward(context.Background(), c, account(), body)
-		require.Error(t, err)
-		require.Equal(t, http.StatusForbidden, rec.Code)
-		require.Contains(t, rec.Body.String(), "Your Codex version (0.39.0) is below the minimum required version (0.42.0)")
-		require.NotContains(t, rec.Body.String(), "This account only allows Codex official clients")
+		require.ErrorIs(t, err, ErrCodexClientRestricted)
+		result, ok := CodexClientRestrictionResultFromError(err)
+		require.True(t, ok)
+		require.Equal(t, CodexClientRestrictionReasonVersionTooLow, result.Reason)
+		require.Equal(t, "0.39.0", result.DetectedVersion)
+		require.Zero(t, rec.Body.Len(), "service 不得提前写响应，handler 需要排除账号并重选")
 	})
 
 	t.Run("未命中官方：仍返回通用兜底文案", func(t *testing.T) {
@@ -99,9 +101,11 @@ func TestOpenAIGatewayService_Forward_VersionGateMessage(t *testing.T) {
 		}}}
 
 		_, err := svc.Forward(context.Background(), c, account(), body)
-		require.Error(t, err)
-		require.Equal(t, http.StatusForbidden, rec.Code)
-		require.Contains(t, rec.Body.String(), "This account only allows Codex official clients")
+		require.ErrorIs(t, err, ErrCodexClientRestricted)
+		result, ok := CodexClientRestrictionResultFromError(err)
+		require.True(t, ok)
+		require.Equal(t, CodexClientRestrictionReasonNotMatchedUA, result.Reason)
+		require.Zero(t, rec.Body.Len())
 	})
 }
 

@@ -518,6 +518,11 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if vetoed, _ := openAIProfitControlVetoReason(ctx, account); vetoed {
 		return 0, nil, "", nil
 	}
+	if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, account, s.parentAccountLookup(ctx)); vetoed {
+		// Client identity is request-specific. Preserve the response binding so a
+		// compatible client can continue the chain later.
+		return 0, nil, "", nil
+	}
 	if s.schedulerSnapshot != nil && s.accountRepo != nil {
 		latest, latestErr := s.accountRepo.GetByID(ctx, account.ID)
 		if latestErr != nil || latest == nil {
@@ -543,6 +548,9 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		}
 		// 利润门对最新账号状态复检一次，语义同上：跳过复用、不删绑定。
 		if vetoed, _ := openAIProfitControlVetoReason(ctx, latest); vetoed {
+			return 0, nil, "", nil
+		}
+		if vetoed, _ := s.codexClientAdmissionVetoReason(ctx, latest, s.parentAccountLookup(ctx)); vetoed {
 			return 0, nil, "", nil
 		}
 		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {

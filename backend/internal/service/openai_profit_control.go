@@ -337,28 +337,131 @@ func (s *OpenAIGatewayService) ProfitControlVetoLatest(ctx context.Context, sele
 	return profitControlVetoLatest(ctx, selected, s.schedulerSnapshot)
 }
 
+// OpenAITerminalAdmissionResult is the single post-slot admission decision for
+// an OpenAI-compatible request. The selected account is refreshed at most once
+// and the same object is then used by both profit and client-policy checks.
+type OpenAITerminalAdmissionResult struct {
+	Account           *Account
+	ProfitVetoed      bool
+	ProfitReason      string
+	ClientVetoed      bool
+	ClientRestriction CodexClientRestrictionDetectionResult
+}
+
+// OpenAITerminalAdmissionLatest performs one post-slot refresh and evaluates
+// both admission policies against the same object. Client-restricted OAuth
+// traffic reads the repository authoritatively; profit-only traffic preserves
+// the scheduler cache-first behavior. Profit refresh failures remain fail-open,
+// while client-policy refresh failures fail closed.
+func (s *OpenAIGatewayService) OpenAITerminalAdmissionLatest(ctx context.Context, selected *Account) (OpenAITerminalAdmissionResult, error) {
+	result := OpenAITerminalAdmissionResult{Account: selected}
+	if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok && snapshot.enforcementActive {
+		snapshot.clearTerminalAdmission()
+	}
+	if s == nil || selected == nil {
+		return result, nil
+	}
+	clientAdmissionApplies := codexClientAdmissionAppliesToAccount(ctx, selected)
+
+	latest, err := s.refreshOpenAITerminalAdmissionAccount(ctx, selected)
+	result.Account = latest
+	if err != nil {
+		if gate, _ := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate); gate != nil {
+			slog.Warn("profit_control_account_refresh_failed", "group_id", gate.groupID, "platform", gate.platform, "account_id", selected.ID, "error", err)
+			openAIProfitControlObserverInstance.recordRefreshFailure(gate.groupID, gate.platform, gate.threshold)
+		}
+		if clientAdmissionApplies {
+			slog.Warn("codex_client_admission_account_refresh_failed", "account_id", selected.ID, "error", err)
+			if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+				snapshot.recordUnavailable()
+			}
+			return result, fmt.Errorf("%w: refresh account %d: %v", ErrCodexClientAdmissionUnavailable, selected.ID, err)
+		}
+	}
+
+	result.ProfitVetoed, result.ProfitReason = openAIProfitControlVetoReason(ctx, latest)
+	var clientErr error
+	result.ClientVetoed, result.ClientRestriction, clientErr = s.codexClientAdmissionVeto(ctx, latest)
+	if clientErr != nil {
+		slog.Warn("codex_client_admission_policy_resolution_failed", "account_id", selected.ID, "error", clientErr)
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordUnavailable()
+		}
+		return result, fmt.Errorf("%w: resolve account %d policy: %v", ErrCodexClientAdmissionUnavailable, selected.ID, clientErr)
+	}
+	if !result.ClientVetoed && codexClientAdmissionAppliesToAccount(ctx, latest) {
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok {
+			snapshot.recordTerminalAdmission(latest)
+		}
+	}
+	return result, nil
+}
+
+func (s *OpenAIGatewayService) refreshOpenAITerminalAdmissionAccount(ctx context.Context, selected *Account) (*Account, error) {
+	if selected == nil || s == nil ||
+		(!gatewayProfitControlGateActive(ctx) && !codexClientAdmissionAppliesToAccount(ctx, selected)) {
+		return selected, nil
+	}
+	if codexClientAdmissionAppliesToAccount(ctx, selected) {
+		if s.accountRepo == nil {
+			return selected, errors.New("account repository is unavailable for client admission refresh")
+		}
+		refreshed, err := s.accountRepo.GetByID(ctx, selected.ID)
+		if err != nil {
+			return selected, err
+		}
+		if refreshed == nil {
+			return selected, fmt.Errorf("selected account %d not found during client admission refresh", selected.ID)
+		}
+		return refreshed, nil
+	}
+	if s.schedulerSnapshot == nil {
+		return selected, nil
+	}
+	refreshed, err := s.schedulerSnapshot.GetAccount(ctx, selected.ID)
+	if err != nil {
+		return selected, err
+	}
+	if refreshed == nil {
+		return selected, fmt.Errorf("selected account %d not found during terminal admission refresh", selected.ID)
+	}
+	// A DB-rechecked selection is authoritative when timestamps tie. Some
+	// update paths can preserve second-level timestamps, so replacing it on
+	// equality could reintroduce an older cache object with different policy.
+	if !refreshed.UpdatedAt.After(selected.UpdatedAt) {
+		return selected, nil
+	}
+	return refreshed, nil
+}
+
 // bindOpenAIStickySessionDuringSelection preserves the official eager binding
-// behavior for requests without a profit gate. Profit-controlled requests bind
-// only after the terminal post-slot check, so an account rejected after a rate
-// refresh cannot become the new sticky target.
+// behavior for requests without a terminal admission check. Profit-controlled
+// and client-restricted requests bind only after the post-slot refresh.
 func (s *OpenAIGatewayService) bindOpenAIStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if gatewayProfitControlGateActive(ctx) {
+	if openAIStickyAdmissionDeferred(ctx) {
 		return nil
 	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 
 // BindStickySessionAfterProfitAdmission records the terminally admitted
-// account. Without a profit gate it preserves the pre-existing eager binding
-// behavior at the handler bind points. With a gate it never overwrites a
-// different binding that already exists, so a temporarily ineligible account
-// remains sticky and becomes eligible again automatically after its rate
-// recovers.
+// account. Profit control preserves its existing non-overwrite behavior. A
+// client-admission-only request preserves a different binding only when that
+// exact account was skipped by the request's client policy; ordinary upstream
+// failover still replaces stale sticky bindings as it did before this feature.
 func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}
-	if !gatewayProfitControlGateActive(ctx) {
+	if !openAIStickyAdmissionDeferred(ctx) {
+		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+	}
+	// A client-admission context is installed for non-Codex callers, but most
+	// requests never encounter a restricted account. Preserve the original
+	// single-SET hot path in that common case; the extra read is only needed
+	// after an actual client-policy veto (or under profit control, whose sticky
+	// semantics always preserve an existing different binding).
+	if !gatewayProfitControlGateActive(ctx) && !codexClientAdmissionDenied(ctx) {
 		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 	}
 	existingAccountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash)
@@ -367,7 +470,12 @@ func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context
 		return nil
 	}
 	if existingAccountID > 0 && existingAccountID != accountID {
-		return nil
+		if gatewayProfitControlGateActive(ctx) {
+			return nil
+		}
+		if snapshot, ok := codexClientAdmissionSnapshotFromContext(ctx); ok && snapshot.stickyWasSkipped(existingAccountID) {
+			return nil
+		}
 	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }

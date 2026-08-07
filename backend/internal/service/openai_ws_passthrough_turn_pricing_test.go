@@ -60,18 +60,10 @@ func startPassthroughHookRecordingServer(
 	return server, serverErr
 }
 
-// TestPassthroughIngressNeverCallsBeforeTurn 钉死 ws_v2 透传 ingress 与 handler
-// 侧 turn 定价的耦合：透传 relay 只回调 AfterTurn，没有任何 turn 起始回调，
-// 因此 hooks.BeforeTurn 永远不会触发。
-//
-// handler 依赖这一点：openAIWSTurnPricing 零值起步，透传连接的每个 turn 都拿
-// 不到冻结的 pricingAt，RecordUsage 回退到记录时刻——与引入分组利润控制前的
-// 基线一致。若把 turn 定价初始化成建连时刻，透传连接的所有 turn 就会被钉死在
-// 建连时的高峰因子，客户端峰前建连保活即可全程按谷价结算。
-//
-// 若本断言因为透传补齐了 turn 起始回调而失败：这是好事，请同步复核
-// openAIWSTurnPricing 的零值语义与透传路径的 turn 级利润复核。
-func TestPassthroughIngressNeverCallsBeforeTurn(t *testing.T) {
+// TestPassthroughIngressCallsBeforeTurn verifies that passthrough uses the
+// same turn-start lifecycle as pooled ingress. The handler freezes pricing and
+// rechecks terminal admission from this callback.
+func TestPassthroughIngressCallsBeforeTurn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
@@ -123,6 +115,78 @@ func TestPassthroughIngressNeverCallsBeforeTurn(t *testing.T) {
 	gotBefore, gotAfter := beforeTurnCalls, afterTurnCalls
 	hooksMu.Unlock()
 
-	require.Zero(t, gotBefore, "透传 ingress 没有 turn 起始回调，BeforeTurn 不应被调用")
+	require.Equal(t, 1, gotBefore, "首个 response.create 必须触发 BeforeTurn")
 	require.Positive(t, gotAfter, "透传 ingress 仍应回调 AfterTurn 提交用量")
+}
+
+func TestPassthroughIngressBinaryFollowupUsesTurnLifecycle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_binary_turn_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+
+	var hooksMu sync.Mutex
+	beforeTurns := make([]int, 0, 2)
+	afterTurns := make([]int, 0, 2)
+	afterModels := make([]string, 0, 2)
+	hooks := &OpenAIWSIngressHooks{
+		BeforeTurn: func(turn int) error {
+			hooksMu.Lock()
+			beforeTurns = append(beforeTurns, turn)
+			hooksMu.Unlock()
+			return nil
+		},
+		AfterTurn: func(turn int, result *OpenAIForwardResult, _ error) {
+			hooksMu.Lock()
+			defer hooksMu.Unlock()
+			afterTurns = append(afterTurns, turn)
+			if result != nil {
+				afterModels = append(afterModels, result.Model)
+			}
+		},
+	}
+
+	server, serverErr := startPassthroughHookRecordingServer(
+		t,
+		controlCtx,
+		newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
+		passthroughLifecycleAccount(),
+		hooks,
+	)
+	defer server.Close()
+	client := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = client.CloseNow() }()
+
+	firstUpstream := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+	require.Equal(t, "gpt-5.1", gjson.GetBytes(firstUpstream, "model").String())
+	first, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_binary_turn_1", gjson.GetBytes(first, "response.id").String())
+
+	writeWSFrameType(t, client, coderws.MessageBinary, `{"type":"response.create","model":"gpt-5.2","stream":false,"previous_response_id":"resp_binary_turn_1"}`)
+	secondUpstream := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+	require.Equal(t, "response.create", gjson.GetBytes(secondUpstream, "type").String())
+	require.Equal(t, "gpt-5.2", gjson.GetBytes(secondUpstream, "model").String())
+	upstream.Send(`{"type":"response.completed","response":{"id":"resp_binary_turn_2","model":"gpt-5.2","usage":{"input_tokens":2,"output_tokens":2}}}`)
+	second, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "resp_binary_turn_2", gjson.GetBytes(second, "response.id").String())
+
+	require.NoError(t, client.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case <-serverErr:
+	case <-time.After(3 * time.Second):
+		t.Fatal("binary follow-up passthrough did not exit")
+	}
+
+	hooksMu.Lock()
+	gotBefore := append([]int(nil), beforeTurns...)
+	gotAfter := append([]int(nil), afterTurns...)
+	gotModels := append([]string(nil), afterModels...)
+	hooksMu.Unlock()
+	require.Equal(t, []int{1, 2}, gotBefore)
+	require.Equal(t, []int{1, 2}, gotAfter)
+	require.Equal(t, []string{"gpt-5.1", "gpt-5.2"}, gotModels)
 }
