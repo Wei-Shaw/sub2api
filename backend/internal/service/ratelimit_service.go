@@ -2047,14 +2047,6 @@ REDACTED
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
-		// Image models rejected by the Codex text endpoints are a deterministic
-		// endpoint mismatch, not an account capability gap: the same account still
-		// serves them over /v1/images/*. Cooling down the model here would take the
-		// whole pool offline for correct image requests, so fail the attempt over
-		// without recording a per-model cooldown.
-		if IsGPTImageGenerationModel(requestedModel) {
-			return true
-	REDACTED
 		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
 	default:
 		return false
@@ -2063,6 +2055,9 @@ REDACTED
 	if modelKey == "" {
 		return false
 REDACTED
+	if shouldSkipCodexPlanGatedImageModelCooldown(ctx, reason, requestedModel, modelKey) {
+		return true
+REDACTED
 	resetAt := time.Now().Add(cooldown)
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, reason); err != nil {
 		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "reason", reason, "error", err)
@@ -2070,6 +2065,29 @@ REDACTED
 REDACTED
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+REDACTED
+
+// shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否
+// 属于"图片模型被文本端点拒绝"。
+//
+// 这类错误是确定性的端点错配，不是账号能力缺失：同一账号通过 /v1/images/* 依然
+// 能出图。在这里写 per-model 冷却，会让一次用错端点的请求把整个号池对正确的生图
+// 端点下线（#4828）。
+//
+// 但请求本身就从 /v1/images/* 入站时不适用——那种情况下被拒说明账号确实不具备
+// 该模型能力，冷却是必要的刹车：没有它，每个生图请求都会完整走一遍号池，对上游
+// 形成无上界的 400 放大。
+//
+// 请求模型与最终冷却键都要判：冷却键走的是 account.GetMappedModel，账号可能把
+// 文本别名映射到 gpt-image-*，只判请求模型会漏掉这种形态。
+func shouldSkipCodexPlanGatedImageModelCooldown(ctx context.Context, reason, requestedModel, modelKey string) bool {
+	if reason != upstreamCodexPlanGatedModelReason {
+		return false
+REDACTED
+	if OpenAIImagesEndpointFromContext(ctx) {
+		return false
+REDACTED
+	return IsGPTImageGenerationModel(requestedModel) || IsGPTImageGenerationModel(modelKey)
 REDACTED
 
 func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {
