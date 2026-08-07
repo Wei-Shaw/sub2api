@@ -113,8 +113,10 @@ REDACTED
 	return filterGrokFreeQuotaAccountsCore(ctx, s.cfg, s.usageLogRepo, &gatewayGrokFreeQuotaGateCache, accounts)
 REDACTED
 
-// Shared cache for Gateway path (OpenAI scheduler keeps its own map).
+// Shared caches for non-advanced-scheduler selection paths.
+// Advanced scheduler keeps per-instance sync.Map on defaultOpenAIAccountScheduler.
 var gatewayGrokFreeQuotaGateCache sync.Map
+var openaiGrokFreeQuotaGateCache sync.Map
 
 func filterGrokFreeQuotaAccountsCore(
 	ctx context.Context,

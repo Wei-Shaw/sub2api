@@ -121,3 +121,44 @@ REDACTED
 REDACTED
 	require.Nil(t, got, "over free soft-gate sticky hit must miss")
 REDACTED
+
+func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
+	// Legacy OpenAI-compatible sticky (advanced scheduler off) must free-gate Grok.
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Grok.FreeQuotaSoftGateEnabled = true
+	cfg.Gateway.Grok.FreeQuotaTokenLimit = 1_000_000
+	cfg.Gateway.Grok.FreeQuotaSoftGatePercent = 95
+	cfg.Gateway.Grok.FreeQuotaWindowHours = 24
+	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 0
+
+	account := healthyGrokOAuthGatewayTestAccount(8802, "tok")
+	account.Credentials["subscription_tier"] = "free"
+	account.Status = StatusActive
+	account.Schedulable = true
+
+	repo := &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTED
+	usageRepo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
+		account.ID: {Tokens: 999_000REDACTED,
+REDACTEDREDACTED
+	openaiGrokFreeQuotaGateCache.Range(func(key, _ any) bool {
+		openaiGrokFreeQuotaGateCache.Delete(key)
+		return true
+REDACTED)
+	svc := &OpenAIGatewayService{
+		cfg:          cfg,
+		accountRepo:  repo,
+		usageLogRepo: usageRepo,
+REDACTED
+
+	got, err := svc.getSchedulableAccount(context.Background(), account.ID)
+REDACTED
+	require.Nil(t, got, "OpenAI legacy sticky must apply free soft-gate")
+REDACTED
+
+func TestCountGrokNativeSearchCallsFromJSON_MessagesStyleBody(t *testing.T) {
+	// Proves the same counter used by Anthropic-buffered Grok /v1/messages path.
+	body := []byte(`{"id":"r1","output":[{"type":"web_search_call","id":"ws1"REDACTED,{"type":"message","role":"assistant"REDACTED]REDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED

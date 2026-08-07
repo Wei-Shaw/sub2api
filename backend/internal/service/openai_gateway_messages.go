@@ -601,7 +601,7 @@ REDACTED
 	c.Header("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusOK, anthropicResp)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:     requestID,
 		ResponseID:    finalResponse.ID,
 		Usage:         usage,
@@ -610,7 +610,16 @@ REDACTED
 		UpstreamModel: upstreamModel,
 		Stream:        false,
 		Duration:      time.Since(startTime),
-REDACTED, nil
+REDACTED
+	// Grok /v1/messages uses Responses upstream; count native search for surcharge.
+	if account != nil && account.IsGrok() && finalResponse != nil {
+		if body, err := json.Marshal(finalResponse); err == nil {
+			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
+				result.SearchCount = n
+		REDACTED
+	REDACTED
+REDACTED
+	return result, nil
 REDACTED
 
 func isOpenAICompatResponsesTerminalEvent(eventType string) bool {
@@ -830,6 +839,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	clientOutputStarted := false
 	var streamFailoverErr error
 	var streamNonFailoverErr error
+	searchCount := 0
+	streamSearchSeen := make(map[string]struct{REDACTED)
+	countSearch := account != nil && account.IsGrok()
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
@@ -849,7 +861,7 @@ REDACTED
 
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
-		return &OpenAIForwardResult{
+		out := &OpenAIForwardResult{
 			RequestID:        requestID,
 			ResponseID:       responseID,
 			Usage:            usage,
@@ -861,6 +873,10 @@ REDACTED
 			FirstTokenMs:     firstTokenMs,
 			ClientDisconnect: clientDisconnected,
 	REDACTED
+		if searchCount > 0 {
+			out.SearchCount = searchCount
+	REDACTED
+		return out
 REDACTED
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
@@ -869,6 +885,9 @@ REDACTED
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
+	REDACTED
+		if countSearch {
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 	REDACTED
 
 		var event apicompat.ResponsesStreamEvent
