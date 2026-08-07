@@ -1038,8 +1038,8 @@ REDACTED
 //   - free_quota_window_hours: local usage rolling window length in hours.
 //   - free_quota_stats_cache_seconds: bound hot-path aggregate query frequency (0 disables cache).
 type GatewayGrokConfig struct {
-	// PasswordAuthEnabled gates the experimental admin-only password flow.
-	// It is disabled by default because captcha solving uses an external service.
+	// PasswordAuthEnabled controls the optional password-to-SSO OAuth flow.
+	// It defaults to false and must be explicitly enabled by the operator.
 	PasswordAuthEnabled bool `mapstructure:"password_auth_enabled"`
 	// FreeQuotaSoftGateEnabled enables a local rolling-window scheduling guard
 	// for explicitly free Grok OAuth accounts only.

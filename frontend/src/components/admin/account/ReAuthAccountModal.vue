@@ -132,18 +132,16 @@
         :show-cookie-option="isAnthropic"
         :show-refresh-token-option="isOpenAI || isAntigravity || isGrok"
         :show-sso-option="isGrok"
-        :show-email-password-option="isGrok"
+        :show-email-password-option="false"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
         :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : isGrok ? 'grok' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         :initial-input-method="grokInitialInputMethod"
-        :initial-email-password="grokPrefillEmailPassword"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleGrokValidateRefreshToken"
         @import-sso="handleGrokImportSSO"
-        @authorize-password="handleGrokAuthorizePassword"
       />
 
     </div>
@@ -257,38 +255,19 @@ const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
 const isGrok = computed(() => props.account?.platform === 'grok')
 
-/** Stored Grok email for reauth prefill (password is never stored). */
-const grokAccountEmail = computed(() => {
-  if (!isGrok.value || !props.account) return ''
-  const creds = (props.account.credentials || {REDACTED) as Record<string, unknown>
-  const email = typeof creds.email === 'string' ? creds.email.trim() : ''
-  return email
-REDACTED)
-
 /**
- * Prefill "email----" so the operator only types the password.
- * Empty when no email is known (full email----password required).
- */
-const grokPrefillEmailPassword = computed(() => {
-  const email = grokAccountEmail.value
-  return email ? `${emailREDACTED----` : ''
-REDACTED)
-
-/**
- * Grok reauth default tab:
- * - password first when we know the email (common reauth path)
- * - refresh_token when email unknown but RT may still work
- * - email_password otherwise
+ * Grok reauth default tab (password auth is hidden):
+ * - refresh_token when RT may still work
+ * - SSO cookie otherwise
  */
 const grokInitialInputMethod = computed<AuthInputMethod>(() => {
   if (!isGrok.value) return 'manual'
-  if (grokAccountEmail.value) return 'email_password'
   const creds = (props.account?.credentials || {REDACTED) as Record<string, unknown>
   const hasRT =
     (typeof creds.refresh_token === 'string' && creds.refresh_token.trim() !== '') ||
     (typeof creds.has_refresh_token === 'boolean' && creds.has_refresh_token)
   if (hasRT) return 'refresh_token'
-  return 'email_password'
+  return 'sso_cookie'
 REDACTED)
 
 // Computed - current OAuth state based on platform
@@ -667,38 +646,6 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       error.response?.data?.detail ||
       error.message ||
       t('admin.accounts.oauth.grok.failedToValidateSSO', 'Failed to validate Grok SSO')
-    appStore.showError(grokOAuth.error.value)
-  REDACTED finally {
-    grokOAuth.loading.value = false
-  REDACTED
-REDACTED
-
-/** Re-auth with email----password (single line; password never persisted). */
-const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
-  if (!props.account || !isGrok.value) return
-  const line = emailPasswordInput
-    .split('\n')
-    // Email is normalized in the API helper, but password whitespace is valid.
-    .find((item) => item.trim() && item.includes('----'))
-  if (!line) {
-    grokOAuth.error.value = t(
-      'admin.accounts.oauth.grok.pleaseEnterPassword',
-      'Please enter email----password'
-    )
-    return
-  REDACTED
-
-  grokOAuth.loading.value = true
-  grokOAuth.error.value = ''
-  try {
-    const tokenInfo = await grokOAuth.authorizePassword(line, props.account.proxy_id)
-    if (!tokenInfo) return
-    await applyGrokReauthTokenInfo(tokenInfo)
-  REDACTED catch (error: any) {
-    grokOAuth.error.value =
-      error.response?.data?.detail ||
-      error.message ||
-      t('admin.accounts.oauth.grok.failedToAuthorizePassword', 'Password authorization failed')
     appStore.showError(grokOAuth.error.value)
   REDACTED finally {
     grokOAuth.loading.value = false

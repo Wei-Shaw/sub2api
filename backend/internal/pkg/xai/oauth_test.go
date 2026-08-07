@@ -255,6 +255,14 @@ REDACTED
 	require.Equal(t, "http://grok.example.test/v1/responses", target)
 REDACTED
 
+func TestValidateTrustedBaseURLAcceptsOfficialRegionalHosts(t *testing.T) {
+	for _, raw := range []string{DefaultUSEast1BaseURL, DefaultUSWest2BaseURL, DefaultEUWest1BaseURLREDACTED {
+		got, err := ValidateTrustedBaseURL(raw)
+		require.NoError(t, err, raw)
+		require.Equal(t, raw, got)
+REDACTED
+REDACTED
+
 func TestBuildResponsesURLPreservesUnsafeOverrideCustomPath(t *testing.T) {
 	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
 
@@ -356,7 +364,7 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine"])
 	require.Equal(t, DefaultImagineImageFastModel, mapping["grok-imagine-image"])
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-image-quality"])
-	require.Equal(t, "grok-imagine-edit", mapping["grok-imagine-edit"])
+	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-edit"])
 	require.Equal(t, DefaultImagineVideoModel, mapping["grok-imagine-video"])
 	require.Equal(t, DefaultImagineVideo15LegacyModel, mapping["grok-imagine-video-1.5"])
 	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5-preview"])

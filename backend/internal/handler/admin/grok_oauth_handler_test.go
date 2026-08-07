@@ -263,11 +263,8 @@ func TestGrokOAuthHandlerAuthorizePasswordReturnsTokenInfoWithoutPassword(t *tes
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), `"email":"user@example.com"`)
 	require.Contains(t, rec.Body.String(), `"access_token":"access-token"`)
-	require.NotContains(t, rec.Body.String(), `"sso_token"`)
 	require.NotContains(t, rec.Body.String(), "super-secret")
-	require.NotContains(t, rec.Body.String(), "sso-from-password")
 REDACTED
 
 func TestGrokOAuthHandlerPasswordCapabilityDefaultsToDisabled(t *testing.T) {

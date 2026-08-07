@@ -122,6 +122,8 @@ func TestGrokOAuthEntitlementDenialRequiresExplicitEvidence(t *testing.T) {
 	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"message":"no active Grok subscription"REDACTED`))
 	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"forbidden","message":"request forbidden"REDACTED`))
 	require.False(t, grokOAuthHasExplicitEntitlementDenial(`<html>403 Forbidden</html>`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"access_denied","message":"You have run out of credits"REDACTED`))
+	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"code":"subscription_required","message":"included free usage exhausted"REDACTED`))
 REDACTED
 
 func TestNewGrokOAuthClient_UnvalidatedTokenURLFallsBackToDefault(t *testing.T) {

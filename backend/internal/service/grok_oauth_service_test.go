@@ -15,17 +15,19 @@ import (
 )
 
 type grokOAuthClientStub struct {
-	refreshResponse *xai.TokenResponse
-	ssoResponse     *xai.TokenResponse
-	loginResult     *GrokPasswordLoginResult
-	loginEmail      string
-	loginPassword   string
-	exchangeCalls   int
+	refreshResponse     *xai.TokenResponse
+	ssoResponse         *xai.TokenResponse
+	loginResult         *GrokPasswordLoginResult
+	loginEmail          string
+	loginPassword       string
+	exchangeCalls       int
+	exchangeRedirectURI string
 REDACTED
 
-func (s *grokOAuthClientStub) ExchangeCode(context.Context, string, string, string, string, string) (*xai.TokenResponse, error) {
+func (s *grokOAuthClientStub) ExchangeCode(_ context.Context, _, _, redirectURI, _, _ string) (*xai.TokenResponse, error) {
 	s.exchangeCalls++
-	return &xai.TokenResponse{REDACTED, nil
+	s.exchangeRedirectURI = redirectURI
+	return &xai.TokenResponse{AccessToken: "access-token"REDACTED, nil
 REDACTED
 
 func (s *grokOAuthClientStub) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
@@ -57,6 +59,18 @@ REDACTED
 	require.Equal(t, "new-access-token", info.AccessToken)
 	require.Equal(t, "original-refresh-token", info.RefreshToken)
 	require.Equal(t, "client-id", info.ClientID)
+REDACTED
+
+func TestGrokOAuthServiceRefreshTokenRejectsEmptyUpstreamResponse(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{REDACTED)
+	defer svc.Stop()
+
+	require.NotPanics(t, func() {
+		info, err := svc.RefreshToken(context.Background(), "refresh-token", "", "client-id")
+		require.Nil(t, info)
+	REDACTED
+		require.Contains(t, err.Error(), "GROK_OAUTH_INVALID_TOKEN_RESPONSE")
+REDACTED)
 REDACTED
 
 func TestGrokOAuthServiceExchangeCodeConsumesOnlyAfterValidation(t *testing.T) {
@@ -108,6 +122,51 @@ REDACTED
 	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
 	_, ok := svc.sessionStore.Get(auth.SessionID)
 	require.True(t, ok)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeRequiresStateForBareCode(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+REDACTED
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID: auth.SessionID,
+		Code:      "bare-authorization-code",
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_STATE_REQUIRED")
+	require.Zero(t, client.exchangeCalls)
+	_, ok := svc.sessionStore.Get(auth.SessionID)
+	require.True(t, ok)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeRejectsRedirectURIOverride(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+REDACTED
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID:   auth.SessionID,
+		Code:        "authorization-code",
+		State:       auth.State,
+		RedirectURI: "http://127.0.0.1:9999/callback",
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_REDIRECT_URI_MISMATCH")
+	require.Zero(t, client.exchangeCalls)
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID:   auth.SessionID,
+		Code:        "authorization-code",
+		State:       auth.State,
+		RedirectURI: xai.DefaultRedirectURI,
+REDACTED)
+REDACTED
+	require.Equal(t, xai.DefaultRedirectURI, client.exchangeRedirectURI)
 REDACTED
 
 func TestGrokOAuthServiceExternalFlowsRejectMissingClient(t *testing.T) {
@@ -197,16 +256,16 @@ REDACTED
 	svc := NewGrokOAuthService(nil, client, cfg)
 	defer svc.Stop()
 
+	require.True(t, svc.GetCapabilities().PasswordAuthEnabled)
 	info, err := svc.AuthorizePassword(context.Background(), " user@example.com ", "  super-secret  ", nil)
 REDACTED
 	require.Equal(t, "user@example.com", info.Email)
 	require.Equal(t, "access-from-password", info.AccessToken)
-
 	creds := svc.BuildAccountCredentials(info)
 	require.NotContains(t, creds, "password")
 	require.NotContains(t, creds, "sso_token")
 	require.Equal(t, "user@example.com", client.loginEmail)
-	require.Equal(t, "  super-secret  ", client.loginPassword, "password bytes must be preserved for upstream login")
+	require.Equal(t, "  super-secret  ", client.loginPassword)
 REDACTED
 
 func TestGrokOAuthServiceAuthorizePasswordDisabledByDefault(t *testing.T) {

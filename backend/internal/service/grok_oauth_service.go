@@ -162,11 +162,15 @@ REDACTED
 	if state == "" {
 		state = strings.TrimSpace(parsed.State)
 REDACTED
-	if parsed.RequiresState && state == "" {
-		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_STATE_REQUIRED", "oauth state is required for callback URLs")
+	if state == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_STATE_REQUIRED", "oauth state is required")
 REDACTED
-	if state != "" && subtle.ConstantTimeCompare([]byte(state), []byte(session.State)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(state), []byte(session.State)) != 1 {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_STATE", "invalid oauth state")
+REDACTED
+	if redirectURI := strings.TrimSpace(input.RedirectURI); redirectURI != "" &&
+		redirectURI != strings.TrimSpace(session.RedirectURI) {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_REDIRECT_URI_MISMATCH", "redirect_uri does not match the OAuth session")
 REDACTED
 
 	proxyURL := session.ProxyURL
@@ -184,13 +188,11 @@ REDACTED
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_SESSION_ALREADY_USED", "oauth session has already been used")
 REDACTED
 	defer s.sessionStore.Delete(input.SessionID)
-	redirectURI := session.RedirectURI
-	if strings.TrimSpace(input.RedirectURI) != "" {
-		redirectURI = input.RedirectURI
-REDACTED
-
-	tokenResp, err := s.oauthClient.ExchangeCode(ctx, code, session.CodeVerifier, redirectURI, proxyURL, session.ClientID)
+	tokenResp, err := s.oauthClient.ExchangeCode(ctx, code, session.CodeVerifier, session.RedirectURI, proxyURL, session.ClientID)
 	if err != nil {
+		return nil, err
+REDACTED
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
 		return nil, err
 REDACTED
 	return s.tokenInfoFromResponse(tokenResp, session.ClientID, nil), nil
@@ -213,6 +215,9 @@ REDACTED
 REDACTED
 	tokenResp, err := s.oauthClient.RefreshToken(ctx, refreshToken, proxyURL, clientID)
 	if err != nil {
+		return nil, err
+REDACTED
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
 		return nil, err
 REDACTED
 	tokenInfo := s.tokenInfoFromResponse(tokenResp, clientID, nil)
