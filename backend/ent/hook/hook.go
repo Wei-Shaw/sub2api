@@ -477,6 +477,18 @@ func (f UserSubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserSubscriptionMutation", m)
 }
 
+// The Web3DepositWalletFunc type is an adapter to allow the use of ordinary
+// function as Web3DepositWallet mutator.
+type Web3DepositWalletFunc func(context.Context, *ent.Web3DepositWalletMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f Web3DepositWalletFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.Web3DepositWalletMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.Web3DepositWalletMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

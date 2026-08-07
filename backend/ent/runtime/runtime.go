@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -2440,6 +2441,101 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	web3depositwalletMixin := schema.Web3DepositWallet{}.Mixin()
+	web3depositwalletMixinFields0 := web3depositwalletMixin[0].Fields()
+	_ = web3depositwalletMixinFields0
+	web3depositwalletFields := schema.Web3DepositWallet{}.Fields()
+	_ = web3depositwalletFields
+	// web3depositwalletDescCreatedAt is the schema descriptor for created_at field.
+	web3depositwalletDescCreatedAt := web3depositwalletMixinFields0[0].Descriptor()
+	// web3depositwallet.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3depositwallet.DefaultCreatedAt = web3depositwalletDescCreatedAt.Default.(func() time.Time)
+	// web3depositwalletDescUpdatedAt is the schema descriptor for updated_at field.
+	web3depositwalletDescUpdatedAt := web3depositwalletMixinFields0[1].Descriptor()
+	// web3depositwallet.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	web3depositwallet.DefaultUpdatedAt = web3depositwalletDescUpdatedAt.Default.(func() time.Time)
+	// web3depositwallet.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	web3depositwallet.UpdateDefaultUpdatedAt = web3depositwalletDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// web3depositwalletDescWalletID is the schema descriptor for wallet_id field.
+	web3depositwalletDescWalletID := web3depositwalletFields[1].Descriptor()
+	// web3depositwallet.WalletIDValidator is a validator for the "wallet_id" field. It is called by the builders before save.
+	web3depositwallet.WalletIDValidator = func() func(string) error {
+		validators := web3depositwalletDescWalletID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(wallet_id string) error {
+			for _, fn := range fns {
+				if err := fn(wallet_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositwalletDescAccountPath is the schema descriptor for account_path field.
+	web3depositwalletDescAccountPath := web3depositwalletFields[2].Descriptor()
+	// web3depositwallet.AccountPathValidator is a validator for the "account_path" field. It is called by the builders before save.
+	web3depositwallet.AccountPathValidator = func() func(string) error {
+		validators := web3depositwalletDescAccountPath.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(account_path string) error {
+			for _, fn := range fns {
+				if err := fn(account_path); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositwalletDescXpubFingerprint is the schema descriptor for xpub_fingerprint field.
+	web3depositwalletDescXpubFingerprint := web3depositwalletFields[3].Descriptor()
+	// web3depositwallet.XpubFingerprintValidator is a validator for the "xpub_fingerprint" field. It is called by the builders before save.
+	web3depositwallet.XpubFingerprintValidator = func() func(string) error {
+		validators := web3depositwalletDescXpubFingerprint.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(xpub_fingerprint string) error {
+			for _, fn := range fns {
+				if err := fn(xpub_fingerprint); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositwalletDescNextDerivationIndex is the schema descriptor for next_derivation_index field.
+	web3depositwalletDescNextDerivationIndex := web3depositwalletFields[4].Descriptor()
+	// web3depositwallet.DefaultNextDerivationIndex holds the default value on creation for the next_derivation_index field.
+	web3depositwallet.DefaultNextDerivationIndex = web3depositwalletDescNextDerivationIndex.Default.(int64)
+	// web3depositwallet.NextDerivationIndexValidator is a validator for the "next_derivation_index" field. It is called by the builders before save.
+	web3depositwallet.NextDerivationIndexValidator = web3depositwalletDescNextDerivationIndex.Validators[0].(func(int64) error)
+	// web3depositwalletDescStatus is the schema descriptor for status field.
+	web3depositwalletDescStatus := web3depositwalletFields[5].Descriptor()
+	// web3depositwallet.DefaultStatus holds the default value on creation for the status field.
+	web3depositwallet.DefaultStatus = web3depositwalletDescStatus.Default.(string)
+	// web3depositwallet.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	web3depositwallet.StatusValidator = func() func(string) error {
+		validators := web3depositwalletDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 }
 
 const (

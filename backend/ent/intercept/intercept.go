@@ -48,6 +48,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -1159,6 +1160,33 @@ func (f TraverseUserSubscription) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuery", q)
 }
 
+// The Web3DepositWalletFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3DepositWalletFunc func(context.Context, *ent.Web3DepositWalletQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3DepositWalletFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3DepositWalletQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositWalletQuery", q)
+}
+
+// The TraverseWeb3DepositWallet type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3DepositWallet func(context.Context, *ent.Web3DepositWalletQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3DepositWallet) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3DepositWallet) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3DepositWalletQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositWalletQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1240,6 +1268,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
+	case *ent.Web3DepositWalletQuery:
+		return &query[*ent.Web3DepositWalletQuery, predicate.Web3DepositWallet, web3depositwallet.OrderOption]{typ: ent.TypeWeb3DepositWallet, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

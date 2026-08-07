@@ -2064,6 +2064,23 @@ var (
 			},
 		},
 	}
+	// Web3DepositWalletsColumns holds the columns for the "web3_deposit_wallets" table.
+	Web3DepositWalletsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "wallet_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "account_path", Type: field.TypeString, Size: 64},
+		{Name: "xpub_fingerprint", Type: field.TypeString, Size: 64},
+		{Name: "next_derivation_index", Type: field.TypeInt64, Default: 0},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+	}
+	// Web3DepositWalletsTable holds the schema information for the "web3_deposit_wallets" table.
+	Web3DepositWalletsTable = &schema.Table{
+		Name:       "web3_deposit_wallets",
+		Columns:    Web3DepositWalletsColumns,
+		PrimaryKey: []*schema.Column{Web3DepositWalletsColumns[0]},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
@@ -2105,6 +2122,7 @@ var (
 		UserAttributeValuesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
+		Web3DepositWalletsTable,
 	}
 )
 
@@ -2261,5 +2279,8 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
+	}
+	Web3DepositWalletsTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposit_wallets",
 	}
 }
