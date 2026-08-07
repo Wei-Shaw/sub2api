@@ -42,6 +42,19 @@ export function formatMonitorThroughput(value: number | null | undefined): strin
   return formatCompactNumber(n)
 REDACTED
 
+/**
+ * Backend stores tokens-per-minute as `tpm`. Convert to tokens-per-second for display.
+ */
+export function tokensPerSecondFromTpm(tpm: number | null | undefined): number {
+  if (tpm == null || Number.isNaN(Number(tpm))) return 0
+  return Number(tpm) / 60
+REDACTED
+
+/** Tokens/sec from backend TPM (per-minute), compact ops formatting. */
+export function formatMonitorTokensPerSecond(tpm: number | null | undefined): string {
+  return formatMonitorThroughput(tokensPerSecondFromTpm(tpm))
+REDACTED
+
 
 export function formatMonitorPercent(value: number, locale = monitorIntlLocale()): string {
   return `${new Intl.NumberFormat(locale, {

@@ -8,11 +8,14 @@ const i18nT = (key: string, params?: Record<string, unknown>) => {
     'channelMonitorV2.matrix.dimension': '维度',
     'channelMonitorV2.metrics.successRate': '成功率',
     'channelMonitorV2.metrics.ttft': '首 Token',
+    'channelMonitorV2.metrics.tps': '每秒 Token',
+    'channelMonitorV2.metrics.cacheRate': '缓存率',
     'channelMonitorV2.matrix.scoreLine': '评分 {scoreREDACTED',
     'channelMonitorV2.metrics.successRateValue': '成功率 {valueREDACTED',
     'channelMonitorV2.metrics.errorRateValue': '错误率 {valueREDACTED',
     'channelMonitorV2.metrics.rpmValue': 'RPM {valueREDACTED',
     'channelMonitorV2.metrics.tpmValue': 'TPM {valueREDACTED',
+    'channelMonitorV2.metrics.tpsValue': '每秒 Token {valueREDACTED',
     'channelMonitorV2.metrics.ttftValue': '首 Token {valueREDACTED',
     'channelMonitorV2.metrics.durationValue': '时长 {valueREDACTED',
     'channelMonitorV2.metrics.cacheRateValue': '缓存率 {valueREDACTED',
@@ -113,12 +116,19 @@ describe('RelayPulseMatrix', () => {
     const tip = cells[0].text()
     expect(tip).toContain('成功率')
     expect(tip).toContain('90.0%')
-    expect(tip).toContain('RPM')
-    expect(tip).toContain('TPM')
     expect(tip).toContain('首 Token')
+    expect(tip).toContain('每秒 Token')
+    expect(tip).toContain('缓存率')
+    expect(tip).toContain('RPM')
     expect(tip).not.toContain('请求数')
     expect(tip).not.toContain('用户错误')
     expect(tip).not.toContain('上游受影响')
+    // Summary columns: success · ttft · tokens/s · cache
+    const header = wrapper.find('.matrix-header').text()
+    expect(header).toContain('成功率')
+    expect(header).toContain('首 Token')
+    expect(header).toContain('每秒 Token')
+    expect(header).toContain('缓存率')
     // Multi-band class from score 52 → score5
     expect(cells[0].classes().some((c) => c.startsWith('health-score'))).toBe(true)
     // Redacted user payloads may have request_count=0 but still include score.

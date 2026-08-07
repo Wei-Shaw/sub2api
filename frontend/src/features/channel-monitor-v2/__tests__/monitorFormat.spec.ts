@@ -9,13 +9,22 @@ import {
   formatMonitorSuccessRate,
   formatMonitorSuccessRateFromError,
   formatMonitorThroughput,
+  formatMonitorTokensPerSecond,
   healthScoreClass,
   healthStateClass,
   scoreToBand,
+  tokensPerSecondFromTpm,
 REDACTED from '../monitorFormat'
 import type { MonitorHealth REDACTED from '@/api/channelMonitorV2'
 
 describe('monitorFormat accuracy', () => {
+  it('converts backend TPM (per minute) to tokens/sec for display', () => {
+    expect(tokensPerSecondFromTpm(60)).toBe(1)
+    expect(tokensPerSecondFromTpm(6000)).toBe(100)
+    expect(formatMonitorTokensPerSecond(60)).toBe('1')
+    expect(formatMonitorTokensPerSecond(null)).toBe('0')
+  REDACTED)
+
   it('formats request/token counts with compact notation above threshold', () => {
     expect(formatMonitorNumber(10)).toBe('10')
     expect(formatMonitorNumber(9999)).toBe('9,999')

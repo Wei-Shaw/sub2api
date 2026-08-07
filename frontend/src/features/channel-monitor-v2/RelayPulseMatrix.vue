@@ -36,10 +36,15 @@
         @wheel="onMatrixWheel"
       >
         <div class="matrix-table w-full" :style="tableStyle">
-          <div class="matrix-header matrix-row sticky top-0 z-[3] bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-900 dark:text-gray-400">
+          <div
+            class="matrix-header matrix-row sticky top-0 z-[3] bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-dark-900 dark:text-gray-400"
+            :class="showThroughput ? 'matrix-row--with-tps' : ''"
+          >
             <span>{{ t('channelMonitorV2.matrix.dimension') REDACTEDREDACTED</span>
             <span>{{ t('channelMonitorV2.metrics.successRate') REDACTEDREDACTED</span>
             <span>{{ t('channelMonitorV2.metrics.ttft') REDACTEDREDACTED</span>
+            <span v-if="showThroughput">{{ t('channelMonitorV2.metrics.tps') REDACTEDREDACTED</span>
+            <span>{{ t('channelMonitorV2.metrics.cacheRate') REDACTEDREDACTED</span>
             <span class="pulse-axis flex justify-between gap-3">
               <i class="not-italic">{{ axisStart REDACTEDREDACTED</i>
               <i class="not-italic">{{ axisEnd REDACTEDREDACTED</i>
@@ -49,6 +54,7 @@
             v-for="entry in alignedRows"
             :key="rowKey(entry.row)"
             class="matrix-row border-b border-gray-100/80 dark:border-dark-700/60"
+            :class="showThroughput ? 'matrix-row--with-tps' : ''"
           >
             <div class="dimension-cell flex min-w-0 items-center gap-2 bg-white dark:bg-dark-800" :title="rowLabel(entry.row)">
               <span :class="['status-dot', cellClass(entry.row.health, entry.row.metrics.request_count)]"></span>
@@ -62,6 +68,18 @@
               :title="latencyPrivacy(entry.row.metrics.ttft)"
             >
               {{ formatMs(entry.row.metrics.ttft.p50_ms) REDACTEDREDACTED
+            </strong>
+            <strong
+              v-if="showThroughput"
+              class="summary-value bg-white text-xs font-medium tabular-nums text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+              :title="exactTps(entry.row.metrics.tpm)"
+            >
+              {{ formatTps(entry.row.metrics.tpm) REDACTEDREDACTED
+            </strong>
+            <strong
+              class="summary-value bg-white text-xs font-medium tabular-nums text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+            >
+              {{ formatPercent(entry.row.metrics.cache_rate) REDACTEDREDACTED
             </strong>
             <div class="pulse-track grid items-stretch" :style="pulseStyle">
               <span
@@ -87,12 +105,12 @@
                     <span class="pulse-tooltip-line pulse-tooltip-title">{{ formatBucketRange(slot.start) REDACTEDREDACTED</span>
                     <span class="pulse-tooltip-line">{{ t('channelMonitorV2.matrix.scoreLine', { score: formatScore(slot.bucket.health) REDACTED) REDACTEDREDACTED</span>
                     <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.successRateValue', { value: successRate(slot.bucket.metrics) REDACTED) REDACTEDREDACTED</span>
+                    <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.ttftValue', { value: latencyPrivacy(slot.bucket.metrics.ttft) REDACTED) REDACTEDREDACTED</span>
+                    <span v-if="showThroughput" class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.tpsValue', { value: formatTps(slot.bucket.metrics.tpm) REDACTED) REDACTEDREDACTED</span>
+                    <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.cacheRateValue', { value: formatPercent(slot.bucket.metrics.cache_rate) REDACTED) REDACTEDREDACTED</span>
                     <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(slot.bucket.metrics.error_rate) REDACTED) REDACTEDREDACTED</span>
                     <span v-if="showThroughput" class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.rpmValue', { value: formatRate(slot.bucket.metrics.rpm) REDACTED) REDACTEDREDACTED</span>
-                    <span v-if="showThroughput" class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.tpmValue', { value: formatRate(slot.bucket.metrics.tpm) REDACTED) REDACTEDREDACTED</span>
-                    <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.ttftValue', { value: latencyPrivacy(slot.bucket.metrics.ttft) REDACTED) REDACTEDREDACTED</span>
                     <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.durationValue', { value: latencyPrivacy(slot.bucket.metrics.duration) REDACTED) REDACTEDREDACTED</span>
-                    <span class="pulse-tooltip-line">{{ t('channelMonitorV2.metrics.cacheRateValue', { value: formatPercent(slot.bucket.metrics.cache_rate) REDACTED) REDACTEDREDACTED</span>
                   </template>
                   <template v-else>
                     <span class="pulse-tooltip-line pulse-tooltip-title">{{ formatBucketRange(slot.start) REDACTEDREDACTED</span>
@@ -165,6 +183,8 @@ import {
   formatMonitorPercent,
   formatMonitorSuccessRateFromError,
   formatMonitorThroughput,
+  formatMonitorTokensPerSecond,
+  tokensPerSecondFromTpm,
   healthModeScore,
   healthScoreClass,
 REDACTED from '@/features/channel-monitor-v2/monitorFormat'
@@ -347,19 +367,19 @@ function bucketTooltipLines(bucket: MonitorMatrixBucket): string[] {
     formatBucketRange(bucket.bucket_start),
     t('channelMonitorV2.matrix.scoreLine', { score: formatScore(bucket.health) REDACTED),
     t('channelMonitorV2.metrics.successRateValue', { value: successRate(metrics) REDACTED),
-    t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(metrics.error_rate) REDACTED),
+    t('channelMonitorV2.metrics.ttftValue', { value: latencyPrivacy(metrics.ttft) REDACTED),
   ]
   if (props.showThroughput) {
-    lines.push(
-      t('channelMonitorV2.metrics.rpmValue', { value: formatRate(metrics.rpm) REDACTED),
-      t('channelMonitorV2.metrics.tpmValue', { value: formatRate(metrics.tpm) REDACTED),
-    )
+    lines.push(t('channelMonitorV2.metrics.tpsValue', { value: formatTps(metrics.tpm) REDACTED))
   REDACTED
   lines.push(
-    t('channelMonitorV2.metrics.ttftValue', { value: latencyPrivacy(metrics.ttft) REDACTED),
-    t('channelMonitorV2.metrics.durationValue', { value: latencyPrivacy(metrics.duration) REDACTED),
     t('channelMonitorV2.metrics.cacheRateValue', { value: formatPercent(metrics.cache_rate) REDACTED),
+    t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(metrics.error_rate) REDACTED),
   )
+  if (props.showThroughput) {
+    lines.push(t('channelMonitorV2.metrics.rpmValue', { value: formatRate(metrics.rpm) REDACTED))
+  REDACTED
+  lines.push(t('channelMonitorV2.metrics.durationValue', { value: latencyPrivacy(metrics.duration) REDACTED))
   return lines
 REDACTED
 function emptyTooltipLines(start: string): string[] {
@@ -406,6 +426,15 @@ function formatRate(value: number) {
   return formatMonitorThroughput(value)
 REDACTED
 
+function formatTps(tpm: number | null | undefined) {
+  return formatMonitorTokensPerSecond(tpm)
+REDACTED
+
+function exactTps(tpm: number | null | undefined) {
+  const tps = tokensPerSecondFromTpm(tpm)
+  return Intl.NumberFormat(locale.value || undefined, { maximumFractionDigits: 3 REDACTED).format(tps)
+REDACTED
+
 function formatMs(value: number | null) {
   return formatMonitorMs(value)
 REDACTED
@@ -427,18 +456,28 @@ REDACTED
 </script>
 
 <style scoped>
+/* dimension | success | ttft | cache | pulse */
 .matrix-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.25fr) minmax(52px, 0.36fr) minmax(62px, 0.42fr) minmax(120px, 3fr);
+  grid-template-columns:
+    minmax(120px, 1.2fr)
+    minmax(52px, 0.34fr)
+    minmax(58px, 0.36fr)
+    minmax(52px, 0.34fr)
+    minmax(120px, 2.8fr);
   align-items: center;
   gap: 0.5rem clamp(0.25rem, 0.8vw, 0.625rem);
   min-height: 2.25rem;
 REDACTED
-.matrix-row > :nth-child(2) {
-  left: 0;
-REDACTED
-.matrix-row > :nth-child(3) {
-  left: 0;
+/* + tokens/s column when throughput visible */
+.matrix-row--with-tps {
+  grid-template-columns:
+    minmax(110px, 1.15fr)
+    minmax(48px, 0.3fr)
+    minmax(54px, 0.32fr)
+    minmax(58px, 0.36fr)
+    minmax(48px, 0.3fr)
+    minmax(120px, 2.6fr);
 REDACTED
 .matrix-table,
 .pulse-track {
