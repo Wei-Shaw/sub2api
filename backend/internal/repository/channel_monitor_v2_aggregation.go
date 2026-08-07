@@ -19,15 +19,15 @@ const channelMonitorV2ModelSQL = `COALESCE(NULLIF(TRIM(ul.requested_model), ''),
 // Backfill may still write short-lived 1m rows for old windows so rollups can be
 // built; prune at end of each recompute drops them past their TTL while rollups remain.
 const (
-	channelMonitorV2RetentionUser1m       = 3 * 24 * time.Hour
-	channelMonitorV2RetentionMetrics1m    = 7 * 24 * time.Hour
-	channelMonitorV2RetentionError1m      = 7 * 24 * time.Hour
-	channelMonitorV2RetentionHistogram1m  = 7 * 24 * time.Hour
-	channelMonitorV2RetentionRollup5m     = 7 * 24 * time.Hour  // bucket_seconds=300
-	channelMonitorV2RetentionRollup1h     = 30 * 24 * time.Hour // 3600
-	channelMonitorV2RetentionRollup12h    = 45 * 24 * time.Hour // 43200
-	channelMonitorV2RetentionRollup1d     = 90 * 24 * time.Hour // 86400
-	channelMonitorV2RetentionMax = channelMonitorV2RetentionRollup1d
+	channelMonitorV2RetentionUser1m      = 3 * 24 * time.Hour
+	channelMonitorV2RetentionMetrics1m   = 7 * 24 * time.Hour
+	channelMonitorV2RetentionError1m     = 7 * 24 * time.Hour
+	channelMonitorV2RetentionHistogram1m = 7 * 24 * time.Hour
+	channelMonitorV2RetentionRollup5m    = 7 * 24 * time.Hour  // bucket_seconds=300
+	channelMonitorV2RetentionRollup1h    = 30 * 24 * time.Hour // 3600
+	channelMonitorV2RetentionRollup12h   = 45 * 24 * time.Hour // 43200
+	channelMonitorV2RetentionRollup1d    = 90 * 24 * time.Hour // 86400
+	channelMonitorV2RetentionMax         = channelMonitorV2RetentionRollup1d
 )
 
 // channelMonitorV2MaxRetention is the longest stored window (1d rollup). Used to

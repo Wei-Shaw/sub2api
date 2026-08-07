@@ -261,5 +261,3 @@ REDACTED
 	require.Equal(t, []int64{3, 4REDACTED, configuredChannelMonitorV2GroupIDs(catalog, cfg))
 	require.Equal(t, []int64{3REDACTED, configuredChannelMonitorV2GroupIDs(filter, cfg))
 REDACTED
-
-

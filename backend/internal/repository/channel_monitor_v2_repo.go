@@ -134,7 +134,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	platformCounts := map[string]int64{REDACTED
 	type modelValue struct {
 		platform string
@@ -602,7 +602,7 @@ func (r *channelMonitorV2Repository) listActiveGroupIDs(ctx context.Context) ([]
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	ids := []int64{REDACTED
 	for rows.Next() {
 		var id int64
@@ -623,7 +623,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	for rows.Next() {
 		var id int64
 		var name, platform string
@@ -646,7 +646,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	counts := map[string]int64{REDACTED
 	var total int64
 	ignoredSet := service.ChannelMonitorV2IgnoredCategorySet(cfg)
@@ -760,7 +760,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	out := map[string][]service.ChannelMonitorV2ErrorDetail{REDACTED
 	for rows.Next() {
 		var platform, model, errorType, owner, source, message string
@@ -830,7 +830,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	type userMeta struct{ email, username string REDACTED
 	meta := map[int64]userMeta{REDACTED
 	accs := map[int64]*metricAccumulator{REDACTED
@@ -923,7 +923,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	facts := []channelMonitorV2Fact{REDACTED
 	for rows.Next() {
 		var bucket time.Time
@@ -964,7 +964,7 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	out := []channelMonitorV2Histogram{REDACTED
 	for rows.Next() {
 		var bucket time.Time
@@ -1379,7 +1379,7 @@ REDACTED
 	if err != nil {
 		return byBucket, 0, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	for rows.Next() {
 		var bucket time.Time
 		var platform, model string
@@ -1422,7 +1422,7 @@ REDACTED
 	if err != nil {
 		return byPM, 0, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	for rows.Next() {
 		var platform, model string
 		var count int64
@@ -1475,7 +1475,7 @@ REDACTED
 	if err != nil {
 		return byDimBucket, byDim, err
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 	for rows.Next() {
 		var bucket time.Time
 		var platform, model string
