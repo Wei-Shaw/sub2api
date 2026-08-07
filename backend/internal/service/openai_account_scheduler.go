@@ -1330,6 +1330,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if len(accounts) == 0 {
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, openAISelectionFilterStats{}.summary(""))
 	}
+	ctx = s.service.withGrokFreeQuotaUsagePrefetch(ctx, accounts)
 
 	// require_privacy_set: 获取分组信息
 	var schedGroup *Group
@@ -1692,6 +1693,18 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 			reason += "_" + decision.window
 		}
 		return false, reason
+	}
+	if paused, decision := shouldAutoPauseGrokAccountByQuota(account); paused {
+		reason := "quota_auto_pause"
+		if decision.window != "" {
+			reason += "_" + decision.window
+		}
+		return false, reason
+	}
+	if s != nil && s.service != nil {
+		if exhausted, _, known := s.service.grokFreeRollingQuotaExhausted(ctx, account); known && exhausted {
+			return false, "quota_auto_pause_24h"
+		}
 	}
 	// 母账号健康联动：影子账号的凭据来自母账号，母账号不可调度时影子也不应被选中。
 	// Parent-health gate: shadow borrows the parent's credentials; an unschedulable

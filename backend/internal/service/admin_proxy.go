@@ -401,6 +401,28 @@ func runProxyQualityTarget(ctx context.Context, client *http.Client, target prox
 	return item
 }
 
+// RunGrokProxyQualityTarget runs the Grok item from the existing admin quality
+// report so proxy-pool health and manual quality checks share one definition.
+func RunGrokProxyQualityTarget(ctx context.Context, client *http.Client) ProxyQualityCheckItem {
+	if client == nil {
+		return ProxyQualityCheckItem{
+			Target:  "grok",
+			Status:  "fail",
+			Message: "Grok quality client is unavailable",
+		}
+	}
+	for _, target := range proxyQualityTargets {
+		if target.Target == "grok" {
+			return runProxyQualityTarget(ctx, client, target)
+		}
+	}
+	return ProxyQualityCheckItem{
+		Target:  "grok",
+		Status:  "fail",
+		Message: "Grok quality target is not configured",
+	}
+}
+
 func finalizeProxyQualityResult(result *ProxyQualityCheckResult) {
 	if result == nil {
 		return
@@ -478,22 +500,46 @@ func proxyQualityBaseConnectivityPass(result *ProxyQualityCheckResult) bool {
 	return false
 }
 
+func proxyQualityItem(result *ProxyQualityCheckResult, target string) *ProxyQualityCheckItem {
+	if result == nil {
+		return nil
+	}
+	for i := range result.Items {
+		if result.Items[i].Target == target {
+			return &result.Items[i]
+		}
+	}
+	return nil
+}
+
 func (s *adminServiceImpl) saveProxyQualitySnapshot(ctx context.Context, proxyID int64, result *ProxyQualityCheckResult, exitInfo *ProxyExitInfo) {
 	if result == nil {
 		return
 	}
 	score := result.Score
 	checkedAt := result.CheckedAt
+	snapshotAt := time.Now().UTC()
 	info := &ProxyLatencyInfo{
-		Success:          proxyQualityBaseConnectivityPass(result),
-		Message:          result.Summary,
-		QualityStatus:    proxyQualityOverallStatus(result),
-		QualityScore:     &score,
-		QualityGrade:     result.Grade,
-		QualitySummary:   result.Summary,
-		QualityCheckedAt: &checkedAt,
-		QualityCFRay:     proxyQualityFirstCFRay(result),
-		UpdatedAt:        time.Now(),
+		Success:              proxyQualityBaseConnectivityPass(result),
+		Message:              result.Summary,
+		QualityStatus:        proxyQualityOverallStatus(result),
+		QualityScore:         &score,
+		QualityGrade:         result.Grade,
+		QualitySummary:       result.Summary,
+		QualityCheckedAt:     &checkedAt,
+		QualityCFRay:         proxyQualityFirstCFRay(result),
+		GrokQualityStatus:    "fail",
+		GrokQualityCheckedAt: &snapshotAt,
+		GrokQualityMessage:   "Grok quality check was not completed",
+		UpdatedAt:            snapshotAt,
+	}
+	if item := proxyQualityItem(result, "grok"); item != nil {
+		info.GrokQualityStatus = item.Status
+		info.GrokQualityMessage = item.Message
+		if item.HTTPStatus > 0 {
+			httpStatus := item.HTTPStatus
+			info.GrokQualityHTTPStatus = &httpStatus
+		}
 	}
 	if result.BaseLatencyMs > 0 {
 		latency := result.BaseLatencyMs
@@ -586,19 +632,7 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 	merged := *info
 	if latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, []int64{proxyID}); err == nil {
 		if existing := latencies[proxyID]; existing != nil {
-			if merged.QualityCheckedAt == nil &&
-				merged.QualityScore == nil &&
-				merged.QualityGrade == "" &&
-				merged.QualityStatus == "" &&
-				merged.QualitySummary == "" &&
-				merged.QualityCFRay == "" {
-				merged.QualityStatus = existing.QualityStatus
-				merged.QualityScore = existing.QualityScore
-				merged.QualityGrade = existing.QualityGrade
-				merged.QualitySummary = existing.QualitySummary
-				merged.QualityCheckedAt = existing.QualityCheckedAt
-				merged.QualityCFRay = existing.QualityCFRay
-			}
+			mergeCachedProxyQuality(&merged, existing)
 		}
 	}
 

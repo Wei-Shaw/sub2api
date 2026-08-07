@@ -562,6 +562,12 @@ type ProxyExitInfoProber interface {
 	ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error)
 }
 
+// ProxyGrokQualityProber performs the same credential-free Grok reachability
+// check used by the admin proxy quality report.
+type ProxyGrokQualityProber interface {
+	ProbeGrokQuality(ctx context.Context, proxyURL string) (ProxyQualityCheckItem, error)
+}
+
 type groupExistenceBatchReader interface {
 	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
 }

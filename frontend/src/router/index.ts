@@ -549,6 +549,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/proxy-pools',
+    name: 'AdminProxyPools',
+    component: () => import('@/views/admin/ProxyPoolsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Proxy Pool Management',
+      titleKey: 'admin.proxyPools.title',
+      descriptionKey: 'admin.proxyPools.description'
+    }
+  },
+  {
     path: '/admin/redeem',
     name: 'AdminRedeem',
     component: () => import('@/views/admin/RedeemView.vue'),

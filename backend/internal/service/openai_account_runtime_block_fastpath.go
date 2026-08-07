@@ -19,8 +19,8 @@ const (
 )
 
 // OpenAIOAuth429FailoverState tracks the request-local follow-up budget after
-// the first Grok OAuth 429. Once that 429 occurs, exactly one different account
-// may be attempted; any failure from that follow-up account ends failover.
+// a generic Grok OAuth 429. Confirmed Free quota exhaustion is account-scoped
+// and may continue through the handler's normal bounded failover chain.
 type OpenAIOAuth429FailoverState struct {
 	grokOAuth429FollowupPending bool
 }
@@ -335,8 +335,11 @@ func (s *OpenAIGatewayService) isOpenAIOAuth429Storm() bool {
 	return s.openaiOAuth429WindowCount.Load() >= openAIOAuth429StormThreshold
 }
 
-func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState) bool {
+func (s *OpenAIGatewayService) ShouldStopOpenAIOAuth429Failover(account *Account, statusCode int, failedSwitches int, state *OpenAIOAuth429FailoverState, responseBody []byte) bool {
 	if failedSwitches < openAIOAuth429StormMaxAccountSwitches {
+		return false
+	}
+	if isGrokOAuthAccount(account) && isGrokFreeUsageExhausted(statusCode, responseBody) {
 		return false
 	}
 	if state != nil && state.grokOAuth429FollowupPending {
