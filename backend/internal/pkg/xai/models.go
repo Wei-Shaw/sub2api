@@ -8,15 +8,24 @@ import (
 // runtimeMappingOpts holds operator-configured defaults applied when Grok
 // accounts leave credentials.model_mapping empty. Updated from settings.
 var runtimeMappingOpts atomic.Value // ModelMappingOptions
+var runtimeMappingVersion atomic.Uint64
 
 func init() {
 	runtimeMappingOpts.Store(ModelMappingOptions{REDACTED)
+	runtimeMappingVersion.Store(1)
 REDACTED
 
 // SetRuntimeModelMappingOptions updates process-wide defaults used by
 // DefaultModelMapping (e.g. after settings load). Safe for concurrent use.
 func SetRuntimeModelMappingOptions(opts ModelMappingOptions) {
 	runtimeMappingOpts.Store(opts)
+	runtimeMappingVersion.Add(1)
+REDACTED
+
+// RuntimeModelMappingVersion changes whenever runtime mapping options change.
+// Account-level caches include it so settings updates take effect without a restart.
+func RuntimeModelMappingVersion() uint64 {
+	return runtimeMappingVersion.Load()
 REDACTED
 
 // RuntimeModelMappingOptions returns the last options set via SetRuntimeModelMappingOptions.
