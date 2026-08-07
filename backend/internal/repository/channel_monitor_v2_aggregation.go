@@ -288,12 +288,17 @@ DO UPDATE SET error_requests = EXCLUDED.error_requests`
 
 // Floor matches channelMonitorV2RetentionMax (90d). Keep the INTERVAL literal in
 // sync when changing channelMonitorV2RetentionRollup1d.
+//
+// Coverage starts track how far back recompute has walked ($1 = chunk start), not
+// "min(source_log.created_at)". Using global min(ops_error_logs) pins
+// error_coverage_start to the first real error forever and collapses UI windows
+// when errors only exist in a recent slice (common on first upgrade).
 const channelMonitorV2WatermarkSQL = `
 INSERT INTO channel_monitor_v2_watermarks (id, usage_coverage_start, error_coverage_start, data_through, last_successful_at, backfill_cursor, updated_at)
 VALUES (
   1,
-  GREATEST($1, COALESCE((SELECT created_at FROM usage_logs ORDER BY created_at ASC LIMIT 1), $1)),
-  GREATEST($1, COALESCE((SELECT created_at FROM ops_error_logs ORDER BY created_at ASC LIMIT 1), $1)),
+  $1,
+  $1,
   $2, NOW(), $1, NOW()
 )
 ON CONFLICT (id) DO UPDATE SET

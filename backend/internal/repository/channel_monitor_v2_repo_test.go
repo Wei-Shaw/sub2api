@@ -119,6 +119,16 @@ func TestChannelMonitorV2RatesUseCoveredWindow(t *testing.T) {
 	require.Equal(t, coverage.DataThrough, effective.End)
 REDACTED
 
+func TestChannelMonitorV2HistoryCoverageCompleteIgnoresTrailingLag(t *testing.T) {
+	start := time.Date(2026, 8, 7, 2, 20, 0, 0, time.UTC)
+	// History reaches the window start → complete even if data_through is behind filter.End.
+	require.True(t, channelMonitorV2HistoryCoverageComplete(start, start))
+	require.True(t, channelMonitorV2HistoryCoverageComplete(start.Add(-time.Hour), start))
+	// Backfill still short of the window start → incomplete.
+	require.False(t, channelMonitorV2HistoryCoverageComplete(start.Add(time.Hour), start))
+	require.False(t, channelMonitorV2HistoryCoverageComplete(time.Time{REDACTED, start))
+REDACTED
+
 func TestChannelMonitorV2TierRetentionPolicy(t *testing.T) {
 	require.Equal(t, 3*24*time.Hour, channelMonitorV2RetentionUser1m)
 	require.Equal(t, 7*24*time.Hour, channelMonitorV2RetentionMetrics1m)

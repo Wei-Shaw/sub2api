@@ -79,6 +79,42 @@ REDACTED
 func (s *channelMonitorV2RepoStub) RecomputeRange(context.Context, time.Time, time.Time) error {
 	return nil
 REDACTED
+func (s *channelMonitorV2RepoStub) GetAggregationWatermark(context.Context) (*ChannelMonitorV2AggregationWatermark, error) {
+	return &ChannelMonitorV2AggregationWatermark{REDACTED, nil
+REDACTED
+
+func TestChannelMonitorV2BootstrapProgress(t *testing.T) {
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+
+	t.Run("no data shows active zero progress", func(t *testing.T) {
+		b := ChannelMonitorV2BootstrapProgress(now, time.Time{REDACTED, false)
+		require.NotNil(t, b)
+		require.True(t, b.Active)
+		require.Equal(t, 0, b.ProgressPercent)
+		require.Equal(t, now.Add(-ChannelMonitorV2BootstrapProductWindow), b.TargetStart)
+REDACTED)
+
+	t.Run("2h seed is small percent of 30d", func(t *testing.T) {
+		covered := now.Add(-2 * time.Hour)
+		b := ChannelMonitorV2BootstrapProgress(now, covered, true)
+		require.NotNil(t, b)
+		require.True(t, b.Active)
+		require.Greater(t, b.ProgressPercent, 0)
+		require.Less(t, b.ProgressPercent, 5)
+REDACTED)
+
+	t.Run("30d covered hides bootstrap", func(t *testing.T) {
+		covered := now.Add(-ChannelMonitorV2BootstrapProductWindow)
+		b := ChannelMonitorV2BootstrapProgress(now, covered, true)
+		require.Nil(t, b)
+REDACTED)
+
+	t.Run("beyond 30d also hides", func(t *testing.T) {
+		covered := now.Add(-60 * 24 * time.Hour)
+		b := ChannelMonitorV2BootstrapProgress(now, covered, true)
+		require.Nil(t, b)
+REDACTED)
+REDACTED
 
 func TestChannelMonitorV2ParseFilterDefaultsAndBuckets(t *testing.T) {
 	svc := &ChannelMonitorV2Service{now: func() time.Time { return time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC) REDACTEDREDACTED

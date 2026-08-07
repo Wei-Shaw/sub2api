@@ -978,13 +978,46 @@ REDACTED
 	return out, rows.Err()
 REDACTED
 
-func (r *channelMonitorV2Repository) loadCoverage(ctx context.Context, filter service.ChannelMonitorV2Filter) (*service.ChannelMonitorV2Coverage, error) {
-	var usageStart, errorStart, dataThrough, computed sql.NullTime
-	err := r.db.QueryRowContext(ctx, `SELECT usage_coverage_start,error_coverage_start,data_through,last_successful_at FROM channel_monitor_v2_watermarks WHERE id=1`).Scan(&usageStart, &errorStart, &dataThrough, &computed)
+func (r *channelMonitorV2Repository) GetAggregationWatermark(ctx context.Context) (*service.ChannelMonitorV2AggregationWatermark, error) {
+	var usageStart, errorStart, dataThrough, computed, backfill sql.NullTime
+	err := r.db.QueryRowContext(ctx, `
+		SELECT usage_coverage_start, error_coverage_start, data_through, last_successful_at, backfill_cursor
+		FROM channel_monitor_v2_watermarks WHERE id = 1`).Scan(&usageStart, &errorStart, &dataThrough, &computed, &backfill)
+	if err == sql.ErrNoRows {
+		return &service.ChannelMonitorV2AggregationWatermark{REDACTED, nil
+REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
-	if !dataThrough.Valid || !computed.Valid {
+	out := &service.ChannelMonitorV2AggregationWatermark{HasData: dataThrough.ValidREDACTED
+	if usageStart.Valid {
+		out.UsageCoverageStart = usageStart.Time.UTC()
+REDACTED
+	if errorStart.Valid {
+		out.ErrorCoverageStart = errorStart.Time.UTC()
+REDACTED
+	if dataThrough.Valid {
+		out.DataThrough = dataThrough.Time.UTC()
+REDACTED
+	if computed.Valid {
+		out.LastSuccessfulAt = computed.Time.UTC()
+REDACTED
+	if backfill.Valid {
+		out.BackfillCursor = backfill.Time.UTC()
+REDACTED
+	return out, nil
+REDACTED
+
+func (r *channelMonitorV2Repository) loadCoverage(ctx context.Context, filter service.ChannelMonitorV2Filter) (*service.ChannelMonitorV2Coverage, error) {
+	wm, err := r.GetAggregationWatermark(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	if wm == nil {
+		wm = &service.ChannelMonitorV2AggregationWatermark{REDACTED
+REDACTED
+	bootstrap := service.ChannelMonitorV2BootstrapProgress(time.Now().UTC(), wm.BackfillCursor, wm.HasData)
+	if !wm.HasData || wm.DataThrough.IsZero() || wm.LastSuccessfulAt.IsZero() {
 		return &service.ChannelMonitorV2Coverage{
 			RequestedStart:        filter.Start,
 			CoverageStart:         filter.End,
@@ -993,23 +1026,21 @@ REDACTED
 			AggregationLagSeconds: 0,
 			CoverageComplete:      false,
 			BucketSeconds:         int(filter.Bucket.Seconds()),
+			Bootstrap:             bootstrap,
 	REDACTED, nil
 REDACTED
 	coverageStart := filter.Start
-	if usageStart.Valid && usageStart.Time.After(coverageStart) {
-		coverageStart = usageStart.Time
+	if !wm.UsageCoverageStart.IsZero() && wm.UsageCoverageStart.After(coverageStart) {
+		coverageStart = wm.UsageCoverageStart
 REDACTED
-	if errorStart.Valid && errorStart.Time.After(coverageStart) {
-		coverageStart = errorStart.Time
+	if !wm.ErrorCoverageStart.IsZero() && wm.ErrorCoverageStart.After(coverageStart) {
+		coverageStart = wm.ErrorCoverageStart
 REDACTED
 	through := filter.End
-	if dataThrough.Valid && dataThrough.Time.Before(through) {
-		through = dataThrough.Time
+	if !wm.DataThrough.IsZero() && wm.DataThrough.Before(through) {
+		through = wm.DataThrough
 REDACTED
-	computedAt := time.Time{REDACTED
-	if computed.Valid {
-		computedAt = computed.Time
-REDACTED
+	computedAt := wm.LastSuccessfulAt
 	lag := int64(0)
 	if !through.IsZero() {
 		lag = int64(time.Since(through).Seconds())
@@ -1017,7 +1048,30 @@ REDACTED
 			lag = 0
 	REDACTED
 REDACTED
-	return &service.ChannelMonitorV2Coverage{RequestedStart: filter.Start, CoverageStart: coverageStart, DataThrough: through, ComputedAt: computedAt, AggregationLagSeconds: lag, CoverageComplete: !coverageStart.After(filter.Start) && !through.Before(filter.End), BucketSeconds: int(filter.Bucket.Seconds())REDACTED, nil
+	// Complete = history depth for this range is filled (backfill reached
+	// filter.Start). Do not require data_through >= filter.End: ParseFilter
+	// aligns End to the next whole bucket (often in the future), so a healthy
+	// minute-level lag would otherwise always show "partial historical coverage".
+	return &service.ChannelMonitorV2Coverage{
+		RequestedStart:        filter.Start,
+		CoverageStart:         coverageStart,
+		DataThrough:           through,
+		ComputedAt:            computedAt,
+		AggregationLagSeconds: lag,
+		CoverageComplete:      channelMonitorV2HistoryCoverageComplete(coverageStart, filter.Start),
+		BucketSeconds:         int(filter.Bucket.Seconds()),
+		Bootstrap:             bootstrap,
+REDACTED, nil
+REDACTED
+
+// channelMonitorV2HistoryCoverageComplete is true when aggregated history
+// reaches the requested window start. Trailing freshness is reported via
+// data_through / aggregation_lag_seconds, not coverage_complete.
+func channelMonitorV2HistoryCoverageComplete(coverageStart, filterStart time.Time) bool {
+	if coverageStart.IsZero() || filterStart.IsZero() {
+		return false
+REDACTED
+	return !coverageStart.After(filterStart)
 REDACTED
 
 func channelMonitorV2FixedBucketSeconds(filter service.ChannelMonitorV2Filter) int {

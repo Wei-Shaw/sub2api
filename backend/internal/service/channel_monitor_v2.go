@@ -154,8 +154,43 @@ type ChannelMonitorV2Coverage struct {
 	DataThrough           time.Time `json:"data_through"`
 	ComputedAt            time.Time `json:"computed_at"`
 	AggregationLagSeconds int64     `json:"aggregation_lag_seconds"`
-	CoverageComplete      bool      `json:"coverage_complete"`
-	BucketSeconds         int       `json:"bucket_seconds"`
+	// CoverageComplete is true when aggregated history reaches the requested
+	// window start (backfill / product coverage for this range is done).
+	// Trailing lag — data_through behind filter.End because UI ends align to
+	// the next bucket and may sit slightly in the future — does not make this
+	// false once history is covered.
+	CoverageComplete bool `json:"coverage_complete"`
+	BucketSeconds    int  `json:"bucket_seconds"`
+	// Bootstrap is set while the first-upgrade historical backfill toward the
+	// product windows (90m / 24h / 7d / 30d) is still running. Omitted or
+	// inactive once the 30d UI range is fully covered; longer retention (90d)
+	// may continue silently without a progress banner.
+	Bootstrap *ChannelMonitorV2Bootstrap `json:"bootstrap,omitempty"`
+REDACTED
+
+// ChannelMonitorV2Bootstrap reports first-upgrade aggregation progress for the UI.
+// Progress is measured against the longest product window (30d), not full 90d retention.
+type ChannelMonitorV2Bootstrap struct {
+	// Active is true while historical backfill has not yet covered the 30d product window.
+	Active bool `json:"active"`
+	// ProgressPercent is 0–100 of history covered from now back toward TargetStart.
+	ProgressPercent int `json:"progress_percent"`
+	// CoveredFrom is the earliest minute already recomputed (backfill cursor).
+	CoveredFrom time.Time `json:"covered_from,omitempty"`
+	// TargetStart is now−30d (product bootstrap goal for 90m/24h/7d/30d).
+	TargetStart time.Time `json:"target_start,omitempty"`
+REDACTED
+
+// ChannelMonitorV2AggregationWatermark is the durable aggregator cursor state.
+type ChannelMonitorV2AggregationWatermark struct {
+	UsageCoverageStart time.Time
+	ErrorCoverageStart time.Time
+	DataThrough        time.Time
+	LastSuccessfulAt   time.Time
+	// BackfillCursor is the earliest start already recomputed; zero when never set.
+	BackfillCursor time.Time
+	// HasData is true once any successful recompute wrote data_through.
+	HasData bool
 REDACTED
 
 type ChannelMonitorV2TrendPoint struct {
@@ -262,7 +297,73 @@ type ChannelMonitorV2Repository interface {
 	// must omit error Details (no ops_error_logs sample scan) for privacy.
 	GetErrors(ctx context.Context, filter ChannelMonitorV2Filter, config ChannelMonitorV2Config, includeAdmin bool) (*ChannelMonitorV2List[ChannelMonitorV2ErrorRow], error)
 	GetUsers(ctx context.Context, filter ChannelMonitorV2Filter, config ChannelMonitorV2Config, includeAdmin bool) (*ChannelMonitorV2List[ChannelMonitorV2UserRow], error)
+	// GetAggregationWatermark loads durable backfill / coverage cursors for the
+	// passive aggregator (and bootstrap progress). Missing row → zero value, nil error.
+	GetAggregationWatermark(ctx context.Context) (*ChannelMonitorV2AggregationWatermark, error)
 	RecomputeRange(ctx context.Context, start, end time.Time) error
+REDACTED
+
+// ChannelMonitorV2BootstrapProductWindow is the longest UI range that must be
+// filled on first upgrade before the bootstrap banner disappears (30d).
+const ChannelMonitorV2BootstrapProductWindow = 30 * 24 * time.Hour
+
+// ChannelMonitorV2BootstrapProgress builds the optional UI progress payload.
+// now and coveredFrom should be UTC minute-truncated when possible.
+// When history is complete for the 30d product window, returns nil (no banner).
+func ChannelMonitorV2BootstrapProgress(now, coveredFrom time.Time, hasData bool) *ChannelMonitorV2Bootstrap {
+	now = now.UTC().Truncate(time.Minute)
+	targetStart := now.Add(-ChannelMonitorV2BootstrapProductWindow)
+	if !hasData {
+		return &ChannelMonitorV2Bootstrap{
+			Active:          true,
+			ProgressPercent: 0,
+			TargetStart:     targetStart,
+	REDACTED
+REDACTED
+	if coveredFrom.IsZero() {
+		// Have data_through but no cursor yet — treat as barely started.
+		return &ChannelMonitorV2Bootstrap{
+			Active:          true,
+			ProgressPercent: 0,
+			TargetStart:     targetStart,
+	REDACTED
+REDACTED
+	coveredFrom = coveredFrom.UTC().Truncate(time.Minute)
+	if !coveredFrom.After(targetStart) {
+		// 30d product windows fully covered; hide progress (90d retention may continue).
+		return nil
+REDACTED
+	total := now.Sub(targetStart).Seconds()
+	if total <= 0 {
+		return nil
+REDACTED
+	done := now.Sub(coveredFrom).Seconds()
+	if done < 0 {
+		done = 0
+REDACTED
+	if done > total {
+		done = total
+REDACTED
+	// Round to nearest percent; any non-zero history shows at least 1% so the
+	// bar moves after the first 2h bootstrap tick (2h/30d ≈ 0.3%).
+	pct := int((done/total)*100 + 0.5)
+	if done > 0 && pct < 1 {
+		pct = 1
+REDACTED
+	if pct > 100 {
+		pct = 100
+REDACTED
+	if pct >= 100 {
+		// Cursor still slightly after target due to rounding — keep active until
+		// coveredFrom <= targetStart so the banner does not flash 100% then vanish.
+		pct = 99
+REDACTED
+	return &ChannelMonitorV2Bootstrap{
+		Active:          true,
+		ProgressPercent: pct,
+		CoveredFrom:     coveredFrom,
+		TargetStart:     targetStart,
+REDACTED
 REDACTED
 
 type ChannelMonitorV2Service struct {
