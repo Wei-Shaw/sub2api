@@ -108,6 +108,7 @@ feat(web3deposit): persist hd wallet metadata
 
 - 新增 `web3_deposit_wallets`。
 - 保存 wallet ID、account path、xpub fingerprint 和下一个派生索引。
+- 钱包元数据不绑定 chain ID，可被多个 EVM 网络共享。
 - 不保存完整 xpub。
 
 ### Commit 10
@@ -118,6 +119,7 @@ feat(web3deposit): persist user deposit addresses
 
 - 新增 `web3_deposit_addresses`。
 - 添加用户、钱包、派生索引和 normalized address 唯一约束。
+- 相同 `(user_id, wallet_id)` 在所有引用该钱包的 EVM 网络复用同一地址。
 - 地址历史不随用户软删除而删除。
 
 ### Commit 11

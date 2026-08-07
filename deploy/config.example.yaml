@@ -120,11 +120,13 @@ web3_deposit:
   credit_enabled: false
   user_entry_enabled: false
 
-  # Wallets and networks are keyed maps so additional EVM chains can be added
-  # without changing the configuration schema. A network references a wallet by key.
-  # 钱包和网络使用稳定键值映射；新增 EVM 链无需修改配置结构，网络通过键引用钱包。
+  # Wallets and networks are keyed maps so additional EVM chains can share the
+  # same user addresses. Networks that reference the same wallet key reuse one
+  # account xpub and one user-to-derivation-index mapping.
+  # 钱包和网络使用稳定键值映射；引用同一钱包键的 EVM 网络共享账户级 xpub，
+  # 并为同一用户复用相同的派生索引和充值地址。
   wallets:
-    conflux_espace_deposit_v1:
+    evm_deposit_v1:
       # Account-level public HD wallet metadata. Never configure a mnemonic,
       # root private key, extended private key, or child private key here.
       # 仅配置账户级 HD 公钥。严禁配置助记词、根私钥、扩展私钥或子私钥。
@@ -136,7 +138,7 @@ web3_deposit:
       enabled: false
       display_name: "Conflux eSpace Mainnet"
       chain_id: 1030
-      wallet_id: "conflux_espace_deposit_v1"
+      wallet_id: "evm_deposit_v1"
       # Record the production deployment start block before enabling this network.
       # 启用该网络前必须记录生产部署起始区块。
       scan_start_block: 0

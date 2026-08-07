@@ -141,6 +141,10 @@ type TransferEvent struct {
 
 ### 6.2 并发分配
 
+地址分配以 `(user_id, wallet_id)` 为身份，不包含 `chain_id`。引用同一
+`wallet_id` 的 EVM 网络共享用户地址和 derivation index；网络差异只在
+Scanner、Token 和充值事件的 `chain_id` 中体现。
+
 首选数据库事务：
 
 ```sql

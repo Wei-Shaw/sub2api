@@ -311,25 +311,8 @@ func TestValidateWeb3DepositConfigConfluxIdentity(t *testing.T) {
 	}
 }
 
-func TestValidateWeb3DepositConfigAllowsAdditionalEVMNetwork(t *testing.T) {
+func TestValidateWeb3DepositConfigAllowsEnabledNetworksToShareWallet(t *testing.T) {
 	cfg := validWeb3DepositConfig(t)
-	cfg.Networks[DefaultWeb3DepositNetworkKey] = Web3DepositNetworkConfig{
-		Enabled:             false,
-		DisplayName:         DefaultWeb3DepositNetworkDisplayName,
-		ChainID:             DefaultWeb3DepositChainID,
-		WalletID:            DefaultWeb3DepositWalletKey,
-		PollIntervalSeconds: DefaultWeb3DepositPollIntervalSecs,
-		BlockBatchSize:      DefaultWeb3DepositBlockBatchSize,
-		OverlapBlocks:       DefaultWeb3DepositOverlapBlocks,
-		Assets: map[string]Web3DepositAssetConfig{
-			DefaultWeb3DepositAssetKey: {
-				ContractAddress: DefaultWeb3DepositTokenAddress,
-				Decimals:        DefaultWeb3DepositTokenDecimals,
-				MinimumDeposit:  DefaultWeb3DepositMinimumAmount,
-				AutoCreditLimit: DefaultWeb3DepositAutoCreditLimit,
-			},
-		},
-	}
 	cfg.Networks["conflux_espace_testnet"] = Web3DepositNetworkConfig{
 		Enabled:             true,
 		DisplayName:         "Conflux eSpace Testnet",

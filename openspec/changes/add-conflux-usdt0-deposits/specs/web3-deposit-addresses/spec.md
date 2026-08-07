@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: 系统必须使用专用 HD 钱包为用户派生充值地址
-系统 SHALL 使用专用于 Conflux eSpace 充值的 HD 钱包账户级 xpub，从 `m/44'/60'/0'/0/{index}` 派生用户 EOA 地址。主业务服务 MUST NOT 持有、加载、记录或返回助记词、根私钥、账户私钥或子私钥。
+### Requirement: 系统必须使用共享 EVM HD 钱包为用户派生充值地址
+系统 SHALL 使用专用 EVM 充值钱包的账户级 xpub，从 `m/44'/60'/0'/0/{index}` 派生用户 EOA 地址。引用同一 `wallet_id` 的 EVM 网络 MUST 为同一用户复用相同地址。主业务服务 MUST NOT 持有、加载、记录或返回助记词、根私钥、账户私钥或子私钥。
 
 #### Scenario: 为用户派生首个地址
 - **WHEN** 活跃用户首次请求创建充值地址
@@ -15,12 +15,17 @@
 - **THEN** 系统 MUST NOT 分配充值地址或启动自动入账
 
 ### Requirement: 地址分配必须并发幂等
-系统 SHALL 为相同 `(user_id, chain_id, wallet_id)` 最多分配一个充值地址，并 MUST 使用数据库事务、原子 derivation index 分配和唯一约束保证多实例并发安全。
+系统 SHALL 为相同 `(user_id, wallet_id)` 最多分配一个充值地址，并 MUST 使用数据库事务、原子 derivation index 分配和唯一约束保证多实例并发安全。
 
 #### Scenario: 同一用户并发创建地址
 - **WHEN** 同一用户并发提交多个创建地址请求
 - **THEN** 所有成功响应 MUST 返回同一个地址记录
 - **THEN** 数据库 MUST 只存在一个用户地址映射
+
+#### Scenario: 同一钱包用于多个 EVM 网络
+- **WHEN** 两个 EVM 网络配置引用同一 `wallet_id`
+- **THEN** 同一用户在两个网络的地址 API MUST 返回相同地址
+- **THEN** 新网络接入 MUST NOT 为该用户消耗新的 derivation index
 
 #### Scenario: 派生后插入失败
 - **WHEN** 系统已经消耗一个 derivation index 但地址记录插入失败

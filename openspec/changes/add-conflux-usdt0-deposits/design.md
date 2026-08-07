@@ -104,9 +104,9 @@ backend/internal/web3deposit/
 
 USDT0 OFT 合约不得配置为充值 Token。运行时启动预检必须检查 chain ID、Token bytecode、固定 decimals 和 finalized block tag。
 
-### 3. HD 钱包只向主服务提供账户级 xpub
+### 3. EVM 网络共享账户级 xpub 和用户充值地址
 
-离线环境从助记词派生：
+离线环境从助记词派生一套 EVM 充值账户：
 
 ```text
 m/44'/60'/0'
@@ -127,6 +127,7 @@ m/44'/60'/0'/0/{index}
 约束：
 
 - 配置包含 `wallet_id`、`xpub`、`account_path` 和可选公钥指纹。
+- 引用同一 `wallet_id` 的 EVM 网络共享同一套用户地址；地址分配身份不包含 `chain_id`。
 - `wallet_id` 一旦分配过地址，不得指向另一套 xpub。
 - 日志、错误、指标和管理 API 不得输出完整 xpub。
 - 主服务依赖中不得出现助记词导入、私钥导出或交易签名入口。
@@ -136,7 +137,7 @@ m/44'/60'/0'/0/{index}
 
 `POST /api/v1/payment/web3/address` 执行 get-or-create：
 
-1. 查询 `(user_id, chain_id, wallet_id)` 是否已有地址。
+1. 查询 `(user_id, wallet_id)` 是否已有地址。
 2. 已有则直接返回。
 3. 没有则在事务内锁定钱包分配器行，读取并递增 `next_derivation_index`。
 4. 在事务外或事务内通过纯函数派生地址；实现必须保证失败时不会把同一 index 分配给两个用户。
@@ -152,7 +153,6 @@ m/44'/60'/0'/0/{index}
 CREATE TABLE web3_deposit_addresses (
     id                  BIGSERIAL PRIMARY KEY,
     user_id             BIGINT NOT NULL REFERENCES users(id),
-    chain_id            BIGINT NOT NULL,
     wallet_id           VARCHAR(64) NOT NULL,
     derivation_index    BIGINT NOT NULL CHECK (derivation_index >= 0),
     address             VARCHAR(42) NOT NULL,
@@ -166,20 +166,22 @@ CREATE TABLE web3_deposit_addresses (
     CONSTRAINT web3_deposit_addresses_status_check
       CHECK (status IN ('active', 'disabled')),
     CONSTRAINT web3_deposit_addresses_user_wallet_uniq
-      UNIQUE (user_id, chain_id, wallet_id),
+      UNIQUE (user_id, wallet_id),
     CONSTRAINT web3_deposit_addresses_index_uniq
       UNIQUE (wallet_id, derivation_index),
-    CONSTRAINT web3_deposit_addresses_chain_address_uniq
-      UNIQUE (chain_id, normalized_address)
+    CONSTRAINT web3_deposit_addresses_address_uniq
+      UNIQUE (normalized_address)
 );
 ```
+
+地址本身不绑定网络。每个网络通过配置的 `wallet_id` 复用该钱包下的用户地址，
+而充值事件仍使用 `chain_id + tx_hash + log_index` 区分不同链上的事实。
 
 另建钱包分配器表或等价原子 sequence：
 
 ```sql
 CREATE TABLE web3_deposit_wallets (
     wallet_id              VARCHAR(64) PRIMARY KEY,
-    chain_id               BIGINT NOT NULL,
     account_path           VARCHAR(64) NOT NULL,
     xpub_fingerprint       VARCHAR(64) NOT NULL,
     next_derivation_index  BIGINT NOT NULL DEFAULT 0,
@@ -355,14 +357,14 @@ web3_deposit:
   credit_enabled: false
   user_entry_enabled: false
   wallets:
-    conflux_espace_deposit_v1:
+    evm_deposit_v1:
       account_xpub: "..."
       account_path: "m/44'/60'/0'"
   networks:
     conflux_espace_mainnet:
       enabled: false
       chain_id: 1030
-      wallet_id: conflux_espace_deposit_v1
+      wallet_id: evm_deposit_v1
       scan_start_block: 0
       rpc_urls: []
       poll_interval_seconds: 15
@@ -380,7 +382,7 @@ web3_deposit:
 
 ```text
 WEB3_DEPOSIT_ENABLED=false
-WEB3_DEPOSIT_WALLETS_CONFLUX_ESPACE_DEPOSIT_V1_ACCOUNT_XPUB=...
+WEB3_DEPOSIT_WALLETS_EVM_DEPOSIT_V1_ACCOUNT_XPUB=...
 WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_SCAN_START_BLOCK=...
 WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS=https://rpc-1.example,https://rpc-2.example
 ```

@@ -27,7 +27,7 @@ const (
 	Web3BrowserCookieSameSiteLax  = "lax"
 	Web3BrowserCookieSameSiteNone = "none"
 
-	DefaultWeb3DepositWalletKey                 = "conflux_espace_deposit_v1"
+	DefaultWeb3DepositWalletKey                 = "evm_deposit_v1"
 	DefaultWeb3DepositNetworkKey                = "conflux_espace_mainnet"
 	DefaultWeb3DepositAssetKey                  = "usdt0"
 	DefaultWeb3DepositAccountPath               = "m/44'/60'/0'"
