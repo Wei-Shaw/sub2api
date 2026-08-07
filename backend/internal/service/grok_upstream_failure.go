@@ -485,8 +485,6 @@ REDACTED
 			// of rotation.
 			return true
 	REDACTED
-		coolUntil := time.Now().Add(decision.Cooldown)
-		markGrokFreeUsageRecovery(account.ID, coolUntil)
 	case GrokFailureBilling:
 		low := strings.ToLower(decision.Reason)
 		if strings.Contains(low, "spending") || strings.Contains(low, "credits") {
