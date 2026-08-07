@@ -10,13 +10,13 @@ import (
 )
 
 type channelMonitorV2RepoStub struct {
-	config  serviceChannelMonitorV2ConfigAlias
-	users   *ChannelMonitorV2List[ChannelMonitorV2UserRow]
-	matrix  *ChannelMonitorV2Matrix
-	errors  *ChannelMonitorV2List[ChannelMonitorV2ErrorRow]
-	snap    *ChannelMonitorV2Snapshot
-	group   ChannelMonitorV2GroupBy
-	admin   bool
+	config serviceChannelMonitorV2ConfigAlias
+	users  *ChannelMonitorV2List[ChannelMonitorV2UserRow]
+	matrix *ChannelMonitorV2Matrix
+	errors *ChannelMonitorV2List[ChannelMonitorV2ErrorRow]
+	snap   *ChannelMonitorV2Snapshot
+	group  ChannelMonitorV2GroupBy
+	admin  bool
 REDACTED
 
 // Alias keeps composite literals readable without introducing another package.
