@@ -347,7 +347,8 @@ export default {
         creditsExhausted: '积分已用尽',
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {timeREDACTED 恢复',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
-        viewTempUnschedDetails: '查看临时不可调度详情'
+        viewTempUnschedDetails: '查看临时不可调度详情',
+        tempUnschedulableUntil: '预计 {timeREDACTED 恢复'
       REDACTED,
       tempUnschedulable: {
         title: '临时不可调度',
@@ -356,6 +357,10 @@ export default {
         notice: '规则按顺序匹配，需同时满足错误码与关键词。',
         addRule: '添加规则',
         ruleOrder: '规则序号',
+        multipleErrorTrigger: '{minutesREDACTED 分钟内累计 {countREDACTED 次匹配错误，达到触发阈值（{thresholdREDACTED）。',
+        multipleErrorTriggerNoWindow: '累计 {countREDACTED 次匹配错误，达到触发阈值（{thresholdREDACTED）。',
+        multipleErrorCountInWindow: '{minutesREDACTED 分钟内累计发生 {countREDACTED 次匹配错误。',
+        multipleErrorCount: '本次不可调度由累计 {countREDACTED 次匹配错误触发。',
         ruleIndex: '规则 #{indexREDACTED',
         errorCode: '错误码',
         errorCodePlaceholder: '例如 429',
@@ -672,7 +677,51 @@ export default {
       REDACTED,
       grok: {
         baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
-        apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
+        apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。',
+        // 账号连通性测试弹窗
+        testMode: '测试模式',
+        testModeHint:
+          '文本 / 图片 / 视频使用所选模型。网页搜索、TTS、STT、Realtime 走独立接口探测（不是对话里的 tools）。',
+        testModeText: '文本（Responses）',
+        testModeImage: '图片（/images/generations）',
+        testModeVideo: '视频（/videos/generations）',
+        testModeSearch: '网页搜索（/web_search）',
+        testModeTTS: '语音合成 TTS（/tts）',
+        testModeSTT: '语音识别 STT（/stt）',
+        testModeRealtime: '实时语音 Realtime（WS /realtime）',
+        textTestMode: '模式：文本（Responses）',
+        searchTestMode: '模式：网页搜索（/web_search）',
+        ttsTestMode: '模式：TTS（/tts）',
+        sttTestMode: '模式：STT（/stt）',
+        realtimeTestMode: '模式：Realtime（WS /realtime）',
+        searchQueryLabel: '搜索关键词',
+        searchQueryPlaceholder: '例如：xAI Grok',
+        searchQueryDefault: 'xAI Grok',
+        searchTestHint:
+          '独立网页搜索探测（与网关 /v1/web_search 语义一致），不是带 tools 的自由对话。',
+        ttsTextLabel: 'TTS 文本',
+        ttsTextPlaceholder: '例如：Hello from Sub2API connectivity test.',
+        ttsTextDefault: 'Hello from Sub2API account connectivity test.',
+        ttsTestHint: '独立调用 /v1/tts（language=en）；成功时显示音频字节数。',
+        sttTestHint: '独立调用 /v1/stt，使用合成静音 WAV；成功表示接口可达。',
+        realtimeTestHint:
+          '独立 WebSocket 拨号 /v1/realtime（model=grok-voice-latest）。握手成功即连通；若有首包服务端事件会一并显示。',
+        sendingSearchRequest: '正在发送独立 web_search 请求...',
+        sendingTTSRequest: '正在发送独立 /tts 请求...',
+        sendingSTTRequest: '正在发送独立 /stt 请求...',
+        sendingRealtimeRequest: '正在拨号独立 /realtime WebSocket...',
+        selectedTestMode: '测试模式：{modeREDACTED',
+        imageUploadLabel: '源图片（可选，图生图/编辑）',
+        videoFirstFrameLabel: '首帧 / 参考图（可选）',
+        imageUploadHint:
+          '建议 PNG/JPEG，宽高均 ≥ 8 像素，编辑建议小于约 4MB。上传源图会走 /images/edits（图生图）；不上传则走 /images/generations 文生图。',
+        audioUploadLabel: '音频文件（STT 可选）',
+        audioUploadHint: '上传真实音频做转写；不上传则用静音 WAV 仅测连通。',
+        videoUploadUrlLabel: '视频 output.upload_url（ZDR，可选）',
+        videoUploadUrlPlaceholder: 'https://your-public-host/v1/media/uploads/<token>',
+        videoUploadUrlHint:
+          '零数据保留（ZDR）账号完整出片需要：公网 HTTPS 地址，接受成品 MP4 的 PUT。不填则只验证连通性，不会真正出视频。',
+        mediaTooLarge: '文件过大（管理端测试上传上限约 6MB）。'
       REDACTED,
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -1361,10 +1410,22 @@ export default {
       imagePromptLabel: '生图提示词',
       imagePromptPlaceholder: '例如：生成一只戴宇航员头盔的橘猫，像素插画风格，纯色背景。',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
-      imageTestHint: '选择图片模型后，这里会直接发起生图测试，并在下方展示返回图片。',
+      imageTestHint:
+        '调用独立 /v1/images/generations 生图（Grok 使用 response_format=b64_json 以兼容 ZDR），并在下方预览返回图片。',
       imageTestMode: '模式：生图测试',
+      videoPromptLabel: '视频提示词',
+      videoPromptPlaceholder: '例如：一只红球在白地板上弹跳一次，动作简短。',
+      videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
+      videoTestHint:
+        '调用独立 /v1/videos/generations。零数据保留（ZDR）账号必须提供公网可 PUT 的 output.upload_url，xAI 才会把成品 MP4 写回去；管理端测试不托管该上传接收地址，因此 ZDR 账号只会得到「连通性成功」，不会实际生成视频文件。',
+      videoTestMode: '模式：视频生成测试',
+      sendingVideoRequest: '正在发送视频生成测试请求...',
       imagePreview: '生成结果：',
       imageReceived: '已收到第 {countREDACTED 张测试图片',
+      audioPreview: '生成音频：',
+      audioReceived: '已收到第 {countREDACTED 段测试音频',
+      videoPreview: '生成视频：',
+      videoReceived: '已收到第 {countREDACTED 段测试视频',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',

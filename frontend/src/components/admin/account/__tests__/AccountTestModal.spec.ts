@@ -179,7 +179,8 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'grok-4.3',
-      prompt: ''
+      prompt: '',
+      mode: 'text'
     REDACTED)
   REDACTED)
 

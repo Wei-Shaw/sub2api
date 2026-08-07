@@ -144,7 +144,8 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
-        viewTempUnschedDetails: 'View temp unschedulable details'
+        viewTempUnschedDetails: 'View temp unschedulable details',
+        tempUnschedulableUntil: 'Resumes {timeREDACTED'
       REDACTED,
       columns: {
         name: 'Name',
@@ -308,6 +309,10 @@ export default {
         notice: 'Rules are evaluated in order and require both error code and keyword match.',
         addRule: 'Add Rule',
         ruleOrder: 'Rule Order',
+        multipleErrorTrigger: '{countREDACTED matching errors in {minutesREDACTED minutes reached the trigger threshold ({thresholdREDACTED).',
+        multipleErrorTriggerNoWindow: '{countREDACTED matching errors reached the trigger threshold ({thresholdREDACTED).',
+        multipleErrorCountInWindow: '{countREDACTED matching errors occurred within {minutesREDACTED minutes.',
+        multipleErrorCount: '{countREDACTED matching errors contributed to this block.',
         ruleIndex: 'Rule #{indexREDACTED',
         errorCode: 'Error Code',
         errorCodePlaceholder: 'e.g. 429',
@@ -602,7 +607,52 @@ export default {
       REDACTED,
       grok: {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
-        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.',
+        // Account connectivity test modal
+        testMode: 'Test mode',
+        testModeHint:
+          'Text / image / video use the selected model. Web search, TTS, STT and Realtime hit standalone endpoints (not free-form chat tools).',
+        testModeText: 'Text (Responses)',
+        testModeImage: 'Image (/images/generations)',
+        testModeVideo: 'Video (/videos/generations)',
+        testModeSearch: 'Web search (/web_search)',
+        testModeTTS: 'TTS (/tts)',
+        testModeSTT: 'STT (/stt)',
+        testModeRealtime: 'Realtime (WS /realtime)',
+        textTestMode: 'Mode: Text (Responses)',
+        searchTestMode: 'Mode: Web search (/web_search)',
+        ttsTestMode: 'Mode: TTS (/tts)',
+        sttTestMode: 'Mode: STT (/stt)',
+        realtimeTestMode: 'Mode: Realtime (WS /realtime)',
+        searchQueryLabel: 'Search query',
+        searchQueryPlaceholder: 'Example: xAI Grok',
+        searchQueryDefault: 'xAI Grok',
+        searchTestHint:
+          'Standalone web_search probe (same as gateway /v1/web_search). Not a free-form chat with tools.',
+        ttsTextLabel: 'TTS text',
+        ttsTextPlaceholder: 'Example: Hello from Sub2API connectivity test.',
+        ttsTextDefault: 'Hello from Sub2API account connectivity test.',
+        ttsTestHint: 'Standalone /v1/tts with language=en; success reports audio byte size.',
+        sttTestHint: 'Standalone /v1/stt with a synthetic silent WAV; success means the endpoint is reachable.',
+        realtimeTestHint:
+          'Standalone WebSocket dial to /v1/realtime (model=grok-voice-latest). Handshake success = connectivity OK; may also show the first server event.',
+        sendingSearchRequest: 'Sending standalone web_search request...',
+        sendingTTSRequest: 'Sending standalone /tts request...',
+        sendingSTTRequest: 'Sending standalone /stt request...',
+        sendingRealtimeRequest: 'Dialing standalone /realtime WebSocket...',
+        selectedTestMode: 'Test mode: {modeREDACTED',
+        imageUploadLabel: 'Source image (optional, for edits)',
+        videoFirstFrameLabel: 'First-frame / reference image (optional)',
+        imageUploadHint:
+          'PNG/JPEG recommended, both sides ≥ 8 px, under ~4 MB for edits. Uploading a source image switches to /images/edits (image-to-image). Leave empty for text-to-image /images/generations.',
+        audioUploadLabel: 'Audio file (optional for STT)',
+        audioUploadHint:
+          'Upload a real audio clip to transcribe. Without a file, a silent WAV is used for connectivity only.',
+        videoUploadUrlLabel: 'Video output.upload_url (ZDR, optional)',
+        videoUploadUrlPlaceholder: 'https://your-public-host/v1/media/uploads/<token>',
+        videoUploadUrlHint:
+          'Required for full video generation on Zero Data Retention teams: a public HTTPS URL that accepts PUT of the finished MP4. Without it, the test only verifies connectivity.',
+        mediaTooLarge: 'File is too large (max ~6 MB for admin test uploads).'
       REDACTED,
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -1310,10 +1360,22 @@ export default {
       imagePromptLabel: 'Image prompt',
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
-      imageTestHint: 'When an image model is selected, this test sends a real image-generation request and previews the returned image below.',
+      imageTestHint:
+        'Calls standalone /v1/images/generations (Grok uses response_format=b64_json for ZDR-safe previews) and shows the returned image below.',
       imageTestMode: 'Mode: Image generation test',
+      videoPromptLabel: 'Video prompt',
+      videoPromptPlaceholder: 'Example: A red ball bouncing once on a white floor, short simple motion.',
+      videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
+      videoTestHint:
+        'Calls standalone /v1/videos/generations. Zero Data Retention (ZDR) teams require a public output.upload_url so xAI can PUT the finished MP4 — this admin probe does not host that receiver, so ZDR accounts get connectivity-only success without producing a video file.',
+      videoTestMode: 'Mode: Video generation test',
+      sendingVideoRequest: 'Sending video generation request...',
       imagePreview: 'Generated images:',
       imageReceived: 'Received test image #{countREDACTED',
+      audioPreview: 'Generated audio:',
+      audioReceived: 'Received test audio #{countREDACTED',
+      videoPreview: 'Generated video:',
+      videoReceived: 'Received test video #{countREDACTED',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',

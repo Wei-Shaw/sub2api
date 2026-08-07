@@ -1065,6 +1065,12 @@ type TestAccountRequest struct {
 	ModelID string `json:"model_id"`
 	Prompt  string `json:"prompt"`
 	Mode    string `json:"mode"`
+	// Optional media for Grok (and future) real generation tests.
+	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
+	// VideoUploadURL is a public HTTPS PUT URL for ZDR video output.
+	ImageDataURL   string `json:"image_data_url"`
+	AudioDataURL   string `json:"audio_data_url"`
+	VideoUploadURL string `json:"video_upload_url"`
 REDACTED
 
 type SyncFromCRSRequest struct {
@@ -1094,8 +1100,14 @@ REDACTED
 	// Allow empty body, model_id is optional
 	_ = c.ShouldBindJSON(&req)
 
+	opts := service.AccountTestOptions{
+		ImageDataURL:   req.ImageDataURL,
+		AudioDataURL:   req.AudioDataURL,
+		VideoUploadURL: req.VideoUploadURL,
+REDACTED
+
 	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
+	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode, opts); err != nil {
 		// Error already sent via SSE, just log
 		return
 REDACTED
