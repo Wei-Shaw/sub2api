@@ -25,3 +25,10 @@
 4. free 档软门禁 + 402/消费上限临时下线（config gateway.grok.free_quota_*）
 5. 媒体 usage 门控 + 分组 VideoModelPrices 输入（voice 暂缓）
 6. 前端 SSO/密码 API + 凭证安全（active-delta 默认关：main 未整包移植）
+
+## 续：阶段 7（本地，未向上游开 PR）
+
+7. CreateAccountModal + OAuthAuthorizationFlow 接入邮箱密码建号
+   - 展示「邮箱密码登录」选项（Grok）
+   - 每行 email----password → authorizePassword → buildCredentials → create
+   - 中英文 i18n 补齐
