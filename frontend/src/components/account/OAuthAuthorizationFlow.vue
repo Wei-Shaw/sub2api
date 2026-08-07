@@ -59,7 +59,7 @@
                 t(getOAuthKey('ssoCookieAuth'))
               REDACTEDREDACTED</span>
             </label>
-            <label v-if="showEmailPasswordOption" class="flex cursor-pointer items-center gap-2">
+            <label v-if="emailPasswordOptionEnabled" class="flex cursor-pointer items-center gap-2">
               <input
                 v-model="inputMethod"
                 type="radio"
@@ -900,6 +900,7 @@ import { useClipboard REDACTED from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 import type { AddMethod, AuthInputMethod REDACTED from '@/composables/useAccountOAuth'
 import type { AccountPlatform REDACTED from '@/types'
+import { adminAPI REDACTED from '@/api/admin'
 
 interface Props {
   addMethod: AddMethod
@@ -975,6 +976,10 @@ const emit = defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
+const passwordAuthEnabled = ref(false)
+const emailPasswordOptionEnabled = computed(
+  () => props.showEmailPasswordOption && props.platform === 'grok' && passwordAuthEnabled.value
+)
 
 const showLocalCallbackNotice = computed(() => props.platform === 'openai' || props.platform === 'grok')
 
@@ -1021,6 +1026,25 @@ const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
 
+watch(
+  () => [props.platform, props.showEmailPasswordOption] as const,
+  async ([platform, requested]) => {
+    passwordAuthEnabled.value = false
+    if (platform !== 'grok' || !requested) return
+    try {
+      const capabilities = await adminAPI.grok.getCapabilities()
+      passwordAuthEnabled.value = capabilities.password_auth_enabled
+    REDACTED catch {
+      // Fail closed; the backend enforces the same capability.
+    REDACTED
+  REDACTED,
+  { immediate: true REDACTED
+)
+
+watch(emailPasswordOptionEnabled, (enabled) => {
+  if (!enabled && inputMethod.value === 'email_password') inputMethod.value = 'manual'
+REDACTED)
+
 // Computed: show method selection only when there is something to choose.
 const methodOptionCount = computed(() => [
   props.showManualOption,
@@ -1033,7 +1057,7 @@ const methodOptionCount = computed(() => [
   props.showAgentIdentityOption,
   props.showCodexPatOption,
   props.showSsoOption,
-  props.showEmailPasswordOption
+  emailPasswordOptionEnabled.value
 ].filter(Boolean).length)
 const showMethodSelection = computed(() => methodOptionCount.value > 1)
 

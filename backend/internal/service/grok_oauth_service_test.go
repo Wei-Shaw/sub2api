@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
@@ -153,7 +154,9 @@ func TestGrokOAuthServiceAuthorizePasswordUsesLoginThenSSOAuthorize(t *testing.T
 			ExpiresIn:    3600,
 	REDACTED,
 REDACTED
-	svc := NewGrokOAuthService(nil, client)
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Grok.PasswordAuthEnabled = true
+	svc := NewGrokOAuthService(nil, client, cfg)
 	defer svc.Stop()
 
 	info, err := svc.AuthorizePassword(context.Background(), " user@example.com ", "  super-secret  ", nil)
@@ -166,6 +169,18 @@ REDACTED
 	require.NotContains(t, creds, "sso_token")
 	require.Equal(t, "user@example.com", client.loginEmail)
 	require.Equal(t, "  super-secret  ", client.loginPassword, "password bytes must be preserved for upstream login")
+REDACTED
+
+func TestGrokOAuthServiceAuthorizePasswordDisabledByDefault(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+
+	require.False(t, svc.GetCapabilities().PasswordAuthEnabled)
+	_, err := svc.AuthorizePassword(context.Background(), "user@example.com", "secret", nil)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_PASSWORD_AUTH_DISABLED")
+	require.Empty(t, client.loginEmail)
 REDACTED
 
 func makeGrokOAuthJWT(claims map[string]any) string {

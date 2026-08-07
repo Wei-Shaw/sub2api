@@ -47,6 +47,10 @@ type GrokGenerateAuthURLRequest struct {
 	RedirectURI string `json:"redirect_uri"`
 REDACTED
 
+func (h *GrokOAuthHandler) GetCapabilities(c *gin.Context) {
+	response.Success(c, h.grokOAuthService.GetCapabilities())
+REDACTED
+
 func (h *GrokOAuthHandler) GenerateAuthURL(c *gin.Context) {
 	var req GrokGenerateAuthURLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -1038,6 +1038,9 @@ REDACTED
 //   - free_quota_window_hours: local usage rolling window length in hours.
 //   - free_quota_stats_cache_seconds: bound hot-path aggregate query frequency (0 disables cache).
 type GatewayGrokConfig struct {
+	// PasswordAuthEnabled gates the experimental admin-only password flow.
+	// It is disabled by default because captcha solving uses an external service.
+	PasswordAuthEnabled bool `mapstructure:"password_auth_enabled"`
 	// FreeQuotaSoftGateEnabled enables a local rolling-window scheduling guard
 	// for explicitly free Grok OAuth accounts only.
 	FreeQuotaSoftGateEnabled bool `mapstructure:"free_quota_soft_gate_enabled"`
@@ -2339,6 +2342,7 @@ REDACTED)
 	// Grok free-tier local soft gate (scheduler-only; admin QueryQuota does not use this).
 	// Enabled by default because free detection requires an explicit free tier marker.
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_enabled", true)
+	viper.SetDefault("gateway.grok.password_auth_enabled", false)
 	viper.SetDefault("gateway.grok.free_quota_token_limit", int64(2_000_000))
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)

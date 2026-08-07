@@ -444,6 +444,10 @@ gateway:
   # Enabled by default because free detection requires an explicit subscription_tier/plan_type of "free".
   # Stats/query failures fail open so DB issues do not block all Grok traffic.
   grok:
+    # Experimental admin-only email/password authorization. Disabled by default.
+    # Requires YESCAPTCHA_CLIENT_KEY (or legacy YESCAPTCHA_API_KEY) in the server environment.
+    # TurnstileTaskProxyless uses solver egress independent from the optional account proxy.
+    password_auth_enabled: false
     free_quota_soft_gate_enabled: true
     free_quota_token_limit: 2000000
     free_quota_soft_gate_percent: 95

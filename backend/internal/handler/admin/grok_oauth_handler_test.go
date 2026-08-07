@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 
@@ -235,7 +236,9 @@ func TestGrokOAuthHandlerAuthorizePasswordReturnsTokenInfoWithoutPassword(t *tes
 	gin.SetMode(gin.TestMode)
 
 	oauthClient := &grokOAuthHandlerClient{REDACTED
-	oauthService := service.NewGrokOAuthService(nil, oauthClient)
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Grok.PasswordAuthEnabled = true
+	oauthService := service.NewGrokOAuthService(nil, oauthClient, cfg)
 	defer oauthService.Stop()
 	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
 
@@ -252,6 +255,21 @@ func TestGrokOAuthHandlerAuthorizePasswordReturnsTokenInfoWithoutPassword(t *tes
 	require.NotContains(t, rec.Body.String(), `"sso_token"`)
 	require.NotContains(t, rec.Body.String(), "super-secret")
 	require.NotContains(t, rec.Body.String(), "sso-from-password")
+REDACTED
+
+func TestGrokOAuthHandlerPasswordCapabilityDefaultsToDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oauthService := service.NewGrokOAuthService(nil, &grokOAuthHandlerClient{REDACTED)
+	defer oauthService.Stop()
+	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
+
+	router := gin.New()
+	router.GET("/api/v1/admin/grok/oauth/capabilities", handler.GetCapabilities)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/grok/oauth/capabilities", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"password_auth_enabled":false`)
 REDACTED
 
 func TestGrokSSOImportExpiryUsesTokenExpiryWithoutRefreshToken(t *testing.T) {

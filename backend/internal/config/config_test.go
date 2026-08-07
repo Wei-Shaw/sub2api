@@ -543,6 +543,7 @@ func TestLoadDefaultGrokFreeQuotaSoftGate(t *testing.T) {
 
 	cfg, err := Load()
 REDACTED
+	require.False(t, cfg.Gateway.Grok.PasswordAuthEnabled)
 	require.True(t, cfg.Gateway.Grok.FreeQuotaSoftGateEnabled)
 	require.Equal(t, int64(2_000_000), cfg.Gateway.Grok.FreeQuotaTokenLimit)
 	require.Equal(t, 95, cfg.Gateway.Grok.FreeQuotaSoftGatePercent)
