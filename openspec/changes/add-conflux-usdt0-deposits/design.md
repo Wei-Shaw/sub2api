@@ -346,21 +346,43 @@ CREATE TABLE web3_scanner_cursors (
 
 ### 11. RPC 配置是运维配置，不是普通管理员输入
 
-建议环境配置：
+配置使用“钱包映射 + 网络映射 + 资产映射”的层级结构。Conflux eSpace 和 USDT0 是首期唯一启用目标，但未来新增 EVM 兼容链或 Token 时只增加映射条目，不修改配置 schema：
+
+```yaml
+web3_deposit:
+  enabled: false
+  scanner_enabled: false
+  credit_enabled: false
+  user_entry_enabled: false
+  wallets:
+    conflux_espace_deposit_v1:
+      account_xpub: "..."
+      account_path: "m/44'/60'/0'"
+  networks:
+    conflux_espace_mainnet:
+      enabled: false
+      chain_id: 1030
+      wallet_id: conflux_espace_deposit_v1
+      scan_start_block: 0
+      rpc_urls: []
+      poll_interval_seconds: 15
+      block_batch_size: 500
+      overlap_blocks: 20
+      assets:
+        usdt0:
+          contract_address: "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
+          decimals: 6
+          minimum_deposit: "1.000000"
+          auto_credit_limit: "10000.000000"
+```
+
+环境变量沿用相同层级，例如：
 
 ```text
 WEB3_DEPOSIT_ENABLED=false
-WEB3_DEPOSIT_CHAIN_ID=1030
-WEB3_DEPOSIT_TOKEN_ADDRESS=0xaf37...
-WEB3_DEPOSIT_TOKEN_DECIMALS=6
-WEB3_DEPOSIT_WALLET_ID=conflux-espace-deposit-v1
-WEB3_DEPOSIT_ACCOUNT_XPUB=...
-WEB3_DEPOSIT_ACCOUNT_PATH=m/44'/60'/0'
-WEB3_DEPOSIT_SCAN_START_BLOCK=...
-WEB3_DEPOSIT_RPC_URLS=https://...
-WEB3_DEPOSIT_POLL_INTERVAL=...
-WEB3_DEPOSIT_BLOCK_BATCH_SIZE=...
-WEB3_DEPOSIT_OVERLAP_BLOCKS=...
+WEB3_DEPOSIT_WALLETS_CONFLUX_ESPACE_DEPOSIT_V1_ACCOUNT_XPUB=...
+WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_SCAN_START_BLOCK=...
+WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS=https://rpc-1.example,https://rpc-2.example
 ```
 
 启动预检失败时：

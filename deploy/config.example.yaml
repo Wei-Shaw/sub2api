@@ -106,6 +106,58 @@ web3_auth:
   browser_cookie_same_site: "lax"
 
 # =============================================================================
+# Web3 Deposit Configuration
+# EVM-compatible network deposit configuration
+# EVM 兼容链充值配置
+# =============================================================================
+web3_deposit:
+  # Master feature switch. All Web3 deposit capabilities are disabled by default.
+  # Web3 充值总开关。所有能力默认关闭。
+  enabled: false
+  # Runtime switches allow scanning and crediting to be rolled out independently.
+  # 运行时开关允许独立灰度扫描、入账和用户入口。
+  scanner_enabled: false
+  credit_enabled: false
+  user_entry_enabled: false
+
+  # Wallets and networks are keyed maps so additional EVM chains can be added
+  # without changing the configuration schema. A network references a wallet by key.
+  # 钱包和网络使用稳定键值映射；新增 EVM 链无需修改配置结构，网络通过键引用钱包。
+  wallets:
+    conflux_espace_deposit_v1:
+      # Account-level public HD wallet metadata. Never configure a mnemonic,
+      # root private key, extended private key, or child private key here.
+      # 仅配置账户级 HD 公钥。严禁配置助记词、根私钥、扩展私钥或子私钥。
+      account_xpub: ""
+      account_path: "m/44'/60'/0'"
+
+  networks:
+    conflux_espace_mainnet:
+      enabled: false
+      display_name: "Conflux eSpace Mainnet"
+      chain_id: 1030
+      wallet_id: "conflux_espace_deposit_v1"
+      # Record the production deployment start block before enabling this network.
+      # 启用该网络前必须记录生产部署起始区块。
+      scan_start_block: 0
+      rpc_urls: []
+      poll_interval_seconds: 15
+      block_batch_size: 500
+      overlap_blocks: 20
+      assets:
+        usdt0:
+          contract_address: "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
+          decimals: 6
+          # Exact decimal strings; never express monetary rules as floats.
+          # 精确十进制字符串；金额规则不得使用浮点数。
+          minimum_deposit: "1.000000"
+          auto_credit_limit: "10000.000000"
+
+  # Nested environment variables use map keys in uppercase. RPC URLs are comma-separated.
+  # 嵌套环境变量将映射键转成大写，多个 RPC URL 使用逗号分隔。
+  # WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS=https://rpc-1.example,https://rpc-2.example
+
+# =============================================================================
 # Run Mode Configuration
 # 运行模式配置
 # =============================================================================

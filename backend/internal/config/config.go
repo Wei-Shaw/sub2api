@@ -26,6 +26,20 @@ const (
 const (
 	Web3BrowserCookieSameSiteLax  = "lax"
 	Web3BrowserCookieSameSiteNone = "none"
+
+	DefaultWeb3DepositWalletKey                 = "conflux_espace_deposit_v1"
+	DefaultWeb3DepositNetworkKey                = "conflux_espace_mainnet"
+	DefaultWeb3DepositAssetKey                  = "usdt0"
+	DefaultWeb3DepositAccountPath               = "m/44'/60'/0'"
+	DefaultWeb3DepositNetworkDisplayName        = "Conflux eSpace Mainnet"
+	DefaultWeb3DepositChainID            uint64 = 1030
+	DefaultWeb3DepositTokenAddress              = "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
+	DefaultWeb3DepositTokenDecimals      int32  = 6
+	DefaultWeb3DepositPollIntervalSecs          = 15
+	DefaultWeb3DepositBlockBatchSize     uint64 = 500
+	DefaultWeb3DepositOverlapBlocks      uint64 = 20
+	DefaultWeb3DepositMinimumAmount             = "1.000000"
+	DefaultWeb3DepositAutoCreditLimit           = "10000.000000"
 )
 
 // 使用量记录队列溢出策略
@@ -80,6 +94,7 @@ type Config struct {
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
 	Web3Auth                Web3AuthConfig                `mapstructure:"web3_auth"`
+	Web3Deposit             Web3DepositConfig             `mapstructure:"web3_deposit"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
@@ -705,6 +720,40 @@ type WebAuthnConfig struct {
 
 type Web3AuthConfig struct {
 	BrowserCookieSameSite string `mapstructure:"browser_cookie_same_site"`
+}
+
+type Web3DepositConfig struct {
+	Enabled          bool                                `mapstructure:"enabled"`
+	ScannerEnabled   bool                                `mapstructure:"scanner_enabled"`
+	CreditEnabled    bool                                `mapstructure:"credit_enabled"`
+	UserEntryEnabled bool                                `mapstructure:"user_entry_enabled"`
+	Wallets          map[string]Web3DepositWalletConfig  `mapstructure:"wallets"`
+	Networks         map[string]Web3DepositNetworkConfig `mapstructure:"networks"`
+}
+
+type Web3DepositWalletConfig struct {
+	AccountXPub string `mapstructure:"account_xpub"`
+	AccountPath string `mapstructure:"account_path"`
+}
+
+type Web3DepositNetworkConfig struct {
+	Enabled             bool                              `mapstructure:"enabled"`
+	DisplayName         string                            `mapstructure:"display_name"`
+	ChainID             uint64                            `mapstructure:"chain_id"`
+	WalletID            string                            `mapstructure:"wallet_id"`
+	ScanStartBlock      uint64                            `mapstructure:"scan_start_block"`
+	RPCURLs             []string                          `mapstructure:"rpc_urls"`
+	PollIntervalSeconds int                               `mapstructure:"poll_interval_seconds"`
+	BlockBatchSize      uint64                            `mapstructure:"block_batch_size"`
+	OverlapBlocks       uint64                            `mapstructure:"overlap_blocks"`
+	Assets              map[string]Web3DepositAssetConfig `mapstructure:"assets"`
+}
+
+type Web3DepositAssetConfig struct {
+	ContractAddress string `mapstructure:"contract_address"`
+	Decimals        int32  `mapstructure:"decimals"`
+	MinimumDeposit  string `mapstructure:"minimum_deposit"`
+	AutoCreditLimit string `mapstructure:"auto_credit_limit"`
 }
 
 const MaxForwardedClientIPHeaders = 16
@@ -1695,6 +1744,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	trustedProxiesEnv, trustedProxiesEnvConfigured := os.LookupEnv("SERVER_TRUSTED_PROXIES")
 	forwardedClientIPHeadersEnv, forwardedClientIPHeadersEnvConfigured := os.LookupEnv("SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+	web3DepositRPCURLsEnv, web3DepositRPCURLsEnvConfigured := os.LookupEnv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS")
 	trustedProxiesConfigured := viper.InConfig("server.trusted_proxies") ||
 		viper.IsSet("server.trusted_proxies") || trustedProxiesEnvConfigured
 
@@ -1707,6 +1757,11 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	}
 	if forwardedClientIPHeadersEnvConfigured {
 		cfg.Security.ForwardedClientIPHeaders = normalizeStringSlice(strings.Split(forwardedClientIPHeadersEnv, ","))
+	}
+	if web3DepositRPCURLsEnvConfigured {
+		network := cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey]
+		network.RPCURLs = normalizeStringSlice(strings.Split(web3DepositRPCURLsEnv, ","))
+		cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey] = network
 	}
 	cfg.Server.TrustedProxiesConfigured = trustedProxiesConfigured
 	if cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs == 0 {
@@ -1887,6 +1942,25 @@ func setDefaults() {
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
 	viper.SetDefault("web3_auth.browser_cookie_same_site", Web3BrowserCookieSameSiteLax)
+	viper.SetDefault("web3_deposit.enabled", false)
+	viper.SetDefault("web3_deposit.scanner_enabled", false)
+	viper.SetDefault("web3_deposit.credit_enabled", false)
+	viper.SetDefault("web3_deposit.user_entry_enabled", false)
+	viper.SetDefault("web3_deposit.wallets."+DefaultWeb3DepositWalletKey+".account_xpub", "")
+	viper.SetDefault("web3_deposit.wallets."+DefaultWeb3DepositWalletKey+".account_path", DefaultWeb3DepositAccountPath)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".enabled", false)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".display_name", DefaultWeb3DepositNetworkDisplayName)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".chain_id", DefaultWeb3DepositChainID)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".wallet_id", DefaultWeb3DepositWalletKey)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".scan_start_block", uint64(0))
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".rpc_urls", []string{})
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".poll_interval_seconds", DefaultWeb3DepositPollIntervalSecs)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".block_batch_size", DefaultWeb3DepositBlockBatchSize)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".overlap_blocks", DefaultWeb3DepositOverlapBlocks)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".assets."+DefaultWeb3DepositAssetKey+".contract_address", DefaultWeb3DepositTokenAddress)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".assets."+DefaultWeb3DepositAssetKey+".decimals", DefaultWeb3DepositTokenDecimals)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".assets."+DefaultWeb3DepositAssetKey+".minimum_deposit", DefaultWeb3DepositMinimumAmount)
+	viper.SetDefault("web3_deposit.networks."+DefaultWeb3DepositNetworkKey+".assets."+DefaultWeb3DepositAssetKey+".auto_credit_limit", DefaultWeb3DepositAutoCreditLimit)
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
 	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
