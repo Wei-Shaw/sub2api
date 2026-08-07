@@ -84,6 +84,24 @@ func TestIsGrokContentPolicyRejection(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "permission denied with usage guidelines refusal",
+			status: http.StatusForbidden,
+			body:   `{"code":"permission-denied","error":"Content violates usage guidelines. "}`,
+			want:   true,
+		},
+		{
+			name:   "permission denied entitlement message keeps account path",
+			status: http.StatusForbidden,
+			body:   `{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`,
+			want:   false,
+		},
+		{
+			name:   "structured account code overrides usage guidelines phrase",
+			status: http.StatusForbidden,
+			body:   `{"error":{"code":"account_suspended","message":"Content violates usage guidelines."}}`,
+			want:   false,
+		},
+		{
 			name:   "wrong status",
 			status: http.StatusBadRequest,
 			body:   `{"error":{"code":"new_sensitive"}}`,
@@ -120,6 +138,38 @@ func TestGrokContentPolicy403DoesNotMutateOrFailover(t *testing.T) {
 	got := svc.failoverOpenAIUpstreamHTTPError(context.Background(), c, account, resp, body, "text is sensitive", "grok-4.5")
 	require.Nil(t, got)
 	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestGrokPermissionDeniedContentRefusalDoesNotMutateOrFailover(t *testing.T) {
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 4785, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	body := []byte(`{"code":"permission-denied","error":"Content violates usage guidelines. "}`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+	require.Zero(t, repo.updateCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.shouldFailoverGrokUpstreamError(http.StatusForbidden, body))
+}
+
+func TestGrokPermissionDeniedEntitlementKeepsDefaultCooldown(t *testing.T) {
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 4786, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	body := []byte(`{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`)
+	before := time.Now()
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, "grok access or entitlement denied", repo.lastTempUnschedReason)
+	require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
+	require.Less(t, repo.lastTempUnschedUntil, before.Add(31*time.Minute))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusForbidden, body))
 }
 
 func TestGrokNonFailoverDoesNotApplyGenericTempUnschedulablePolicy(t *testing.T) {

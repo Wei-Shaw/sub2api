@@ -105,6 +105,11 @@ func isGrokContentPolicyCode(value string) bool {
 	}
 }
 
+// isGrokAccountAccessCode matches codes that unambiguously describe the
+// account itself. "permission_denied" is deliberately absent: xAI reuses that
+// code for both entitlement denials ("Access to the chat endpoint is denied")
+// and request-scoped safety refusals ("Content violates usage guidelines."),
+// so like "policy_violation" the accompanying message decides instead.
 func isGrokAccountAccessCode(value string) bool {
 	switch normalizeGrokErrorMarker(value) {
 	case "account_suspended",
@@ -114,8 +119,7 @@ func isGrokAccountAccessCode(value string) bool {
 		"subscription_required",
 		"entitlement_required",
 		"not_entitled",
-		"plan_required",
-		"permission_denied":
+		"plan_required":
 		return true
 	default:
 		return false
@@ -171,6 +175,7 @@ func grokContentPolicyMessage(value string) bool {
 		"prompt violates policy",
 		"input violates content policy",
 		"input violates policy",
+		"violates usage guidelines",
 	} {
 		if strings.Contains(lower, phrase) {
 			return true
