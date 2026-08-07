@@ -1227,6 +1227,23 @@
         </div>
       </div>
 
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.runtimeScheduling.disableTemp') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.runtimeScheduling.disableTempDesc') }}</p>
+          </div>
+          <Toggle v-model="disableTempUnschedulable" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.runtimeScheduling.disableErrors') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.runtimeScheduling.disableErrorsDesc') }}</p>
+          </div>
+          <Toggle v-model="disableRuntimeErrorHandling" />
+        </div>
+      </div>
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -2878,6 +2895,8 @@ const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const disableTempUnschedulable = ref(false)
+const disableRuntimeErrorHandling = ref(false)
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
 const getOpenAICompactModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-openai-compact-model-mapping')
 const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
@@ -3870,6 +3889,16 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
 }
 
 const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
+	if (disableTempUnschedulable.value) {
+		credentials.disable_temp_unschedulable = true
+	} else {
+		delete credentials.disable_temp_unschedulable
+	}
+	if (disableRuntimeErrorHandling.value) {
+		credentials.disable_runtime_error_handling = true
+	} else {
+		delete credentials.disable_runtime_error_handling
+	}
   if (!tempUnschedEnabled.value) {
     delete credentials.temp_unschedulable_enabled
     delete credentials.temp_unschedulable_rules
@@ -3888,6 +3917,8 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
 }
 
 function loadTempUnschedRules(credentials?: Record<string, unknown>) {
+  disableTempUnschedulable.value = credentials?.disable_temp_unschedulable === true
+  disableRuntimeErrorHandling.value = credentials?.disable_runtime_error_handling === true
   tempUnschedEnabled.value = credentials?.temp_unschedulable_enabled === true
   const rawRules = credentials?.temp_unschedulable_rules
   if (!Array.isArray(rawRules)) {

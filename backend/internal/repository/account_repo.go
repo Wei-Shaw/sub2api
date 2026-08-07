@@ -1324,7 +1324,14 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 }
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
-	_, err := r.client.Account.Update().
+	account, err := r.client.Account.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if account.Credentials["disable_runtime_error_handling"] == true {
+		return nil
+	}
+	_, err = r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
 		SetStatus(service.StatusError).
 		SetErrorMessage(errorMsg).
@@ -2268,6 +2275,13 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 }
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
+	account, err := r.client.Account.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if account.Credentials["disable_temp_unschedulable"] == true || account.Credentials["disable_runtime_error_handling"] == true {
+		return nil
+	}
 	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = $1,

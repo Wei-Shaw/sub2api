@@ -340,6 +340,12 @@ export default {
           unavailableDesc: 'Unavailable - pause 30 minutes'
         }
       },
+      runtimeScheduling: {
+        disableTemp: 'Disable temporary unschedulable state',
+        disableTempDesc: 'Do not create or enforce temporary cooldowns for this account.',
+        disableErrors: 'Disable automatic error scheduling protection',
+        disableErrorsDesc: 'Keep this account eligible after upstream errors, rate limits, or overloads. Upstream errors are still returned to callers.',
+      },
       clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',
