@@ -422,7 +422,7 @@ REDACTED
 	require.Equal(t, 300, snap.Config.RefreshIntervalSeconds)
 	require.Zero(t, snap.Metrics.RequestCount)
 	require.InDelta(t, 0.1, snap.Metrics.ErrorRate, 0.0001)
-	require.InDelta(t, 5.0, snap.Metrics.RPM, 0.0001)
+	require.Zero(t, snap.Metrics.RPM)
 REDACTED
 
 func TestRedactChannelMonitorV2MetricKeepsRates(t *testing.T) {

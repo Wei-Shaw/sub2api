@@ -22,8 +22,9 @@ const (
 	channelMonitorV2BootstrapFirst = 2 * time.Hour
 	// Subsequent bootstrap chunks grow so 24h/7d/30d fill without waiting full 90d pace.
 	// Order after first tick: 22h → full 1d chunks until 30d, then 1d toward 90d.
-	channelMonitorV2RecentOverlap = 10 * time.Minute
-	channelMonitorV2BackfillChunk = 24 * time.Hour
+	channelMonitorV2RecentOverlap    = 10 * time.Minute
+	channelMonitorV2BackfillChunk    = 24 * time.Hour
+	channelMonitorV2MinBackfillChunk = time.Hour
 )
 
 // channelMonitorRuntimeSubscriber is the optional settings hook that lets the
@@ -45,7 +46,9 @@ type ChannelMonitorV2Aggregator struct {
 	mu        sync.Mutex
 	// backfillAt is the earliest minute already recomputed (mirrors DB cursor).
 	// Zero means "not yet loaded from durable watermark this process".
-	backfillAt time.Time
+	backfillAt       time.Time
+	backfillChunk    time.Duration
+	backfillFailures int
 	// cursorLoaded is true after the first successful watermark read (or init).
 	cursorLoaded bool
 	// hasAggregated is true once any recompute in this process (or durable data) exists.
@@ -57,12 +60,13 @@ REDACTED
 
 func NewChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settings channelMonitorRuntimeReader) *ChannelMonitorV2Aggregator {
 	return &ChannelMonitorV2Aggregator{
-		repo:       repo,
-		db:         db,
-		settings:   settings,
-		instanceID: uuid.NewString(),
-		stopCh:     make(chan struct{REDACTED),
-		kickCh:     make(chan struct{REDACTED, 1),
+		repo:          repo,
+		db:            db,
+		settings:      settings,
+		instanceID:    uuid.NewString(),
+		stopCh:        make(chan struct{REDACTED),
+		kickCh:        make(chan struct{REDACTED, 1),
+		backfillChunk: channelMonitorV2BackfillChunk,
 REDACTED
 REDACTED
 
@@ -179,6 +183,9 @@ REDACTED
 	if !s.hasAggregated {
 		return true
 REDACTED
+	if s.backfillFailures >= 3 {
+		return false
+REDACTED
 	now := time.Now().UTC().Truncate(time.Minute)
 	target := now.Add(-channelMonitorV2BootstrapWindow)
 	return s.backfillAt.IsZero() || s.backfillAt.After(target)
@@ -270,7 +277,18 @@ REDACTED
 	// past 24h so the default + daily UI ranges fill within a few ticks; 7d/30d
 	// follow as more chunks complete (banner tracks progress against 30d).
 	end := cursor
-	start := end.Add(-channelMonitorV2BackfillChunk)
+	s.mu.Lock()
+	chunk := s.backfillChunk
+	s.mu.Unlock()
+	if chunk <= 0 {
+		chunk = channelMonitorV2BackfillChunk
+REDACTED
+	start := end.Add(-chunk)
+	// Once bootstrap reaches historical data, keep chunks on day boundaries so
+	// daily rollups never depend on 1m rows from two independently pruned chunks.
+	if end.Before(now.Add(-7 * 24 * time.Hour)) {
+		start = end.Add(-chunk).Truncate(24 * time.Hour)
+REDACTED
 	if start.Before(retentionCutoff) {
 		start = retentionCutoff
 REDACTED
@@ -279,9 +297,20 @@ REDACTED
 REDACTED
 	if err := s.repo.RecomputeRange(ctx, start, end); err != nil {
 		logger.LegacyPrintf("service.channel_monitor_v2", "[ChannelMonitorV2] backfill failed %s..%s: %v", start, end, err)
+		s.mu.Lock()
+		s.backfillFailures++
+		if s.backfillChunk > channelMonitorV2MinBackfillChunk {
+			s.backfillChunk /= 2
+			if s.backfillChunk < channelMonitorV2MinBackfillChunk {
+				s.backfillChunk = channelMonitorV2MinBackfillChunk
+		REDACTED
+	REDACTED
+		s.mu.Unlock()
 		return
 REDACTED
 	s.mu.Lock()
+	s.backfillChunk = channelMonitorV2BackfillChunk
+	s.backfillFailures = 0
 	s.backfillAt = start
 	s.hasAggregated = true
 	s.mu.Unlock()

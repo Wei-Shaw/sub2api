@@ -106,7 +106,11 @@ REDACTED
 func TestChannelMonitorV2UsageSuccessExcludesCyberBillingRows(t *testing.T) {
 	for _, query := range []string{channelMonitorV2UsageMetricsSQL, channelMonitorV2UserMetricsSQLREDACTED {
 		require.Contains(t, query, "COALESCE(ul.request_type, 0) NOT IN (4, 6)")
+		require.Contains(t, query, "ul.actual_cost > 0")
 REDACTED
+	require.Contains(t, channelMonitorV2PlatformSQL, "g.platform = 'composite'")
+	require.Contains(t, channelMonitorV2PlatformSQL, "a.platform")
+	require.Contains(t, channelMonitorV2HistogramSQL, "ul.actual_cost > 0")
 REDACTED
 
 func TestChannelMonitorV2RatesUseCoveredWindow(t *testing.T) {
@@ -168,6 +172,13 @@ REDACTED
 	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
 	require.Equal(t, now.Add(-7*24*time.Hour), channelMonitorV2RetentionCutoff(now, channelMonitorV2RetentionMetrics1m))
 	require.Equal(t, now.Add(-90*24*time.Hour), channelMonitorV2RetentionCutoff(now, channelMonitorV2MaxRetention()))
+REDACTED
+
+func TestSameFixedRollupBucket(t *testing.T) {
+	start := time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC)
+	require.True(t, sameFixedRollupBucket(start, start.Add(10*time.Minute), 86400))
+	require.False(t, sameFixedRollupBucket(start, start.Add(15*time.Hour), 43200))
+	require.False(t, sameFixedRollupBucket(start, start.Add(24*time.Hour), 86400))
 REDACTED
 
 // Needles present in service.ClassifyChannelMonitorV2Error must appear in the

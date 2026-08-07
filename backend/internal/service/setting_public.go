@@ -440,6 +440,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 			Enabled:                true,
 			Mode:                   defaultChannelMonitorMode,
 			DefaultIntervalSeconds: channelMonitorIntervalFallback,
+			HideThroughput:         true,
 	REDACTED
 REDACTED
 	vals, err := s.settingRepo.GetMultiple(ctx, []string{
@@ -453,13 +454,14 @@ REDACTED)
 			Enabled:                true,
 			Mode:                   defaultChannelMonitorMode,
 			DefaultIntervalSeconds: channelMonitorIntervalFallback,
+			HideThroughput:         true,
 	REDACTED
 REDACTED
 	return ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
-		HideThroughput:         vals[SettingKeyChannelMonitorHideThroughput] == "true",
+		HideThroughput:         vals[SettingKeyChannelMonitorHideThroughput] != "false",
 REDACTED
 REDACTED
 

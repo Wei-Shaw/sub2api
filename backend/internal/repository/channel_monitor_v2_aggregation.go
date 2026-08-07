@@ -8,7 +8,7 @@ import (
 )
 
 // Platform is derived from group/account (usage_logs has no provider column on upstream schema).
-const channelMonitorV2PlatformSQL = `lower(COALESCE(NULLIF(TRIM(g.platform), ''), NULLIF(TRIM(a.platform), ''), 'unknown'))`
+const channelMonitorV2PlatformSQL = `lower(` + usageLogEffectivePlatformExpr + `)`
 const channelMonitorV2ModelSQL = `COALESCE(NULLIF(TRIM(ul.requested_model), ''), NULLIF(TRIM(ul.model), ''), 'unknown')`
 
 // Tiered retention balances UI windows against storage:
@@ -71,6 +71,13 @@ var channelMonitorV2RetentionRules = []channelMonitorV2RetentionRule{
 REDACTED
 
 func (r *channelMonitorV2Repository) pruneChannelMonitorV2Retention(ctx context.Context, tx *sql.Tx, now time.Time) error {
+	// During historical bootstrap, retain all 1m facts until the cursor reaches
+	// the oldest rollup boundary. Otherwise adjacent chunks would rebuild the
+	// same daily bucket from source rows already pruned by the prior chunk.
+	var backfillCursor time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT backfill_cursor FROM channel_monitor_v2_watermarks WHERE id = 1`).Scan(&backfillCursor); err == nil && backfillCursor.After(channelMonitorV2RetentionCutoff(now, channelMonitorV2RetentionMax)) {
+		return nil
+REDACTED
 	for _, rule := range channelMonitorV2RetentionRules {
 		cutoff := channelMonitorV2RetentionCutoff(now, rule.retention)
 		var err error
@@ -164,11 +171,15 @@ INSERT INTO channel_monitor_v2_metrics_1m (
 )
 SELECT date_trunc('minute', ul.created_at), %s, COALESCE(ul.group_id, 0), %s,
        COUNT(DISTINCT COALESCE(NULLIF(ul.request_id, ''), 'usage:' || ul.id::text))
-         FILTER (WHERE COALESCE(ul.request_type, 0) NOT IN (4, 6)),
-       SUM(COALESCE(ul.input_tokens, 0)), SUM(COALESCE(ul.output_tokens, 0)),
-       SUM(COALESCE(ul.cache_creation_tokens, 0)), SUM(COALESCE(ul.cache_read_tokens, 0)),
-       COALESCE(SUM(ul.first_token_ms) FILTER (WHERE ul.first_token_ms IS NOT NULL), 0), COUNT(ul.first_token_ms),
-       COALESCE(SUM(ul.duration_ms) FILTER (WHERE ul.duration_ms IS NOT NULL), 0), COUNT(ul.duration_ms), NOW()
+         FILTER (WHERE COALESCE(ul.request_type, 0) NOT IN (4, 6) AND ` + usageLogSuccessFilterUL + `),
+       COALESCE(SUM(ul.input_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.output_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.cache_creation_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.cache_read_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.first_token_ms) FILTER (WHERE ul.first_token_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + `), 0),
+       COUNT(ul.first_token_ms) FILTER (WHERE ` + usageLogSuccessFilterUL + `),
+       COALESCE(SUM(ul.duration_ms) FILTER (WHERE ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + `), 0),
+       COUNT(ul.duration_ms) FILTER (WHERE ` + usageLogSuccessFilterUL + `), NOW()
 FROM usage_logs ul
 LEFT JOIN groups g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
@@ -183,11 +194,15 @@ INSERT INTO channel_monitor_v2_user_metrics_1m (
 )
 SELECT date_trunc('minute', ul.created_at), %s, COALESCE(ul.group_id, 0), %s, ul.user_id,
        COUNT(DISTINCT COALESCE(NULLIF(ul.request_id, ''), 'usage:' || ul.id::text))
-         FILTER (WHERE COALESCE(ul.request_type, 0) NOT IN (4, 6)),
-       SUM(COALESCE(ul.input_tokens, 0)), SUM(COALESCE(ul.output_tokens, 0)),
-       SUM(COALESCE(ul.cache_creation_tokens, 0)), SUM(COALESCE(ul.cache_read_tokens, 0)),
-       COALESCE(SUM(ul.first_token_ms) FILTER (WHERE ul.first_token_ms IS NOT NULL), 0), COUNT(ul.first_token_ms),
-       COALESCE(SUM(ul.duration_ms) FILTER (WHERE ul.duration_ms IS NOT NULL), 0), COUNT(ul.duration_ms), NOW()
+         FILTER (WHERE COALESCE(ul.request_type, 0) NOT IN (4, 6) AND ` + usageLogSuccessFilterUL + `),
+       COALESCE(SUM(ul.input_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.output_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.cache_creation_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.cache_read_tokens) FILTER (WHERE ` + usageLogSuccessFilterUL + `), 0),
+       COALESCE(SUM(ul.first_token_ms) FILTER (WHERE ul.first_token_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + `), 0),
+       COUNT(ul.first_token_ms) FILTER (WHERE ` + usageLogSuccessFilterUL + `),
+       COALESCE(SUM(ul.duration_ms) FILTER (WHERE ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + `), 0),
+       COUNT(ul.duration_ms) FILTER (WHERE ` + usageLogSuccessFilterUL + `), NOW()
 FROM usage_logs ul
 LEFT JOIN groups g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
@@ -207,6 +222,7 @@ CROSS JOIN LATERAL (VALUES (0::bigint), (ul.user_id)) audience(user_id)
 CROSS JOIN LATERAL (VALUES ('ttft'::text, ul.first_token_ms), ('duration'::text, ul.duration_ms)) latency(metric, value_ms)
 WHERE ul.created_at >= $1 AND ul.created_at < $2
   AND audience.user_id IS NOT NULL AND latency.value_ms IS NOT NULL AND latency.value_ms >= 0
+  AND ` + usageLogSuccessFilterUL + `
 GROUP BY 1, 2, 3, 4, 5, 6, 7`
 
 func channelMonitorV2HistogramBoundSQL(column string) string {
@@ -319,6 +335,13 @@ var channelMonitorV2FixedRollupSeconds = []int{300, 3600, 43200, 86400REDACTED
 
 func (r *channelMonitorV2Repository) recomputeFixedRollups(ctx context.Context, tx *sql.Tx, start, end time.Time) error {
 	for _, seconds := range channelMonitorV2FixedRollupSeconds {
+		// Coarse buckets are immutable between boundaries during the normal
+		// trailing refresh. Historical backfills and boundary-crossing windows
+		// still rebuild them; this avoids repeatedly regrouping the full current
+		// day/user table every few minutes.
+		if seconds >= 43200 && sameFixedRollupBucket(start, end, seconds) {
+			continue
+	REDACTED
 		interval := fmt.Sprintf("%d seconds", seconds)
 		for _, table := range []string{
 			"channel_monitor_v2_latency_histograms_rollup",
@@ -344,6 +367,14 @@ func (r *channelMonitorV2Repository) recomputeFixedRollups(ctx context.Context, 
 	REDACTED
 REDACTED
 	return nil
+REDACTED
+
+func sameFixedRollupBucket(start, end time.Time, seconds int) bool {
+	if !end.After(start) {
+		return true
+REDACTED
+	interval := time.Duration(seconds) * time.Second
+	return start.Truncate(interval).Equal(end.Add(-time.Nanosecond).Truncate(interval))
 REDACTED
 
 const channelMonitorV2FixedRollupBoundsSQL = `
