@@ -401,6 +401,8 @@ export default {
         grokTokens: 'Token',
         grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limitREDACTED）',
         grokWeeklyUsage: '周额度已用 {percentREDACTED%',
+        grokUsed: '已用 $',
+        grokMonthlyLimit: '月度已用/上限（由 billing cents 换算 USD）',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{timeREDACTED 后重试',
         grokProbe: '探测',

@@ -22,14 +22,14 @@ import (
 const (
 	grokComposerImageBridgeVisionModel     = "grok-build-0.1"
 	grokComposerImageBridgeMaxOutputTokens = 512
-	grokUpstreamUserAgent                  = "sub2api-grok/1.0"
-	grokCLIVersion                         = xai.CLIClientVersion
-	grokDefaultResponsesModel              = "grok-4.5"
-	grokRateLimitFallbackCooldown          = 2 * time.Minute
-	grokRateLimitRepeatCooldown            = 10 * time.Minute
-	grokRateLimitSustainedCooldown         = 30 * time.Minute
-	grokRateLimitMaxAdaptiveCooldown       = time.Hour
-	grokRateLimitBackoffQuietPeriod        = time.Hour
+	// grokUpstreamUserAgent lives in grok_upstream_headers.go (shared with TLS header helpers).
+	grokCLIVersion                   = xai.CLIClientVersion
+	grokDefaultResponsesModel        = "grok-4.5"
+	grokRateLimitFallbackCooldown    = 2 * time.Minute
+	grokRateLimitRepeatCooldown      = 10 * time.Minute
+	grokRateLimitSustainedCooldown   = 30 * time.Minute
+	grokRateLimitMaxAdaptiveCooldown = time.Hour
+	grokRateLimitBackoffQuietPeriod  = time.Hour
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(
@@ -1099,12 +1099,18 @@ REDACTED
 
 // applyGrokCLIHeaders identifies subscription traffic as a supported Grok CLI
 // version. The CLI gateway rejects otherwise valid OAuth requests without it.
+// Identity pins come from package xai so service-layer headers match the final
+// transport rewrite on cli-chat-proxy.grok.com.
 func applyGrokCLIHeaders(headers http.Header) {
 	if headers == nil {
 		return
 REDACTED
-	headers.Set("User-Agent", grokUpstreamUserAgent)
-	headers.Set("X-Grok-Client-Version", grokCLIVersion)
+	version := xai.ResolveCLIVersion()
+	headers.Set("User-Agent", xai.CLIUserAgent(version))
+	headers.Set("X-Grok-Client-Version", version)
+	headers.Set("x-grok-client-version", version)
+	headers.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	// Historical mode value expected by some unit tests / older CLI probes.
 	headers.Set("X-Grok-Client-Mode", "interactive")
 REDACTED
 
@@ -1127,6 +1133,15 @@ REDACTED
 	REDACTED
 REDACTED
 
+	updates := map[string]any{
+		grokQuotaSnapshotExtraKey: snapshot,
+REDACTED
+	// Also derive the scheduling-threshold extras (grok_sched_*) the evaluator
+	// reads in grokThresholdCandidates. Without this writer the admin-configured
+	// Grok auto-pause threshold could never fire (the read side was dead config).
+	for k, v := range buildGrokSchedulerExtraUpdates(snapshot) {
+		updates[k] = v
+REDACTED
 	stateCtx := ctx
 	if hasActiveLimit {
 		var cancel context.CancelFunc
@@ -1134,9 +1149,7 @@ REDACTED
 		defer cancel()
 REDACTED
 	if s.accountRepo != nil {
-		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, map[string]any{
-			grokQuotaSnapshotExtraKey: snapshot,
-	REDACTED)
+		_ = s.accountRepo.UpdateExtra(stateCtx, accountID, updates)
 REDACTED
 	// Error responses are reconciled by handleGrokAccountUpstreamError. Pool-mode
 	// API keys retain the snapshot for observability but leave account health to
@@ -1363,6 +1376,85 @@ REDACTED
 		markGrokTeamModelRateLimit(account, model, resolveGrokTeamRateLimitUntil(resetAt, now))
 REDACTED
 REDACTED
+
+// buildGrokSchedulerExtraUpdates derives the grok_sched_* scheduling snapshot
+// (utilization percent + reset time) consumed by EvaluateAccountSchedulingThreshold.
+// Utilization is the most-constrained of the requests/tokens windows.
+func buildGrokSchedulerExtraUpdates(snapshot *xai.QuotaSnapshot) map[string]any {
+	if snapshot == nil {
+		return nil
+REDACTED
+	util, reset, ok := grokSnapshotUtilization(snapshot)
+	if !ok {
+		return nil
+REDACTED
+	updates := map[string]any{
+		"grok_sched_utilization":      util,
+		"grok_sched_usage_updated_at": time.Now().UTC().Format(time.RFC3339),
+REDACTED
+	if reset != nil {
+		// 防御：调度阈值暂停时长由 grok_sched_reset_at 决定。若上游返回脏的
+		// reset 头（例如把相对毫秒 "6000" 误当相对秒解析出 ~33h 的未来时刻），
+		// 不设上限会把耗尽账号长时间锁死。xAI 配额窗口不会超过一天，因此对
+		// 未来时刻做 grokMaxSchedulingResetHorizon 钳制；过去/无效值直接不写。
+		now := time.Now()
+		if reset.After(now) {
+			capped := *reset
+			if horizon := now.Add(grokMaxSchedulingResetHorizon); capped.After(horizon) {
+				capped = horizon
+		REDACTED
+			updates["grok_sched_reset_at"] = capped.UTC().Format(time.RFC3339)
+	REDACTED
+REDACTED
+	return updates
+REDACTED
+
+// grokSnapshotUtilization returns the highest window utilization (0-100) across
+// the requests/tokens quota windows and the reset time of that window.
+func grokSnapshotUtilization(snapshot *xai.QuotaSnapshot) (float64, *time.Time, bool) {
+	if snapshot == nil {
+		return 0, nil, false
+REDACTED
+	best := -1.0
+	var bestReset *time.Time
+	consider := func(window *xai.QuotaWindow) {
+		if window == nil || window.Limit == nil || *window.Limit <= 0 || window.Remaining == nil {
+			return
+	REDACTED
+		remaining := *window.Remaining
+		if remaining < 0 {
+			remaining = 0
+	REDACTED
+		util := (1 - float64(remaining)/float64(*window.Limit)) * 100
+		if util < 0 {
+			util = 0
+	REDACTED
+		if util > 100 {
+			util = 100
+	REDACTED
+		if util > best {
+			best = util
+			if window.ResetUnix != nil {
+				t := time.Unix(*window.ResetUnix, 0).UTC()
+				bestReset = &t
+		REDACTED else {
+				bestReset = nil
+		REDACTED
+	REDACTED
+REDACTED
+	consider(snapshot.Requests)
+	consider(snapshot.Tokens)
+	if best < 0 {
+		return 0, nil, false
+REDACTED
+	return best, bestReset, true
+REDACTED
+
+// grokMaxSchedulingResetHorizon bounds how far into the future a Grok
+// scheduling-threshold pause (grok_sched_reset_at) may be set, so a malformed
+// upstream reset header can't park an over-threshold account for days. xAI quota
+// windows do not exceed ~a day.
+const grokMaxSchedulingResetHorizon = 25 * time.Hour
 
 // grokTeamRateLimitModelContextKey carries the upstream model for team cools.
 type grokTeamRateLimitModelContextKey struct{REDACTED

@@ -121,7 +121,8 @@ REDACTED
 	out := accounts[:0]
 	kept := false
 	for i := range accounts {
-		if isGrokTeamModelRateLimited(&accounts[i], model, now) {
+		upstreamModel := canonicalOpenAIAccountSchedulingModel(&accounts[i], model)
+		if isGrokTeamModelRateLimited(&accounts[i], upstreamModel, now) {
 			continue
 	REDACTED
 		out = append(out, accounts[i])

@@ -409,7 +409,12 @@ export default {
         title: 'Gateway Scheduling Settings',
         description: 'Control API Key scheduling behavior',
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
-        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.',
+        accountSchedulingThresholdsTitle: 'Platform Account Auto-Pause Thresholds',
+        accountSchedulingThresholdsDescription: 'Set per-platform thresholds that automatically pause scheduling for accounts on that platform when their current native usage window reaches the configured percentage.',
+        accountSchedulingThresholdsGlobalHint: 'This is a system-wide global setting and applies to all accounts on that platform.',
+        accountSchedulingThresholdsDisabledHint: 'A value of 100 disables the auto-pause threshold for that platform.',
+        accountSchedulingThresholdsRangeHint: 'Range 1-100, entered as a percentage.'
       REDACTED,
       upstreamBillingProbe: {
         title: 'Upstream Rate Auto Detection',

@@ -57,3 +57,19 @@ REDACTED
 	// After mark with past, resolveGrokTeamRateLimitUntil path isn't used; mark uses now+default when until not after now.
 	require.True(t, isGrokTeamModelRateLimited(a, "grok-4.5", time.Now()))
 REDACTED
+
+func TestGrokTeamModelRateLimitFilterUsesMappedUpstreamModel(t *testing.T) {
+	now := time.Now()
+	account := &Account{
+		ID:       301,
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"team_id":       "team-mapped-301",
+			"model_mapping": map[string]any{"gpt-*": "grok-4.5"REDACTED,
+	REDACTED,
+REDACTED
+	markGrokTeamModelRateLimit(account, "grok-4.5", now.Add(time.Hour))
+
+	require.Empty(t, filterGrokTeamModelRateLimitedAccounts([]Account{*accountREDACTED, "gpt-5", now))
+REDACTED

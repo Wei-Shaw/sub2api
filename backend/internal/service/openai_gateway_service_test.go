@@ -68,6 +68,29 @@ REDACTED
 	return nil, errors.New("account not found")
 REDACTED
 
+func (r stubOpenAIAccountRepo) GetByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
+	if len(ids) == 0 {
+		return []*Account{REDACTED, nil
+REDACTED
+	index := make(map[int64]*Account, len(r.accounts))
+	for i := range r.accounts {
+		account := &r.accounts[i]
+		index[account.ID] = account
+REDACTED
+	out := make([]*Account, 0, len(ids))
+	seen := make(map[int64]struct{REDACTED, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		if account, ok := index[id]; ok {
+			out = append(out, account)
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
 func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {

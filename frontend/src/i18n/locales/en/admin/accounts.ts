@@ -1357,6 +1357,8 @@ export default {
         grokTokens: 'Tok',
         grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limitREDACTED limit)',
         grokWeeklyUsage: 'Weekly {percentREDACTED%',
+        grokUsed: 'Used $',
+        grokMonthlyLimit: 'Monthly used / limit (USD from billing cents)',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {timeREDACTED',
         grokProbe: 'Probe',
