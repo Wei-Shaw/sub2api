@@ -1041,14 +1041,14 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
-			writeCustomModelsList(c, service.PlatformComposite, availableModels)
+			writeCustomModelsList(c, service.PlatformComposite, availableModels, apiKey.Group)
 			return
 		}
 		if len(availableModels) > 0 {
-			writeModelsList(c, service.PlatformComposite, availableModels)
+			writeModelsList(c, service.PlatformComposite, availableModels, apiKey.Group)
 			return
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group)
 		return
 	}
 
@@ -1067,12 +1067,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
 		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
+		writeCustomModelsList(c, platform, availableModels, apiKey.Group)
 		return
 	}
 
 	if len(availableModels) > 0 {
-		writeModelsList(c, platform, availableModels)
+		writeModelsList(c, platform, availableModels, apiKey.Group)
 		return
 	}
 
@@ -1132,19 +1132,103 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	return models
 }
 
-func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+// reasoningEffortOption 描述一个 reasoning_effort 档位（value + UI label + 默认标记）。
+// 与 grokReasoningEffortOption 同形状（grok 分支保持自己的类型，字段契约一致）。
+type reasoningEffortOption struct {
+	Value   string `json:"value"`
+	Label   string `json:"label"`
+	Default bool   `json:"default,omitempty"`
+}
+
+// modelsCapabilityFields 是 /v1/models 列表项的通用能力字段。
+// 客户端（opencode 插件等）直接消费生成 variants / 附件能力，不做本地推断；
+// 数据来自 service.ModelReasoningEfforts / ModelSupportsAttachments（服务端单边维护）。
+// 布尔能力字段不做 omitempty：客户端据此区分「新网关显式不支持」(false) 与
+// 「旧网关无字段」（兜底逻辑），字段缺失只可能是旧网关。
+type modelsCapabilityFields struct {
+	SupportsReasoningEffort bool                   `json:"supportsReasoningEffort"`
+	ReasoningEffort         string                 `json:"reasoningEffort,omitempty"`
+	ReasoningEfforts        []reasoningEffortOption `json:"reasoningEfforts,omitempty"`
+	MaxReasoningEffort      string                 `json:"maxReasoningEffort,omitempty"`
+	SupportsAttachments     bool                   `json:"supportsAttachments"`
+}
+
+func modelCapabilityFields(modelID string, group *service.Group) modelsCapabilityFields {
+	efforts := service.ModelReasoningEfforts(modelID)
+	fields := modelsCapabilityFields{
+		SupportsReasoningEffort: len(efforts) > 0,
+		SupportsAttachments:     service.ModelSupportsAttachments(modelID),
+	}
+	if len(efforts) == 0 {
+		return fields
+	}
+	if group != nil {
+		efforts = service.CapModelReasoningEfforts(efforts, group.MaxReasoningEffort)
+	}
+	if len(efforts) == 0 {
+		// group 上限把所有档位截没 → 客户端应视为不支持可配置 effort。
+		fields.SupportsReasoningEffort = false
+		return fields
+	}
+	options := make([]reasoningEffortOption, 0, len(efforts))
+	defaultValue := efforts[len(efforts)-1]
+	for _, effort := range efforts {
+		if effort == "high" {
+			defaultValue = "high"
+			break
+		}
+	}
+	for _, effort := range efforts {
+		opt := reasoningEffortOption{Value: effort, Label: effortLabel(effort)}
+		if effort == defaultValue {
+			opt.Default = true
+		}
+		options = append(options, opt)
+	}
+	fields.ReasoningEfforts = options
+	fields.ReasoningEffort = defaultValue
+	fields.MaxReasoningEffort = efforts[len(efforts)-1]
+	return fields
+}
+
+// effortLabel 生成档位的展示名（low → Low、xhigh → X-High）。
+func effortLabel(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "xhigh":
+		return "X-High"
+	case "max":
+		return "Max"
+	default:
+		if effort == "" {
+			return ""
+		}
+		return strings.ToUpper(effort[:1]) + effort[1:]
+	}
+}
+
+// modelsListItem 在基础模型信息之上携带能力字段。
+type modelsListItem struct {
+	claude.Model
+	modelsCapabilityFields
+}
+
+func writeModelsList(c *gin.Context, platform string, modelIDs []string, group *service.Group) {
 	if platform == service.PlatformGrok {
 		writeGrokModelsList(c, modelIDs)
 		return
 	}
-	models := make([]claude.Model, 0, len(modelIDs))
+	models := make([]modelsListItem, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
-		models = append(models, claude.Model{
-			ID:          modelID,
-			Type:        "model",
-			DisplayName: modelID,
-			CreatedAt:   "2024-01-01T00:00:00Z",
-		})
+		item := modelsListItem{
+			Model: claude.Model{
+				ID:          modelID,
+				Type:        "model",
+				DisplayName: modelID,
+				CreatedAt:   "2024-01-01T00:00:00Z",
+			},
+		}
+		item.modelsCapabilityFields = modelCapabilityFields(modelID, group)
+		models = append(models, item)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
@@ -1152,12 +1236,12 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 	})
 }
 
-func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
+func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string, group *service.Group) {
 	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
+		writeOpenAIModelsList(c, modelIDs, group)
 		return
 	}
-	writeModelsList(c, platform, modelIDs)
+	writeModelsList(c, platform, modelIDs, group)
 }
 
 type grokReasoningEffortOption struct {
@@ -1219,26 +1303,35 @@ func grokModelSupportsConfigurableReasoning(modelID string) bool {
 	}
 }
 
-func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+// openAIModelsListItem 在 OpenAI 模型信息之上携带能力字段。
+type openAIModelsListItem struct {
+	openai.Model
+	modelsCapabilityFields
+}
+
+func writeOpenAIModelsList(c *gin.Context, modelIDs []string, group *service.Group) {
 	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
 	for _, model := range openai.DefaultModels {
 		defaultsByID[model.ID] = model
 	}
 
-	models := make([]openai.Model, 0, len(modelIDs))
+	models := make([]openAIModelsListItem, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
+		item := openAIModelsListItem{}
 		if model, ok := defaultsByID[modelID]; ok {
-			models = append(models, model)
-			continue
+			item.Model = model
+		} else {
+			item.Model = openai.Model{
+				ID:          modelID,
+				Object:      "model",
+				Created:     1704067200,
+				OwnedBy:     "openai",
+				Type:        "model",
+				DisplayName: modelID,
+			}
 		}
-		models = append(models, openai.Model{
-			ID:          modelID,
-			Object:      "model",
-			Created:     1704067200,
-			OwnedBy:     "openai",
-			Type:        "model",
-			DisplayName: modelID,
-		})
+		item.modelsCapabilityFields = modelCapabilityFields(modelID, group)
+		models = append(models, item)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
