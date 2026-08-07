@@ -2959,6 +2959,11 @@ REDACTED
 	if statusCode != 429 {
 		return
 REDACTED
+	// 池模式账号不写账号级限流：账号留在池内，由 failover / 同号重试消化 429。
+	// 自定义错误码优先级高于池模式，开启后仍按其命中结果标记。
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
+		return
+REDACTED
 
 	oauthType := account.GeminiOAuthType()
 	tierID := account.GeminiTierID()
