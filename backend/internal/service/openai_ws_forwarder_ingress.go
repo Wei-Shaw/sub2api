@@ -966,6 +966,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			if !clientDisconnected {
+				if eventType == "error" {
+					if updated, changed := ensureOpenAIWSErrorEventClientDetail(upstreamMessage); changed {
+						upstreamMessage = updated
+						logOpenAIWSModeInfo(
+							"ingress_error_event_detail_injected account_id=%d turn=%d conn_id=%s",
+							account.ID,
+							turn,
+							truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
+						)
+					}
+				}
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
 					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
 				}

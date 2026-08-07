@@ -634,7 +634,17 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			setOpsUpstreamError(c, statusCode, errMsg, "")
 			if reqStream && !clientDisconnected {
 				flushBufferedStreamEvents("error_event")
-				emitStreamMessage(message, true)
+				clientMessage := message
+				if updated, changed := ensureOpenAIWSErrorEventClientDetail(message); changed {
+					clientMessage = updated
+					logOpenAIWSModeInfo(
+						"error_event_detail_injected account_id=%d conn_id=%s idx=%d",
+						account.ID,
+						connID,
+						eventCount,
+					)
+				}
+				emitStreamMessage(clientMessage, true)
 			}
 			if !reqStream {
 				c.JSON(statusCode, gin.H{
