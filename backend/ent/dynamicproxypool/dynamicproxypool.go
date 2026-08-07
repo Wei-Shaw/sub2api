@@ -61,6 +61,8 @@ const (
 	FieldLastExtractError = "last_extract_error"
 	// FieldAliveCount holds the string denoting the alive_count field in the database.
 	FieldAliveCount = "alive_count"
+	// FieldHealthCheckIntervalSec holds the string denoting the health_check_interval_sec field in the database.
+	FieldHealthCheckIntervalSec = "health_check_interval_sec"
 	// Table holds the table name of the dynamicproxypool in the database.
 	Table = "dynamic_proxy_pools"
 )
@@ -92,6 +94,7 @@ var Columns = []string{
 	FieldLastExtractStatus,
 	FieldLastExtractError,
 	FieldAliveCount,
+	FieldHealthCheckIntervalSec,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -175,6 +178,8 @@ var (
 	DefaultLastExtractError string
 	// DefaultAliveCount holds the default value on creation for the "alive_count" field.
 	DefaultAliveCount int
+	// DefaultHealthCheckIntervalSec holds the default value on creation for the "health_check_interval_sec" field.
+	DefaultHealthCheckIntervalSec int
 )
 
 // OrderOption defines the ordering options for the DynamicProxyPool queries.
@@ -303,4 +308,9 @@ func ByLastExtractError(opts ...sql.OrderTermOption) OrderOption {
 // ByAliveCount orders the results by the alive_count field.
 func ByAliveCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAliveCount, opts...).ToFunc()
+}
+
+// ByHealthCheckIntervalSec orders the results by the health_check_interval_sec field.
+func ByHealthCheckIntervalSec(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldHealthCheckIntervalSec, opts...).ToFunc()
 }

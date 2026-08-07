@@ -332,6 +332,10 @@ func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, pa
 	}
 	if search != "" {
 		q = q.Where(proxy.NameContainsFold(search))
+	} else {
+		// Hide dynamic-pool-owned proxies (dpool- prefix) from the main IP list;
+		// they are managed in the pool's dedicated page. A search still surfaces them.
+		q = q.Where(proxy.Not(proxy.NameHasPrefix(service.DynamicPoolNamePrefixBase)))
 	}
 
 	total, err := q.Count(ctx)

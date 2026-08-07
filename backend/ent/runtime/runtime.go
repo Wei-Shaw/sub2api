@@ -1070,6 +1070,10 @@ func init() {
 	dynamicproxypoolDescAliveCount := dynamicproxypoolFields[21].Descriptor()
 	// dynamicproxypool.DefaultAliveCount holds the default value on creation for the alive_count field.
 	dynamicproxypool.DefaultAliveCount = dynamicproxypoolDescAliveCount.Default.(int)
+	// dynamicproxypoolDescHealthCheckIntervalSec is the schema descriptor for health_check_interval_sec field.
+	dynamicproxypoolDescHealthCheckIntervalSec := dynamicproxypoolFields[22].Descriptor()
+	// dynamicproxypool.DefaultHealthCheckIntervalSec holds the default value on creation for the health_check_interval_sec field.
+	dynamicproxypool.DefaultHealthCheckIntervalSec = dynamicproxypoolDescHealthCheckIntervalSec.Default.(int)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{}.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0

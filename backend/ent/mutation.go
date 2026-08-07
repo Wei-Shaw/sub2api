@@ -20528,43 +20528,45 @@ func (m *CompositeModelRouteMutation) ResetEdge(name string) error {
 // DynamicProxyPoolMutation represents an operation that mutates the DynamicProxyPool nodes in the graph.
 type DynamicProxyPoolMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int64
-	created_at              *time.Time
-	updated_at              *time.Time
-	name                    *string
-	enabled                 *bool
-	source_type             *string
-	subscription_id         *int64
-	addsubscription_id      *int64
-	extract_url             *string
-	protocol                *string
-	auth_mode               *string
-	username                *string
-	password                *string
-	response_format         *string
-	line_separator          *string
-	ip_field_path           *string
-	port_field_path         *string
-	refresh_interval_sec    *int
-	addrefresh_interval_sec *int
-	ip_duration_sec         *int
-	addip_duration_sec      *int
-	extract_count           *int
-	addextract_count        *int
-	min_alive               *int
-	addmin_alive            *int
-	name_prefix             *string
-	last_extract_at         *time.Time
-	last_extract_status     *string
-	last_extract_error      *string
-	alive_count             *int
-	addalive_count          *int
-	clearedFields           map[string]struct{}
-	done                    bool
-	oldValue                func(context.Context) (*DynamicProxyPool, error)
-	predicates              []predicate.DynamicProxyPool
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	name                         *string
+	enabled                      *bool
+	source_type                  *string
+	subscription_id              *int64
+	addsubscription_id           *int64
+	extract_url                  *string
+	protocol                     *string
+	auth_mode                    *string
+	username                     *string
+	password                     *string
+	response_format              *string
+	line_separator               *string
+	ip_field_path                *string
+	port_field_path              *string
+	refresh_interval_sec         *int
+	addrefresh_interval_sec      *int
+	ip_duration_sec              *int
+	addip_duration_sec           *int
+	extract_count                *int
+	addextract_count             *int
+	min_alive                    *int
+	addmin_alive                 *int
+	name_prefix                  *string
+	last_extract_at              *time.Time
+	last_extract_status          *string
+	last_extract_error           *string
+	alive_count                  *int
+	addalive_count               *int
+	health_check_interval_sec    *int
+	addhealth_check_interval_sec *int
+	clearedFields                map[string]struct{}
+	done                         bool
+	oldValue                     func(context.Context) (*DynamicProxyPool, error)
+	predicates                   []predicate.DynamicProxyPool
 }
 
 var _ ent.Mutation = (*DynamicProxyPoolMutation)(nil)
@@ -21767,6 +21769,62 @@ func (m *DynamicProxyPoolMutation) ResetAliveCount() {
 	m.addalive_count = nil
 }
 
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (m *DynamicProxyPoolMutation) SetHealthCheckIntervalSec(i int) {
+	m.health_check_interval_sec = &i
+	m.addhealth_check_interval_sec = nil
+}
+
+// HealthCheckIntervalSec returns the value of the "health_check_interval_sec" field in the mutation.
+func (m *DynamicProxyPoolMutation) HealthCheckIntervalSec() (r int, exists bool) {
+	v := m.health_check_interval_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHealthCheckIntervalSec returns the old "health_check_interval_sec" field's value of the DynamicProxyPool entity.
+// If the DynamicProxyPool object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DynamicProxyPoolMutation) OldHealthCheckIntervalSec(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHealthCheckIntervalSec is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHealthCheckIntervalSec requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHealthCheckIntervalSec: %w", err)
+	}
+	return oldValue.HealthCheckIntervalSec, nil
+}
+
+// AddHealthCheckIntervalSec adds i to the "health_check_interval_sec" field.
+func (m *DynamicProxyPoolMutation) AddHealthCheckIntervalSec(i int) {
+	if m.addhealth_check_interval_sec != nil {
+		*m.addhealth_check_interval_sec += i
+	} else {
+		m.addhealth_check_interval_sec = &i
+	}
+}
+
+// AddedHealthCheckIntervalSec returns the value that was added to the "health_check_interval_sec" field in this mutation.
+func (m *DynamicProxyPoolMutation) AddedHealthCheckIntervalSec() (r int, exists bool) {
+	v := m.addhealth_check_interval_sec
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetHealthCheckIntervalSec resets all changes to the "health_check_interval_sec" field.
+func (m *DynamicProxyPoolMutation) ResetHealthCheckIntervalSec() {
+	m.health_check_interval_sec = nil
+	m.addhealth_check_interval_sec = nil
+}
+
 // Where appends a list predicates to the DynamicProxyPoolMutation builder.
 func (m *DynamicProxyPoolMutation) Where(ps ...predicate.DynamicProxyPool) {
 	m.predicates = append(m.predicates, ps...)
@@ -21801,7 +21859,7 @@ func (m *DynamicProxyPoolMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DynamicProxyPoolMutation) Fields() []string {
-	fields := make([]string, 0, 24)
+	fields := make([]string, 0, 25)
 	if m.created_at != nil {
 		fields = append(fields, dynamicproxypool.FieldCreatedAt)
 	}
@@ -21874,6 +21932,9 @@ func (m *DynamicProxyPoolMutation) Fields() []string {
 	if m.alive_count != nil {
 		fields = append(fields, dynamicproxypool.FieldAliveCount)
 	}
+	if m.health_check_interval_sec != nil {
+		fields = append(fields, dynamicproxypool.FieldHealthCheckIntervalSec)
+	}
 	return fields
 }
 
@@ -21930,6 +21991,8 @@ func (m *DynamicProxyPoolMutation) Field(name string) (ent.Value, bool) {
 		return m.LastExtractError()
 	case dynamicproxypool.FieldAliveCount:
 		return m.AliveCount()
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		return m.HealthCheckIntervalSec()
 	}
 	return nil, false
 }
@@ -21987,6 +22050,8 @@ func (m *DynamicProxyPoolMutation) OldField(ctx context.Context, name string) (e
 		return m.OldLastExtractError(ctx)
 	case dynamicproxypool.FieldAliveCount:
 		return m.OldAliveCount(ctx)
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		return m.OldHealthCheckIntervalSec(ctx)
 	}
 	return nil, fmt.Errorf("unknown DynamicProxyPool field %s", name)
 }
@@ -22164,6 +22229,13 @@ func (m *DynamicProxyPoolMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetAliveCount(v)
 		return nil
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHealthCheckIntervalSec(v)
+		return nil
 	}
 	return fmt.Errorf("unknown DynamicProxyPool field %s", name)
 }
@@ -22190,6 +22262,9 @@ func (m *DynamicProxyPoolMutation) AddedFields() []string {
 	if m.addalive_count != nil {
 		fields = append(fields, dynamicproxypool.FieldAliveCount)
 	}
+	if m.addhealth_check_interval_sec != nil {
+		fields = append(fields, dynamicproxypool.FieldHealthCheckIntervalSec)
+	}
 	return fields
 }
 
@@ -22210,6 +22285,8 @@ func (m *DynamicProxyPoolMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedMinAlive()
 	case dynamicproxypool.FieldAliveCount:
 		return m.AddedAliveCount()
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		return m.AddedHealthCheckIntervalSec()
 	}
 	return nil, false
 }
@@ -22260,6 +22337,13 @@ func (m *DynamicProxyPoolMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddAliveCount(v)
+		return nil
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHealthCheckIntervalSec(v)
 		return nil
 	}
 	return fmt.Errorf("unknown DynamicProxyPool numeric field %s", name)
@@ -22416,6 +22500,9 @@ func (m *DynamicProxyPoolMutation) ResetField(name string) error {
 		return nil
 	case dynamicproxypool.FieldAliveCount:
 		m.ResetAliveCount()
+		return nil
+	case dynamicproxypool.FieldHealthCheckIntervalSec:
+		m.ResetHealthCheckIntervalSec()
 		return nil
 	}
 	return fmt.Errorf("unknown DynamicProxyPool field %s", name)

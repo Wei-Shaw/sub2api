@@ -64,8 +64,10 @@ type DynamicProxyPool struct {
 	// LastExtractError holds the value of the "last_extract_error" field.
 	LastExtractError string `json:"last_extract_error,omitempty"`
 	// Current number of non-expired proxies in this pool
-	AliveCount   int `json:"alive_count,omitempty"`
-	selectValues sql.SelectValues
+	AliveCount int `json:"alive_count,omitempty"`
+	// Health check interval in seconds (0 = disabled)
+	HealthCheckIntervalSec int `json:"health_check_interval_sec,omitempty"`
+	selectValues           sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -75,7 +77,7 @@ func (*DynamicProxyPool) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case dynamicproxypool.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case dynamicproxypool.FieldID, dynamicproxypool.FieldSubscriptionID, dynamicproxypool.FieldRefreshIntervalSec, dynamicproxypool.FieldIPDurationSec, dynamicproxypool.FieldExtractCount, dynamicproxypool.FieldMinAlive, dynamicproxypool.FieldAliveCount:
+		case dynamicproxypool.FieldID, dynamicproxypool.FieldSubscriptionID, dynamicproxypool.FieldRefreshIntervalSec, dynamicproxypool.FieldIPDurationSec, dynamicproxypool.FieldExtractCount, dynamicproxypool.FieldMinAlive, dynamicproxypool.FieldAliveCount, dynamicproxypool.FieldHealthCheckIntervalSec:
 			values[i] = new(sql.NullInt64)
 		case dynamicproxypool.FieldName, dynamicproxypool.FieldSourceType, dynamicproxypool.FieldExtractURL, dynamicproxypool.FieldProtocol, dynamicproxypool.FieldAuthMode, dynamicproxypool.FieldUsername, dynamicproxypool.FieldPassword, dynamicproxypool.FieldResponseFormat, dynamicproxypool.FieldLineSeparator, dynamicproxypool.FieldIPFieldPath, dynamicproxypool.FieldPortFieldPath, dynamicproxypool.FieldNamePrefix, dynamicproxypool.FieldLastExtractStatus, dynamicproxypool.FieldLastExtractError:
 			values[i] = new(sql.NullString)
@@ -248,6 +250,12 @@ func (_m *DynamicProxyPool) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AliveCount = int(value.Int64)
 			}
+		case dynamicproxypool.FieldHealthCheckIntervalSec:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field health_check_interval_sec", values[i])
+			} else if value.Valid {
+				_m.HealthCheckIntervalSec = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -357,6 +365,9 @@ func (_m *DynamicProxyPool) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("alive_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AliveCount))
+	builder.WriteString(", ")
+	builder.WriteString("health_check_interval_sec=")
+	builder.WriteString(fmt.Sprintf("%v", _m.HealthCheckIntervalSec))
 	builder.WriteByte(')')
 	return builder.String()
 }

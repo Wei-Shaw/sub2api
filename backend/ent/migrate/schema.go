@@ -882,6 +882,7 @@ var (
 		{Name: "last_extract_status", Type: field.TypeString, Nullable: true, Size: 40, Default: ""},
 		{Name: "last_extract_error", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
 		{Name: "alive_count", Type: field.TypeInt, Default: 0},
+		{Name: "health_check_interval_sec", Type: field.TypeInt, Default: 0},
 	}
 	// DynamicProxyPoolsTable holds the schema information for the "dynamic_proxy_pools" table.
 	DynamicProxyPoolsTable = &schema.Table{

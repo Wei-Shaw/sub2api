@@ -490,6 +490,8 @@ const handleEvent = (event: {
   error?: string
   image_url?: string
   mime_type?: string
+  proxy_name?: string
+  proxy_url?: string
 }) => {
   switch (event.type) {
     case 'test_start':
@@ -505,6 +507,16 @@ const handleEvent = (event: {
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
+      break
+
+    case 'proxy_info':
+      if (event.proxy_name) {
+        addLine(t('admin.accounts.usingProxy', { name: event.proxy_name }), 'text-purple-400')
+      } else if (event.proxy_url) {
+        addLine(t('admin.accounts.usingProxy', { name: event.proxy_url }), 'text-purple-400')
+      } else {
+        addLine(t('admin.accounts.testDirect'), 'text-gray-500')
+      }
       break
 
     case 'content':

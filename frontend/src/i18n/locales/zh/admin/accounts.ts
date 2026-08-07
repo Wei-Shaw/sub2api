@@ -1491,6 +1491,8 @@ export default {
       outputCopied: '输出已复制',
       startingTestForAccount: '开始测试账号：{name}',
       testAccountTypeLabel: '账号类型：{type}',
+      usingProxy: '使用代理：{name}',
+      testDirect: '直连（无代理）',
       selectTestModel: '选择测试模型',
       testModel: '测试模型',
       testPrompt: '提示词："hi"',

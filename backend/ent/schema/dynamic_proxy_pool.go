@@ -108,6 +108,9 @@ func (DynamicProxyPool) Fields() []ent.Field {
 		field.Int("alive_count").
 			Default(0).
 			Comment("Current number of non-expired proxies in this pool"),
+		field.Int("health_check_interval_sec").
+			Default(0).
+			Comment("Health check interval in seconds (0 = disabled)"),
 	}
 }
 

@@ -913,6 +913,7 @@ export interface DynamicProxyPool {
   ip_duration_sec: number
   extract_count: number
   min_alive: number
+  health_check_interval_sec: number
   name_prefix: string
   last_extract_at: string | null
   last_extract_status: string

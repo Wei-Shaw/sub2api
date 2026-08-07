@@ -111,6 +111,7 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	proxySubscriptionRunner *service.ProxySubscriptionRunner,
+	dynamicProxyPoolRunner *service.DynamicProxyPoolRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
@@ -331,6 +332,12 @@ func provideCleanup(
 			{"ProxySubscriptionRunner", func() error {
 				if proxySubscriptionRunner != nil {
 					proxySubscriptionRunner.Stop()
+				}
+				return nil
+			}},
+			{"DynamicProxyPoolRunner", func() error {
+				if dynamicProxyPoolRunner != nil {
+					dynamicProxyPoolRunner.Stop()
 				}
 				return nil
 			}},

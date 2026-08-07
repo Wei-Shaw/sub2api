@@ -86,7 +86,8 @@ func (r *dynamicProxyPoolRepository) Update(ctx context.Context, m *service.Dyna
 		SetExtractCount(m.ExtractCount).
 		SetMinAlive(m.MinAlive).
 		SetNamePrefix(m.NamePrefix).
-		SetAliveCount(m.AliveCount)
+		SetAliveCount(m.AliveCount).
+		SetHealthCheckIntervalSec(m.HealthCheckIntervalSec)
 	if m.SubscriptionID != nil {
 		updater = updater.SetSubscriptionID(*m.SubscriptionID)
 	} else {
@@ -227,6 +228,7 @@ func entToDynamicProxyPool(row *dbent.DynamicProxyPool) *service.DynamicProxyPoo
 		LastExtractStatus:  row.LastExtractStatus,
 		LastExtractError:   row.LastExtractError,
 		AliveCount:         row.AliveCount,
+			HealthCheckIntervalSec: row.HealthCheckIntervalSec,
 		CreatedAt:          row.CreatedAt,
 		UpdatedAt:          row.UpdatedAt,
 	}

@@ -1448,6 +1448,8 @@ export default {
       outputCopied: 'Output copied',
       startingTestForAccount: 'Starting test for account: {name}',
       testAccountTypeLabel: 'Account type: {type}',
+      usingProxy: 'Using proxy: {name}',
+      testDirect: 'Direct (no proxy)',
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',

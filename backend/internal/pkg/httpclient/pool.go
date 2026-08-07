@@ -34,7 +34,7 @@ const (
 	defaultMaxIdleConns        = 100              // 最大空闲连接数
 	defaultMaxIdleConnsPerHost = 10               // 每个主机最大空闲连接数
 	defaultIdleConnTimeout     = 90 * time.Second // 空闲连接超时时间（建议小于上游 LB 超时）
-	defaultDialTimeout         = 5 * time.Second  // TCP 连接超时（含代理握手），代理不通时快速失败
+	defaultDialTimeout         = 15 * time.Second // TCP 连接超时（含代理握手），通过 DNS64/NAT64 时需更长
 	defaultTLSHandshakeTimeout = 5 * time.Second  // TLS 握手超时
 	validatedHostTTL           = 30 * time.Second // DNS Rebinding 校验缓存 TTL
 )

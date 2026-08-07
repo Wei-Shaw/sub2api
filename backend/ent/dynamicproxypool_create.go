@@ -350,6 +350,20 @@ func (_c *DynamicProxyPoolCreate) SetNillableAliveCount(v *int) *DynamicProxyPoo
 	return _c
 }
 
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (_c *DynamicProxyPoolCreate) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolCreate {
+	_c.mutation.SetHealthCheckIntervalSec(v)
+	return _c
+}
+
+// SetNillableHealthCheckIntervalSec sets the "health_check_interval_sec" field if the given value is not nil.
+func (_c *DynamicProxyPoolCreate) SetNillableHealthCheckIntervalSec(v *int) *DynamicProxyPoolCreate {
+	if v != nil {
+		_c.SetHealthCheckIntervalSec(*v)
+	}
+	return _c
+}
+
 // Mutation returns the DynamicProxyPoolMutation object of the builder.
 func (_c *DynamicProxyPoolCreate) Mutation() *DynamicProxyPoolMutation {
 	return _c.mutation
@@ -469,6 +483,10 @@ func (_c *DynamicProxyPoolCreate) defaults() {
 		v := dynamicproxypool.DefaultAliveCount
 		_c.mutation.SetAliveCount(v)
 	}
+	if _, ok := _c.mutation.HealthCheckIntervalSec(); !ok {
+		v := dynamicproxypool.DefaultHealthCheckIntervalSec
+		_c.mutation.SetHealthCheckIntervalSec(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -582,6 +600,9 @@ func (_c *DynamicProxyPoolCreate) check() error {
 	}
 	if _, ok := _c.mutation.AliveCount(); !ok {
 		return &ValidationError{Name: "alive_count", err: errors.New(`ent: missing required field "DynamicProxyPool.alive_count"`)}
+	}
+	if _, ok := _c.mutation.HealthCheckIntervalSec(); !ok {
+		return &ValidationError{Name: "health_check_interval_sec", err: errors.New(`ent: missing required field "DynamicProxyPool.health_check_interval_sec"`)}
 	}
 	return nil
 }
@@ -705,6 +726,10 @@ func (_c *DynamicProxyPoolCreate) createSpec() (*DynamicProxyPool, *sqlgraph.Cre
 	if value, ok := _c.mutation.AliveCount(); ok {
 		_spec.SetField(dynamicproxypool.FieldAliveCount, field.TypeInt, value)
 		_node.AliveCount = value
+	}
+	if value, ok := _c.mutation.HealthCheckIntervalSec(); ok {
+		_spec.SetField(dynamicproxypool.FieldHealthCheckIntervalSec, field.TypeInt, value)
+		_node.HealthCheckIntervalSec = value
 	}
 	return _node, _spec
 }
@@ -1121,6 +1146,24 @@ func (u *DynamicProxyPoolUpsert) UpdateAliveCount() *DynamicProxyPoolUpsert {
 // AddAliveCount adds v to the "alive_count" field.
 func (u *DynamicProxyPoolUpsert) AddAliveCount(v int) *DynamicProxyPoolUpsert {
 	u.Add(dynamicproxypool.FieldAliveCount, v)
+	return u
+}
+
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsert) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsert {
+	u.Set(dynamicproxypool.FieldHealthCheckIntervalSec, v)
+	return u
+}
+
+// UpdateHealthCheckIntervalSec sets the "health_check_interval_sec" field to the value that was provided on create.
+func (u *DynamicProxyPoolUpsert) UpdateHealthCheckIntervalSec() *DynamicProxyPoolUpsert {
+	u.SetExcluded(dynamicproxypool.FieldHealthCheckIntervalSec)
+	return u
+}
+
+// AddHealthCheckIntervalSec adds v to the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsert) AddHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsert {
+	u.Add(dynamicproxypool.FieldHealthCheckIntervalSec, v)
 	return u
 }
 
@@ -1593,6 +1636,27 @@ func (u *DynamicProxyPoolUpsertOne) AddAliveCount(v int) *DynamicProxyPoolUpsert
 func (u *DynamicProxyPoolUpsertOne) UpdateAliveCount() *DynamicProxyPoolUpsertOne {
 	return u.Update(func(s *DynamicProxyPoolUpsert) {
 		s.UpdateAliveCount()
+	})
+}
+
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsertOne) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsertOne {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.SetHealthCheckIntervalSec(v)
+	})
+}
+
+// AddHealthCheckIntervalSec adds v to the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsertOne) AddHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsertOne {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.AddHealthCheckIntervalSec(v)
+	})
+}
+
+// UpdateHealthCheckIntervalSec sets the "health_check_interval_sec" field to the value that was provided on create.
+func (u *DynamicProxyPoolUpsertOne) UpdateHealthCheckIntervalSec() *DynamicProxyPoolUpsertOne {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.UpdateHealthCheckIntervalSec()
 	})
 }
 
@@ -2231,6 +2295,27 @@ func (u *DynamicProxyPoolUpsertBulk) AddAliveCount(v int) *DynamicProxyPoolUpser
 func (u *DynamicProxyPoolUpsertBulk) UpdateAliveCount() *DynamicProxyPoolUpsertBulk {
 	return u.Update(func(s *DynamicProxyPoolUpsert) {
 		s.UpdateAliveCount()
+	})
+}
+
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsertBulk) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsertBulk {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.SetHealthCheckIntervalSec(v)
+	})
+}
+
+// AddHealthCheckIntervalSec adds v to the "health_check_interval_sec" field.
+func (u *DynamicProxyPoolUpsertBulk) AddHealthCheckIntervalSec(v int) *DynamicProxyPoolUpsertBulk {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.AddHealthCheckIntervalSec(v)
+	})
+}
+
+// UpdateHealthCheckIntervalSec sets the "health_check_interval_sec" field to the value that was provided on create.
+func (u *DynamicProxyPoolUpsertBulk) UpdateHealthCheckIntervalSec() *DynamicProxyPoolUpsertBulk {
+	return u.Update(func(s *DynamicProxyPoolUpsert) {
+		s.UpdateHealthCheckIntervalSec()
 	})
 }
 

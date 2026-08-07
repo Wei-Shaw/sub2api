@@ -53,6 +53,10 @@ type TestEvent struct {
 	Error    string `json:"error,omitempty"`
 	// LatencyMs is filled on terminal events (test_complete / error) when available.
 	LatencyMs int64 `json:"latency_ms,omitempty"`
+	// ProxyName indicates which proxy was used for the test (if any).
+	ProxyName string `json:"proxy_name,omitempty"`
+	// ProxyURL is the proxy URL used for the test (if any).
+	ProxyURL string `json:"proxy_url,omitempty"`
 }
 
 const (
@@ -192,6 +196,23 @@ func (s *AccountTestService) resolveTestProxyURL(ctx context.Context, account *A
 	return ""
 }
 
+func (s *AccountTestService) resolveTestProxyName(ctx context.Context, account *Account) string {
+	if ctx != nil {
+		if override, ok := ctx.Value(testProxyOverrideContextKey{}).(*TestProxyOverride); ok && override != nil {
+			if override.ForceDirect {
+				return ""
+			}
+			if override.Proxy != nil {
+				return override.Proxy.Name
+			}
+		}
+	}
+	if account != nil && account.ProxyID != nil && account.Proxy != nil {
+		return account.Proxy.Name
+	}
+	return ""
+}
+
 func withTestProxyOverride(ctx context.Context, override *TestProxyOverride) context.Context {
 	if override == nil {
 		return ctx
@@ -291,6 +312,13 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
+	}
+
+	// Send proxy info event so the UI can show which proxy is being used
+	proxyName := s.resolveTestProxyName(ctx, account)
+	proxyURL := s.resolveTestProxyURL(ctx, account)
+	if proxyName != "" || proxyURL != "" {
+		s.sendEvent(c, TestEvent{Type: "proxy_info", ProxyName: proxyName, ProxyURL: proxyURL})
 	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal

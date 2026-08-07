@@ -98,6 +98,9 @@
                     v-if="testResults[proxy.id].success"
                     class="inline-flex flex-shrink-0 items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
                   >
+                    <span v-if="testResults[proxy.id].ip_address">{{
+                      testResults[proxy.id].ip_address
+                    }}</span>
                     <span v-if="testResults[proxy.id].country">{{
                       testResults[proxy.id].country
                     }}</span>
@@ -220,7 +223,14 @@ const selectedLabel = computed(() => {
     return t('admin.accounts.noProxy')
   }
   const proxy = selectedProxy.value
-  return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
+  let label = `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
+  const result = testResults[proxy.id]
+  if (result?.success && result.ip_address) {
+    label += ` · ${result.ip_address}`
+  } else if (result?.success && result.country) {
+    label += ` · ${result.country}`
+  }
+  return label
 })
 
 const filteredProxies = computed(() => {

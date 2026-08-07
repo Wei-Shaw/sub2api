@@ -835,11 +835,20 @@ func registerProxySubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers
 func registerDynamicProxyPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	pools := admin.Group("/dynamic-proxy-pools")
 	{
+		pools.GET("/entry-proxies", h.Admin.DynamicProxyPool.ListPoolEntryProxiesForGroup)
 		pools.GET("", h.Admin.DynamicProxyPool.List)
 		pools.POST("", h.Admin.DynamicProxyPool.Create)
 		pools.GET("/:id", h.Admin.DynamicProxyPool.Get)
 		pools.PUT("/:id", h.Admin.DynamicProxyPool.Update)
 		pools.DELETE("/:id", h.Admin.DynamicProxyPool.Delete)
 		pools.POST("/:id/extract", h.Admin.DynamicProxyPool.Extract)
+		pools.POST("/:id/entry-proxy/start", h.Admin.DynamicProxyPool.StartEntryProxy)
+		pools.POST("/:id/entry-proxy/stop", h.Admin.DynamicProxyPool.StopEntryProxy)
+		pools.GET("/:id/proxies", h.Admin.DynamicProxyPool.ListPoolProxies)
+		pools.POST("/:id/proxies", h.Admin.DynamicProxyPool.AssociateProxies)
+		pools.DELETE("/:id/proxies", h.Admin.DynamicProxyPool.DisassociateProxies)
+		pools.POST("/:id/preview-nodes", h.Admin.DynamicProxyPool.PreviewSubscriptionNodes)
+		pools.POST("/:id/add-nodes", h.Admin.DynamicProxyPool.AddSubscriptionNodes)
+		pools.POST("/:id/proxies/:proxyId/test", h.Admin.DynamicProxyPool.TestPoolProxy)
 	}
 }

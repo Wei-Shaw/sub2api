@@ -14,20 +14,20 @@ const (
 )
 
 type Proxy struct {
-	ID             int64
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	Status         string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	ID             int64      `json:"id"`
+	Name           string     `json:"name"`
+	Protocol       string     `json:"protocol"`
+	Host           string     `json:"host"`
+	Port           int        `json:"port"`
+	Username       string     `json:"username"`
+	Password       string     `json:"password"`
+	Status         string     `json:"status"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	ExpiresAt      *time.Time `json:"expires_at"`
+	FallbackMode   string     `json:"fallback_mode"`
+	BackupProxyID  *int64     `json:"backup_proxy_id"`
+	ExpiryWarnDays int        `json:"expiry_warn_days"`
 }
 
 func (p *Proxy) IsActive() bool {
@@ -52,20 +52,20 @@ func (p *Proxy) URL() string {
 
 type ProxyWithAccountCount struct {
 	Proxy
-	AccountCount   int64
-	LatencyMs      *int64
-	LatencyStatus  string
-	LatencyMessage string
-	IPAddress      string
-	Country        string
-	CountryCode    string
-	Region         string
-	City           string
-	QualityStatus  string
-	QualityScore   *int
-	QualityGrade   string
-	QualitySummary string
-	QualityChecked *int64
+	AccountCount   int64  `json:"account_count"`
+	LatencyMs      *int64 `json:"latency_ms,omitempty"`
+	LatencyStatus  string `json:"latency_status"`
+	LatencyMessage string `json:"latency_message"`
+	IPAddress      string `json:"ip_address"`
+	Country        string `json:"country"`
+	CountryCode    string `json:"country_code"`
+	Region         string `json:"region"`
+	City           string `json:"city"`
+	QualityStatus  string `json:"quality_status"`
+	QualityScore   *int   `json:"quality_score,omitempty"`
+	QualityGrade   string `json:"quality_grade"`
+	QualitySummary string `json:"quality_summary"`
+	QualityChecked *int64 `json:"quality_checked,omitempty"`
 }
 
 type ProxyAccountSummary struct {

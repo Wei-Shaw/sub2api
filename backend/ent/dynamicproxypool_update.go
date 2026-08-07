@@ -438,6 +438,27 @@ func (_u *DynamicProxyPoolUpdate) AddAliveCount(v int) *DynamicProxyPoolUpdate {
 	return _u
 }
 
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (_u *DynamicProxyPoolUpdate) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolUpdate {
+	_u.mutation.ResetHealthCheckIntervalSec()
+	_u.mutation.SetHealthCheckIntervalSec(v)
+	return _u
+}
+
+// SetNillableHealthCheckIntervalSec sets the "health_check_interval_sec" field if the given value is not nil.
+func (_u *DynamicProxyPoolUpdate) SetNillableHealthCheckIntervalSec(v *int) *DynamicProxyPoolUpdate {
+	if v != nil {
+		_u.SetHealthCheckIntervalSec(*v)
+	}
+	return _u
+}
+
+// AddHealthCheckIntervalSec adds value to the "health_check_interval_sec" field.
+func (_u *DynamicProxyPoolUpdate) AddHealthCheckIntervalSec(v int) *DynamicProxyPoolUpdate {
+	_u.mutation.AddHealthCheckIntervalSec(v)
+	return _u
+}
+
 // Mutation returns the DynamicProxyPoolMutation object of the builder.
 func (_u *DynamicProxyPoolUpdate) Mutation() *DynamicProxyPoolMutation {
 	return _u.mutation
@@ -674,6 +695,12 @@ func (_u *DynamicProxyPoolUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.AddedAliveCount(); ok {
 		_spec.AddField(dynamicproxypool.FieldAliveCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.HealthCheckIntervalSec(); ok {
+		_spec.SetField(dynamicproxypool.FieldHealthCheckIntervalSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHealthCheckIntervalSec(); ok {
+		_spec.AddField(dynamicproxypool.FieldHealthCheckIntervalSec, field.TypeInt, value)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1105,6 +1132,27 @@ func (_u *DynamicProxyPoolUpdateOne) AddAliveCount(v int) *DynamicProxyPoolUpdat
 	return _u
 }
 
+// SetHealthCheckIntervalSec sets the "health_check_interval_sec" field.
+func (_u *DynamicProxyPoolUpdateOne) SetHealthCheckIntervalSec(v int) *DynamicProxyPoolUpdateOne {
+	_u.mutation.ResetHealthCheckIntervalSec()
+	_u.mutation.SetHealthCheckIntervalSec(v)
+	return _u
+}
+
+// SetNillableHealthCheckIntervalSec sets the "health_check_interval_sec" field if the given value is not nil.
+func (_u *DynamicProxyPoolUpdateOne) SetNillableHealthCheckIntervalSec(v *int) *DynamicProxyPoolUpdateOne {
+	if v != nil {
+		_u.SetHealthCheckIntervalSec(*v)
+	}
+	return _u
+}
+
+// AddHealthCheckIntervalSec adds value to the "health_check_interval_sec" field.
+func (_u *DynamicProxyPoolUpdateOne) AddHealthCheckIntervalSec(v int) *DynamicProxyPoolUpdateOne {
+	_u.mutation.AddHealthCheckIntervalSec(v)
+	return _u
+}
+
 // Mutation returns the DynamicProxyPoolMutation object of the builder.
 func (_u *DynamicProxyPoolUpdateOne) Mutation() *DynamicProxyPoolMutation {
 	return _u.mutation
@@ -1371,6 +1419,12 @@ func (_u *DynamicProxyPoolUpdateOne) sqlSave(ctx context.Context) (_node *Dynami
 	}
 	if value, ok := _u.mutation.AddedAliveCount(); ok {
 		_spec.AddField(dynamicproxypool.FieldAliveCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.HealthCheckIntervalSec(); ok {
+		_spec.SetField(dynamicproxypool.FieldHealthCheckIntervalSec, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedHealthCheckIntervalSec(); ok {
+		_spec.AddField(dynamicproxypool.FieldHealthCheckIntervalSec, field.TypeInt, value)
 	}
 	_node = &DynamicProxyPool{config: _u.config}
 	_spec.Assign = _node.assignValues

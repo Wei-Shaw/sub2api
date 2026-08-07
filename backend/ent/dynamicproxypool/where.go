@@ -174,6 +174,11 @@ func AliveCount(v int) predicate.DynamicProxyPool {
 	return predicate.DynamicProxyPool(sql.FieldEQ(FieldAliveCount, v))
 }
 
+// HealthCheckIntervalSec applies equality check predicate on the "health_check_interval_sec" field. It's identical to HealthCheckIntervalSecEQ.
+func HealthCheckIntervalSec(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldEQ(FieldHealthCheckIntervalSec, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.DynamicProxyPool {
 	return predicate.DynamicProxyPool(sql.FieldEQ(FieldCreatedAt, v))
@@ -1542,6 +1547,46 @@ func AliveCountLT(v int) predicate.DynamicProxyPool {
 // AliveCountLTE applies the LTE predicate on the "alive_count" field.
 func AliveCountLTE(v int) predicate.DynamicProxyPool {
 	return predicate.DynamicProxyPool(sql.FieldLTE(FieldAliveCount, v))
+}
+
+// HealthCheckIntervalSecEQ applies the EQ predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecEQ(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldEQ(FieldHealthCheckIntervalSec, v))
+}
+
+// HealthCheckIntervalSecNEQ applies the NEQ predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecNEQ(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldNEQ(FieldHealthCheckIntervalSec, v))
+}
+
+// HealthCheckIntervalSecIn applies the In predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecIn(vs ...int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldIn(FieldHealthCheckIntervalSec, vs...))
+}
+
+// HealthCheckIntervalSecNotIn applies the NotIn predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecNotIn(vs ...int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldNotIn(FieldHealthCheckIntervalSec, vs...))
+}
+
+// HealthCheckIntervalSecGT applies the GT predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecGT(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldGT(FieldHealthCheckIntervalSec, v))
+}
+
+// HealthCheckIntervalSecGTE applies the GTE predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecGTE(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldGTE(FieldHealthCheckIntervalSec, v))
+}
+
+// HealthCheckIntervalSecLT applies the LT predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecLT(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldLT(FieldHealthCheckIntervalSec, v))
+}
+
+// HealthCheckIntervalSecLTE applies the LTE predicate on the "health_check_interval_sec" field.
+func HealthCheckIntervalSecLTE(v int) predicate.DynamicProxyPool {
+	return predicate.DynamicProxyPool(sql.FieldLTE(FieldHealthCheckIntervalSec, v))
 }
 
 // And groups predicates with the AND operator between them.
