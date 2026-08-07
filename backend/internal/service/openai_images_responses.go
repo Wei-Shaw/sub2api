@@ -2068,6 +2068,6 @@ func (s *OpenAIGatewayService) buildOpenAICodexImagesRequest(
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
-	s.overrideBrowserUserAgent(ctx, account, req)
+	enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 	return req, nil
 }

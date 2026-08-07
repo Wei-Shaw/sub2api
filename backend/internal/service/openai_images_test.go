@@ -235,7 +235,10 @@ func TestBuildOpenAICodexImagesRequest(t *testing.T) {
 	require.Equal(t, "acc-123", req.Header.Get("chatgpt-account-id"))
 	require.Equal(t, "application/json", req.Header.Get("accept"))
 	require.Equal(t, "application/json", req.Header.Get("content-type"))
-	require.NotEmpty(t, req.Header.Get("originator"))
+	expectedIdentity := resolveCodexOutboundIdentity("")
+	require.Equal(t, expectedIdentity.originator, req.Header.Get("originator"))
+	require.Equal(t, expectedIdentity.userAgent, req.Header.Get("user-agent"))
+	require.Equal(t, expectedIdentity.version, req.Header.Get("version"))
 	require.NotEmpty(t, req.Header.Get("session_id"))
 
 	editReq, err := svc.buildOpenAICodexImagesRequest(context.Background(), c, account, body, "application/json", "tok-xyz", openAIImagesEditsEndpoint, "seed")
