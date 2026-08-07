@@ -92,6 +92,8 @@ type Tx struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// Web3DepositAddress is the client for interacting with the Web3DepositAddress builders.
+	Web3DepositAddress *Web3DepositAddressClient
 	// Web3DepositWallet is the client for interacting with the Web3DepositWallet builders.
 	Web3DepositWallet *Web3DepositWalletClient
 
@@ -264,6 +266,7 @@ func (tx *Tx) init() {
 	tx.UserAttributeValue = NewUserAttributeValueClient(tx.config)
 	tx.UserPlatformQuota = NewUserPlatformQuotaClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
+	tx.Web3DepositAddress = NewWeb3DepositAddressClient(tx.config)
 	tx.Web3DepositWallet = NewWeb3DepositWalletClient(tx.config)
 }
 

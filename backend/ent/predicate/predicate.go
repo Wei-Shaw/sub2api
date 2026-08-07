@@ -123,5 +123,8 @@ type UserPlatformQuota func(*sql.Selector)
 // UserSubscription is the predicate function for usersubscription builders.
 type UserSubscription func(*sql.Selector)
 
+// Web3DepositAddress is the predicate function for web3depositaddress builders.
+type Web3DepositAddress func(*sql.Selector)
+
 // Web3DepositWallet is the predicate function for web3depositwallet builders.
 type Web3DepositWallet func(*sql.Selector)

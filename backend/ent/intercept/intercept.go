@@ -48,6 +48,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 )
 
@@ -1160,6 +1161,33 @@ func (f TraverseUserSubscription) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuery", q)
 }
 
+// The Web3DepositAddressFunc type is an adapter to allow the use of ordinary function as a Querier.
+type Web3DepositAddressFunc func(context.Context, *ent.Web3DepositAddressQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f Web3DepositAddressFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.Web3DepositAddressQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositAddressQuery", q)
+}
+
+// The TraverseWeb3DepositAddress type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseWeb3DepositAddress func(context.Context, *ent.Web3DepositAddressQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseWeb3DepositAddress) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseWeb3DepositAddress) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.Web3DepositAddressQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.Web3DepositAddressQuery", q)
+}
+
 // The Web3DepositWalletFunc type is an adapter to allow the use of ordinary function as a Querier.
 type Web3DepositWalletFunc func(context.Context, *ent.Web3DepositWalletQuery) (ent.Value, error)
 
@@ -1268,6 +1296,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
+	case *ent.Web3DepositAddressQuery:
+		return &query[*ent.Web3DepositAddressQuery, predicate.Web3DepositAddress, web3depositaddress.OrderOption]{typ: ent.TypeWeb3DepositAddress, tq: q}, nil
 	case *ent.Web3DepositWalletQuery:
 		return &query[*ent.Web3DepositWalletQuery, predicate.Web3DepositWallet, web3depositwallet.OrderOption]{typ: ent.TypeWeb3DepositWallet, tq: q}, nil
 	default:

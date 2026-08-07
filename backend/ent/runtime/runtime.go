@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
@@ -2441,6 +2442,103 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	web3depositaddressMixin := schema.Web3DepositAddress{}.Mixin()
+	web3depositaddressMixinFields0 := web3depositaddressMixin[0].Fields()
+	_ = web3depositaddressMixinFields0
+	web3depositaddressFields := schema.Web3DepositAddress{}.Fields()
+	_ = web3depositaddressFields
+	// web3depositaddressDescCreatedAt is the schema descriptor for created_at field.
+	web3depositaddressDescCreatedAt := web3depositaddressMixinFields0[0].Descriptor()
+	// web3depositaddress.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3depositaddress.DefaultCreatedAt = web3depositaddressDescCreatedAt.Default.(func() time.Time)
+	// web3depositaddressDescUpdatedAt is the schema descriptor for updated_at field.
+	web3depositaddressDescUpdatedAt := web3depositaddressMixinFields0[1].Descriptor()
+	// web3depositaddress.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	web3depositaddress.DefaultUpdatedAt = web3depositaddressDescUpdatedAt.Default.(func() time.Time)
+	// web3depositaddress.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	web3depositaddress.UpdateDefaultUpdatedAt = web3depositaddressDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// web3depositaddressDescWalletID is the schema descriptor for wallet_id field.
+	web3depositaddressDescWalletID := web3depositaddressFields[2].Descriptor()
+	// web3depositaddress.WalletIDValidator is a validator for the "wallet_id" field. It is called by the builders before save.
+	web3depositaddress.WalletIDValidator = func() func(string) error {
+		validators := web3depositaddressDescWalletID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(wallet_id string) error {
+			for _, fn := range fns {
+				if err := fn(wallet_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositaddressDescDerivationIndex is the schema descriptor for derivation_index field.
+	web3depositaddressDescDerivationIndex := web3depositaddressFields[3].Descriptor()
+	// web3depositaddress.DerivationIndexValidator is a validator for the "derivation_index" field. It is called by the builders before save.
+	web3depositaddress.DerivationIndexValidator = web3depositaddressDescDerivationIndex.Validators[0].(func(int64) error)
+	// web3depositaddressDescAddress is the schema descriptor for address field.
+	web3depositaddressDescAddress := web3depositaddressFields[4].Descriptor()
+	// web3depositaddress.AddressValidator is a validator for the "address" field. It is called by the builders before save.
+	web3depositaddress.AddressValidator = func() func(string) error {
+		validators := web3depositaddressDescAddress.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(address string) error {
+			for _, fn := range fns {
+				if err := fn(address); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositaddressDescNormalizedAddress is the schema descriptor for normalized_address field.
+	web3depositaddressDescNormalizedAddress := web3depositaddressFields[5].Descriptor()
+	// web3depositaddress.NormalizedAddressValidator is a validator for the "normalized_address" field. It is called by the builders before save.
+	web3depositaddress.NormalizedAddressValidator = func() func(string) error {
+		validators := web3depositaddressDescNormalizedAddress.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(normalized_address string) error {
+			for _, fn := range fns {
+				if err := fn(normalized_address); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositaddressDescStatus is the schema descriptor for status field.
+	web3depositaddressDescStatus := web3depositaddressFields[6].Descriptor()
+	// web3depositaddress.DefaultStatus holds the default value on creation for the status field.
+	web3depositaddress.DefaultStatus = web3depositaddressDescStatus.Default.(string)
+	// web3depositaddress.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	web3depositaddress.StatusValidator = func() func(string) error {
+		validators := web3depositaddressDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositaddressDescAllocatedAt is the schema descriptor for allocated_at field.
+	web3depositaddressDescAllocatedAt := web3depositaddressFields[7].Descriptor()
+	// web3depositaddress.DefaultAllocatedAt holds the default value on creation for the allocated_at field.
+	web3depositaddress.DefaultAllocatedAt = web3depositaddressDescAllocatedAt.Default.(func() time.Time)
 	web3depositwalletMixin := schema.Web3DepositWallet{}.Mixin()
 	web3depositwalletMixinFields0 := web3depositwalletMixin[0].Fields()
 	_ = web3depositwalletMixinFields0

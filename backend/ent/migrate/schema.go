@@ -2064,6 +2064,49 @@ var (
 			},
 		},
 	}
+	// Web3DepositAddressesColumns holds the columns for the "web3_deposit_addresses" table.
+	Web3DepositAddressesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "wallet_id", Type: field.TypeString, Size: 64},
+		{Name: "derivation_index", Type: field.TypeInt64},
+		{Name: "address", Type: field.TypeString, Size: 42},
+		{Name: "normalized_address", Type: field.TypeString, Size: 42},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "allocated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "disabled_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_deposit_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3DepositAddressesTable holds the schema information for the "web3_deposit_addresses" table.
+	Web3DepositAddressesTable = &schema.Table{
+		Name:       "web3_deposit_addresses",
+		Columns:    Web3DepositAddressesColumns,
+		PrimaryKey: []*schema.Column{Web3DepositAddressesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3depositaddress_user_id_wallet_id",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[3], Web3DepositAddressesColumns[4]},
+			},
+			{
+				Name:    "web3depositaddress_wallet_id_derivation_index",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[4], Web3DepositAddressesColumns[5]},
+			},
+			{
+				Name:    "web3depositaddress_normalized_address",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[7]},
+			},
+			{
+				Name:    "web3depositaddress_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[3], Web3DepositAddressesColumns[1]},
+			},
+		},
+	}
 	// Web3DepositWalletsColumns holds the columns for the "web3_deposit_wallets" table.
 	Web3DepositWalletsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2122,6 +2165,7 @@ var (
 		UserAttributeValuesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
+		Web3DepositAddressesTable,
 		Web3DepositWalletsTable,
 	}
 )
@@ -2279,6 +2323,9 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
+	}
+	Web3DepositAddressesTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposit_addresses",
 	}
 	Web3DepositWalletsTable.Annotation = &entsql.Annotation{
 		Table: "web3_deposit_wallets",
