@@ -1284,7 +1284,7 @@ REDACTED
 			Reason:     GatewayFailureReason("grok_search_token"),
 	REDACTED
 REDACTED
-	targetURL, err := buildGrokResponsesURL(account, nil)
+	targetURL, err := buildGrokResponsesURL(account, nil, s.settingService)
 	if err != nil {
 		return nil, err
 REDACTED

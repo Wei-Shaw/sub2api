@@ -88,7 +88,6 @@ var defaultModels = []Model{
 	{ID: "grok-3-mini", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini"REDACTED,
 	{ID: "grok-3-mini-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini Fast"REDACTED,
 	{ID: "grok-build-0.1", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Build 0.1"REDACTED,
-	{ID: "grok-code-fast-1-0825", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Code Fast"REDACTED,
 	{ID: "grok-composer-2.5-fast", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Composer 2.5 Fast"REDACTED,
 	{ID: "grok-4.20-0309-reasoning", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Reasoning"REDACTED,
 	{ID: "grok-4.20-0309-non-reasoning", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Non Reasoning"REDACTED,
@@ -96,7 +95,6 @@ var defaultModels = []Model{
 	// Imagine
 	{ID: DefaultImagineImageQualityModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image Quality"REDACTED,
 	{ID: DefaultImagineImageFastModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image"REDACTED,
-	{ID: "grok-imagine-edit", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Edit"REDACTED,
 	{ID: DefaultImagineVideoModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video"REDACTED,
 	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Preview"REDACTED,
 	{ID: DefaultImagineVideo15LegacyModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Legacy"REDACTED,
@@ -120,9 +118,6 @@ var grokTextResponsesModelAliases = map[string]string{
 	"grok-composer-2.5-fast":       "grok-composer-2.5-fast",
 	"grok-composer":                "grok-composer-2.5-fast",
 	"composer-2.5":                 "grok-composer-2.5-fast",
-	"grok-code-fast":               "grok-code-fast-1-0825",
-	"grok-code-fast-1":             "grok-code-fast-1-0825",
-	"grok-code-fast-1-0825":        "grok-code-fast-1-0825",
 	"grok-4.20-reasoning":          "grok-4.20-0309-reasoning",
 	"grok-4.20-0309-reasoning":     "grok-4.20-0309-reasoning",
 	"grok-4.20-non-reasoning":      "grok-4.20-0309-non-reasoning",
@@ -173,9 +168,9 @@ REDACTED
 	// Imagine aliases / legacy IDs → official catalog.
 	mapping["grok-imagine"] = DefaultImagineImageQualityModel
 	mapping["grok-imagine-1"] = DefaultImagineImageQualityModel
-	// edit keeps its own id when listed; alias bare names to quality for clients
-	// that only send grok-imagine-edit without catalog awareness.
-	mapping["grok-imagine-edit"] = "grok-imagine-edit"
+	// Backward-compatible client alias; xAI exposes image editing through the
+	// image-quality model rather than a separate grok-imagine-edit model.
+	mapping["grok-imagine-edit"] = DefaultImagineImageQualityModel
 	mapping["grok-imagine-image"] = DefaultImagineImageFastModel
 	mapping["grok-imagine-image-quality"] = DefaultImagineImageQualityModel
 	// Keep official IDs as identity so client-requested model strings are not

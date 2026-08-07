@@ -19,6 +19,18 @@ func TestCountGrokNativeSearchCallsFromJSONBytes(t *testing.T) {
 	require.Equal(t, 3, countGrokNativeSearchCallsFromJSONBytes(body))
 REDACTED
 
+func TestCountGrokNativeSearchCallsFromJSONBytes_PrefersNestedResponse(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"output":[{"type":"web_search_call","id":"duplicate"REDACTED],"response":{"output":[{"type":"web_search_call","id":"duplicate"REDACTED,{"type":"x_search_call","id":"xs1"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED
+
+func TestCountGrokNativeSearchCallsFromJSONBytes_FallsBackWhenNestedOutputNull(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"output":[{"type":"web_search_call","id":"ws1"REDACTED],"response":{"output":nullREDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED
+
 func TestCountGrokNativeSearchCallsFromSSEBodyDedups(t *testing.T) {
 	t.Parallel()
 	sse := stringsJoin(
@@ -50,6 +62,17 @@ func TestCountGrokNativeSearchCallsInSSEDataDedup_NoIDStillDedups(t *testing.T) 
 	done := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
 	completed := []byte(`{"type":"response.completed","response":{"output":[{"type":"web_search_call"REDACTED]REDACTEDREDACTED`)
 	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(done, seen))
+	require.Equal(t, 0, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+REDACTED
+
+func TestCountGrokNativeSearchCallsInSSEDataDedup_MultipleNoIDCalls(t *testing.T) {
+	t.Parallel()
+	seen := make(map[string]struct{REDACTED)
+	firstDone := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
+	secondDone := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
+	completed := []byte(`{"type":"response.completed","response":{"output":[{"type":"web_search_call"REDACTED,{"type":"web_search_call"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(firstDone, seen))
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(secondDone, seen))
 	require.Equal(t, 0, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
 REDACTED
 

@@ -7,12 +7,26 @@ import (
 	"time"
 )
 
-// Spending-limit cools stay long (billing period), and the account is marked
-// StatusError with a stable reauth-oriented message so the admin UI surfaces
-// needs_reauth / ReAuth entry points. We do not hard-delete accounts.
+// Spending-limit is recoverable at the end of the observed billing period.
+// When no billing snapshot is available, use a short probe rather than
+// fabricating a 24h boundary from the error arrival time.
 const grokSpendingLimitCooldown = 24 * time.Hour
+const grokSpendingLimitProbeCooldown = 10 * time.Minute
 
 const grokSpendingLimitErrorMessage = "Grok spending limit reached; reauthorize or wait for billing reset"
+
+func grokSpendingLimitResetAt(account *Account, now time.Time) time.Time {
+	if account != nil {
+		if billing, err := grokBillingSnapshotFromExtra(account.Extra); err == nil && billing != nil {
+			for _, raw := range []string{billing.PeriodEnd, billing.BillingPeriodEndREDACTED {
+				if resetAt, err := time.Parse(time.RFC3339, strings.TrimSpace(raw)); err == nil && resetAt.After(now) {
+					return resetAt
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return now.Add(grokSpendingLimitProbeCooldown)
+REDACTED
 
 // markGrokSpendingLimitReauth applies a long temp-unsched cool and durable
 // SetError so ops sees reauth-required without wiping OAuth credentials.

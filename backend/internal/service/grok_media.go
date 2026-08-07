@@ -31,6 +31,9 @@ const (
 	GrokMediaEndpointVideosExtensions  GrokMediaEndpoint = "videos_extensions"
 	GrokMediaEndpointVideoStatus       GrokMediaEndpoint = "video_status"
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
+
+	// Official xAI Imagine image-edit limit.
+	grokMediaMaxEditSourceImages = 3
 )
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
@@ -153,28 +156,12 @@ REDACTED
 		switch {
 		case value.IsArray():
 			for _, item := range value.Array() {
-				if imageURL := grokMediaJSONImageURL(item); imageURL != "" {
-					info.InputImageURLs = append(info.InputImageURLs, imageURL)
-					continue
-			REDACTED
-				if item.Type == gjson.String {
-					imageURL := strings.TrimSpace(item.String())
-					if imageURL == "" {
-						continue
-				REDACTED
+				if imageURL := extractGrokMediaImageURL(item); imageURL != "" {
 					info.InputImageURLs = append(info.InputImageURLs, imageURL)
 			REDACTED
 		REDACTED
 		default:
-			if imageURL := grokMediaJSONImageURL(value); imageURL != "" {
-				info.InputImageURLs = append(info.InputImageURLs, imageURL)
-				return
-		REDACTED
-			if value.Type == gjson.String {
-				imageURL := strings.TrimSpace(value.String())
-				if imageURL == "" {
-					return
-			REDACTED
+			if imageURL := extractGrokMediaImageURL(value); imageURL != "" {
 				info.InputImageURLs = append(info.InputImageURLs, imageURL)
 		REDACTED
 	REDACTED
@@ -182,14 +169,32 @@ REDACTED
 	appendJSONImageURLs(gjson.GetBytes(body, "image"))
 	appendJSONImageURLs(gjson.GetBytes(body, "images"))
 	appendJSONImageURLs(gjson.GetBytes(body, "reference_images"))
-	info.MaskImageURL = grokMediaJSONImageURL(gjson.GetBytes(body, "mask"))
+	info.MaskImageURL = extractGrokMediaImageURL(gjson.GetBytes(body, "mask"))
 REDACTED
 
-func grokMediaJSONImageURL(value gjson.Result) string {
+func extractGrokMediaImageURL(value gjson.Result) string {
+	if !value.Exists() {
+		return ""
+REDACTED
+	if value.Type == gjson.String {
+		return strings.TrimSpace(value.String())
+REDACTED
 	if imageURL := strings.TrimSpace(value.Get("url").String()); imageURL != "" {
 		return imageURL
 REDACTED
+	if nested := value.Get("image_url"); nested.Exists() {
+		if nested.Type == gjson.String {
+			return strings.TrimSpace(nested.String())
+	REDACTED
+		if imageURL := strings.TrimSpace(nested.Get("url").String()); imageURL != "" {
+			return imageURL
+	REDACTED
+REDACTED
 	return strings.TrimSpace(value.Get("image_url").String())
+REDACTED
+
+func grokMediaImageObject(imageURL string) map[string]string {
+	return map[string]string{"url": imageURL, "type": "image_url"REDACTED
 REDACTED
 
 func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokMediaRequestInfo) {
@@ -872,8 +877,12 @@ func isGrokCLIProxyTarget(rawURL string) bool {
 REDACTED
 
 func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
-	if endpoint != GrokMediaEndpointImagesEdits || gjson.ValidBytes(body) {
+	if endpoint != GrokMediaEndpointImagesEdits {
 		return body, contentType, nil
+REDACTED
+	if gjson.ValidBytes(body) {
+		out, err := normalizeGrokMediaJSONImageRefs(body)
+		return out, contentType, err
 REDACTED
 	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
 	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
@@ -898,7 +907,7 @@ REDACTED
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
 		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
-			images = append(images, map[string]string{"url": imageURLREDACTED)
+			images = append(images, grokMediaImageObject(imageURL))
 	REDACTED
 REDACTED
 	for _, upload := range info.Uploads {
@@ -906,7 +915,10 @@ REDACTED
 		if err != nil {
 			return nil, "", err
 	REDACTED
-		images = append(images, map[string]string{"url": dataURLREDACTED)
+		images = append(images, grokMediaImageObject(dataURL))
+REDACTED
+	if len(images) > grokMediaMaxEditSourceImages {
+		return nil, "", fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
 REDACTED
 	if len(images) > 0 {
 		payload["image"] = images[0]
@@ -924,7 +936,7 @@ REDACTED
 		maskImageURL = dataURL
 REDACTED
 	if maskImageURL != "" {
-		payload["mask"] = map[string]string{"url": maskImageURLREDACTED
+		payload["mask"] = grokMediaImageObject(maskImageURL)
 REDACTED
 
 	out, err := marshalOpenAIUpstreamJSON(payload)
@@ -932,6 +944,53 @@ REDACTED
 		return nil, "", err
 REDACTED
 	return out, "application/json", nil
+REDACTED
+
+func normalizeGrokMediaJSONImageRefs(body []byte) ([]byte, error) {
+	info := ParseGrokMediaRequest("application/json", body)
+	if len(info.InputImageURLs) > grokMediaMaxEditSourceImages {
+		return nil, fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
+REDACTED
+	out := body
+	var err error
+	for _, field := range []string{"image", "images", "mask"REDACTED {
+		out, err = rewriteGrokMediaJSONImageField(out, field)
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func rewriteGrokMediaJSONImageField(body []byte, path string) ([]byte, error) {
+	value := gjson.GetBytes(body, path)
+	if !value.Exists() {
+		return body, nil
+REDACTED
+	if value.IsArray() {
+		rewritten := make([]map[string]string, 0, len(value.Array()))
+		for _, item := range value.Array() {
+			imageURL := extractGrokMediaImageURL(item)
+			if imageURL == "" {
+				return body, nil
+		REDACTED
+			rewritten = append(rewritten, grokMediaImageObject(imageURL))
+	REDACTED
+		out, err := sjson.SetBytes(body, path, rewritten)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite grok media %s: %w", path, err)
+	REDACTED
+		return out, nil
+REDACTED
+	imageURL := extractGrokMediaImageURL(value)
+	if imageURL == "" {
+		return body, nil
+REDACTED
+	out, err := sjson.SetBytes(body, path, grokMediaImageObject(imageURL))
+	if err != nil {
+		return nil, fmt.Errorf("rewrite grok media %s: %w", path, err)
+REDACTED
+	return out, nil
 REDACTED
 
 func normalizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, contentType string) ([]byte, string, error) {
@@ -1043,9 +1102,11 @@ func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string
 			return "grok-imagine-image-quality"
 	REDACTED
 	case GrokMediaEndpointVideosGenerations:
-		if model == "grok-imagine-video-1.5" && !hasInputImage {
-			return "grok-imagine-video"
-	REDACTED
+		// xAI's 1.5 model is image-to-video only. Keep the requested model
+		// unchanged when the image is missing so the upstream returns its
+		// documented invalid-argument response instead of silently switching
+		// models and pricing.
+		_ = hasInputImage
 REDACTED
 	return model
 REDACTED

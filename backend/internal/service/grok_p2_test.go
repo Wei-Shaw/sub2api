@@ -87,7 +87,7 @@ func TestApplyGrokUpstreamFailure_ModelSpecificFreeUsage(t *testing.T) {
 	require.False(t, isGrokModelQuotaBlocked(account.ID, "grok-4.3", time.Now()))
 REDACTED
 
-func TestApplyGrokUpstreamFailure_SpendingLimitMarksReauth(t *testing.T) {
+func TestApplyGrokUpstreamFailure_SpendingLimitRemainsRecoverable(t *testing.T) {
 	repo := &grokQuotaAccountRepo{REDACTED
 	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
 	account := &Account{ID: 9110, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
@@ -95,8 +95,8 @@ func TestApplyGrokUpstreamFailure_SpendingLimitMarksReauth(t *testing.T) {
 
 	svc.handleGrokAccountUpstreamError(context.Background(), account, 403, nil, body)
 
-	require.Equal(t, 1, repo.tempUnschedCalls)
-	require.Equal(t, "grok spending limit", repo.lastTempUnschedReason)
-	// Long cool for spending
-	require.Greater(t, repo.lastTempUnschedUntil, time.Now().Add(23*time.Hour))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Zero(t, repo.tempUnschedCalls)
+	// Without a billing-period snapshot, use a short recoverable probe cooldown.
+	require.WithinDuration(t, time.Now().Add(grokSpendingLimitProbeCooldown), repo.lastRateLimitResetAt, 2*time.Second)
 REDACTED

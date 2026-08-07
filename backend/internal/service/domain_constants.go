@@ -417,6 +417,10 @@ const (
 	// can reach Grok groups. Default false (no silent cross-vendor rewrite).
 	SettingKeyGrokCrossClientModelMapEnabled = "grok_cross_client_model_map_enabled"
 
+	// SettingKeyGrokDefaultBaseURLMode controls the default text upstream for
+	// Grok accounts without an explicit credentials.base_url.
+	SettingKeyGrokDefaultBaseURLMode = "grok_default_base_url_mode"
+
 	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).

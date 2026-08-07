@@ -41,6 +41,7 @@ REDACTED
 		"/images/generations/async": {"image_task_handler.go"REDACTED,
 		"/images/edits/async":       {"image_task_handler.go"REDACTED,
 		"/images/batches":           {"batch_image_handler.go"REDACTED,
+		"/videos":                   {"grok_media.go"REDACTED,
 		"/videos/generations":       {"grok_media.go"REDACTED,
 		"/videos/edits":             {"grok_media.go"REDACTED,
 		"/videos/extensions":        {"grok_media.go"REDACTED,
