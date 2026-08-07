@@ -1,18 +1,26 @@
 package service
 
-const grokMissingUsageMessage = "Grok upstream returned a successful response without billable usage"
+import (
+	"encoding/json"
+	"net/http"
+	"strings"
 
-// hasBillableOpenAIUsage distinguishes a usable accounting result from the
-// zero value produced when an upstream omits usage entirely. A successful Grok
-// completion without any positive usage cannot be safely charged, so callers
-// must fail over before committing the response to the client.
-func hasBillableOpenAIUsage(usage OpenAIUsage) bool {
+	"github.com/gin-gonic/gin"
+)
+
+const (
+	grokMissingUsageErrorCode = "grok_missing_usage"
+	grokMissingUsageMessage   = "xAI upstream returned a successful chat completion without billable usage"
+)
+
+// hasBillableGrokChatUsage stays aligned with the aggregate token buckets used
+// to account for chat completions. Detail fields alone do not prove that the
+// successful response can be settled safely.
+func hasBillableGrokChatUsage(usage OpenAIUsage) bool {
 	return usage.InputTokens > 0 ||
-		usage.ImageInputTokens > 0 ||
 		usage.OutputTokens > 0 ||
 		usage.CacheCreationInputTokens > 0 ||
-		usage.CacheReadInputTokens > 0 ||
-		usage.ImageOutputTokens > 0
+		usage.CacheReadInputTokens > 0
 REDACTED
 
 // requiresBillableGrokChatUsage identifies Grok traffic by both account
@@ -24,9 +32,50 @@ func requiresBillableGrokChatUsage(account *Account, models ...string) bool {
 		return true
 REDACTED
 	for _, model := range models {
-		if platform, ok := DetectModelPlatform(model); ok && platform == PlatformGrok {
+		normalized := strings.ToLower(strings.TrimSpace(model))
+		if separator := strings.LastIndex(normalized, "/"); separator >= 0 {
+			normalized = strings.TrimSpace(normalized[separator+1:])
+	REDACTED
+		if normalized == "grok" || strings.HasPrefix(normalized, "grok-") {
 			return true
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func newGrokMissingUsageFailoverError(c *gin.Context, account *Account, upstreamRequestID string) *UpstreamFailoverError {
+	accountID := int64(0)
+	accountName := ""
+	if account != nil {
+		accountID = account.ID
+		accountName = account.Name
+REDACTED
+
+	setOpsUpstreamError(c, http.StatusBadGateway, grokMissingUsageMessage, "")
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           PlatformGrok,
+		AccountID:          accountID,
+		AccountName:        accountName,
+		UpstreamStatusCode: http.StatusBadGateway,
+		UpstreamRequestID:  strings.TrimSpace(upstreamRequestID),
+		Kind:               "failover",
+		Message:            grokMissingUsageMessage,
+REDACTED)
+
+	body, _ := json.Marshal(gin.H{
+		"error": gin.H{
+			"type":    "upstream_error",
+			"code":    grokMissingUsageErrorCode,
+			"message": grokMissingUsageMessage,
+	REDACTED,
+REDACTED)
+	headers := http.Header{REDACTED
+	if requestID := strings.TrimSpace(upstreamRequestID); requestID != "" {
+		headers.Set("x-request-id", requestID)
+REDACTED
+	return &UpstreamFailoverError{
+		StatusCode:      http.StatusBadGateway,
+		ResponseBody:    body,
+		ResponseHeaders: headers,
+REDACTED
 REDACTED

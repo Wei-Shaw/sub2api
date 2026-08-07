@@ -308,6 +308,8 @@ REDACTED
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Equal(t, grokMissingUsageErrorCode, gjson.GetBytes(failoverErr.ResponseBody, "error.code").String())
 	require.False(t, c.Writer.Written(), "an unbillable response must not be committed to the client")
 	require.Empty(t, recorder.Body.String())
 REDACTED

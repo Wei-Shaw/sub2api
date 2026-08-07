@@ -460,20 +460,14 @@ REDACTED
 		return nil, fmt.Errorf("upstream response failed: %s", message)
 REDACTED
 
+	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, finalResponse.Model) && !hasBillableGrokChatUsage(usage) {
+		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
+		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
+REDACTED
+
 	// When the terminal event has an empty output array, reconstruct from
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
-	if requiresBillableGrokChatUsage(account, originalModel, billingModel, upstreamModel, finalResponse.Model) && !hasBillableOpenAIUsage(usage) {
-		return nil, s.newOpenAIStreamFailoverError(
-			c,
-			account,
-			false,
-			firstNonEmpty(requestID, resp.Header.Get("xai-request-id")),
-			nil,
-			grokMissingUsageMessage,
-			resp.Header,
-		)
-REDACTED
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 

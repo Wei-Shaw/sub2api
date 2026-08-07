@@ -432,16 +432,9 @@ REDACTED
 		usage = parsedUsage
 REDACTED
 	responseModel := gjson.GetBytes(respBody, "model").String()
-	if requiresBillableGrokChatUsage(account, originalModel, billingModel, upstreamModel, responseModel) && !hasBillableOpenAIUsage(usage) {
-		return nil, s.newOpenAIStreamFailoverError(
-			c,
-			account,
-			false,
-			firstNonEmpty(requestID, resp.Header.Get("xai-request-id")),
-			nil,
-			grokMissingUsageMessage,
-			resp.Header,
-		)
+	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
+		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
+		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 REDACTED
 
 	if s.responseHeaderFilter != nil {
