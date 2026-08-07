@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +76,7 @@ func TestStreamFailedEventCapacityShedRetriesOnSameAccount(t *testing.T) {
 // 各自硬编码会漂移成互相矛盾的身份，而自相矛盾或陈旧的身份会被上游优先降载。
 func TestCodexOutboundVersionHasSingleSource(t *testing.T) {
 	require.True(t,
-		strings.HasPrefix(codexCLIUserAgent, "codex_cli_rs/"+codexCLIVersion+" "),
+		strings.HasPrefix(codexCLIUserAgent, openai.CodexDefaultOriginator+"/"+codexCLIVersion+" "),
 		"codexCLIUserAgent=%q 必须以 codexCLIVersion=%q 作为版本段", codexCLIUserAgent, codexCLIVersion,
 	)
 	require.Equal(t, codexCLIVersion, openAICodexProbeVersion)
