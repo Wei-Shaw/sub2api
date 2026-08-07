@@ -24,6 +24,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -2638,6 +2639,61 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				ID:          requestedModel,
 				Object:      "model",
 				OwnedBy:     "xai",
+				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
+	// Handle Qoder accounts
+	if account.Platform == service.PlatformQoder {
+		catalog := qoder.DefaultModels
+		if h.accountTestService != nil {
+			if fetched, err := h.accountTestService.ListQoderModels(c.Request.Context(), account); err == nil {
+				catalog = fetched
+			}
+		}
+
+		// Direct-mode accounts talk to the stateless model server, which only
+		// accepts a subset of the aliases the Cloud Agents API advertises.
+		if account.IsQoderDirect() {
+			filtered := make([]qoder.ModelInfo, 0, len(catalog))
+			for _, model := range catalog {
+				if qoder.DirectSupportedModelIDs[model.ID] {
+					filtered = append(filtered, model)
+				}
+			}
+			catalog = filtered
+		}
+
+		mapping := account.GetModelMapping()
+		if len(mapping) == 0 {
+			response.Success(c, catalog)
+			return
+		}
+
+		catalogByID := make(map[string]qoder.ModelInfo, len(catalog))
+		for _, model := range catalog {
+			catalogByID[model.ID] = model
+		}
+
+		requestedModels := make([]string, 0, len(mapping))
+		for requestedModel := range mapping {
+			requestedModels = append(requestedModels, requestedModel)
+		}
+		sort.Strings(requestedModels)
+
+		var models []qoder.ModelInfo
+		for _, requestedModel := range requestedModels {
+			if catalogModel, found := catalogByID[requestedModel]; found {
+				models = append(models, catalogModel)
+				continue
+			}
+			models = append(models, qoder.ModelInfo{
+				ID:          requestedModel,
+				Object:      "model",
+				OwnedBy:     "qoder",
 				DisplayName: requestedModel,
 			})
 		}

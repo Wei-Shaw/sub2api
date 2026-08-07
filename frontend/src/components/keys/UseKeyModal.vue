@@ -368,6 +368,12 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
+    case 'qoder':
+      return [
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
+        { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon },
+        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
+      ]
     default:
       return [
         { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
@@ -423,6 +429,14 @@ const platformDescription = computed(() => {
         return t('keys.useKeyModal.grok.codexDescription')
       }
       return t('keys.useKeyModal.grok.description')
+    case 'qoder':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.qoder.claudeDescription')
+      }
+      if (activeClientTab.value === 'codex') {
+        return t('keys.useKeyModal.qoder.codexDescription')
+      }
+      return t('keys.useKeyModal.qoder.description')
     default:
       return t('keys.useKeyModal.description')
   }
@@ -455,6 +469,16 @@ const platformNote = computed(() => {
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.grok.noteWindows')
         : t('keys.useKeyModal.grok.note')
+    case 'qoder':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.qoder.claudeNote')
+      }
+      if (activeClientTab.value === 'codex') {
+        return activeTab.value === 'windows'
+          ? t('keys.useKeyModal.qoder.codexNoteWindows')
+          : t('keys.useKeyModal.qoder.codexNote')
+      }
+      return t('keys.useKeyModal.note')
     default:
       return t('keys.useKeyModal.note')
   }
@@ -543,6 +567,11 @@ const currentFiles = computed((): FileConfig[] => {
         return generateGrokCodexFiles(apiBase, apiKey)
       }
       return generateGrokFiles(apiBase, apiKey)
+    case 'qoder':
+      if (activeClientTab.value === 'codex') {
+        return generateQoderCodexFiles(apiBase, apiKey)
+      }
+      return generateAnthropicFiles(baseUrl, apiKey)
     default:
       return generateAnthropicFiles(baseUrl, apiKey)
   }
@@ -806,6 +835,38 @@ responses_websockets_v2 = true`
       path: configPath,
       content: configContent,
       hint: t('keys.useKeyModal.grok.codexConfigTomlHint')
+    },
+    {
+      path: isWindows ? 'PowerShell' : 'Terminal',
+      content: environmentContent
+    }
+  ]
+}
+
+function generateQoderCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
+  const configPath = isWindows
+    ? '%USERPROFILE%\\.codex\\config.toml'
+    : '~/.codex/config.toml'
+  const configContent = `model_provider = "sub2api_qoder"
+model = "auto"
+review_model = "auto"
+model_reasoning_effort = "xhigh"
+
+[model_providers.sub2api_qoder]
+name = "Sub2API Qoder"
+base_url = "${baseUrl}"
+env_key = "SUB2API_API_KEY"
+wire_api = "responses"`
+  const environmentContent = isWindows
+    ? `$env:SUB2API_API_KEY="${apiKey}"`
+    : `export SUB2API_API_KEY="${apiKey}"`
+
+  return [
+    {
+      path: configPath,
+      content: configContent,
+      hint: t('keys.useKeyModal.qoder.codexConfigTomlHint')
     },
     {
       path: isWindows ? 'PowerShell' : 'Terminal',

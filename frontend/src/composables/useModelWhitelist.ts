@@ -160,6 +160,25 @@ const xaiModels = [
   'grok-imagine-video-1.5'
 ]
 
+// Qoder Cloud Agents 模型别名（与后端 qoder.DefaultModels 保持一致）
+const qoderModels = [
+  'auto',
+  'ultimate',
+  'performance',
+  'efficient',
+  'lite',
+  'qmodel',
+  'qmodel_latest',
+  'qmodel_preview',
+  'kmodel',
+  'kmodel_latest',
+  'cmodel',
+  'gm51model',
+  'dmodel',
+  'dfmodel',
+  'mmodel'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -240,6 +259,7 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...qoderModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -316,6 +336,20 @@ const grokPresetMappings = [
   { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-edit', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+]
+
+// Qoder 预设映射：把常见的入站模型名映射到 Qoder 模型别名
+const qoderPresetMappings = [
+  { label: 'Auto', from: 'auto', to: 'auto', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
+  { label: 'Ultimate', from: 'ultimate', to: 'ultimate', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Performance', from: 'performance', to: 'performance', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Efficient', from: 'efficient', to: 'efficient', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'Lite', from: 'lite', to: 'lite', color: 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400' },
+  { label: 'Claude→Auto', from: 'claude-*', to: 'auto', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: 'Sonnet→Performance', from: 'claude-sonnet-*', to: 'performance', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Opus→Ultimate', from: 'claude-opus-*', to: 'ultimate', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
+  { label: 'Haiku→Lite', from: 'claude-haiku-*', to: 'lite', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'GPT→Auto', from: 'gpt-*', to: 'auto', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）
@@ -423,6 +457,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'meta': return metaModels
     case 'xai':
     case 'grok': return xaiModels
+    case 'qoder': return qoderModels
     case 'cohere': return cohereModels
     case 'yi': return yiModels
     case 'moonshot': return moonshotModels
@@ -441,6 +476,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'openai') return openaiPresetMappings
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'grok' || platform === 'xai') return grokPresetMappings
+  if (platform === 'qoder') return qoderPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings

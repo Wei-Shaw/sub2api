@@ -104,6 +104,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         grok: 'Grok',
+        qoder: 'Qoder',
       },
       types: {
         oauth: 'OAuth',
@@ -113,6 +114,7 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
+        qoderPat: 'Personal Access Token',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -462,6 +464,13 @@ export default {
       accountName: 'Account Name',
       enterAccountName: 'Enter account name',
       accountType: 'Account Type',
+      qoder: {
+        modeLabel: 'Connection Mode',
+        modeCloud: 'Cloud Agent',
+        modeCloudDesc: 'Stateful sandbox session',
+        modeDirect: 'Direct',
+        modeDirectDesc: 'Stateless model server'
+      },
       claudeCode: 'Claude Code',
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',

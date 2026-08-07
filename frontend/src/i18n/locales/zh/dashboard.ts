@@ -184,6 +184,15 @@ export default {
         codexNote: '将 config.toml 保存到 ~/.codex，并在启动 Codex 前设置 SUB2API_API_KEY。',
         codexNoteWindows: '将 config.toml 保存到 %USERPROFILE%\\.codex，并在 PowerShell 中设置 SUB2API_API_KEY 后启动 Codex。'
       },
+      qoder: {
+        description: '配置 Claude Code、Codex 或 OpenCode，让请求通过当前 Sub2API Qoder 分组发送。',
+        claudeDescription: '配置 Claude Code，让 Messages API 请求通过当前 Sub2API Qoder 分组发送。',
+        codexDescription: '配置 Codex，让 Responses API 请求通过当前 Sub2API Qoder 分组发送。',
+        codexConfigTomlHint: '如已有 config.toml，请先备份再合并此服务商配置。',
+        claudeNote: '二选一即可：终端命令仅在当前会话生效；保存 settings.json 可作为用户级持久配置。',
+        codexNote: '将 config.toml 保存到 ~/.codex，并在启动 Codex 前设置 SUB2API_API_KEY。',
+        codexNoteWindows: '将 config.toml 保存到 %USERPROFILE%\\.codex，并在 PowerShell 中设置 SUB2API_API_KEY 后启动 Codex。'
+      },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',

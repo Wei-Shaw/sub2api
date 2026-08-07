@@ -180,6 +180,15 @@ export default {
         codexNote: 'Save config.toml under ~/.codex and set SUB2API_API_KEY before starting Codex.',
         codexNoteWindows: 'Save config.toml under %USERPROFILE%\\.codex and set SUB2API_API_KEY in PowerShell before starting Codex.',
       },
+      qoder: {
+        description: 'Configure Claude Code, Codex, or OpenCode to send requests through your Sub2API Qoder group.',
+        claudeDescription: 'Configure Claude Code to send Messages API traffic through your Sub2API Qoder group.',
+        codexDescription: 'Configure Codex to send Responses API traffic through your Sub2API Qoder group.',
+        codexConfigTomlHint: 'Back up an existing config.toml before merging this provider configuration.',
+        claudeNote: 'Choose one method: run the terminal commands for the current session, or save settings.json for user-level persistent configuration.',
+        codexNote: 'Save config.toml under ~/.codex and set SUB2API_API_KEY before starting Codex.',
+        codexNoteWindows: 'Save config.toml under %USERPROFILE%\\.codex and set SUB2API_API_KEY in PowerShell before starting Codex.',
+      },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
