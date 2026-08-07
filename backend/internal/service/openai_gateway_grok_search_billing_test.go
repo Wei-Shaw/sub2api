@@ -90,7 +90,7 @@ func TestGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 	// Sticky/non-list path must not return over-gate free OAuth accounts.
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.Grok.FreeQuotaSoftGateEnabled = true
-	cfg.Gateway.Grok.FreeQuotaTokenLimit = 1_000_000
+	cfg.Gateway.Grok.FreeQuotaTokenLimit = 500_000
 	cfg.Gateway.Grok.FreeQuotaSoftGatePercent = 95
 	cfg.Gateway.Grok.FreeQuotaWindowHours = 24
 	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 0
@@ -104,7 +104,7 @@ func TestGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
 REDACTED
 	usageRepo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
-		account.ID: {Tokens: 999_000REDACTED,
+		account.ID: {Tokens: 480_000REDACTED, // above 95% of 500k
 REDACTEDREDACTED
 	// Clear shared gateway free-gate cache so this test is deterministic.
 	gatewayGrokFreeQuotaGateCache.Range(func(key, _ any) bool {
@@ -126,7 +126,7 @@ func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 	// Legacy OpenAI-compatible sticky (advanced scheduler off) must free-gate Grok.
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.Grok.FreeQuotaSoftGateEnabled = true
-	cfg.Gateway.Grok.FreeQuotaTokenLimit = 1_000_000
+	cfg.Gateway.Grok.FreeQuotaTokenLimit = 500_000
 	cfg.Gateway.Grok.FreeQuotaSoftGatePercent = 95
 	cfg.Gateway.Grok.FreeQuotaWindowHours = 24
 	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 0
@@ -140,7 +140,7 @@ func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
 REDACTED
 	usageRepo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
-		account.ID: {Tokens: 999_000REDACTED,
+		account.ID: {Tokens: 480_000REDACTED,
 REDACTEDREDACTED
 	openaiGrokFreeQuotaGateCache.Range(func(key, _ any) bool {
 		openaiGrokFreeQuotaGateCache.Delete(key)

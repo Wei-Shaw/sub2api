@@ -308,70 +308,32 @@ REDACTED, now)
 	require.True(t, wantUntil.Equal(*decision.Until))
 REDACTED
 
-func TestEvaluateAccountSchedulingThreshold_GrokBillingWindows(t *testing.T) {
+func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *testing.T) {
 	t.Parallel()
-
-	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
-	weeklyEnd := now.Add(3 * time.Hour)
-	weeklyPct := 95.0
-	monthlyPct := 40.0
-	account := &Account{
-		Platform: PlatformGrok,
-		Extra: map[string]any{
-			// Header-based quota below threshold.
-			"grok_sched_utilization": 50.0,
-			"grok_sched_reset_at":    now.Add(time.Hour).Format(time.RFC3339),
-			// Official weekly billing above threshold (extra key used by probe persist).
-			grokBillingExtraKey: &xai.BillingSummary{
-				UsagePercent:     &weeklyPct,
-				PeriodEnd:        weeklyEnd.Format(time.RFC3339),
-				UsedPercent:      &monthlyPct,
-				BillingPeriodEnd: now.Add(10 * 24 * time.Hour).Format(time.RFC3339),
-		REDACTED,
-	REDACTED,
-REDACTED
-
-	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{
-		PlatformGrok: 90,
-REDACTED, now)
-
-	require.True(t, decision.ShouldPause)
-	require.Equal(t, "grok_billing", decision.Scope)
-	require.Equal(t, "seven_day", decision.Window)
-	require.InDelta(t, 95.0, decision.UsedPercent, 1e-9)
-	require.NotNil(t, decision.Until)
-	require.True(t, weeklyEnd.Equal(*decision.Until))
-REDACTED
-
-func TestEvaluateAccountSchedulingThreshold_GrokBillingStaleIgnored(t *testing.T) {
-	t.Parallel()
-
+	// personal-dev: billing seven_day/thirty_day must not drive pause; only grok_sched_*.
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 	weeklyEnd := now.Add(3 * time.Hour)
 	weeklyPct := 99.0
-	// Snapshot older than 48h → billing windows skipped; header util below threshold.
+	headerUntil := now.Add(2 * time.Hour)
 	account := &Account{
 		Platform: PlatformGrok,
 		Extra: map[string]any{
-			"grok_sched_utilization": 50.0,
-			"grok_sched_reset_at":    now.Add(time.Hour).Format(time.RFC3339),
+			"grok_sched_utilization": 50.0, // below threshold
+			"grok_sched_reset_at":    headerUntil.Format(time.RFC3339),
 			grokBillingExtraKey: &xai.BillingSummary{
 				UsagePercent: &weeklyPct,
 				PeriodEnd:    weeklyEnd.Format(time.RFC3339),
-				UpdatedAt:    now.Add(-49 * time.Hour).Format(time.RFC3339),
 		REDACTED,
 	REDACTED,
 REDACTED
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90REDACTED, now)
+	require.False(t, decision.ShouldPause, "high billing % alone must not pause under personal-dev windows")
 
-	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{
-		PlatformGrok: 90,
-REDACTED, now)
-	require.False(t, decision.ShouldPause)
-REDACTED
-
-func TestGrokBillingSnapshotStale(t *testing.T) {
-	t.Parallel()
-	require.False(t, grokBillingSnapshotStale("", 48*time.Hour))
-	require.False(t, grokBillingSnapshotStale(time.Now().UTC().Format(time.RFC3339), 48*time.Hour))
-	require.True(t, grokBillingSnapshotStale(time.Now().UTC().Add(-49*time.Hour).Format(time.RFC3339), 48*time.Hour))
+	account.Extra["grok_sched_utilization"] = 95.0
+	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90REDACTED, now)
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "grok", decision.Scope)
+	require.Equal(t, "quota", decision.Window)
+	require.NotNil(t, decision.Until)
+	require.True(t, headerUntil.Equal(*decision.Until))
 REDACTED

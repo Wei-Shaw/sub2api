@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,18 +15,18 @@ import (
 // Local free-tier soft gate for Grok OAuth scheduling.
 //
 // Config keys (gateway.grok.*):
-//   - free_quota_soft_gate_enabled     (bool, default true) — only applied when free-tier detection is strict
-//   - free_quota_token_limit           (int64, default = xai free rolling limit 1_000_000)
+//   - free_quota_soft_gate_enabled     (bool, default true)
+//   - free_quota_token_limit           (int64, default 500_000)
 //   - free_quota_soft_gate_percent     (int, default 95) — stop scheduling before the nominal limit
 //   - free_quota_window_hours          (int, default 24) — local usage rolling window
 //   - free_quota_stats_cache_seconds   (int, default 5) — bound hot-path aggregate query frequency
 //
-// Admin paths (QueryQuota / import probe / AccountUsageService.GetUsage) never call
-// filterGrokFreeQuotaAccounts; only the OpenAI-compatible account scheduler filter does.
+// Soft-gate applies only to *explicit* free OAuth (subscription_tier/plan_type ==
+// "free"), matching personal-dev. Media/cache free detection uses isKnownGrokFreeAccount.
+// Admin paths (QueryQuota / import probe) never call this filter.
 
 const (
-	// Match current Free rolling limit (pkg/xai). A 2M default never pre-empts real exhaustion.
-	defaultGrokFreeQuotaTokenLimit      int64 = 1_000_000
+	defaultGrokFreeQuotaTokenLimit      int64 = 500_000
 	defaultGrokFreeQuotaSoftGatePercent       = 95
 	defaultGrokFreeQuotaWindowHours           = 24
 )
@@ -85,11 +86,24 @@ REDACTED
 REDACTED
 
 // isExplicitGrokFreeOAuthAccount decides whether the free soft-gate applies.
-// Uses the same free/paid evidence as media eligibility (isKnownGrokFreeAccount):
-// free/basic tiers, billing-inferred free, while paid plan/monthly evidence wins.
-// Unknown/empty tier without free evidence and API-key accounts are not gated.
+// personal-dev contract: only OAuth accounts with credentials/extra
+// subscription_tier or plan_type exactly "free" (case-insensitive). Inferred
+// free / basic / blank plan do not soft-gate.
 func isExplicitGrokFreeOAuthAccount(account *Account) bool {
-	return isKnownGrokFreeAccount(account)
+	if account == nil || !account.IsGrokOAuth() {
+		return false
+REDACTED
+	for _, tier := range []string{
+		account.GetCredential("subscription_tier"),
+		account.GetCredential("plan_type"),
+		account.GetExtraString("subscription_tier"),
+		account.GetExtraString("plan_type"),
+REDACTED {
+		if strings.EqualFold(strings.TrimSpace(tier), "free") {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 // filterGrokFreeQuotaAccounts applies a local, rolling soft gate only to

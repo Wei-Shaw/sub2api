@@ -304,6 +304,9 @@ REDACTED
 	return appendGrokFreeCacheNativeToolsWithPolicy(body, allowPureClientTools, allowFunctionSearch)
 REDACTED
 
+// isKnownGrokFreeAccount matches personal-dev free-tier recognition used for
+// Free cache routing / media free_tier blocks (broader than soft-gate).
+// Soft-gate uses isExplicitGrokFreeOAuthAccount (exact "free" only).
 func isKnownGrokFreeAccount(account *Account) bool {
 	if account == nil || !account.IsGrokOAuth() {
 		return false
@@ -319,20 +322,15 @@ REDACTED
 				paidSignal = true
 		REDACTED
 	REDACTED
-		// Paid evidence: explicit plan name or monthly dollar cap — NOT mere presence of
-		// weekly/monthly usage percent (Free accounts also report creditUsagePercent).
-		if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 {
+		// personal-dev: usage % or monthly dollar cap is paid evidence.
+		if billing.UsagePercent != nil || billing.UsedPercent != nil ||
+			(billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0) {
 			paidSignal = true
 	REDACTED
-		// Infer free only from a successful *monthly* billing window with no paid
-		// plan/limit. Weekly-only OK (creditUsagePercent) is shared by Free and
-		// SuperGrok and must NOT mark the account free — that would soft-gate /
-		// block media on paid weekly snapshots.
-		monthlyOK := strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
-			(billing.MonthlyStatusCode >= http.StatusOK && billing.MonthlyStatusCode < http.StatusMultipleChoices)
-		if monthlyOK && !billing.Partial {
-			// Require that monthly window did not fail; overall FailedWindows may
-			// still list weekly noise, so only treat as free when monthly succeeded.
+		// Empty plan + successful monthly observation → inferred free (no paid plan/limit).
+		if strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
+			(billing.StatusCode >= http.StatusOK && billing.StatusCode < http.StatusMultipleChoices &&
+				!billing.Partial && len(billing.FailedWindows) == 0) {
 			inferredFreeSignal = true
 	REDACTED
 REDACTED
@@ -349,34 +347,16 @@ REDACTED
 			inferredFreeSignal = true
 	REDACTED
 REDACTED
-	for _, key := range []string{"subscription_tier", "plan_type"REDACTED {
-		if tier := strings.TrimSpace(account.GetCredential(key)); tier != "" {
-			if isGrokFreeSubscriptionTier(tier) {
-				freeSignal = true
-		REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
-				paidSignal = true
-		REDACTED
-	REDACTED
-		if tier := strings.TrimSpace(account.GetExtraString(key)); tier != "" {
-			if isGrokFreeSubscriptionTier(tier) {
-				freeSignal = true
-		REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
-				paidSignal = true
-		REDACTED
+	// personal-dev: only credentials subscription_tier (not plan_type / extra keys).
+	if tier := strings.TrimSpace(account.GetCredential("subscription_tier")); tier != "" {
+		if isGrokFreeSubscriptionTier(tier) {
+			freeSignal = true
+	REDACTED else if !isGrokUnknownSubscriptionTier(tier) {
+			paidSignal = true
 	REDACTED
 REDACTED
-	// Strong paid evidence always wins — including over stale free credentials
-	// left after SuperGrok upgrade (subscription_tier still "free" until re-import).
-	if paidSignal {
-		return false
-REDACTED
-	// Explicit free/basic tier (credentials or free plan string).
-	if freeSignal {
-		return true
-REDACTED
-	// Inferred free (empty plan + successful monthly probe, or free token limit)
-	// only when there is no paid evidence.
-	return inferredFreeSignal
+	// Explicit paid evidence always wins over an inferred Free signal.
+	return !paidSignal && (freeSignal || inferredFreeSignal)
 REDACTED
 
 func isGrokFreeSubscriptionTier(tier string) bool {

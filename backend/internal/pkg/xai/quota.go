@@ -7,10 +7,14 @@ import (
 	"time"
 )
 
-const GrokFreeRolling24hTokenLimit int64 = 1_000_000
+// GrokFreeRolling24hTokenLimit is the operator soft-gate nominal Free allowance
+// (rolling 24h). Soft-gate default matches this; upstream header limits may
+// still report historical 1M/2M Free snapshots.
+const GrokFreeRolling24hTokenLimit int64 = 500_000
 
 var grokFreeRolling24hTokenLimits = map[int64]struct{REDACTED{
 	GrokFreeRolling24hTokenLimit: {REDACTED,
+	1_000_000:                    {REDACTED, // Observed Free limit variants.
 	2_000_000:                    {REDACTED, // Legacy Free limit observed before July 2026.
 REDACTED
 
