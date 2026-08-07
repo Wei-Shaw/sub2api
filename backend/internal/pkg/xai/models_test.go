@@ -7,14 +7,15 @@ import (
 )
 
 func TestDefaultModelMappingExcludesCrossClientWildcards(t *testing.T) {
-	t.Parallel()
+	original := RuntimeModelMappingOptions()
+	t.Cleanup(func() { SetRuntimeModelMappingOptions(original) REDACTED)
 	SetRuntimeModelMappingOptions(ModelMappingOptions{REDACTED)
 	mapping := DefaultModelMapping()
 
 	require.Equal(t, "grok-4.5", mapping["grok"])
 	require.Equal(t, "grok-4.5", mapping["grok-latest"])
 	require.Equal(t, "grok-build-0.1", mapping["grok-build"])
-	require.Equal(t, "grok-build-0.1", mapping["grok-build-latest"])
+	require.Equal(t, "grok-4.5", mapping["grok-build-latest"])
 	require.Equal(t, DefaultImagineVideo15LegacyModel, mapping["grok-imagine-video-1.5"])
 	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5-preview"])
 	require.Equal(t, "grok-4.5", mapping["xai/grok"])

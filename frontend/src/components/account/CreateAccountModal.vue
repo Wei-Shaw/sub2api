@@ -5488,8 +5488,9 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
 
   const lines = emailPasswordInput
     .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && line.includes('----'))
+    // Keep the password portion byte-for-byte; trim is only for determining
+    // whether this textarea line is blank.
+    .filter((line) => line.trim() && line.includes('----'))
 
   if (lines.length === 0) {
     grokOAuth.error.value = t(

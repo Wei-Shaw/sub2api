@@ -678,8 +678,8 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
   if (!props.account || !isGrok.value) return
   const line = emailPasswordInput
     .split('\n')
-    .map((item) => item.trim())
-    .find((item) => item.includes('----'))
+    // Email is normalized in the API helper, but password whitespace is valid.
+    .find((item) => item.trim() && item.includes('----'))
   if (!line) {
     grokOAuth.error.value = t(
       'admin.accounts.oauth.grok.pleaseEnterPassword',
