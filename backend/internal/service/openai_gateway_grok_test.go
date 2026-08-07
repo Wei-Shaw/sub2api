@@ -1209,9 +1209,10 @@ REDACTED
 	require.Equal(t, "grok-imagine-video", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
-	require.Equal(t, 1, result.ImageCount)
+	// Create accepts the job only — VideoCount stays 0 until status returns video.url.
+	require.Equal(t, 0, result.ImageCount)
 	require.Empty(t, result.ImageSize)
-	require.Equal(t, 1, result.VideoCount)
+	require.Equal(t, 0, result.VideoCount)
 	require.Equal(t, VideoBillingResolution720P, result.VideoResolution)
 	require.Equal(t, 10, result.VideoDurationSeconds)
 REDACTED
@@ -1383,7 +1384,7 @@ REDACTED
 			require.Equal(t, http.MethodPost, upstream.lastReq.Method)
 			require.JSONEq(t, `{"model":"vendor-video-mutation","prompt":"continue","video":{"url":"https://example.com/in.mp4"REDACTED,"duration":6REDACTED`, string(upstream.lastBody))
 			require.Equal(t, "video-mutation-123", result.ResponseID)
-			require.Equal(t, 1, result.VideoCount)
+			require.Equal(t, 0, result.VideoCount)
 			require.Equal(t, 6, result.VideoDurationSeconds)
 			require.Equal(t, "grok-imagine-video", result.BillingModel)
 			require.Equal(t, "vendor-video-mutation", result.UpstreamModel)

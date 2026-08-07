@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -315,6 +316,215 @@ REDACTED
 	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
 REDACTED
 
+// GrokVideoPendingBilling is the create-time snapshot used when status polling
+// first observes a completed video URL. Status may omit model/duration; we fall
+// back to this snapshot, then defaults.
+type GrokVideoPendingBilling struct {
+	Model                string `json:"model"`
+	BillingModel         string `json:"billing_model,omitempty"`
+	UpstreamModel        string `json:"upstream_model,omitempty"`
+	VideoResolution      string `json:"video_resolution,omitempty"`
+	VideoDurationSeconds int    `json:"video_duration_seconds,omitempty"`
+	OriginalModel        string `json:"original_model,omitempty"`
+REDACTED
+
+func grokVideoPendingBillingKey(requestID string, userID, apiKeyID int64) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || userID <= 0 || apiKeyID <= 0 {
+		return ""
+REDACTED
+	return fmt.Sprintf("%d:%d:%s", userID, apiKeyID, requestID)
+REDACTED
+
+func grokVideoPendingBillingTTL(cfg *config.Config) time.Duration {
+	// Video generation can take several minutes; keep create-time pricing for a day.
+	_ = cfg
+	return 24 * time.Hour
+REDACTED
+
+func grokVideoBilledClaimTTL(cfg *config.Config) time.Duration {
+	_ = cfg
+	return 48 * time.Hour
+REDACTED
+
+// StoreGrokVideoPendingBilling persists create-time billing params for deferred status billing.
+func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
+	ctx context.Context,
+	requestID string,
+	userID, apiKeyID int64,
+	pending GrokVideoPendingBilling,
+) error {
+	if s == nil || s.cache == nil {
+		return fmt.Errorf("grok video pending billing cache is unavailable")
+REDACTED
+	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	if key == "" {
+		return fmt.Errorf("grok video pending billing key is invalid")
+REDACTED
+	pending.Model = strings.TrimSpace(pending.Model)
+	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
+	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
+	pending.OriginalModel = strings.TrimSpace(pending.OriginalModel)
+	if pending.VideoResolution != "" {
+		pending.VideoResolution = NormalizeVideoBillingResolutionOrDefault(pending.VideoResolution)
+REDACTED
+	if pending.VideoDurationSeconds > 0 {
+		pending.VideoDurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(pending.VideoDurationSeconds)
+REDACTED
+	payload, err := json.Marshal(pending)
+	if err != nil {
+		return err
+REDACTED
+	return s.cache.SetGrokVideoPendingBilling(ctx, key, payload, grokVideoPendingBillingTTL(s.cfg))
+REDACTED
+
+// LoadGrokVideoPendingBilling returns the create-time snapshot (may be nil on miss).
+func (s *OpenAIGatewayService) LoadGrokVideoPendingBilling(
+	ctx context.Context,
+	requestID string,
+	userID, apiKeyID int64,
+) (*GrokVideoPendingBilling, error) {
+	if s == nil || s.cache == nil {
+		return nil, fmt.Errorf("grok video pending billing cache is unavailable")
+REDACTED
+	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	if key == "" {
+		return nil, fmt.Errorf("grok video pending billing key is invalid")
+REDACTED
+	payload, err := s.cache.GetGrokVideoPendingBilling(ctx, key)
+	if err != nil || len(payload) == 0 {
+		return nil, err
+REDACTED
+	var pending GrokVideoPendingBilling
+	if err := json.Unmarshal(payload, &pending); err != nil {
+		return nil, err
+REDACTED
+	return &pending, nil
+REDACTED
+
+// ClaimGrokVideoBilling returns true once for a completed video request so status
+// polls do not double-bill. Fail-closed: claim errors are treated as already billed.
+func (s *OpenAIGatewayService) ClaimGrokVideoBilling(
+	ctx context.Context,
+	requestID string,
+	userID, apiKeyID int64,
+) (bool, error) {
+	if s == nil || s.cache == nil {
+		return false, fmt.Errorf("grok video billing claim cache is unavailable")
+REDACTED
+	key := grokVideoPendingBillingKey(requestID, userID, apiKeyID)
+	if key == "" {
+		return false, fmt.Errorf("grok video billing claim key is invalid")
+REDACTED
+	return s.cache.ClaimGrokVideoBilled(ctx, key, grokVideoBilledClaimTTL(s.cfg))
+REDACTED
+
+// IsGrokVideoStatusBillable reports whether a status response body has a downloadable
+// video URL (upstream success). Empty/pending/failed responses are not billable.
+func IsGrokVideoStatusBillable(statusBody []byte) bool {
+	return strings.TrimSpace(extractGrokVideoStatusContentURL(statusBody)) != ""
+REDACTED
+
+// extractGrokVideoStatusContentURL returns the first usable video URL from a status body.
+func extractGrokVideoStatusContentURL(body []byte) string {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return ""
+REDACTED
+	for _, path := range []string{
+		"video.url",
+		"url",
+		"download_url",
+		"video_url",
+		"data.video.url",
+		"data.url",
+		"data.download_url",
+REDACTED {
+		if u := strings.TrimSpace(gjson.GetBytes(body, path).String()); u != "" {
+			return u
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+// ExtractGrokVideoBillingFromStatusBody builds usage units from an upstream status
+// payload. Prefers status fields; falls back to create-time pending snapshot.
+func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideoPendingBilling, requestID string) *OpenAIForwardResult {
+	if !IsGrokVideoStatusBillable(statusBody) {
+		return nil
+REDACTED
+	model := ""
+	billingModel := ""
+	upstreamModel := ""
+	resolution := ""
+	durationSeconds := 0
+
+	if gjson.ValidBytes(statusBody) {
+		model = firstNonEmpty(
+			strings.TrimSpace(gjson.GetBytes(statusBody, "model").String()),
+			strings.TrimSpace(gjson.GetBytes(statusBody, "video.model").String()),
+			strings.TrimSpace(gjson.GetBytes(statusBody, "data.model").String()),
+		)
+		resolution = firstNonEmpty(
+			strings.TrimSpace(gjson.GetBytes(statusBody, "resolution").String()),
+			strings.TrimSpace(gjson.GetBytes(statusBody, "video.resolution").String()),
+			strings.TrimSpace(gjson.GetBytes(statusBody, "data.resolution").String()),
+		)
+		for _, path := range []string{"duration", "video.duration", "duration_seconds", "video.duration_seconds", "data.duration"REDACTED {
+			if v := gjson.GetBytes(statusBody, path); v.Exists() && v.Type == gjson.Number {
+				durationSeconds = int(v.Int())
+				break
+		REDACTED
+	REDACTED
+REDACTED
+	if pending != nil {
+		if model == "" {
+			model = firstNonEmpty(pending.BillingModel, pending.Model, pending.OriginalModel)
+	REDACTED
+		if billingModel == "" {
+			billingModel = firstNonEmpty(pending.BillingModel, pending.Model)
+	REDACTED
+		if upstreamModel == "" {
+			upstreamModel = pending.UpstreamModel
+	REDACTED
+		if resolution == "" {
+			resolution = pending.VideoResolution
+	REDACTED
+		if durationSeconds <= 0 {
+			durationSeconds = pending.VideoDurationSeconds
+	REDACTED
+REDACTED
+	if model == "" {
+		// Still bill once URL exists; pricing resolver uses model family defaults.
+		model = "grok-imagine-video"
+REDACTED
+	if billingModel == "" {
+		billingModel = model
+REDACTED
+	// Leave empty resolution / zero duration for the handler to merge create-time
+	// pending snapshot before applying defaults.
+	if resolution != "" {
+		resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+REDACTED
+	if durationSeconds > 0 {
+		durationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
+REDACTED
+	responseID := extractGrokMediaVideoRequestID(statusBody)
+	if responseID == "" {
+		responseID = strings.TrimSpace(requestID)
+REDACTED
+	return &OpenAIForwardResult{
+		ResponseID:           responseID,
+		Model:                model,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		VideoCount:           1,
+		VideoResolution:      resolution,
+		VideoDurationSeconds: durationSeconds,
+		// Keep legacy media-unit counter for existing usage displays.
+		ImageCount: 1,
+REDACTED
+REDACTED
+
 func (s *OpenAIGatewayService) ForwardGrokMedia(
 	ctx context.Context,
 	c *gin.Context,
@@ -437,12 +647,23 @@ REDACTED
 REDACTED
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	resultModel := requestModel
+	resultBillingModel := requestModel
+	if endpoint == GrokMediaEndpointVideoStatus {
+		// Status has no request body model; use upstream status fields when billable.
+		if m := strings.TrimSpace(usage.Model); m != "" {
+			resultModel = m
+	REDACTED
+		if m := strings.TrimSpace(usage.BillingModel); m != "" {
+			resultBillingModel = m
+	REDACTED
+REDACTED
 	return &OpenAIForwardResult{
 		RequestID:            requestIDHeader,
 		ResponseID:           usage.ResponseID,
 		Usage:                usage.Usage,
-		Model:                requestModel,
-		BillingModel:         requestModel,
+		Model:                resultModel,
+		BillingModel:         resultBillingModel,
 		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
@@ -783,6 +1004,8 @@ REDACTED
 type grokMediaUsageMetadata struct {
 	ResponseID           string
 	Usage                OpenAIUsage
+	Model                string
+	BillingModel         string
 	ImageCount           int
 	ImageSize            string
 	ImageInputSize       string
@@ -802,12 +1025,25 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 		meta.ImageInputSize = requestInfo.Size
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
 	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
+		// Async video: capture request_id + create-time pricing params only.
+		// Billable VideoCount is set later when status polling observes video.url.
 		meta.ResponseID = extractGrokMediaVideoRequestID(responseBody)
-		meta.VideoCount = 1
 		meta.VideoResolution = requestInfo.Resolution
 		meta.VideoDurationSeconds = requestInfo.DurationSeconds
-		// Keep the legacy media-unit counter populated for existing usage displays.
-		meta.ImageCount = 1
+	case GrokMediaEndpointVideoStatus:
+		// Prefer status-body URL success + upstream duration/resolution when present.
+		if IsGrokVideoStatusBillable(responseBody) {
+			// provisional units; handler merges with pending snapshot before RecordUsage.
+			if billed := ExtractGrokVideoBillingFromStatusBody(responseBody, nil, ""); billed != nil {
+				meta.ResponseID = billed.ResponseID
+				meta.Model = billed.Model
+				meta.BillingModel = billed.BillingModel
+				meta.VideoCount = billed.VideoCount
+				meta.VideoResolution = billed.VideoResolution
+				meta.VideoDurationSeconds = billed.VideoDurationSeconds
+				meta.ImageCount = billed.ImageCount
+		REDACTED
+	REDACTED
 REDACTED
 	return meta
 REDACTED

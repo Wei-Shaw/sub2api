@@ -476,6 +476,15 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+
+	// Grok async video billing snapshot (create → status success).
+	// SetGrokVideoPendingBilling stores create-time model/duration/resolution for status billing.
+	SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error
+	// GetGrokVideoPendingBilling returns the create-time billing snapshot; miss → nil, nil.
+	GetGrokVideoPendingBilling(ctx context.Context, key string) ([]byte, error)
+	// ClaimGrokVideoBilled atomically marks a video request as billed (SetNX).
+	// Returns true when this caller won the claim; false when already billed or claim unavailable.
+	ClaimGrokVideoBilled(ctx context.Context, key string, ttl time.Duration) (bool, error)
 REDACTED
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
