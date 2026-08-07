@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 	"golang.org/x/net/http/httpguts"
 )
 
@@ -14,15 +17,21 @@ const openAICodexRoutingHintHeader = "x-codex-routing-hint"
 // OpenAI OAuth requests. The request model must already be the final upstream
 // slug and serviceTier must already reflect any local policy rewrite/filter.
 func setOpenAICodexRoutingHint(headers http.Header, account *Account, model string, serviceTier string) {
-	if headers == nil || account == nil || !account.IsOpenAIOAuth() {
+	if headers == nil {
 		return
 REDACTED
 
-	// OAuth headers are built afresh for every request/dial, but delete first so
-	// callers updating a cached header set cannot retain a stale routing hint.
-	headers.Del(openAICodexRoutingHintHeader)
+	// The routing hint is gateway-owned. Strip every spelling before deciding
+	// whether to synthesize it so API-key/provider credential paths cannot pass
+	// through a caller- or account-override-supplied hint. http.Header.Del only
+	// removes the canonical map key; inbound maps can contain raw lowercase keys.
+	deleteOpenAIHeaderEqualFold(headers, openAICodexRoutingHintHeader)
+	if account == nil || !account.IsOpenAIOAuth() {
+		return
+REDACTED
+
 	model = strings.TrimSpace(model)
-	if model == "" {
+	if model == "" || strings.ContainsAny(model, ";=") {
 		return
 REDACTED
 
@@ -50,7 +59,70 @@ REDACTED
 	headers.Set(openAICodexRoutingHintHeader, hint)
 REDACTED
 
+func deleteOpenAIHeaderEqualFold(headers http.Header, name string) {
+	if headers == nil {
+		return
+REDACTED
+	name = strings.TrimSpace(name)
+	for key := range headers {
+		if strings.EqualFold(strings.TrimSpace(key), name) {
+			delete(headers, key)
+	REDACTED
+REDACTED
+REDACTED
+
 func setOpenAICodexRoutingHintFromBody(headers http.Header, account *Account, body []byte) {
 	fields := gjson.GetManyBytes(body, "model", "service_tier")
 	setOpenAICodexRoutingHint(headers, account, fields[0].String(), fields[1].String())
+REDACTED
+
+// logOpenAIRoutingDiagnostics records only gateway-derived routing state. In
+// particular, it deliberately does not include any header values, tokens, or
+// credentials because these diagnostics run on authentication-bearing paths.
+func logOpenAIRoutingDiagnostics(
+	ctx context.Context,
+	account *Account,
+	transport string,
+	model string,
+	serviceTier string,
+	hintGenerated bool,
+	wsAffinityDecision string,
+) {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	accountID := int64(0)
+	if account != nil {
+		accountID = account.ID
+REDACTED
+
+	logger.FromContext(ctx).Debug("openai routing decision",
+		zap.String("component", "service.openai_routing"),
+		zap.String("transport", strings.TrimSpace(transport)),
+		zap.Int64("account_id", accountID),
+		zap.String("final_model", strings.TrimSpace(model)),
+		zap.String("final_service_tier", normalizedOpenAIServiceTierValue(serviceTier)),
+		zap.Bool("routing_hint_generated", hintGenerated),
+		zap.String("ws_affinity_decision", strings.TrimSpace(wsAffinityDecision)),
+	)
+REDACTED
+
+func logOpenAIRoutingDiagnosticsFromBody(
+	ctx context.Context,
+	account *Account,
+	transport string,
+	headers http.Header,
+	body []byte,
+	wsAffinityDecision string,
+) {
+	fields := gjson.GetManyBytes(body, "model", "service_tier")
+	logOpenAIRoutingDiagnostics(
+		ctx,
+		account,
+		transport,
+		fields[0].String(),
+		fields[1].String(),
+		strings.TrimSpace(headers.Get(openAICodexRoutingHintHeader)) != "",
+		wsAffinityDecision,
+	)
 REDACTED
