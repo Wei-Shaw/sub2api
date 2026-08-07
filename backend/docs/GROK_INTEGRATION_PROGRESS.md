@@ -19,3 +19,9 @@
 ## 原则
 
 以 main 为底重写，不整文件 pick personal-dev；migration 使用新序号（如 217）。
+
+## 续：阶段 4–6
+
+4. free 档软门禁 + 402/消费上限临时下线（config gateway.grok.free_quota_*）
+5. 媒体 usage 门控 + 分组 VideoModelPrices 输入（voice 暂缓）
+6. 前端 SSO/密码 API + 凭证安全（active-delta 默认关：main 未整包移植）
