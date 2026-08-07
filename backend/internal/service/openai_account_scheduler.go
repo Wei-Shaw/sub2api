@@ -1248,6 +1248,12 @@ REDACTED
 		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
 			continue
 	REDACTED
+		// Keep weighted sticky fallback subject to the same free-tier gate as the
+		// normal and sticky selection paths. Otherwise an over-quota free account
+		// could be reintroduced after the primary candidate pass.
+		if len(s.filterGrokFreeQuotaAccounts(ctx, []Account{*accountREDACTED)) == 0 {
+			continue
+	REDACTED
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
 		if acquireErr != nil {
 			return nil, acquireErr
