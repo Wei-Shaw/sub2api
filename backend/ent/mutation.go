@@ -52,6 +52,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -105,6 +106,7 @@ const (
 	TypeUserAttributeValue            = "UserAttributeValue"
 	TypeUserPlatformQuota             = "UserPlatformQuota"
 	TypeUserSubscription              = "UserSubscription"
+	TypeWeb3Deposit                   = "Web3Deposit"
 	TypeWeb3DepositAddress            = "Web3DepositAddress"
 	TypeWeb3DepositWallet             = "Web3DepositWallet"
 )
@@ -55639,6 +55641,1931 @@ func (m *UserSubscriptionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown UserSubscription edge %s", name)
+}
+
+// Web3DepositMutation represents an operation that mutates the Web3Deposit nodes in the graph.
+type Web3DepositMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *int64
+	created_at            *time.Time
+	updated_at            *time.Time
+	user_id               *int64
+	adduser_id            *int64
+	deposit_address_id    *int64
+	adddeposit_address_id *int64
+	chain_id              *int64
+	addchain_id           *int64
+	token_contract        *string
+	tx_hash               *string
+	log_index             *int64
+	addlog_index          *int64
+	block_number          *int64
+	addblock_number       *int64
+	block_hash            *string
+	from_address          *string
+	to_address            *string
+	raw_amount            *string
+	token_decimals        *int16
+	addtoken_decimals     *int16
+	token_amount          *string
+	credited_amount       *string
+	status                *string
+	review_reason         *string
+	failure_reason        *string
+	retry_count           *int32
+	addretry_count        *int32
+	next_retry_at         *time.Time
+	detected_at           *time.Time
+	finalized_at          *time.Time
+	credited_at           *time.Time
+	clearedFields         map[string]struct{}
+	done                  bool
+	oldValue              func(context.Context) (*Web3Deposit, error)
+	predicates            []predicate.Web3Deposit
+}
+
+var _ ent.Mutation = (*Web3DepositMutation)(nil)
+
+// web3depositOption allows management of the mutation configuration using functional options.
+type web3depositOption func(*Web3DepositMutation)
+
+// newWeb3DepositMutation creates new mutation for the Web3Deposit entity.
+func newWeb3DepositMutation(c config, op Op, opts ...web3depositOption) *Web3DepositMutation {
+	m := &Web3DepositMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeWeb3Deposit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withWeb3DepositID sets the ID field of the mutation.
+func withWeb3DepositID(id int64) web3depositOption {
+	return func(m *Web3DepositMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *Web3Deposit
+		)
+		m.oldValue = func(ctx context.Context) (*Web3Deposit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().Web3Deposit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withWeb3Deposit sets the old Web3Deposit of the mutation.
+func withWeb3Deposit(node *Web3Deposit) web3depositOption {
+	return func(m *Web3DepositMutation) {
+		m.oldValue = func(context.Context) (*Web3Deposit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m Web3DepositMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m Web3DepositMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of Web3Deposit entities.
+func (m *Web3DepositMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *Web3DepositMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *Web3DepositMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().Web3Deposit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *Web3DepositMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *Web3DepositMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *Web3DepositMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *Web3DepositMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *Web3DepositMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *Web3DepositMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *Web3DepositMutation) SetUserID(i int64) {
+	m.user_id = &i
+	m.adduser_id = nil
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *Web3DepositMutation) UserID() (r int64, exists bool) {
+	v := m.user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// AddUserID adds i to the "user_id" field.
+func (m *Web3DepositMutation) AddUserID(i int64) {
+	if m.adduser_id != nil {
+		*m.adduser_id += i
+	} else {
+		m.adduser_id = &i
+	}
+}
+
+// AddedUserID returns the value that was added to the "user_id" field in this mutation.
+func (m *Web3DepositMutation) AddedUserID() (r int64, exists bool) {
+	v := m.adduser_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *Web3DepositMutation) ResetUserID() {
+	m.user_id = nil
+	m.adduser_id = nil
+}
+
+// SetDepositAddressID sets the "deposit_address_id" field.
+func (m *Web3DepositMutation) SetDepositAddressID(i int64) {
+	m.deposit_address_id = &i
+	m.adddeposit_address_id = nil
+}
+
+// DepositAddressID returns the value of the "deposit_address_id" field in the mutation.
+func (m *Web3DepositMutation) DepositAddressID() (r int64, exists bool) {
+	v := m.deposit_address_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDepositAddressID returns the old "deposit_address_id" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldDepositAddressID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDepositAddressID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDepositAddressID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDepositAddressID: %w", err)
+	}
+	return oldValue.DepositAddressID, nil
+}
+
+// AddDepositAddressID adds i to the "deposit_address_id" field.
+func (m *Web3DepositMutation) AddDepositAddressID(i int64) {
+	if m.adddeposit_address_id != nil {
+		*m.adddeposit_address_id += i
+	} else {
+		m.adddeposit_address_id = &i
+	}
+}
+
+// AddedDepositAddressID returns the value that was added to the "deposit_address_id" field in this mutation.
+func (m *Web3DepositMutation) AddedDepositAddressID() (r int64, exists bool) {
+	v := m.adddeposit_address_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDepositAddressID resets all changes to the "deposit_address_id" field.
+func (m *Web3DepositMutation) ResetDepositAddressID() {
+	m.deposit_address_id = nil
+	m.adddeposit_address_id = nil
+}
+
+// SetChainID sets the "chain_id" field.
+func (m *Web3DepositMutation) SetChainID(i int64) {
+	m.chain_id = &i
+	m.addchain_id = nil
+}
+
+// ChainID returns the value of the "chain_id" field in the mutation.
+func (m *Web3DepositMutation) ChainID() (r int64, exists bool) {
+	v := m.chain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChainID returns the old "chain_id" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldChainID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChainID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChainID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChainID: %w", err)
+	}
+	return oldValue.ChainID, nil
+}
+
+// AddChainID adds i to the "chain_id" field.
+func (m *Web3DepositMutation) AddChainID(i int64) {
+	if m.addchain_id != nil {
+		*m.addchain_id += i
+	} else {
+		m.addchain_id = &i
+	}
+}
+
+// AddedChainID returns the value that was added to the "chain_id" field in this mutation.
+func (m *Web3DepositMutation) AddedChainID() (r int64, exists bool) {
+	v := m.addchain_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChainID resets all changes to the "chain_id" field.
+func (m *Web3DepositMutation) ResetChainID() {
+	m.chain_id = nil
+	m.addchain_id = nil
+}
+
+// SetTokenContract sets the "token_contract" field.
+func (m *Web3DepositMutation) SetTokenContract(s string) {
+	m.token_contract = &s
+}
+
+// TokenContract returns the value of the "token_contract" field in the mutation.
+func (m *Web3DepositMutation) TokenContract() (r string, exists bool) {
+	v := m.token_contract
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenContract returns the old "token_contract" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldTokenContract(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenContract is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenContract requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenContract: %w", err)
+	}
+	return oldValue.TokenContract, nil
+}
+
+// ResetTokenContract resets all changes to the "token_contract" field.
+func (m *Web3DepositMutation) ResetTokenContract() {
+	m.token_contract = nil
+}
+
+// SetTxHash sets the "tx_hash" field.
+func (m *Web3DepositMutation) SetTxHash(s string) {
+	m.tx_hash = &s
+}
+
+// TxHash returns the value of the "tx_hash" field in the mutation.
+func (m *Web3DepositMutation) TxHash() (r string, exists bool) {
+	v := m.tx_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTxHash returns the old "tx_hash" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldTxHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTxHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTxHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTxHash: %w", err)
+	}
+	return oldValue.TxHash, nil
+}
+
+// ResetTxHash resets all changes to the "tx_hash" field.
+func (m *Web3DepositMutation) ResetTxHash() {
+	m.tx_hash = nil
+}
+
+// SetLogIndex sets the "log_index" field.
+func (m *Web3DepositMutation) SetLogIndex(i int64) {
+	m.log_index = &i
+	m.addlog_index = nil
+}
+
+// LogIndex returns the value of the "log_index" field in the mutation.
+func (m *Web3DepositMutation) LogIndex() (r int64, exists bool) {
+	v := m.log_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLogIndex returns the old "log_index" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldLogIndex(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLogIndex is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLogIndex requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLogIndex: %w", err)
+	}
+	return oldValue.LogIndex, nil
+}
+
+// AddLogIndex adds i to the "log_index" field.
+func (m *Web3DepositMutation) AddLogIndex(i int64) {
+	if m.addlog_index != nil {
+		*m.addlog_index += i
+	} else {
+		m.addlog_index = &i
+	}
+}
+
+// AddedLogIndex returns the value that was added to the "log_index" field in this mutation.
+func (m *Web3DepositMutation) AddedLogIndex() (r int64, exists bool) {
+	v := m.addlog_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLogIndex resets all changes to the "log_index" field.
+func (m *Web3DepositMutation) ResetLogIndex() {
+	m.log_index = nil
+	m.addlog_index = nil
+}
+
+// SetBlockNumber sets the "block_number" field.
+func (m *Web3DepositMutation) SetBlockNumber(i int64) {
+	m.block_number = &i
+	m.addblock_number = nil
+}
+
+// BlockNumber returns the value of the "block_number" field in the mutation.
+func (m *Web3DepositMutation) BlockNumber() (r int64, exists bool) {
+	v := m.block_number
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBlockNumber returns the old "block_number" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldBlockNumber(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBlockNumber is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBlockNumber requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBlockNumber: %w", err)
+	}
+	return oldValue.BlockNumber, nil
+}
+
+// AddBlockNumber adds i to the "block_number" field.
+func (m *Web3DepositMutation) AddBlockNumber(i int64) {
+	if m.addblock_number != nil {
+		*m.addblock_number += i
+	} else {
+		m.addblock_number = &i
+	}
+}
+
+// AddedBlockNumber returns the value that was added to the "block_number" field in this mutation.
+func (m *Web3DepositMutation) AddedBlockNumber() (r int64, exists bool) {
+	v := m.addblock_number
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBlockNumber resets all changes to the "block_number" field.
+func (m *Web3DepositMutation) ResetBlockNumber() {
+	m.block_number = nil
+	m.addblock_number = nil
+}
+
+// SetBlockHash sets the "block_hash" field.
+func (m *Web3DepositMutation) SetBlockHash(s string) {
+	m.block_hash = &s
+}
+
+// BlockHash returns the value of the "block_hash" field in the mutation.
+func (m *Web3DepositMutation) BlockHash() (r string, exists bool) {
+	v := m.block_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBlockHash returns the old "block_hash" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldBlockHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBlockHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBlockHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBlockHash: %w", err)
+	}
+	return oldValue.BlockHash, nil
+}
+
+// ResetBlockHash resets all changes to the "block_hash" field.
+func (m *Web3DepositMutation) ResetBlockHash() {
+	m.block_hash = nil
+}
+
+// SetFromAddress sets the "from_address" field.
+func (m *Web3DepositMutation) SetFromAddress(s string) {
+	m.from_address = &s
+}
+
+// FromAddress returns the value of the "from_address" field in the mutation.
+func (m *Web3DepositMutation) FromAddress() (r string, exists bool) {
+	v := m.from_address
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFromAddress returns the old "from_address" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldFromAddress(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFromAddress is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFromAddress requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFromAddress: %w", err)
+	}
+	return oldValue.FromAddress, nil
+}
+
+// ResetFromAddress resets all changes to the "from_address" field.
+func (m *Web3DepositMutation) ResetFromAddress() {
+	m.from_address = nil
+}
+
+// SetToAddress sets the "to_address" field.
+func (m *Web3DepositMutation) SetToAddress(s string) {
+	m.to_address = &s
+}
+
+// ToAddress returns the value of the "to_address" field in the mutation.
+func (m *Web3DepositMutation) ToAddress() (r string, exists bool) {
+	v := m.to_address
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldToAddress returns the old "to_address" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldToAddress(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldToAddress is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldToAddress requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldToAddress: %w", err)
+	}
+	return oldValue.ToAddress, nil
+}
+
+// ResetToAddress resets all changes to the "to_address" field.
+func (m *Web3DepositMutation) ResetToAddress() {
+	m.to_address = nil
+}
+
+// SetRawAmount sets the "raw_amount" field.
+func (m *Web3DepositMutation) SetRawAmount(s string) {
+	m.raw_amount = &s
+}
+
+// RawAmount returns the value of the "raw_amount" field in the mutation.
+func (m *Web3DepositMutation) RawAmount() (r string, exists bool) {
+	v := m.raw_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRawAmount returns the old "raw_amount" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldRawAmount(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRawAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRawAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRawAmount: %w", err)
+	}
+	return oldValue.RawAmount, nil
+}
+
+// ResetRawAmount resets all changes to the "raw_amount" field.
+func (m *Web3DepositMutation) ResetRawAmount() {
+	m.raw_amount = nil
+}
+
+// SetTokenDecimals sets the "token_decimals" field.
+func (m *Web3DepositMutation) SetTokenDecimals(i int16) {
+	m.token_decimals = &i
+	m.addtoken_decimals = nil
+}
+
+// TokenDecimals returns the value of the "token_decimals" field in the mutation.
+func (m *Web3DepositMutation) TokenDecimals() (r int16, exists bool) {
+	v := m.token_decimals
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenDecimals returns the old "token_decimals" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldTokenDecimals(ctx context.Context) (v int16, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenDecimals is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenDecimals requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenDecimals: %w", err)
+	}
+	return oldValue.TokenDecimals, nil
+}
+
+// AddTokenDecimals adds i to the "token_decimals" field.
+func (m *Web3DepositMutation) AddTokenDecimals(i int16) {
+	if m.addtoken_decimals != nil {
+		*m.addtoken_decimals += i
+	} else {
+		m.addtoken_decimals = &i
+	}
+}
+
+// AddedTokenDecimals returns the value that was added to the "token_decimals" field in this mutation.
+func (m *Web3DepositMutation) AddedTokenDecimals() (r int16, exists bool) {
+	v := m.addtoken_decimals
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTokenDecimals resets all changes to the "token_decimals" field.
+func (m *Web3DepositMutation) ResetTokenDecimals() {
+	m.token_decimals = nil
+	m.addtoken_decimals = nil
+}
+
+// SetTokenAmount sets the "token_amount" field.
+func (m *Web3DepositMutation) SetTokenAmount(s string) {
+	m.token_amount = &s
+}
+
+// TokenAmount returns the value of the "token_amount" field in the mutation.
+func (m *Web3DepositMutation) TokenAmount() (r string, exists bool) {
+	v := m.token_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenAmount returns the old "token_amount" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldTokenAmount(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenAmount: %w", err)
+	}
+	return oldValue.TokenAmount, nil
+}
+
+// ResetTokenAmount resets all changes to the "token_amount" field.
+func (m *Web3DepositMutation) ResetTokenAmount() {
+	m.token_amount = nil
+}
+
+// SetCreditedAmount sets the "credited_amount" field.
+func (m *Web3DepositMutation) SetCreditedAmount(s string) {
+	m.credited_amount = &s
+}
+
+// CreditedAmount returns the value of the "credited_amount" field in the mutation.
+func (m *Web3DepositMutation) CreditedAmount() (r string, exists bool) {
+	v := m.credited_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreditedAmount returns the old "credited_amount" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldCreditedAmount(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreditedAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreditedAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreditedAmount: %w", err)
+	}
+	return oldValue.CreditedAmount, nil
+}
+
+// ClearCreditedAmount clears the value of the "credited_amount" field.
+func (m *Web3DepositMutation) ClearCreditedAmount() {
+	m.credited_amount = nil
+	m.clearedFields[web3deposit.FieldCreditedAmount] = struct{}{}
+}
+
+// CreditedAmountCleared returns if the "credited_amount" field was cleared in this mutation.
+func (m *Web3DepositMutation) CreditedAmountCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldCreditedAmount]
+	return ok
+}
+
+// ResetCreditedAmount resets all changes to the "credited_amount" field.
+func (m *Web3DepositMutation) ResetCreditedAmount() {
+	m.credited_amount = nil
+	delete(m.clearedFields, web3deposit.FieldCreditedAmount)
+}
+
+// SetStatus sets the "status" field.
+func (m *Web3DepositMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *Web3DepositMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *Web3DepositMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetReviewReason sets the "review_reason" field.
+func (m *Web3DepositMutation) SetReviewReason(s string) {
+	m.review_reason = &s
+}
+
+// ReviewReason returns the value of the "review_reason" field in the mutation.
+func (m *Web3DepositMutation) ReviewReason() (r string, exists bool) {
+	v := m.review_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReviewReason returns the old "review_reason" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldReviewReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReviewReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReviewReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReviewReason: %w", err)
+	}
+	return oldValue.ReviewReason, nil
+}
+
+// ClearReviewReason clears the value of the "review_reason" field.
+func (m *Web3DepositMutation) ClearReviewReason() {
+	m.review_reason = nil
+	m.clearedFields[web3deposit.FieldReviewReason] = struct{}{}
+}
+
+// ReviewReasonCleared returns if the "review_reason" field was cleared in this mutation.
+func (m *Web3DepositMutation) ReviewReasonCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldReviewReason]
+	return ok
+}
+
+// ResetReviewReason resets all changes to the "review_reason" field.
+func (m *Web3DepositMutation) ResetReviewReason() {
+	m.review_reason = nil
+	delete(m.clearedFields, web3deposit.FieldReviewReason)
+}
+
+// SetFailureReason sets the "failure_reason" field.
+func (m *Web3DepositMutation) SetFailureReason(s string) {
+	m.failure_reason = &s
+}
+
+// FailureReason returns the value of the "failure_reason" field in the mutation.
+func (m *Web3DepositMutation) FailureReason() (r string, exists bool) {
+	v := m.failure_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailureReason returns the old "failure_reason" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldFailureReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailureReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailureReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailureReason: %w", err)
+	}
+	return oldValue.FailureReason, nil
+}
+
+// ClearFailureReason clears the value of the "failure_reason" field.
+func (m *Web3DepositMutation) ClearFailureReason() {
+	m.failure_reason = nil
+	m.clearedFields[web3deposit.FieldFailureReason] = struct{}{}
+}
+
+// FailureReasonCleared returns if the "failure_reason" field was cleared in this mutation.
+func (m *Web3DepositMutation) FailureReasonCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldFailureReason]
+	return ok
+}
+
+// ResetFailureReason resets all changes to the "failure_reason" field.
+func (m *Web3DepositMutation) ResetFailureReason() {
+	m.failure_reason = nil
+	delete(m.clearedFields, web3deposit.FieldFailureReason)
+}
+
+// SetRetryCount sets the "retry_count" field.
+func (m *Web3DepositMutation) SetRetryCount(i int32) {
+	m.retry_count = &i
+	m.addretry_count = nil
+}
+
+// RetryCount returns the value of the "retry_count" field in the mutation.
+func (m *Web3DepositMutation) RetryCount() (r int32, exists bool) {
+	v := m.retry_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRetryCount returns the old "retry_count" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldRetryCount(ctx context.Context) (v int32, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRetryCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRetryCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRetryCount: %w", err)
+	}
+	return oldValue.RetryCount, nil
+}
+
+// AddRetryCount adds i to the "retry_count" field.
+func (m *Web3DepositMutation) AddRetryCount(i int32) {
+	if m.addretry_count != nil {
+		*m.addretry_count += i
+	} else {
+		m.addretry_count = &i
+	}
+}
+
+// AddedRetryCount returns the value that was added to the "retry_count" field in this mutation.
+func (m *Web3DepositMutation) AddedRetryCount() (r int32, exists bool) {
+	v := m.addretry_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRetryCount resets all changes to the "retry_count" field.
+func (m *Web3DepositMutation) ResetRetryCount() {
+	m.retry_count = nil
+	m.addretry_count = nil
+}
+
+// SetNextRetryAt sets the "next_retry_at" field.
+func (m *Web3DepositMutation) SetNextRetryAt(t time.Time) {
+	m.next_retry_at = &t
+}
+
+// NextRetryAt returns the value of the "next_retry_at" field in the mutation.
+func (m *Web3DepositMutation) NextRetryAt() (r time.Time, exists bool) {
+	v := m.next_retry_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextRetryAt returns the old "next_retry_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldNextRetryAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextRetryAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextRetryAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextRetryAt: %w", err)
+	}
+	return oldValue.NextRetryAt, nil
+}
+
+// ClearNextRetryAt clears the value of the "next_retry_at" field.
+func (m *Web3DepositMutation) ClearNextRetryAt() {
+	m.next_retry_at = nil
+	m.clearedFields[web3deposit.FieldNextRetryAt] = struct{}{}
+}
+
+// NextRetryAtCleared returns if the "next_retry_at" field was cleared in this mutation.
+func (m *Web3DepositMutation) NextRetryAtCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldNextRetryAt]
+	return ok
+}
+
+// ResetNextRetryAt resets all changes to the "next_retry_at" field.
+func (m *Web3DepositMutation) ResetNextRetryAt() {
+	m.next_retry_at = nil
+	delete(m.clearedFields, web3deposit.FieldNextRetryAt)
+}
+
+// SetDetectedAt sets the "detected_at" field.
+func (m *Web3DepositMutation) SetDetectedAt(t time.Time) {
+	m.detected_at = &t
+}
+
+// DetectedAt returns the value of the "detected_at" field in the mutation.
+func (m *Web3DepositMutation) DetectedAt() (r time.Time, exists bool) {
+	v := m.detected_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDetectedAt returns the old "detected_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldDetectedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDetectedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDetectedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDetectedAt: %w", err)
+	}
+	return oldValue.DetectedAt, nil
+}
+
+// ResetDetectedAt resets all changes to the "detected_at" field.
+func (m *Web3DepositMutation) ResetDetectedAt() {
+	m.detected_at = nil
+}
+
+// SetFinalizedAt sets the "finalized_at" field.
+func (m *Web3DepositMutation) SetFinalizedAt(t time.Time) {
+	m.finalized_at = &t
+}
+
+// FinalizedAt returns the value of the "finalized_at" field in the mutation.
+func (m *Web3DepositMutation) FinalizedAt() (r time.Time, exists bool) {
+	v := m.finalized_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinalizedAt returns the old "finalized_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldFinalizedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinalizedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinalizedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinalizedAt: %w", err)
+	}
+	return oldValue.FinalizedAt, nil
+}
+
+// ClearFinalizedAt clears the value of the "finalized_at" field.
+func (m *Web3DepositMutation) ClearFinalizedAt() {
+	m.finalized_at = nil
+	m.clearedFields[web3deposit.FieldFinalizedAt] = struct{}{}
+}
+
+// FinalizedAtCleared returns if the "finalized_at" field was cleared in this mutation.
+func (m *Web3DepositMutation) FinalizedAtCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldFinalizedAt]
+	return ok
+}
+
+// ResetFinalizedAt resets all changes to the "finalized_at" field.
+func (m *Web3DepositMutation) ResetFinalizedAt() {
+	m.finalized_at = nil
+	delete(m.clearedFields, web3deposit.FieldFinalizedAt)
+}
+
+// SetCreditedAt sets the "credited_at" field.
+func (m *Web3DepositMutation) SetCreditedAt(t time.Time) {
+	m.credited_at = &t
+}
+
+// CreditedAt returns the value of the "credited_at" field in the mutation.
+func (m *Web3DepositMutation) CreditedAt() (r time.Time, exists bool) {
+	v := m.credited_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreditedAt returns the old "credited_at" field's value of the Web3Deposit entity.
+// If the Web3Deposit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *Web3DepositMutation) OldCreditedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreditedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreditedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreditedAt: %w", err)
+	}
+	return oldValue.CreditedAt, nil
+}
+
+// ClearCreditedAt clears the value of the "credited_at" field.
+func (m *Web3DepositMutation) ClearCreditedAt() {
+	m.credited_at = nil
+	m.clearedFields[web3deposit.FieldCreditedAt] = struct{}{}
+}
+
+// CreditedAtCleared returns if the "credited_at" field was cleared in this mutation.
+func (m *Web3DepositMutation) CreditedAtCleared() bool {
+	_, ok := m.clearedFields[web3deposit.FieldCreditedAt]
+	return ok
+}
+
+// ResetCreditedAt resets all changes to the "credited_at" field.
+func (m *Web3DepositMutation) ResetCreditedAt() {
+	m.credited_at = nil
+	delete(m.clearedFields, web3deposit.FieldCreditedAt)
+}
+
+// Where appends a list predicates to the Web3DepositMutation builder.
+func (m *Web3DepositMutation) Where(ps ...predicate.Web3Deposit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the Web3DepositMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *Web3DepositMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.Web3Deposit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *Web3DepositMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *Web3DepositMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (Web3Deposit).
+func (m *Web3DepositMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *Web3DepositMutation) Fields() []string {
+	fields := make([]string, 0, 24)
+	if m.created_at != nil {
+		fields = append(fields, web3deposit.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, web3deposit.FieldUpdatedAt)
+	}
+	if m.user_id != nil {
+		fields = append(fields, web3deposit.FieldUserID)
+	}
+	if m.deposit_address_id != nil {
+		fields = append(fields, web3deposit.FieldDepositAddressID)
+	}
+	if m.chain_id != nil {
+		fields = append(fields, web3deposit.FieldChainID)
+	}
+	if m.token_contract != nil {
+		fields = append(fields, web3deposit.FieldTokenContract)
+	}
+	if m.tx_hash != nil {
+		fields = append(fields, web3deposit.FieldTxHash)
+	}
+	if m.log_index != nil {
+		fields = append(fields, web3deposit.FieldLogIndex)
+	}
+	if m.block_number != nil {
+		fields = append(fields, web3deposit.FieldBlockNumber)
+	}
+	if m.block_hash != nil {
+		fields = append(fields, web3deposit.FieldBlockHash)
+	}
+	if m.from_address != nil {
+		fields = append(fields, web3deposit.FieldFromAddress)
+	}
+	if m.to_address != nil {
+		fields = append(fields, web3deposit.FieldToAddress)
+	}
+	if m.raw_amount != nil {
+		fields = append(fields, web3deposit.FieldRawAmount)
+	}
+	if m.token_decimals != nil {
+		fields = append(fields, web3deposit.FieldTokenDecimals)
+	}
+	if m.token_amount != nil {
+		fields = append(fields, web3deposit.FieldTokenAmount)
+	}
+	if m.credited_amount != nil {
+		fields = append(fields, web3deposit.FieldCreditedAmount)
+	}
+	if m.status != nil {
+		fields = append(fields, web3deposit.FieldStatus)
+	}
+	if m.review_reason != nil {
+		fields = append(fields, web3deposit.FieldReviewReason)
+	}
+	if m.failure_reason != nil {
+		fields = append(fields, web3deposit.FieldFailureReason)
+	}
+	if m.retry_count != nil {
+		fields = append(fields, web3deposit.FieldRetryCount)
+	}
+	if m.next_retry_at != nil {
+		fields = append(fields, web3deposit.FieldNextRetryAt)
+	}
+	if m.detected_at != nil {
+		fields = append(fields, web3deposit.FieldDetectedAt)
+	}
+	if m.finalized_at != nil {
+		fields = append(fields, web3deposit.FieldFinalizedAt)
+	}
+	if m.credited_at != nil {
+		fields = append(fields, web3deposit.FieldCreditedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *Web3DepositMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case web3deposit.FieldCreatedAt:
+		return m.CreatedAt()
+	case web3deposit.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case web3deposit.FieldUserID:
+		return m.UserID()
+	case web3deposit.FieldDepositAddressID:
+		return m.DepositAddressID()
+	case web3deposit.FieldChainID:
+		return m.ChainID()
+	case web3deposit.FieldTokenContract:
+		return m.TokenContract()
+	case web3deposit.FieldTxHash:
+		return m.TxHash()
+	case web3deposit.FieldLogIndex:
+		return m.LogIndex()
+	case web3deposit.FieldBlockNumber:
+		return m.BlockNumber()
+	case web3deposit.FieldBlockHash:
+		return m.BlockHash()
+	case web3deposit.FieldFromAddress:
+		return m.FromAddress()
+	case web3deposit.FieldToAddress:
+		return m.ToAddress()
+	case web3deposit.FieldRawAmount:
+		return m.RawAmount()
+	case web3deposit.FieldTokenDecimals:
+		return m.TokenDecimals()
+	case web3deposit.FieldTokenAmount:
+		return m.TokenAmount()
+	case web3deposit.FieldCreditedAmount:
+		return m.CreditedAmount()
+	case web3deposit.FieldStatus:
+		return m.Status()
+	case web3deposit.FieldReviewReason:
+		return m.ReviewReason()
+	case web3deposit.FieldFailureReason:
+		return m.FailureReason()
+	case web3deposit.FieldRetryCount:
+		return m.RetryCount()
+	case web3deposit.FieldNextRetryAt:
+		return m.NextRetryAt()
+	case web3deposit.FieldDetectedAt:
+		return m.DetectedAt()
+	case web3deposit.FieldFinalizedAt:
+		return m.FinalizedAt()
+	case web3deposit.FieldCreditedAt:
+		return m.CreditedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *Web3DepositMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case web3deposit.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case web3deposit.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case web3deposit.FieldUserID:
+		return m.OldUserID(ctx)
+	case web3deposit.FieldDepositAddressID:
+		return m.OldDepositAddressID(ctx)
+	case web3deposit.FieldChainID:
+		return m.OldChainID(ctx)
+	case web3deposit.FieldTokenContract:
+		return m.OldTokenContract(ctx)
+	case web3deposit.FieldTxHash:
+		return m.OldTxHash(ctx)
+	case web3deposit.FieldLogIndex:
+		return m.OldLogIndex(ctx)
+	case web3deposit.FieldBlockNumber:
+		return m.OldBlockNumber(ctx)
+	case web3deposit.FieldBlockHash:
+		return m.OldBlockHash(ctx)
+	case web3deposit.FieldFromAddress:
+		return m.OldFromAddress(ctx)
+	case web3deposit.FieldToAddress:
+		return m.OldToAddress(ctx)
+	case web3deposit.FieldRawAmount:
+		return m.OldRawAmount(ctx)
+	case web3deposit.FieldTokenDecimals:
+		return m.OldTokenDecimals(ctx)
+	case web3deposit.FieldTokenAmount:
+		return m.OldTokenAmount(ctx)
+	case web3deposit.FieldCreditedAmount:
+		return m.OldCreditedAmount(ctx)
+	case web3deposit.FieldStatus:
+		return m.OldStatus(ctx)
+	case web3deposit.FieldReviewReason:
+		return m.OldReviewReason(ctx)
+	case web3deposit.FieldFailureReason:
+		return m.OldFailureReason(ctx)
+	case web3deposit.FieldRetryCount:
+		return m.OldRetryCount(ctx)
+	case web3deposit.FieldNextRetryAt:
+		return m.OldNextRetryAt(ctx)
+	case web3deposit.FieldDetectedAt:
+		return m.OldDetectedAt(ctx)
+	case web3deposit.FieldFinalizedAt:
+		return m.OldFinalizedAt(ctx)
+	case web3deposit.FieldCreditedAt:
+		return m.OldCreditedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown Web3Deposit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *Web3DepositMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case web3deposit.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case web3deposit.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case web3deposit.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case web3deposit.FieldDepositAddressID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDepositAddressID(v)
+		return nil
+	case web3deposit.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChainID(v)
+		return nil
+	case web3deposit.FieldTokenContract:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenContract(v)
+		return nil
+	case web3deposit.FieldTxHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTxHash(v)
+		return nil
+	case web3deposit.FieldLogIndex:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLogIndex(v)
+		return nil
+	case web3deposit.FieldBlockNumber:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBlockNumber(v)
+		return nil
+	case web3deposit.FieldBlockHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBlockHash(v)
+		return nil
+	case web3deposit.FieldFromAddress:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFromAddress(v)
+		return nil
+	case web3deposit.FieldToAddress:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetToAddress(v)
+		return nil
+	case web3deposit.FieldRawAmount:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRawAmount(v)
+		return nil
+	case web3deposit.FieldTokenDecimals:
+		v, ok := value.(int16)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenDecimals(v)
+		return nil
+	case web3deposit.FieldTokenAmount:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenAmount(v)
+		return nil
+	case web3deposit.FieldCreditedAmount:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreditedAmount(v)
+		return nil
+	case web3deposit.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case web3deposit.FieldReviewReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReviewReason(v)
+		return nil
+	case web3deposit.FieldFailureReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailureReason(v)
+		return nil
+	case web3deposit.FieldRetryCount:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRetryCount(v)
+		return nil
+	case web3deposit.FieldNextRetryAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextRetryAt(v)
+		return nil
+	case web3deposit.FieldDetectedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDetectedAt(v)
+		return nil
+	case web3deposit.FieldFinalizedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinalizedAt(v)
+		return nil
+	case web3deposit.FieldCreditedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreditedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Web3Deposit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *Web3DepositMutation) AddedFields() []string {
+	var fields []string
+	if m.adduser_id != nil {
+		fields = append(fields, web3deposit.FieldUserID)
+	}
+	if m.adddeposit_address_id != nil {
+		fields = append(fields, web3deposit.FieldDepositAddressID)
+	}
+	if m.addchain_id != nil {
+		fields = append(fields, web3deposit.FieldChainID)
+	}
+	if m.addlog_index != nil {
+		fields = append(fields, web3deposit.FieldLogIndex)
+	}
+	if m.addblock_number != nil {
+		fields = append(fields, web3deposit.FieldBlockNumber)
+	}
+	if m.addtoken_decimals != nil {
+		fields = append(fields, web3deposit.FieldTokenDecimals)
+	}
+	if m.addretry_count != nil {
+		fields = append(fields, web3deposit.FieldRetryCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *Web3DepositMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case web3deposit.FieldUserID:
+		return m.AddedUserID()
+	case web3deposit.FieldDepositAddressID:
+		return m.AddedDepositAddressID()
+	case web3deposit.FieldChainID:
+		return m.AddedChainID()
+	case web3deposit.FieldLogIndex:
+		return m.AddedLogIndex()
+	case web3deposit.FieldBlockNumber:
+		return m.AddedBlockNumber()
+	case web3deposit.FieldTokenDecimals:
+		return m.AddedTokenDecimals()
+	case web3deposit.FieldRetryCount:
+		return m.AddedRetryCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *Web3DepositMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case web3deposit.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUserID(v)
+		return nil
+	case web3deposit.FieldDepositAddressID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDepositAddressID(v)
+		return nil
+	case web3deposit.FieldChainID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChainID(v)
+		return nil
+	case web3deposit.FieldLogIndex:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLogIndex(v)
+		return nil
+	case web3deposit.FieldBlockNumber:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBlockNumber(v)
+		return nil
+	case web3deposit.FieldTokenDecimals:
+		v, ok := value.(int16)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTokenDecimals(v)
+		return nil
+	case web3deposit.FieldRetryCount:
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRetryCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown Web3Deposit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *Web3DepositMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(web3deposit.FieldCreditedAmount) {
+		fields = append(fields, web3deposit.FieldCreditedAmount)
+	}
+	if m.FieldCleared(web3deposit.FieldReviewReason) {
+		fields = append(fields, web3deposit.FieldReviewReason)
+	}
+	if m.FieldCleared(web3deposit.FieldFailureReason) {
+		fields = append(fields, web3deposit.FieldFailureReason)
+	}
+	if m.FieldCleared(web3deposit.FieldNextRetryAt) {
+		fields = append(fields, web3deposit.FieldNextRetryAt)
+	}
+	if m.FieldCleared(web3deposit.FieldFinalizedAt) {
+		fields = append(fields, web3deposit.FieldFinalizedAt)
+	}
+	if m.FieldCleared(web3deposit.FieldCreditedAt) {
+		fields = append(fields, web3deposit.FieldCreditedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *Web3DepositMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *Web3DepositMutation) ClearField(name string) error {
+	switch name {
+	case web3deposit.FieldCreditedAmount:
+		m.ClearCreditedAmount()
+		return nil
+	case web3deposit.FieldReviewReason:
+		m.ClearReviewReason()
+		return nil
+	case web3deposit.FieldFailureReason:
+		m.ClearFailureReason()
+		return nil
+	case web3deposit.FieldNextRetryAt:
+		m.ClearNextRetryAt()
+		return nil
+	case web3deposit.FieldFinalizedAt:
+		m.ClearFinalizedAt()
+		return nil
+	case web3deposit.FieldCreditedAt:
+		m.ClearCreditedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Web3Deposit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *Web3DepositMutation) ResetField(name string) error {
+	switch name {
+	case web3deposit.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case web3deposit.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case web3deposit.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case web3deposit.FieldDepositAddressID:
+		m.ResetDepositAddressID()
+		return nil
+	case web3deposit.FieldChainID:
+		m.ResetChainID()
+		return nil
+	case web3deposit.FieldTokenContract:
+		m.ResetTokenContract()
+		return nil
+	case web3deposit.FieldTxHash:
+		m.ResetTxHash()
+		return nil
+	case web3deposit.FieldLogIndex:
+		m.ResetLogIndex()
+		return nil
+	case web3deposit.FieldBlockNumber:
+		m.ResetBlockNumber()
+		return nil
+	case web3deposit.FieldBlockHash:
+		m.ResetBlockHash()
+		return nil
+	case web3deposit.FieldFromAddress:
+		m.ResetFromAddress()
+		return nil
+	case web3deposit.FieldToAddress:
+		m.ResetToAddress()
+		return nil
+	case web3deposit.FieldRawAmount:
+		m.ResetRawAmount()
+		return nil
+	case web3deposit.FieldTokenDecimals:
+		m.ResetTokenDecimals()
+		return nil
+	case web3deposit.FieldTokenAmount:
+		m.ResetTokenAmount()
+		return nil
+	case web3deposit.FieldCreditedAmount:
+		m.ResetCreditedAmount()
+		return nil
+	case web3deposit.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case web3deposit.FieldReviewReason:
+		m.ResetReviewReason()
+		return nil
+	case web3deposit.FieldFailureReason:
+		m.ResetFailureReason()
+		return nil
+	case web3deposit.FieldRetryCount:
+		m.ResetRetryCount()
+		return nil
+	case web3deposit.FieldNextRetryAt:
+		m.ResetNextRetryAt()
+		return nil
+	case web3deposit.FieldDetectedAt:
+		m.ResetDetectedAt()
+		return nil
+	case web3deposit.FieldFinalizedAt:
+		m.ResetFinalizedAt()
+		return nil
+	case web3deposit.FieldCreditedAt:
+		m.ResetCreditedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown Web3Deposit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *Web3DepositMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *Web3DepositMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *Web3DepositMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *Web3DepositMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *Web3DepositMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *Web3DepositMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *Web3DepositMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown Web3Deposit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *Web3DepositMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown Web3Deposit edge %s", name)
 }
 
 // Web3DepositAddressMutation represents an operation that mutates the Web3DepositAddress nodes in the graph.

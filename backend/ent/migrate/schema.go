@@ -2064,6 +2064,67 @@ var (
 			},
 		},
 	}
+	// Web3DepositsColumns holds the columns for the "web3_deposits" table.
+	Web3DepositsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "deposit_address_id", Type: field.TypeInt64},
+		{Name: "chain_id", Type: field.TypeInt64},
+		{Name: "token_contract", Type: field.TypeString, Size: 42},
+		{Name: "tx_hash", Type: field.TypeString, Size: 66},
+		{Name: "log_index", Type: field.TypeInt64},
+		{Name: "block_number", Type: field.TypeInt64},
+		{Name: "block_hash", Type: field.TypeString, Size: 66},
+		{Name: "from_address", Type: field.TypeString, Size: 42},
+		{Name: "to_address", Type: field.TypeString, Size: 42},
+		{Name: "raw_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(78,0)"}},
+		{Name: "token_decimals", Type: field.TypeInt16},
+		{Name: "token_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(38,18)"}},
+		{Name: "credited_amount", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "detected"},
+		{Name: "review_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "failure_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "retry_count", Type: field.TypeInt32, Default: 0},
+		{Name: "next_retry_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "detected_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finalized_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "credited_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3DepositsTable holds the schema information for the "web3_deposits" table.
+	Web3DepositsTable = &schema.Table{
+		Name:       "web3_deposits",
+		Columns:    Web3DepositsColumns,
+		PrimaryKey: []*schema.Column{Web3DepositsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3deposit_chain_id_tx_hash_log_index",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositsColumns[5], Web3DepositsColumns[7], Web3DepositsColumns[8]},
+			},
+			{
+				Name:    "web3deposit_status_next_retry_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[17], Web3DepositsColumns[21], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_user_id_created_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[3], Web3DepositsColumns[1], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_block_number_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[9], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_deposit_address_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[4], Web3DepositsColumns[1]},
+			},
+		},
+	}
 	// Web3DepositAddressesColumns holds the columns for the "web3_deposit_addresses" table.
 	Web3DepositAddressesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2165,6 +2226,7 @@ var (
 		UserAttributeValuesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
+		Web3DepositsTable,
 		Web3DepositAddressesTable,
 		Web3DepositWalletsTable,
 	}
@@ -2323,6 +2385,9 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
+	}
+	Web3DepositsTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposits",
 	}
 	Web3DepositAddressesTable.Annotation = &entsql.Annotation{
 		Table: "web3_deposit_addresses",

@@ -51,6 +51,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 )
@@ -152,6 +153,7 @@ func checkColumn(t, c string) error {
 			userattributevalue.Table:            userattributevalue.ValidColumn,
 			userplatformquota.Table:             userplatformquota.ValidColumn,
 			usersubscription.Table:              usersubscription.ValidColumn,
+			web3deposit.Table:                   web3deposit.ValidColumn,
 			web3depositaddress.Table:            web3depositaddress.ValidColumn,
 			web3depositwallet.Table:             web3depositwallet.ValidColumn,
 		})

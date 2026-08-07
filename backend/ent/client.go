@@ -54,6 +54,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 
@@ -143,6 +144,8 @@ type Client struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// Web3Deposit is the client for interacting with the Web3Deposit builders.
+	Web3Deposit *Web3DepositClient
 	// Web3DepositAddress is the client for interacting with the Web3DepositAddress builders.
 	Web3DepositAddress *Web3DepositAddressClient
 	// Web3DepositWallet is the client for interacting with the Web3DepositWallet builders.
@@ -197,6 +200,7 @@ func (c *Client) init() {
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
+	c.Web3Deposit = NewWeb3DepositClient(c.config)
 	c.Web3DepositAddress = NewWeb3DepositAddressClient(c.config)
 	c.Web3DepositWallet = NewWeb3DepositWalletClient(c.config)
 }
@@ -330,6 +334,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		Web3Deposit:                   NewWeb3DepositClient(cfg),
 		Web3DepositAddress:            NewWeb3DepositAddressClient(cfg),
 		Web3DepositWallet:             NewWeb3DepositWalletClient(cfg),
 	}, nil
@@ -390,6 +395,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		Web3Deposit:                   NewWeb3DepositClient(cfg),
 		Web3DepositAddress:            NewWeb3DepositAddressClient(cfg),
 		Web3DepositWallet:             NewWeb3DepositWalletClient(cfg),
 	}, nil
@@ -431,7 +437,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription, c.Web3DepositAddress,
+		c.UserPlatformQuota, c.UserSubscription, c.Web3Deposit, c.Web3DepositAddress,
 		c.Web3DepositWallet,
 	} {
 		n.Use(hooks...)
@@ -452,7 +458,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription, c.Web3DepositAddress,
+		c.UserPlatformQuota, c.UserSubscription, c.Web3Deposit, c.Web3DepositAddress,
 		c.Web3DepositWallet,
 	} {
 		n.Intercept(interceptors...)
@@ -540,6 +546,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
+	case *Web3DepositMutation:
+		return c.Web3Deposit.mutate(ctx, m)
 	case *Web3DepositAddressMutation:
 		return c.Web3DepositAddress.mutate(ctx, m)
 	case *Web3DepositWalletMutation:
@@ -6840,6 +6848,139 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 	}
 }
 
+// Web3DepositClient is a client for the Web3Deposit schema.
+type Web3DepositClient struct {
+	config
+}
+
+// NewWeb3DepositClient returns a client for the Web3Deposit from the given config.
+func NewWeb3DepositClient(c config) *Web3DepositClient {
+	return &Web3DepositClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `web3deposit.Hooks(f(g(h())))`.
+func (c *Web3DepositClient) Use(hooks ...Hook) {
+	c.hooks.Web3Deposit = append(c.hooks.Web3Deposit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `web3deposit.Intercept(f(g(h())))`.
+func (c *Web3DepositClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Web3Deposit = append(c.inters.Web3Deposit, interceptors...)
+}
+
+// Create returns a builder for creating a Web3Deposit entity.
+func (c *Web3DepositClient) Create() *Web3DepositCreate {
+	mutation := newWeb3DepositMutation(c.config, OpCreate)
+	return &Web3DepositCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Web3Deposit entities.
+func (c *Web3DepositClient) CreateBulk(builders ...*Web3DepositCreate) *Web3DepositCreateBulk {
+	return &Web3DepositCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *Web3DepositClient) MapCreateBulk(slice any, setFunc func(*Web3DepositCreate, int)) *Web3DepositCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &Web3DepositCreateBulk{err: fmt.Errorf("calling to Web3DepositClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*Web3DepositCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &Web3DepositCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Web3Deposit.
+func (c *Web3DepositClient) Update() *Web3DepositUpdate {
+	mutation := newWeb3DepositMutation(c.config, OpUpdate)
+	return &Web3DepositUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *Web3DepositClient) UpdateOne(_m *Web3Deposit) *Web3DepositUpdateOne {
+	mutation := newWeb3DepositMutation(c.config, OpUpdateOne, withWeb3Deposit(_m))
+	return &Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *Web3DepositClient) UpdateOneID(id int64) *Web3DepositUpdateOne {
+	mutation := newWeb3DepositMutation(c.config, OpUpdateOne, withWeb3DepositID(id))
+	return &Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Web3Deposit.
+func (c *Web3DepositClient) Delete() *Web3DepositDelete {
+	mutation := newWeb3DepositMutation(c.config, OpDelete)
+	return &Web3DepositDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *Web3DepositClient) DeleteOne(_m *Web3Deposit) *Web3DepositDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *Web3DepositClient) DeleteOneID(id int64) *Web3DepositDeleteOne {
+	builder := c.Delete().Where(web3deposit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &Web3DepositDeleteOne{builder}
+}
+
+// Query returns a query builder for Web3Deposit.
+func (c *Web3DepositClient) Query() *Web3DepositQuery {
+	return &Web3DepositQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeWeb3Deposit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Web3Deposit entity by its id.
+func (c *Web3DepositClient) Get(ctx context.Context, id int64) (*Web3Deposit, error) {
+	return c.Query().Where(web3deposit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *Web3DepositClient) GetX(ctx context.Context, id int64) *Web3Deposit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *Web3DepositClient) Hooks() []Hook {
+	return c.hooks.Web3Deposit
+}
+
+// Interceptors returns the client interceptors.
+func (c *Web3DepositClient) Interceptors() []Interceptor {
+	return c.inters.Web3Deposit
+}
+
+func (c *Web3DepositClient) mutate(ctx context.Context, m *Web3DepositMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&Web3DepositCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&Web3DepositUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&Web3DepositUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&Web3DepositDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Web3Deposit mutation op: %q", m.Op())
+	}
+}
+
 // Web3DepositAddressClient is a client for the Web3DepositAddress schema.
 type Web3DepositAddressClient struct {
 	config
@@ -7118,7 +7259,7 @@ type (
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription, Web3DepositAddress, Web3DepositWallet []ent.Hook
+		UserSubscription, Web3Deposit, Web3DepositAddress, Web3DepositWallet []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -7130,7 +7271,8 @@ type (
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription, Web3DepositAddress, Web3DepositWallet []ent.Interceptor
+		UserSubscription, Web3Deposit, Web3DepositAddress,
+		Web3DepositWallet []ent.Interceptor
 	}
 )
 

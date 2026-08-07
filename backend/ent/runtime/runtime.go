@@ -45,6 +45,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
 	"github.com/Wei-Shaw/sub2api/ent/web3depositwallet"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -2442,6 +2443,169 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	web3depositMixin := schema.Web3Deposit{}.Mixin()
+	web3depositMixinFields0 := web3depositMixin[0].Fields()
+	_ = web3depositMixinFields0
+	web3depositFields := schema.Web3Deposit{}.Fields()
+	_ = web3depositFields
+	// web3depositDescCreatedAt is the schema descriptor for created_at field.
+	web3depositDescCreatedAt := web3depositMixinFields0[0].Descriptor()
+	// web3deposit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	web3deposit.DefaultCreatedAt = web3depositDescCreatedAt.Default.(func() time.Time)
+	// web3depositDescUpdatedAt is the schema descriptor for updated_at field.
+	web3depositDescUpdatedAt := web3depositMixinFields0[1].Descriptor()
+	// web3deposit.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	web3deposit.DefaultUpdatedAt = web3depositDescUpdatedAt.Default.(func() time.Time)
+	// web3deposit.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	web3deposit.UpdateDefaultUpdatedAt = web3depositDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// web3depositDescChainID is the schema descriptor for chain_id field.
+	web3depositDescChainID := web3depositFields[3].Descriptor()
+	// web3deposit.ChainIDValidator is a validator for the "chain_id" field. It is called by the builders before save.
+	web3deposit.ChainIDValidator = web3depositDescChainID.Validators[0].(func(int64) error)
+	// web3depositDescTokenContract is the schema descriptor for token_contract field.
+	web3depositDescTokenContract := web3depositFields[4].Descriptor()
+	// web3deposit.TokenContractValidator is a validator for the "token_contract" field. It is called by the builders before save.
+	web3deposit.TokenContractValidator = func() func(string) error {
+		validators := web3depositDescTokenContract.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(token_contract string) error {
+			for _, fn := range fns {
+				if err := fn(token_contract); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescTxHash is the schema descriptor for tx_hash field.
+	web3depositDescTxHash := web3depositFields[5].Descriptor()
+	// web3deposit.TxHashValidator is a validator for the "tx_hash" field. It is called by the builders before save.
+	web3deposit.TxHashValidator = func() func(string) error {
+		validators := web3depositDescTxHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(tx_hash string) error {
+			for _, fn := range fns {
+				if err := fn(tx_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescLogIndex is the schema descriptor for log_index field.
+	web3depositDescLogIndex := web3depositFields[6].Descriptor()
+	// web3deposit.LogIndexValidator is a validator for the "log_index" field. It is called by the builders before save.
+	web3deposit.LogIndexValidator = web3depositDescLogIndex.Validators[0].(func(int64) error)
+	// web3depositDescBlockNumber is the schema descriptor for block_number field.
+	web3depositDescBlockNumber := web3depositFields[7].Descriptor()
+	// web3deposit.BlockNumberValidator is a validator for the "block_number" field. It is called by the builders before save.
+	web3deposit.BlockNumberValidator = web3depositDescBlockNumber.Validators[0].(func(int64) error)
+	// web3depositDescBlockHash is the schema descriptor for block_hash field.
+	web3depositDescBlockHash := web3depositFields[8].Descriptor()
+	// web3deposit.BlockHashValidator is a validator for the "block_hash" field. It is called by the builders before save.
+	web3deposit.BlockHashValidator = func() func(string) error {
+		validators := web3depositDescBlockHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(block_hash string) error {
+			for _, fn := range fns {
+				if err := fn(block_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescFromAddress is the schema descriptor for from_address field.
+	web3depositDescFromAddress := web3depositFields[9].Descriptor()
+	// web3deposit.FromAddressValidator is a validator for the "from_address" field. It is called by the builders before save.
+	web3deposit.FromAddressValidator = func() func(string) error {
+		validators := web3depositDescFromAddress.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(from_address string) error {
+			for _, fn := range fns {
+				if err := fn(from_address); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescToAddress is the schema descriptor for to_address field.
+	web3depositDescToAddress := web3depositFields[10].Descriptor()
+	// web3deposit.ToAddressValidator is a validator for the "to_address" field. It is called by the builders before save.
+	web3deposit.ToAddressValidator = func() func(string) error {
+		validators := web3depositDescToAddress.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(to_address string) error {
+			for _, fn := range fns {
+				if err := fn(to_address); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescRawAmount is the schema descriptor for raw_amount field.
+	web3depositDescRawAmount := web3depositFields[11].Descriptor()
+	// web3deposit.RawAmountValidator is a validator for the "raw_amount" field. It is called by the builders before save.
+	web3deposit.RawAmountValidator = web3depositDescRawAmount.Validators[0].(func(string) error)
+	// web3depositDescTokenDecimals is the schema descriptor for token_decimals field.
+	web3depositDescTokenDecimals := web3depositFields[12].Descriptor()
+	// web3deposit.TokenDecimalsValidator is a validator for the "token_decimals" field. It is called by the builders before save.
+	web3deposit.TokenDecimalsValidator = web3depositDescTokenDecimals.Validators[0].(func(int16) error)
+	// web3depositDescTokenAmount is the schema descriptor for token_amount field.
+	web3depositDescTokenAmount := web3depositFields[13].Descriptor()
+	// web3deposit.TokenAmountValidator is a validator for the "token_amount" field. It is called by the builders before save.
+	web3deposit.TokenAmountValidator = web3depositDescTokenAmount.Validators[0].(func(string) error)
+	// web3depositDescCreditedAmount is the schema descriptor for credited_amount field.
+	web3depositDescCreditedAmount := web3depositFields[14].Descriptor()
+	// web3deposit.CreditedAmountValidator is a validator for the "credited_amount" field. It is called by the builders before save.
+	web3deposit.CreditedAmountValidator = web3depositDescCreditedAmount.Validators[0].(func(string) error)
+	// web3depositDescStatus is the schema descriptor for status field.
+	web3depositDescStatus := web3depositFields[15].Descriptor()
+	// web3deposit.DefaultStatus holds the default value on creation for the status field.
+	web3deposit.DefaultStatus = web3depositDescStatus.Default.(string)
+	// web3deposit.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	web3deposit.StatusValidator = func() func(string) error {
+		validators := web3depositDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// web3depositDescRetryCount is the schema descriptor for retry_count field.
+	web3depositDescRetryCount := web3depositFields[18].Descriptor()
+	// web3deposit.DefaultRetryCount holds the default value on creation for the retry_count field.
+	web3deposit.DefaultRetryCount = web3depositDescRetryCount.Default.(int32)
+	// web3deposit.RetryCountValidator is a validator for the "retry_count" field. It is called by the builders before save.
+	web3deposit.RetryCountValidator = web3depositDescRetryCount.Validators[0].(func(int32) error)
+	// web3depositDescDetectedAt is the schema descriptor for detected_at field.
+	web3depositDescDetectedAt := web3depositFields[20].Descriptor()
+	// web3deposit.DefaultDetectedAt holds the default value on creation for the detected_at field.
+	web3deposit.DefaultDetectedAt = web3depositDescDetectedAt.Default.(func() time.Time)
 	web3depositaddressMixin := schema.Web3DepositAddress{}.Mixin()
 	web3depositaddressMixinFields0 := web3depositaddressMixin[0].Fields()
 	_ = web3depositaddressMixinFields0
