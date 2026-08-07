@@ -14,6 +14,7 @@ import (
 func RegisterPaymentRoutes(
 	v1 *gin.RouterGroup,
 	paymentHandler *handler.PaymentHandler,
+	web3DepositHandler *handler.Web3DepositHandler,
 	webhookHandler *handler.PaymentWebhookHandler,
 	adminPaymentHandler *admin.PaymentHandler,
 	jwtAuth middleware.JWTAuthMiddleware,
@@ -33,6 +34,11 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/checkout-info", paymentHandler.GetCheckoutInfo)
 		authenticated.GET("/plans", paymentHandler.GetPlans)
 		authenticated.GET("/limits", paymentHandler.GetLimits)
+
+		web3 := authenticated.Group("/web3")
+		{
+			web3.GET("/config", web3DepositHandler.GetConfig)
+		}
 
 		orders := authenticated.Group("/orders")
 		{
