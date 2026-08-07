@@ -2108,6 +2108,42 @@
 
                 <!-- Tencent Captcha fields -->
                 <div v-else-if="captchaProviderSelection === 'tencent'">
+                  <div class="mb-6 max-w-sm">
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.tencentCaptcha.region") }}
+                    </label>
+                    <div class="grid grid-cols-2 gap-2 rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+                      <button
+                        type="button"
+                        data-testid="tencent-captcha-region-cn"
+                        class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                        :class="
+                          form.tencent_captcha_region !== 'intl'
+                            ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                            : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                        "
+                        @click="form.tencent_captcha_region = 'cn'"
+                      >
+                        {{ t("admin.settings.tencentCaptcha.regionCn") }}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="tencent-captcha-region-intl"
+                        class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                        :class="
+                          form.tencent_captcha_region === 'intl'
+                            ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-800 dark:text-primary-300'
+                            : 'text-gray-600 hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
+                        "
+                        @click="form.tencent_captcha_region = 'intl'"
+                      >
+                        {{ t("admin.settings.tencentCaptcha.regionIntl") }}
+                      </button>
+                    </div>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.tencentCaptcha.regionHint") }}
+                    </p>
+                  </div>
                   <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                     <div class="md:col-span-2">
                       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -2191,7 +2227,7 @@
                   </p>
                   <div class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
                     <a
-                      href="https://console.cloud.tencent.com/captcha"
+                      :href="tencentCaptchaLinks.console"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="text-primary-600 hover:text-primary-500"
@@ -2199,7 +2235,7 @@
                       {{ t("admin.settings.tencentCaptcha.openCaptchaConsole") }}
                     </a>
                     <a
-                      href="https://console.cloud.tencent.com/cam/capi"
+                      :href="tencentCaptchaLinks.cloudKeys"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="text-primary-600 hover:text-primary-500"
@@ -2207,7 +2243,7 @@
                       {{ t("admin.settings.tencentCaptcha.createCloudKeys") }}
                     </a>
                     <a
-                      href="https://cloud.tencent.com/document/product/1110/36841"
+                      :href="tencentCaptchaLinks.webDocs"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="text-primary-600 hover:text-primary-500"
@@ -9264,6 +9300,7 @@ const form = reactive<SettingsForm>({
   tencent_captcha_cloud_secret_id_configured: false,
   tencent_captcha_cloud_secret_key: "",
   tencent_captcha_cloud_secret_key_configured: false,
+  tencent_captcha_region: "cn",
   aliyun_captcha_enabled: false,
   aliyun_captcha_access_key_id: "",
   aliyun_captcha_access_key_secret: "",
@@ -9459,6 +9496,22 @@ function selectCaptchaProvider(provider: CaptchaProviderSelection): void {
   captchaProviderSelection.value = provider;
   applyCaptchaSelection(provider);
 }
+
+// 天御中国站与国际站是两套独立账号体系，控制台与文档入口不通用，
+// 按当前选择的站点给出对应链接，避免管理员在错误的控制台里找不到 CaptchaAppId。
+const tencentCaptchaLinks = computed(() =>
+  form.tencent_captcha_region === "intl"
+    ? {
+        console: "https://console.tencentcloud.com/captcha/graphical",
+        cloudKeys: "https://console.tencentcloud.com/cam/capi",
+        webDocs: "https://www.tencentcloud.com/document/product/1159/49680",
+      }
+    : {
+        console: "https://console.cloud.tencent.com/captcha",
+        cloudKeys: "https://console.cloud.tencent.com/cam/capi",
+        webDocs: "https://cloud.tencent.com/document/product/1110/36841",
+      },
+);
 
 function syncCaptchaProviderSelection(): void {
   if (form.tencent_captcha_enabled) {
@@ -10817,6 +10870,7 @@ async function saveSettings() {
         form.tencent_captcha_cloud_secret_id || undefined,
       tencent_captcha_cloud_secret_key:
         form.tencent_captcha_cloud_secret_key || undefined,
+      tencent_captcha_region: form.tencent_captcha_region,
       aliyun_captcha_enabled: form.aliyun_captcha_enabled,
       aliyun_captcha_access_key_id: form.aliyun_captcha_access_key_id,
       aliyun_captcha_access_key_secret:
