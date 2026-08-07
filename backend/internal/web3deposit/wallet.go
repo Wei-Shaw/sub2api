@@ -13,6 +13,7 @@ var (
 	ErrWalletFingerprintMismatch = errors.New("web3 deposit wallet fingerprint mismatch")
 	ErrWalletAccountPathMismatch = errors.New("web3 deposit wallet account path mismatch")
 	ErrWalletDisabled            = errors.New("web3 deposit wallet is disabled")
+	ErrDerivationIndexExhausted  = errors.New("web3 deposit derivation indexes are exhausted")
 )
 
 type WalletStatus string

@@ -55,7 +55,7 @@ func (Web3DepositWallet) Fields() []ent.Field {
 			Validate(validateWeb3DepositWalletFingerprint),
 		field.Int64("next_derivation_index").
 			Default(0).
-			Validate(validateWeb3DepositDerivationIndex),
+			Validate(validateWeb3DepositNextDerivationIndex),
 		field.String("status").
 			MaxLen(20).
 			Default("active").
@@ -80,6 +80,13 @@ func validateWeb3DepositWalletAccountPath(accountPath string) error {
 func validateWeb3DepositWalletFingerprint(fingerprint string) error {
 	if !web3DepositWalletFingerprintPattern.MatchString(fingerprint) {
 		return fmt.Errorf("invalid web3 deposit wallet fingerprint")
+	}
+	return nil
+}
+
+func validateWeb3DepositNextDerivationIndex(index int64) error {
+	if index < 0 || index > maxWeb3DepositDerivationIndex {
+		return fmt.Errorf("web3 deposit next derivation index must be between 0 and %d", maxWeb3DepositDerivationIndex)
 	}
 	return nil
 }

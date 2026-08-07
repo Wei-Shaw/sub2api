@@ -57,9 +57,12 @@ func TestWeb3DepositWalletSchemaValidators(t *testing.T) {
 	require.NoError(t, validateWeb3DepositWalletFingerprint("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"))
 	require.Error(t, validateWeb3DepositWalletFingerprint("not-a-fingerprint"))
 
-	require.NoError(t, validateWeb3DepositDerivationIndex(0))
+	require.NoError(t, validateWeb3DepositNextDerivationIndex(0))
+	require.NoError(t, validateWeb3DepositNextDerivationIndex(maxWeb3DepositDerivationIndex-1))
+	require.NoError(t, validateWeb3DepositNextDerivationIndex(maxWeb3DepositDerivationIndex))
+	require.Error(t, validateWeb3DepositNextDerivationIndex(-1))
+	require.Error(t, validateWeb3DepositNextDerivationIndex(maxWeb3DepositDerivationIndex+1))
 	require.NoError(t, validateWeb3DepositDerivationIndex(maxWeb3DepositDerivationIndex-1))
-	require.Error(t, validateWeb3DepositDerivationIndex(-1))
 	require.Error(t, validateWeb3DepositDerivationIndex(maxWeb3DepositDerivationIndex))
 
 	require.NoError(t, validateWeb3DepositWalletStatus("active"))

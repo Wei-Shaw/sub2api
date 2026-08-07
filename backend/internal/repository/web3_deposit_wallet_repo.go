@@ -52,6 +52,51 @@ func (r *Web3DepositWalletRepository) GetByWalletID(ctx context.Context, walletI
 	return web3DepositWalletFromEnt(entity), nil
 }
 
+func (r *Web3DepositWalletRepository) ReserveDerivationIndex(
+	ctx context.Context,
+	verifiedWallet web3deposit.WalletMetadata,
+) (int64, error) {
+	for {
+		stored, err := r.GetByWalletID(ctx, verifiedWallet.WalletID)
+		if err != nil {
+			return 0, err
+		}
+		if stored.AccountPath != verifiedWallet.AccountPath {
+			return 0, fmt.Errorf("reserve derivation index for wallet %q: %w", verifiedWallet.WalletID, web3deposit.ErrWalletAccountPathMismatch)
+		}
+		if stored.XPubFingerprint != verifiedWallet.XPubFingerprint {
+			return 0, fmt.Errorf("reserve derivation index for wallet %q: %w", verifiedWallet.WalletID, web3deposit.ErrWalletFingerprintMismatch)
+		}
+		if stored.Status != web3deposit.WalletStatusActive {
+			return 0, fmt.Errorf("reserve derivation index for wallet %q: %w", verifiedWallet.WalletID, web3deposit.ErrWalletDisabled)
+		}
+		if stored.NextDerivationIndex >= web3deposit.MaxDerivationIndexExclusive {
+			return 0, fmt.Errorf("reserve derivation index for wallet %q: %w", verifiedWallet.WalletID, web3deposit.ErrDerivationIndexExhausted)
+		}
+
+		updated, err := r.client.Web3DepositWallet.Update().
+			Where(
+				web3depositwallet.IDEQ(stored.ID),
+				web3depositwallet.WalletIDEQ(stored.WalletID),
+				web3depositwallet.AccountPathEQ(stored.AccountPath),
+				web3depositwallet.XpubFingerprintEQ(stored.XPubFingerprint),
+				web3depositwallet.StatusEQ(string(web3deposit.WalletStatusActive)),
+				web3depositwallet.NextDerivationIndexEQ(stored.NextDerivationIndex),
+			).
+			AddNextDerivationIndex(1).
+			Save(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("reserve derivation index for wallet %q: %w", verifiedWallet.WalletID, err)
+		}
+		if updated == 1 {
+			return stored.NextDerivationIndex, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+	}
+}
+
 func web3DepositWalletFromEnt(entity *dbent.Web3DepositWallet) web3deposit.WalletMetadata {
 	return web3deposit.WalletMetadata{
 		ID:                  entity.ID,

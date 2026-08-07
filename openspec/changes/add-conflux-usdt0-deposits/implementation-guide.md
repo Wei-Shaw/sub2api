@@ -146,17 +146,14 @@ type TransferEvent struct {
 `wallet_id` 的 EVM 网络共享用户地址和 derivation index；网络差异只在
 Scanner、Token 和充值事件的 `chain_id` 中体现。
 
-首选数据库事务：
+使用带旧值条件的数据库原子更新；只有当前 index 仍等于调用方读取值时才能递增，CAS 冲突时重新读取：
 
 ```sql
-SELECT * FROM web3_deposit_wallets
-WHERE wallet_id = $1
-FOR UPDATE;
-
 UPDATE web3_deposit_wallets
 SET next_derivation_index = next_derivation_index + 1
 WHERE wallet_id = $1
-RETURNING next_derivation_index - 1;
+  AND status = 'active'
+  AND next_derivation_index = $2;
 ```
 
 派生失败时允许 index 空洞，不得回退计数器。插入地址失败时根据唯一约束判断：

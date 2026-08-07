@@ -180,7 +180,7 @@ feat(web3deposit): verify wallet fingerprint at startup
 feat(web3deposit): reserve derivation indexes atomically
 ```
 
-- 在事务中锁定钱包行并原子增加 `next_derivation_index`。
+- 使用带旧值条件的数据库原子更新增加 `next_derivation_index`，并在并发冲突时重新读取重试。
 - 派生失败时允许索引空洞，不回退计数器。
 
 ### Commit 17
