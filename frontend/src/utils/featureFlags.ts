@@ -68,9 +68,9 @@
  * `makeSidebarFlag(flag)` returns a `() => boolean | undefined` compatible with
  * `AppSidebar.NavItem.featureFlag`, where `false` hides the menu entry.
  */
-
 import { useAppStore REDACTED from '@/stores/app'
 import type { PublicSettings REDACTED from '@/types'
+import { DEFAULT_INTERVAL_SECONDS REDACTED from '@/constants/channelMonitor'
 
 export type FeatureFlagMode = 'opt-in' | 'opt-out'
 
@@ -151,4 +151,38 @@ REDACTED
  */
 export function makeSidebarFlag(flag: FeatureFlagDefinition): () => boolean {
   return () => isFeatureFlagEnabled(flag)
+REDACTED
+
+/** True when channel monitor feature flag is enabled. */
+export function isChannelMonitorRouteEnabled(): boolean {
+  return isFeatureFlagEnabled(FeatureFlags.channelMonitor)
+REDACTED
+
+export type ChannelMonitorMode = 'v1' | 'v2'
+
+/** Exclusive channel-monitor implementation. Invalid/missing → v2. */
+export function getChannelMonitorMode(): ChannelMonitorMode {
+  const appStore = useAppStore()
+  const mode = appStore.cachedPublicSettings?.channel_monitor_mode
+  return mode === 'v1' ? 'v1' : 'v2'
+REDACTED
+
+export function isChannelMonitorV1Mode(): boolean {
+  return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'v1'
+REDACTED
+
+export function isChannelMonitorV2Mode(): boolean {
+  return isChannelMonitorRouteEnabled() && getChannelMonitorMode() === 'v2'
+REDACTED
+
+export function getChannelMonitorRefreshIntervalSeconds(): number {
+  const appStore = useAppStore()
+  const configured = appStore.cachedPublicSettings?.channel_monitor_default_interval_seconds
+  return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
+REDACTED
+
+/** Hide RPM/TPM on user-facing monitor (scale privacy). Admin always shows full metrics. */
+export function isChannelMonitorThroughputHidden(): boolean {
+  const appStore = useAppStore()
+  return Boolean(appStore.cachedPublicSettings?.channel_monitor_hide_throughput)
 REDACTED

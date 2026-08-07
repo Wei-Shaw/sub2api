@@ -16,12 +16,21 @@ export default {
       features: {
         channelMonitor: {
           title: 'Channel Monitor',
-          description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',
+          description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',
           configureLink: 'Configure monitors in Channel Management > Channel Monitor',
           enabled: 'Enable Channel Monitor',
-          enabledHint: 'Disabling stops background checks; existing history is preserved.',
+          enabledHint: 'Disabling stops both the V1 scheduler and V2 aggregation; existing config and history are kept.',
+          mode: 'Monitor mode',
+          modeHint: 'Only one implementation can be active: V2 never sends upstream probes; V1 probes configured monitors on a schedule.',
+          modeV2: 'V2 passive monitoring',
+          modeV1: 'V1 active probes',
+          modeV2Hint: 'Aggregates health metrics from real gateway traffic without upstream probe traffic.',
+          modeV1Hint: 'Runs scheduled upstream health checks for configured channel monitors (probe traffic).',
           defaultInterval: 'Default check interval (seconds)',
-          defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+          defaultIntervalHint: 'V1 only: default interval for new monitors (overridable per monitor). Range 15 – 3600 seconds.',
+          hideThroughput: 'Hide throughput rates from users (RPM / TPM)',
+          hideThroughputHint:
+            'When on, the user Channel Monitor page and user APIs omit RPM and TPM so fleet volume cannot be reverse-estimated from rates × window. Admins still see full metrics. Error rates, latency, and cache rates remain visible.',
         REDACTED,
         availableChannels: {
           title: 'Available Channels',
