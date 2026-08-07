@@ -4,9 +4,12 @@ package service
 
 import (
 	"context"
+	"os"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // --- billingModelForRestriction ---
@@ -174,6 +177,40 @@ func TestCheckChannelPricingRestriction_Requested_Allowed(t *testing.T) {
 	gid := int64(10)
 	require.False(t, svc.checkChannelPricingRestriction(context.Background(), &gid, "claude-sonnet-4-5"),
 		"requested model IS in pricing → allowed")
+}
+
+func TestGatewayService_Forward_ClaudeAutoClassifierHonorsChannelRestriction(t *testing.T) {
+	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
+	require.NoError(t, err)
+	body := autoClassifierBodyForTest(t, "claude-opus-5", string(monitorPrompt), true)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+	require.NoError(t, err)
+	groupID := int64(10)
+	parsed.GroupID = &groupID
+	c, _ := autoClassifierContextForTest(t)
+	ctx := validatedClaudeCodeContextForTest(t, c, body)
+
+	channel := Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{groupID},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceRequested,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformAnthropic, Models: []string{"claude-opus-5"}},
+		},
+	}
+	upstream := autoClassifierUpstreamForTest()
+	svc := autoClassifierServiceForTest(upstream)
+	svc.channelService = newTestChannelService(makeStandardRepo(channel, map[int64]string{groupID: PlatformAnthropic}))
+
+	_, err = svc.Forward(ctx, c, autoClassifierAccountForTest(AccountTypeOAuth), parsed)
+	require.NoError(t, err)
+	require.NotEqual(t, claude.AutoModeClassifierModel, gjson.GetBytes(upstream.lastBody, "model").String())
+	require.False(t, anthropicBetaTokensContains(
+		getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"),
+		claude.BetaAutoModeClassifier,
+	))
 }
 
 func TestCheckChannelPricingRestriction_Upstream_SkipsPreCheck(t *testing.T) {

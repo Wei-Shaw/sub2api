@@ -235,6 +235,52 @@ func TestGatewayServiceRecordUsage_UpstreamBillingSourceUsesUpstreamModel(t *tes
 	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
 }
 
+func TestGatewayServiceRecordUsage_BillingModelOverrideTakesPrecedence(t *testing.T) {
+	usage := ClaudeUsage{
+		InputTokens:              158,
+		OutputTokens:             7,
+		CacheCreationInputTokens: 50,
+		CacheReadInputTokens:     38952,
+	}
+
+	for _, source := range []string{BillingModelSourceRequested, BillingModelSourceChannelMapped} {
+		t.Run(source, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+			expected, err := svc.billingService.CalculateCost("claude-sonnet-5", UsageTokens{
+				InputTokens:         usage.InputTokens,
+				OutputTokens:        usage.OutputTokens,
+				CacheCreationTokens: usage.CacheCreationInputTokens,
+				CacheReadTokens:     usage.CacheReadInputTokens,
+			}, 1.1)
+			require.NoError(t, err)
+
+			err = svc.RecordUsage(context.Background(), &RecordUsageInput{
+				Result: &ForwardResult{
+					RequestID:            "gateway_billing_model_override_" + source,
+					Usage:                usage,
+					Model:                "claude-sonnet-5",
+					UpstreamModel:        "claude-sonnet-5",
+					BillingModelOverride: "claude-sonnet-5",
+					Duration:             time.Second,
+				},
+				APIKey:  &APIKey{ID: 501, Quota: 100},
+				User:    &User{ID: 601},
+				Account: &Account{ID: 701},
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      "claude-haiku-4-5",
+					ChannelMappedModel: "claude-haiku-4-5",
+					BillingModelSource: source,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+		})
+	}
+}
+
 func TestGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})

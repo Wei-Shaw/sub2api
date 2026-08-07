@@ -104,11 +104,27 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalAnthropicBeta(
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
 	)
+	if tokenType == "oauth" && !mimicClaudeCode && c != nil {
+		if enabled, ok := c.Get(claudeAutoClassifierCompatKey); ok {
+			if compat, ok := enabled.(bool); ok && compat {
+				if _, filtered := effectiveDropSet[claude.BetaAutoModeClassifier]; !filtered {
+					finalBetaHeader = mergeAnthropicBeta([]string{claude.BetaAutoModeClassifier}, finalBetaHeader)
+					finalBetaShouldSet = true
+				}
+			}
+		}
+	}
 
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
 	// body 能力净化必须以覆写值为准，否则 header/body 不对称会被上游 400。
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		finalBetaHeader, finalBetaShouldSet = beta, true
+	}
+	if finalBetaShouldSet {
+		finalBetaTokens := parseAnthropicBetaHeader(finalBetaHeader)
+		if blockErr := s.checkBetaPolicyBlockForTokens(ctx, finalBetaTokens, account, modelID); blockErr != nil {
+			return nil, nil, blockErr
+		}
 	}
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
@@ -501,11 +517,7 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), "", effectiveDropSet), true
 		}
 		// 真 Claude Code 客户端透传路径
-		finalBeta := s.getBetaHeader(modelID, clientBeta)
-		if isClaudeCodeAutoClassifierBody(body) {
-			finalBeta = mergeAnthropicBeta([]string{claude.BetaAutoModeClassifier}, finalBeta)
-		}
-		return stripBetaTokensWithSet(finalBeta, effectiveDropSet), true
+		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true
 	}
 
 	// API-key accounts

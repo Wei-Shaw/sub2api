@@ -698,15 +698,18 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 确定计费模型
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	billingModel := concreteBillingModel
-	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
-		billingModel = result.UpstreamModel
-	}
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
+	billingModel := strings.TrimSpace(result.BillingModelOverride)
+	if billingModel == "" {
+		billingModel = concreteBillingModel
+		if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
+			billingModel = result.UpstreamModel
+		}
+		if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+			billingModel = input.ChannelMappedModel
+		}
+		if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+			billingModel = input.OriginalModel
+		}
 	}
 	// composite 分组的公开别名（如 all/claude）会经 OriginalModel/ChannelMappedModel
 	// 进入上面的来源覆盖：任意别名查无价会静默落 $0，含家族词的别名则被价格表的
