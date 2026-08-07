@@ -82,10 +82,8 @@ const antigravityUserAgentVersionCacheTTL = 60 * time.Second
 const antigravityUserAgentVersionErrorTTL = 5 * time.Second
 const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
-// DefaultOpenAICodexUserAgent OpenAI Codex 默认 User-Agent（用于规避 Cloudflare 对浏览器 UA 的质询）。
-// 取官方 CLI 身份而非 TUI 身份：上游在容量紧张时按客户端身份分优先级降载，TUI 身份被观测到
-// 优先命中降载，而该默认值是浏览器 UA 兜底路径上最主要的身份来源。版本段随 codexCLIVersion
-// 一起更新——陈旧版本同样会被优先降载。
+// DefaultOpenAICodexUserAgent 是 OpenAI Codex 默认 User-Agent，用于规避浏览器 UA 的质询。
+// 默认采用 codex-tui 身份，版本段随 codexCLIVersion 一起更新。
 const DefaultOpenAICodexUserAgent = codexCLIUserAgent
 
 // cachedOpenAICodexUserAgent 缓存 OpenAI Codex UA（进程内缓存，60s TTL）
@@ -366,7 +364,7 @@ func (s *SettingService) InvalidateOpenAICodexClientVersionCache() {
 }
 
 // GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。
-// 未填面板 UA 时按当前生效的客户端版本号拼出标准 CLI UA。
+// 未填面板 UA 时按当前生效的客户端版本号拼出标准 Codex TUI UA。
 //
 // 面板 UA 只贡献客户端名与 OS / 架构 / 终端指纹，版本段一律用生效版本重建：该输入框是
 // 唯一能改 UA 后缀的地方，但它填写于某个历史版本，逐字沿用会把出站身份永久钉死在陈旧

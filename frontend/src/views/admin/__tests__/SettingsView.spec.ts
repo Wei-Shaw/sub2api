@@ -813,6 +813,36 @@ describe("admin SettingsView payment visible method controls", () => {
         tencent_captcha_app_secret_key: "app-secret-value",
         tencent_captcha_cloud_secret_id: "cloud-secret-id-value",
         tencent_captcha_cloud_secret_key: "cloud-secret-key-value",
+        tencent_captcha_region: "cn",
+      }),
+    );
+  });
+
+  it("腾讯天御切换到国际站后保存站点并更新控制台入口", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    await wrapper.get('[data-testid="captcha-enabled-toggle"]').setValue(true);
+    await wrapper.get('[data-testid="captcha-provider-tencent"]').trigger("click");
+    await wrapper.get('[data-testid="tencent-captcha-region-intl"]').trigger("click");
+
+    const card = wrapper
+      .findAll(".card")
+      .find((node) => node.text().includes("admin.settings.captcha.title"));
+    expect(card).toBeDefined();
+    expect(card!.get('a[href="https://console.tencentcloud.com/captcha/graphical"]').exists()).toBe(
+      true,
+    );
+    expect(card!.get('a[href="https://console.tencentcloud.com/cam/capi"]').exists()).toBe(true);
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tencent_captcha_enabled: true,
+        tencent_captcha_region: "intl",
       }),
     );
   });
