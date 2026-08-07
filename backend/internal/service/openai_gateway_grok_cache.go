@@ -319,8 +319,9 @@ REDACTED
 				paidSignal = true
 		REDACTED
 	REDACTED
-		if billing.UsagePercent != nil || billing.UsedPercent != nil ||
-			(billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0) {
+		// Paid evidence: explicit plan name or monthly dollar cap — NOT mere presence of
+		// weekly/monthly usage percent (Free accounts also report creditUsagePercent).
+		if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 {
 			paidSignal = true
 	REDACTED
 		// xAI deliberately reports an empty plan for Free accounts; only paid
@@ -362,10 +363,23 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+	// Explicit free credentials (subscription_tier / plan_type free|basic) win over
+	// weak paid inference so weekly credit % cannot disable soft-gate / media block
+	// for real Free OAuth accounts. Strong paid evidence (named paid plan, monthly
+	// limit cents) still wins over *inferred* free only.
+	if freeSignal {
+		// Explicit free/basic tier from credentials or free plan string.
+		// Only override if we saw a clearly paid plan name (not mere usage %).
+		if paidSignal {
+			// paidSignal from MonthlyLimitCents or non-free Plan — treat as paid.
+			return false
+	REDACTED
+		return true
+REDACTED
 	// Explicit paid evidence always wins over an inferred Free signal. This
 	// protects upgraded/stale accounts whose previous quota snapshot still
 	// carries the historical 2M Free token limit.
-	return !paidSignal && (freeSignal || inferredFreeSignal)
+	return !paidSignal && inferredFreeSignal
 REDACTED
 
 func isGrokFreeSubscriptionTier(tier string) bool {

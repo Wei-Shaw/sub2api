@@ -297,34 +297,59 @@ REDACTED
 	// Official billing windows (weekly credits / monthly used%) from probe snapshot.
 	// Complements header-based grok_sched_* so paid SuperGrok accounts can auto-pause
 	// when request/token headers are sparse but billing % is high.
+	// Do not cross-fallback period ends (weekly until ≠ monthly end) to avoid multi-week parks.
+	const grokBillingThresholdStaleAfter = 48 * time.Hour
 	if billing, err := grokBillingSnapshotFromExtra(account.Extra); err == nil && billing != nil {
-		if billing.UsagePercent != nil {
-			candidates = append(candidates, &accountSchedulingThresholdCandidate{
-				window:      "seven_day",
-				scope:       "grok_billing",
-				usedPercent: *billing.UsagePercent,
-				until:       parseSchedulingResetAt(firstNonEmpty(billing.PeriodEnd, billing.BillingPeriodEnd)),
-		REDACTED)
-	REDACTED
-		monthlyUtil := 0.0
-		hasMonthly := false
-		if billing.UsedPercent != nil {
-			monthlyUtil = *billing.UsedPercent
-			hasMonthly = true
-	REDACTED else if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 && billing.UsedCents != nil {
-			monthlyUtil = (*billing.UsedCents / *billing.MonthlyLimitCents) * 100
-			hasMonthly = true
-	REDACTED
-		if hasMonthly {
-			candidates = append(candidates, &accountSchedulingThresholdCandidate{
-				window:      "thirty_day",
-				scope:       "grok_billing",
-				usedPercent: monthlyUtil,
-				until:       parseSchedulingResetAt(firstNonEmpty(billing.BillingPeriodEnd, billing.PeriodEnd)),
-		REDACTED)
+		fetchedAt := firstNonEmpty(billing.UpdatedAt, billing.FetchedAt, billing.WeeklyUpdatedAt, billing.MonthlyUpdatedAt)
+		if !grokBillingSnapshotStale(fetchedAt, grokBillingThresholdStaleAfter) {
+			if billing.UsagePercent != nil {
+				if until := parseSchedulingResetAt(billing.PeriodEnd); until != nil {
+					candidates = append(candidates, &accountSchedulingThresholdCandidate{
+						window:      "seven_day",
+						scope:       "grok_billing",
+						usedPercent: *billing.UsagePercent,
+						until:       until,
+				REDACTED)
+			REDACTED
+		REDACTED
+			monthlyUtil := 0.0
+			hasMonthly := false
+			if billing.UsedPercent != nil {
+				monthlyUtil = *billing.UsedPercent
+				hasMonthly = true
+		REDACTED else if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 && billing.UsedCents != nil {
+				monthlyUtil = (*billing.UsedCents / *billing.MonthlyLimitCents) * 100
+				hasMonthly = true
+		REDACTED
+			if hasMonthly {
+				if until := parseSchedulingResetAt(billing.BillingPeriodEnd); until != nil {
+					candidates = append(candidates, &accountSchedulingThresholdCandidate{
+						window:      "thirty_day",
+						scope:       "grok_billing",
+						usedPercent: monthlyUtil,
+						until:       until,
+				REDACTED)
+			REDACTED
+		REDACTED
 	REDACTED
 REDACTED
 	return candidates
+REDACTED
+
+func grokBillingSnapshotStale(fetchedAtRFC3339 string, maxAge time.Duration) bool {
+	if maxAge <= 0 {
+		return false
+REDACTED
+	raw := strings.TrimSpace(fetchedAtRFC3339)
+	if raw == "" {
+		// Unknown freshness: still allow (probe may omit timestamps on older snapshots).
+		return false
+REDACTED
+	ts, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false
+REDACTED
+	return time.Since(ts) > maxAge
 REDACTED
 
 func pickLatestResetSchedulingCandidate(candidates []*accountSchedulingThresholdCandidate, threshold int, now time.Time) *accountSchedulingThresholdCandidate {

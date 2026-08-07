@@ -35,11 +35,12 @@ const (
 )
 
 func NewGrokOAuthClient() service.GrokOAuthClient {
-	// Prefer validated official/allowlisted token URL so env misconfig cannot
-	// exfiltrate auth codes / refresh tokens to an arbitrary host.
+	// Fail closed: never fall back to an unvalidated EffectiveTokenURL (env can
+	// point at an attacker host and steal code/refresh tokens).
 	tokenURL, err := xai.ValidatedTokenURL()
 	if err != nil || strings.TrimSpace(tokenURL) == "" {
-		tokenURL = xai.EffectiveTokenURL()
+		// Official allowlisted endpoint only — never EffectiveTokenURL() (raw env).
+		tokenURL = xai.DefaultTokenURL
 REDACTED
 	return &grokOAuthClient{tokenURL: tokenURLREDACTED
 REDACTED
