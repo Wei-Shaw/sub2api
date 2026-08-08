@@ -1994,8 +1994,10 @@ func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   1,
-			MaxLineSize:               defaultMaxLineSize,
+			// Keepalive is based on *downstream* idle time (last flush to client),
+			// not upstream event cadence. Interval is seconds (config unit).
+			StreamKeepaliveInterval: 1,
+			MaxLineSize:             defaultMaxLineSize,
 	REDACTED,
 REDACTED
 	svc := &OpenAIGatewayService{cfg: cfgREDACTED
@@ -2013,11 +2015,14 @@ REDACTED
 
 	go func() {
 		defer func() { _ = pw.Close() REDACTED()
+		// Emit preamble/progress quickly so clientOutputStarted is true, then
+		// leave a real downstream idle gap longer than keepaliveInterval so the
+		// ticker can write ":\n\n". Frequent upstream ticks used to refresh
+		// lastDownstreamWriteAt and flake on loaded CI runners.
 		_, _ = pw.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n"))
-		for i := 0; i < 6; i++ {
-			time.Sleep(250 * time.Millisecond)
-			_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n"))
-	REDACTED
+		time.Sleep(50 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n"))
+		time.Sleep(1300 * time.Millisecond)
 		_, _ = pw.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2REDACTEDREDACTEDREDACTED\n\n"))
 REDACTED()
 
