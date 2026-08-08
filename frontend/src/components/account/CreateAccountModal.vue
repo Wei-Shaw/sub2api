@@ -70,7 +70,7 @@
         <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input v-model.number="form.initial_expense_usd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
-          <input v-model="form.initial_expense_category" type="text" class="input" :placeholder="t('admin.costCenter.category')" />
+          <Select v-model="form.initial_expense_category" :options="expenseCategoryOptions" size="sm" />
           <input v-model="form.initial_expense_note" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
         </div>
       </div>
@@ -4319,6 +4319,9 @@ interface TempUnschedRuleForm {
 const step = ref(1)
 const submitting = ref(false)
 const accountCategory = ref<'oauth-based' | 'apikey' | 'apikey-relay' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const expenseCategoryOptions = computed(() => [
+  'account_setup', 'account_renewal', 'account_recharge', 'proxy', 'server', 'database', 'bandwidth', 'payment_fee', 'rebate', 'refund_loss', 'other'
+].map(value => ({ value, label: t(`admin.costCenter.categories.${value}`) })))
 
 // Kiro 优先级默认值:普通账号 1(高优先级);外部中转账号 100(低优先级,仅作兜底)。
 const KIRO_DEFAULT_PRIORITY = 1

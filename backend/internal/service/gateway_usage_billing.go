@@ -980,12 +980,12 @@ func writeCostCenterUsageEvents(ctx context.Context, writer CostCenterWriter, us
 	userID := usageLog.UserID
 	requestID := usageLog.RequestID
 	if source != "subscription" {
-		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"}); err != nil {
+		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: "token_consumption", Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"}); err != nil {
 			slog.Warn("cost center usage income event failed", "request_id", requestID, "error", err)
 		}
 	}
 	if accountCost > 0 {
-		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"}); err != nil {
+		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: "upstream_usage", Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"}); err != nil {
 			slog.Warn("cost center upstream event failed", "request_id", requestID, "error", err)
 		}
 	}

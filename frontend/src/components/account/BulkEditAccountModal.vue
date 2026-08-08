@@ -10,7 +10,7 @@
         <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input v-model.number="expenseUsd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
-          <input v-model="expenseCategory" type="text" class="input" :placeholder="t('admin.costCenter.category')" />
+          <Select v-model="expenseCategory" :options="expenseCategoryOptions" size="sm" />
           <input v-model="expenseNote" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
         </div>
       </div>
@@ -1497,6 +1497,9 @@ const enableRpmLimit = ref(false)
 const expenseUsd = ref(0)
 const expenseCategory = ref('account_expense')
 const expenseNote = ref('')
+const expenseCategoryOptions = computed(() => [
+  'account_setup', 'account_renewal', 'account_recharge', 'proxy', 'server', 'database', 'bandwidth', 'payment_fee', 'rebate', 'refund_loss', 'other'
+].map(value => ({ value, label: t(`admin.costCenter.categories.${value}`) })))
 
 // State - field values
 const submitting = ref(false)

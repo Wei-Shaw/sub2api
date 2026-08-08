@@ -488,7 +488,7 @@
       <form class="space-y-4" @submit.prevent="submitAccountExpense">
         <p class="text-sm text-gray-500">{{ expenseAccount?.name }}</p>
         <label class="input-label">{{ t('admin.costCenter.amountUsd') }}<input v-model.number="expenseForm.amount_usd" type="number" min="0.000001" step="0.000001" required class="input mt-1" /></label>
-        <label class="input-label">{{ t('admin.costCenter.category') }}<input v-model="expenseForm.category" required class="input mt-1" /></label>
+        <label class="input-label">{{ t('admin.costCenter.category') }}<Select v-model="expenseForm.category" :options="expenseCategoryOptions" size="sm" class="mt-1" /></label>
         <label class="input-label">{{ t('admin.costCenter.note') }}<textarea v-model="expenseForm.note" rows="2" class="input mt-1" /></label>
         <div class="flex justify-end gap-2"><button type="button" class="btn btn-secondary" @click="showExpenseDialog = false">{{ t('common.cancel') }}</button><button type="submit" class="btn btn-primary" :disabled="expenseSubmitting">{{ t('common.confirm') }}</button></div>
       </form>
@@ -524,7 +524,7 @@ import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vu
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
 import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
-import type { SelectOption } from '@/components/common/Select.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
@@ -629,6 +629,9 @@ const showExpenseDialog = ref(false)
 const expenseAccount = ref<Account | null>(null)
 const expenseSubmitting = ref(false)
 const expenseForm = reactive({ amount_usd: 0, category: 'account_expense', note: '' })
+const expenseCategoryOptions = computed(() => [
+  'account_setup', 'account_renewal', 'account_recharge', 'proxy', 'server', 'database', 'bandwidth', 'payment_fee', 'rebate', 'refund_loss', 'other'
+].map(value => ({ value, label: t(`admin.costCenter.categories.${value}`) })))
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
