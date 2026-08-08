@@ -6832,6 +6832,98 @@
                 {{ t('admin.settings.features.channelMonitor.defaultIntervalHint') }}
               </p>
             </div>
+
+            <div class="border-t border-gray-100 pt-5 dark:border-dark-700">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.features.channelMonitor.dingTalkEnabled') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.features.channelMonitor.dingTalkEnabledHint') }}
+                  </p>
+                </div>
+                <Toggle
+                  v-model="form.channel_monitor_dingtalk_enabled"
+                  data-testid="channel-monitor-dingtalk-toggle"
+                />
+              </div>
+
+              <div
+                v-if="form.channel_monitor_dingtalk_enabled
+                  || form.channel_monitor_dingtalk_webhook_configured
+                  || form.channel_monitor_dingtalk_secret_configured"
+                class="mt-5 space-y-4"
+              >
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.features.channelMonitor.dingTalkWebhook') }}
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    v-model.trim="form.channel_monitor_dingtalk_webhook"
+                    type="password"
+                    autocomplete="new-password"
+                    class="input"
+                    data-testid="channel-monitor-dingtalk-webhook"
+                    :placeholder="t('admin.settings.features.channelMonitor.dingTalkWebhookPlaceholder')"
+                    @input="channelMonitorDingTalkWebhookClear = false"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ channelMonitorDingTalkWebhookClear
+                      ? t('admin.settings.features.channelMonitor.clearPendingHint')
+                      : form.channel_monitor_dingtalk_webhook_configured
+                      ? t('admin.settings.features.channelMonitor.secretConfiguredHint')
+                      : t('admin.settings.features.channelMonitor.dingTalkWebhookHint') }}
+                  </p>
+                  <button
+                    v-if="form.channel_monitor_dingtalk_webhook_configured"
+                    type="button"
+                    class="mt-2 inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    data-testid="channel-monitor-dingtalk-webhook-clear"
+                    @click="channelMonitorDingTalkWebhookClear = !channelMonitorDingTalkWebhookClear"
+                  >
+                    <Icon :name="channelMonitorDingTalkWebhookClear ? 'x' : 'trash'" size="xs" />
+                    {{ channelMonitorDingTalkWebhookClear
+                      ? t('admin.settings.features.channelMonitor.cancelClear')
+                      : t('admin.settings.features.channelMonitor.clearSaved') }}
+                  </button>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.features.channelMonitor.dingTalkSecret') }}
+                  </label>
+                  <input
+                    v-model.trim="form.channel_monitor_dingtalk_secret"
+                    type="password"
+                    autocomplete="new-password"
+                    class="input"
+                    data-testid="channel-monitor-dingtalk-secret"
+                    :placeholder="t('admin.settings.features.channelMonitor.dingTalkSecretPlaceholder')"
+                    @input="channelMonitorDingTalkSecretClear = false"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ channelMonitorDingTalkSecretClear
+                      ? t('admin.settings.features.channelMonitor.clearPendingHint')
+                      : form.channel_monitor_dingtalk_secret_configured
+                      ? t('admin.settings.features.channelMonitor.secretConfiguredHint')
+                      : t('admin.settings.features.channelMonitor.dingTalkSecretHint') }}
+                  </p>
+                  <button
+                    v-if="form.channel_monitor_dingtalk_secret_configured"
+                    type="button"
+                    class="mt-2 inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                    data-testid="channel-monitor-dingtalk-secret-clear"
+                    @click="channelMonitorDingTalkSecretClear = !channelMonitorDingTalkSecretClear"
+                  >
+                    <Icon :name="channelMonitorDingTalkSecretClear ? 'x' : 'trash'" size="xs" />
+                    {{ channelMonitorDingTalkSecretClear
+                      ? t('admin.settings.features.channelMonitor.cancelClear')
+                      : t('admin.settings.features.channelMonitor.clearSaved') }}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -8617,6 +8709,8 @@ const { copyToClipboard } = useClipboard();
 const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
+const channelMonitorDingTalkWebhookClear = ref(false);
+const channelMonitorDingTalkSecretClear = ref(false);
 const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
@@ -9165,6 +9259,8 @@ type SettingsForm = Omit<
   aliyun_captcha_access_key_secret: string;
   linuxdo_connect_client_secret: string;
   dingtalk_connect_client_secret: string;
+  channel_monitor_dingtalk_webhook: string;
+  channel_monitor_dingtalk_secret: string;
   wechat_connect_app_secret: string;
   wechat_connect_open_app_secret: string;
   wechat_connect_mp_app_secret: string;
@@ -9459,6 +9555,11 @@ const form = reactive<SettingsForm>({
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_default_interval_seconds: 60,
+  channel_monitor_dingtalk_enabled: false,
+  channel_monitor_dingtalk_webhook: "",
+  channel_monitor_dingtalk_webhook_configured: false,
+  channel_monitor_dingtalk_secret: "",
+  channel_monitor_dingtalk_secret_configured: false,
   // Available Channels feature switch
   available_channels_enabled: false,
   // Model Plaza feature switches + description
@@ -10495,6 +10596,10 @@ async function loadSettings() {
     form.aliyun_captcha_access_key_secret = "";
     form.linuxdo_connect_client_secret = "";
     form.dingtalk_connect_client_secret = "";
+    form.channel_monitor_dingtalk_webhook = "";
+    form.channel_monitor_dingtalk_secret = "";
+    channelMonitorDingTalkWebhookClear.value = false;
+    channelMonitorDingTalkSecretClear.value = false;
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";
@@ -11094,6 +11199,15 @@ async function saveSettings() {
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_default_interval_seconds:
         Number(form.channel_monitor_default_interval_seconds) || 60,
+      channel_monitor_dingtalk_enabled: form.channel_monitor_dingtalk_enabled,
+      channel_monitor_dingtalk_webhook:
+        form.channel_monitor_dingtalk_webhook || undefined,
+      channel_monitor_dingtalk_secret:
+        form.channel_monitor_dingtalk_secret || undefined,
+      channel_monitor_dingtalk_webhook_clear:
+        channelMonitorDingTalkWebhookClear.value || undefined,
+      channel_monitor_dingtalk_secret_clear:
+        channelMonitorDingTalkSecretClear.value || undefined,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Model Plaza feature switches + description
@@ -11171,6 +11285,10 @@ async function saveSettings() {
     form.aliyun_captcha_access_key_secret = "";
     form.linuxdo_connect_client_secret = "";
     form.dingtalk_connect_client_secret = "";
+    form.channel_monitor_dingtalk_webhook = "";
+    form.channel_monitor_dingtalk_secret = "";
+    channelMonitorDingTalkWebhookClear.value = false;
+    channelMonitorDingTalkSecretClear.value = false;
     form.github_oauth_client_secret = "";
     form.google_oauth_client_secret = "";
     form.wechat_connect_app_secret = "";

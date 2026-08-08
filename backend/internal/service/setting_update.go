@@ -414,6 +414,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if v := clampChannelMonitorInterval(settings.ChannelMonitorDefaultIntervalSeconds); v > 0 {
 		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
 	}
+	updates[SettingKeyChannelMonitorDingTalkEnabled] = strconv.FormatBool(settings.ChannelMonitorDingTalkEnabled)
+	updates[SettingKeyChannelMonitorDingTalkWebhook] = strings.TrimSpace(settings.ChannelMonitorDingTalkWebhook)
+	updates[SettingKeyChannelMonitorDingTalkSecret] = strings.TrimSpace(settings.ChannelMonitorDingTalkSecret)
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)

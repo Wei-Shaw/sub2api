@@ -186,6 +186,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Channel monitor defaults (enabled, 60s)
 		SettingKeyChannelMonitorEnabled:                "true",
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
+		SettingKeyChannelMonitorDingTalkEnabled:        "false",
+		SettingKeyChannelMonitorDingTalkWebhook:        "",
+		SettingKeyChannelMonitorDingTalkSecret:         "",
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
@@ -784,6 +787,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
 	)
+	result.ChannelMonitorDingTalkEnabled = settings[SettingKeyChannelMonitorDingTalkEnabled] == "true"
+	result.ChannelMonitorDingTalkWebhook = strings.TrimSpace(settings[SettingKeyChannelMonitorDingTalkWebhook])
+	result.ChannelMonitorDingTalkWebhookConfigured = result.ChannelMonitorDingTalkWebhook != ""
+	result.ChannelMonitorDingTalkSecret = strings.TrimSpace(settings[SettingKeyChannelMonitorDingTalkSecret])
+	result.ChannelMonitorDingTalkSecretConfigured = result.ChannelMonitorDingTalkSecret != ""
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"

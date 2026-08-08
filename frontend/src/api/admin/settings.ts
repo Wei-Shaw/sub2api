@@ -671,6 +671,9 @@ export interface SystemSettings {
   // Channel Monitor feature switch
   channel_monitor_enabled: boolean;
   channel_monitor_default_interval_seconds: number;
+  channel_monitor_dingtalk_enabled: boolean;
+  channel_monitor_dingtalk_webhook_configured: boolean;
+  channel_monitor_dingtalk_secret_configured: boolean;
 
   // Available Channels feature switch
   available_channels_enabled: boolean;
@@ -962,6 +965,11 @@ export interface UpdateSettingsRequest {
   // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;
   channel_monitor_default_interval_seconds?: number;
+  channel_monitor_dingtalk_enabled?: boolean;
+  channel_monitor_dingtalk_webhook?: string;
+  channel_monitor_dingtalk_secret?: string;
+  channel_monitor_dingtalk_webhook_clear?: boolean;
+  channel_monitor_dingtalk_secret_clear?: boolean;
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;

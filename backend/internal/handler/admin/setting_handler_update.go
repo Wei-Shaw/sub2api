@@ -327,8 +327,13 @@ type UpdateSettingsRequest struct {
 	PaymentAlipayMobilePrecreateDeepLink *bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Channel Monitor feature switch
-	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds *int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                *bool  `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds *int   `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorDingTalkEnabled        *bool  `json:"channel_monitor_dingtalk_enabled"`
+	ChannelMonitorDingTalkWebhook        string `json:"channel_monitor_dingtalk_webhook"`
+	ChannelMonitorDingTalkSecret         string `json:"channel_monitor_dingtalk_secret"`
+	ChannelMonitorDingTalkWebhookClear   bool   `json:"channel_monitor_dingtalk_webhook_clear"`
+	ChannelMonitorDingTalkSecretClear    bool   `json:"channel_monitor_dingtalk_secret_clear"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
@@ -407,7 +412,9 @@ func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
 // the setting key they persist to. Every other field of UpdateSettingsRequest
 // is named after its setting key.
 var settingKeyJSONAliases = map[string]string{
-	"smtp_from_email": service.SettingKeySMTPFrom,
+	"smtp_from_email":                        service.SettingKeySMTPFrom,
+	"channel_monitor_dingtalk_webhook_clear": service.SettingKeyChannelMonitorDingTalkWebhook,
+	"channel_monitor_dingtalk_secret_clear":  service.SettingKeyChannelMonitorDingTalkSecret,
 }
 
 // settingKeyByJSONName maps the value-typed top-level JSON fields of
@@ -452,6 +459,14 @@ func omittedSettingKeys(sentFields map[string]json.RawMessage) service.OmittedSe
 			omitted[settingKey] = struct{}{}
 		}
 	}
+	// Multiple request fields may write the same setting key (for example a
+	// secret value and its explicit clear flag). Any one of them being present
+	// means the setting was deliberately addressed by this payload.
+	for jsonName := range sentFields {
+		if settingKey, ok := settingKeyByJSONName[jsonName]; ok {
+			delete(omitted, settingKey)
+		}
+	}
 	return omitted
 }
 
@@ -460,6 +475,8 @@ func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
 	req.AliyunCaptchaAccessKeySecret = strings.TrimSpace(req.AliyunCaptchaAccessKeySecret)
+	req.ChannelMonitorDingTalkWebhook = strings.TrimSpace(req.ChannelMonitorDingTalkWebhook)
+	req.ChannelMonitorDingTalkSecret = strings.TrimSpace(req.ChannelMonitorDingTalkSecret)
 	return req
 }
 
@@ -591,6 +608,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.SMTPPassword = strings.TrimSpace(req.SMTPPassword)
 	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
 	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
+	req.ChannelMonitorDingTalkWebhook = strings.TrimSpace(req.ChannelMonitorDingTalkWebhook)
+	req.ChannelMonitorDingTalkSecret = strings.TrimSpace(req.ChannelMonitorDingTalkSecret)
 	req.TencentCaptchaAppID = strings.TrimSpace(req.TencentCaptchaAppID)
 	req.TencentCaptchaAppSecretKey = strings.TrimSpace(req.TencentCaptchaAppSecretKey)
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
@@ -1474,6 +1493,31 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	channelMonitorDingTalkEnabled := previousSettings.ChannelMonitorDingTalkEnabled
+	if req.ChannelMonitorDingTalkEnabled != nil {
+		channelMonitorDingTalkEnabled = *req.ChannelMonitorDingTalkEnabled
+	}
+	if req.ChannelMonitorDingTalkWebhookClear {
+		req.ChannelMonitorDingTalkWebhook = ""
+	} else if req.ChannelMonitorDingTalkWebhook == "" {
+		req.ChannelMonitorDingTalkWebhook = previousSettings.ChannelMonitorDingTalkWebhook
+	}
+	if req.ChannelMonitorDingTalkSecretClear {
+		req.ChannelMonitorDingTalkSecret = ""
+	} else if req.ChannelMonitorDingTalkSecret == "" {
+		req.ChannelMonitorDingTalkSecret = previousSettings.ChannelMonitorDingTalkSecret
+	}
+	if channelMonitorDingTalkEnabled {
+		if req.ChannelMonitorDingTalkWebhook == "" {
+			response.BadRequest(c, "DingTalk webhook is required when channel monitor alerts are enabled")
+			return
+		}
+		if err := service.ValidateChannelMonitorDingTalkWebhook(req.ChannelMonitorDingTalkWebhook); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
+
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
 		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
@@ -1860,6 +1904,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorDefaultIntervalSeconds
 		}(),
+		ChannelMonitorDingTalkEnabled: channelMonitorDingTalkEnabled,
+		ChannelMonitorDingTalkWebhook: req.ChannelMonitorDingTalkWebhook,
+		ChannelMonitorDingTalkSecret:  req.ChannelMonitorDingTalkSecret,
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
 				return *req.AvailableChannelsEnabled
@@ -2290,8 +2337,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayForceQRCode:                               updatedPaymentCfg.AlipayForceQRCode,
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
-		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
-		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorEnabled:                   updatedSettings.ChannelMonitorEnabled,
+		ChannelMonitorDefaultIntervalSeconds:    updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorDingTalkEnabled:           updatedSettings.ChannelMonitorDingTalkEnabled,
+		ChannelMonitorDingTalkWebhookConfigured: updatedSettings.ChannelMonitorDingTalkWebhookConfigured,
+		ChannelMonitorDingTalkSecretConfigured:  updatedSettings.ChannelMonitorDingTalkSecretConfigured,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 

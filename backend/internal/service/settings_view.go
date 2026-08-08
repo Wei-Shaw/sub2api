@@ -196,8 +196,13 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int
 
 	// Channel Monitor feature
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                   bool   `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds    int    `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorDingTalkEnabled           bool   `json:"channel_monitor_dingtalk_enabled"`
+	ChannelMonitorDingTalkWebhook           string `json:"-"`
+	ChannelMonitorDingTalkWebhookConfigured bool   `json:"channel_monitor_dingtalk_webhook_configured"`
+	ChannelMonitorDingTalkSecret            string `json:"-"`
+	ChannelMonitorDingTalkSecretConfigured  bool   `json:"channel_monitor_dingtalk_secret_configured"`
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`

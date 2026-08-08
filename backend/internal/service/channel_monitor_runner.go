@@ -48,8 +48,10 @@ type monitorRunnerSvc interface {
 type ChannelMonitorRunner struct {
 	svc            monitorRunnerSvc
 	settingService *SettingService
+	alertNotifier  channelMonitorAlertNotifier
 
 	pool         pond.Pool
+	alertPool    pond.Pool
 	parentCtx    context.Context
 	parentCancel context.CancelFunc
 
@@ -63,6 +65,15 @@ type ChannelMonitorRunner struct {
 	// 防止单次检测耗时 > interval 时同一 monitor 被并发执行。
 	inFlight   map[int64]struct{}
 	inFlightMu sync.Mutex
+
+	failureMu     sync.Mutex
+	failureStates map[int64]channelMonitorFailureState
+}
+
+type channelMonitorFailureState struct {
+	consecutive int
+	alerted     bool
+	pending     bool
 }
 
 // scheduledMonitor 单个监控的运行时上下文。
@@ -95,7 +106,9 @@ func (t *scheduledMonitor) nextDelay() time.Duration {
 // pool 在构造时即建好：避免 Start 在 mu 内赋值、fire/Stop 在 mu 外读取的竞态隐患，
 // 且 pond.NewPool 创建本身近似零开销，提前建池不会浪费资源。
 func NewChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
-	return newChannelMonitorRunner(svc, settingService)
+	runner := newChannelMonitorRunner(svc, settingService)
+	runner.alertNotifier = newDingTalkChannelMonitorNotifier(settingService)
+	return runner
 }
 
 // newChannelMonitorRunner 内部构造，接受最小化接口，便于单元测试注入 stub。
@@ -105,10 +118,16 @@ func newChannelMonitorRunner(svc monitorRunnerSvc, settingService *SettingServic
 		svc:            svc,
 		settingService: settingService,
 		pool:           pond.NewPool(monitorWorkerConcurrency),
-		parentCtx:      ctx,
-		parentCancel:   cancel,
-		tasks:          make(map[int64]*scheduledMonitor),
-		inFlight:       make(map[int64]struct{}),
+		alertPool: pond.NewPool(
+			alertWorkerConcurrency,
+			pond.WithQueueSize(alertWorkerQueueSize),
+			pond.WithNonBlocking(true),
+		),
+		parentCtx:     ctx,
+		parentCancel:  cancel,
+		tasks:         make(map[int64]*scheduledMonitor),
+		inFlight:      make(map[int64]struct{}),
+		failureStates: make(map[int64]channelMonitorFailureState),
 	}
 }
 
@@ -212,6 +231,9 @@ func (r *ChannelMonitorRunner) Unschedule(id int64) {
 	if ok {
 		task.cancel()
 	}
+	r.failureMu.Lock()
+	delete(r.failureStates, id)
+	r.failureMu.Unlock()
 }
 
 // Stop 优雅停止：取消所有任务、关闭池。
@@ -231,6 +253,10 @@ func (r *ChannelMonitorRunner) Stop() {
 
 	r.wg.Wait()
 	r.pool.StopAndWait()
+	r.alertPool.StopAndWait()
+	r.failureMu.Lock()
+	r.failureStates = nil
+	r.failureMu.Unlock()
 }
 
 // runScheduled 单个监控的循环：立即触发首次（满足"新建/启用即跑"），
@@ -294,6 +320,13 @@ func (r *ChannelMonitorRunner) releaseInFlight(id int64) {
 	r.inFlightMu.Unlock()
 }
 
+func (r *ChannelMonitorRunner) isScheduled(id int64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.tasks[id]
+	return ok
+}
+
 // runOne 执行单个监控的检测。普通错误只记日志；API key 解密失败会撤销任务。
 // 任务结束时（含 panic recover）必须释放 in-flight 槽。
 func (r *ChannelMonitorRunner) runOne(id int64, name string) {
@@ -309,11 +342,84 @@ func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 		}
 	}()
 
-	if _, err := r.svc.RunCheck(ctx, id); err != nil {
+	results, err := r.svc.RunCheck(ctx, id)
+	if err != nil {
 		if errors.Is(err, ErrChannelMonitorAPIKeyDecryptFailed) {
 			r.Unschedule(id)
 		}
 		slog.Warn("channel_monitor: run check failed",
 			"monitor_id", id, "name", name, "error", err)
+		return
 	}
+	if r.isScheduled(id) {
+		r.handleCheckResults(ctx, id, name, results)
+	}
+}
+
+func (r *ChannelMonitorRunner) handleCheckResults(_ context.Context, id int64, name string, results []*CheckResult) {
+	if len(results) == 0 || results[0] == nil {
+		return
+	}
+	primary := results[0]
+	if primary.Status != MonitorStatusFailed && primary.Status != MonitorStatusError {
+		r.failureMu.Lock()
+		delete(r.failureStates, id)
+		r.failureMu.Unlock()
+		return
+	}
+
+	r.failureMu.Lock()
+	state := r.failureStates[id]
+	if state.consecutive < channelMonitorAlertThreshold {
+		state.consecutive++
+	}
+	r.failureStates[id] = state
+	shouldNotify := state.consecutive >= channelMonitorAlertThreshold && !state.alerted && !state.pending && r.alertNotifier != nil
+	if shouldNotify {
+		state.pending = true
+		r.failureStates[id] = state
+	}
+	r.failureMu.Unlock()
+	if !shouldNotify {
+		return
+	}
+
+	alert := channelMonitorFailureAlert{
+		MonitorID:           id,
+		MonitorName:         name,
+		Model:               primary.Model,
+		Status:              primary.Status,
+		Message:             primary.Message,
+		CheckedAt:           primary.CheckedAt,
+		ConsecutiveFailures: state.consecutive,
+	}
+	if _, ok := r.alertPool.TrySubmit(func() {
+		r.deliverFailureAlert(context.Background(), alert)
+	}); !ok {
+		r.failureMu.Lock()
+		current, exists := r.failureStates[id]
+		if exists {
+			current.pending = false
+			r.failureStates[id] = current
+		}
+		r.failureMu.Unlock()
+		slog.Warn("channel_monitor: dingtalk alert queue full", "monitor_id", id, "name", name)
+	}
+}
+
+func (r *ChannelMonitorRunner) deliverFailureAlert(ctx context.Context, alert channelMonitorFailureAlert) {
+	sent, err := r.alertNotifier.NotifyFailure(ctx, alert)
+	if err != nil {
+		slog.Warn("channel_monitor: dingtalk alert failed", "monitor_id", alert.MonitorID, "name", alert.MonitorName, "error", err)
+	}
+	r.failureMu.Lock()
+	current, exists := r.failureStates[alert.MonitorID]
+	if exists {
+		current.pending = false
+		if sent {
+			current.alerted = true
+		}
+		r.failureStates[alert.MonitorID] = current
+	}
+	r.failureMu.Unlock()
 }

@@ -300,8 +300,11 @@ type SystemSettings struct {
 	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Channel Monitor feature switch
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                   bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds    int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorDingTalkEnabled           bool `json:"channel_monitor_dingtalk_enabled"`
+	ChannelMonitorDingTalkWebhookConfigured bool `json:"channel_monitor_dingtalk_webhook_configured"`
+	ChannelMonitorDingTalkSecretConfigured  bool `json:"channel_monitor_dingtalk_secret_configured"`
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
