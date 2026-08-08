@@ -238,6 +238,8 @@ WHEN ` + column + ` <= 300000 THEN 300000 WHEN ` + column + ` <= 600000 THEN 600
 ELSE 2147483647 END`
 REDACTED
 
+// Error dedup lookback: request_id branch is bounded by chunk start minus 90
+// minutes so candidate_ids never forces a full-history scan of ops_error_logs.
 const channelMonitorV2ErrorAggregationSQL = `
 WITH dedup AS (
   WITH candidate_ids AS MATERIALIZED (
@@ -259,7 +261,11 @@ WITH dedup AS (
   FROM ops_error_logs current_error
   WHERE (
       (NULLIF(current_error.request_id, '') IS NULL AND current_error.created_at >= $1 AND current_error.created_at < $2)
-      OR current_error.request_id IN (SELECT request_id FROM candidate_ids)
+      OR (
+        current_error.request_id IN (SELECT request_id FROM candidate_ids)
+        AND current_error.created_at >= $1 - INTERVAL '90 minutes'
+        AND current_error.created_at < $2
+      )
     )
     AND NOT current_error.is_count_tokens
     AND (COALESCE(current_error.status_code, 0) >= 400 OR current_error.error_type = 'cyber_policy')

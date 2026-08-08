@@ -48,10 +48,10 @@ func TestRunCheck_NilRuntimeReaderFailsClosedAsV2(t *testing.T) {
 REDACTED
 
 func TestNormalizeChannelMonitorMode(t *testing.T) {
-	require.Equal(t, ChannelMonitorModeV2, normalizeChannelMonitorMode(""))
+	require.Equal(t, ChannelMonitorModeV1, normalizeChannelMonitorMode(""))
 	require.Equal(t, ChannelMonitorModeV1, normalizeChannelMonitorMode("v1"))
 	require.Equal(t, ChannelMonitorModeV2, normalizeChannelMonitorMode("v2"))
-	require.Equal(t, ChannelMonitorModeV2, normalizeChannelMonitorMode("invalid"))
+	require.Equal(t, ChannelMonitorModeV1, normalizeChannelMonitorMode("invalid"))
 	require.Equal(t, ChannelMonitorModeV1, normalizeChannelMonitorMode(" V1 "))
 REDACTED
 

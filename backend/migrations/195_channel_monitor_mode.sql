@@ -1,5 +1,5 @@
 -- Channel monitor exclusive mode: v1 (active probes) or v2 (passive aggregation).
--- Default v2 keeps existing V2-first deployments unchanged.
+-- Default v1 preserves existing active-probe behavior; operators opt in to v2.
 INSERT INTO settings (key, value)
-VALUES ('channel_monitor_mode', 'v2')
+VALUES ('channel_monitor_mode', 'v1')
 ON CONFLICT (key) DO NOTHING;

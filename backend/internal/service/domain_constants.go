@@ -394,7 +394,7 @@ const (
 	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
 
 	// SettingKeyChannelMonitorMode selects exclusive implementation:
-	// "v1" active probes, "v2" passive aggregation. Default "v2".
+	// "v1" active probes, "v2" passive aggregation. Default "v1" (opt-in to v2).
 	SettingKeyChannelMonitorMode = "channel_monitor_mode"
 
 	// ChannelMonitorModeV1/V2 are the only accepted mode values.
