@@ -23,6 +23,7 @@ func NewConfluxNetworkRuntime(cfg *config.Config) *ConfluxNetworkRuntime {
 func newConfluxNetworkRuntime(ctx context.Context, cfg *config.Config, options ConfluxRPCPoolOptions) *ConfluxNetworkRuntime {
 	runtime := &ConfluxNetworkRuntime{}
 	if cfg == nil || !cfg.Web3Deposit.Enabled {
+		web3RuntimeMetrics.rpcHealthy.Store(false)
 		return runtime
 	}
 	runtime.enabled = true
@@ -41,6 +42,7 @@ func newConfluxNetworkRuntime(ctx context.Context, cfg *config.Config, options C
 	pool, err := NewConfluxRPCPool(ctx, network.RPCURLs, options)
 	if err != nil {
 		runtime.verificationError = err
+		web3RuntimeMetrics.rpcHealthy.Store(false)
 		return runtime
 	}
 	runtime.pool = pool
@@ -51,10 +53,13 @@ func newConfluxNetworkRuntime(ctx context.Context, cfg *config.Config, options C
 	})
 	if err != nil {
 		runtime.verificationError = err
+		web3RuntimeMetrics.rpcHealthy.Store(false)
 		slog.Warn("web3 deposit conflux network verification failed", "error", err)
 		return runtime
 	}
 	runtime.ready = true
+	web3RuntimeMetrics.rpcHealthy.Store(true)
+	slog.Info("web3_deposit_rpc_ready", "chain_id", network.ChainID, "token_contract", asset.ContractAddress)
 	return runtime
 }
 

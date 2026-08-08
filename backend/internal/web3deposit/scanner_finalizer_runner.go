@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -28,6 +29,24 @@ func (r *ScannerFinalizerRunner) ScanNext(ctx context.Context, leaseToken string
 	if errors.Is(scannerErr, ErrLeaseNotHeld) || ctx.Err() != nil {
 		return scannerResult, scannerErr
 	}
-	_, finalizerErr := r.finalizer.FinalizeNext(ctx, leaseToken, now)
+	finalizerResult, finalizerErr := r.finalizer.FinalizeNext(ctx, leaseToken, now)
+	if scannerErr != nil {
+		web3RuntimeMetrics.scannerFailures.Add(1)
+		slog.Error("web3_deposit_scan_failed", "error", scannerErr)
+	}
+	if finalizerErr != nil {
+		web3RuntimeMetrics.finalizerFailures.Add(1)
+		slog.Error("web3_deposit_finalize_failed", "error", finalizerErr)
+	} else {
+		lag := uint64(0)
+		if finalizerResult.FinalizedHead > finalizerResult.ToBlock {
+			lag = finalizerResult.FinalizedHead - finalizerResult.ToBlock
+		}
+		web3RuntimeMetrics.finalizerLag.Store(lag)
+		if finalizerResult.OrphanedCount > 0 {
+			web3RuntimeMetrics.orphaned.Add(uint64(finalizerResult.OrphanedCount))
+			slog.Warn("web3_deposit_orphaned", "count", finalizerResult.OrphanedCount, "from_block", finalizerResult.FromBlock, "to_block", finalizerResult.ToBlock)
+		}
+	}
 	return scannerResult, errors.Join(scannerErr, finalizerErr)
 }

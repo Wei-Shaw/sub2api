@@ -80,7 +80,8 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	if status.LastResult.HeadBlock > status.LastResult.ToBlock {
 		lag = status.LastResult.HeadBlock - status.LastResult.ToBlock
 	}
-	response.Success(c, gin.H{"state": status.State, "leader": status.LeaseHeld, "last_error": status.LastError, "latest_block": strconv.FormatUint(status.LastResult.HeadBlock, 10), "scanned_block": strconv.FormatUint(status.LastResult.ToBlock, 10), "lag_blocks": strconv.FormatUint(lag, 10)})
+	counts, _ := h.deposits.CountAdminDepositsByStatus(c.Request.Context())
+	response.Success(c, gin.H{"state": status.State, "leader": status.LeaseHeld, "last_error": status.LastError, "latest_block": strconv.FormatUint(status.LastResult.HeadBlock, 10), "scanned_block": strconv.FormatUint(status.LastResult.ToBlock, 10), "lag_blocks": strconv.FormatUint(lag, 10), "metrics": web3deposit.SnapshotRuntimeMetrics(), "status_counts": counts})
 }
 
 func (h *Web3DepositHandler) Approve(c *gin.Context) {

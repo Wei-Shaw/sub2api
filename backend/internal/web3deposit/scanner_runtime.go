@@ -294,6 +294,7 @@ func (r *ScannerRuntime) setRuntimeState(state ScannerRuntimeState, leaseHeld bo
 }
 
 func (r *ScannerRuntime) setRuntimeError(err error, leaseHeld bool) {
+	web3RuntimeMetrics.scannerFailures.Add(1)
 	r.mu.Lock()
 	r.status.State = ScannerRuntimeStateUnhealthy
 	r.status.LeaseHeld = leaseHeld
@@ -302,6 +303,11 @@ func (r *ScannerRuntime) setRuntimeError(err error, leaseHeld bool) {
 }
 
 func (r *ScannerRuntime) setRuntimeSuccess(result ScannerResult) {
+	lag := uint64(0)
+	if result.HeadBlock > result.ToBlock {
+		lag = result.HeadBlock - result.ToBlock
+	}
+	web3RuntimeMetrics.scannerLag.Store(lag)
 	r.mu.Lock()
 	r.status.State = ScannerRuntimeStateLeader
 	r.status.LeaseHeld = true

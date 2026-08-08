@@ -3,6 +3,7 @@ package web3deposit
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -63,9 +64,16 @@ func (r *CreditWorkerRuntime) run(ctx context.Context) {
 			for _, job := range jobs {
 				_, creditErr := r.creditor.CreditDeposit(ctx, CreditDepositRequest{DepositID: job.DepositID, ClaimVersion: job.ClaimVersion, Now: time.Now()})
 				if creditErr != nil && !errors.Is(creditErr, ErrCreditClaimLost) {
-					_ = r.jobs.RetryCreditJob(ctx, job, time.Now(), creditErr)
+					web3RuntimeMetrics.creditFailures.Add(1)
+					if retryErr := r.jobs.RetryCreditJob(ctx, job, time.Now(), creditErr); retryErr == nil {
+						web3RuntimeMetrics.creditRetries.Add(1)
+					}
+					slog.Error("web3_deposit_credit_failed", "deposit_id", job.DepositID, "claim_version", job.ClaimVersion, "error", creditErr)
 				}
 			}
+		} else {
+			web3RuntimeMetrics.creditFailures.Add(1)
+			slog.Error("web3_deposit_credit_claim_failed", "error", err)
 		}
 		timer := time.NewTimer(DefaultCreditPoll)
 		select {
