@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,13 +88,14 @@ REDACTED
 REDACTED
 
 func TestGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
-	// Sticky/non-list path must not return over-gate free OAuth accounts.
+	// Sticky/non-list path must not return over-gate free OAuth accounts once cache is warm.
+	// First sticky hit fail-opens and schedules async refresh; subsequent hits use the cache.
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.Grok.FreeQuotaSoftGateEnabled = true
 	cfg.Gateway.Grok.FreeQuotaTokenLimit = 500_000
 	cfg.Gateway.Grok.FreeQuotaSoftGatePercent = 95
 	cfg.Gateway.Grok.FreeQuotaWindowHours = 24
-	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 0
+	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 60
 
 	account := healthyGrokOAuthGatewayTestAccount(8801, "tok")
 	account.Credentials["subscription_tier"] = "free"
@@ -111,15 +113,26 @@ REDACTEDREDACTED
 		gatewayGrokFreeQuotaGateCache.Delete(key)
 		return true
 REDACTED)
+	if root, ok := freeQuotaRefreshInFlight.Load(&gatewayGrokFreeQuotaGateCache); ok {
+		if m, ok := root.(*sync.Map); ok {
+			m.Delete(account.ID)
+	REDACTED
+REDACTED
 	svc := &GatewayService{
 		cfg:          cfg,
 		accountRepo:  repo,
 		usageLogRepo: usageRepo,
 REDACTED
 
+	// Miss: fail open + schedule refresh.
 	got, err := svc.getSchedulableAccount(context.Background(), account.ID)
 REDACTED
-	require.Nil(t, got, "over free soft-gate sticky hit must miss")
+	require.NotNil(t, got, "first sticky hit fail-opens while free-gate stats refresh")
+
+	require.Eventually(t, func() bool {
+		got, err := svc.getSchedulableAccount(context.Background(), account.ID)
+		return err == nil && got == nil
+REDACTED, 2*time.Second, 10*time.Millisecond, "over free soft-gate sticky hit must miss after cache warm")
 REDACTED
 
 func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
@@ -129,7 +142,7 @@ func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 	cfg.Gateway.Grok.FreeQuotaTokenLimit = 500_000
 	cfg.Gateway.Grok.FreeQuotaSoftGatePercent = 95
 	cfg.Gateway.Grok.FreeQuotaWindowHours = 24
-	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 0
+	cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds = 60
 
 	account := healthyGrokOAuthGatewayTestAccount(8802, "tok")
 	account.Credentials["subscription_tier"] = "free"
@@ -146,6 +159,11 @@ REDACTEDREDACTED
 		openaiGrokFreeQuotaGateCache.Delete(key)
 		return true
 REDACTED)
+	if root, ok := freeQuotaRefreshInFlight.Load(&openaiGrokFreeQuotaGateCache); ok {
+		if m, ok := root.(*sync.Map); ok {
+			m.Delete(account.ID)
+	REDACTED
+REDACTED
 	svc := &OpenAIGatewayService{
 		cfg:          cfg,
 		accountRepo:  repo,
@@ -154,7 +172,12 @@ REDACTED
 
 	got, err := svc.getSchedulableAccount(context.Background(), account.ID)
 REDACTED
-	require.Nil(t, got, "OpenAI legacy sticky must apply free soft-gate")
+	require.NotNil(t, got, "first sticky hit fail-opens while free-gate stats refresh")
+
+	require.Eventually(t, func() bool {
+		got, err := svc.getSchedulableAccount(context.Background(), account.ID)
+		return err == nil && got == nil
+REDACTED, 2*time.Second, 10*time.Millisecond, "OpenAI legacy sticky must apply free soft-gate after cache warm")
 REDACTED
 
 func TestCountGrokNativeSearchCallsFromJSON_MessagesStyleBody(t *testing.T) {

@@ -155,12 +155,17 @@ REDACTED
 	REDACTED
 		if cached, ok := cache.Load(account.ID); ok {
 			entry, valid := cached.(grokFreeQuotaGateCacheEntry)
-			age := now.Sub(entry.checkedAt)
-			if valid && settings.cacheTTL > 0 && age >= 0 && age < settings.cacheTTL {
-				if entry.known {
-					tokensByID[account.ID] = entry.tokens
+			if valid {
+				age := now.Sub(entry.checkedAt)
+				// cacheTTL == 0 means "no expiry" for known entries (still fail-open
+				// on first miss; refresh is only scheduled when missing/stale).
+				fresh := settings.cacheTTL <= 0 || (age >= 0 && age < settings.cacheTTL)
+				if fresh {
+					if entry.known {
+						tokensByID[account.ID] = entry.tokens
+				REDACTED
+					continue
 			REDACTED
-				continue
 		REDACTED
 	REDACTED
 		// Miss / stale: fail open on this request; refresh asynchronously.
@@ -228,10 +233,10 @@ REDACTED
 		statsByID, err := queryGrokFreeQuotaWindowStats(context.Background(), usageLogRepo, toFetch, now.Add(-window))
 		if err != nil {
 			grokFreeQuotaGateQueryFailureTotal.Add(1)
-			if cacheTTL > 0 {
-				for _, accountID := range toFetch {
-					cache.Store(accountID, grokFreeQuotaGateCacheEntry{checkedAt: nowREDACTED)
-			REDACTED
+			// Store a negative entry so subsequent hot-path calls do not thrash.
+			// known=false → still fail open until a successful refresh lands.
+			for _, accountID := range toFetch {
+				cache.Store(accountID, grokFreeQuotaGateCacheEntry{checkedAt: nowREDACTED)
 		REDACTED
 			slog.Warn("grok_free_quota_soft_gate_stats_failed",
 				"account_count", len(toFetch),
