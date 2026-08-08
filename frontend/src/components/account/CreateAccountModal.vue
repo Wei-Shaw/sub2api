@@ -3121,8 +3121,8 @@
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <!-- Mixed Scheduling (only for antigravity accounts) -->
-        <div v-if="form.platform === 'antigravity'" class="flex items-center gap-2">
+        <!-- Mixed Scheduling (antigravity/openai accounts: enable cross-platform protocol conversion) -->
+        <div v-if="form.platform === 'antigravity' || form.platform === 'openai'" class="flex items-center gap-2">
           <label class="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -4827,6 +4827,13 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.openai_responses_mode = openAIResponsesMode.value
   } else {
     delete extra.openai_responses_mode
+  }
+
+  // 混合调度：openai 账号启用后可参与 anthropic/gemini 分组调度（协议转换）
+  if (mixedScheduling.value) {
+    extra.mixed_scheduling = true
+  } else {
+    delete extra.mixed_scheduling
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

@@ -69,7 +69,7 @@ interface Props {
   modelValue: number[]
   groups: AdminGroup[]
   platform?: GroupPlatform // Optional platform filter
-  mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
+  mixedScheduling?: boolean // For antigravity/openai accounts: allow anthropic/gemini groups via cross-platform protocol conversion
   searchable?: boolean | 'auto'
 }
 
@@ -91,10 +91,11 @@ const isSearchable = computed(() => {
 const filteredGroups = computed(() => {
   let result: AdminGroup[] = props.groups
   if (props.platform) {
-    // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
-    if (props.platform === 'antigravity' && props.mixedScheduling) {
+    // antigravity/openai 账户启用混合调度后，可选择 anthropic/gemini 分组
+    // （openai 账号经协议转换服务 anthropic/gemini 协议请求）
+    if ((props.platform === 'antigravity' || props.platform === 'openai') && props.mixedScheduling) {
       result = result.filter(
-        (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini' || g.platform === 'composite'
+        (g) => g.platform === props.platform || g.platform === 'anthropic' || g.platform === 'gemini' || g.platform === 'composite'
       )
     } else {
       // 默认：只能选择同 platform 的分组；composite 分组可接收任意具体平台账号

@@ -1666,10 +1666,13 @@ func (a *Account) IsOpenAITokenExpired() bool {
 	return time.Now().Add(60 * time.Second).After(*expiresAt)
 }
 
-// IsMixedSchedulingEnabled 检查 antigravity 账户是否启用混合调度
-// 启用后可参与 anthropic/gemini 分组的账户调度
+// IsMixedSchedulingEnabled 检查账户是否启用混合调度。
+// 原先只对 antigravity 账号生效（参与 anthropic/gemini 分组的调度池）；
+// 现已泛化：任意平台账号设置了 extra.mixed_scheduling=true 即视为启用，
+// 使 openai 账号也能参与 anthropic/gemini 分组的调度池（跨平台协议转换）。
+// antigravity 账号的行为保持不变。
 func (a *Account) IsMixedSchedulingEnabled() bool {
-	if a.Platform != PlatformAntigravity {
+	if a.Platform != PlatformAntigravity && a.Platform != PlatformOpenAI {
 		return false
 	}
 	if a.Extra == nil {
