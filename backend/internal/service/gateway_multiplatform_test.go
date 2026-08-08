@@ -291,7 +291,6 @@ func (m *mockGatewayCacheForPlatform) ReleaseGrokVideoBilled(_ context.Context, 
 	return nil
 REDACTED
 
-
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int

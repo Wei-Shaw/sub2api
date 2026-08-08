@@ -282,7 +282,7 @@ REDACTED
 // kiro_sched_* / antigravity_sched_* extras are still written purely as
 // observability snapshots.
 
-// grokThresholdCandidates mirrors personal-dev: only header-projected
+// grokThresholdCandidates uses only header-projected
 // grok_sched_utilization / grok_sched_reset_at (rolling quota window, reset
 // capped at ~25h when written). Official billing 7d/30d windows are not used
 // for auto-pause here.

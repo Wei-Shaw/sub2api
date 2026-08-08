@@ -310,7 +310,7 @@ REDACTED
 
 func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *testing.T) {
 	t.Parallel()
-	// personal-dev: billing seven_day/thirty_day must not drive pause; only grok_sched_*.
+	// Billing seven_day/thirty_day must not drive pause; only grok_sched_* may.
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 	weeklyEnd := now.Add(3 * time.Hour)
 	weeklyPct := 99.0
@@ -327,7 +327,7 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *tes
 	REDACTED,
 REDACTED
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90REDACTED, now)
-	require.False(t, decision.ShouldPause, "high billing % alone must not pause under personal-dev windows")
+	require.False(t, decision.ShouldPause, "high billing % alone must not pause under scheduling windows")
 
 	account.Extra["grok_sched_utilization"] = 95.0
 	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90REDACTED, now)

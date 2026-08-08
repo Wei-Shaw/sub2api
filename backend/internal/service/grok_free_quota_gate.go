@@ -22,7 +22,7 @@ import (
 //   - free_quota_stats_cache_seconds   (int, default 5) — bound hot-path aggregate query frequency
 //
 // Soft-gate applies only to *explicit* free OAuth (subscription_tier/plan_type ==
-// "free"), matching personal-dev. Media/cache free detection uses isKnownGrokFreeAccount.
+// "free"). Media/cache free detection uses isKnownGrokFreeAccount instead.
 // Admin paths (QueryQuota / import probe) never call this filter.
 
 const (
@@ -86,7 +86,7 @@ REDACTED
 REDACTED
 
 // isExplicitGrokFreeOAuthAccount decides whether the free soft-gate applies.
-// personal-dev contract: only OAuth accounts with credentials/extra
+// Contract: only OAuth accounts with credentials/extra
 // subscription_tier or plan_type exactly "free" (case-insensitive). Inferred
 // free / basic / blank plan do not soft-gate.
 func isExplicitGrokFreeOAuthAccount(account *Account) bool {

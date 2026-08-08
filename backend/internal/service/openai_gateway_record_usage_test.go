@@ -2041,10 +2041,10 @@ func TestGrokVideoBillingUsesSeparateVideoRateMultiplier(t *testing.T) {
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:            "video-request-123",
-			ResponseID:           "video-request-123",
-			Model:                "grok-imagine-video-1.5",
-			BillingModel:         "grok-imagine-video-1.5",
+			RequestID:    "video-request-123",
+			ResponseID:   "video-request-123",
+			Model:        "grok-imagine-video-1.5",
+			BillingModel: "grok-imagine-video-1.5",
 			// Pure video completion clears ImageCount (handler contract).
 			ImageCount:           0,
 			VideoCount:           1,
@@ -2166,7 +2166,7 @@ REDACTED)
 
 REDACTED
 	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, 0, usageRepo.lastLog.ImageCount)
+	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
 	require.Equal(t, ImageBillingSize2K, *usageRepo.lastLog.ImageSize)
 	require.InDelta(t, 0.021, usageRepo.lastLog.TotalCost, 1e-12)
 	require.InDelta(t, 0.021, usageRepo.lastLog.ActualCost, 1e-12)

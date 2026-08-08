@@ -452,9 +452,14 @@ const platformNote = computed(() => {
           ? t('keys.useKeyModal.grok.codexNoteWindows')
           : t('keys.useKeyModal.grok.codexNote')
       REDACTED
-      return activeTab.value === 'windows'
-        ? t('keys.useKeyModal.grok.noteWindows')
-        : t('keys.useKeyModal.grok.note')
+      // Grok CLI: shell-specific path guidance (env + ~/.grok/config.toml).
+      if (activeClientTab.value === 'grok' && (activeTab.value === 'cmd' || activeTab.value === 'powershell')) {
+        return t('keys.useKeyModal.grok.noteWindows')
+      REDACTED
+      if (activeClientTab.value === 'grok' && activeTab.value === 'windows') {
+        return t('keys.useKeyModal.grok.noteWindows')
+      REDACTED
+      return t('keys.useKeyModal.grok.note')
     default:
       return t('keys.useKeyModal.note')
   REDACTED
@@ -754,62 +759,193 @@ http_headers = { "x-openai-actor-authorization" = "local-image-extension" REDACT
   return 'requires_openai_auth = true'
 REDACTED
 
-function generateGrokFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  const isWindows = activeTab.value === 'windows'
-  const configDir = isWindows ? '%userprofile%\\.grok' : '~/.grok'
-  const configContent = `[models]
-default = "grok"
-web_search = "grok"
+function joinConfigPath(dir: string, file: string, windows: boolean): string {
+  if (!windows) return `${dirREDACTED/${fileREDACTED`
+  return `${dirREDACTED\\${fileREDACTED`
+REDACTED
 
-[model."grok"]
-model = "grok-4.5"
-base_url = "${baseUrlREDACTED"
-name = "Grok 4.5"
-api_key = "${apiKeyREDACTED"
+function generateGrokFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  // Prefer unix/cmd/powershell when shell tabs are shown; fall back to windows tab.
+  const shell = activeTab.value
+  const isWindowsPath = shell === 'windows' || shell === 'cmd' || shell === 'powershell'
+  const configDir = isWindowsPath ? '%userprofile%\\.grok' : '~/.grok'
+
+  let envPath: string
+  let envContent: string
+  switch (shell) {
+    case 'cmd':
+      envPath = 'Command Prompt'
+      envContent = `set GROK_MODELS_BASE_URL=${baseUrlREDACTED
+set XAI_API_KEY=${apiKeyREDACTED`
+      break
+    case 'powershell':
+    case 'windows':
+      envPath = 'PowerShell'
+      envContent = `$env:GROK_MODELS_BASE_URL="${baseUrlREDACTED"
+$env:XAI_API_KEY="${apiKeyREDACTED"`
+      break
+    default:
+      envPath = 'Terminal'
+      envContent = `export GROK_MODELS_BASE_URL="${baseUrlREDACTED"
+export XAI_API_KEY="${apiKeyREDACTED"`
+  REDACTED
+
+  // Shape follows official Grok Build docs (docs.x.ai/build/settings + custom-models guide).
+  // Text models only (Responses). Image/video: grok-imagine-image / grok-imagine-video on media endpoints.
+  // Credential order: api_key field → env_key → signed-in session → XAI_API_KEY global fallback.
+  const configContent = `# Grok Build CLI → Sub2API Grok group (API key auth).
+# Official docs: https://docs.x.ai/build/settings
+# Verify after save: grok inspect
+#
+# Text / agent models only. Image & video use separate Imagine model IDs on media endpoints
+# (e.g. grok-imagine-image, grok-imagine-video) — not the catalog below.
+#
+# IMPORTANT: api_backend must be "responses" for Sub2API Grok (POST /v1/responses).
+# If omitted, Grok Build defaults to chat_completions (/v1/chat/completions).
+
+# Global inference base (same role as env GROK_MODELS_BASE_URL).
+# Grok also lists models from {models_base_urlREDACTED/models when this is set.
+[endpoints]
+models_base_url = "${baseUrlREDACTED"
+
+# Prefer env_key over hardcoding api_key (never commit secrets).
+# Also export GROK_MODELS_BASE_URL + XAI_API_KEY in the shell block above.
+
+[model."grok-4.5"]
+model = "grok-4.5"                          # id sent to the API
+name = "Grok 4.5"                           # shown in /model picker
+description = "Grok 4.5 via Sub2API (Responses)"
+# base_url inherits from [endpoints].models_base_url; override only if needed:
+# base_url = "${baseUrlREDACTED"
+env_key = "XAI_API_KEY"                     # or: api_key = "${apiKeyREDACTED"  (not recommended)
+api_backend = "responses"                   # chat_completions | responses | messages
+context_window = 1000000                    # drives auto-compaction timing
+# Optional sampling (global defaults can live under [models] instead):
+# temperature = 0.7
+# top_p = 0.95
+# max_completion_tokens = 8192
+# Server-side (backend) web_search tools — only if your gateway exposes them:
+supports_backend_search = true
+
+[model."grok-build-0.1"]
+model = "grok-build-0.1"
+name = "Grok Build"
+description = "Coding / agent sessions (xAI recommends grok-build* for coding)"
+env_key = "XAI_API_KEY"
+api_backend = "responses"
+context_window = 256000
+supports_backend_search = true
+
+# Text multi-agent / client web_search sub-agent (NOT Imagine image/video).
+[model."grok-4.20-multi-agent-0309"]
+model = "grok-4.20-multi-agent-0309"
+name = "Grok 4.20 Multi Agent (text / web_search)"
+description = "Text multi-agent; use for web_search sub-agent, not image/video"
+env_key = "XAI_API_KEY"
 api_backend = "responses"
 context_window = 1000000
-supports_backend_search = true`
+supports_backend_search = true
 
-  return [{
-    path: `${configDirREDACTED/config.toml`,
-    content: configContent,
-    hint: t('keys.useKeyModal.grok.configTomlHint')
-  REDACTED]
+[model."grok-4.3"]
+model = "grok-4.3"
+name = "Grok 4.3"
+env_key = "XAI_API_KEY"
+api_backend = "responses"
+context_window = 1000000
+supports_backend_search = true
+
+# Optional short alias for /model grok:
+# [model."grok"]
+# model = "grok-4.5"
+# name = "Grok"
+# env_key = "XAI_API_KEY"
+# api_backend = "responses"
+# context_window = 1000000
+# supports_backend_search = true
+
+[models]
+# xAI recommends grok-build* for coding/agent sessions; use grok-4.5 for general chat.
+default = "grok-4.5"
+web_search = "grok-4.5"                     # client-side web_search tool model (must exist as [model.*])
+# Optional environment-wide sampling defaults (per-model values win):
+# temperature = 0.7
+# top_p = 0.95
+# max_completion_tokens = 8192
+# max_retries = 8`
+
+  return [
+    { path: envPath, content: envContent REDACTED,
+    {
+      path: joinConfigPath(configDir, 'config.toml', isWindowsPath),
+      content: configContent,
+      hint: t('keys.useKeyModal.grok.configTomlHint')
+    REDACTED
+  ]
 REDACTED
 
 function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
-  const isWindows = activeTab.value === 'windows'
-  const configPath = isWindows
-    ? '%USERPROFILE%\\.codex\\config.toml'
-    : '~/.codex/config.toml'
-  const configContent = `model_provider = "sub2api_grok"
-model = "grok-4.5"
-review_model = "grok-4.5"
-model_reasoning_effort = "xhigh"
-model_context_window = 1000000
+  // Codex config reference: wire_api = "responses" only; prefer env_key over experimental_bearer_token.
+  // Non-OpenAI gateways should set supports_websockets = false (HTTP/SSE).
+  const shell = activeTab.value
+  const isWindowsPath = shell === 'windows' || shell === 'cmd' || shell === 'powershell'
+  const configDir = isWindowsPath ? '%userprofile%\\.codex' : '~/.codex'
 
-[model_providers.sub2api_grok]
+  let envPath: string
+  let envContent: string
+  switch (shell) {
+    case 'cmd':
+      envPath = 'Command Prompt'
+      envContent = `set SUB2API_API_KEY=${apiKeyREDACTED`
+      break
+    case 'powershell':
+    case 'windows':
+      envPath = 'PowerShell'
+      envContent = `$env:SUB2API_API_KEY="${apiKeyREDACTED"`
+      break
+    default:
+      envPath = 'Terminal'
+      envContent = `export SUB2API_API_KEY="${apiKeyREDACTED"`
+  REDACTED
+
+  const configContent = `# Codex CLI → Sub2API Grok group
+# Docs: Codex config reference (model_providers.*, wire_api = "responses")
+#
+# Text models only. Image/video: grok-imagine-image / grok-imagine-video on media endpoints.
+# Switch model: grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309 (text / web_search)
+
+model_provider = "sub2api"
+model = "grok-4.5"
+# Optional:
+# review_model = "grok-4.5"
+# model_reasoning_effort = "medium"
+# model_context_window = 1000000
+# disable_response_storage = true
+# network_access = "enabled"
+# windows_wsl_setup_acknowledged = true
+
+[model_providers.sub2api]
 name = "Sub2API Grok"
 base_url = "${baseUrlREDACTED"
+# Prefer env_key (variable NAME). Do not combine with experimental_bearer_token.
 env_key = "SUB2API_API_KEY"
+# Fallback only if you cannot set env (discouraged — keeps secret on disk):
+# experimental_bearer_token = "${apiKeyREDACTED"
 wire_api = "responses"
-supports_websockets = true
+# API-key providers: do not require ChatGPT OAuth login
+requires_openai_auth = false
+# Grok/Sub2API path is HTTP/SSE; disable WS (Codex may otherwise try WebSocket first)
+supports_websockets = false
 
-[features]
-responses_websockets_v2 = true`
-  const environmentContent = isWindows
-    ? `$env:SUB2API_API_KEY="${apiKeyREDACTED"`
-    : `export SUB2API_API_KEY="${apiKeyREDACTED"`
+# Optional:
+# [features]
+# goals = true`
 
   return [
+    { path: envPath, content: envContent REDACTED,
     {
-      path: configPath,
+      path: joinConfigPath(configDir, 'config.toml', isWindowsPath),
       content: configContent,
       hint: t('keys.useKeyModal.grok.codexConfigTomlHint')
-    REDACTED,
-    {
-      path: isWindows ? 'PowerShell' : 'Terminal',
-      content: environmentContent
     REDACTED
   ]
 REDACTED
@@ -1318,22 +1454,28 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       REDACTED
     REDACTED
   REDACTED
+  // Align context_window with Grok Build official sample (docs.x.ai/build/settings) where known.
+  // Image/video: grok-imagine-image / grok-imagine-video on media endpoints — not this list.
   const grokModels = {
     'grok-4.5': {
       name: 'Grok 4.5',
-      limit: { context: 1000000, output: 128000 REDACTED
-    REDACTED,
-    'grok-4.3': {
-      name: 'Grok 4.3',
-      limit: { context: 1000000, output: 128000 REDACTED
+      limit: { context: 1000000, output: 64000 REDACTED
     REDACTED,
     'grok-build-0.1': {
       name: 'Grok Build 0.1',
-      limit: { context: 256000, output: 128000 REDACTED
+      limit: { context: 256000, output: 64000 REDACTED
+    REDACTED,
+    'grok-4.20-multi-agent-0309': {
+      name: 'Grok 4.20 Multi Agent (text / web_search)',
+      limit: { context: 1000000, output: 64000 REDACTED
+    REDACTED,
+    'grok-4.3': {
+      name: 'Grok 4.3',
+      limit: { context: 1000000, output: 64000 REDACTED
     REDACTED,
     'grok-composer-2.5-fast': {
       name: 'Grok Composer 2.5 Fast',
-      limit: { context: 500000, output: 128000 REDACTED
+      limit: { context: 500000, output: 64000 REDACTED
     REDACTED
   REDACTED
 
@@ -1353,8 +1495,9 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   REDACTED else if (platform === 'openai') {
     provider[platform].models = openaiModels
   REDACTED else if (platform === 'grok') {
-    provider[platform].npm = '@ai-sdk/openai'
-    provider[platform].name = 'Grok'
+    // Custom provider pointing at Sub2API OpenAI-compatible Responses/Chat endpoints.
+    provider[platform].npm = '@ai-sdk/openai-compatible'
+    provider[platform].name = 'Grok via Sub2API'
     provider[platform].models = grokModels
   REDACTED
 

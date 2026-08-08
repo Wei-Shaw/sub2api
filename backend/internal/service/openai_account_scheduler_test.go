@@ -196,7 +196,6 @@ func (c *schedulerTestGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ 
 	return nil
 REDACTED
 
-
 func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg := &config.Config{REDACTED
 	cfg.Gateway.OpenAIWS.Enabled = true

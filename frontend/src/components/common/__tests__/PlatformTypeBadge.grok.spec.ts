@@ -46,7 +46,7 @@ describe('PlatformTypeBadge Grok plans', () => {
     expect(wrapper.text()).toContain('SuperGrok Heavy')
     expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="grok-free-plan-icon"]').exists()).toBe(false)
-    // Heavy uses purple plan chip (personal-dev parity)
+    // Heavy uses purple plan chip
     expect(wrapper.html()).toContain('bg-purple-100')
 
     await wrapper.setProps({ platform: 'openai', planType: 'free' REDACTED)

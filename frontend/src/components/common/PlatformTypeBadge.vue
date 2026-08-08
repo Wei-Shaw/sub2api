@@ -203,7 +203,7 @@ const planBadgeClass = computed(() => {
   if (normalizedPlanType.value === 'abnormal') {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   REDACTED
-  // Free stays muted gray; paid Grok tiers get distinct colors (aligned with personal-dev).
+  // Free stays muted gray; paid Grok tiers get distinct colors.
   if (normalizedPlanType.value === 'free' || normalizedPlanType.value === 'basic') {
     return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
   REDACTED

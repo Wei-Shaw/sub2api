@@ -1527,7 +1527,6 @@ REDACTED
 REDACTED
 REDACTED
 
-
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
 // imageSize: 图片尺寸 "1K", "2K", "4K"

@@ -207,7 +207,6 @@ func (c *openAIWSStateStoreTimeoutProbeCache) ReleaseGrokVideoBilled(_ context.C
 	return nil
 REDACTED
 
-
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{REDACTED
 	store := NewOpenAIWSStateStore(probe)
