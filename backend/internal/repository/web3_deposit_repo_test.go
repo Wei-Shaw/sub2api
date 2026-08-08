@@ -163,6 +163,46 @@ func TestWeb3DepositRepositoryPaginatesAndScopesUserDeposits(t *testing.T) {
 	require.ErrorIs(t, err, web3deposit.ErrDepositNotFound)
 }
 
+func TestWeb3DepositRepositoryAdminStateTransitionsAreConditional(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+
+	reviewed := testWeb3DepositRecord(21)
+	reviewed.TxHash = fmt.Sprintf("0x%064x", 21)
+	reviewed.Status = web3deposit.DepositStatusManualReview
+	reviewedID, err := repo.Create(ctx, reviewed)
+	require.NoError(t, err)
+	require.NoError(t, repo.ApproveReviewedDeposit(ctx, reviewedID.ID))
+	approved, err := repo.GetAdminDeposit(ctx, reviewedID.ID)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusReadyToCredit, approved.Status)
+	require.ErrorIs(t, repo.ApproveReviewedDeposit(ctx, reviewedID.ID), web3deposit.ErrAdminDepositStateConflict)
+
+	ignored := testWeb3DepositRecord(22)
+	ignored.TxHash = fmt.Sprintf("0x%064x", 22)
+	ignored.Status = web3deposit.DepositStatusManualReview
+	ignoredID, err := repo.Create(ctx, ignored)
+	require.NoError(t, err)
+	require.NoError(t, repo.IgnoreReviewedDeposit(ctx, ignoredID.ID, " duplicate external settlement "))
+	ignoredStored, err := repo.GetAdminDeposit(ctx, ignoredID.ID)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusIgnored, ignoredStored.Status)
+	require.Equal(t, "duplicate external settlement", *ignoredStored.ReviewReason)
+
+	failed := testWeb3DepositRecord(23)
+	failed.TxHash = fmt.Sprintf("0x%064x", 23)
+	failed.Status = web3deposit.DepositStatusFailed
+	failure := "temporary database failure"
+	failed.FailureReason = &failure
+	failedID, err := repo.Create(ctx, failed)
+	require.NoError(t, err)
+	require.NoError(t, repo.RetryFailedDeposit(ctx, failedID.ID))
+	retried, err := repo.GetAdminDeposit(ctx, failedID.ID)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusReadyToCredit, retried.Status)
+	require.Nil(t, retried.FailureReason)
+}
+
 func TestWeb3DepositRepositoryRejectsInvalidValues(t *testing.T) {
 	repo := newWeb3DepositRepository(t)
 	ctx := context.Background()
