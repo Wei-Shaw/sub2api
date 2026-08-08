@@ -20,6 +20,9 @@ func ProvideScannerRuntime(
 	cursorSource ScannerCursorSource,
 	addressLookup ActiveDepositAddressLookup,
 	batchStore ScannerBatchStore,
+	pendingSource PendingFinalizationSource,
+	eligibilitySource DepositCreditEligibilitySource,
+	finalizerBatchStore FinalizerBatchStore,
 ) *ScannerRuntime {
 	if cfg == nil || !cfg.Web3Deposit.Enabled || !cfg.Web3Deposit.ScannerEnabled {
 		runtime, _ := NewScannerRuntime(nil, nil, ScannerRuntimeOptions{Enabled: false})
@@ -70,10 +73,38 @@ func ProvideScannerRuntime(
 	if err != nil {
 		return failedScannerRuntime(err)
 	}
+	canonicalSource, err := NewRPCCanonicalDepositSource(networkRuntime.Pool())
+	if err != nil {
+		return failedScannerRuntime(err)
+	}
+	canonicalVerifier, err := NewCanonicalDepositVerifier(canonicalSource)
+	if err != nil {
+		return failedScannerRuntime(err)
+	}
+	finalizer, err := NewFinalizer(
+		cursorSource,
+		canonicalSource,
+		canonicalVerifier,
+		pendingSource,
+		eligibilitySource,
+		finalizerBatchStore,
+		FinalizerOptions{
+			ScannerKey:     scannerKey(config.DefaultWeb3DepositNetworkKey, config.DefaultWeb3DepositAssetKey),
+			BlockBatchSize: network.BlockBatchSize,
+			ChainConfig:    chainConfig,
+		},
+	)
+	if err != nil {
+		return failedScannerRuntime(err)
+	}
+	runner, err := NewScannerFinalizerRunner(scanner, finalizer)
+	if err != nil {
+		return failedScannerRuntime(err)
+	}
 
 	pollInterval := time.Duration(network.PollIntervalSeconds) * time.Second
 	leaseTTL, renewInterval := scannerLeaseTiming(pollInterval)
-	runtime, err := NewScannerRuntime(scanner, leaseStore, ScannerRuntimeOptions{
+	runtime, err := NewScannerRuntime(runner, leaseStore, ScannerRuntimeOptions{
 		Enabled:         true,
 		ScannerKey:      scannerKey(config.DefaultWeb3DepositNetworkKey, config.DefaultWeb3DepositAssetKey),
 		Owner:           "scanner-" + uuid.NewString(),

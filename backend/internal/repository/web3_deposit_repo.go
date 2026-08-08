@@ -22,6 +22,7 @@ type Web3DepositRepository struct {
 
 var _ depositdomain.DetectedDepositStore = (*Web3DepositRepository)(nil)
 var _ depositdomain.DepositCreditEligibilitySource = (*Web3DepositRepository)(nil)
+var _ depositdomain.PendingFinalizationSource = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -142,6 +143,39 @@ func (r *Web3DepositRepository) ListByUser(ctx context.Context, userID int64) ([
 		return nil, fmt.Errorf("list web3 deposits by user: %w", err)
 	}
 
+	deposits := make([]depositdomain.Deposit, 0, len(entities))
+	for _, entity := range entities {
+		deposits = append(deposits, web3DepositFromEnt(entity))
+	}
+	return deposits, nil
+}
+
+func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {
+	storedFromBlock, err := web3DepositUint64ToInt64(fromBlock, "finalizer from block")
+	if err != nil {
+		return nil, err
+	}
+	storedToBlock, err := web3DepositUint64ToInt64(toBlock, "finalizer to block")
+	if err != nil {
+		return nil, err
+	}
+	entities, err := r.client.Web3Deposit.Query().
+		Where(
+			web3deposit.BlockNumberGTE(storedFromBlock),
+			web3deposit.BlockNumberLTE(storedToBlock),
+			web3deposit.StatusIn(
+				string(depositdomain.DepositStatusDetected),
+				string(depositdomain.DepositStatusConfirming),
+			),
+		).
+		Order(
+			dbent.Asc(web3deposit.FieldBlockNumber),
+			dbent.Asc(web3deposit.FieldID),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list pending web3 deposits for finalization: %w", err)
+	}
 	deposits := make([]depositdomain.Deposit, 0, len(entities))
 	for _, entity := range entities {
 		deposits = append(deposits, web3DepositFromEnt(entity))

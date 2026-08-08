@@ -10,7 +10,7 @@ import (
 )
 
 func TestProvideScannerRuntimeReturnsDisabledRuntimeWhenScannerIsOff(t *testing.T) {
-	runtime := ProvideScannerRuntime(&config.Config{}, nil, nil, nil, nil, nil)
+	runtime := ProvideScannerRuntime(&config.Config{}, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	require.Equal(t, ScannerRuntimeStateDisabled, runtime.Status().State)
 }
@@ -22,7 +22,7 @@ func TestProvideScannerRuntimeRejectsCreditingDuringObserverStage(t *testing.T) 
 		CreditEnabled:  true,
 	}}
 
-	runtime := ProvideScannerRuntime(cfg, nil, nil, nil, nil, nil)
+	runtime := ProvideScannerRuntime(cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	status := runtime.Status()
 	require.Equal(t, ScannerRuntimeStateUnhealthy, status.State)
 	require.True(t, strings.Contains(status.LastError, ErrScannerCreditMustBeDisabled.Error()))
