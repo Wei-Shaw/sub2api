@@ -106,7 +106,7 @@ describe('UseKeyModal', () => {
       apiKey: 'sk-grok-test'
     REDACTED)
     expect(parsed.provider.grok.models['grok-4.5']).toBeDefined()
-    expect(parsed.provider.grok.models['grok-4.5'].limit.context).toBe(1000000)
+    expect(parsed.provider.grok.models['grok-4.5'].limit.context).toBe(500000)
     expect(parsed.provider.grok.models['grok-build-0.1']).toBeDefined()
     expect(parsed.provider.grok.models['grok-4.20-multi-agent-0309']).toBeDefined()
     expect(parsed.provider.grok.models['grok-composer-2.5-fast']).toBeDefined()

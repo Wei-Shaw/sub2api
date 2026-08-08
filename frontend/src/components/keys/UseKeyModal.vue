@@ -826,7 +826,7 @@ description = "Grok 4.5 via Sub2API (Responses)"
 # base_url = "${baseUrlREDACTED"
 env_key = "XAI_API_KEY"                     # or: api_key = "${apiKeyREDACTED"  (not recommended)
 api_backend = "responses"                   # chat_completions | responses | messages
-context_window = 1000000                    # drives auto-compaction timing
+context_window = 500000                     # drives auto-compaction timing
 # Optional sampling (global defaults can live under [models] instead):
 # temperature = 0.7
 # top_p = 0.95
@@ -941,7 +941,7 @@ model = "grok-4.5"
 # Optional:
 # review_model = "grok-4.5"
 # model_reasoning_effort = "medium"
-# model_context_window = 1000000
+# model_context_window = 500000
 # disable_response_storage = true
 # network_access = "enabled"
 # windows_wsl_setup_acknowledged = true
@@ -1482,7 +1482,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   const grokModels = {
     'grok-4.5': {
       name: 'Grok 4.5',
-      limit: { context: 1000000, output: 64000 REDACTED
+      limit: { context: 500000, output: 64000 REDACTED
     REDACTED,
     'grok-build-0.1': {
       name: 'Grok Build 0.1',
