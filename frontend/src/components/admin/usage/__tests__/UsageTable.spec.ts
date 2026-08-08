@@ -48,6 +48,10 @@ const messages: Record<string, string> = {
   'usage.imageSizeUnknown': 'unknown',
   'usage.imageUnitPrice': 'Per-image price',
   'usage.imageTotalPrice': 'Image total price',
+  'usage.latencyFirstToken': 'First',
+  'usage.latencyDuration': 'Total',
+  'usage.latencyOutputSpeed': 'Speed',
+  'usage.tokensPerSecondUnit': 'tokens/s',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
@@ -77,6 +81,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
       </div>
     </div>
   `,
@@ -155,6 +160,63 @@ describe('admin UsageTable tooltip', () => {
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+  })
+
+  it('shows output token speed for valid text requests and skips unusable rows', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-speed-valid',
+            billing_mode: 'token',
+            image_count: 0,
+            output_tokens: 100,
+            duration_ms: 2000,
+            first_token_ms: 500,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-speed-no-output',
+            billing_mode: 'token',
+            image_count: 0,
+            output_tokens: 0,
+            duration_ms: 2000,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-speed-no-duration',
+            billing_mode: 'token',
+            image_count: 0,
+            output_tokens: 100,
+            duration_ms: 0,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-speed-image',
+            output_tokens: 100,
+            duration_ms: 2000,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="output-token-speed"]').map((node) => node.text())).toEqual([
+      '50 tokens/s',
+      '-',
+      '-',
+      '-',
+    ])
   })
 
   it('shows service tier and billing breakdown in cost tooltip', async () => {

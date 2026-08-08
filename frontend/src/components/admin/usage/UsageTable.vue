@@ -230,6 +230,8 @@
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyOutputSpeed') }}</span>
+              <span data-testid="output-token-speed" class="font-medium tabular-nums text-teal-600 dark:text-teal-400">{{ formatOutputTokenSpeed(row) }}</span>
             </div>
           </div>
         </template>
@@ -485,6 +487,7 @@ import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
+import { calculateOutputTokensPerSecond } from '@/utils/usageMetrics'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import {
   LATENCY_BAR_CLASSES,
@@ -653,6 +656,12 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+const formatOutputTokenSpeed = (row: AdminUsageLog): string => {
+  const tokensPerSecond = calculateOutputTokensPerSecond(row)
+  if (tokensPerSecond == null) return '-'
+  return `${tokensPerSecond.toFixed(0)} ${t('usage.tokensPerSecondUnit')}`
 }
 
 // Cost tooltip functions
