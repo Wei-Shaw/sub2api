@@ -709,7 +709,6 @@ func (r *channelMonitorV2Repository) loadErrorDetails(ctx context.Context, filte
 				WHERE newer.request_id = current_error.request_id
 				  AND NOT newer.is_count_tokens
 				  AND (COALESCE(newer.status_code, 0) >= 400 OR newer.error_type = 'cyber_policy')
-				  AND newer.created_at < $2
 				  AND (newer.created_at, newer.id) > (current_error.created_at, current_error.id)
 		))`,
 REDACTED
