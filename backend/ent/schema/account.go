@@ -201,6 +201,10 @@ func (Account) Fields() []ent.Field {
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
 		field.Enum("quota_dimension").Values("global", "spark").Default("global").
 			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
+		field.Enum("openai_session_sticky_mode").
+			Values("normal", "fallback_only").
+			Default("normal").
+			Comment("OpenAI session_hash sticky policy; fallback_only yields to ready higher-priority accounts."),
 	}
 }
 

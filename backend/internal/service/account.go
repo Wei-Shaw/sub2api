@@ -31,6 +31,10 @@ type Account struct {
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int
 	Priority                int
+	// OpenAISessionStickyMode controls whether an OpenAI account can retain a
+	// session_hash binding while a strictly higher-priority account is ready.
+	// Empty values are treated as normal for legacy in-memory/cache records.
+	OpenAISessionStickyMode string
 	// RateMultiplier 账号计费倍率（>=0，允许 0 表示该账号计费为 0）。
 	// 使用指针用于兼容旧版本调度缓存（Redis）中缺字段的情况：nil 表示按 1.0 处理。
 	RateMultiplier     *float64
@@ -79,6 +83,33 @@ type Account struct {
 	headerOverrideCacheRawPtr         uintptr
 	headerOverrideCacheRawLen         int
 	headerOverrideCacheRawSig         uint64
+}
+
+const (
+	OpenAISessionStickyModeNormal       = "normal"
+	OpenAISessionStickyModeFallbackOnly = "fallback_only"
+)
+
+func normalizeOpenAISessionStickyMode(mode string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", OpenAISessionStickyModeNormal:
+		return OpenAISessionStickyModeNormal, true
+	case OpenAISessionStickyModeFallbackOnly:
+		return OpenAISessionStickyModeFallbackOnly, true
+	default:
+		return "", false
+	}
+}
+
+func (a *Account) OpenAISessionStickyModeOrDefault() string {
+	if a == nil {
+		return OpenAISessionStickyModeNormal
+	}
+	mode, ok := normalizeOpenAISessionStickyMode(a.OpenAISessionStickyMode)
+	if !ok {
+		return OpenAISessionStickyModeNormal
+	}
+	return mode
 }
 
 type OpenAIEndpointCapability string

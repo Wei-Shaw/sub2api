@@ -81,6 +81,8 @@ type Account struct {
 	ParentAccountID *int64 `json:"parent_account_id,omitempty"`
 	// 'global' (default) or 'spark' (shadow reads codex_bengalfox).
 	QuotaDimension account.QuotaDimension `json:"quota_dimension,omitempty"`
+	// OpenaiSessionStickyMode holds the value of the "openai_session_sticky_mode" field.
+	OpenaiSessionStickyMode account.OpenaiSessionStickyMode `json:"openai_session_sticky_mode,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the AccountQuery when eager-loading is set.
 	Edges        AccountEdges `json:"edges"`
@@ -177,7 +179,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case account.FieldID, account.FieldProxyID, account.FieldProxyFallbackOriginID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority, account.FieldParentAccountID:
 			values[i] = new(sql.NullInt64)
-		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension:
+		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus, account.FieldQuotaDimension, account.FieldOpenaiSessionStickyMode:
 			values[i] = new(sql.NullString)
 		case account.FieldCreatedAt, account.FieldUpdatedAt, account.FieldDeletedAt, account.FieldLastUsedAt, account.FieldExpiresAt, account.FieldRateLimitedAt, account.FieldRateLimitResetAt, account.FieldOverloadUntil, account.FieldTempUnschedulableUntil, account.FieldSessionWindowStart, account.FieldSessionWindowEnd:
 			values[i] = new(sql.NullTime)
@@ -409,6 +411,12 @@ func (_m *Account) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.QuotaDimension = account.QuotaDimension(value.String)
 			}
+		case account.FieldOpenaiSessionStickyMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field openai_session_sticky_mode", values[i])
+			} else if value.Valid {
+				_m.OpenaiSessionStickyMode = account.OpenaiSessionStickyMode(value.String)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -601,6 +609,9 @@ func (_m *Account) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("quota_dimension=")
 	builder.WriteString(fmt.Sprintf("%v", _m.QuotaDimension))
+	builder.WriteString(", ")
+	builder.WriteString("openai_session_sticky_mode=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OpenaiSessionStickyMode))
 	builder.WriteByte(')')
 	return builder.String()
 }

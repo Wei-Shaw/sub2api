@@ -412,6 +412,34 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
+	if req.StickyAccountID > 0 && strings.TrimSpace(req.SessionHash) != "" && s.service != nil {
+		sticky, stickyErr := s.service.getSchedulableAccount(ctx, req.StickyAccountID)
+		if stickyErr == nil && sticky != nil && sticky.OpenAISessionStickyModeOrDefault() == OpenAISessionStickyModeFallbackOnly {
+			selection, acquireErr := s.service.selectFallbackOnlyWithHigherPriorityAcquisition(
+				ctx,
+				req.GroupID,
+				req.Platform,
+				req.SessionHash,
+				req.StickyAccountID,
+				req.RequestedModel,
+				req.ExcludedIDs,
+				req.RequireCompact,
+				req.RequiredCapability,
+				req.RequiredImageCapability,
+				req.RequiredTransport,
+			)
+			if acquireErr != nil {
+				return nil, decision, acquireErr
+			}
+			if selection != nil {
+				decision.Layer = openAIAccountScheduleLayerLoadBalance
+				decision.SelectedAccountID = selection.Account.ID
+				decision.SelectedAccountType = selection.Account.Type
+				return selection, decision, nil
+			}
+		}
+	}
+
 	if !req.StickyWeighted {
 		selection, escapedSticky, err := s.selectBySessionHash(ctx, req)
 		if err != nil {
@@ -426,6 +454,16 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if escapedSticky {
 			req.PreserveStickyBinding = true
+			stickyAccountID := req.StickyAccountID
+			if stickyAccountID <= 0 {
+				stickyAccountID, _ = s.service.getStickySessionAccountID(ctx, req.GroupID, strings.TrimSpace(req.SessionHash))
+			}
+			if stickyAccountID > 0 {
+				sticky, stickyErr := s.service.getSchedulableAccount(ctx, stickyAccountID)
+				if stickyErr == nil && sticky != nil && sticky.OpenAISessionStickyModeOrDefault() == OpenAISessionStickyModeFallbackOnly {
+					req.PreserveStickyBinding = false
+				}
+			}
 		}
 	}
 
@@ -498,6 +536,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if account == nil || !s.service.openAIAccountMatchesSchedulingGroup(account, req.GroupID) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
+	}
+	if s.service.shouldEscapeFallbackOnlySticky(ctx, req.GroupID, req.Platform, sessionHash, account, req.RequestedModel, req.ExcludedIDs, req.RequireCompact, req.RequiredCapability, req.RequiredTransport) {
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, true, nil
 	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape {

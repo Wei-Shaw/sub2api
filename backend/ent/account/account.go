@@ -78,6 +78,8 @@ const (
 	FieldParentAccountID = "parent_account_id"
 	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
 	FieldQuotaDimension = "quota_dimension"
+	// FieldOpenaiSessionStickyMode holds the string denoting the openai_session_sticky_mode field in the database.
+	FieldOpenaiSessionStickyMode = "openai_session_sticky_mode"
 	// EdgeGroups holds the string denoting the groups edge name in mutations.
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
@@ -162,6 +164,7 @@ var Columns = []string{
 	FieldSessionWindowStatus,
 	FieldParentAccountID,
 	FieldQuotaDimension,
+	FieldOpenaiSessionStickyMode,
 }
 
 var (
@@ -208,6 +211,8 @@ var (
 	DefaultConcurrency int
 	// DefaultPriority holds the default value on creation for the "priority" field.
 	DefaultPriority int
+	// DefaultOpenaiSessionStickyMode holds the default value on creation for the "openai_session_sticky_mode" field.
+	DefaultOpenaiSessionStickyMode OpenaiSessionStickyMode
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
 	// DefaultStatus holds the default value on creation for the "status" field.
@@ -236,6 +241,27 @@ const (
 
 func (qd QuotaDimension) String() string {
 	return string(qd)
+}
+
+// OpenaiSessionStickyMode defines the type for the "openai_session_sticky_mode" enum field.
+type OpenaiSessionStickyMode string
+
+const (
+	OpenaiSessionStickyModeNormal       OpenaiSessionStickyMode = "normal"
+	OpenaiSessionStickyModeFallbackOnly OpenaiSessionStickyMode = "fallback_only"
+)
+
+func (m OpenaiSessionStickyMode) String() string {
+	return string(m)
+}
+
+func OpenaiSessionStickyModeValidator(m OpenaiSessionStickyMode) error {
+	switch m {
+	case OpenaiSessionStickyModeNormal, OpenaiSessionStickyModeFallbackOnly:
+		return nil
+	default:
+		return fmt.Errorf("account: invalid enum value for openai_session_sticky_mode field: %q", m)
+	}
 }
 
 // QuotaDimensionValidator is a validator for the "quota_dimension" field enum values. It is called by the builders before save.

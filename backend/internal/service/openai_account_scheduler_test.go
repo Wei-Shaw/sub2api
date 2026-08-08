@@ -87,6 +87,7 @@ type schedulerTestConcurrencyCache struct {
 	loadBatchErr    error
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
+	acquireErrors   map[int64]error
 	waitCounts      map[int64]int
 	skipDefaultLoad bool
 	acquiredIDs     *[]int64
@@ -96,6 +97,11 @@ type schedulerTestConcurrencyCache struct {
 func (c schedulerTestConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	if c.acquiredIDs != nil {
 		*c.acquiredIDs = append(*c.acquiredIDs, accountID)
+	}
+	if c.acquireErrors != nil {
+		if err, ok := c.acquireErrors[accountID]; ok {
+			return false, err
+		}
 	}
 	if c.acquireResults != nil {
 		if result, ok := c.acquireResults[accountID]; ok {
@@ -144,6 +150,27 @@ func (c schedulerTestConcurrencyCache) GetAccountWaitingCount(ctx context.Contex
 		}
 	}
 	return 0, nil
+}
+
+func (c schedulerTestConcurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
+	if c.loadMap != nil {
+		if load, ok := c.loadMap[accountID]; ok && load != nil {
+			return load.CurrentConcurrency, nil
+		}
+	}
+	return 0, nil
+}
+
+func (c schedulerTestConcurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		current, err := c.GetAccountConcurrency(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+		result[accountID] = current
+	}
+	return result, nil
 }
 
 type schedulerTestGatewayCache struct {

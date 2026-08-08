@@ -256,6 +256,9 @@ func init() {
 	accountDescSessionWindowStatus := accountFields[25].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
+	// accountDescOpenaiSessionStickyMode is the enum sticky policy field.
+	accountDescOpenaiSessionStickyMode := accountFields[28].Descriptor()
+	account.DefaultOpenaiSessionStickyMode = account.OpenaiSessionStickyMode(accountDescOpenaiSessionStickyMode.Default.(string))
 	accountgroupFields := schema.AccountGroup{}.Fields()
 	_ = accountgroupFields
 	// accountgroupDescPriority is the schema descriptor for priority field.

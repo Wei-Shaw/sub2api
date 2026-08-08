@@ -769,3 +769,12 @@ func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, acc
 
 	return s.cache.GetAccountConcurrencyBatch(redisCtx, accountIDs)
 }
+
+// GetAccountConcurrency returns the current active slot count for one account.
+func (s *ConcurrencyService) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
+	counts, err := s.GetAccountConcurrencyBatch(ctx, []int64{accountID})
+	if err != nil {
+		return 0, err
+	}
+	return counts[accountID], nil
+}

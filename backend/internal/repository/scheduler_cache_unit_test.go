@@ -325,6 +325,18 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIWSFlags(t *testing.T) {
 	require.Nil(t, got.Extra["unused_large_field"])
 }
 
+func TestBuildSchedulerMetadataAccount_PreservesOpenAISessionStickyMode(t *testing.T) {
+	account := service.Account{
+		ID:                      45,
+		Platform:                service.PlatformOpenAI,
+		OpenAISessionStickyMode: service.OpenAISessionStickyModeFallbackOnly,
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, service.OpenAISessionStickyModeFallbackOnly, got.OpenAISessionStickyMode)
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 	t.Run("explicit override", func(t *testing.T) {
 		account := service.Account{
