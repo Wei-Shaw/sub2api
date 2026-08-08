@@ -154,6 +154,16 @@ func (h *UsageHandler) List(c *gin.Context) {
 		billingType = &bt
 	}
 
+	var upstreamModelMismatch *bool
+	if raw := strings.TrimSpace(c.Query("upstream_model_mismatch")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid upstream_model_mismatch value, use true or false")
+			return
+		}
+		upstreamModelMismatch = &value
+	}
+
 	// Parse date range. Exact RFC3339 timestamps take precedence over the
 	// legacy day-based filters used by the main usage page.
 	var startTime, endTime *time.Time
@@ -206,22 +216,23 @@ func (h *UsageHandler) List(c *gin.Context) {
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 	filters := usagestats.UsageLogFilters{
-		UserID:            userID,
-		APIKeyID:          apiKeyID,
-		AccountID:         accountID,
-		GroupID:           groupID,
-		RequestID:         requestID,
-		Model:             model,
-		Platform:          platform,
-		ModelFilterSource: usagestats.ModelSourceRequested,
-		RequestType:       requestType,
-		Stream:            stream,
-		BillingType:       billingType,
-		BillingMode:       billingMode,
-		StartTime:         startTime,
-		EndTime:           endTime,
-		HasTTFT:           hasTTFT,
-		ExactTotal:        exactTotal,
+		UserID:                userID,
+		APIKeyID:              apiKeyID,
+		AccountID:             accountID,
+		GroupID:               groupID,
+		RequestID:             requestID,
+		Model:                 model,
+		Platform:              platform,
+		ModelFilterSource:     usagestats.ModelSourceRequested,
+		RequestType:           requestType,
+		Stream:                stream,
+		BillingType:           billingType,
+		BillingMode:           billingMode,
+		UpstreamModelMismatch: upstreamModelMismatch,
+		StartTime:             startTime,
+		EndTime:               endTime,
+		HasTTFT:               hasTTFT,
+		ExactTotal:            exactTotal,
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -311,6 +322,16 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		billingType = &bt
 	}
 
+	var upstreamModelMismatch *bool
+	if raw := strings.TrimSpace(c.Query("upstream_model_mismatch")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid upstream_model_mismatch value, use true or false")
+			return
+		}
+		upstreamModelMismatch = &value
+	}
+
 	// Parse date range
 	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
@@ -350,18 +371,19 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 
 	// Build filters and call GetStatsWithFilters
 	filters := usagestats.UsageLogFilters{
-		UserID:            userID,
-		APIKeyID:          apiKeyID,
-		AccountID:         accountID,
-		GroupID:           groupID,
-		Model:             model,
-		ModelFilterSource: usagestats.ModelSourceRequested,
-		RequestType:       requestType,
-		Stream:            stream,
-		BillingType:       billingType,
-		BillingMode:       billingMode,
-		StartTime:         &startTime,
-		EndTime:           &endTime,
+		UserID:                userID,
+		APIKeyID:              apiKeyID,
+		AccountID:             accountID,
+		GroupID:               groupID,
+		Model:                 model,
+		ModelFilterSource:     usagestats.ModelSourceRequested,
+		RequestType:           requestType,
+		Stream:                stream,
+		BillingType:           billingType,
+		BillingMode:           billingMode,
+		UpstreamModelMismatch: upstreamModelMismatch,
+		StartTime:             &startTime,
+		EndTime:               &endTime,
 	}
 
 	var stats *usagestats.UsageStats

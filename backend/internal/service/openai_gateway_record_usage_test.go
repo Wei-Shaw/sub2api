@@ -1486,12 +1486,13 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:       "resp_billing_model_override",
-			BillingModel:    "gpt-5.1-codex",
-			Model:           "gpt-5.1",
-			UpstreamModel:   "gpt-5.1-codex",
-			ServiceTier:     &serviceTier,
-			ReasoningEffort: &reasoning,
+			RequestID:             "resp_billing_model_override",
+			BillingModel:          "gpt-5.1-codex",
+			Model:                 "gpt-5.1",
+			UpstreamModel:         "gpt-5.1-codex",
+			UpstreamResponseModel: "gpt-5.1-codex-2026-08-01",
+			ServiceTier:           &serviceTier,
+			ReasoningEffort:       &reasoning,
 			Usage: OpenAIUsage{
 				InputTokens:  20,
 				OutputTokens: 10,
@@ -1512,6 +1513,10 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	require.Equal(t, "gpt-5.1", usageRepo.lastLog.RequestedModel)
 	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
 	require.Equal(t, "gpt-5.1-codex", *usageRepo.lastLog.UpstreamModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamResponseModel)
+	require.Equal(t, "gpt-5.1-codex-2026-08-01", *usageRepo.lastLog.UpstreamResponseModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModelMismatch)
+	require.True(t, *usageRepo.lastLog.UpstreamModelMismatch)
 	require.NotNil(t, usageRepo.lastLog.ServiceTier)
 	require.Equal(t, serviceTier, *usageRepo.lastLog.ServiceTier)
 	require.NotNil(t, usageRepo.lastLog.ReasoningEffort)

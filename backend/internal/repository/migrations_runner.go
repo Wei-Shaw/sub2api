@@ -76,6 +76,12 @@ const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
 const postgresIdentifierMaxBytes = 63
 
+// Kept as named constants because migration tests and operational diagnostics
+// refer to the concrete upstream index by name. The generic non-transactional
+// runner below still verifies its definition before deciding whether to drop it.
+const usageLogsUpstreamModelMismatchIndexMigration = "208_add_usage_log_upstream_model_mismatch_index_notx.sql"
+const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_mismatch_created_at"
+
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
 	acceptedDBChecksum map[string]struct{}

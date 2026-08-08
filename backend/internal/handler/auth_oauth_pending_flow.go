@@ -1998,6 +1998,21 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		response.Success(c, payload)
 		return
 	}
+	// ─── 安全修复（账号接管 0day）────────────────────────────────────────────
+	// 非终态 session（如 choose_account_action_required）的 TargetUserID 可能来自
+	// 攻击者提交的他人邮箱：createPendingOAuthAccount / SendPendingOAuthVerifyCode
+	// 发现邮箱已存在时会把本 session 指向该邮箱用户，全程无密码、无邮箱验证码、
+	// 无账号所有权证明。若此时带着 adoption decision 继续执行，下方的
+	// applyPendingOAuthAdoption 会把本 OAuth identity 直接绑定到 TargetUserID，
+	// 攻击者随后再次 OAuth 登录即被系统识别为受害者本人（完整账号接管）。
+	// 只有两类 session 允许在此处执行 adoption/binding：
+	//   1. canIssueTokenPair == true —— 登录终态，identity 已安全绑定该用户；
+	//   2. intent == bind_current_user —— 已登录用户主动发起绑定（绑定目标来自登录态 cookie）。
+	// 其余状态一律只返回 payload，不绑定、不消费 session。
+	if !canIssueTokenPair && !strings.EqualFold(strings.TrimSpace(session.Intent), oauthIntentBindCurrentUser) {
+		response.Success(c, payload)
+		return
+	}
 	if !adoptionDecision.hasDecision() {
 		adoptionRequired, _ := payload["adoption_required"].(bool)
 		if adoptionRequired {

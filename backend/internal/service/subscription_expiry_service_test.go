@@ -87,11 +87,11 @@ func (r *subscriptionExpiryRepoStub) UpdateNotes(context.Context, int64, string)
 	return nil
 }
 
-func (r *subscriptionExpiryRepoStub) ActivateWindows(context.Context, int64, time.Time) error {
+func (r *subscriptionExpiryRepoStub) ActivateWindows(context.Context, int64, time.Time, time.Time) error {
 	return nil
 }
 
-func (r *subscriptionExpiryRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+func (r *subscriptionExpiryRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time) error {
 	return nil
 }
 
