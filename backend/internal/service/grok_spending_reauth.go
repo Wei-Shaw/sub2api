@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"time"
 )
@@ -10,10 +9,7 @@ import (
 // Spending-limit is recoverable at the end of the observed billing period.
 // When no billing snapshot is available, use a short probe rather than
 // fabricating a 24h boundary from the error arrival time.
-const grokSpendingLimitCooldown = 24 * time.Hour
 const grokSpendingLimitProbeCooldown = 10 * time.Minute
-
-const grokSpendingLimitErrorMessage = "Grok spending limit reached; reauthorize or wait for billing reset"
 
 func grokSpendingLimitResetAt(account *Account, now time.Time) time.Time {
 	if account != nil {
@@ -26,29 +22,6 @@ func grokSpendingLimitResetAt(account *Account, now time.Time) time.Time {
 	REDACTED
 REDACTED
 	return now.Add(grokSpendingLimitProbeCooldown)
-REDACTED
-
-// markGrokSpendingLimitReauth applies a long temp-unsched cool and durable
-// SetError so ops sees reauth-required without wiping OAuth credentials.
-func (s *OpenAIGatewayService) markGrokSpendingLimitReauth(ctx context.Context, account *Account) {
-	if s == nil || account == nil || account.IsPoolMode() {
-		return
-REDACTED
-	s.tempUnscheduleGrok(ctx, account, grokSpendingLimitCooldown, "grok spending limit")
-	if s.accountRepo == nil {
-		return
-REDACTED
-	stateCtx, cancel := openAIAccountStateContext(ctx)
-	defer cancel()
-	if err := s.accountRepo.SetError(stateCtx, account.ID, grokSpendingLimitErrorMessage); err != nil {
-		slog.Warn("grok_spending_limit_set_error_failed", "account_id", account.ID, "error", err)
-REDACTED
-	// Soft flag in extra for UI / usage fetcher without requiring status poll.
-	_ = s.accountRepo.UpdateExtra(stateCtx, account.ID, map[string]any{
-		"grok_needs_reauth":        true,
-		"grok_needs_reauth_reason": "spending_limit",
-		"grok_needs_reauth_at":     time.Now().UTC().Format(time.RFC3339),
-REDACTED)
 REDACTED
 
 // clearGrokNeedsReauthExtra drops the soft reauth flag after successful refresh

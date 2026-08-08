@@ -903,23 +903,23 @@ func (s *AccountTestService) grokTestAccessToken(ctx context.Context, account *A
 	switch account.Type {
 	case AccountTypeOAuth:
 		if s.grokTokenProvider == nil {
-			return "", fmt.Errorf("Grok token provider not configured")
+			return "", fmt.Errorf("grok token provider not configured")
 	REDACTED
 		// Manual tests skip production scheduling eligibility so paused/rate-limited
 		// accounts can still be probed by admins (same as Codex/OpenAI tests).
 		token, err := s.grokTokenProvider.GetAccessTokenForManualTest(ctx, account)
 		if err != nil {
-			return "", fmt.Errorf("Failed to get Grok access token: %s", err.Error())
+			return "", fmt.Errorf("failed to get grok access token: %s", err.Error())
 	REDACTED
 		return token, nil
 	case AccountTypeAPIKey:
 		authToken := strings.TrimSpace(account.GetCredential("api_key"))
 		if authToken == "" {
-			return "", fmt.Errorf("Grok API key is missing")
+			return "", fmt.Errorf("grok api key is missing")
 	REDACTED
 		return authToken, nil
 	default:
-		return "", fmt.Errorf("Unsupported Grok account type: %s", account.Type)
+		return "", fmt.Errorf("unsupported grok account type: %s", account.Type)
 REDACTED
 REDACTED
 

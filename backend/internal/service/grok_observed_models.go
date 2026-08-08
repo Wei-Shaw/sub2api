@@ -119,7 +119,7 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return err

@@ -525,18 +525,6 @@ func isOfficialGrokVideoStatusDone(statusBody []byte) bool {
 	return strings.EqualFold(strings.TrimSpace(gjson.GetBytes(statusBody, "status").String()), "done")
 REDACTED
 
-// extractGrokVideoStatusContentURL returns official video.url when present.
-// Kept for content/proxy helpers that still accept rewritten proxy paths after rewrite.
-func extractGrokVideoStatusContentURL(body []byte) string {
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return ""
-REDACTED
-	if u := strings.TrimSpace(gjson.GetBytes(body, "video.url").String()); u != "" {
-		return u
-REDACTED
-	return ""
-REDACTED
-
 // ExtractGrokVideoBillingFromStatusBody builds usage units from an official done status.
 // Field priority (official docs):
 //   - duration: video.duration (seconds)

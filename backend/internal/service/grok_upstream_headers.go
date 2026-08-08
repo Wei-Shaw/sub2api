@@ -14,10 +14,6 @@ import (
 // tests. Current requests use the pinned default UA from this package.
 const grokUpstreamUserAgent = "sub2api-grok/1.0"
 
-// defaultBrowserLikeUpstreamUserAgent remains available for non-Grok OpenAI-like
-// fingerprint templates that historically shared this constant.
-const defaultBrowserLikeUpstreamUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-
 // Fixed CLI identity aliases — single source of truth is internal/pkg/xai.
 const (
 	grokClientVersionHeader    = xai.CLIStableVersion

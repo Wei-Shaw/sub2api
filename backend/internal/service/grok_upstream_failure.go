@@ -50,9 +50,8 @@ type GrokUpstreamFailureDecision struct {
 REDACTED
 
 var (
-	reGrokTokenPair    = regexp.MustCompile(`(?i)tokens?\s*(?:\(actual\s*/\s*limit\))?\s*[:=]?\s*(\d+)\s*/\s*(\d+)`)
-	reGrokModelFor     = regexp.MustCompile(`(?i)(?:for\s+model|model|模型)\s*[:：]?\s*([a-z0-9][a-z0-9._-]{2,80REDACTED)`)
-	reGrokResetsWindow = regexp.MustCompile(`(?i)resets?\s+over\s+a\s+rolling\s+(\d+)\s*-\s*hour`)
+	reGrokTokenPair = regexp.MustCompile(`(?i)tokens?\s*(?:\(actual\s*/\s*limit\))?\s*[:=]?\s*(\d+)\s*/\s*(\d+)`)
+	reGrokModelFor  = regexp.MustCompile(`(?i)(?:for\s+model|model|模型)\s*[:：]?\s*([a-z0-9][a-z0-9._-]{2,80REDACTED)`)
 )
 
 // classifyGrokUpstreamFailure decides cooldown/failover from status + body.
@@ -166,11 +165,10 @@ REDACTED
 REDACTED
 
 func grokUpstreamErrorCorpus(statusCode int, responseBody []byte) (text, code, low string) {
+	_ = statusCode // classifier already has the transport status; corpus is body-only
 	raw := strings.TrimSpace(string(responseBody))
-	if unwrappedStatus, unwrappedBody, ok := unwrapGrokUpstreamErrorText(raw); ok {
-		if statusCode <= 0 {
-			statusCode = unwrappedStatus
-	REDACTED
+	// Strip "upstream status NNN: ..." prefixes so free-usage / quota language is visible.
+	if _, unwrappedBody, ok := unwrapGrokUpstreamErrorText(raw); ok {
 		raw = unwrappedBody
 REDACTED
 	text = raw

@@ -1359,26 +1359,6 @@ REDACTED
 	return defaultBaseURL
 REDACTED
 
-func isOfficialGrokAPIBaseURL(raw string) bool {
-	return isOfficialGrokBaseURL(raw, xai.DefaultBaseURL)
-REDACTED
-
-func isOfficialGrokBaseURL(raw, expected string) bool {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || parsed.Opaque != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
-REDACTED
-	want, err := url.Parse(expected)
-	if err != nil || !strings.EqualFold(parsed.Scheme, want.Scheme) || !strings.EqualFold(parsed.Hostname(), want.Hostname()) {
-		return false
-REDACTED
-	if port := parsed.Port(); port != "" && port != "443" {
-		return false
-REDACTED
-	path := strings.TrimRight(parsed.Path, "/")
-	return path == "" || path == strings.TrimRight(want.Path, "/")
-REDACTED
-
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
 // The subscription CLI gateway enforces a small request-body limit that
 // rejects large Base64 media payloads, so OAuth media leaves for api.x.ai

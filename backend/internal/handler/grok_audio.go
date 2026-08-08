@@ -81,7 +81,7 @@ REDACTED
 	if err != nil {
 		return
 REDACTED
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() REDACTED()
 
 	model := c.Query("model")
 	if strings.TrimSpace(model) == "" {

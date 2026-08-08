@@ -24,12 +24,7 @@ import (
 // Soft-gate applies only to *explicit* free OAuth (subscription_tier/plan_type ==
 // "free"). Media/cache free detection uses isKnownGrokFreeAccount instead.
 // Admin paths (QueryQuota / import probe) never call this filter.
-
-const (
-	defaultGrokFreeQuotaTokenLimit      int64 = 500_000
-	defaultGrokFreeQuotaSoftGatePercent       = 95
-	defaultGrokFreeQuotaWindowHours           = 24
-)
+// Defaults live on config.Gateway.Grok (see config load defaults / tests).
 
 type GrokFreeQuotaPolicy struct {
 	Enabled         bool  `json:"enabled"`
