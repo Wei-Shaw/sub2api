@@ -164,6 +164,22 @@ const (
 	SettingKeyTurnstileSiteKey   = "turnstile_site_key"   // Turnstile Site Key
 	SettingKeyTurnstileSecretKey = "turnstile_secret_key" // Turnstile Secret Key
 
+	// 腾讯天御验证码设置
+	SettingKeyTencentCaptchaEnabled        = "tencent_captcha_enabled"
+	SettingKeyTencentCaptchaAppID          = "tencent_captcha_app_id"
+	SettingKeyTencentCaptchaAppSecretKey   = "tencent_captcha_app_secret_key"
+	SettingKeyTencentCaptchaCloudSecretID  = "tencent_captcha_cloud_secret_id"
+	SettingKeyTencentCaptchaCloudSecretKey = "tencent_captcha_cloud_secret_key"
+	SettingKeyTencentCaptchaRegion         = "tencent_captcha_region" // 站点："cn"|"intl"，决定前端 SDK 脚本与服务端接入点
+
+	// 阿里云验证码 2.0 设置（与 Turnstile、腾讯天御互斥，同一时间仅可启用一家）
+	SettingKeyAliyunCaptchaEnabled         = "aliyun_captcha_enabled"           // 是否启用阿里云验证码
+	SettingKeyAliyunCaptchaAccessKeyID     = "aliyun_captcha_access_key_id"     // 阿里云 AccessKey ID
+	SettingKeyAliyunCaptchaAccessKeySecret = "aliyun_captcha_access_key_secret" // 阿里云 AccessKey Secret
+	SettingKeyAliyunCaptchaSceneID         = "aliyun_captcha_scene_id"          // 验证场景 ID（所有认证流程共用）
+	SettingKeyAliyunCaptchaPrefix          = "aliyun_captcha_prefix"            // 身份标，前端 SDK 初始化用
+	SettingKeyAliyunCaptchaRegion          = "aliyun_captcha_region"            // 地域："cn"|"sgp"，决定前端脚本区域与服务端接入点
+
 	// API Key IP 访问控制设置
 	SettingKeyAPIKeyACLTrustForwardedIP = "api_key_acl_trust_forwarded_ip" // API Key IP 白/黑名单是否信任转发 IP
 	SettingKeyForwardedClientIPHeaders  = "forwarded_client_ip_headers"    // 自定义 CDN 客户端 IP 请求头（JSON 数组）
@@ -526,6 +542,16 @@ const (
 	// 当客户端 UA 被识别为浏览器（Chrome/Firefox/Safari/Edge 等）时，转发给 OpenAI 上游前会替换为此值，
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
 	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
+	// SettingKeyOpenAICodexClientVersion 网关对 ChatGPT 上游声明的 Codex 客户端版本号（管理员覆写）。
+	// 空值表示跟随自动同步值；自动同步也没有结果时回退到内置常量。
+	// 上游在容量紧张时按客户端身份分优先级降载，陈旧版本会被优先丢弃，故该值需保持跟随官方发布。
+	SettingKeyOpenAICodexClientVersion = "openai_codex_client_version"
+	// SettingKeyOpenAICodexClientVersionSynced 自动同步任务写入的官方 Codex 最新稳定版版本号。
+	// 由 OpenAICodexVersionSyncService 独占写入，面板只读展示；管理员覆写请用
+	// SettingKeyOpenAICodexClientVersion。
+	SettingKeyOpenAICodexClientVersionSynced = "openai_codex_client_version_synced"
+	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
+	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

@@ -115,6 +115,19 @@ export interface LoginRequest {
   email: string
   password: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
+}
+
+export interface TencentCaptchaRequestProof {
+  tencent_captcha_ticket: string
+  tencent_captcha_randstr: string
+}
+
+// 动作触发式验证码（OAuth 启动、passkey 等入口）的请求凭据：
+// 腾讯填 tencent_captcha_*，阿里云的 captchaVerifyParam 复用 turnstile_token 字段
+export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequestProof> {
+  turnstile_token?: string
 }
 
 export interface RegisterRequest {
@@ -122,6 +135,8 @@ export interface RegisterRequest {
   password: string
   verify_code?: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   promo_code?: string
   invitation_code?: string
   aff_code?: string
@@ -156,6 +171,8 @@ export interface AffiliateTransferResponse {
 export interface SendVerifyCodeRequest {
   email: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   pending_auth_token?: string
   pending_oauth_token?: string
 }
@@ -201,8 +218,15 @@ export interface PublicSettings {
   login_agreement_revision?: string
   login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
+  tencent_captcha_enabled?: boolean
+  tencent_captcha_app_id?: string
+  tencent_captcha_region?: string
   passkey_enabled?: boolean
   turnstile_site_key: string
+  aliyun_captcha_enabled?: boolean
+  aliyun_captcha_scene_id?: string
+  aliyun_captcha_prefix?: string
+  aliyun_captcha_region?: string
   site_name: string
   site_logo: string
   site_subtitle: string
@@ -1070,6 +1094,10 @@ export interface Account {
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    codex_reset_credit_snapshot?: {
+      available_count?: number
+      credits?: { expires_at?: string }[]
+    }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1621,6 +1649,8 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  upstream_response_model?: string | null
+  upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）
@@ -1851,6 +1881,7 @@ export interface UserUsageTrendPoint {
 export interface UserSpendingRankingItem {
   user_id: number
   email: string
+  username: string
   actual_cost: number
   requests: number
   tokens: number

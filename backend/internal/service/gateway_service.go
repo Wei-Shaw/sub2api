@@ -580,11 +580,15 @@ type ForwardResult struct {
 	// BillingModelOverride forces billing to use the actual model selected by a
 	// server-side compatibility rewrite instead of a client-selected billing source.
 	BillingModelOverride string
-	Stream               bool
-	Duration             time.Duration
-	FirstTokenMs         *int // 首字时间（流式请求）
-	ClientDisconnect     bool // 客户端是否在流式传输过程中断开
-	ReasoningEffort      *string
+	// UpstreamResponseModel is captured from the raw successful upstream
+	// response before any client-facing rewrite or protocol conversion.
+	UpstreamResponseModel         string
+	UpstreamResponseModelConflict bool
+	Stream                        bool
+	Duration                      time.Duration
+	FirstTokenMs                  *int // 首字时间（流式请求）
+	ClientDisconnect              bool // 客户端是否在流式传输过程中断开
+	ReasoningEffort               *string
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量
@@ -636,6 +640,7 @@ type UpstreamFailoverError struct {
 	ResponseHeaders          http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
 	ForceCacheBilling        bool        // Antigravity 粘性会话切换时设为 true
 	RetryableOnSameAccount   bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	RequestScopedTransient   bool        // 故障因素与账号无关（如上游按客户端身份/模型容量降载）：可同账号重试，但不得据此对账号做临时封禁
 	SafeToFailoverAfterWrite bool        // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
 	Stage                    GatewayFailureStage
 	Scope                    GatewayFailureScope
@@ -685,6 +690,11 @@ func (e *sseStreamErrorEventError) Error() string { return "have error in stream
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
 	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
+		return
+	}
+	// 请求级瞬时故障与账号健康无关：封禁只会把与故障无关的账号一并摘掉，
+	// 而故障因素（客户端身份、模型容量）在下一个账号上完全相同。
+	if failoverErr.RequestScopedTransient {
 		return
 	}
 	// 根据状态码选择封禁策略
