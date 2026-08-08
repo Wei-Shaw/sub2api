@@ -1222,10 +1222,12 @@ func addOpenAIUsage(dst *OpenAIUsage, usage OpenAIUsage) {
 	}
 	dst.InputTokens += usage.InputTokens
 	dst.ImageInputTokens += usage.ImageInputTokens
+	dst.SeparateImageInputTokens += usage.SeparateImageInputTokens
 	dst.OutputTokens += usage.OutputTokens
 	dst.CacheCreationInputTokens += usage.CacheCreationInputTokens
 	dst.CacheReadInputTokens += usage.CacheReadInputTokens
 	dst.ImageOutputTokens += usage.ImageOutputTokens
+	dst.SeparateImageOutputTokens += usage.SeparateImageOutputTokens
 }
 
 func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, cacheIdentity string, cfg *config.Config, settings ...*SettingService) (*http.Request, error) {

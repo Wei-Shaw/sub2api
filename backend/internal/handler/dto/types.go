@@ -522,17 +522,20 @@ type UsageLog struct {
 	FirstTokenMs *int   `json:"first_token_ms"`
 
 	// 图片生成字段
-	ImageCount         int            `json:"image_count"`
-	ImageSize          *string        `json:"image_size"`
-	ImageInputSize     *string        `json:"image_input_size"`
-	ImageOutputSize    *string        `json:"image_output_size"`
-	ImageInputTokens   int            `json:"image_input_tokens"`
-	ImageInputCost     float64        `json:"image_input_cost"`
-	ImageOutputTokens  int            `json:"image_output_tokens"`
-	ImageOutputCost    float64        `json:"image_output_cost"`
-	ImageSizeSource    *string        `json:"image_size_source"`
-	ImageSizeBreakdown map[string]int `json:"image_size_breakdown"`
-	MediaType          *string        `json:"media_type"`
+	ImageCount          int            `json:"image_count"`
+	ImageSize           *string        `json:"image_size"`
+	ImageInputSize      *string        `json:"image_input_size"`
+	ImageOutputSize     *string        `json:"image_output_size"`
+	ImageInputTokens    int            `json:"image_input_tokens"`
+	ImageInputCost      float64        `json:"image_input_cost"`
+	ImageOutputTokens   int            `json:"image_output_tokens"`
+	ImageOutputCost     float64        `json:"image_output_cost"`
+	ImageGenerationCost float64        `json:"image_generation_cost"`
+	ImageActualCost     float64        `json:"image_actual_cost"`
+	ImageRateMultiplier float64        `json:"image_rate_multiplier"`
+	ImageSizeSource     *string        `json:"image_size_source"`
+	ImageSizeBreakdown  map[string]int `json:"image_size_breakdown"`
+	MediaType           *string        `json:"media_type"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`

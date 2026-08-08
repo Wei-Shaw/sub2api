@@ -220,6 +220,7 @@ func TestBillingModeIsValid(t *testing.T) {
 		{"token", BillingModeToken, true},
 		{"per_request", BillingModePerRequest, true},
 		{"image", BillingModeImage, true},
+		{"mixed usage-only mode", BillingModeMixed, false},
 		{"empty", BillingMode(""), true},
 		{"unknown", BillingMode("unknown"), false},
 		{"random", BillingMode("xyz"), false},
@@ -230,6 +231,11 @@ func TestBillingModeIsValid(t *testing.T) {
 			require.Equal(t, tt.want, tt.mode.IsValid())
 		})
 	}
+}
+
+func TestBillingModeIsValidUsageFilter(t *testing.T) {
+	require.True(t, BillingModeMixed.IsValidUsageFilter())
+	require.False(t, BillingMode("unknown").IsValidUsageFilter())
 }
 
 // --- Channel.IsActive ---

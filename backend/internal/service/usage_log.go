@@ -154,6 +154,10 @@ type UsageLog struct {
 	ImageInputCost    float64
 	ImageOutputTokens int
 	ImageOutputCost   float64
+	// ImageGenerationCost 是按图片数量、尺寸计算的倍率前费用，与图片 Token 成本语义不同。
+	ImageGenerationCost float64
+	ImageActualCost     float64
+	ImageRateMultiplier float64
 
 	InputCost                 float64
 	OutputCost                float64

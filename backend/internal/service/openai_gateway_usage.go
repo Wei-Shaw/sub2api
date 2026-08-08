@@ -355,6 +355,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.ImageInputCost = cost.ImageInputCost
 		usageLog.OutputCost = cost.OutputCost
 		usageLog.ImageOutputCost = cost.ImageOutputCost
+		usageLog.ImageGenerationCost = cost.ImageGenerationCost
+		usageLog.ImageActualCost = cost.ImageActualCost
+		usageLog.ImageRateMultiplier = cost.ImageRateMultiplier
 		usageLog.CacheCreationCost = cost.CacheCreationCost
 		usageLog.CacheReadCost = cost.CacheReadCost
 		usageLog.TotalCost = cost.TotalCost
@@ -363,7 +366,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
-	} else if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
+	} else if result.ImageCount > 0 && (cost == nil || isImageOnlyBillingMode(cost.BillingMode)) {
 		usageLog.RateMultiplier = imageMultiplier
 	} else {
 		usageLog.RateMultiplier = multiplier
@@ -455,6 +458,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0
+		usageLog.ImageActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		return billingErr
 	}
@@ -533,11 +537,24 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, webSearchMultiplier), nil
 	}
 
-	if result != nil && result.ImageCount > 0 {
-		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
-		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+	if result != nil && result.ImageCount > 0 && !isGrokVideoUsageResult(result, billingModels) {
+		for _, candidate := range billingModels {
+			candidate = strings.TrimSpace(candidate)
+			if candidate == "" {
+				continue
+			}
+			resolved := s.resolveOpenAIChannelPricing(ctx, candidate, apiKey)
+			if resolved != nil && resolved.Mode == BillingModeToken {
+				tokenCost, err := s.calculateOpenAIRecordUsageTokenCost(ctx, apiKey, candidate, multiplier, usageTokensWithoutImages(tokens, result.Usage), serviceTier, longContextBillingGate)
+				if err != nil {
+					return nil, err
+				}
+				imageCost := s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier)
+				return combineOpenAIImageCosts(tokenCost, imageCost, imageMultiplier), nil
+			}
 		}
+		// 非 token 渠道定价保持原有图片按次计费。
+		return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
 	}
 
 	// Token path (optional search surcharge is additive — never replaces token cost).
@@ -605,6 +622,49 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokenCost.TotalCost += searchCost.TotalCost
 	tokenCost.ActualCost += searchCost.ActualCost
 	return tokenCost, nil
+}
+
+func usageTokensWithoutImages(tokens UsageTokens, usage OpenAIUsage) UsageTokens {
+	includedImageInputTokens := tokens.ImageInputTokens - usage.SeparateImageInputTokens
+	if includedImageInputTokens < 0 {
+		includedImageInputTokens = 0
+	}
+	tokens.InputTokens -= includedImageInputTokens
+	if tokens.InputTokens < 0 {
+		tokens.InputTokens = 0
+	}
+	includedImageOutputTokens := tokens.ImageOutputTokens - usage.SeparateImageOutputTokens
+	if includedImageOutputTokens < 0 {
+		includedImageOutputTokens = 0
+	}
+	tokens.OutputTokens -= includedImageOutputTokens
+	if tokens.OutputTokens < 0 {
+		tokens.OutputTokens = 0
+	}
+	tokens.ImageInputTokens = 0
+	tokens.ImageOutputTokens = 0
+	return tokens
+}
+
+func combineOpenAIImageCosts(tokenCost, imageCost *CostBreakdown, imageMultiplier float64) *CostBreakdown {
+	if tokenCost == nil {
+		tokenCost = &CostBreakdown{}
+	}
+	if imageCost == nil {
+		imageCost = &CostBreakdown{}
+	}
+	combined := *tokenCost
+	combined.ImageGenerationCost = imageCost.TotalCost
+	combined.ImageActualCost = imageCost.ActualCost
+	combined.ImageRateMultiplier = imageMultiplier
+	combined.TotalCost = tokenCost.TotalCost + imageCost.TotalCost
+	combined.ActualCost = tokenCost.ActualCost + imageCost.ActualCost
+	combined.BillingMode = string(BillingModeMixed)
+	return &combined
+}
+
+func isImageOnlyBillingMode(mode string) bool {
+	return mode == string(BillingModeImage) || mode == string(BillingModePerRequest)
 }
 
 func isGrokVideoBillingModel(model string) bool {
