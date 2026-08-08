@@ -15,7 +15,7 @@ func TestProvideScannerRuntimeReturnsDisabledRuntimeWhenScannerIsOff(t *testing.
 	require.Equal(t, ScannerRuntimeStateDisabled, runtime.Status().State)
 }
 
-func TestProvideScannerRuntimeRejectsCreditingDuringObserverStage(t *testing.T) {
+func TestProvideScannerRuntimeAllowsCreditingStageToReachDependencyValidation(t *testing.T) {
 	cfg := &config.Config{Web3Deposit: config.Web3DepositConfig{
 		Enabled:        true,
 		ScannerEnabled: true,
@@ -25,7 +25,7 @@ func TestProvideScannerRuntimeRejectsCreditingDuringObserverStage(t *testing.T) 
 	runtime := ProvideScannerRuntime(cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	status := runtime.Status()
 	require.Equal(t, ScannerRuntimeStateUnhealthy, status.State)
-	require.True(t, strings.Contains(status.LastError, ErrScannerCreditMustBeDisabled.Error()))
+	require.True(t, strings.Contains(status.LastError, "network runtime is unavailable"))
 }
 
 func TestScannerLeaseTimingKeepsThreePollIntervals(t *testing.T) {

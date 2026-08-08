@@ -28,9 +28,6 @@ func ProvideScannerRuntime(
 		runtime, _ := NewScannerRuntime(nil, nil, ScannerRuntimeOptions{Enabled: false})
 		return runtime
 	}
-	if cfg.Web3Deposit.CreditEnabled {
-		return failedScannerRuntime(ErrScannerCreditMustBeDisabled)
-	}
 	if networkRuntime == nil || !networkRuntime.Ready() || networkRuntime.Pool() == nil {
 		err := fmt.Errorf("web3 scanner network runtime is unavailable")
 		if networkRuntime != nil && networkRuntime.VerificationError() != nil {

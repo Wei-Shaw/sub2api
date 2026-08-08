@@ -270,6 +270,7 @@ var ProviderSet = wire.NewSet(
 	web3deposit.NewAddressAllocator,
 	web3deposit.NewConfluxNetworkRuntime,
 	web3deposit.ProvideScannerRuntime,
+	web3deposit.ProvideCreditWorkerRuntime,
 	NewWeb3DepositHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
