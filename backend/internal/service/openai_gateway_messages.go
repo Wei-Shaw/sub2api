@@ -607,15 +607,17 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:         requestID,
-		ResponseID:        finalResponse.ID,
-		Usage:             usage,
-		Model:             originalModel,
-		BillingModel:      billingModel,
-		UpstreamModel:     upstreamModel,
-		ActualServiceTier: optionalOpenAIProtocolTier(finalResponse.ServiceTier),
-		Stream:            false,
-		Duration:          time.Since(startTime),
+		RequestID:                     requestID,
+		ResponseID:                    finalResponse.ID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ActualServiceTier:             optionalOpenAIProtocolTier(finalResponse.ServiceTier),
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -861,17 +863,19 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:         requestID,
-			ResponseID:        responseID,
-			Usage:             usage,
-			Model:             originalModel,
-			BillingModel:      billingModel,
-			UpstreamModel:     upstreamModel,
-			Stream:            true,
-			Duration:          time.Since(startTime),
-			FirstTokenMs:      firstTokenMs,
-			ActualServiceTier: actualServiceTier,
-			ClientDisconnect:  clientDisconnected,
+			RequestID:                     requestID,
+			ResponseID:                    responseID,
+			Usage:                         usage,
+			Model:                         originalModel,
+			BillingModel:                  billingModel,
+			UpstreamModel:                 upstreamModel,
+			UpstreamResponseModel:         observedUpstreamResponseModel(c),
+			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+			Stream:                        true,
+			Duration:                      time.Since(startTime),
+			FirstTokenMs:                  firstTokenMs,
+			ActualServiceTier:             actualServiceTier,
+			ClientDisconnect:              clientDisconnected,
 		}
 	}
 

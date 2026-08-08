@@ -307,6 +307,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
+				observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
 				if tier := extractOpenAIActualServiceTierFromJSONBytes([]byte(payload)); tier != nil {
 					actualServiceTier = tier
 				}
@@ -364,17 +365,19 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:         requestID,
-		Usage:             usage,
-		Model:             originalModel,
-		BillingModel:      billingModel,
-		UpstreamModel:     upstreamModel,
-		ReasoningEffort:   reasoningEffort,
-		ServiceTier:       serviceTier,
-		ActualServiceTier: actualServiceTier,
-		Stream:            true,
-		Duration:          time.Since(startTime),
-		FirstTokenMs:      firstTokenMs,
+		RequestID:                     requestID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ReasoningEffort:               reasoningEffort,
+		ServiceTier:                   serviceTier,
+		ActualServiceTier:             actualServiceTier,
+		Stream:                        true,
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  firstTokenMs,
 	}, nil
 }
 
@@ -457,16 +460,18 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	_, _ = c.Writer.Write(respBody)
 
 	return &OpenAIForwardResult{
-		RequestID:         requestID,
-		Usage:             usage,
-		Model:             originalModel,
-		BillingModel:      billingModel,
-		UpstreamModel:     upstreamModel,
-		ReasoningEffort:   reasoningEffort,
-		ServiceTier:       serviceTier,
-		ActualServiceTier: extractOpenAIActualServiceTierFromJSONBytes(respBody),
-		Stream:            false,
-		Duration:          time.Since(startTime),
+		RequestID:                     requestID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		ReasoningEffort:               reasoningEffort,
+		ServiceTier:                   serviceTier,
+		ActualServiceTier:             extractOpenAIActualServiceTierFromJSONBytes(respBody),
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 

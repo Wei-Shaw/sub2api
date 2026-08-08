@@ -986,19 +986,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		forwardResult := &OpenAIForwardResult{
-			RequestID:         resp.Header.Get("x-request-id"),
-			ResponseID:        responseID,
-			Usage:             *usage,
-			Model:             originalModel,
-			BillingModel:      billingModel,
-			UpstreamModel:     upstreamModel,
-			ServiceTier:       serviceTier,
-			ActualServiceTier: actualServiceTier,
-			ReasoningEffort:   reasoningEffort,
-			Stream:            reqStream,
-			OpenAIWSMode:      false,
-			Duration:          time.Since(startTime),
-			FirstTokenMs:      firstTokenMs,
+			RequestID:                     resp.Header.Get("x-request-id"),
+			ResponseID:                    responseID,
+			Usage:                         *usage,
+			Model:                         originalModel,
+			BillingModel:                  billingModel,
+			UpstreamModel:                 upstreamModel,
+			UpstreamResponseModel:         observedUpstreamResponseModel(c),
+			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+			ServiceTier:                   serviceTier,
+			ActualServiceTier:             actualServiceTier,
+			ReasoningEffort:               reasoningEffort,
+			Stream:                        reqStream,
+			OpenAIWSMode:                  false,
+			Duration:                      time.Since(startTime),
+			FirstTokenMs:                  firstTokenMs,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
