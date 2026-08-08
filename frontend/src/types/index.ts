@@ -1665,6 +1665,9 @@ export interface UsageLog {
   image_input_cost: number
   image_output_tokens: number
   image_output_cost: number
+  image_generation_cost?: number
+  image_actual_cost?: number
+  image_rate_multiplier?: number
 
   // User-Agent
   user_agent: string | null
