@@ -1032,19 +1032,21 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:             responseID,
-					Usage:                 usage,
-					Model:                 originalModel,
-					UpstreamModel:         mappedModel,
-					ServiceTier:           extractOpenAIServiceTierFromBody(payload),
-					ActualServiceTier:     actualServiceTier,
-					ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
-					Stream:                reqStream,
-					OpenAIWSMode:          true,
-					UpstreamTerminalEvent: terminalEvent,
-					ResponseHeaders:       lease.HandshakeHeaders(),
-					Duration:              time.Since(turnStart),
-					FirstTokenMs:          firstTokenMs,
+					RequestID:                     responseID,
+					Usage:                         usage,
+					Model:                         originalModel,
+					UpstreamModel:                 mappedModel,
+					UpstreamResponseModel:         responseModelObserver.Model(),
+					UpstreamResponseModelConflict: responseModelObserver.Conflict(),
+					ServiceTier:                   extractOpenAIServiceTierFromBody(payload),
+					ActualServiceTier:             actualServiceTier,
+					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					Stream:                        reqStream,
+					OpenAIWSMode:                  true,
+					UpstreamTerminalEvent:         terminalEvent,
+					ResponseHeaders:               lease.HandshakeHeaders(),
+					Duration:                      time.Since(turnStart),
+					FirstTokenMs:                  firstTokenMs,
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput

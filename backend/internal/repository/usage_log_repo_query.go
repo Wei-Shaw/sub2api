@@ -203,6 +203,13 @@ func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
 	return filters.UserID == 0 && filters.APIKeyID == 0 && filters.AccountID == 0
 }
 
+func upstreamModelMismatchCondition(column string, mismatch bool) string {
+	if mismatch {
+		return column + " IS TRUE"
+	}
+	return column + " IS FALSE"
+}
+
 func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	return r.listUsageLogsWithPaginationFrom(ctx, usageLogDefaultListSource, whereClause, args, params)
 }

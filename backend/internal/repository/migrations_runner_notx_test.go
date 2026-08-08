@@ -259,16 +259,17 @@ func TestApplyMigrationsFS_NonTransactionalMigration_UsageModelMismatchIndexDrop
 	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\$1").
 		WithArgs(usageLogsUpstreamModelMismatchIndexMigration).
 		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery("SELECT EXISTS \\(").
-		WithArgs(usageLogsUpstreamModelMismatchIndex).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
-	mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS idx_usage_logs_upstream_model_mismatch_created_at").
+	expectIndexSchema(mock, `"usage_logs"`, "public")
+	expectStepIntentAbsent(mock, usageLogsUpstreamModelMismatchIndexMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsUpstreamModelMismatchIndex, targetRelationOID: testTargetRelationOID})
+	expectExistingIndex(mock, "public", usageLogsUpstreamModelMismatchIndex, true, testTargetRelationOID)
+	expectStepIntentCreate(mock, usageLogsUpstreamModelMismatchIndexMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsUpstreamModelMismatchIndex, targetRelationOID: testTargetRelationOID})
+	mock.ExpectExec(`DROP INDEX CONCURRENTLY IF EXISTS "public"\."idx_usage_logs_upstream_model_mismatch_created_at"`).
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_upstream_model_mismatch_created_at").
+	mock.ExpectExec("CREATE INDEX CONCURRENTLY idx_usage_logs_upstream_model_mismatch_created_at").
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\$1, \\$2\\)").
-		WithArgs(usageLogsUpstreamModelMismatchIndexMigration, sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
+	expectIndexHealthy(mock, "public", usageLogsUpstreamModelMismatchIndex, true)
+	expectStepIndexComplete(mock, usageLogsUpstreamModelMismatchIndexMigration, 1, &qualifiedIndexName{schema: "public", name: usageLogsUpstreamModelMismatchIndex, targetRelationOID: testTargetRelationOID})
+	expectFinalizeNonTransactionalMigration(mock, usageLogsUpstreamModelMismatchIndexMigration)
 	mock.ExpectExec("SELECT pg_advisory_unlock\\(\\$1\\)").
 		WithArgs(migrationsAdvisoryLockID).
 		WillReturnResult(sqlmock.NewResult(0, 1))

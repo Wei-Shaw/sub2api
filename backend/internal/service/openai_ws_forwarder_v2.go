@@ -754,21 +754,23 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	return &OpenAIForwardResult{
-		RequestID:             responseID,
-		Usage:                 *usage,
-		Model:                 originalModel,
-		UpstreamModel:         mappedModel,
-		ImageCount:            imageCounter.Count(),
-		ImageOutputSizes:      imageCounter.Sizes(),
-		ServiceTier:           extractOpenAIServiceTier(reqBody),
-		ActualServiceTier:     actualServiceTier,
-		ReasoningEffort:       extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
-		Stream:                reqStream,
-		OpenAIWSMode:          true,
-		UpstreamTerminalEvent: upstreamTerminalEvent,
-		ResponseHeaders:       lease.HandshakeHeaders(),
-		Duration:              time.Since(startTime),
-		FirstTokenMs:          firstTokenMs,
+		RequestID:                     responseID,
+		Usage:                         *usage,
+		Model:                         originalModel,
+		UpstreamModel:                 mappedModel,
+		UpstreamResponseModel:         responseModelObserver.Model(),
+		UpstreamResponseModelConflict: responseModelObserver.Conflict(),
+		ImageCount:                    imageCounter.Count(),
+		ImageOutputSizes:              imageCounter.Sizes(),
+		ServiceTier:                   extractOpenAIServiceTier(reqBody),
+		ActualServiceTier:             actualServiceTier,
+		ReasoningEffort:               extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
+		Stream:                        reqStream,
+		OpenAIWSMode:                  true,
+		UpstreamTerminalEvent:         upstreamTerminalEvent,
+		ResponseHeaders:               lease.HandshakeHeaders(),
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  firstTokenMs,
 	}, nil
 }
 
