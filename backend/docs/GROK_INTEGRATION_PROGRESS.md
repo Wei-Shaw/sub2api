@@ -9,9 +9,11 @@
 3. **视频按模型族定价** — `groups.video_model_prices` JSONB；计费顺序：模型×分辨率 → 旧三列 → 官方默认
 4. **free 档本地用量软门禁 + 支付失败临时下线** — `gateway.grok.free_quota_*`；仅明确 free 的 OAuth 走调度过滤器；402 / spending-limit 403 tempUnschedule；管理端探测不走门禁
 
+Free 限额按 xAI 的 `rolling 24-hour window` 文案以本地最近 24 小时用量做软门禁；该计数是调度保护和展示用的近似值，不宣称等价于 xAI 未公开的内部 token/usage 计量。上游未提供绝对恢复时间时只做短周期探测，不把 429 到达或探测成功时间伪造为 `now + 24h`。
+
 ## 已完成收尾
 
-5. **媒体与 Voice** — image/video/voice 路由、模型与分辨率计价、异步 video status 完成后一次性计费、错误语义与请求参数规范化。
+5. **媒体与 Voice** — image/video/voice 路由、模型与分辨率计价、异步 video status 完成后一次性计费、错误语义与请求参数规范化；custom voices 覆盖创建、列表、详情、更新、删除和参考音频下载。
 6. **网关协议** — Grok Responses/chat bridge、tool protocol、cache、web_search、SSE/错误过滤均以 `upstream/main` 实现为底完成；不删除 main 的 compact。
 7. **管理端与前端** — OAuth/SSO/密码建号、重新授权、quota probe、调度阈值、模型映射配置和 monitor 入口已对齐。
 8. **运行安全** — Redis 跨实例 OAuth 会话与一次性消费、SSO Cookie 域/路径隔离、导入 probe 有界去重队列、媒体资格失败关闭。
@@ -44,7 +46,7 @@
 ## 验证
 
 - Backend Grok/xAI/redissession、service、repository、admin probe 定向单测通过。
-- Frontend typecheck 通过；Grok 定向 Vitest 16/16 通过。
-- 全量 frontend 仍有 upstream/main 已存在的 `GroupsView.getLiveCapability` mock 失败，不属于本 PR 引入。
+- Frontend `vue-tsc --noEmit`、lint 和全量 Vitest 均通过（211 个文件、1475 个测试）。
+- Backend `go test -tags=unit ./...` 通过；custom voices CRUD/audio 路由有注册回归测试。
 
 历史阶段 4–8 的本地实现已在上述收尾阶段合并记录；本文件不再保留“待完成”状态，避免与当前单 PR 内容冲突。
