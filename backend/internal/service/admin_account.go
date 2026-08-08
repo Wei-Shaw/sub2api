@@ -461,17 +461,18 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	account := &Account{
-		Name:        input.Name,
-		Notes:       normalizeAccountNotes(input.Notes),
-		Platform:    input.Platform,
-		Type:        input.Type,
-		Credentials: input.Credentials,
-		Extra:       accountExtra,
-		ProxyID:     input.ProxyID,
-		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
-		Priority:    input.Priority,
-		Status:      StatusActive,
-		Schedulable: true,
+		Name:                    input.Name,
+		Notes:                   normalizeAccountNotes(input.Notes),
+		Platform:                input.Platform,
+		Type:                    input.Type,
+		Credentials:             input.Credentials,
+		Extra:                   accountExtra,
+		ProxyID:                 input.ProxyID,
+		Concurrency:             normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
+		Priority:                input.Priority,
+		OpenAISessionStickyMode: OpenAISessionStickyModeNormal,
+		Status:                  StatusActive,
+		Schedulable:             true,
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -599,6 +600,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.OpenAISessionStickyMode != nil {
+		mode, ok := normalizeOpenAISessionStickyMode(*input.OpenAISessionStickyMode)
+		if !ok {
+			return nil, infraerrors.BadRequest("INVALID_OPENAI_SESSION_STICKY_MODE", "openai_session_sticky_mode must be normal or fallback_only")
+		}
+		account.OpenAISessionStickyMode = mode
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {

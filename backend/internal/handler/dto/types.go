@@ -203,6 +203,7 @@ type Account struct {
 	Concurrency             int                            `json:"concurrency"`
 	LoadFactor              *int                           `json:"load_factor,omitempty"`
 	Priority                int                            `json:"priority"`
+	OpenAISessionStickyMode string                         `json:"openai_session_sticky_mode"`
 	RateMultiplier          float64                        `json:"rate_multiplier"`
 	Status                  string                         `json:"status"`
 	ErrorMessage            string                         `json:"error_message"`

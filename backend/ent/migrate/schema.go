@@ -127,6 +127,7 @@ var (
 		{Name: "quota_dimension", Type: field.TypeEnum, Enums: []string{"global", "spark"}, Default: "global"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "parent_account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "openai_session_sticky_mode", Type: field.TypeEnum, Enums: []string{"normal", "fallback_only"}, Default: "normal"},
 	}
 	// AccountsTable holds the schema information for the "accounts" table.
 	AccountsTable = &schema.Table{

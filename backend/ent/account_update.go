@@ -556,6 +556,11 @@ func (_u *AccountUpdate) SetQuotaDimension(v account.QuotaDimension) *AccountUpd
 	return _u
 }
 
+func (_u *AccountUpdate) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountUpdate {
+	_u.mutation.SetOpenaiSessionStickyMode(v)
+	return _u
+}
+
 // SetNillableQuotaDimension sets the "quota_dimension" field if the given value is not nil.
 func (_u *AccountUpdate) SetNillableQuotaDimension(v *account.QuotaDimension) *AccountUpdate {
 	if v != nil {
@@ -787,6 +792,11 @@ func (_u *AccountUpdate) check() error {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OpenaiSessionStickyMode(); ok {
+		if err := account.OpenaiSessionStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_session_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "Account.openai_session_sticky_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -945,6 +955,9 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OpenaiSessionStickyMode(); ok {
+		_spec.SetField(account.FieldOpenaiSessionStickyMode, field.TypeEnum, value)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1696,6 +1709,11 @@ func (_u *AccountUpdateOne) SetQuotaDimension(v account.QuotaDimension) *Account
 	return _u
 }
 
+func (_u *AccountUpdateOne) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountUpdateOne {
+	_u.mutation.SetOpenaiSessionStickyMode(v)
+	return _u
+}
+
 // SetNillableQuotaDimension sets the "quota_dimension" field if the given value is not nil.
 func (_u *AccountUpdateOne) SetNillableQuotaDimension(v *account.QuotaDimension) *AccountUpdateOne {
 	if v != nil {
@@ -1940,6 +1958,11 @@ func (_u *AccountUpdateOne) check() error {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OpenaiSessionStickyMode(); ok {
+		if err := account.OpenaiSessionStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_session_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "Account.openai_session_sticky_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -2115,6 +2138,9 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
+	}
+	if value, ok := _u.mutation.OpenaiSessionStickyMode(); ok {
+		_spec.SetField(account.FieldOpenaiSessionStickyMode, field.TypeEnum, value)
 	}
 	if _u.mutation.GroupsCleared() {
 		edge := &sqlgraph.EdgeSpec{

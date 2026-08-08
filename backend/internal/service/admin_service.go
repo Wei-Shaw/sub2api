@@ -370,23 +370,24 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
-	Name                  string
-	Notes                 *string
-	Type                  string // Account type: oauth, setup-token, apikey
-	Credentials           map[string]any
-	Extra                 map[string]any
-	ProxyID               *int64
-	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
-	Priority              *int     // 使用指针区分"未提供"和"设置为0"
-	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor            *int
-	Status                string
-	GroupIDs              *[]int64
-	ExpiresAt             *int64
-	AutoPauseOnExpired    *bool
-	ProbeEnabled          *bool
-	RateSyncEnabled       *bool
-	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
+	Name                    string
+	Notes                   *string
+	Type                    string // Account type: oauth, setup-token, apikey
+	Credentials             map[string]any
+	Extra                   map[string]any
+	ProxyID                 *int64
+	Concurrency             *int     // 使用指针区分"未提供"和"设置为0"
+	Priority                *int     // 使用指针区分"未提供"和"设置为0"
+	OpenAISessionStickyMode *string  // nil 表示不修改；仅影响 OpenAI session_hash sticky
+	RateMultiplier          *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor              *int
+	Status                  string
+	GroupIDs                *[]int64
+	ExpiresAt               *int64
+	AutoPauseOnExpired      *bool
+	ProbeEnabled            *bool
+	RateSyncEnabled         *bool
+	SkipMixedChannelCheck   bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.

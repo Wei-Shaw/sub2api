@@ -739,11 +739,170 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
+	if s.shouldEscapeFallbackOnlySticky(ctx, groupID, platform, sessionHash, account, requestedModel, excludedIDs, requireCompact, requiredCapability, OpenAIUpstreamTransportAny) {
+		return nil
+	}
 
 	// 刷新会话 TTL 并返回账号
 	// Refresh session TTL and return account
 	_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
 	return account
+}
+
+// shouldEscapeFallbackOnlySticky reports whether a fallback-only sticky account
+// should yield to a strictly higher-priority account that can serve this request
+// immediately. The check is deliberately read-only: the eventual selection path
+// owns slot acquisition and sticky rebinding.
+func (s *OpenAIGatewayService) shouldEscapeFallbackOnlySticky(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	sessionHash string,
+	sticky *Account,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requireCompact bool,
+	requiredCapability OpenAIEndpointCapability,
+	requiredTransport OpenAIUpstreamTransport,
+) bool {
+	if sticky == nil || sticky.OpenAISessionStickyModeOrDefault() != OpenAISessionStickyModeFallbackOnly {
+		return false
+	}
+	if strings.TrimSpace(sessionHash) == "" {
+		return false
+	}
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
+	if err != nil {
+		return false
+	}
+	for i := range accounts {
+		candidate := &accounts[i]
+		if candidate.ID == sticky.ID || candidate.Priority >= sticky.Priority {
+			continue
+		}
+		if excludedIDs != nil {
+			if _, excluded := excludedIDs[candidate.ID]; excluded {
+				continue
+			}
+		}
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, candidate, platform, requestedModel, requireCompact, requiredCapability)
+		if fresh == nil || !s.isOpenAIAccountTransportCompatible(fresh, requiredTransport) {
+			continue
+		}
+		if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+			s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+			continue
+		}
+		if !s.hasImmediatelyAvailableAccountSlot(ctx, fresh) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// selectFallbackOnlyWithHigherPriorityAcquisition atomically walks every
+// eligible higher-priority account before returning to the sticky fallback.
+// This closes the gap between a read-only capacity probe and slot acquisition.
+func (s *OpenAIGatewayService) selectFallbackOnlyWithHigherPriorityAcquisition(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	sessionHash string,
+	stickyAccountID int64,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requireCompact bool,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requiredTransport OpenAIUpstreamTransport,
+) (*AccountSelectionResult, error) {
+	if stickyAccountID <= 0 {
+		return nil, nil
+	}
+	if _, excluded := excludedIDs[stickyAccountID]; excluded {
+		return nil, nil
+	}
+	sticky, err := s.getSchedulableAccount(ctx, stickyAccountID)
+	if err != nil || sticky == nil || sticky.OpenAISessionStickyModeOrDefault() != OpenAISessionStickyModeFallbackOnly {
+		return nil, err
+	}
+	sticky = s.recheckSelectedOpenAIAccountFromDB(ctx, sticky, groupID, platform, requestedModel, requireCompact, requiredCapability)
+	if sticky == nil || !s.openAIAccountMatchesSchedulingGroup(sticky, groupID) ||
+		!s.isOpenAIAccountTransportCompatible(sticky, requiredTransport) ||
+		!accountSupportsOpenAICapabilities(sticky, requiredCapability, requiredImageCapability) {
+		return nil, nil
+	}
+
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]*Account, 0, len(accounts)+1)
+	for i := range accounts {
+		candidate := &accounts[i]
+		if candidate.ID == sticky.ID || candidate.Priority >= sticky.Priority {
+			continue
+		}
+		if _, excluded := excludedIDs[candidate.ID]; excluded {
+			continue
+		}
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, candidate, platform, requestedModel, requireCompact, requiredCapability)
+		if fresh == nil || !s.isOpenAIAccountTransportCompatible(fresh, requiredTransport) ||
+			!accountSupportsOpenAICapabilities(fresh, requiredCapability, requiredImageCapability) {
+			continue
+		}
+		if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+			s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
+			continue
+		}
+		candidates = append(candidates, fresh)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return s.isBetterAccount(candidates[i], candidates[j])
+	})
+	candidates = append(candidates, sticky)
+
+	for _, candidate := range candidates {
+		fresh := s.recheckSelectedOpenAIAccountFromDB(ctx, candidate, groupID, platform, requestedModel, requireCompact, requiredCapability)
+		if fresh == nil || !s.openAIAccountMatchesSchedulingGroup(fresh, groupID) ||
+			!s.isOpenAIAccountTransportCompatible(fresh, requiredTransport) ||
+			!accountSupportsOpenAICapabilities(fresh, requiredCapability, requiredImageCapability) {
+			continue
+		}
+		result, acquireErr := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+		if acquireErr != nil {
+			if fresh.ID != sticky.ID {
+				continue
+			}
+			_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, sticky.ID, openaiStickySessionTTL)
+			return nil, acquireErr
+		}
+		if result == nil || !result.Acquired {
+			continue
+		}
+		if sessionHash != "" && !gatewayProfitControlGateActive(ctx) {
+			_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
+		}
+		return s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
+	}
+
+	_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, sticky.ID, openaiStickySessionTTL)
+	cfg := s.schedulingConfig()
+	return s.newSelectionResult(ctx, sticky, false, nil, &AccountWaitPlan{
+		AccountID:      sticky.ID,
+		MaxConcurrency: sticky.Concurrency,
+		Timeout:        cfg.StickySessionWaitTimeout,
+		MaxWaiting:     cfg.StickySessionMaxWaiting,
+	})
+}
+
+func (s *OpenAIGatewayService) hasImmediatelyAvailableAccountSlot(ctx context.Context, account *Account) bool {
+	if account == nil || s.concurrencyService == nil || account.Concurrency <= 0 {
+		return true
+	}
+	current, err := s.concurrencyService.GetAccountConcurrency(ctx, account.ID)
+	return err == nil && current < account.Concurrency
 }
 
 // selectBestAccount 从候选账号中选择最佳账号（优先级 + LRU）。
@@ -873,6 +1032,30 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			stickyAccountID = accountID
 		}
 	}
+	stickyFallbackOnly := false
+	if stickyAccountID > 0 {
+		if sticky, stickyErr := s.getSchedulableAccount(ctx, stickyAccountID); stickyErr == nil && sticky != nil {
+			stickyFallbackOnly = sticky.OpenAISessionStickyModeOrDefault() == OpenAISessionStickyModeFallbackOnly
+		}
+	}
+	if stickyFallbackOnly && stickyAccountID > 0 && strings.TrimSpace(sessionHash) != "" {
+		selection, acquireErr := s.selectFallbackOnlyWithHigherPriorityAcquisition(
+			ctx,
+			groupID,
+			platform,
+			sessionHash,
+			stickyAccountID,
+			requestedModel,
+			excludedIDs,
+			requireCompact,
+			requiredCapability,
+			"",
+			OpenAIUpstreamTransportAny,
+		)
+		if acquireErr != nil || selection != nil {
+			return selection, acquireErr
+		}
+	}
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, err := s.selectAccountForModelWithExclusions(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
 		if err != nil {
@@ -939,6 +1122,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if s.shouldEscapeFallbackOnlySticky(ctx, groupID, platform, sessionHash, account, requestedModel, excludedIDs, requireCompact, requiredCapability, OpenAIUpstreamTransportAny) {
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {

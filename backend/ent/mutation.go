@@ -2319,6 +2319,7 @@ type AccountMutation struct {
 	session_window_end          *time.Time
 	session_window_status       *string
 	quota_dimension             *account.QuotaDimension
+	openai_session_sticky_mode  *account.OpenaiSessionStickyMode
 	clearedFields               map[string]struct{}
 	groups                      map[int64]struct{}
 	removedgroups               map[int64]struct{}
@@ -3085,6 +3086,39 @@ func (m *AccountMutation) AddedPriority() (r int, exists bool) {
 func (m *AccountMutation) ResetPriority() {
 	m.priority = nil
 	m.addpriority = nil
+}
+
+// SetOpenaiSessionStickyMode sets the "openai_session_sticky_mode" field.
+func (m *AccountMutation) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) {
+	m.openai_session_sticky_mode = &v
+}
+
+// OpenaiSessionStickyMode returns the value of the field in the mutation.
+func (m *AccountMutation) OpenaiSessionStickyMode() (r account.OpenaiSessionStickyMode, exists bool) {
+	if m.openai_session_sticky_mode == nil {
+		return r, false
+	}
+	return *m.openai_session_sticky_mode, true
+}
+
+// OldOpenaiSessionStickyMode returns the old field value.
+func (m *AccountMutation) OldOpenaiSessionStickyMode(ctx context.Context) (account.OpenaiSessionStickyMode, error) {
+	if !m.op.Is(OpUpdateOne) {
+		return "", errors.New("OldOpenaiSessionStickyMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return "", errors.New("OldOpenaiSessionStickyMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return "", fmt.Errorf("querying old value for OldOpenaiSessionStickyMode: %w", err)
+	}
+	return oldValue.OpenaiSessionStickyMode, nil
+}
+
+// ResetOpenaiSessionStickyMode resets changes to the field.
+func (m *AccountMutation) ResetOpenaiSessionStickyMode() {
+	m.openai_session_sticky_mode = nil
 }
 
 // SetRateMultiplier sets the "rate_multiplier" field.
@@ -4232,6 +4266,9 @@ func (m *AccountMutation) Fields() []string {
 	if m.quota_dimension != nil {
 		fields = append(fields, account.FieldQuotaDimension)
 	}
+	if m.openai_session_sticky_mode != nil {
+		fields = append(fields, account.FieldOpenaiSessionStickyMode)
+	}
 	return fields
 }
 
@@ -4302,6 +4339,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ParentAccountID()
 	case account.FieldQuotaDimension:
 		return m.QuotaDimension()
+	case account.FieldOpenaiSessionStickyMode:
+		return m.OpenaiSessionStickyMode()
 	}
 	return nil, false
 }
@@ -4373,6 +4412,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldParentAccountID(ctx)
 	case account.FieldQuotaDimension:
 		return m.OldQuotaDimension(ctx)
+	case account.FieldOpenaiSessionStickyMode:
+		return m.OldOpenaiSessionStickyMode(ctx)
 	}
 	return nil, fmt.Errorf("unknown Account field %s", name)
 }
@@ -4598,6 +4639,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetQuotaDimension(v)
+		return nil
+	case account.FieldOpenaiSessionStickyMode:
+		v, ok := value.(account.OpenaiSessionStickyMode)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenaiSessionStickyMode(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)
@@ -4908,6 +4956,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldQuotaDimension:
 		m.ResetQuotaDimension()
+		return nil
+	case account.FieldOpenaiSessionStickyMode:
+		m.ResetOpenaiSessionStickyMode()
 		return nil
 	}
 	return fmt.Errorf("unknown Account field %s", name)

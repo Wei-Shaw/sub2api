@@ -419,6 +419,20 @@ func (_c *AccountCreate) SetNillableQuotaDimension(v *account.QuotaDimension) *A
 	return _c
 }
 
+// SetOpenaiSessionStickyMode sets the "openai_session_sticky_mode" field.
+func (_c *AccountCreate) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountCreate {
+	_c.mutation.SetOpenaiSessionStickyMode(v)
+	return _c
+}
+
+// SetNillableOpenaiSessionStickyMode sets the field if the given value is not nil.
+func (_c *AccountCreate) SetNillableOpenaiSessionStickyMode(v *account.OpenaiSessionStickyMode) *AccountCreate {
+	if v != nil {
+		_c.SetOpenaiSessionStickyMode(*v)
+	}
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -581,6 +595,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultQuotaDimension
 		_c.mutation.SetQuotaDimension(v)
 	}
+	if _, ok := _c.mutation.OpenaiSessionStickyMode(); !ok {
+		v := account.DefaultOpenaiSessionStickyMode
+		_c.mutation.SetOpenaiSessionStickyMode(v)
+	}
 	return nil
 }
 
@@ -656,6 +674,11 @@ func (_c *AccountCreate) check() error {
 	if v, ok := _c.mutation.QuotaDimension(); ok {
 		if err := account.QuotaDimensionValidator(v); err != nil {
 			return &ValidationError{Name: "quota_dimension", err: fmt.Errorf(`ent: validator failed for field "Account.quota_dimension": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.OpenaiSessionStickyMode(); ok {
+		if err := account.OpenaiSessionStickyModeValidator(v); err != nil {
+			return &ValidationError{Name: "openai_session_sticky_mode", err: fmt.Errorf(`ent: validator failed for field "Account.openai_session_sticky_mode": %w`, err)}
 		}
 	}
 	return nil
@@ -800,6 +823,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
 		_node.QuotaDimension = value
+	}
+	if value, ok := _c.mutation.OpenaiSessionStickyMode(); ok {
+		_spec.SetField(account.FieldOpenaiSessionStickyMode, field.TypeEnum, value)
+		_node.OpenaiSessionStickyMode = value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1425,6 +1452,16 @@ func (u *AccountUpsert) SetQuotaDimension(v account.QuotaDimension) *AccountUpse
 	return u
 }
 
+func (u *AccountUpsert) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountUpsert {
+	u.Set(account.FieldOpenaiSessionStickyMode, v)
+	return u
+}
+
+func (u *AccountUpsert) UpdateOpenaiSessionStickyMode() *AccountUpsert {
+	u.SetExcluded(account.FieldOpenaiSessionStickyMode)
+	return u
+}
+
 // UpdateQuotaDimension sets the "quota_dimension" field to the value that was provided on create.
 func (u *AccountUpsert) UpdateQuotaDimension() *AccountUpsert {
 	u.SetExcluded(account.FieldQuotaDimension)
@@ -2041,6 +2078,14 @@ func (u *AccountUpsertOne) SetQuotaDimension(v account.QuotaDimension) *AccountU
 	return u.Update(func(s *AccountUpsert) {
 		s.SetQuotaDimension(v)
 	})
+}
+
+func (u *AccountUpsertOne) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) { s.SetOpenaiSessionStickyMode(v) })
+}
+
+func (u *AccountUpsertOne) UpdateOpenaiSessionStickyMode() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) { s.UpdateOpenaiSessionStickyMode() })
 }
 
 // UpdateQuotaDimension sets the "quota_dimension" field to the value that was provided on create.
@@ -2826,6 +2871,14 @@ func (u *AccountUpsertBulk) SetQuotaDimension(v account.QuotaDimension) *Account
 	return u.Update(func(s *AccountUpsert) {
 		s.SetQuotaDimension(v)
 	})
+}
+
+func (u *AccountUpsertBulk) SetOpenaiSessionStickyMode(v account.OpenaiSessionStickyMode) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) { s.SetOpenaiSessionStickyMode(v) })
+}
+
+func (u *AccountUpsertBulk) UpdateOpenaiSessionStickyMode() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) { s.UpdateOpenaiSessionStickyMode() })
 }
 
 // UpdateQuotaDimension sets the "quota_dimension" field to the value that was provided on create.
