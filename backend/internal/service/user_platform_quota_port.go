@@ -18,14 +18,15 @@ var ErrUserPlatformQuotaFKViolation = errors.New("user platform quota snapshot F
 // UserPlatformQuotaSnapshot 是 service 层 flusher 向 DB 写入快照时使用的传输结构。
 // 字段语义与 repository.UserPlatformQuotaSnapshot 完全对应，由 adapter 负责转换。
 type UserPlatformQuotaSnapshot struct {
-	UserID             int64
-	Platform           string
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   time.Time
-	WeeklyWindowStart  time.Time
-	MonthlyWindowStart time.Time
+	UserID              int64
+	Platform            string
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	DailyWindowStart    time.Time
+	WeeklyWindowStart   time.Time
+	WeeklyWindowResetAt *time.Time
+	MonthlyWindowStart  time.Time
 }
 
 // UserPlatformQuotaRecord service 层传输结构体（与 repository 层解耦）。
@@ -39,9 +40,23 @@ type UserPlatformQuotaRecord struct {
 	WeeklyUsageUSD  float64
 	MonthlyUsageUSD float64
 	// 窗口起始时间（可选，用于未来 reset 校验）
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	WeeklyWindowResetAt *time.Time
+	MonthlyWindowStart  *time.Time
+}
+
+// UserPlatformQuotaWeeklyResetter resets the weekly window for every active
+// user on a platform. It is intentionally separate from the ordinary quota
+// repository port so lightweight callers and tests do not need the bulk hook.
+type UserPlatformQuotaWeeklyResetter interface {
+	ResetAllWeeklyWindows(ctx context.Context, platform string, newStart, newResetAt time.Time) ([]int64, error)
+}
+
+// QuotaResetObserver receives an upstream seven-day transition from a
+// positive usage percentage to zero.
+type QuotaResetObserver interface {
+	ObserveSevenDayReset(ctx context.Context, accountID int64, previousUsed, currentUsed float64, resetAt *time.Time)
 }
 
 // UserPlatformQuotaRepository 定义 service 层所需的 user × platform quota 数据访问端口。

@@ -860,9 +860,18 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		return
 	}
 
+	observer := s.quotaResetObserver
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		if observer != nil {
+			if account, err := s.accountRepo.GetByID(updateCtx, accountID); err == nil && account != nil {
+				previous, current, resetAt, ok := sevenDaySnapshotTransition(account.Extra, updates)
+				if ok && previous > 0 && current == 0 {
+					observer.ObserveSevenDayReset(updateCtx, accountID, previous, current, resetAt)
+				}
+			}
+		}
 		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	}()
 }

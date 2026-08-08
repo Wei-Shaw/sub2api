@@ -191,6 +191,7 @@ func ProvideAccountUsageService(
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
+	quotaResetObserver QuotaResetObserver,
 ) *AccountUsageService {
 	service := NewAccountUsageService(
 		accountRepo,
@@ -206,7 +207,63 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.SetQuotaResetObserver(quotaResetObserver)
 	return service
+}
+
+// ProvideOpenAIGatewayService preserves the constructor signature used by
+// tests while wiring the optional quota reset observer in production.
+func ProvideOpenAIGatewayService(
+	accountRepo AccountRepository,
+	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
+	userRepo UserRepository,
+	userSubRepo UserSubscriptionRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	cache GatewayCache,
+	cfg *config.Config,
+	schedulerSnapshot *SchedulerSnapshotService,
+	concurrencyService *ConcurrencyService,
+	billingService *BillingService,
+	rateLimitService *RateLimitService,
+	billingCacheService *BillingCacheService,
+	httpUpstream HTTPUpstream,
+	deferredService *DeferredService,
+	openAITokenProvider *OpenAITokenProvider,
+	grokTokenProvider *GrokTokenProvider,
+	resolver *ModelPricingResolver,
+	channelService *ChannelService,
+	balanceNotifyService *BalanceNotifyService,
+	settingService *SettingService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	quotaResetObserver QuotaResetObserver,
+) *OpenAIGatewayService {
+	svc := NewOpenAIGatewayService(
+		accountRepo,
+		usageLogRepo,
+		usageBillingRepo,
+		userRepo,
+		userSubRepo,
+		userGroupRateRepo,
+		cache,
+		cfg,
+		schedulerSnapshot,
+		concurrencyService,
+		billingService,
+		rateLimitService,
+		billingCacheService,
+		httpUpstream,
+		deferredService,
+		openAITokenProvider,
+		grokTokenProvider,
+		resolver,
+		channelService,
+		balanceNotifyService,
+		settingService,
+		userPlatformQuotaRepo,
+	)
+	svc.SetQuotaResetObserver(quotaResetObserver)
+	return svc
 }
 
 func ProvideAccountTestService(
@@ -751,7 +808,7 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
-	NewOpenAIGatewayService,
+	ProvideOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	ProvideBatchImageModelPricingResolver,
@@ -781,6 +838,8 @@ var ProviderSet = wire.NewSet(
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
+	ProvideUserPlatformQuotaWeeklyResetter,
+	ProvideUserPlatformQuotaAutoResetter,
 	ProvideAccountTestService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
@@ -854,6 +913,24 @@ func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache
 	svc := NewUserPlatformQuotaUsageFlusher(cfg, cache, quotaRepo, tw)
 	svc.Start()
 	return svc
+}
+
+// ProvideUserPlatformQuotaWeeklyResetter exposes the production-only bulk
+// reset capability without expanding the common quota repository port.
+func ProvideUserPlatformQuotaWeeklyResetter(repo UserPlatformQuotaRepository) UserPlatformQuotaWeeklyResetter {
+	resetter, _ := repo.(UserPlatformQuotaWeeklyResetter)
+	return resetter
+}
+
+func ProvideUserPlatformQuotaAutoResetter(
+	accountRepo AccountRepository,
+	weeklyResetter UserPlatformQuotaWeeklyResetter,
+	cache BillingCache,
+) QuotaResetObserver {
+	if weeklyResetter == nil {
+		return nil
+	}
+	return NewUserPlatformQuotaAutoResetter(accountRepo, weeklyResetter, cache)
 }
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

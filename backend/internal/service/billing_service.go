@@ -49,9 +49,10 @@ type UserPlatformQuotaCacheEntry struct {
 	WeeklyLimitUSD  *float64
 	MonthlyLimitUSD *float64
 
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	WeeklyWindowResetAt *time.Time
+	MonthlyWindowStart  *time.Time
 }
 
 // BillingCache defines cache operations for billing service

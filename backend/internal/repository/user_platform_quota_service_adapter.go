@@ -48,17 +48,18 @@ func (a *userPlatformQuotaServiceAdapter) ListByUser(ctx context.Context, userID
 	out := make([]service.UserPlatformQuotaRecord, len(rows))
 	for i, r := range rows {
 		out[i] = service.UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			WeeklyWindowResetAt: r.WeeklyWindowResetAt,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
 		}
 	}
 	return out, nil
@@ -94,20 +95,26 @@ func (a *userPlatformQuotaServiceAdapter) ResetExpiredWindow(ctx context.Context
 	return err
 }
 
+// ResetAllWeeklyWindows resets every active quota row for a platform.
+func (a *userPlatformQuotaServiceAdapter) ResetAllWeeklyWindows(ctx context.Context, platform string, newStart, newResetAt time.Time) ([]int64, error) {
+	return a.inner.ResetAllWeeklyWindows(ctx, platform, newStart, newResetAt)
+}
+
 // BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot，
 // 调底层 repo，并将 repository FK sentinel 包装为 service sentinel。
 func (a *userPlatformQuotaServiceAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
 	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
 	for i, s := range snapshots {
 		repoSnaps[i] = UserPlatformQuotaSnapshot{
-			UserID:             s.UserID,
-			Platform:           s.Platform,
-			DailyUsageUSD:      s.DailyUsageUSD,
-			WeeklyUsageUSD:     s.WeeklyUsageUSD,
-			MonthlyUsageUSD:    s.MonthlyUsageUSD,
-			DailyWindowStart:   s.DailyWindowStart,
-			WeeklyWindowStart:  s.WeeklyWindowStart,
-			MonthlyWindowStart: s.MonthlyWindowStart,
+			UserID:              s.UserID,
+			Platform:            s.Platform,
+			DailyUsageUSD:       s.DailyUsageUSD,
+			WeeklyUsageUSD:      s.WeeklyUsageUSD,
+			MonthlyUsageUSD:     s.MonthlyUsageUSD,
+			DailyWindowStart:    s.DailyWindowStart,
+			WeeklyWindowStart:   s.WeeklyWindowStart,
+			WeeklyWindowResetAt: s.WeeklyWindowResetAt,
+			MonthlyWindowStart:  s.MonthlyWindowStart,
 		}
 	}
 	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
@@ -144,17 +151,18 @@ func (a *genericUserPlatformQuotaAdapter) ListByUser(ctx context.Context, userID
 	out := make([]service.UserPlatformQuotaRecord, len(rows))
 	for i, r := range rows {
 		out[i] = service.UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			WeeklyWindowResetAt: r.WeeklyWindowResetAt,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
 		}
 	}
 	return out, nil
@@ -190,20 +198,26 @@ func (a *genericUserPlatformQuotaAdapter) ResetExpiredWindow(ctx context.Context
 	return err
 }
 
+// ResetAllWeeklyWindows is unavailable for lightweight test/fake repositories.
+func (a *genericUserPlatformQuotaAdapter) ResetAllWeeklyWindows(ctx context.Context, platform string, newStart, newResetAt time.Time) ([]int64, error) {
+	return nil, errors.New("bulk weekly quota reset is unavailable")
+}
+
 // BatchSnapshotUsage 转换 []service.UserPlatformQuotaSnapshot → []UserPlatformQuotaSnapshot（通用 adapter），
 // 并将 repository FK sentinel 包装为 service sentinel。
 func (a *genericUserPlatformQuotaAdapter) BatchSnapshotUsage(ctx context.Context, snapshots []service.UserPlatformQuotaSnapshot, now time.Time) error {
 	repoSnaps := make([]UserPlatformQuotaSnapshot, len(snapshots))
 	for i, s := range snapshots {
 		repoSnaps[i] = UserPlatformQuotaSnapshot{
-			UserID:             s.UserID,
-			Platform:           s.Platform,
-			DailyUsageUSD:      s.DailyUsageUSD,
-			WeeklyUsageUSD:     s.WeeklyUsageUSD,
-			MonthlyUsageUSD:    s.MonthlyUsageUSD,
-			DailyWindowStart:   s.DailyWindowStart,
-			WeeklyWindowStart:  s.WeeklyWindowStart,
-			MonthlyWindowStart: s.MonthlyWindowStart,
+			UserID:              s.UserID,
+			Platform:            s.Platform,
+			DailyUsageUSD:       s.DailyUsageUSD,
+			WeeklyUsageUSD:      s.WeeklyUsageUSD,
+			MonthlyUsageUSD:     s.MonthlyUsageUSD,
+			DailyWindowStart:    s.DailyWindowStart,
+			WeeklyWindowStart:   s.WeeklyWindowStart,
+			WeeklyWindowResetAt: s.WeeklyWindowResetAt,
+			MonthlyWindowStart:  s.MonthlyWindowStart,
 		}
 	}
 	err := a.inner.BatchSnapshotUsage(ctx, repoSnaps, now)
@@ -216,17 +230,18 @@ func (a *genericUserPlatformQuotaAdapter) BatchSnapshotUsage(ctx context.Context
 // toServiceRecord 将 repository.UserPlatformQuotaRecord 转换为 service.UserPlatformQuotaRecord。
 func toServiceRecord(rec *UserPlatformQuotaRecord) *service.UserPlatformQuotaRecord {
 	return &service.UserPlatformQuotaRecord{
-		UserID:             rec.UserID,
-		Platform:           rec.Platform,
-		DailyLimitUSD:      rec.DailyLimitUSD,
-		WeeklyLimitUSD:     rec.WeeklyLimitUSD,
-		MonthlyLimitUSD:    rec.MonthlyLimitUSD,
-		DailyUsageUSD:      rec.DailyUsageUSD,
-		WeeklyUsageUSD:     rec.WeeklyUsageUSD,
-		MonthlyUsageUSD:    rec.MonthlyUsageUSD,
-		DailyWindowStart:   rec.DailyWindowStart,
-		WeeklyWindowStart:  rec.WeeklyWindowStart,
-		MonthlyWindowStart: rec.MonthlyWindowStart,
+		UserID:              rec.UserID,
+		Platform:            rec.Platform,
+		DailyLimitUSD:       rec.DailyLimitUSD,
+		WeeklyLimitUSD:      rec.WeeklyLimitUSD,
+		MonthlyLimitUSD:     rec.MonthlyLimitUSD,
+		DailyUsageUSD:       rec.DailyUsageUSD,
+		WeeklyUsageUSD:      rec.WeeklyUsageUSD,
+		MonthlyUsageUSD:     rec.MonthlyUsageUSD,
+		DailyWindowStart:    rec.DailyWindowStart,
+		WeeklyWindowStart:   rec.WeeklyWindowStart,
+		WeeklyWindowResetAt: rec.WeeklyWindowResetAt,
+		MonthlyWindowStart:  rec.MonthlyWindowStart,
 	}
 }
 
@@ -235,17 +250,18 @@ func toRepoRecords(records []service.UserPlatformQuotaRecord) []UserPlatformQuot
 	out := make([]UserPlatformQuotaRecord, len(records))
 	for i, r := range records {
 		out[i] = UserPlatformQuotaRecord{
-			UserID:             r.UserID,
-			Platform:           r.Platform,
-			DailyLimitUSD:      r.DailyLimitUSD,
-			WeeklyLimitUSD:     r.WeeklyLimitUSD,
-			MonthlyLimitUSD:    r.MonthlyLimitUSD,
-			DailyUsageUSD:      r.DailyUsageUSD,
-			WeeklyUsageUSD:     r.WeeklyUsageUSD,
-			MonthlyUsageUSD:    r.MonthlyUsageUSD,
-			DailyWindowStart:   r.DailyWindowStart,
-			WeeklyWindowStart:  r.WeeklyWindowStart,
-			MonthlyWindowStart: r.MonthlyWindowStart,
+			UserID:              r.UserID,
+			Platform:            r.Platform,
+			DailyLimitUSD:       r.DailyLimitUSD,
+			WeeklyLimitUSD:      r.WeeklyLimitUSD,
+			MonthlyLimitUSD:     r.MonthlyLimitUSD,
+			DailyUsageUSD:       r.DailyUsageUSD,
+			WeeklyUsageUSD:      r.WeeklyUsageUSD,
+			MonthlyUsageUSD:     r.MonthlyUsageUSD,
+			DailyWindowStart:    r.DailyWindowStart,
+			WeeklyWindowStart:   r.WeeklyWindowStart,
+			WeeklyWindowResetAt: r.WeeklyWindowResetAt,
+			MonthlyWindowStart:  r.MonthlyWindowStart,
 		}
 	}
 	return out

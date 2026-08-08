@@ -13,7 +13,12 @@ import (
 // includeWindowStart=true 时输出 *_window_start 字段（admin 视角调试用）
 func LazyZeroQuotaForResponse(r service.UserPlatformQuotaRecord, now time.Time, includeWindowStart bool) map[string]any {
 	daily := buildWindowSlice(r.DailyUsageUSD, r.DailyLimitUSD, r.DailyWindowStart, NeedsDailyReset(r.DailyWindowStart, now), nextDailyResetTime(now), includeWindowStart)
-	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, r.WeeklyWindowStart, NeedsWeeklyReset(r.WeeklyWindowStart, now), nextWeeklyResetTime(now), includeWindowStart)
+	weeklyExpired, weeklyStart, weeklyResetAt := weeklyWindowState(r.WeeklyWindowStart, r.WeeklyWindowResetAt, now)
+	weeklyNextReset := nextWeeklyResetTime(now)
+	if weeklyResetAt != nil {
+		weeklyNextReset = *weeklyResetAt
+	}
+	weekly := buildWindowSlice(r.WeeklyUsageUSD, r.WeeklyLimitUSD, weeklyStart, weeklyExpired, weeklyNextReset, includeWindowStart)
 	monthly := buildWindowSlice(r.MonthlyUsageUSD, r.MonthlyLimitUSD, r.MonthlyWindowStart, NeedsMonthlyReset(r.MonthlyWindowStart, now), NextMonthlyResetTimeFrom(r.MonthlyWindowStart, now), includeWindowStart)
 	out := map[string]any{
 		"platform":                 r.Platform,
@@ -68,10 +73,33 @@ func NeedsDailyReset(start *time.Time, now time.Time) bool {
 }
 
 func NeedsWeeklyReset(start *time.Time, now time.Time) bool {
-	if start == nil {
-		return false
+	expired, _, _ := weeklyWindowState(start, nil, now)
+	return expired
+}
+
+func weeklyWindowState(start, resetAt *time.Time, now time.Time) (expired bool, nextStart, nextResetAt *time.Time) {
+	if resetAt == nil {
+		currentStart := timezone.StartOfWeek(now)
+		if start == nil || start.Before(currentStart) {
+			return true, &currentStart, nil
+		}
+		return false, start, nil
 	}
-	return start.Before(timezone.StartOfWeek(now))
+	windowStart := start
+	if windowStart == nil {
+		fallbackStart := resetAt.Add(-7 * 24 * time.Hour)
+		windowStart = &fallbackStart
+	}
+	if now.Before(*resetAt) {
+		return false, windowStart, resetAt
+	}
+	newStart := *resetAt
+	next := resetAt.Add(7 * 24 * time.Hour)
+	for !now.Before(next) {
+		newStart = next
+		next = next.Add(7 * 24 * time.Hour)
+	}
+	return true, &newStart, &next
 }
 
 // NeedsMonthlyReset 30 天滚动窗口语义（与订阅模式 NeedsMonthlyReset 一致）。

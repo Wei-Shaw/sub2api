@@ -300,8 +300,18 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	quotaResetObserver      QuotaResetObserver
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+}
+
+// SetQuotaResetObserver attaches the automatic user-quota reset hook
+// without changing the constructor used by standalone callers and tests.
+func (s *AccountUsageService) SetQuotaResetObserver(observer QuotaResetObserver) {
+	if s == nil {
+		return
+	}
+	s.quotaResetObserver = observer
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -620,8 +630,8 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 			if s.openAIQuotaService != nil {
 				if quotaUsage, err := s.openAIQuotaService.QueryUsage(ctx, account.ID); err == nil {
 					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
+						s.persistOpenAICodexProbeSnapshot(account.ID, updates, account.Extra)
 						mergeAccountExtra(account, updates)
-						s.persistOpenAICodexProbeSnapshot(account.ID, updates)
 						if usage.UpdatedAt == nil {
 							usage.UpdatedAt = &now
 						}
@@ -796,13 +806,13 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 		return nil, err
 	}
 	if len(updates) > 0 {
-		s.persistOpenAICodexProbeSnapshot(account.ID, updates)
+		s.persistOpenAICodexProbeSnapshot(account.ID, updates, account.Extra)
 		return updates, nil
 	}
 	return nil, nil
 }
 
-func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any) {
+func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, updates map[string]any, previousExtra ...map[string]any) {
 	if s == nil || s.accountRepo == nil || accountID <= 0 {
 		return
 	}
@@ -810,9 +820,22 @@ func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, u
 		return
 	}
 
+	previous, current, resetAt, transitionKnown := sevenDaySnapshotTransition(nil, updates)
+	if len(previousExtra) > 0 {
+		previous, current, resetAt, transitionKnown = sevenDaySnapshotTransition(previousExtra[0], updates)
+	}
+	observer := s.quotaResetObserver
 	go func() {
 		updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer updateCancel()
+		if observer != nil && !transitionKnown {
+			if account, err := s.accountRepo.GetByID(updateCtx, accountID); err == nil && account != nil {
+				previous, current, resetAt, transitionKnown = sevenDaySnapshotTransition(account.Extra, updates)
+			}
+		}
+		if observer != nil && transitionKnown && previous > 0 && current == 0 {
+			observer.ObserveSevenDayReset(updateCtx, accountID, previous, current, resetAt)
+		}
 		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	}()
 }

@@ -455,6 +455,7 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
+	quotaResetObserver                  QuotaResetObserver
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
@@ -536,6 +537,15 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+// SetQuotaResetObserver attaches the automatic user-quota reset hook
+// without changing the constructor used by standalone callers and tests.
+func (s *OpenAIGatewayService) SetQuotaResetObserver(observer QuotaResetObserver) {
+	if s == nil {
+		return
+	}
+	s.quotaResetObserver = observer
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
