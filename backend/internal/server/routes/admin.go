@@ -132,10 +132,10 @@ func registerWeb3DepositRoutes(admin *gin.RouterGroup, h *handler.Handlers, step
 	group.GET("/stats", h.Admin.Web3Deposit.Stats)
 	group.GET("/runtime", h.Admin.Web3Deposit.Runtime)
 	group.GET("/:id", h.Admin.Web3Deposit.Get)
-	group.POST("/:id/approve", h.Admin.Web3Deposit.Approve)
-	group.POST("/:id/ignore", h.Admin.Web3Deposit.Ignore)
-	group.POST("/:id/retry", h.Admin.Web3Deposit.Retry)
-	group.POST("/rescan", h.Admin.Web3Deposit.Rescan)
+	group.POST("/:id/approve", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Approve)
+	group.POST("/:id/ignore", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Ignore)
+	group.POST("/:id/retry", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Retry)
+	group.POST("/rescan", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Rescan)
 }
 
 func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
