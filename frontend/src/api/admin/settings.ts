@@ -464,6 +464,7 @@ export interface SystemSettings {
   tencent_captcha_app_secret_key_configured: boolean;
   tencent_captcha_cloud_secret_id_configured: boolean;
   tencent_captcha_cloud_secret_key_configured: boolean;
+  tencent_captcha_region: string;
   aliyun_captcha_enabled: boolean;
   aliyun_captcha_access_key_id: string;
   aliyun_captcha_access_key_secret_configured: boolean;
@@ -789,6 +790,7 @@ export interface UpdateSettingsRequest {
   tencent_captcha_app_secret_key?: string;
   tencent_captcha_cloud_secret_id?: string;
   tencent_captcha_cloud_secret_key?: string;
+  tencent_captcha_region?: string;
   aliyun_captcha_enabled?: boolean;
   aliyun_captcha_access_key_id?: string;
   aliyun_captcha_access_key_secret?: string;

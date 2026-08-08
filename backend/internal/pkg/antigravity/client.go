@@ -585,7 +585,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 				return "", lastErr
 			}
 
-			// done=false 时等待后重试（与 CLIProxyAPI 行为一致）
+			// done=false 时等待后重试，避免在上游仍未完成时提前结束轮询。
 			select {
 			case <-time.After(2 * time.Second):
 			case <-ctx.Done():

@@ -40,12 +40,15 @@ func TestSettingService_GetPublicSettingsExposesOnlyTencentCaptchaAppID(t *testi
 		SettingKeyTencentCaptchaAppSecretKey:   "app-secret",
 		SettingKeyTencentCaptchaCloudSecretID:  "cloud-secret-id",
 		SettingKeyTencentCaptchaCloudSecretKey: "cloud-secret-key",
+		SettingKeyTencentCaptchaRegion:         TencentCaptchaRegionINTL,
 	}}, &config.Config{})
 
 	settings, err := svc.GetPublicSettings(context.Background())
 	require.NoError(t, err)
 	require.True(t, settings.TencentCaptchaEnabled)
 	require.Equal(t, "123456789", settings.TencentCaptchaAppID)
+	// 站点必须原样公开下发：前端据此决定加载哪个站点的 SDK 脚本与构造函数形态。
+	require.Equal(t, TencentCaptchaRegionINTL, settings.TencentCaptchaRegion)
 
 	raw, err := json.Marshal(settings)
 	require.NoError(t, err)
@@ -72,5 +75,7 @@ func TestSettingService_GetTencentCaptchaConfig(t *testing.T) {
 		AppSecretKey:   "app-secret",
 		CloudSecretID:  "cloud-secret-id",
 		CloudSecretKey: "cloud-secret-key",
+		// 未配置站点时回落中国站，保持存量部署行为不变
+		Region: TencentCaptchaRegionCN,
 	}, got)
 }
