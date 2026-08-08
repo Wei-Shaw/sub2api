@@ -24,7 +24,7 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: derekexs/sub2api:v0.1.172
     container_name: sub2api
     restart: unless-stopped
     security_opt:

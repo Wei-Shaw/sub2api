@@ -308,7 +308,13 @@ type UpdateSettingsRequest struct {
 	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
 	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
+	// === v4.6.2 currency separation ===
+	PaymentSettlementCurrency *string  `json:"payment_settlement_currency"`
+	PaymentRechargeCurrency   *string  `json:"payment_recharge_currency"`
+	PaymentFXApiURL           *string  `json:"payment_fx_api_url"`
+	PaymentFXApiURLs          []string `json:"payment_fx_api_urls"`
+	PaymentFXFallbackRate     *float64 `json:"payment_fx_fallback_rate"`
+	PaymentLoadBalanceStrat   *string  `json:"payment_load_balance_strategy"`
 	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
 	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
@@ -2002,6 +2008,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			BalanceRechargeMultiplier:     req.PaymentBalanceRechargeMultiplier,
 			SubscriptionUSDToCNYRate:      req.PaymentSubscriptionUSDToCNYRate,
 			RechargeFeeRate:               req.PaymentRechargeFeeRate,
+			// v4.6.2 currency separation
+			SettlementCurrency: req.PaymentSettlementCurrency,
+			RechargeCurrency:   req.PaymentRechargeCurrency,
+			FXApiURL:           req.PaymentFXApiURL,
+			FXApiURLs:          req.PaymentFXApiURLs,
+			FXFallbackRate:     req.PaymentFXFallbackRate,
 			LoadBalanceStrategy:           req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:             req.PaymentProductNamePrefix,
 			ProductNameSuffix:             req.PaymentProductNameSuffix,
@@ -2277,6 +2289,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentBalanceRechargeMultiplier:                       updatedPaymentCfg.BalanceRechargeMultiplier,
 		PaymentSubscriptionUSDToCNYRate:                        updatedPaymentCfg.SubscriptionUSDToCNYRate,
 		PaymentRechargeFeeRate:                                 updatedPaymentCfg.RechargeFeeRate,
+		// v4.6.2 currency separation
+		PaymentSettlementCurrency:                              updatedPaymentCfg.SettlementCurrency,
+		PaymentRechargeCurrency:                                updatedPaymentCfg.RechargeCurrency,
+		PaymentFXApiURL:                                        updatedPaymentCfg.FXApiURL,
+		PaymentFXApiURLs:                                       updatedPaymentCfg.FXApiURLs,
+		PaymentFXFallbackRate:                                  updatedPaymentCfg.FXFallbackRate,
 		PaymentLoadBalanceStrat:                                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               updatedPaymentCfg.ProductNamePrefix,
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
@@ -2341,6 +2359,8 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
 		req.PaymentRechargeFeeRate != nil ||
+		req.PaymentSettlementCurrency != nil || req.PaymentRechargeCurrency != nil ||
+		req.PaymentFXApiURL != nil || req.PaymentFXApiURLs != nil || req.PaymentFXFallbackRate != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||

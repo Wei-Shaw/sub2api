@@ -674,8 +674,9 @@ func ProvideOpsIngressRejectAggregator(opsRepo OpsRepository, opsService *OpsSer
 }
 
 // ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config, buildInfo BuildInfo) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
+	svc.SetVersion(buildInfo.Version) // 修复：HTML 注入 __APP_CONFIG__.version 为空（上游 bug）
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)
 	if err := svc.LoadForwardedClientIPSettings(context.Background()); err != nil {
@@ -873,6 +874,9 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	// v4.6.2 currency separation: 注入 FX 服务（wire 暂未暴露 logger 入参，传入 nil 由 FXService 自取 slog）
+	// 注意：放在 ProvidePaymentService 内（而非 wire_gen.go 手工行），避免 merge upstream 后重跑 wire 丢失注入
+	svc.SetFXService(NewFXService(nil))
 	return svc
 }
 

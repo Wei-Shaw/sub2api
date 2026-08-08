@@ -198,6 +198,7 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	fxService                *FXService // v4.6.2 currency separation
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
@@ -208,6 +209,26 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+// SetFXService 注入 FX 服务（v4.6.2 currency separation）。
+// 由 cmd/server wire 或 main 启动时调用。
+func (s *PaymentService) SetFXService(fx *FXService) {
+	s.fxService = fx
+}
+
+// GetCheckoutFXRate 返回结算货币→渠道货币的实时汇率（v4.6.2）。
+// 供 checkout-info 返回给前端做充值页预估显示（API 汇率优先，固定汇率兜底）。
+// 返回 0 表示不可用（前端应回退用固定汇率显示）。
+func (s *PaymentService) GetCheckoutFXRate(ctx context.Context, from, to string) float64 {
+	if s == nil || s.fxService == nil || s.configService == nil {
+		return 0
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		return 0
+	}
+	return s.fxService.GetRate(ctx, from, to, fxAPICandidates(cfg), cfg.FXFallbackRate)
 }
 
 // --- Provider Registry ---

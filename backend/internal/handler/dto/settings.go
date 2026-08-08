@@ -273,6 +273,12 @@ type SystemSettings struct {
 	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
 	PaymentSubscriptionUSDToCNYRate  float64  `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
+	// === v4.6.2 currency separation (owner spec 2026-08-02) ===
+	PaymentSettlementCurrency string   `json:"payment_settlement_currency"` // 结算货币 USD/CNY/EUR (默认 USD)
+	PaymentRechargeCurrency   string   `json:"payment_recharge_currency"`   // 充值货币 USD/CNY/EUR (默认 CNY)
+	PaymentFXApiURL           string   `json:"payment_fx_api_url"`          // 自定义汇率 API（留空=用 fallback）
+	PaymentFXApiURLs          []string `json:"payment_fx_api_urls"`         // 多 FX API 回退链（v4.6.2 task 2，换行分隔）
+	PaymentFXFallbackRate     float64  `json:"payment_fx_fallback_rate"`    // 固定汇率（CNY per USD，默认 6.8）
 	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
 	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
 	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
