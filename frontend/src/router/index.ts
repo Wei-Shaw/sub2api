@@ -356,6 +356,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/web3-deposit/history',
+    name: 'Web3DepositHistory',
+    component: () => import('@/views/user/Web3DepositHistoryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit History'
+    }
+  },
+  {
     path: '/payment/qrcode',
     name: 'PaymentQRCode',
     component: () => import('@/views/user/PaymentQRCodeView.vue'),

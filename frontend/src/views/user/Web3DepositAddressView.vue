@@ -2,6 +2,7 @@
   <AppLayout>
     <div class="mx-auto max-w-4xl space-y-6">
       <div class="card p-6">
+        <div class="mb-5 flex justify-end"><button class="btn btn-secondary" @click="router.push('/web3-deposit/history')">Deposit history</button></div>
         <div class="flex flex-col gap-6 lg:flex-row">
           <div class="flex flex-1 flex-col items-center justify-center rounded-2xl bg-gray-50 p-6 dark:bg-dark-800">
             <div v-if="loading" class="py-24 text-sm text-gray-500">Loading deposit address…</div>
@@ -58,6 +59,7 @@
 import { computed, onMounted, ref } from 'vue'
 import QRCode from 'qrcode'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { web3DepositAPI } from '@/api/web3Deposit'
@@ -68,6 +70,7 @@ import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const appStore = useAppStore()
 const { t } = useI18n()
+const router = useRouter()
 const { copyToClipboard: copy } = useClipboard()
 const config = ref<Web3DepositConfig>()
 const address = ref<Web3DepositAddress>()
