@@ -292,11 +292,7 @@ REDACTED
 				c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"REDACTEDREDACTED)
 				return
 		REDACTED
-			endpoint := "custom-voices/" + c.Param("voice_id")
-			if strings.HasSuffix(strings.TrimRight(c.Request.URL.Path, "/"), "/audio") {
-				endpoint += "/audio"
-		REDACTED
-			h.OpenAIGateway.GrokVoice(c, endpoint)
+			h.OpenAIGateway.GrokVoice(c, grokCustomVoiceEndpoint(c))
 	REDACTED
 		gateway.GET("/custom-voices", voiceHandler("custom-voices"))
 		gateway.GET("/custom-voices/:voice_id/audio", customVoicePathHandler)
@@ -424,11 +420,7 @@ REDACTED
 			c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "Voice API is not supported for this platform"REDACTEDREDACTED)
 			return
 	REDACTED
-		endpoint := "custom-voices/" + c.Param("voice_id")
-		if strings.HasSuffix(strings.TrimRight(c.Request.URL.Path, "/"), "/audio") {
-			endpoint += "/audio"
-	REDACTED
-		h.OpenAIGateway.GrokVoice(c, endpoint)
+		h.OpenAIGateway.GrokVoice(c, grokCustomVoiceEndpoint(c))
 REDACTED
 	r.GET("/custom-voices", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, rootVoiceHandler("custom-voices"))
 	r.GET("/custom-voices/:voice_id/audio", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, rootCustomVoicePathHandler)
@@ -613,6 +605,22 @@ REDACTED
 	REDACTED
 		c.Next()
 REDACTED
+REDACTED
+
+// grokCustomVoiceEndpoint derives the upstream Voice endpoint for the
+// /custom-voices/:voice_id[/audio] routes.
+//
+// The /audio suffix must be decided from the matched route template, not from
+// the raw URL path: a voice literally named "audio" makes GET
+// /custom-voices/audio match /custom-voices/:voice_id, and a raw-path suffix
+// check would rewrite it to custom-voices/audio/audio — turning a profile
+// lookup into an audio download.
+func grokCustomVoiceEndpoint(c *gin.Context) string {
+	endpoint := "custom-voices/" + c.Param("voice_id")
+	if strings.HasSuffix(c.FullPath(), "/:voice_id/audio") {
+		endpoint += "/audio"
+REDACTED
+	return endpoint
 REDACTED
 
 func compositeGeminiModelFromParams(c *gin.Context) string {

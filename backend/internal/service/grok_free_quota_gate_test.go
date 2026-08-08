@@ -199,6 +199,56 @@ REDACTEDREDACTED
 	require.Equal(t, int64(9), overGate.ID)
 REDACTED
 
+func TestSweepGrokFreeQuotaGateCacheDropsStaleEntries(t *testing.T) {
+	now := time.Now().UTC()
+	cacheTTL := 5 * time.Second
+	// maxAge is floored at grokFreeQuotaGateCacheMinSweepAge, not 20*cacheTTL.
+	var cache sync.Map
+	cache.Store(int64(1), grokFreeQuotaGateCacheEntry{tokens: 10, checkedAt: now, known: trueREDACTED)
+	cache.Store(int64(2), grokFreeQuotaGateCacheEntry{tokens: 20, checkedAt: now.Add(-time.Minute), known: trueREDACTED)
+	cache.Store(int64(3), grokFreeQuotaGateCacheEntry{tokens: 30, checkedAt: now.Add(-time.Hour), known: trueREDACTED)
+	cache.Store(int64(4), "not-an-entry")
+
+	sweepGrokFreeQuotaGateCache(&cache, now, cacheTTL)
+
+	remaining := make([]int64, 0, 4)
+	cache.Range(func(key, _ any) bool {
+		if id, ok := key.(int64); ok {
+			remaining = append(remaining, id)
+	REDACTED
+		return true
+REDACTED)
+	require.ElementsMatch(t, []int64{1, 2REDACTED, remaining)
+
+	// A disabled cache (TTL 0) means the caller never populated it — leave it alone.
+	var untouched sync.Map
+	untouched.Store(int64(7), grokFreeQuotaGateCacheEntry{checkedAt: now.Add(-time.Hour), known: trueREDACTED)
+	sweepGrokFreeQuotaGateCache(&untouched, now, 0)
+	_, stillThere := untouched.Load(int64(7))
+	require.True(t, stillThere)
+REDACTED
+
+func TestFilterGrokFreeQuotaAccountsEvictsDepartedAccounts(t *testing.T) {
+	repo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
+		1: {Tokens: 1_000REDACTED,
+REDACTEDREDACTED
+	var cache sync.Map
+	// Account 99 was scheduled long ago and no longer appears in any batch. Its
+	// entry must not survive a run that queries for a different account.
+	cache.Store(int64(99), grokFreeQuotaGateCacheEntry{tokens: 5, checkedAt: time.Now().UTC().Add(-2 * time.Hour), known: trueREDACTED)
+
+	accounts := []Account{
+		{ID: 1, Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "FREE"REDACTEDREDACTED,
+REDACTED
+	filtered := filterGrokFreeQuotaAccountsCore(context.Background(), grokFreeQuotaTestConfig(), repo, &cache, accounts)
+	require.Equal(t, []int64{1REDACTED, accountIDs(filtered))
+
+	_, departedStillCached := cache.Load(int64(99))
+	require.False(t, departedStillCached)
+	_, freshCached := cache.Load(int64(1))
+	require.True(t, freshCached)
+REDACTED
+
 func accountIDs(accounts []Account) []int64 {
 	ids := make([]int64, 0, len(accounts))
 	for i := range accounts {

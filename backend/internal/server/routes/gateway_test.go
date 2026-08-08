@@ -220,6 +220,38 @@ REDACTED {
 REDACTED
 REDACTED
 
+func TestGrokCustomVoiceEndpointUsesRouteTemplateNotRawPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	var got string
+	capture := func(c *gin.Context) {
+		got = grokCustomVoiceEndpoint(c)
+		c.Status(http.StatusOK)
+REDACTED
+	router.GET("/v1/custom-voices/:voice_id/audio", capture)
+	router.GET("/v1/custom-voices/:voice_id", capture)
+
+	for _, tc := range []struct {
+		path string
+		want string
+REDACTED{
+		{path: "/v1/custom-voices/voice-123", want: "custom-voices/voice-123"REDACTED,
+		{path: "/v1/custom-voices/voice-123/audio", want: "custom-voices/voice-123/audio"REDACTED,
+		// A voice literally named "audio" matches /:voice_id, not /:voice_id/audio.
+		// A raw-path suffix check would turn this profile lookup into an audio download.
+		{path: "/v1/custom-voices/audio", want: "custom-voices/audio"REDACTED,
+		{path: "/v1/custom-voices/audio/audio", want: "custom-voices/audio/audio"REDACTED,
+REDACTED {
+		got = ""
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", tc.path)
+		require.Equal(t, tc.want, got, "path=%s", tc.path)
+REDACTED
+REDACTED
+
 func TestGatewayRoutesCompositeVideoLookupsUseGrokHandler(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 

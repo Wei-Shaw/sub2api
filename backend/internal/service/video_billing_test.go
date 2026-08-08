@@ -48,6 +48,66 @@ REDACTED
 	require.Nil(t, LookupVideoModelPrice(norm, "unknown-model", "480p"))
 REDACTED
 
+func TestNormalizeVideoModelPricesDropsUnknownResolutions(t *testing.T) {
+	t.Parallel()
+	// "4k" and "1080i" are not billable tiers. Collapsing them into 480p would
+	// charge a 480p request at the operator's high-resolution price.
+	norm := NormalizeVideoModelPrices(map[string]map[string]float64{
+		"grok-imagine-video": {"480p": 0.05, "4k": 0.50, "1080i": 0.30REDACTED,
+REDACTED)
+	require.NotNil(t, norm)
+	require.Equal(t, map[string]float64{VideoBillingResolution480P: 0.05REDACTED, norm[VideoPriceFamilyGrokImagineVideo])
+
+	// A model whose tiers are all unrecognized contributes no family at all.
+	require.Nil(t, NormalizeVideoModelPrices(map[string]map[string]float64{
+		"grok-imagine-video": {"4k": 0.50REDACTED,
+REDACTED))
+REDACTED
+
+func TestNormalizeVideoModelPricesIsDeterministicAcrossAliasConflicts(t *testing.T) {
+	t.Parallel()
+	// Both keys canonicalize onto grok-imagine-video-1.5 and disagree on 480p.
+	// Whichever price wins, it must be the same one on every run — a Go map walk
+	// would let two processes bill the same request differently.
+	raw := map[string]map[string]float64{
+		"grok-imagine-video-1.5":         {"480p": 0.08REDACTED,
+		"grok-imagine-video-1.5-preview": {"480p": 0.11REDACTED,
+		"grok-video-1.5":                 {"480p": 0.09REDACTED,
+REDACTED
+	first := NormalizeVideoModelPrices(raw)
+	require.NotNil(t, first)
+	for i := 0; i < 50; i++ {
+		require.Equal(t, first, NormalizeVideoModelPrices(raw), "run %d diverged", i)
+REDACTED
+
+	// Aliases within one model key normalize to the same tier deterministically too.
+	aliased := map[string]map[string]float64{
+		"grok-imagine-video": {"720": 0.12, "720p": 0.13, "hd": 0.14REDACTED,
+REDACTED
+	firstAliased := NormalizeVideoModelPrices(aliased)
+	require.NotNil(t, firstAliased)
+	for i := 0; i < 50; i++ {
+		require.Equal(t, firstAliased, NormalizeVideoModelPrices(aliased), "run %d diverged", i)
+REDACTED
+REDACTED
+
+func TestLookupVideoBillingResolutionReportsUnknownTiers(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"480", "480p", "SD", "720", "hd", "1080", "full-hd", " fhd "REDACTED {
+		normalized, ok := LookupVideoBillingResolution(in)
+		require.True(t, ok, "input=%q", in)
+		require.NotEmpty(t, normalized)
+REDACTED
+	for _, in := range []string{"", "4k", "1080i", "2160p", "potato"REDACTED {
+		normalized, ok := LookupVideoBillingResolution(in)
+		require.False(t, ok, "input=%q", in)
+		require.Empty(t, normalized)
+REDACTED
+	// Runtime billing still needs a tier for unrecognized upstream values.
+	require.Equal(t, VideoBillingResolution480P, NormalizeVideoBillingResolutionOrDefault("4k"))
+	require.Equal(t, VideoBillingResolution1080P, NormalizeVideoBillingResolutionOrDefault("full_hd"))
+REDACTED
+
 func TestVideoModelPriceMissingTierFallsBackToFlatTierPrice(t *testing.T) {
 	t.Parallel()
 	flat720P := 0.7

@@ -108,13 +108,12 @@ func collectGrokNativeSearchCallKeys(data []byte) []string {
 	if len(data) == 0 || !gjson.ValidBytes(data) {
 		return nil
 REDACTED
-	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
-	switch eventType {
+	// An empty type means a bare item object without an SSE envelope; anything
+	// else that is not a completion event carries no billable call.
+	switch strings.TrimSpace(gjson.GetBytes(data, "type").String()) {
 	case "response.output_item.done", "response.completed", "response.done", "":
 	default:
-		if eventType != "" {
-			return nil
-	REDACTED
+		return nil
 REDACTED
 	var keys []string
 	syntheticOrdinals := make(map[string]int)
@@ -161,15 +160,12 @@ func countGrokNativeSearchCallsInSSEDataWithKeys(data []byte) (int, []string) {
 	if len(data) == 0 || !gjson.ValidBytes(data) {
 		return 0, nil
 REDACTED
-	eventType := strings.TrimSpace(gjson.GetBytes(data, "type").String())
 	// Count once on item completion / completed response, not on every delta.
-	switch eventType {
-	case "response.output_item.done", "response.completed", "response.done":
+	// An empty type is a bare item object without an SSE envelope.
+	switch strings.TrimSpace(gjson.GetBytes(data, "type").String()) {
+	case "response.output_item.done", "response.completed", "response.done", "":
 	default:
-		// Also allow bare item objects without envelope.
-		if eventType != "" {
-			return 0, nil
-	REDACTED
+		return 0, nil
 REDACTED
 	var keys []string
 	n := 0
