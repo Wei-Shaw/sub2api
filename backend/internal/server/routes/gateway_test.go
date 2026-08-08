@@ -196,6 +196,30 @@ REDACTED {
 REDACTED
 REDACTED
 
+func TestGatewayRoutesGrokCustomVoiceCRUDPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGrok)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+REDACTED
+	for _, route := range []string{
+		"POST /v1/custom-voices",
+		"GET /v1/custom-voices",
+		"GET /v1/custom-voices/:voice_id",
+		"PATCH /v1/custom-voices/:voice_id",
+		"DELETE /v1/custom-voices/:voice_id",
+		"GET /v1/custom-voices/:voice_id/audio",
+		"POST /custom-voices",
+		"GET /custom-voices",
+		"GET /custom-voices/:voice_id",
+		"PATCH /custom-voices/:voice_id",
+		"DELETE /custom-voices/:voice_id",
+		"GET /custom-voices/:voice_id/audio",
+REDACTED {
+		require.True(t, registered[route], "%s should be registered", route)
+REDACTED
+REDACTED
+
 func TestGatewayRoutesCompositeVideoLookupsUseGrokHandler(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 
