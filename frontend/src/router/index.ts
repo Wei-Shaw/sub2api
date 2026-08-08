@@ -352,7 +352,9 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Web3 Deposit'
+      title: 'Web3 Deposit',
+      titleKey: 'web3Deposit.title',
+      descriptionKey: 'web3Deposit.description'
     }
   },
   {
@@ -362,7 +364,9 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Web3 Deposit History'
+      title: 'Web3 Deposit History',
+      titleKey: 'web3Deposit.historyTitle',
+      descriptionKey: 'web3Deposit.historyDescription'
     }
   },
   {

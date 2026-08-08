@@ -2,53 +2,53 @@
   <AppLayout>
     <div class="mx-auto max-w-4xl space-y-6">
       <div class="card p-6">
-        <div class="mb-5 flex justify-end"><button class="btn btn-secondary" @click="router.push('/web3-deposit/history')">Deposit history</button></div>
+        <div class="mb-5 flex justify-end"><button class="btn btn-secondary" @click="router.push('/web3-deposit/history')">{{ t('web3Deposit.history') }}</button></div>
         <div class="flex flex-col gap-6 lg:flex-row">
           <div class="flex flex-1 flex-col items-center justify-center rounded-2xl bg-gray-50 p-6 dark:bg-dark-800">
-            <div v-if="loading" class="py-24 text-sm text-gray-500">Loading deposit address…</div>
+            <div v-if="loading" class="py-24 text-sm text-gray-500">{{ t('web3Deposit.loadingAddress') }}</div>
             <template v-else-if="address?.assigned && address.address">
-              <img :src="qrCode" alt="Deposit address QR code" class="h-56 w-56 rounded-xl" />
+              <img :src="qrCode" :alt="t('web3Deposit.title')" class="h-56 w-56 rounded-xl" />
               <p class="mt-4 break-all text-center font-mono text-sm text-gray-800 dark:text-gray-100">{{ address.address }}</p>
-              <button class="btn btn-secondary mt-4" @click="copy(address.address)">Copy address</button>
+              <button class="btn btn-secondary mt-4" @click="copy(address.address)">{{ t('web3Deposit.copyAddress') }}</button>
             </template>
             <template v-else>
               <Icon name="creditCard" size="xl" class="text-primary-500" />
-              <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">Create your long-lived EVM deposit address when you are ready to deposit.</p>
+              <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">{{ t('web3Deposit.createHint') }}</p>
               <button class="btn btn-primary mt-5" :disabled="creating || !config?.enabled" @click="createAddress">
-                {{ creating ? 'Creating…' : 'Create deposit address' }}
+                {{ creating ? t('web3Deposit.creating') : t('web3Deposit.createAddress') }}
               </button>
             </template>
           </div>
 
           <div class="flex-1 space-y-4">
             <div>
-              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Network</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t('web3Deposit.network') }}</p>
               <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ network?.display_name || 'Conflux eSpace' }}</p>
-              <p class="text-sm text-gray-500">Chain ID: {{ network?.chain_id || '1030' }}</p>
+              <p class="text-sm text-gray-500">{{ t('web3Deposit.chainId', { id: network?.chain_id || '1030' }) }}</p>
             </div>
             <div>
-              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Token</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t('web3Deposit.token') }}</p>
               <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ asset?.display_name || 'USDT0' }}</p>
               <div class="mt-2 flex items-start gap-2">
                 <code class="min-w-0 flex-1 break-all rounded-lg bg-gray-100 px-3 py-2 text-xs dark:bg-dark-800">{{ asset?.contract_address }}</code>
-                <button class="btn btn-secondary" :disabled="!asset" @click="copy(asset?.contract_address || '')">Copy</button>
+                <button class="btn btn-secondary" :disabled="!asset" @click="copy(asset?.contract_address || '')">{{ t('web3Deposit.copy') }}</button>
               </div>
             </div>
             <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">Minimum deposit</dt><dd class="mt-1 font-semibold">{{ asset?.minimum_deposit || '1.000000' }} USDT0</dd></div>
-              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">Automatic credit limit</dt><dd class="mt-1 font-semibold">{{ asset?.automatic_credit_limit || '10000.000000' }} USDT0</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.minimumDeposit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.minimum_deposit || '1.000000' }} USDT0</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.automaticCreditLimit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.automatic_credit_limit || '10000.000000' }} USDT0</dd></div>
             </dl>
           </div>
         </div>
       </div>
 
       <div class="card border-amber-200 bg-amber-50 p-6 dark:border-amber-800/50 dark:bg-amber-900/20">
-        <h2 class="font-semibold text-amber-900 dark:text-amber-200">Deposit safety</h2>
+        <h2 class="font-semibold text-amber-900 dark:text-amber-200">{{ t('web3Deposit.safetyTitle') }}</h2>
         <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-amber-800 dark:text-amber-300">
-          <li>Only send the configured USDT0 token on Conflux eSpace. Do not use Conflux Core Space or another network.</li>
-          <li>Verify the token contract above; tokens with a similar name are not accepted.</li>
-          <li>Deposits appear after finalized confirmation. Deposits below 1 USDT0 are not credited automatically.</li>
-          <li>Incorrect-network and incorrect-token deposits are not refunded automatically.</li>
+          <li>{{ t('web3Deposit.safetyNetwork') }}</li>
+          <li>{{ t('web3Deposit.safetyContract') }}</li>
+          <li>{{ t('web3Deposit.safetyFinality') }}</li>
+          <li>{{ t('web3Deposit.safetyRefund') }}</li>
         </ul>
       </div>
     </div>
@@ -92,7 +92,7 @@ async function load() {
     address.value = addressResponse.data
     await renderQRCode(address.value.address)
   } catch (error) {
-    appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', 'Failed to load Web3 deposit information'))
+    appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.loadAddress')))
   } finally {
     loading.value = false
   }
@@ -105,7 +105,7 @@ async function createAddress() {
     address.value = response.data
     await renderQRCode(address.value.address)
   } catch (error) {
-    appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', 'Failed to create deposit address'))
+    appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.createAddress')))
   } finally {
     creating.value = false
   }
