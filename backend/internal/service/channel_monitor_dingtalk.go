@@ -32,6 +32,7 @@ type channelMonitorFailureAlert struct {
 	Message             string
 	CheckedAt           time.Time
 	ConsecutiveFailures int
+	IsTest              bool
 }
 
 type channelMonitorAlertNotifier interface {
@@ -49,17 +50,16 @@ func newDingTalkChannelMonitorNotifier(settings *SettingService) channelMonitorA
 	}
 	return &dingTalkChannelMonitorNotifier{
 		settings: settings,
-		client: &http.Client{
-			Timeout: channelMonitorAlertTimeout,
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		client:   newDingTalkHTTPClient(),
 	}
 }
 
 func (n *dingTalkChannelMonitorNotifier) NotifyFailure(ctx context.Context, alert channelMonitorFailureAlert) (bool, error) {
 	cfg := n.settings.GetChannelMonitorDingTalkRuntime(ctx)
+	return n.notifyFailureWithConfig(ctx, cfg, alert)
+}
+
+func (n *dingTalkChannelMonitorNotifier) notifyFailureWithConfig(ctx context.Context, cfg ChannelMonitorDingTalkRuntime, alert channelMonitorFailureAlert) (bool, error) {
 	if !cfg.Enabled || cfg.Webhook == "" {
 		return false, nil
 	}
@@ -106,6 +106,37 @@ func (n *dingTalkChannelMonitorNotifier) NotifyFailure(ctx context.Context, aler
 	return true, nil
 }
 
+func newDingTalkHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: channelMonitorAlertTimeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
+// SendChannelMonitorDingTalkTest sends a clearly marked test message without
+// reading or changing the persisted failure episode state.
+func SendChannelMonitorDingTalkTest(ctx context.Context, webhook, secret string) error {
+	notifier := &dingTalkChannelMonitorNotifier{client: newDingTalkHTTPClient()}
+	sent, err := notifier.notifyFailureWithConfig(ctx, ChannelMonitorDingTalkRuntime{
+		Enabled: true,
+		Webhook: strings.TrimSpace(webhook),
+		Secret:  strings.TrimSpace(secret),
+	}, channelMonitorFailureAlert{
+		Message:   "这是一条测试消息，当前填写的 Webhook 和加签密钥可正常发送。",
+		CheckedAt: time.Now(),
+		IsTest:    true,
+	})
+	if err != nil {
+		return err
+	}
+	if !sent {
+		return errors.New("dingtalk webhook is required")
+	}
+	return nil
+}
+
 func signedDingTalkWebhook(rawWebhook, secret string, now time.Time) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(rawWebhook))
 	if err != nil {
@@ -140,6 +171,25 @@ func ValidateChannelMonitorDingTalkWebhook(rawWebhook string) error {
 }
 
 func dingTalkFailurePayload(alert channelMonitorFailureAlert) map[string]any {
+	if alert.IsTest {
+		checkedAt := alert.CheckedAt
+		if checkedAt.IsZero() {
+			checkedAt = time.Now()
+		}
+		message := sanitizeDingTalkText(alert.Message, channelMonitorAlertMessageRunes)
+		text := fmt.Sprintf(
+			"### 渠道监控测试\n\n- 状态：配置有效\n- 测试时间：%s\n- 说明：%s",
+			checkedAt.Format("2006-01-02 15:04:05 MST"), message,
+		)
+		return map[string]any{
+			"msgtype": "markdown",
+			"markdown": map[string]string{
+				"title": "渠道监控测试",
+				"text":  text,
+			},
+		}
+	}
+
 	name := sanitizeDingTalkText(alert.MonitorName, 100)
 	model := sanitizeDingTalkText(alert.Model, 100)
 	status := sanitizeDingTalkText(alert.Status, 30)

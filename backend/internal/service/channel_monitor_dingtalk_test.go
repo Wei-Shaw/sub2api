@@ -300,3 +300,18 @@ func TestDingTalkFailurePayload_SanitizesAndTruncatesExternalText(t *testing.T) 
 		t.Fatalf("missing empty-message fallback: %s", fallback)
 	}
 }
+
+func TestDingTalkFailurePayload_TestMessageIsClearlyMarked(t *testing.T) {
+	payload := dingTalkFailurePayload(channelMonitorFailureAlert{
+		Message:   "configuration works",
+		CheckedAt: time.Unix(1710000000, 0),
+		IsTest:    true,
+	})
+	markdown := payload["markdown"].(map[string]string)
+	if markdown["title"] != "渠道监控测试" {
+		t.Fatalf("unexpected test title: %q", markdown["title"])
+	}
+	if !strings.Contains(markdown["text"], "配置有效") || strings.Contains(markdown["text"], "连续失败") {
+		t.Fatalf("test message was ambiguous: %s", markdown["text"])
+	}
+}

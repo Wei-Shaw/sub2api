@@ -6922,6 +6922,38 @@
                       : t('admin.settings.features.channelMonitor.clearSaved') }}
                   </button>
                 </div>
+
+                <div class="flex flex-wrap justify-end gap-3 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-testid="channel-monitor-dingtalk-test"
+                    :disabled="channelMonitorDingTalkTesting
+                      || channelMonitorDingTalkSaving
+                      || saving
+                      || !canTestChannelMonitorDingTalk"
+                    @click="testChannelMonitorDingTalk"
+                  >
+                    <Icon v-if="channelMonitorDingTalkTesting" name="refresh" size="xs" class="animate-spin" />
+                    <Icon v-else name="bell" size="xs" />
+                    {{ channelMonitorDingTalkTesting
+                      ? t('admin.settings.features.channelMonitor.testingAlert')
+                      : t('admin.settings.features.channelMonitor.testAlert') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    data-testid="channel-monitor-dingtalk-save"
+                    :disabled="channelMonitorDingTalkSaving || channelMonitorDingTalkTesting || saving"
+                    @click="saveChannelMonitorDingTalkSettings"
+                  >
+                    <Icon v-if="channelMonitorDingTalkSaving" name="refresh" size="xs" class="animate-spin" />
+                    <Icon v-else name="check" size="xs" />
+                    {{ channelMonitorDingTalkSaving
+                      ? t('admin.settings.features.channelMonitor.savingDingTalk')
+                      : t('admin.settings.features.channelMonitor.saveDingTalk') }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -8711,6 +8743,8 @@ const loadFailed = ref(false);
 const saving = ref(false);
 const channelMonitorDingTalkWebhookClear = ref(false);
 const channelMonitorDingTalkSecretClear = ref(false);
+const channelMonitorDingTalkSaving = ref(false);
+const channelMonitorDingTalkTesting = ref(false);
 const testingSmtp = ref(false);
 const sendingTestEmail = ref(false);
 const smtpPasswordManuallyEdited = ref(false);
@@ -9571,6 +9605,13 @@ const form = reactive<SettingsForm>({
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
+
+const canTestChannelMonitorDingTalk = computed(
+  () =>
+    !channelMonitorDingTalkWebhookClear.value &&
+    (form.channel_monitor_dingtalk_webhook.trim() !== "" ||
+      form.channel_monitor_dingtalk_webhook_configured),
+);
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
 // enabled 键（与上游一致），由下面的映射保证同一时间至多一家启用。
@@ -11363,6 +11404,82 @@ async function saveSettings() {
     );
   } finally {
     saving.value = false;
+  }
+}
+
+function channelMonitorDingTalkPayload(): UpdateSettingsRequest {
+  return {
+    channel_monitor_dingtalk_enabled: form.channel_monitor_dingtalk_enabled,
+    channel_monitor_dingtalk_webhook:
+      form.channel_monitor_dingtalk_webhook || undefined,
+    channel_monitor_dingtalk_secret:
+      form.channel_monitor_dingtalk_secret || undefined,
+    channel_monitor_dingtalk_webhook_clear:
+      channelMonitorDingTalkWebhookClear.value || undefined,
+    channel_monitor_dingtalk_secret_clear:
+      channelMonitorDingTalkSecretClear.value || undefined,
+  };
+}
+
+async function saveChannelMonitorDingTalkSettings() {
+  channelMonitorDingTalkSaving.value = true;
+  try {
+    const updated = await settingsStepUp.run(() =>
+      adminAPI.settings.updateSettings(channelMonitorDingTalkPayload()),
+    );
+    form.channel_monitor_dingtalk_enabled =
+      updated.channel_monitor_dingtalk_enabled;
+    form.channel_monitor_dingtalk_webhook_configured =
+      updated.channel_monitor_dingtalk_webhook_configured;
+    form.channel_monitor_dingtalk_secret_configured =
+      updated.channel_monitor_dingtalk_secret_configured;
+    form.channel_monitor_dingtalk_webhook = "";
+    form.channel_monitor_dingtalk_secret = "";
+    channelMonitorDingTalkWebhookClear.value = false;
+    channelMonitorDingTalkSecretClear.value = false;
+    appStore.showSuccess(
+      t("admin.settings.features.channelMonitor.saveSuccess"),
+    );
+  } catch (error: unknown) {
+    if (isStepUpCancelled(error)) return;
+    if (isStepUpBlocked(error)) {
+      appStore.showError(
+        stepUpBlockReason(error) === "STEP_UP_ADMIN_API_KEY_FORBIDDEN"
+          ? t("stepUp.adminApiKeyForbidden")
+          : t("stepUp.notEnabled"),
+      );
+      return;
+    }
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.features.channelMonitor.saveFailed"),
+      ),
+    );
+  } finally {
+    channelMonitorDingTalkSaving.value = false;
+  }
+}
+
+async function testChannelMonitorDingTalk() {
+  if (!canTestChannelMonitorDingTalk.value) return;
+  channelMonitorDingTalkTesting.value = true;
+  try {
+    await adminAPI.settings.testChannelMonitorDingTalk(
+      channelMonitorDingTalkPayload(),
+    );
+    appStore.showSuccess(
+      t("admin.settings.features.channelMonitor.testSuccess"),
+    );
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.features.channelMonitor.testFailed"),
+      ),
+    );
+  } finally {
+    channelMonitorDingTalkTesting.value = false;
   }
 }
 

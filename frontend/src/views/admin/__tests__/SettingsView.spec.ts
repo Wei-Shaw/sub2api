@@ -7,6 +7,7 @@ import SettingsView from "../SettingsView.vue";
 const {
   getSettings,
   updateSettings,
+  testChannelMonitorDingTalk,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   getAdminApiKey,
@@ -35,6 +36,7 @@ const {
 } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  testChannelMonitorDingTalk: vi.fn(),
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
@@ -82,6 +84,7 @@ vi.mock("@/api", () => ({
     settings: {
       getSettings,
       updateSettings,
+      testChannelMonitorDingTalk,
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
       getAdminApiKey,
@@ -611,6 +614,7 @@ describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
     updateSettings.mockReset();
+    testChannelMonitorDingTalk.mockReset();
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
@@ -641,6 +645,9 @@ describe("admin SettingsView payment visible method controls", () => {
       ...baseSettingsResponse,
       ...payload,
     }));
+    testChannelMonitorDingTalk.mockResolvedValue({
+      message: "DingTalk test alert sent successfully",
+    });
     getWebSearchEmulationConfig.mockResolvedValue({
       enabled: false,
       providers: [],
@@ -735,19 +742,80 @@ describe("admin SettingsView payment visible method controls", () => {
 
     await webhook.setValue("https://oapi.dingtalk.com/robot/send?access_token=test-token");
     await secret.setValue("SEC-test-secret");
-    await wrapper.find("form").trigger("submit.prevent");
+    const testButton = wrapper.get('[data-testid="channel-monitor-dingtalk-test"]');
+    const saveButton = wrapper.get('[data-testid="channel-monitor-dingtalk-save"]');
+    expect(testButton.exists()).toBe(true);
+    expect(saveButton.exists()).toBe(true);
+
+    await saveButton.trigger("click");
     await flushPromises();
 
-    expect(updateSettings).toHaveBeenCalledWith(
+    expect(updateSettings).toHaveBeenCalledWith({
+      channel_monitor_dingtalk_enabled: true,
+      channel_monitor_dingtalk_webhook:
+        "https://oapi.dingtalk.com/robot/send?access_token=test-token",
+      channel_monitor_dingtalk_secret: "SEC-test-secret",
+      channel_monitor_dingtalk_webhook_clear: undefined,
+      channel_monitor_dingtalk_secret_clear: undefined,
+    });
+    expect((webhook.element as HTMLInputElement).value).toBe("");
+    expect((secret.element as HTMLInputElement).value).toBe("");
+    expect(showSuccess).toHaveBeenCalledWith(
+      "admin.settings.features.channelMonitor.saveSuccess",
+    );
+  });
+
+  it("tests DingTalk channel monitor alerts without saving settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      channel_monitor_dingtalk_enabled: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+
+    const testButton = wrapper.get('[data-testid="channel-monitor-dingtalk-test"]');
+    expect(testButton.attributes("disabled")).toBeDefined();
+    await wrapper
+      .get('[data-testid="channel-monitor-dingtalk-webhook"]')
+      .setValue("https://oapi.dingtalk.com/robot/send?access_token=test-token");
+    await wrapper
+      .get('[data-testid="channel-monitor-dingtalk-secret"]')
+      .setValue("SEC-test-secret");
+    expect(testButton.attributes("disabled")).toBeUndefined();
+
+    await testButton.trigger("click");
+    await flushPromises();
+
+    expect(testChannelMonitorDingTalk).toHaveBeenCalledWith(
       expect.objectContaining({
-        channel_monitor_dingtalk_enabled: true,
         channel_monitor_dingtalk_webhook:
           "https://oapi.dingtalk.com/robot/send?access_token=test-token",
         channel_monitor_dingtalk_secret: "SEC-test-secret",
       }),
     );
-    expect((webhook.element as HTMLInputElement).value).toBe("");
-    expect((secret.element as HTMLInputElement).value).toBe("");
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showSuccess).toHaveBeenCalledWith(
+      "admin.settings.features.channelMonitor.testSuccess",
+    );
+  });
+
+  it("disables DingTalk testing when the saved webhook is marked for clearing", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      channel_monitor_dingtalk_enabled: true,
+      channel_monitor_dingtalk_webhook_configured: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+
+    const testButton = wrapper.get('[data-testid="channel-monitor-dingtalk-test"]');
+    expect(testButton.attributes("disabled")).toBeUndefined();
+    await wrapper
+      .get('[data-testid="channel-monitor-dingtalk-webhook-clear"]')
+      .trigger("click");
+    expect(testButton.attributes("disabled")).toBeDefined();
   });
 
   it("hides DingTalk credentials while alerts are disabled", async () => {
