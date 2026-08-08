@@ -554,6 +554,7 @@ type GatewayService struct {
 	deferredService       *DeferredService
 	concurrencyService    *ConcurrencyService
 	claudeTokenProvider   *ClaudeTokenProvider
+	geminiTokenProvider   *GeminiTokenProvider
 	sessionLimitCache     SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
@@ -592,6 +593,7 @@ func NewGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	claudeTokenProvider *ClaudeTokenProvider,
+	geminiTokenProvider *GeminiTokenProvider,
 	sessionLimitCache SessionLimitCache,
 	rpmCache RPMCache,
 	digestStore *DigestSessionStore,
@@ -624,6 +626,7 @@ func NewGatewayService(
 		httpUpstream:         httpUpstream,
 		deferredService:      deferredService,
 		claudeTokenProvider:  claudeTokenProvider,
+		geminiTokenProvider:  geminiTokenProvider,
 		sessionLimitCache:    sessionLimitCache,
 		rpmCache:             rpmCache,
 		userGroupRateCache:   gocache.New(userGroupRateTTL, time.Minute),
@@ -3749,17 +3752,27 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 	case AccountTypeBedrock:
 		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
 	case AccountTypeServiceAccount:
-		if account.Platform != PlatformAnthropic {
-			return "", "", fmt.Errorf("unsupported service account platform: %s", account.Platform)
+		if account.Platform == PlatformAnthropic {
+			if s.claudeTokenProvider == nil {
+				return "", "", errors.New("claude token provider not configured")
+			}
+			accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", "", err
+			}
+			return accessToken, "service_account", nil
 		}
-		if s.claudeTokenProvider == nil {
-			return "", "", errors.New("claude token provider not configured")
+		if account.Platform == PlatformGemini {
+			if s.geminiTokenProvider == nil {
+				return "", "", errors.New("gemini token provider not configured")
+			}
+			accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
+			if err != nil {
+				return "", "", err
+			}
+			return accessToken, "service_account", nil
 		}
-		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
-		if err != nil {
-			return "", "", err
-		}
-		return accessToken, "service_account", nil
+		return "", "", fmt.Errorf("unsupported service account platform: %s", account.Platform)
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 	}
@@ -3769,6 +3782,15 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 	// 对于 Anthropic OAuth 账号，使用 ClaudeTokenProvider 获取缓存的 token
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeOAuth && s.claudeTokenProvider != nil {
 		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+		}
+		return accessToken, "oauth", nil
+	}
+
+	// 对于 Gemini OAuth/SetupToken 账号，使用 GeminiTokenProvider 获取缓存的/刷新后的 token
+	if account.Platform == PlatformGemini && (account.Type == AccountTypeOAuth || account.Type == AccountTypeSetupToken) && s.geminiTokenProvider != nil {
+		accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
 		if err != nil {
 			return "", "", err
 		}

@@ -164,6 +164,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // httpUpstream
 		nil, // deferredService
 		nil, // claudeTokenProvider
+		nil, // geminiTokenProvider
 		nil, // sessionLimitCache
 		nil, // rpmCache
 		nil, // digestStore
