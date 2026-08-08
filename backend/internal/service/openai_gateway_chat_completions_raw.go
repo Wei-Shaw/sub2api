@@ -232,6 +232,14 @@ func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, 
 		return targetURL, nil
 	}
 
+	if account.Platform == PlatformBailian {
+		targetURL, err := s.bailianChatCompletionsURL(account)
+		if err != nil {
+			return "", fmt.Errorf("invalid bailian base_url: %w", err)
+		}
+		return targetURL, nil
+	}
+
 	return s.openAIChatCompletionsTargetURL(account)
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/bailian"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -71,6 +72,13 @@ func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
 	if g.Platform == PlatformGrok {
 		if claudeMessagesDispatchFamily(requestedModel) != "" {
 			return xai.DefaultModelMapping()["grok"]
+		}
+		return ""
+	}
+
+	if g.Platform == PlatformBailian {
+		if claudeMessagesDispatchFamily(requestedModel) != "" {
+			return bailian.DefaultTextModelID
 		}
 		return ""
 	}

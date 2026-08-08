@@ -32,6 +32,12 @@
     <circle cx="18" cy="18" r="3" />
     <path stroke-linecap="round" stroke-linejoin="round" d="M8.7 10.7 15.3 7.3M8.7 13.3l6.6 3.4" />
   </svg>
+  <!-- Bailian / Alibaba Cloud logo mark (bracket badge) -->
+  <svg v-else-if="platform === 'bailian'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path
+      d="M8.5 5H6a4 4 0 0 0-4 4v6a4 4 0 0 0 4 4h2.5l-1-2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.5l1-2zm7 0H18a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-2.5l1-2H18a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1.5l-1-2zM8 11h8v2H8v-2z"
+    />
+  </svg>
   <!-- Fallback: generic platform icon -->
   <svg v-else :class="sizeClass" fill="currentColor" viewBox="0 0 24 24">
     <path

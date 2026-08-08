@@ -4405,6 +4405,7 @@ const platformOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "composite", label: "Composite" },
+  { value: "bailian", label: "Bailian" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -4415,6 +4416,7 @@ const platformFilterOptions = computed(() => [
   { value: "antigravity", label: "Antigravity" },
   { value: "grok", label: "Grok" },
   { value: "composite", label: "Composite" },
+  { value: "bailian", label: "Bailian" },
 ]);
 
 const compositeRoutePlatformOptions = computed(() => [
