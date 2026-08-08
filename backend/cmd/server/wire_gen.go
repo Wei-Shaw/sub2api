@@ -308,7 +308,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	web3CreditJobRepository := repository.NewWeb3CreditJobRepository(db)
 	web3AccountingRepository := repository.NewWeb3AccountingRepository(db)
 	creditWorkerRuntime := web3deposit.ProvideCreditWorkerRuntime(configConfig, web3CreditJobRepository, web3AccountingRepository)
-	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, scannerRuntime)
+	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, web3DepositRepository, scannerRuntime, confluxNetworkRuntime)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, adminWeb3DepositHandler, affiliateHandler, complianceHandler, auditLogHandler, upstreamBillingProbeService, ollamaCloudUsageService)
 	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, confluxNetworkRuntime, web3DepositRepository)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)

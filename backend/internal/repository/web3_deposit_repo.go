@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -26,6 +27,7 @@ var _ depositdomain.DepositCreditEligibilitySource = (*Web3DepositRepository)(ni
 var _ depositdomain.PendingFinalizationSource = (*Web3DepositRepository)(nil)
 var _ depositdomain.UserDepositReader = (*Web3DepositRepository)(nil)
 var _ depositdomain.AdminDepositReader = (*Web3DepositRepository)(nil)
+var _ depositdomain.AdminDepositOperator = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -259,6 +261,28 @@ func (r *Web3DepositRepository) CountAdminDepositsByStatus(ctx context.Context) 
 		counts[depositdomain.DepositStatus(entity.Status)]++
 	}
 	return counts, nil
+}
+
+func (r *Web3DepositRepository) ApproveReviewedDeposit(ctx context.Context, depositID int64) error {
+	updated, err := r.client.Web3Deposit.Update().Where(web3deposit.IDEQ(depositID), web3deposit.StatusEQ(string(depositdomain.DepositStatusManualReview))).SetStatus(string(depositdomain.DepositStatusReadyToCredit)).ClearReviewReason().SetNextRetryAt(time.Now().UTC()).Save(ctx)
+	if err != nil {
+		return fmt.Errorf("approve reviewed web3 deposit: %w", err)
+	}
+	if updated != 1 {
+		return depositdomain.ErrAdminDepositStateConflict
+	}
+	return nil
+}
+
+func (r *Web3DepositRepository) IgnoreReviewedDeposit(ctx context.Context, depositID int64, reason string) error {
+	updated, err := r.client.Web3Deposit.Update().Where(web3deposit.IDEQ(depositID), web3deposit.StatusEQ(string(depositdomain.DepositStatusManualReview))).SetStatus(string(depositdomain.DepositStatusIgnored)).SetReviewReason(strings.TrimSpace(reason)).ClearNextRetryAt().Save(ctx)
+	if err != nil {
+		return fmt.Errorf("ignore reviewed web3 deposit: %w", err)
+	}
+	if updated != 1 {
+		return depositdomain.ErrAdminDepositStateConflict
+	}
+	return nil
 }
 
 func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {

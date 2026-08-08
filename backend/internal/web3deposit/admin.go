@@ -2,6 +2,7 @@ package web3deposit
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -21,3 +22,10 @@ type AdminDepositReader interface {
 	GetAdminDeposit(ctx context.Context, depositID int64) (Deposit, error)
 	CountAdminDepositsByStatus(ctx context.Context) (map[DepositStatus]int64, error)
 }
+
+type AdminDepositOperator interface {
+	ApproveReviewedDeposit(ctx context.Context, depositID int64) error
+	IgnoreReviewedDeposit(ctx context.Context, depositID int64, reason string) error
+}
+
+var ErrAdminDepositStateConflict = errors.New("web3 deposit state does not allow admin operation")
