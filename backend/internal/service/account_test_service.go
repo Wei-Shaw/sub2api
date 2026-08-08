@@ -66,11 +66,9 @@ REDACTED
 
 // AccountTestOptions carries optional media for admin connectivity tests.
 // ImageDataURL / AudioDataURL are full data URLs (data:<mime>;base64,...).
-// VideoUploadURL is an optional public HTTPS PUT URL for ZDR video output.
 type AccountTestOptions struct {
-	ImageDataURL   string
-	AudioDataURL   string
-	VideoUploadURL string
+	ImageDataURL string
+	AudioDataURL string
 REDACTED
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -135,22 +133,6 @@ func normalizeGrokAccountTestMode(mode string) string {
 	default:
 		return AccountTestModeDefault
 REDACTED
-REDACTED
-
-// isGrokVideoZDRUploadURLRequired reports when xAI rejects video create because
-// Zero Data Retention teams must supply output.upload_url. For admin connectivity
-// probes we treat this as a successful reachability signal (endpoint + auth work).
-func isGrokVideoZDRUploadURLRequired(statusCode int, body []byte) bool {
-	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
-		return false
-REDACTED
-	msg := strings.ToLower(string(body))
-	if !strings.Contains(msg, "upload_url") {
-		return false
-REDACTED
-	return strings.Contains(msg, "zero data retention") ||
-		strings.Contains(msg, "zdr") ||
-		strings.Contains(msg, "must provide output.upload_url")
 REDACTED
 
 // AccountTestService handles account testing operations
@@ -277,7 +259,7 @@ REDACTED
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
-// opts is optional media (image/audio data URLs, video upload_url for ZDR).
+// opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
@@ -962,7 +944,10 @@ func (s *AccountTestService) applyGrokTestRequestHeaders(req *http.Request, acco
 		req.Header.Set("Accept", accept)
 REDACTED
 	req.Header.Set("Authorization", "Bearer "+authToken)
-	if account.IsGrokOAuth() {
+	// Match gateway media/voice: CLI identity headers only on the CLI chat proxy.
+	// api.x.ai media (images/videos) rejects or mistreats OAuth when CLI headers
+	// are stamped on the official API host (e.g. ZDR upload_url false positives).
+	if account.IsGrokOAuth() && req.URL != nil && isGrokCLIProxyTarget(req.URL.String()) {
 		applyGrokCLIHeaders(req.Header)
 REDACTED
 	account.ApplyHeaderOverrides(req.Header)
@@ -1253,13 +1238,6 @@ REDACTED
 		payload["image"] = grokMediaImageObject(normalized)
 		s.sendEvent(c, TestEvent{Type: "content", Text: "using uploaded first-frame / reference image\n"REDACTED)
 REDACTED
-	if uploadURL := strings.TrimSpace(opts.VideoUploadURL); uploadURL != "" {
-		if err := validateAccountTestPublicUploadURL(uploadURL); err != nil {
-			return s.sendErrorAndEnd(c, err.Error())
-	REDACTED
-		payload["output"] = map[string]any{"upload_url": uploadURLREDACTED
-		s.sendEvent(c, TestEvent{Type: "content", Text: "using client-provided output.upload_url for ZDR video output\n"REDACTED)
-REDACTED
 	payloadBytes, _ := json.Marshal(payload)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
@@ -1280,25 +1258,6 @@ REDACTED
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Grok video response: %s", err.Error()))
 REDACTED
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusCreated {
-		// ZDR teams require a client-hosted output.upload_url that xAI can PUT the
-		// finished MP4 into. Admin account tests do not expose a public upload sink
-		// (would need HTTPS public base + PUT receiver, like a media upload ticket).
-		// Reaching this validation still proves auth + /videos/generations routing.
-		// Mark success for connectivity, but state clearly that no video was produced.
-		if isGrokVideoZDRUploadURLRequired(resp.StatusCode, body) {
-			s.sendEvent(c, TestEvent{
-				Type: "content",
-				Text: "" +
-					"NO VIDEO GENERATED — this is connectivity-only for ZDR accounts.\n" +
-					"xAI Zero Data Retention requires payload field output.upload_url (public HTTPS PUT URL);\n" +
-					"this admin probe does not host that receiver, so generation cannot complete here.\n" +
-					"What worked: auth token + POST /v1/videos/generations reached xAI and returned the ZDR rule.\n" +
-					"To actually generate video: call gateway /v1/videos/generations with a client-provided output.upload_url, or use a non-ZDR team.\n",
-		REDACTED)
-			s.sendEvent(c, TestEvent{Type: "status", Text: "Connectivity OK (no video file produced)"REDACTED)
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
-			return nil
-	REDACTED
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok videos API returned %d: %s", resp.StatusCode, string(body)))
 REDACTED
 
@@ -1392,8 +1351,7 @@ REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB cap for admin preview
 	if resp.StatusCode != http.StatusOK {
-		// Fall back to reporting status-only success if content is unavailable
-		// (e.g. ZDR already PUT to client upload_url).
+		// Fall back to status URL when binary content is unavailable.
 		if videoURL != "" {
 			s.sendEvent(c, TestEvent{Type: "content", Text: "video completed; content download unavailable, reported url=" + videoURL + "\n"REDACTED)
 			s.sendEvent(c, TestEvent{Type: "video", VideoURL: videoURL, MimeType: "video/mp4"REDACTED)
@@ -1893,24 +1851,6 @@ REDACTED
 		return nil, "", fmt.Errorf("media exceeds %d byte limit", maxAccountTestMediaBytes)
 REDACTED
 	return decoded, mime, nil
-REDACTED
-
-func validateAccountTestPublicUploadURL(raw string) error {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return fmt.Errorf("upload_url is empty")
-REDACTED
-	u, err := url.Parse(raw)
-	if err != nil || u == nil {
-		return fmt.Errorf("upload_url is not a valid URL")
-REDACTED
-	if !strings.EqualFold(u.Scheme, "https") {
-		return fmt.Errorf("upload_url must be https (xAI requires a public HTTPS PUT URL)")
-REDACTED
-	if strings.TrimSpace(u.Host) == "" {
-		return fmt.Errorf("upload_url host is required")
-REDACTED
-	return nil
 REDACTED
 
 func sttFilenameForMIME(mime string) string {
