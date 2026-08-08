@@ -1516,6 +1516,36 @@
         </div>
       </div>
 
+      <!-- OpenAI session sticky policy (account-level; create and bulk edit intentionally omit it) -->
+      <div
+        v-if="account?.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="openai-session-sticky-policy"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.sessionStickyMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.sessionStickyModeDesc') }}
+            </p>
+            <p
+              v-if="openAISessionStickyMode === null"
+              class="mt-2 text-xs text-red-600 dark:text-red-400"
+              data-testid="openai-session-sticky-mode-missing"
+            >
+              {{ t('admin.accounts.openai.sessionStickyModeMissing') }}
+            </p>
+          </div>
+          <div v-if="openAISessionStickyMode !== null" class="w-56 shrink-0">
+            <Select
+              v-model="openAISessionStickyMode"
+              data-testid="openai-session-sticky-mode"
+              :options="openAISessionStickyModeOptions"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -2663,6 +2693,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { isOpenAISessionStickyMode } from '@/api/admin/accounts'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -2672,6 +2703,7 @@ import type {
   OpenAICompactMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
+  OpenAISessionStickyMode,
   OllamaCloudUsageState
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -2916,6 +2948,7 @@ const openAILongContextBillingEnabled = ref(false)
 const editPlanType = ref<string>('')
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAISessionStickyMode = ref<OpenAISessionStickyMode | null>(null)
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3049,6 +3082,16 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+])
+const openAISessionStickyModeOptions = computed(() => [
+  {
+    value: 'normal' as const,
+    label: t('admin.accounts.openai.sessionStickyModeNormal')
+  },
+  {
+    value: 'fallback_only' as const,
+    label: t('admin.accounts.openai.sessionStickyModeFallbackOnly')
+  }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
@@ -3367,6 +3410,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editPlanType.value = ''
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
+  openAISessionStickyMode.value = null
   openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -3429,6 +3473,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     if (compactMappings && typeof compactMappings === 'object') {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
+  }
+  if (newAccount.platform === 'openai') {
+    openAISessionStickyMode.value = isOpenAISessionStickyMode(newAccount.openai_session_sticky_mode)
+      ? newAccount.openai_session_sticky_mode
+      : null
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
@@ -4095,6 +4144,17 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
   submitting.value = true
   try {
     const updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
+    if (props.account?.platform === 'openai') {
+      const requestedMode = updatePayload.openai_session_sticky_mode
+      if (
+        !isOpenAISessionStickyMode(requestedMode) ||
+        !isOpenAISessionStickyMode(updatedAccount.openai_session_sticky_mode) ||
+        updatedAccount.openai_session_sticky_mode !== requestedMode
+      ) {
+        appStore.showError(t('admin.accounts.openai.sessionStickyModeRoundTripFailed'))
+        return
+      }
+    }
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
     emit('updated', updatedAccount)
     handleClose()
@@ -4126,6 +4186,13 @@ const handleSubmit = async () => {
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
+    if (props.account.platform === 'openai') {
+      if (!isOpenAISessionStickyMode(openAISessionStickyMode.value)) {
+        appStore.showError(t('admin.accounts.openai.sessionStickyModeMissing'))
+        return
+      }
+      updatePayload.openai_session_sticky_mode = openAISessionStickyMode.value
+    }
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0

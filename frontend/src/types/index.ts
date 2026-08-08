@@ -1090,6 +1090,8 @@ export interface Account {
   scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  // OpenAI account-level session_hash sticky policy; legacy responses may omit it and are rejected by the editor.
+  openai_session_sticky_mode?: OpenAISessionStickyMode
   status: 'active' | 'inactive' | 'error'
   error_message: string | null
   last_used_at: string | null
@@ -1327,6 +1329,7 @@ export interface CodexUsageSnapshot {
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
 export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
+export type OpenAISessionStickyMode = 'normal' | 'fallback_only'
 
 export interface OpenAICompactState {
   openai_compact_mode?: OpenAICompactMode
@@ -1371,6 +1374,7 @@ export interface UpdateAccountRequest {
   load_factor?: number | null
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
+  openai_session_sticky_mode?: OpenAISessionStickyMode
   schedulable?: boolean
   status?: 'active' | 'inactive' | 'error'
   group_ids?: number[]

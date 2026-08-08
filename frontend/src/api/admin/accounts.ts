@@ -19,6 +19,7 @@ import type {
   CodexSessionImportRequest,
   CodexSessionImportResult,
   OpenAICodexPATCreateRequest,
+  OpenAISessionStickyMode,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
   UpstreamBillingProbeResult,
@@ -26,6 +27,12 @@ import type {
   OllamaCloudUsageSettings,
   OllamaCloudUsageState
 } from '@/types'
+
+export const OPENAI_SESSION_STICKY_MODES = ['normal', 'fallback_only'] as const
+
+export function isOpenAISessionStickyMode(value: unknown): value is OpenAISessionStickyMode {
+  return OPENAI_SESSION_STICKY_MODES.includes(value as OpenAISessionStickyMode)
+}
 
 /**
  * List all accounts with pagination
