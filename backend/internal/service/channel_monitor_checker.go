@@ -324,6 +324,33 @@ func extractAnthropicMonitorText(respBytes []byte) string {
 	return strings.Join(parts, "\n")
 }
 
+func extractOpenAIChatText(respBytes []byte) string {
+	message := gjson.GetBytes(respBytes, "choices.0.message")
+	if message.Exists() {
+		if text := message.Get("content").String(); strings.TrimSpace(text) != "" {
+			return text
+		}
+		if text := collectOpenAIContentText(message.Get("content")); strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
+	return gjson.GetBytes(respBytes, providerAdapters[MonitorProviderOpenAI].textPath).String()
+}
+
+func collectOpenAIContentText(content gjson.Result) string {
+	if !content.IsArray() {
+		return content.String()
+	}
+	parts := make([]string, 0)
+	content.ForEach(func(_, item gjson.Result) bool {
+		if text := item.Get("text").String(); strings.TrimSpace(text) != "" {
+			parts = append(parts, text)
+		}
+		return true
+	})
+	return strings.Join(parts, "")
+}
+
 // extractOpenAIResponsesText 聚合 Responses API 的最终 assistant 文本。
 // Responses 的 output 数组顺序由模型决定：reasoning / tool-call item 可能排在 message 前面，
 // 因此不能假设文本永远在 output.0.content.0.text。
@@ -548,6 +575,13 @@ func extractOrigin(endpoint string) (string, error) {
 		return "", errors.New("endpoint missing scheme or host")
 	}
 	return u.Scheme + "://" + u.Host, nil
+}
+
+func isMonitorTransientHTTPStatus(status int) bool {
+	if status == http.StatusBadGateway || status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout {
+		return true
+	}
+	return status >= 520 && status <= 529
 }
 
 // monitorSensitiveQueryParamRegex 匹配 URL query 中可能泄露凭证的参数：
