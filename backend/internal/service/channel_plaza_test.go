@@ -107,6 +107,68 @@ REDACTED
 	require.Equal(t, "gpt-5", byName["g-gpt"][0].Name)
 REDACTED
 
+func TestListPlazaGroups_CompositeIncludesConfiguredConcretePlatforms(t *testing.T) {
+	anthropicPrice := 3e-6
+	openAIPrice := 2e-6
+	ch := Channel{
+		ID: 1, Name: "multi", Status: StatusActive, GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformAnthropic, Models: []string{"shared-model"REDACTED, InputPrice: &anthropicPriceREDACTED,
+			{Platform: PlatformOpenAI, Models: []string{"shared-model"REDACTED, InputPrice: &openAIPriceREDACTED,
+			{Platform: "", Models: []string{"empty-platform"REDACTEDREDACTED,
+			{Platform: PlatformComposite, Models: []string{"nested-composite"REDACTEDREDACTED,
+			{Platform: "unknown-platform", Models: []string{"unknown-platform"REDACTEDREDACTED,
+	REDACTED,
+REDACTED
+	groups := []Group{{ID: 10, Name: "composite", Platform: PlatformComposite, RateMultiplier: 1REDACTEDREDACTED
+
+	out, err := newPlazaChannelService([]Channel{chREDACTED, groups, nil).ListPlazaGroups(context.Background())
+
+REDACTED
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 2, "only concrete platforms are included and same-named models remain distinct")
+	require.Equal(t, PlatformAnthropic, out[0].Models[0].Platform)
+	require.Equal(t, PlatformOpenAI, out[0].Models[1].Platform)
+	require.InDelta(t, anthropicPrice, *out[0].Models[0].Pricing.InputPrice, 1e-12)
+	require.InDelta(t, openAIPrice, *out[0].Models[1].Pricing.InputPrice, 1e-12)
+REDACTED
+
+func TestListPlazaGroups_CompositeAndOrdinaryGroupsDoNotLeakPlatforms(t *testing.T) {
+	ch := Channel{
+		ID: 1, Name: "multi", Status: StatusActive, GroupIDs: []int64{10, 20REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{Platform: PlatformAnthropic, Models: []string{"claude-sonnet"REDACTED, InputPrice: testPtrFloat64(3e-6)REDACTED,
+			{Platform: PlatformOpenAI, Models: []string{"gpt-5"REDACTED, InputPrice: testPtrFloat64(2e-6)REDACTED,
+	REDACTED,
+REDACTED
+	groups := []Group{
+		{ID: 10, Name: "anthropic-only", Platform: PlatformAnthropic, RateMultiplier: 1REDACTED,
+		{ID: 20, Name: "composite", Platform: PlatformComposite, RateMultiplier: 1REDACTED,
+REDACTED
+
+	out, err := newPlazaChannelService([]Channel{chREDACTED, groups, nil).ListPlazaGroups(context.Background())
+
+REDACTED
+	require.Len(t, out, 2)
+	byName := map[string]PlazaGroup{REDACTED
+	for _, group := range out {
+		byName[group.Name] = group
+REDACTED
+	require.Len(t, byName["anthropic-only"].Models, 1)
+	require.Equal(t, []PlazaModel{{
+		Name: "claude-sonnet", Platform: PlatformAnthropic, Pricing: byName["anthropic-only"].Models[0].Pricing,
+REDACTEDREDACTED, byName["anthropic-only"].Models)
+	require.Len(t, byName["composite"].Models, 2)
+	require.Equal(t, []string{"claude-sonnet", "gpt-5"REDACTED, []string{
+		byName["composite"].Models[0].Name,
+		byName["composite"].Models[1].Name,
+REDACTED)
+	require.Equal(t, []string{PlatformAnthropic, PlatformOpenAIREDACTED, []string{
+		byName["composite"].Models[0].Platform,
+		byName["composite"].Models[1].Platform,
+REDACTED)
+REDACTED
+
 func TestListPlazaGroups_InactiveChannelSkipped(t *testing.T) {
 	inactive := plazaPricedChannel(1, "off", []int64{10REDACTED, "anthropic", "claude-sonnet")
 	inactive.Status = "inactive"

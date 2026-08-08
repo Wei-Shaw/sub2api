@@ -301,6 +301,7 @@ REDACTED
 				return s.handleAntigravityCompatReadError(c, session, event.err, maxLineSize, prefix)
 		REDACTED
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
+			s.observeAntigravityGeminiSSELine(c, event.line)
 			session.consume(event.line)
 
 		case <-timeoutCh:
