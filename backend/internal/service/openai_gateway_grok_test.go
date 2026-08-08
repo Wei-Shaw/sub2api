@@ -2112,10 +2112,10 @@ REDACTED
 	err := svc.testGrokAccountConnection(c, account, "grok", "", AccountTestModeDefault, AccountTestOptions{REDACTED)
 
 REDACTED
-	require.Equal(t, 1, repo.tempUnschedCalls)
-	require.Equal(t, account.ID, repo.lastTempUnschedID)
-	require.Equal(t, "grok payment required", repo.lastTempUnschedReason)
-	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, before.Add(grokSpendingLimitProbeCooldown), repo.lastRateLimitResetAt, time.Second)
 	require.Contains(t, recorder.Body.String(), `"type":"error"`)
 	require.Contains(t, recorder.Body.String(), "Grok Responses API returned 402")
 REDACTED

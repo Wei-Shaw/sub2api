@@ -94,9 +94,9 @@ const (
 
 	// Grok account-test modes (admin UI). Empty / default / text = Responses probe.
 	// image/video may also be inferred from model_id when mode is default.
-	AccountTestModeGrokText   = "text"
-	AccountTestModeGrokImage  = "image"
-	AccountTestModeGrokVideo  = "video"
+	AccountTestModeGrokText     = "text"
+	AccountTestModeGrokImage    = "image"
+	AccountTestModeGrokVideo    = "video"
 	AccountTestModeGrokSearch   = "search"
 	AccountTestModeGrokTTS      = "tts"
 	AccountTestModeGrokSTT      = "stt"
@@ -973,6 +973,16 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		return
 REDACTED
 	now := time.Now()
+	// Error bodies carry Grok's free-usage, billing, and content-policy
+	// classifications when quota headers are absent. Read only non-success
+	// responses here, then restore the body because the caller still needs it
+	// for the user-facing test result.
+	var responseBody []byte
+	if resp.StatusCode >= http.StatusBadRequest && resp.Body != nil {
+		responseBody, _ = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+REDACTED
 	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
 	if snapshot != nil && s.accountRepo != nil {
 		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
@@ -990,14 +1000,61 @@ REDACTED
 REDACTED else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCodeREDACTED) {
 		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 REDACTED
-	if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
+	if s.accountRepo == nil || len(responseBody) == 0 {
+		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			defer cancel()
+			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(30*time.Minute), "grok payment required")
+	REDACTED
+		return
+REDACTED
+	if isGrokContentPolicyRejection(resp.StatusCode, responseBody) {
+		return
+REDACTED
+	decision := classifyGrokUpstreamFailure(resp.StatusCode, responseBody, "")
+	if decision.Class == GrokFailureFreeUsage {
+		if resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now); limited && resetAt.After(now) {
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	REDACTED else {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(grokFreeUsageProbeCooldown), "grok free usage exhausted")
+			cancel()
+	REDACTED
+		return
+REDACTED
+	if decision.Class == GrokFailureBilling && (isGrokSpendingLimitError(responseBody) || strings.Contains(strings.ToLower(decision.Reason), "credit")) {
+		persistGrokRateLimit(ctx, s.accountRepo, account, grokSpendingLimitResetAt(account, now))
+		return
+REDACTED
+	cooldown := time.Duration(0)
+	reason := ""
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		cooldown, reason = 10*time.Minute, "grok oauth token unauthorized"
+	case http.StatusPaymentRequired:
+		cooldown, reason = 30*time.Minute, "grok payment required"
+	case http.StatusForbidden:
+		cooldown, reason = 30*time.Minute, "grok entitlement or subscription tier denied"
+	default:
+		if resp.StatusCode >= 500 {
+			cooldown, reason = 2*time.Minute, "grok upstream temporary error"
+	REDACTED
+REDACTED
+	if decision.Class == GrokFailureBilling && cooldown == 0 {
+		cooldown, reason = 30*time.Minute, "grok payment required"
+REDACTED
+	if cooldown > 0 {
 		stateCtx, cancel := openAIAccountStateContext(ctx)
 		defer cancel()
+		until := now.Add(cooldown)
+		if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
+			until = *account.TempUnschedulableUntil
+	REDACTED
 		_ = s.accountRepo.SetTempUnschedulable(
 			stateCtx,
 			account.ID,
-			time.Now().Add(30*time.Minute),
-			"grok payment required",
+			until,
+			reason,
 		)
 REDACTED
 REDACTED

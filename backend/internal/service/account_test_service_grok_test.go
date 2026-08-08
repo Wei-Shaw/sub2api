@@ -28,6 +28,60 @@ type grokAccountTestRateLimitRepo struct {
 	resetAt          time.Time
 REDACTED
 
+func TestObserveGrokTestResponseClassifiesBodyOnlyQuotaErrors(t *testing.T) {
+	account := &Account{ID: 1901, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repoREDACTED
+
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"subscription:free-usage-exhausted","message":"included free usage exhausted"REDACTEDREDACTED`)),
+REDACTED
+	svc.observeGrokTestResponse(context.Background(), account, resp)
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, "grok free usage exhausted", repo.lastTempUnschedReason)
+	body, err := io.ReadAll(resp.Body)
+REDACTED
+	require.Contains(t, string(body), "free-usage-exhausted")
+REDACTED
+
+func TestObserveGrokTestResponseDoesNotQuarantineContentPolicy(t *testing.T) {
+	account := &Account{ID: 1902, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repoREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"code":"new_sensitive","message":"text is sensitive"REDACTEDREDACTED`)),
+REDACTED
+	svc.observeGrokTestResponse(context.Background(), account, resp)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Zero(t, repo.rateLimitedCalls)
+REDACTED
+
+func TestObserveGrokTestResponseKeepsEntitlement403Cooldown(t *testing.T) {
+	account := &Account{ID: 1903, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
+		accountsByID: map[int64]*Account{account.ID: accountREDACTED,
+REDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repoREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"subscription required"REDACTEDREDACTED`)),
+REDACTED
+	before := time.Now()
+	svc.observeGrokTestResponse(context.Background(), account, resp)
+	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.Equal(t, "grok entitlement or subscription tier denied", repo.lastTempUnschedReason)
+	require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
+REDACTED
+
 func (r *grokAccountTestRateLimitRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
 	r.rateLimitedCalls++
 	r.resetAt = resetAt
@@ -503,12 +557,12 @@ func (c *grokRealtimeTestConn) Ping(context.Context) error { return nil REDACTED
 func (c *grokRealtimeTestConn) Close() error               { return nil REDACTED
 
 type grokRealtimeTestDialer struct {
-	lastURL     string
-	lastAuth    string
-	lastProxy   string
-	conn        openAIWSClientConn
-	err         error
-	status      int
+	lastURL   string
+	lastAuth  string
+	lastProxy string
+	conn      openAIWSClientConn
+	err       error
+	status    int
 REDACTED
 
 func (d *grokRealtimeTestDialer) Dial(_ context.Context, wsURL string, headers http.Header, proxyURL string) (openAIWSClientConn, int, http.Header, error) {
