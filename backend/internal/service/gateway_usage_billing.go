@@ -931,8 +931,63 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	s.writeCostCenterUsage(ctx, usageLog, isSubscriptionBilling)
 
 	return nil
+}
+
+func (s *GatewayService) writeCostCenterUsage(ctx context.Context, usageLog *UsageLog, subscription bool) {
+	if s == nil || s.costCenter == nil || usageLog == nil || usageLog.RequestID == "" {
+		return
+	}
+	accountCost := usageLog.TotalCost * 1
+	if usageLog.AccountRateMultiplier != nil {
+		accountCost = usageLog.TotalCost * *usageLog.AccountRateMultiplier
+	}
+	source := "paid_balance"
+	eventType := CostEventConsumption
+	if subscription || (usageLog.BalanceSource != nil && *usageLog.BalanceSource == BalanceSourceSubscription) {
+		source = "subscription"
+	}
+	if usageLog.BalanceSource != nil && source != "subscription" {
+		switch *usageLog.BalanceSource {
+		case "recharge_bonus":
+			source = "recharge_bonus"
+		case "admin_grant":
+			source = "admin_grant"
+		case "affiliate_grant":
+			source = "affiliate_grant"
+		case BalanceSourceCompany, BalanceSourceAllocated, BalanceSourceLegacyShared:
+			source = "admin_grant"
+		default:
+			if *usageLog.BalanceSource != BalanceSourceSelf {
+				source = "unknown"
+			}
+		}
+	}
+	if source == "unknown" {
+		eventType = CostEventPromotionalConsumption
+	}
+	amount := usageLog.ActualCost
+	accountID := usageLog.AccountID
+	userID := usageLog.UserID
+	requestID := usageLog.RequestID
+	if source != "subscription" {
+		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"})
+	}
+	if accountCost > 0 {
+		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"})
+	}
+	// Subscription cash is deferred until linked token usage is finalized. The
+	// repository resolves the frozen entitlement by user/group and applies the
+	// realization factor under a row lock, making retries idempotent.
+	if source == "subscription" {
+		if recognizer, ok := s.costCenter.(interface {
+			RecognizeSubscriptionUsageForUsage(context.Context, int64, *int64, string, int64, float64, time.Time) (*CostCenterEvent, error)
+		}); ok && usageLog.GroupID != nil {
+			_, _ = recognizer.RecognizeSubscriptionUsageForUsage(ctx, userID, usageLog.GroupID, requestID, int64(usageLog.TotalTokens()), float64(usageLog.TotalTokens()), usageLog.CreatedAt)
+		}
+	}
 }
 
 // calculateRecordUsageCost 根据请求类型和选项计算费用。

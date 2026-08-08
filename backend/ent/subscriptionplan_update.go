@@ -98,6 +98,27 @@ func (_u *SubscriptionPlanUpdate) AddPrice(v float64) *SubscriptionPlanUpdate {
 	return _u
 }
 
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (_u *SubscriptionPlanUpdate) SetStandardQuotaTokens(v int64) *SubscriptionPlanUpdate {
+	_u.mutation.ResetStandardQuotaTokens()
+	_u.mutation.SetStandardQuotaTokens(v)
+	return _u
+}
+
+// SetNillableStandardQuotaTokens sets the "standard_quota_tokens" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableStandardQuotaTokens(v *int64) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetStandardQuotaTokens(*v)
+	}
+	return _u
+}
+
+// AddStandardQuotaTokens adds value to the "standard_quota_tokens" field.
+func (_u *SubscriptionPlanUpdate) AddStandardQuotaTokens(v int64) *SubscriptionPlanUpdate {
+	_u.mutation.AddStandardQuotaTokens(v)
+	return _u
+}
+
 // SetOriginalPrice sets the "original_price" field.
 func (_u *SubscriptionPlanUpdate) SetOriginalPrice(v float64) *SubscriptionPlanUpdate {
 	_u.mutation.ResetOriginalPrice()
@@ -339,6 +360,12 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.AddedPrice(); ok {
 		_spec.AddField(subscriptionplan.FieldPrice, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.StandardQuotaTokens(); ok {
+		_spec.SetField(subscriptionplan.FieldStandardQuotaTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedStandardQuotaTokens(); ok {
+		_spec.AddField(subscriptionplan.FieldStandardQuotaTokens, field.TypeInt64, value)
+	}
 	if value, ok := _u.mutation.OriginalPrice(); ok {
 		_spec.SetField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64, value)
 	}
@@ -465,6 +492,27 @@ func (_u *SubscriptionPlanUpdateOne) SetNillablePrice(v *float64) *SubscriptionP
 // AddPrice adds value to the "price" field.
 func (_u *SubscriptionPlanUpdateOne) AddPrice(v float64) *SubscriptionPlanUpdateOne {
 	_u.mutation.AddPrice(v)
+	return _u
+}
+
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (_u *SubscriptionPlanUpdateOne) SetStandardQuotaTokens(v int64) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetStandardQuotaTokens()
+	_u.mutation.SetStandardQuotaTokens(v)
+	return _u
+}
+
+// SetNillableStandardQuotaTokens sets the "standard_quota_tokens" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableStandardQuotaTokens(v *int64) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetStandardQuotaTokens(*v)
+	}
+	return _u
+}
+
+// AddStandardQuotaTokens adds value to the "standard_quota_tokens" field.
+func (_u *SubscriptionPlanUpdateOne) AddStandardQuotaTokens(v int64) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddStandardQuotaTokens(v)
 	return _u
 }
 
@@ -738,6 +786,12 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.AddedPrice(); ok {
 		_spec.AddField(subscriptionplan.FieldPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.StandardQuotaTokens(); ok {
+		_spec.SetField(subscriptionplan.FieldStandardQuotaTokens, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedStandardQuotaTokens(); ok {
+		_spec.AddField(subscriptionplan.FieldStandardQuotaTokens, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.OriginalPrice(); ok {
 		_spec.SetField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64, value)

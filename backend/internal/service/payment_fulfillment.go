@@ -468,8 +468,32 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		})
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}
+	if s.costCenter != nil {
+		amount := o.Amount
+		originalAmount := o.PayAmount
+		currency := PaymentOrderCurrency(o)
+		key := fmt.Sprintf("payment-order:%d:income", o.ID)
+		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventIncome, SourceType: "payment_order", SourceID: costCenterStringPtr(strconv.FormatInt(o.ID, 10)), IdempotencyKey: &key, UserID: &o.UserID, Category: o.OrderType, AmountUSD: amount, OriginalAmount: &originalAmount, OriginalCurrency: &currency, OccurredAt: o.CompletedAt, Note: "payment order settled"})
+		if o.OrderType == payment.OrderTypeSubscription && o.PlanID != nil && o.SubscriptionDays != nil {
+			if plan, err := s.entClient.SubscriptionPlan.Get(ctx, *o.PlanID); err == nil {
+				starts := now
+				if o.CompletedAt != nil {
+					starts = *o.CompletedAt
+				}
+				expires := starts.AddDate(0, 0, *o.SubscriptionDays)
+				if snapshotter, ok := s.costCenter.(interface {
+					SnapshotSubscriptionEntitlement(context.Context, *SubscriptionEntitlementSnapshot) error
+				}); ok {
+					groupID := plan.GroupID
+					_ = snapshotter.SnapshotSubscriptionEntitlement(ctx, &SubscriptionEntitlementSnapshot{OrderID: o.ID, UserID: o.UserID, PlanID: o.PlanID, GroupID: &groupID, PriceUSD: amount, StandardQuotaTokens: plan.StandardQuotaTokens, StartsAt: starts, ExpiresAt: expires})
+				}
+			}
+		}
+	}
 	return nil
 }
+
+func costCenterStringPtr(v string) *string { return &v }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
 	if s == nil || s.notificationEmailService == nil || o == nil {

@@ -734,6 +734,7 @@ func ProvideSubscriptionGroupLister(groupRepo GroupRepository) SubscriptionGroup
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	NewCostCenterService,
 	ProvideOrganizationService,
 	ProvideSubscriptionGroupLister,
 	ProvideCompanyOperationsMonitor,
@@ -758,7 +759,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	NewAdminService,
+	ProvideAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
@@ -937,9 +938,10 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 // here rather than in ProvideOrganizationService because OrganizationService is
 // constructed first and only depends on PaymentService via lazy setter
 // injection, keeping the wire graph acyclic.
-func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, organizationService *OrganizationService) *PaymentService {
+func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService, notificationEmailService *NotificationEmailService, organizationService *OrganizationService, costCenter *CostCenterService) *PaymentService {
 	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, affiliateService)
 	svc.SetNotificationEmailService(notificationEmailService)
+	svc.SetCostCenterWriter(costCenter)
 	svc.SetOrganizationSubscriptionFulfiller(organizationService)
 	organizationService.SetSubscriptionOrderCreator(svc)
 	return svc

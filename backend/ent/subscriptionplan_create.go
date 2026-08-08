@@ -54,6 +54,20 @@ func (_c *SubscriptionPlanCreate) SetPrice(v float64) *SubscriptionPlanCreate {
 	return _c
 }
 
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (_c *SubscriptionPlanCreate) SetStandardQuotaTokens(v int64) *SubscriptionPlanCreate {
+	_c.mutation.SetStandardQuotaTokens(v)
+	return _c
+}
+
+// SetNillableStandardQuotaTokens sets the "standard_quota_tokens" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableStandardQuotaTokens(v *int64) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetStandardQuotaTokens(*v)
+	}
+	return _c
+}
+
 // SetOriginalPrice sets the "original_price" field.
 func (_c *SubscriptionPlanCreate) SetOriginalPrice(v float64) *SubscriptionPlanCreate {
 	_c.mutation.SetOriginalPrice(v)
@@ -233,6 +247,10 @@ func (_c *SubscriptionPlanCreate) defaults() {
 		v := subscriptionplan.DefaultDescription
 		_c.mutation.SetDescription(v)
 	}
+	if _, ok := _c.mutation.StandardQuotaTokens(); !ok {
+		v := subscriptionplan.DefaultStandardQuotaTokens
+		_c.mutation.SetStandardQuotaTokens(v)
+	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		v := subscriptionplan.DefaultCurrency
 		_c.mutation.SetCurrency(v)
@@ -289,6 +307,9 @@ func (_c *SubscriptionPlanCreate) check() error {
 	}
 	if _, ok := _c.mutation.Price(); !ok {
 		return &ValidationError{Name: "price", err: errors.New(`ent: missing required field "SubscriptionPlan.price"`)}
+	}
+	if _, ok := _c.mutation.StandardQuotaTokens(); !ok {
+		return &ValidationError{Name: "standard_quota_tokens", err: errors.New(`ent: missing required field "SubscriptionPlan.standard_quota_tokens"`)}
 	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		return &ValidationError{Name: "currency", err: errors.New(`ent: missing required field "SubscriptionPlan.currency"`)}
@@ -374,6 +395,10 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 	if value, ok := _c.mutation.Price(); ok {
 		_spec.SetField(subscriptionplan.FieldPrice, field.TypeFloat64, value)
 		_node.Price = value
+	}
+	if value, ok := _c.mutation.StandardQuotaTokens(); ok {
+		_spec.SetField(subscriptionplan.FieldStandardQuotaTokens, field.TypeInt64, value)
+		_node.StandardQuotaTokens = value
 	}
 	if value, ok := _c.mutation.OriginalPrice(); ok {
 		_spec.SetField(subscriptionplan.FieldOriginalPrice, field.TypeFloat64, value)
@@ -524,6 +549,24 @@ func (u *SubscriptionPlanUpsert) UpdatePrice() *SubscriptionPlanUpsert {
 // AddPrice adds v to the "price" field.
 func (u *SubscriptionPlanUpsert) AddPrice(v float64) *SubscriptionPlanUpsert {
 	u.Add(subscriptionplan.FieldPrice, v)
+	return u
+}
+
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsert) SetStandardQuotaTokens(v int64) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldStandardQuotaTokens, v)
+	return u
+}
+
+// UpdateStandardQuotaTokens sets the "standard_quota_tokens" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateStandardQuotaTokens() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldStandardQuotaTokens)
+	return u
+}
+
+// AddStandardQuotaTokens adds v to the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsert) AddStandardQuotaTokens(v int64) *SubscriptionPlanUpsert {
+	u.Add(subscriptionplan.FieldStandardQuotaTokens, v)
 	return u
 }
 
@@ -771,6 +814,27 @@ func (u *SubscriptionPlanUpsertOne) AddPrice(v float64) *SubscriptionPlanUpsertO
 func (u *SubscriptionPlanUpsertOne) UpdatePrice() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdatePrice()
+	})
+}
+
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsertOne) SetStandardQuotaTokens(v int64) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetStandardQuotaTokens(v)
+	})
+}
+
+// AddStandardQuotaTokens adds v to the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsertOne) AddStandardQuotaTokens(v int64) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddStandardQuotaTokens(v)
+	})
+}
+
+// UpdateStandardQuotaTokens sets the "standard_quota_tokens" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateStandardQuotaTokens() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateStandardQuotaTokens()
 	})
 }
 
@@ -1206,6 +1270,27 @@ func (u *SubscriptionPlanUpsertBulk) AddPrice(v float64) *SubscriptionPlanUpsert
 func (u *SubscriptionPlanUpsertBulk) UpdatePrice() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdatePrice()
+	})
+}
+
+// SetStandardQuotaTokens sets the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsertBulk) SetStandardQuotaTokens(v int64) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetStandardQuotaTokens(v)
+	})
+}
+
+// AddStandardQuotaTokens adds v to the "standard_quota_tokens" field.
+func (u *SubscriptionPlanUpsertBulk) AddStandardQuotaTokens(v int64) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddStandardQuotaTokens(v)
+	})
+}
+
+// UpdateStandardQuotaTokens sets the "standard_quota_tokens" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateStandardQuotaTokens() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateStandardQuotaTokens()
 	})
 }
 

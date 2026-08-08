@@ -733,11 +733,18 @@ type GatewayService struct {
 	balanceNotifyService   *BalanceNotifyService
 	userPlatformQuotaRepo  UserPlatformQuotaRepository
 	billingContextResolver *BillingContextResolver
+	costCenter             CostCenterWriter
 }
 
 func (s *GatewayService) SetBillingContextResolver(resolver *BillingContextResolver) {
 	if s != nil {
 		s.billingContextResolver = resolver
+	}
+}
+
+func (s *GatewayService) SetCostCenterWriter(writer CostCenterWriter) {
+	if s != nil {
+		s.costCenter = writer
 	}
 }
 

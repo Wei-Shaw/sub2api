@@ -455,7 +455,7 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @expense="handleAccountExpense" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -484,6 +484,15 @@
     <ErrorPassthroughRulesModal :show="showErrorPassthrough" @close="showErrorPassthrough = false" />
     <TLSFingerprintProfilesModal :show="showTLSFingerprintProfiles" @close="showTLSFingerprintProfiles = false" />
     <TotpStepUpDialog :controller="accountExportStepUp" />
+    <BaseDialog :show="showExpenseDialog" :title="t('admin.costCenter.addExpense')" @close="showExpenseDialog = false">
+      <form class="space-y-4" @submit.prevent="submitAccountExpense">
+        <p class="text-sm text-gray-500">{{ expenseAccount?.name }}</p>
+        <label class="input-label">{{ t('admin.costCenter.amountUsd') }}<input v-model.number="expenseForm.amount_usd" type="number" min="0.000001" step="0.000001" required class="input mt-1" /></label>
+        <label class="input-label">{{ t('admin.costCenter.category') }}<input v-model="expenseForm.category" required class="input mt-1" /></label>
+        <label class="input-label">{{ t('admin.costCenter.note') }}<textarea v-model="expenseForm.note" rows="2" class="input mt-1" /></label>
+        <div class="flex justify-end gap-2"><button type="button" class="btn btn-secondary" @click="showExpenseDialog = false">{{ t('common.cancel') }}</button><button type="submit" class="btn btn-primary" :disabled="expenseSubmitting">{{ t('common.confirm') }}</button></div>
+      </form>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -493,7 +502,6 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -510,6 +518,7 @@ import AccountTableActions from '@/components/admin/account/AccountTableActions.
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
 import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 import ReAuthAccountModal from '@/components/admin/account/ReAuthAccountModal.vue'
 import AccountTestModal from '@/components/admin/account/AccountTestModal.vue'
@@ -536,6 +545,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import { adminAPI } from '@/api/admin'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -615,6 +625,10 @@ const scheduleAcc = ref<Account | null>(null)
 const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
+const showExpenseDialog = ref(false)
+const expenseAccount = ref<Account | null>(null)
+const expenseSubmitting = ref(false)
+const expenseForm = reactive({ amount_usd: 0, category: 'account_expense', note: '' })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
@@ -2092,6 +2106,14 @@ const handleResetQuota = async (a: Account) => {
   } catch (error) {
     console.error('Failed to reset quota:', error)
   }
+}
+const handleAccountExpense = (a: Account) => { expenseAccount.value = a; expenseForm.amount_usd = 0; expenseForm.category = 'account_expense'; expenseForm.note = ''; showExpenseDialog.value = true }
+const submitAccountExpense = async () => {
+  if (!expenseAccount.value || expenseForm.amount_usd <= 0) return
+  expenseSubmitting.value = true
+  try { await adminAPI.costCenter.createExpense({ ...expenseForm, account_id: expenseAccount.value.id }); showExpenseDialog.value = false; appStore.showSuccess(t('admin.costCenter.expenseCreated')) }
+  catch (error: any) { appStore.showError(error?.message || t('admin.costCenter.expenseFailed')) }
+  finally { expenseSubmitting.value = false }
 }
 
 const privacyResultMessageKey = (account: Account): { type: 'success' | 'error'; key: string } => {

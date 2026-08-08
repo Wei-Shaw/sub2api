@@ -574,6 +574,17 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			return nil, err
 		}
 	}
+	if input.InitialExpenseUSD > 0 {
+		// The account is already persisted; append-only ledger entry is idempotent by account id.
+		// A failed ledger write is returned so callers do not mistake an untracked expense for success.
+		if s.costCenter != nil {
+			key := fmt.Sprintf("account:%d:initial-expense", account.ID)
+			_, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "account", SourceID: &key, IdempotencyKey: &key, AccountID: &account.ID, Platform: account.Platform, Category: input.InitialExpenseCategory, AmountUSD: input.InitialExpenseUSD, Note: input.InitialExpenseNote})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	// OAuth 账号：创建后异步设置隐私。
 	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
@@ -1176,6 +1187,20 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 
 		entry.Success = true
+		if input.ExpenseUSD > 0 && s.costCenter != nil {
+			key := fmt.Sprintf("account:%d:bulk-expense:%s", accountID, time.Now().UTC().Format("20060102150405.000000000"))
+			id := accountID
+			if _, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "account", SourceID: &key, IdempotencyKey: &key, AccountID: &id, Category: input.ExpenseCategory, AmountUSD: input.ExpenseUSD, Note: input.ExpenseNote}); err != nil {
+				entry.Success = false
+				entry.Error = err.Error()
+			}
+		}
+		if !entry.Success {
+			result.Failed++
+			result.FailedIDs = append(result.FailedIDs, accountID)
+			result.Results = append(result.Results, entry)
+			continue
+		}
 		result.Success++
 		result.SuccessIDs = append(result.SuccessIDs, accountID)
 		result.Results = append(result.Results, entry)

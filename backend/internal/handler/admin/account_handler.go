@@ -66,6 +66,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	costCenter              *service.CostCenterService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -75,6 +76,10 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+func (h *AccountHandler) SetCostCenterService(costCenter *service.CostCenterService) {
+	h.costCenter = costCenter
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -94,8 +99,9 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	costCenters ...*service.CostCenterService,
 ) *AccountHandler {
-	return &AccountHandler{
+	h := &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
 		openaiOAuthService:      openaiOAuthService,
@@ -112,6 +118,10 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+	if len(costCenters) > 0 {
+		h.costCenter = costCenters[0]
+	}
+	return h
 }
 
 // CreateAccountRequest represents create account request
@@ -132,6 +142,9 @@ type CreateAccountRequest struct {
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	InitialExpenseUSD       float64        `json:"initial_expense_usd"`
+	InitialExpenseCategory  string         `json:"initial_expense_category"`
+	InitialExpenseNote      string         `json:"initial_expense_note"`
 }
 
 // UpdateAccountRequest represents update account request
@@ -173,6 +186,9 @@ type BulkUpdateAccountsRequest struct {
 	Extra                   map[string]any            `json:"extra"`
 	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	ExpenseUSD              float64                   `json:"expense_usd"`
+	ExpenseCategory         string                    `json:"expense_category"`
+	ExpenseNote             string                    `json:"expense_note"`
 }
 
 type BulkUpdateAccountFilters struct {
@@ -857,22 +873,25 @@ func (h *AccountHandler) Create(c *gin.Context) {
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  req.Name,
-			Notes:                 req.Notes,
-			Platform:              req.Platform,
-			Type:                  req.Type,
-			Credentials:           req.Credentials,
-			Extra:                 req.Extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           req.Concurrency,
-			Priority:              req.Priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             req.ExpiresAt,
-			AutoPauseOnExpired:    req.AutoPauseOnExpired,
-			ProbeEnabled:          req.ProbeEnabled,
-			SkipMixedChannelCheck: skipCheck,
+			Name:                   req.Name,
+			Notes:                  req.Notes,
+			Platform:               req.Platform,
+			Type:                   req.Type,
+			Credentials:            req.Credentials,
+			Extra:                  req.Extra,
+			ProxyID:                req.ProxyID,
+			Concurrency:            req.Concurrency,
+			Priority:               req.Priority,
+			RateMultiplier:         req.RateMultiplier,
+			LoadFactor:             req.LoadFactor,
+			GroupIDs:               req.GroupIDs,
+			ExpiresAt:              req.ExpiresAt,
+			AutoPauseOnExpired:     req.AutoPauseOnExpired,
+			ProbeEnabled:           req.ProbeEnabled,
+			SkipMixedChannelCheck:  skipCheck,
+			InitialExpenseUSD:      req.InitialExpenseUSD,
+			InitialExpenseCategory: req.InitialExpenseCategory,
+			InitialExpenseNote:     req.InitialExpenseNote,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -2106,7 +2125,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.GroupIDs != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0 ||
-		req.ProbeEnabled != nil
+		req.ProbeEnabled != nil || req.ExpenseUSD > 0
 
 	if !hasUpdates {
 		response.BadRequest(c, "No updates provided")
@@ -2129,6 +2148,9 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		Extra:                 req.Extra,
 		ProbeEnabled:          req.ProbeEnabled,
 		SkipMixedChannelCheck: skipCheck,
+		ExpenseUSD:            req.ExpenseUSD,
+		ExpenseCategory:       req.ExpenseCategory,
+		ExpenseNote:           req.ExpenseNote,
 	})
 	if err != nil {
 		var mixedErr *service.MixedChannelError

@@ -75,6 +75,7 @@ func ProvideAdminHandlers(
 	cosImageHandler *admin.COSImageHandler,
 	asyncMediaConfigHandler *admin.AsyncMediaConfigHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	costCenterHandler *admin.CostCenterHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
@@ -128,6 +129,7 @@ func ProvideAdminHandlers(
 		COSImage:                  cosImageHandler,
 		AsyncMediaConfig:          asyncMediaConfigHandler,
 		AuditLog:                  auditLogHandler,
+		CostCenter:                costCenterHandler,
 	}
 }
 
@@ -149,9 +151,11 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
 	billingContextResolver *service.BillingContextResolver,
+	costCenter *service.CostCenterService,
 ) *GatewayHandler {
 	gatewayService.SetBillingContextResolver(billingContextResolver)
 	openAIGatewayService.SetBillingContextResolver(billingContextResolver)
+	gatewayService.SetCostCenterWriter(costCenter)
 	usageService.SetBillingContextResolver(billingContextResolver)
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
@@ -354,6 +358,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewBillingAppHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	admin.NewCostCenterHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

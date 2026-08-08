@@ -6,6 +6,14 @@
     @close="handleClose"
   >
     <form id="bulk-edit-account-form" class="space-y-5" @submit.prevent="() => handleSubmit()">
+      <div class="border-b border-gray-200 pb-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <input v-model.number="expenseUsd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
+          <input v-model="expenseCategory" type="text" class="input" :placeholder="t('admin.costCenter.category')" />
+          <input v-model="expenseNote" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
+        </div>
+      </div>
       <!-- Info -->
       <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
         <p class="text-sm text-blue-700 dark:text-blue-400">
@@ -1486,6 +1494,9 @@ const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const expenseUsd = ref(0)
+const expenseCategory = ref('account_expense')
+const expenseNote = ref('')
 
 // State - field values
 const submitting = ref(false)
@@ -1678,6 +1689,12 @@ const buildOpenAICompactModelMapping = (): Record<string, string> | null => {
 
 const buildUpdatePayload = (): Record<string, unknown> | null => {
   const updates: Record<string, unknown> = {}
+
+	if (expenseUsd.value > 0) {
+		updates.expense_usd = expenseUsd.value
+		updates.expense_category = expenseCategory.value
+		updates.expense_note = expenseNote.value
+	}
   const credentials: Record<string, unknown> = {}
   let credentialsChanged = false
   const ensureExtra = (): Record<string, unknown> => {

@@ -380,7 +380,10 @@ type CreateAccountInput struct {
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
-	SkipMixedChannelCheck bool
+	SkipMixedChannelCheck  bool
+	InitialExpenseUSD      float64
+	InitialExpenseCategory string
+	InitialExpenseNote     string
 }
 
 // ShadowOptions is the input for CreateShadow.
@@ -431,6 +434,9 @@ type BulkUpdateAccountsInput struct {
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
+	ExpenseUSD            float64
+	ExpenseCategory       string
+	ExpenseNote           string
 }
 
 type BulkUpdateAccountFilters struct {
@@ -669,6 +675,7 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+	costCenter           *CostCenterService
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -703,7 +710,19 @@ func NewAdminService(
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
 ) AdminService {
-	return &adminServiceImpl{
+	return newAdminService(userRepo, groupRepo, accountRepo, proxyRepo, apiKeyRepo, redeemCodeRepo, userGroupRateRepo, userRPMCache, billingCacheService, proxyProber, proxyLatencyCache, authCacheInvalidator, entClient, settingService, defaultSubAssigner, userSubRepo, privacyClientFactory, runtimeBlocker, affiliateService, compositeRouteRepo, compositeResolver, nil)
+}
+
+func ProvideAdminService(
+	userRepo UserRepository, groupRepo AdminGroupRepository, accountRepo AdminAccountRepository, proxyRepo ProxyRepository, apiKeyRepo APIKeyRepository, redeemCodeRepo RedeemCodeRepository, userGroupRateRepo UserGroupRateRepository, userRPMCache UserRPMCache, billingCacheService *BillingCacheService, proxyProber ProxyExitInfoProber, proxyLatencyCache ProxyLatencyCache, authCacheInvalidator APIKeyAuthCacheInvalidator, entClient *dbent.Client, settingService *SettingService, defaultSubAssigner DefaultSubscriptionAssigner, userSubRepo UserSubscriptionRepository, privacyClientFactory PrivacyClientFactory, runtimeBlocker AccountRuntimeBlocker, affiliateService *AffiliateService, compositeRouteRepo CompositeModelRouteRepository, compositeResolver *CompositeRouteResolver, costCenter *CostCenterService,
+) AdminService {
+	return newAdminService(userRepo, groupRepo, accountRepo, proxyRepo, apiKeyRepo, redeemCodeRepo, userGroupRateRepo, userRPMCache, billingCacheService, proxyProber, proxyLatencyCache, authCacheInvalidator, entClient, settingService, defaultSubAssigner, userSubRepo, privacyClientFactory, runtimeBlocker, affiliateService, compositeRouteRepo, compositeResolver, costCenter)
+}
+
+func newAdminService(
+	userRepo UserRepository, groupRepo AdminGroupRepository, accountRepo AdminAccountRepository, proxyRepo ProxyRepository, apiKeyRepo APIKeyRepository, redeemCodeRepo RedeemCodeRepository, userGroupRateRepo UserGroupRateRepository, userRPMCache UserRPMCache, billingCacheService *BillingCacheService, proxyProber ProxyExitInfoProber, proxyLatencyCache ProxyLatencyCache, authCacheInvalidator APIKeyAuthCacheInvalidator, entClient *dbent.Client, settingService *SettingService, defaultSubAssigner DefaultSubscriptionAssigner, userSubRepo UserSubscriptionRepository, privacyClientFactory PrivacyClientFactory, runtimeBlocker AccountRuntimeBlocker, affiliateService *AffiliateService, compositeRouteRepo CompositeModelRouteRepository, compositeResolver *CompositeRouteResolver, costCenter *CostCenterService,
+) AdminService {
+	s := &adminServiceImpl{
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		groupDuplicateRepo:   groupRepo,
@@ -729,4 +748,6 @@ func NewAdminService(
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
 	}
+	s.costCenter = costCenter
+	return s
 }

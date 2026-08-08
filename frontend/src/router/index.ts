@@ -638,6 +638,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/cost-center',
+    name: 'AdminCostCenter',
+    component: () => import('@/views/admin/CostCenterView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.costCenter.title' }
+  },
+  {
     path: '/admin/announcements',
     name: 'AdminAnnouncements',
     component: () => import('@/views/admin/AnnouncementsView.vue'),

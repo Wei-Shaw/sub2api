@@ -217,8 +217,11 @@ type PaymentService struct {
 	resumeService            *PaymentResumeService
 	affiliateService         *AffiliateService
 	notificationEmailService *NotificationEmailService
+	costCenter               CostCenterWriter
 	orgSubFulfiller          OrganizationSubscriptionFulfiller
 }
+
+func (s *PaymentService) SetCostCenterWriter(w CostCenterWriter) { s.costCenter = w }
 
 // OrganizationSubscriptionFulfiller provisions (or extends) a company
 // subscription when a paid enterprise subscription order is confirmed. It is

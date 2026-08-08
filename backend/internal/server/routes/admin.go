@@ -137,6 +137,17 @@ func RegisterAdminRoutes(
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 
 		registerOrganizationAdminRoutes(admin, h)
+		if h.Admin.CostCenter != nil {
+			cost := admin.Group("/cost-center")
+			cost.GET("/summary", h.Admin.CostCenter.Summary)
+			cost.GET("/events", h.Admin.CostCenter.Events)
+			cost.POST("/expenses", h.Admin.CostCenter.CreateExpense)
+			cost.POST("/expense-plans", h.Admin.CostCenter.CreateExpensePlan)
+			cost.POST("/expense-plans/materialize", h.Admin.CostCenter.MaterializeExpensePlans)
+			cost.PATCH("/events/:id/status", h.Admin.CostCenter.UpdateEventStatus)
+			cost.POST("/events/:id/reverse", h.Admin.CostCenter.ReverseEvent)
+			cost.GET("/reconciliation", h.Admin.CostCenter.Reconcile)
+		}
 	}
 }
 

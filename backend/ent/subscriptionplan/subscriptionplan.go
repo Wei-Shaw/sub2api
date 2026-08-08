@@ -21,6 +21,8 @@ const (
 	FieldDescription = "description"
 	// FieldPrice holds the string denoting the price field in the database.
 	FieldPrice = "price"
+	// FieldStandardQuotaTokens holds the string denoting the standard_quota_tokens field in the database.
+	FieldStandardQuotaTokens = "standard_quota_tokens"
 	// FieldOriginalPrice holds the string denoting the original_price field in the database.
 	FieldOriginalPrice = "original_price"
 	// FieldCurrency holds the string denoting the currency field in the database.
@@ -52,6 +54,7 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldPrice,
+	FieldStandardQuotaTokens,
 	FieldOriginalPrice,
 	FieldCurrency,
 	FieldValidityDays,
@@ -79,6 +82,8 @@ var (
 	NameValidator func(string) error
 	// DefaultDescription holds the default value on creation for the "description" field.
 	DefaultDescription string
+	// DefaultStandardQuotaTokens holds the default value on creation for the "standard_quota_tokens" field.
+	DefaultStandardQuotaTokens int64
 	// DefaultCurrency holds the default value on creation for the "currency" field.
 	DefaultCurrency string
 	// CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
@@ -133,6 +138,11 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByPrice orders the results by the price field.
 func ByPrice(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPrice, opts...).ToFunc()
+}
+
+// ByStandardQuotaTokens orders the results by the standard_quota_tokens field.
+func ByStandardQuotaTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStandardQuotaTokens, opts...).ToFunc()
 }
 
 // ByOriginalPrice orders the results by the original_price field.

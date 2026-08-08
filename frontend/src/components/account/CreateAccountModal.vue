@@ -66,6 +66,14 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
+      <div class="border-b border-gray-200 pb-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <input v-model.number="form.initial_expense_usd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
+          <input v-model="form.initial_expense_category" type="text" class="input" :placeholder="t('admin.costCenter.category')" />
+          <input v-model="form.initial_expense_note" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
+        </div>
+      </div>
 
       <!-- Platform Selection - Segmented Control Style -->
       <div>
@@ -4799,7 +4807,10 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  initial_expense_usd: 0,
+  initial_expense_category: 'account_setup',
+  initial_expense_note: ''
 })
 
 // Helper to check if current type needs OAuth flow

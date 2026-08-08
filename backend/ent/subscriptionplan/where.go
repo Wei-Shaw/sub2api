@@ -74,6 +74,11 @@ func Price(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldPrice, v))
 }
 
+// StandardQuotaTokens applies equality check predicate on the "standard_quota_tokens" field. It's identical to StandardQuotaTokensEQ.
+func StandardQuotaTokens(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldStandardQuotaTokens, v))
+}
+
 // OriginalPrice applies equality check predicate on the "original_price" field. It's identical to OriginalPriceEQ.
 func OriginalPrice(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldOriginalPrice, v))
@@ -332,6 +337,46 @@ func PriceLT(v float64) predicate.SubscriptionPlan {
 // PriceLTE applies the LTE predicate on the "price" field.
 func PriceLTE(v float64) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldLTE(FieldPrice, v))
+}
+
+// StandardQuotaTokensEQ applies the EQ predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensEQ(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldStandardQuotaTokens, v))
+}
+
+// StandardQuotaTokensNEQ applies the NEQ predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensNEQ(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldStandardQuotaTokens, v))
+}
+
+// StandardQuotaTokensIn applies the In predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensIn(vs ...int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldStandardQuotaTokens, vs...))
+}
+
+// StandardQuotaTokensNotIn applies the NotIn predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensNotIn(vs ...int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldStandardQuotaTokens, vs...))
+}
+
+// StandardQuotaTokensGT applies the GT predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensGT(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldStandardQuotaTokens, v))
+}
+
+// StandardQuotaTokensGTE applies the GTE predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensGTE(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldStandardQuotaTokens, v))
+}
+
+// StandardQuotaTokensLT applies the LT predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensLT(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldStandardQuotaTokens, v))
+}
+
+// StandardQuotaTokensLTE applies the LTE predicate on the "standard_quota_tokens" field.
+func StandardQuotaTokensLTE(v int64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldStandardQuotaTokens, v))
 }
 
 // OriginalPriceEQ applies the EQ predicate on the "original_price" field.
