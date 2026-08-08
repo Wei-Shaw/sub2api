@@ -346,6 +346,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/web3-deposit',
+    name: 'Web3Deposit',
+    component: () => import('@/views/user/Web3DepositAddressView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit'
+    }
+  },
+  {
     path: '/payment/qrcode',
     name: 'PaymentQRCode',
     component: () => import('@/views/user/PaymentQRCodeView.vue'),

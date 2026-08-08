@@ -1,6 +1,7 @@
 package web3deposit
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -36,4 +37,8 @@ type DepositAddress struct {
 	LastDepositAt     *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+type UserDepositAddressReader interface {
+	GetByUserAndWallet(ctx context.Context, userID int64, walletID string) (DepositAddress, error)
 }

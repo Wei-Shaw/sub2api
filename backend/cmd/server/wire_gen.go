@@ -309,7 +309,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	web3CreditJobRepository := repository.NewWeb3CreditJobRepository(db)
 	web3AccountingRepository := repository.NewWeb3AccountingRepository(db)
 	creditWorkerRuntime := web3deposit.ProvideCreditWorkerRuntime(configConfig, web3CreditJobRepository, web3AccountingRepository)
-	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, confluxNetworkRuntime, web3DepositRepository)
+	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, confluxNetworkRuntime, web3DepositRepository)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	modelPlazaHandler := handler.NewModelPlazaHandler(channelService, apiKeyService, settingService)

@@ -16,6 +16,7 @@ type Web3DepositAddressRepository struct {
 
 var _ web3deposit.DepositAddressStore = (*Web3DepositAddressRepository)(nil)
 var _ web3deposit.ActiveDepositAddressLookup = (*Web3DepositAddressRepository)(nil)
+var _ web3deposit.UserDepositAddressReader = (*Web3DepositAddressRepository)(nil)
 
 func NewWeb3DepositAddressRepository(client *dbent.Client) *Web3DepositAddressRepository {
 	return &Web3DepositAddressRepository{client: client}
