@@ -2935,8 +2935,10 @@ func TestShouldFailoverGrokUpstreamErrorIncludesMethodNotAllowed(t *testing.T) {
 
 	// 405 must move the request to another account (upstream #4668): a custom
 	// base_url that does not implement /v1/responses fails on every retry.
+	// v0.1.172 also promotes 405 into the generic shouldFailoverUpstreamError set
+	// so sticky sessions on any platform can escape broken endpoints.
 	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusMethodNotAllowed, nil))
-	require.False(t, svc.shouldFailoverUpstreamError(http.StatusMethodNotAllowed))
+	require.True(t, svc.shouldFailoverUpstreamError(http.StatusMethodNotAllowed))
 }
 
 func TestHandleGrokAccountUpstreamError405BenchesAccount(t *testing.T) {
