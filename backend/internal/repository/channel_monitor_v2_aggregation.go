@@ -240,6 +240,11 @@ REDACTED
 
 const channelMonitorV2ErrorAggregationSQL = `
 WITH dedup AS (
+  WITH candidate_ids AS MATERIALIZED (
+    SELECT DISTINCT request_id
+    FROM ops_error_logs
+    WHERE created_at >= $1 AND created_at < $2 AND NULLIF(request_id, '') IS NOT NULL
+  )
   SELECT DISTINCT ON (COALESCE(NULLIF(request_id, ''), 'error:' || id::text))
     date_trunc('minute', created_at) AS bucket_start,
     lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown')) AS platform,
@@ -252,16 +257,12 @@ WITH dedup AS (
       OR error_owner = 'provider' OR upstream_status_code IS NOT NULL) AS upstream_affected,
     CASE WHEN jsonb_typeof(upstream_errors) = 'array' THEN jsonb_array_length(upstream_errors) ELSE 0 END AS upstream_attempts
   FROM ops_error_logs current_error
-  WHERE current_error.created_at >= $1 AND current_error.created_at < $2 AND NOT current_error.is_count_tokens
+  WHERE (
+      (NULLIF(current_error.request_id, '') IS NULL AND current_error.created_at >= $1 AND current_error.created_at < $2)
+      OR current_error.request_id IN (SELECT request_id FROM candidate_ids)
+    )
+    AND NOT current_error.is_count_tokens
     AND (COALESCE(current_error.status_code, 0) >= 400 OR current_error.error_type = 'cyber_policy')
-		AND (NULLIF(current_error.request_id, '') IS NULL OR NOT EXISTS (
-      SELECT 1 FROM ops_error_logs newer
-      WHERE newer.request_id = current_error.request_id
-        AND NOT newer.is_count_tokens
-        AND (COALESCE(newer.status_code, 0) >= 400 OR newer.error_type = 'cyber_policy')
-        AND newer.created_at < $2
-        AND (newer.created_at, newer.id) > (current_error.created_at, current_error.id)
-    ))
   ORDER BY COALESCE(NULLIF(request_id, ''), 'error:' || id::text), created_at DESC, id DESC
 ), classified AS (
   SELECT *, CASE
@@ -284,6 +285,7 @@ WITH dedup AS (
     WHEN status_code >= 500 OR error_type = 'internal' OR error_owner = 'system' THEN 'internal'
     ELSE 'other' END AS category
   FROM dedup
+  WHERE bucket_start >= $1 AND bucket_start < $2
 ), metric_rows AS (
   INSERT INTO channel_monitor_v2_metrics_1m (bucket_start, platform, group_id, model, error_requests, upstream_affected_requests, upstream_attempt_count, computed_at)
   SELECT bucket_start, platform, group_id, model, COUNT(*), COUNT(*) FILTER (WHERE upstream_affected), SUM(upstream_attempts), NOW()
