@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
@@ -24,6 +25,7 @@ var _ depositdomain.DetectedDepositStore = (*Web3DepositRepository)(nil)
 var _ depositdomain.DepositCreditEligibilitySource = (*Web3DepositRepository)(nil)
 var _ depositdomain.PendingFinalizationSource = (*Web3DepositRepository)(nil)
 var _ depositdomain.UserDepositReader = (*Web3DepositRepository)(nil)
+var _ depositdomain.AdminDepositReader = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -194,6 +196,69 @@ func (r *Web3DepositRepository) GetUserDeposit(ctx context.Context, userID, depo
 		).
 		Only(ctx)
 	return web3DepositResult(entity, err, "get web3 deposit by user")
+}
+
+func (r *Web3DepositRepository) ListAdminDeposits(ctx context.Context, filter depositdomain.AdminDepositFilter) ([]depositdomain.Deposit, int64, error) {
+	predicates := make([]predicate.Web3Deposit, 0, 6)
+	if filter.Status != "" {
+		predicates = append(predicates, web3deposit.StatusEQ(string(filter.Status)))
+	}
+	if filter.UserID > 0 {
+		predicates = append(predicates, web3deposit.UserIDEQ(filter.UserID))
+	}
+	if value := strings.ToLower(strings.TrimSpace(filter.Address)); value != "" {
+		predicates = append(predicates, web3deposit.ToAddressEQ(value))
+	}
+	if value := strings.ToLower(strings.TrimSpace(filter.TxHash)); value != "" {
+		predicates = append(predicates, web3deposit.TxHashEQ(value))
+	}
+	if filter.CreatedAtFrom != nil {
+		predicates = append(predicates, web3deposit.CreatedAtGTE(*filter.CreatedAtFrom))
+	}
+	if filter.CreatedAtTo != nil {
+		predicates = append(predicates, web3deposit.CreatedAtLTE(*filter.CreatedAtTo))
+	}
+	page, pageSize := filter.Page, filter.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	query := r.client.Web3Deposit.Query().Where(predicates...)
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count admin web3 deposits: %w", err)
+	}
+	entities, err := query.Order(dbent.Desc(web3deposit.FieldCreatedAt), dbent.Desc(web3deposit.FieldID)).Offset((page - 1) * pageSize).Limit(pageSize).All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list admin web3 deposits: %w", err)
+	}
+	items := make([]depositdomain.Deposit, 0, len(entities))
+	for _, entity := range entities {
+		items = append(items, web3DepositFromEnt(entity))
+	}
+	return items, int64(total), nil
+}
+
+func (r *Web3DepositRepository) GetAdminDeposit(ctx context.Context, depositID int64) (depositdomain.Deposit, error) {
+	entity, err := r.client.Web3Deposit.Get(ctx, depositID)
+	return web3DepositResult(entity, err, "get admin web3 deposit")
+}
+
+func (r *Web3DepositRepository) CountAdminDepositsByStatus(ctx context.Context) (map[depositdomain.DepositStatus]int64, error) {
+	entities, err := r.client.Web3Deposit.Query().Select(web3deposit.FieldStatus).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("count admin web3 deposits by status: %w", err)
+	}
+	counts := make(map[depositdomain.DepositStatus]int64)
+	for _, entity := range entities {
+		counts[depositdomain.DepositStatus(entity.Status)]++
+	}
+	return counts, nil
 }
 
 func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {

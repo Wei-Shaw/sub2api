@@ -111,6 +111,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(web3deposit.PendingFinalizationSource), new(*Web3DepositRepository)),
 	wire.Bind(new(web3deposit.DepositCreditEligibilitySource), new(*Web3DepositRepository)),
 	wire.Bind(new(web3deposit.UserDepositReader), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.AdminDepositReader), new(*Web3DepositRepository)),
 	wire.Bind(new(web3deposit.FinalizerBatchStore), new(*Web3FinalizerBatchRepository)),
 	wire.Bind(new(web3deposit.AccountingStore), new(*Web3AccountingRepository)),
 	wire.Bind(new(web3deposit.CreditJobStore), new(*Web3CreditJobRepository)),
