@@ -2,8 +2,10 @@ import { flushPromises, mount REDACTED from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi REDACTED from 'vitest'
 import RegisterView from '@/views/auth/RegisterView.vue'
 
-const { getPublicSettingsMock REDACTED = vi.hoisted(() => ({
-  getPublicSettingsMock: vi.fn()
+const { getPublicSettingsMock, registerMock, showErrorMock REDACTED = vi.hoisted(() => ({
+  getPublicSettingsMock: vi.fn(),
+  registerMock: vi.fn(),
+  showErrorMock: vi.fn()
 REDACTED))
 
 const publicSettings = {
@@ -35,15 +37,18 @@ vi.mock('vue-i18n', () => ({
     REDACTED
   REDACTED),
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string) =>
+      key === 'auth.emailDomainRegistrationLimit'
+        ? '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。'
+        : key,
     locale: { value: 'en' REDACTED
   REDACTED)
 REDACTED))
 
 vi.mock('@/stores', () => ({
-  useAuthStore: () => ({ register: vi.fn() REDACTED),
+  useAuthStore: () => ({ register: (...args: unknown[]) => registerMock(...args) REDACTED),
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: (...args: unknown[]) => showErrorMock(...args),
     showSuccess: vi.fn(),
     showWarning: vi.fn()
   REDACTED)
@@ -79,7 +84,10 @@ REDACTED
 describe('RegisterView invitation layout', () => {
   beforeEach(() => {
     getPublicSettingsMock.mockReset()
+    registerMock.mockReset()
+    showErrorMock.mockReset()
     getPublicSettingsMock.mockResolvedValue(publicSettings)
+    registerMock.mockResolvedValue({REDACTED)
   REDACTED)
 
   it('keeps the optional affiliate invitation field before Turnstile', async () => {
@@ -108,5 +116,48 @@ describe('RegisterView invitation layout', () => {
 
     expect(wrapper.find('[data-testid="affiliate-invitation-field"]').exists()).toBe(false)
     expect(wrapper.get('#invitation_code').exists()).toBe(true)
+  REDACTED)
+
+  it('submits a non-whitelist email domain so the backend can enforce its registration quota', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false,
+      registration_email_suffix_whitelist: ['allowed.com']
+    REDACTED)
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('first@custom.example')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(registerMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'first@custom.example' REDACTED)
+    )
+    expect(showErrorMock).not.toHaveBeenCalled()
+  REDACTED)
+
+  it('shows the localized registration domain quota message returned by the backend', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      turnstile_enabled: false,
+      registration_email_suffix_whitelist: ['allowed.com']
+    REDACTED)
+    registerMock.mockRejectedValueOnce({
+      reason: 'EMAIL_DOMAIN_REGISTRATION_LIMIT',
+      message: 'raw backend message'
+    REDACTED)
+
+    const wrapper = mountRegister()
+    await flushPromises()
+    await wrapper.get('#email').setValue('second@custom.example')
+    await wrapper.get('#password').setValue('secret-123')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showErrorMock).toHaveBeenCalledWith(
+      '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。'
+    )
   REDACTED)
 REDACTED)

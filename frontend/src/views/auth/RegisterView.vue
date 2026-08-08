@@ -353,12 +353,7 @@ import {
   validateInvitationCode
 REDACTED from '@/api/auth'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
-import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
-import {
-  formatRegistrationEmailSuffixWhitelistForMessage,
-  isRegistrationEmailSuffixAllowed,
-  normalizeRegistrationEmailSuffixWhitelist
-REDACTED from '@/utils/registrationEmailPolicy'
+import { extractApiErrorCode, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import {
   clearAffiliateReferralCode,
   loadAffiliateReferralCode,
@@ -366,7 +361,7 @@ import {
 REDACTED from '@/utils/oauthAffiliate'
 import type { LoginAgreementDocument REDACTED from '@/types'
 
-const { t, locale REDACTED = useI18n()
+const { t REDACTED = useI18n()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 // ==================== Router & Stores ====================
@@ -405,7 +400,6 @@ const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
-const registrationEmailSuffixWhitelist = ref<string[]>([])
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -538,9 +532,6 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
-    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
-      settings.registration_email_suffix_whitelist || []
-    )
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -859,22 +850,6 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email)
 REDACTED
 
-function buildEmailSuffixNotAllowedMessage(): string {
-  const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
-    registrationEmailSuffixWhitelist.value
-  )
-  if (normalizedWhitelist.length === 0) {
-    return t('auth.emailSuffixNotAllowed')
-  REDACTED
-  const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
-  return t('auth.emailSuffixNotAllowedWithAllowed', {
-    suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
-      separator,
-      more: (count) => t('auth.emailSuffixAllowedMore', { count REDACTED)
-    REDACTED)
-  REDACTED)
-REDACTED
-
 function validateForm(): boolean {
   // Reset errors
   errors.email = ''
@@ -898,11 +873,6 @@ function validateForm(): boolean {
     isValid = false
   REDACTED else if (!validateEmail(formData.email)) {
     errors.email = t('auth.invalidEmail')
-    isValid = false
-  REDACTED else if (
-    !isRegistrationEmailSuffixAllowed(formData.email, registrationEmailSuffixWhitelist.value)
-  ) {
-    errors.email = buildEmailSuffixNotAllowedMessage()
     isValid = false
   REDACTED
 
@@ -1037,9 +1007,7 @@ async function handleRegister(): Promise<void> {
     await router.push('/dashboard')
   REDACTED catch (error: unknown) {
     // Handle registration error
-    errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.registrationFailed')
-    REDACTED)
+    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
 
     // Also show error toast
     appStore.showError(errorMessage.value)
@@ -1049,6 +1017,13 @@ async function handleRegister(): Promise<void> {
     REDACTED
     isLoading.value = false
   REDACTED
+REDACTED
+
+function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
+  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
+    return t('auth.emailDomainRegistrationLimit')
+  REDACTED
+  return buildAuthErrorMessage(error, { fallback REDACTED)
 REDACTED
 </script>
 
