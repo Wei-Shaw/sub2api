@@ -548,7 +548,7 @@ REDACTED
 	require.Equal(t, int64(500_000), cfg.Gateway.Grok.FreeQuotaTokenLimit)
 	require.Equal(t, 95, cfg.Gateway.Grok.FreeQuotaSoftGatePercent)
 	require.Equal(t, 24, cfg.Gateway.Grok.FreeQuotaWindowHours)
-	require.Equal(t, 5, cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds)
+	require.Equal(t, 60, cfg.Gateway.Grok.FreeQuotaStatsCacheSeconds)
 REDACTED
 
 func TestLoadDefaultOpenAIHTTP2Enabled(t *testing.T) {

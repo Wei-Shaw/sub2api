@@ -19,7 +19,7 @@ import (
 //   - free_quota_token_limit           (int64, default 500_000)
 //   - free_quota_soft_gate_percent     (int, default 95) — stop scheduling before the nominal limit
 //   - free_quota_window_hours          (int, default 24) — local usage rolling window
-//   - free_quota_stats_cache_seconds   (int, default 5) — bound hot-path aggregate query frequency
+//   - free_quota_stats_cache_seconds   (int, default 60) — stats cache TTL; hot path never waits on DB
 //
 // Soft-gate applies only to *explicit* free OAuth (subscription_tier/plan_type ==
 // "free"). Media/cache free detection uses isKnownGrokFreeAccount instead.
@@ -127,6 +127,9 @@ REDACTED
 var gatewayGrokFreeQuotaGateCache sync.Map
 var openaiGrokFreeQuotaGateCache sync.Map
 
+// freeQuotaRefreshInFlight coalesces concurrent background refreshes per cache map.
+var freeQuotaRefreshInFlight sync.Map // *sync.Map -> *sync.Map (accountID -> struct{REDACTED)
+
 func filterGrokFreeQuotaAccountsCore(
 	ctx context.Context,
 	cfg *config.Config,
@@ -160,6 +163,7 @@ REDACTED
 				continue
 		REDACTED
 	REDACTED
+		// Miss / stale: fail open on this request; refresh asynchronously.
 		if _, exists := seenMissing[account.ID]; !exists {
 			seenMissing[account.ID] = struct{REDACTED{REDACTED
 			missingIDs = append(missingIDs, account.ID)
@@ -167,40 +171,7 @@ REDACTED
 REDACTED
 
 	if len(missingIDs) > 0 {
-		statsByID, err := queryGrokFreeQuotaWindowStats(ctx, usageLogRepo, missingIDs, now.Add(-settings.window))
-		if err != nil {
-			grokFreeQuotaGateQueryFailureTotal.Add(1)
-			if settings.cacheTTL > 0 {
-				for _, accountID := range missingIDs {
-					cache.Store(accountID, grokFreeQuotaGateCacheEntry{checkedAt: nowREDACTED)
-			REDACTED
-		REDACTED
-			slog.Warn("grok_free_quota_soft_gate_stats_failed",
-				"account_count", len(missingIDs),
-				"window_hours", settings.window.Hours(),
-				"error", err)
-	REDACTED else {
-			for _, accountID := range missingIDs {
-				tokens := int64(0)
-				if stats := statsByID[accountID]; stats != nil && stats.Tokens > 0 {
-					tokens = stats.Tokens
-			REDACTED
-				tokensByID[accountID] = tokens
-				cache.Store(accountID, grokFreeQuotaGateCacheEntry{tokens: tokens, checkedAt: now, known: trueREDACTED)
-				if tokens >= settings.gateTokens {
-					grokFreeQuotaGateBlockedTotal.Add(1)
-					slog.Info("grok_free_quota_soft_gate_blocked",
-						"account_id", accountID,
-						"tokens", tokens,
-						"gate_tokens", settings.gateTokens,
-						"limit_tokens", settings.limitTokens,
-						"window_hours", settings.window.Hours())
-			REDACTED
-		REDACTED
-	REDACTED
-		// Only sweep on the query path: it is already TTL-bounded, so the Range
-		// cost stays off the cache-hit hot path.
-		sweepGrokFreeQuotaGateCache(cache, now, settings.cacheTTL)
+		scheduleGrokFreeQuotaStatsRefresh(usageLogRepo, cache, settings, missingIDs)
 REDACTED
 
 	filtered := make([]Account, 0, len(accounts))
@@ -214,6 +185,76 @@ REDACTED
 		filtered = append(filtered, *account)
 REDACTED
 	return filtered
+REDACTED
+
+// scheduleGrokFreeQuotaStatsRefresh loads usage stats off the request path.
+// Concurrent callers for the same accountID are coalesced via in-flight markers.
+func scheduleGrokFreeQuotaStatsRefresh(
+	usageLogRepo UsageLogRepository,
+	cache *sync.Map,
+	settings grokFreeQuotaGateSettings,
+	accountIDs []int64,
+) {
+	if usageLogRepo == nil || cache == nil || len(accountIDs) == 0 {
+		return
+REDACTED
+	inFlightRoot, _ := freeQuotaRefreshInFlight.LoadOrStore(cache, &sync.Map{REDACTED)
+	inFlight := inFlightRoot.(*sync.Map)
+
+	toFetch := make([]int64, 0, len(accountIDs))
+	for _, id := range accountIDs {
+		if _, loaded := inFlight.LoadOrStore(id, struct{REDACTED{REDACTED); !loaded {
+			toFetch = append(toFetch, id)
+	REDACTED
+REDACTED
+	if len(toFetch) == 0 {
+		return
+REDACTED
+
+	window := settings.window
+	gateTokens := settings.gateTokens
+	limitTokens := settings.limitTokens
+	cacheTTL := settings.cacheTTL
+	go func() {
+		defer func() {
+			for _, id := range toFetch {
+				inFlight.Delete(id)
+		REDACTED
+	REDACTED()
+		now := time.Now().UTC()
+		statsByID, err := queryGrokFreeQuotaWindowStats(context.Background(), usageLogRepo, toFetch, now.Add(-window))
+		if err != nil {
+			grokFreeQuotaGateQueryFailureTotal.Add(1)
+			if cacheTTL > 0 {
+				for _, accountID := range toFetch {
+					cache.Store(accountID, grokFreeQuotaGateCacheEntry{checkedAt: nowREDACTED)
+			REDACTED
+		REDACTED
+			slog.Warn("grok_free_quota_soft_gate_stats_failed",
+				"account_count", len(toFetch),
+				"window_hours", window.Hours(),
+				"error", err)
+			sweepGrokFreeQuotaGateCache(cache, now, cacheTTL)
+			return
+	REDACTED
+		for _, accountID := range toFetch {
+			tokens := int64(0)
+			if stats := statsByID[accountID]; stats != nil && stats.Tokens > 0 {
+				tokens = stats.Tokens
+		REDACTED
+			cache.Store(accountID, grokFreeQuotaGateCacheEntry{tokens: tokens, checkedAt: now, known: trueREDACTED)
+			if tokens >= gateTokens {
+				grokFreeQuotaGateBlockedTotal.Add(1)
+				slog.Info("grok_free_quota_soft_gate_blocked",
+					"account_id", accountID,
+					"tokens", tokens,
+					"gate_tokens", gateTokens,
+					"limit_tokens", limitTokens,
+					"window_hours", window.Hours())
+		REDACTED
+	REDACTED
+		sweepGrokFreeQuotaGateCache(cache, now, cacheTTL)
+REDACTED()
 REDACTED
 
 // grokFreeQuotaGateCacheMinSweepAge floors the eviction age so a tiny cacheTTL

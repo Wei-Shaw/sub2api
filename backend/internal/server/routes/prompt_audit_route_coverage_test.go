@@ -46,14 +46,14 @@ REDACTED
 		"/videos/edits":             {"grok_media.go"REDACTED,
 		"/videos/extensions":        {"grok_media.go"REDACTED,
 		"/models/*modelAction":      {"gemini_v1beta_handler.go"REDACTED,
+		"/tts":                       {"grok_audio.go"REDACTED,
+		"/web_search":                {"gateway_web_search.go"REDACTED,
 REDACTED
 	excluded := map[string]string{
 		"/messages/count_tokens":     "tokenization only; it does not execute a model request",
 		"/images/batches/:id/cancel": "control-plane cancellation with no user prompt",
-		"/tts":                       "voice synthesis input is not a text-generation prompt",
 		"/stt":                       "speech transcription is not a text-generation prompt",
 		"/custom-voices":             "voice profile management has no model prompt",
-		"/web_search":                "search query is handled by the dedicated search workflow",
 REDACTED
 
 	unclassified := make([]string, 0)

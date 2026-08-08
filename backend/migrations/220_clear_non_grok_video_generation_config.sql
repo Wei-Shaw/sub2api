@@ -16,6 +16,7 @@ SELECT id AS group_id,
        now() AS backed_up_at
 FROM groups
 WHERE platform IS DISTINCT FROM 'grok'
+  AND platform IS DISTINCT FROM 'composite'
   AND (
       video_price_480p IS NOT NULL
       OR video_price_720p IS NOT NULL
@@ -24,7 +25,7 @@ WHERE platform IS DISTINCT FROM 'grok'
   );
 
 COMMENT ON TABLE groups_video_price_backup_220 IS
-    '迁移 220 清空非 Grok 分组视频价前的快照。确认无需回滚后可安全 DROP；回滚方式：UPDATE groups g SET video_price_480p = b.video_price_480p, ... FROM groups_video_price_backup_220 b WHERE g.id = b.group_id';
+    '迁移 220 清空非 Grok/非 composite 分组视频价前的快照。composite 可能路由到 Grok 账号，予以保留。确认无需回滚后可安全 DROP；回滚方式：UPDATE groups g SET video_price_480p = b.video_price_480p, ... FROM groups_video_price_backup_220 b WHERE g.id = b.group_id';
 
 UPDATE groups
 SET video_price_480p = NULL,
@@ -32,6 +33,7 @@ SET video_price_480p = NULL,
     video_price_1080p = NULL,
     video_model_prices = NULL
 WHERE platform IS DISTINCT FROM 'grok'
+  AND platform IS DISTINCT FROM 'composite'
   AND (
       video_price_480p IS NOT NULL
       OR video_price_720p IS NOT NULL

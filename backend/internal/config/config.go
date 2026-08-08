@@ -1036,10 +1036,12 @@ REDACTED
 //   - free_quota_token_limit: nominal rolling-window token allowance.
 //   - free_quota_soft_gate_percent: stop new scheduling before the nominal limit (1-100).
 //   - free_quota_window_hours: local usage rolling window length in hours.
-//   - free_quota_stats_cache_seconds: bound hot-path aggregate query frequency (0 disables cache).
+//   - free_quota_stats_cache_seconds: cache TTL for free-tier usage stats
+//     (hot path never blocks on DB; misses fail open and refresh in background).
 type GatewayGrokConfig struct {
 	// PasswordAuthEnabled controls the optional password-to-SSO OAuth flow.
 	// It defaults to false and must be explicitly enabled by the operator.
+	// When true, POST /admin/grok/oauth/password is functional (not ignored).
 	PasswordAuthEnabled bool `mapstructure:"password_auth_enabled"`
 	// FreeQuotaSoftGateEnabled enables a local rolling-window scheduling guard
 	// for explicitly free Grok OAuth accounts only.
@@ -1050,7 +1052,8 @@ type GatewayGrokConfig struct {
 	FreeQuotaSoftGatePercent int `mapstructure:"free_quota_soft_gate_percent"`
 	// FreeQuotaWindowHours controls the local rolling usage window.
 	FreeQuotaWindowHours int `mapstructure:"free_quota_window_hours"`
-	// FreeQuotaStatsCacheSeconds bounds hot-path aggregate query frequency.
+	// FreeQuotaStatsCacheSeconds is the soft-gate stats cache TTL. Hot path never
+	// waits on usage_logs; misses fail open and refresh asynchronously.
 	FreeQuotaStatsCacheSeconds int `mapstructure:"free_quota_stats_cache_seconds"`
 REDACTED
 
@@ -2347,7 +2350,7 @@ REDACTED)
 	viper.SetDefault("gateway.grok.free_quota_token_limit", int64(500_000))
 	viper.SetDefault("gateway.grok.free_quota_soft_gate_percent", 95)
 	viper.SetDefault("gateway.grok.free_quota_window_hours", 24)
-	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 5)
+	viper.SetDefault("gateway.grok.free_quota_stats_cache_seconds", 60)
 	viper.SetDefault("gateway.image_concurrency.enabled", false)
 	viper.SetDefault("gateway.image_concurrency.max_concurrent_requests", 0)
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)

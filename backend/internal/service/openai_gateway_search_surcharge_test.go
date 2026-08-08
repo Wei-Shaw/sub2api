@@ -82,4 +82,37 @@ func TestGroupMediaPricingLooksIncomplete_VideoModelPricesComplete(t *testing.T)
 			"grok-imagine-video": {"720p": 0.1REDACTED,
 	REDACTED,
 REDACTED))
+	price := 10.0
+	require.False(t, groupMediaPricingLooksIncomplete(&Group{SearchPricePer1k: &priceREDACTED))
+	require.False(t, groupMediaPricingLooksIncomplete(&Group{AudioRealtimePricePerMin: &priceREDACTED))
+	// Legacy video price alone still marks complete (existing path).
+	require.False(t, groupMediaPricingLooksIncomplete(&Group{VideoPrice720P: &priceREDACTED))
+REDACTED
+
+func TestCalculateOpenAIRecordUsageCost_TokenPricingErrorNotSwallowedBySearch(t *testing.T) {
+	t.Parallel()
+
+	price := 10.0
+	svc := &OpenAIGatewayService{
+		billingService: newTestBillingService(),
+REDACTED
+	apiKey := &APIKey{
+		Group: &Group{SearchPricePer1k: &priceREDACTED,
+REDACTED
+	// Unknown model → token pricing fails; search must not replace that with $0/$search bill.
+	cost, err := svc.calculateOpenAIRecordUsageCost(
+		context.Background(),
+		&OpenAIForwardResult{SearchCount: 100REDACTED,
+		apiKey,
+		[]string{"totally-unknown-model-xyz-no-pricing"REDACTED,
+		1.0,
+		1.0,
+		1.0,
+		1.0,
+		UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED,
+		"",
+		false,
+	)
+REDACTED
+	require.Nil(t, cost)
 REDACTED

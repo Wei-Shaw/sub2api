@@ -63,12 +63,12 @@ const (
 )
 
 // ModelMappingOptions controls optional expansions of the default mapping.
-// Cross-client wildcards (gpt-*/claude-*) are OFF unless explicitly enabled —
-// silent rewrite of foreign model names is opt-in for operators who want
-// Codex/Claude clients to talk to Grok groups without renaming models.
+// Cross-client wildcards (gpt-*/claude-*) default ON via settings
+// grok_cross_client_model_map_enabled so Codex/Claude clients keep working
+// against Grok groups (map to DefaultText / grok-4.5). Operators may disable.
 type ModelMappingOptions struct {
 	// DefaultText is the target for empty models and optional cross-client maps.
-	// Empty → DefaultTextModel.
+	// Empty → DefaultTextModel (grok-4.5).
 	DefaultText string
 	// EnableCrossClientMap merges gpt-*/codex-*/o*/claude-* → DefaultText.
 	EnableCrossClientMap bool

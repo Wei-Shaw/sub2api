@@ -496,14 +496,13 @@ REDACTED
 			lastErr = err
 	REDACTED
 REDACTED
-	// Search-only (e.g. no model / zero tokens): still bill search when priced.
+	// Search surcharge is additive. Never let a zero/default search cost mask a
+	// real token-pricing failure for requests that attempted token billing.
 	searchCost := (*CostBreakdown)(nil)
 	if result != nil && result.SearchCount > 0 {
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
-		if price == nil || *price <= 0 {
-			// Silent free search is a revenue leak; error-level so ops/alerts notice.
-			// Billing still proceeds at $0 so requests are not failed mid-flight.
-			logger.L().Error("openai_usage.search_price_per_1k_unset_free",
+		if price != nil && *price == 0 {
+			logger.L().Info("openai_usage.search_price_per_1k_explicit_free",
 				zap.Int("search_count", result.SearchCount),
 				zap.String("model", billingModel),
 				zap.Int64("api_key_id", apiKey.ID),
@@ -513,17 +512,22 @@ REDACTED
 		searchCost = s.billingService.CalculateSearchCost(result.SearchCount, price, webSearchMultiplier)
 REDACTED
 
-	if tokenCost == nil && searchCost == nil {
-		if lastErr == nil {
-			if len(billingModels) == 0 || billingModel == "" {
-				return nil, errors.New("openai usage billing model is empty")
+	tokenBillingAttempted := len(billingModels) > 0 && billingModel != ""
+	if tokenCost == nil {
+		if tokenBillingAttempted {
+			if lastErr == nil {
+				lastErr = errors.New("no non-empty billing model candidates")
 		REDACTED
-			lastErr = errors.New("no non-empty billing model candidates")
+			return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
+	REDACTED
+		// Search-only (no model / pure tool path): allow search billing alone.
+		if searchCost != nil {
+			return searchCost, nil
+	REDACTED
+		if lastErr == nil {
+			lastErr = errors.New("openai usage billing model is empty")
 	REDACTED
 		return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
-REDACTED
-	if tokenCost == nil {
-		return searchCost, nil
 REDACTED
 	if searchCost == nil || (searchCost.TotalCost == 0 && searchCost.ActualCost == 0) {
 		return tokenCost, nil
@@ -705,10 +709,14 @@ REDACTED
 	return &clone
 REDACTED
 
-// groupMediaPricingLooksIncomplete 判断分组对象是否可能缺失媒体计费字段（例如由不含
-// 这些字段的旧快照或手工构造的上下文对象生成）。image/video 独立倍率在数据库中的
-// 默认值均为 1.0，正常加载的分组不可能两个倍率同时为 0 且未开启独立倍率、全部媒体
-// 价为 nil——只有这种情况才回源查库，避免对未配置覆盖价的分组每条媒体用量都多打一次 DB 查询。
+// groupMediaPricingLooksIncomplete 判断分组对象是否可能缺失媒体/搜索/语音计费字段
+// （例如由不含这些字段的旧快照或手工构造的上下文对象生成）。image/video 独立倍率在
+// 数据库中的默认值均为 1.0；正常加载的分组不可能两个倍率同时为 0 且未开启独立倍率、
+// 全部媒体/搜索/语音价为 nil——只有这种情况才回源查库，避免对未配置覆盖价的分组每条
+// 用量都多打一次 DB 查询。
+//
+// 注意：apiKeyAuthSnapshotVersion 升级会强制刷新存量快照；本函数是热路径上的二次兜底，
+// 不能仅凭 legacy video_price_* 判定完整而跳过 VideoModelPrices/search/audio 的回源。
 func groupMediaPricingLooksIncomplete(group *Group) bool {
 	if group == nil {
 		return true
@@ -719,9 +727,15 @@ REDACTED
 	if group.ImageRateMultiplier != 0 || group.VideoRateMultiplier != 0 {
 		return false
 REDACTED
-	// Per-model video prices are first-class billing config; a projection that
-	// already carries them is complete enough to skip a DB refresh.
+	// Any first-class pricing field present means the projection is not a blank shell.
 	if len(group.VideoModelPrices) > 0 {
+		return false
+REDACTED
+	if group.SearchPricePer1k != nil ||
+		group.AudioRealtimePricePerMin != nil ||
+		group.AudioTTSPricePerMillionChars != nil ||
+		group.AudioSTTPricePerHour != nil ||
+		group.WebSearchPricePerCall != nil {
 		return false
 REDACTED
 	return group.ImagePrice1K == nil && group.ImagePrice2K == nil && group.ImagePrice4K == nil &&

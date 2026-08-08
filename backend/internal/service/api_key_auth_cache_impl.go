@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 18 // v18: include group profit control fields (force refresh of pre-fix snapshots)
+const apiKeyAuthSnapshotVersion = 19 // v19: group search/audio/video_model_prices billing fields (force refresh of pre-fix snapshots)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int

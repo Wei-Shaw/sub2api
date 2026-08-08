@@ -190,7 +190,7 @@ REDACTED
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
 		SettingKeyGrokDefaultTextModel:           "grok-4.5",
-		SettingKeyGrokCrossClientModelMapEnabled: "false",
+		SettingKeyGrokCrossClientModelMapEnabled: "true",
 		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
 		// Available channels feature (default disabled; opt-in)
@@ -796,7 +796,9 @@ REDACTED
 	if result.GrokDefaultTextModel == "" {
 		result.GrokDefaultTextModel = "grok-4.5"
 REDACTED
-	result.GrokCrossClientModelMapEnabled = settings[SettingKeyGrokCrossClientModelMapEnabled] == "true"
+	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
+	// Operators can set false to disable silent cross-client rewrite.
+	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
 	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
 
 	// Available channels feature (default: disabled; strict true)

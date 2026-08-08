@@ -864,8 +864,8 @@ REDACTED
 	tokenCost := s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
 	if result.SearchCount > 0 {
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
-		if price == nil || *price <= 0 {
-			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k unset; search calls free group_model=%s count=%d", billingModel, result.SearchCount)
+		if price != nil && *price == 0 {
+			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, result.SearchCount)
 	REDACTED
 		searchCost := s.billingService.CalculateSearchCost(result.SearchCount, price, multiplier)
 		if searchCost != nil && (searchCost.TotalCost > 0 || searchCost.ActualCost > 0) {

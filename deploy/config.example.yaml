@@ -444,15 +444,17 @@ gateway:
   # Enabled by default because free detection requires an explicit subscription_tier/plan_type of "free".
   # Stats/query failures fail open so DB issues do not block all Grok traffic.
   grok:
-    # Email/password authorization is hidden and hard-disabled. Use SSO cookie,
-    # browser OAuth, or refresh_token re-auth instead. The flag is retained for
-    # config compatibility only and is ignored by the server.
+    # Email/password OAuth is off by default and hidden in the admin UI.
+    # Setting true enables POST /admin/grok/oauth/password (password → SSO → Build OAuth).
+    # Prefer SSO cookie, browser OAuth, or refresh_token re-auth in production.
     password_auth_enabled: false
     free_quota_soft_gate_enabled: true
     free_quota_token_limit: 500000
     free_quota_soft_gate_percent: 95
     free_quota_window_hours: 24
-    free_quota_stats_cache_seconds: 5
+    # Stats cache for free-tier soft gate. Hot path never waits on DB: misses
+    # fail open and refresh in the background. Prefer >= 60s in production.
+    free_quota_stats_cache_seconds: 60
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts

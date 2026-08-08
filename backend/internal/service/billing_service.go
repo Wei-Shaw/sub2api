@@ -1437,6 +1437,15 @@ const (
 
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
+
+	// Grok /v1/web_search 与 SearchCount 附加费：与 Codex 对齐 $10/1000 次（按 1k 计价字段存储）。
+	defaultSearchPricePer1k = 10.0
+
+	// Grok Voice 默认价（分组列 NULL 时使用；显式配 0 表示免费）。
+	// 保守运营占位，运维可通过 groups.audio_* 覆盖。
+	defaultAudioRealtimePricePerMin     = 0.10
+	defaultAudioTTSPricePerMillionChars = 15.0
+	defaultAudioSTTPricePerHour         = 0.36
 )
 
 // CalculateWebSearchCost 计算 Codex alpha/search 网页搜索按次费用。
@@ -1465,18 +1474,25 @@ REDACTED
 REDACTED
 
 // CalculateSearchCost bills search/tool invocations (e.g. web_search) per 1k calls.
-// Uses explicit group search_price_per_1k when set; otherwise returns zero cost.
+// groupPricePer1k: nil → defaultSearchPricePer1k; explicit 0 → free; >0 → that rate.
 func (s *BillingService) CalculateSearchCost(numCalls int, groupPricePer1k *float64, rateMultiplier float64) *CostBreakdown {
 	if numCalls <= 0 {
 		return &CostBreakdown{REDACTED
 REDACTED
-	if groupPricePer1k == nil || *groupPricePer1k <= 0 {
+	pricePer1k := defaultSearchPricePer1k
+	if groupPricePer1k != nil {
+		if *groupPricePer1k < 0 {
+			return &CostBreakdown{REDACTED
+	REDACTED
+		pricePer1k = *groupPricePer1k
+REDACTED
+	if pricePer1k == 0 {
 		return &CostBreakdown{REDACTED
 REDACTED
 	if rateMultiplier < 0 {
 		rateMultiplier = 0
 REDACTED
-	unit := *groupPricePer1k / 1000.0
+	unit := pricePer1k / 1000.0
 	total := unit * float64(numCalls)
 	return &CostBreakdown{
 		TotalCost:   total,
@@ -1492,6 +1508,7 @@ type audioPriceConfig struct {
 REDACTED
 
 // CalculateAudioCost supports realtime (per min), tts (per M chars), stt (per hr).
+// Missing group prices use defaults; explicit 0 means free for that mode.
 func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64, groupConfig *audioPriceConfig, rateMultiplier float64) *CostBreakdown {
 	if durationOrUnits <= 0 {
 		return &CostBreakdown{REDACTED
@@ -1499,14 +1516,17 @@ REDACTED
 	var unitPrice float64
 	switch strings.ToLower(mode) {
 	case "realtime":
+		unitPrice = defaultAudioRealtimePricePerMin
 		if groupConfig != nil && groupConfig.RealtimePerMin != nil {
 			unitPrice = *groupConfig.RealtimePerMin
 	REDACTED
 	case "tts":
+		unitPrice = defaultAudioTTSPricePerMillionChars
 		if groupConfig != nil && groupConfig.TTSPerMChars != nil {
 			unitPrice = *groupConfig.TTSPerMChars
 	REDACTED
 	case "stt":
+		unitPrice = defaultAudioSTTPricePerHour
 		if groupConfig != nil && groupConfig.STTPerHour != nil {
 			unitPrice = *groupConfig.STTPerHour
 	REDACTED
