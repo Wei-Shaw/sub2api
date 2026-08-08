@@ -60,9 +60,13 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		LoginAgreementDocuments:          publicLoginAgreementDocumentsToDTO(settings.LoginAgreementDocuments),
 		TurnstileEnabled:                 settings.TurnstileEnabled,
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
-		CaptchaProvider:                  settings.CaptchaProvider,
-		CaptchaEnabled:                   settings.CaptchaEnabled,
-		CaptchaSiteKey:                   settings.CaptchaSiteKey,
+		TencentCaptchaEnabled:            settings.TencentCaptchaEnabled,
+		TencentCaptchaAppID:              settings.TencentCaptchaAppID,
+		TencentCaptchaRegion:             settings.TencentCaptchaRegion,
+		AliyunCaptchaEnabled:             settings.AliyunCaptchaEnabled,
+		AliyunCaptchaSceneID:             settings.AliyunCaptchaSceneID,
+		AliyunCaptchaPrefix:              settings.AliyunCaptchaPrefix,
+		AliyunCaptchaRegion:              settings.AliyunCaptchaRegion,
 		SiteName:                         settings.SiteName,
 		SiteLogo:                         settings.SiteLogo,
 		SiteSubtitle:                     settings.SiteSubtitle,
@@ -70,7 +74,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ContactInfo:                      settings.ContactInfo,
 		DocURL:                           settings.DocURL,
 		HomeContent:                      settings.HomeContent,
-		HomeProductMenuItems:             dto.ParseCustomMenuItems(settings.HomeProductMenuItems),
 		CompactHomeEnabled:               settings.CompactHomeEnabled,
 		HideCcsImportButton:              settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
@@ -78,8 +81,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		TableDefaultPageSize:             settings.TableDefaultPageSize,
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  dto.ParseUserVisibleMenuItems(settings.CustomMenuItems),
-		CustomMenuEmbedAuthParams:        settings.CustomMenuEmbedAuthParams,
-		CustomMenuVersion:                settings.CustomMenuVersion,
 		CustomEndpoints:                  dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DingTalkOAuthEnabled:             settings.DingTalkOAuthEnabled,
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
@@ -92,9 +93,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
-		CompanyApplicationsEnabled:       settings.CompanyApplicationsEnabled,
-		CompanyIAMEnabled:                settings.CompanyIAMEnabled,
-		CompanyDocumentationURL:          settings.CompanyDocumentationURL,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          h.version,
 		ServerTimezone:                   timezone.Name(),
@@ -117,21 +115,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		RiskControlEnabled: settings.RiskControlEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
-
-		SupportTicketEnabled: settings.SupportTicketEnabled,
-
-		// 客服浮窗（add-support-chat-widget）：6 个公开字段必须随 HTTP 响应回前端，
-		// 否则 admin 在 Settings 页保存后 appStore.fetchPublicSettings(true) 强刷
-		// 会用 zero value 覆盖 SSR 注入的 cachedPublicSettings，导致 SupportChatWidget
-		// 的 shouldRender 守卫立刻翻成 false、浮窗消失，或 bubble icon 退回内置默认头像
-		// （admin 改了 icon URL 也不生效）。与 PublicSettingsInjectionPayload /
-		// dto.PublicSettings 字段保持一致。
-		SupportChatEnabled:        settings.SupportChatEnabled,
-		SupportChatExcludedRoutes: append([]string(nil), settings.SupportChatExcludedRoutes...),
-		SupportChatAnonymousLLM:   settings.SupportChatAnonymousLLM,
-		SupportChatTitle:          settings.SupportChatTitle,
-		SupportChatWelcome:        settings.SupportChatWelcome,
-		SupportChatIcon:           settings.SupportChatIcon,
 	})
 }
 

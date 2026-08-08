@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -56,10 +55,6 @@ func NewAuthHandler(cfg *config.Config, authService *service.AuthService, userSe
 	}
 }
 
-// issueSsoSession 在登录成功后尽力签发 OIDC Provider 的 HttpOnly SSO cookie。
-//
-// 仅当 oidc_provider.enabled=true 时实际生效 (见 SsoSessionService.IssueIfProviderEnabled)；
-// 失败只记日志，绝不阻断主登录流程 (用户拿到 JWT 即视为登录成功)。
 func (h *AuthHandler) issueSsoSession(c *gin.Context, userID int64) {
 	if h == nil || h.ssoSessionService == nil || userID <= 0 {
 		return
@@ -71,27 +66,23 @@ func (h *AuthHandler) issueSsoSession(c *gin.Context, userID int64) {
 
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
-	Email      string `json:"email" binding:"required,email"`
-	Password   string `json:"password" binding:"required,min=6"`
-	VerifyCode string `json:"verify_code"`
-	// CaptchaPayload 是 captcha_payload 协议下的结构化客户端凭证（design.md D2）。
-	// 优先于 CaptchaToken/TurnstileToken；后两者保留作为兼容窗口字段，下个版本将移除。
-	//   - turnstile / hcaptcha: {"token": "..."}
-	//   - tencent_captcha: {"ticket": "...", "randstr": "..."}
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
-	PromoCode      string            `json:"promo_code"`      // 注册优惠码
-	InvitationCode string            `json:"invitation_code"` // 邀请码
-	AffCode        string            `json:"aff_code"`        // 邀请返利码
+	Email                 string `json:"email" binding:"required,email"`
+	Password              string `json:"password" binding:"required,min=6"`
+	VerifyCode            string `json:"verify_code"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+	PromoCode             string `json:"promo_code"`      // 注册优惠码
+	InvitationCode        string `json:"invitation_code"` // 邀请码
+	AffCode               string `json:"aff_code"`        // 邀请返利码
 }
 
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -102,11 +93,37 @@ type SendVerifyCodeResponse struct {
 
 // LoginRequest represents the login request payload
 type LoginRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	Password       string            `json:"password" binding:"required"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	Password              string `json:"password" binding:"required"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+}
+
+func extractCaptchaPayload(captchaPayload map[string]string, captchaToken, turnstileToken string) map[string]string {
+	if len(captchaPayload) > 0 {
+		out := make(map[string]string, len(captchaPayload))
+		for k, v := range captchaPayload {
+			out[k] = strings.TrimSpace(v)
+		}
+		return out
+	}
+	token := strings.TrimSpace(captchaToken)
+	if token == "" {
+		token = strings.TrimSpace(turnstileToken)
+	}
+	if token == "" {
+		return map[string]string{}
+	}
+	return map[string]string{"token": token}
+}
+
+func captchaProof(turnstileToken, tencentTicket, tencentRandstr string) service.CaptchaProof {
+	return service.CaptchaProof{
+		TurnstileToken: turnstileToken,
+		TencentTicket:  tencentTicket,
+		TencentRandstr: tencentRandstr,
+	}
 }
 
 // AuthResponse 认证响应格式（匹配前端期望）
@@ -128,39 +145,9 @@ func ensureLoginUserActive(user *service.User) error {
 	return nil
 }
 
-// extractCaptchaPayload 把请求 DTO 中的三层 captcha 客户端字段归一为统一的结构化 payload（design.md D2）。
-//
-// 优先级：
-//  1. captcha_payload（首选；新协议；前端 §5/§6 改造完成后通用）
-//  2. captcha_token / turnstile_token（兼容窗口字段）→ 包成 {"token": "..."}
-//
-// 三者全空时返回空 map，由 captcha_service 走"空凭证"分支统一报错（避免 handler 层重复判定）。
-//
-// 不直接修改入参；调用方传切片/map 也不会被本函数改动。
-func extractCaptchaPayload(captchaPayload map[string]string, captchaToken, turnstileToken string) map[string]string {
-	if len(captchaPayload) > 0 {
-		// 拷贝避免下游误修改入参 map。
-		out := make(map[string]string, len(captchaPayload))
-		for k, v := range captchaPayload {
-			out[k] = strings.TrimSpace(v)
-		}
-		return out
-	}
-	token := strings.TrimSpace(captchaToken)
-	if token == "" {
-		token = strings.TrimSpace(turnstileToken)
-	}
-	if token == "" {
-		return map[string]string{}
-	}
-	return map[string]string{"token": token}
-}
-
 // respondWithTokenPair 生成 Token 对并返回认证响应
 // 如果 Token 对生成失败，回退到只返回 Access Token（向后兼容）
 func (h *AuthHandler) respondWithTokenPair(c *gin.Context, user *service.User) {
-	// 登录成功后尽力签发 OIDC Provider SSO cookie，必须在写响应体前执行。
-	h.issueSsoSession(c, user.ID)
 	respondWithTokenPair(c, h.authService, user)
 }
 
@@ -232,8 +219,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证（邮箱验证码注册场景避免重复校验一次性 token）
-	if err := h.authService.VerifyCaptchaPayloadForRegister(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c), req.VerifyCode); err != nil {
+	// 验证当前启用的验证码（邮箱验证码注册场景避免重复校验一次性票据）
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, ip.GetClientIP(c), req.VerifyCode); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -264,8 +252,8 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -291,8 +279,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -490,9 +478,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 
 	type UserResponse struct {
 		userProfileResponse
-		RunMode      string                       `json:"run_mode"`
-		Organization *service.OrganizationContext `json:"organization,omitempty"`
-		Finance      *service.FinanceSummary      `json:"organization_finance,omitempty"`
+		RunMode string `json:"run_mode"`
 	}
 
 	runMode := config.RunModeStandard
@@ -500,21 +486,9 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		runMode = h.cfg.RunMode
 	}
 
-	var organization *service.OrganizationContext
-	var finance *service.FinanceSummary
-	if h.organizationService != nil {
-		organization, _ = h.organizationService.Context(c.Request.Context(), subject.UserID)
-		if organization != nil {
-			// IAM 登录名后缀使用公司 ID，此处补齐以便展示 iam_principal。
-			user.CompanyID = organization.CompanyID
-			finance, _ = h.organizationService.FinanceSummary(c.Request.Context(), subject.UserID)
-		}
-	}
 	response.Success(c, UserResponse{
 		userProfileResponse: userProfileResponseFromService(user, identities),
 		RunMode:             runMode,
-		Organization:        organization,
-		Finance:             finance,
 	})
 }
 
@@ -650,10 +624,10 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 
 // ForgotPasswordRequest 忘记密码请求
 type ForgotPasswordRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 }
 
 // ForgotPasswordResponse 忘记密码响应
@@ -670,8 +644,8 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -797,29 +771,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	}
 	h.consumePendingOAuthSessionOnLogout(c)
 	clearOAuthLogoutCookies(c)
-	h.revokeSsoSession(c)
 
 	response.Success(c, LogoutResponse{
 		Message: "Logged out successfully",
 	})
-}
-
-// revokeSsoSession 在登出时尽力吊销 OIDC Provider 的 SSO 会话并清除 cookie。
-//
-// 即便 OIDC Provider 未开启，本方法也只是读不到 cookie → no-op；失败仅记日志，
-// 不阻断登出。必须在写响应体之前调用 (Revoke 会写过期 Set-Cookie)。
-func (h *AuthHandler) revokeSsoSession(c *gin.Context) {
-	if h == nil || h.ssoSessionService == nil {
-		return
-	}
-	cookie, err := c.Request.Cookie(service.SsoCookieName)
-	if err != nil || cookie == nil || cookie.Value == "" {
-		return
-	}
-	if err := h.ssoSessionService.Revoke(c.Request.Context(), c.Writer, cookie.Value); err != nil &&
-		!errors.Is(err, service.ErrSsoSessionNotFound) {
-		slog.Warn("failed to revoke sso session on logout", "error", err)
-	}
 }
 
 // RevokeAllSessionsResponse 撤销所有会话响应
@@ -840,13 +795,6 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 		slog.Error("failed to revoke all sessions", "user_id", subject.UserID, "error", err)
 		response.InternalError(c, "Failed to revoke sessions")
 		return
-	}
-
-	// 同步吊销该用户的全部 OIDC Provider SSO 会话 (尽力而为)。
-	if h.ssoSessionService != nil {
-		if _, err := h.ssoSessionService.RevokeAllForUser(c.Request.Context(), subject.UserID); err != nil {
-			slog.Warn("failed to revoke all sso sessions", "user_id", subject.UserID, "error", err)
-		}
 	}
 
 	response.Success(c, RevokeAllSessionsResponse{

@@ -495,6 +495,7 @@ const otherRankingItem = computed<RankingDisplayItem | null>(() => {
   return {
     user_id: 0,
     email: '',
+    username: '',
     actual_cost: otherActualCost,
     requests: otherRequests,
     tokens: otherTokens,

@@ -84,14 +84,14 @@ var _ = strconv.Itoa
 // 每个字段都是"调用记录 + 返回值"双用途，方便断言。
 type stNotifRepoFake struct {
 	// 出参：ListByRecipient / CountUnread / MarkAllRead 的返回值
-	listItems         []service.SupportTicketNotification
-	listPage          *pagination.PaginationResult
-	unreadCount       int64
-	markAllAffected   int64
-	markOneErr        error // 传 nil 表示成功；传 service.ErrSupportTicketNotificationNotFound 触发 404
-	listErr           error
-	countErr          error
-	markAllErr        error
+	listItems       []service.SupportTicketNotification
+	listPage        *pagination.PaginationResult
+	unreadCount     int64
+	markAllAffected int64
+	markOneErr      error // 传 nil 表示成功；传 service.ErrSupportTicketNotificationNotFound 触发 404
+	listErr         error
+	countErr        error
+	markAllErr      error
 	// 入参：最后一次调用的参数快照，用于断言
 	lastListParams    service.SupportTicketNotificationListParams
 	lastMarkOneID     int64
@@ -424,5 +424,3 @@ func TestSupportTicketNotificationHandler_UnreadCount_RepoError_500(t *testing.T
 	require.Equal(t, http.StatusInternalServerError, w.Code,
 		"repo 未知错误应 500 而非 200；ErrorFrom 兜底走 InternalError")
 }
-
-

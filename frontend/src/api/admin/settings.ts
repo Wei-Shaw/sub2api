@@ -10,34 +10,14 @@ import type {
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
-import type { RechargePromo } from "@/types/payment";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
   validity_days: number;
 }
 
-// ── 可信代理动态拉取（switch-trusted-proxies-dynamic）─────────────
-export interface TrustedProxyDynamicSource {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  interval_seconds: number;
-  timeout_seconds: number;
-}
-
-export interface TrustedProxyDynamicSourceStatus {
-  id: string;
-  last_run_at?: string;
-  last_success_at?: string;
-  last_error?: string;
-  cidr_count: number;
-  next_run_at?: string;
-}
-
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "kiro" | "grok"
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -50,7 +30,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "kiro", "grok"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
 
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
@@ -373,18 +353,6 @@ export function deriveWeChatConnectStoredMode(
 }
 
 /**
- * Support Chat FAQ entry（add-support-chat-widget D2）。
- * 与后端 service.SupportChatFAQ 字段名严格对齐：question / answer 用户可见，
- * sort_order 用于排序，enabled 控制是否对用户展示。
- */
-export interface SupportChatFAQ {
-  question: string;
-  answer: string;
-  sort_order: number;
-  enabled: boolean;
-}
-
-/**
  * System settings interface
  */
 export interface SystemSettings {
@@ -404,22 +372,7 @@ export interface SystemSettings {
   passkey_rp_origins: string[];
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
-  company_upgrade_charge_enabled: boolean; // 企业升级是否收费/冻结资金
-  company_upgrade_fee: number;
-  company_applications_enabled: boolean;
-  company_iam_enabled: boolean;
-  company_public_ids_finalized: boolean;
-  company_billing_integration_enabled: boolean;
-  company_documentation_url: string;
   audit_log_retention_days: number; // 审计日志保留天数
-
-  // 可信代理动态拉取（switch-trusted-proxies-dynamic）
-  trusted_proxies_dynamic_enabled: boolean;
-  trusted_proxies_dynamic_sources: TrustedProxyDynamicSource[];
-  trusted_proxies_dynamic_extra_cidrs: string[];
-  // 只读展示字段
-  trusted_proxies_static_cidrs: string[];
-  trusted_proxies_dynamic_source_statuses: TrustedProxyDynamicSourceStatus[];
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -487,16 +440,12 @@ export interface SystemSettings {
   contact_info: string;
   doc_url: string;
   home_content: string;
-  home_product_menu_items: CustomMenuItem[];
   compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
-  custom_menu_embed_auth_params: boolean;
-  /** 后端派生的自定义菜单版本 hash（只读） */
-  custom_menu_version: string;
   custom_endpoints: CustomEndpoint[];
   // SMTP settings
   smtp_host: string;
@@ -510,15 +459,18 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
-  captcha_provider: string;
-  captcha_enabled: boolean;
-  captcha_site_key: string;
-  captcha_secret_key_configured: boolean;
-  // 腾讯天御特有的 *_configured 标志（design.md D7 / 后端 §3.2 Settings DTO）：
-  // 后端 mask 后字段从原值剥离，前端用这两个标志渲染"已配置"占位。
-  captcha_tencent_secret_id_configured: boolean;
-  captcha_tencent_secret_key_configured: boolean;
-  captcha_config: Record<string, string>;
+  tencent_captcha_enabled: boolean;
+  tencent_captcha_app_id: string;
+  tencent_captcha_app_secret_key_configured: boolean;
+  tencent_captcha_cloud_secret_id_configured: boolean;
+  tencent_captcha_cloud_secret_key_configured: boolean;
+  tencent_captcha_region: string;
+  aliyun_captcha_enabled: boolean;
+  aliyun_captcha_access_key_id: string;
+  aliyun_captcha_access_key_secret_configured: boolean;
+  aliyun_captcha_scene_id: string;
+  aliyun_captcha_prefix: string;
+  aliyun_captcha_region: string;
   api_key_acl_trust_forwarded_ip: boolean;
   forwarded_client_ip_headers: string[];
 
@@ -634,6 +586,9 @@ export interface SystemSettings {
   enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
+  openai_codex_client_version: string;
+  openai_codex_client_version_synced: string;
+  openai_codex_version_auto_sync_enabled: boolean;
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -677,8 +632,6 @@ export interface SystemSettings {
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
-  /** 充值赠送活动；后端无配置时为 null。 */
-  payment_recharge_promo?: RechargePromo | null;
   openai_low_upstream_rate_priority_enabled?: boolean;
   openai_oauth_scheduling_rate_multiplier?: number;
   openai_advanced_scheduler_enabled?: boolean;
@@ -730,55 +683,6 @@ export interface SystemSettings {
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
 
-  // Support Ticket（客服工单）feature switches & defaults
-  // 与后端 dto.SettingsResponse 的 SupportTicket* 字段一一对应
-  support_ticket_enabled: boolean;
-  support_ticket_categories: string[];
-  support_ticket_default_priority: string;
-  // 管理员方向邮件白名单：非空时覆盖默认的"全体 role=admin"投递；
-  // 空数组 → 兜底为所有 role=admin 用户。复用 NotifyEmailEntry 类型让前端能复用
-  // AccountQuotaNotifyEmails 的多邮箱输入组件（含 disabled 开关）。
-  support_ticket_notify_emails: NotifyEmailEntry[];
-
-  // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段。
-  // 与后端 dto.SettingsResponse 的 SupportChat* 字段一一对应。
-  support_chat_enabled: boolean;
-  support_chat_excluded_routes: string[];
-  support_chat_anonymous_llm: boolean;
-  support_chat_title: string;
-  support_chat_welcome: string;
-  support_chat_icon: string;
-  support_chat_llm_enabled: boolean;
-  // 由 change-support-chat-external-llm 引入：替代旧的 support_chat_api_key_id。
-  // base_url：admin 录入的外部 OpenAI-compatible 服务前缀（不含 /chat/completions）。
-  // api_key：后端 GET 时返回掩码（"sk-***xxxx"），前端不应该把它作为 cleartext 直接发回。
-  support_chat_llm_base_url: string;
-  support_chat_llm_api_key: string;
-  // embedding 专用凭据（switch-embedding-credentials）：与 chat LLM 独立配置。
-  // api_key 后端 GET 返回掩码，编辑规则同 support_chat_llm_api_key。
-  support_chat_embedding_base_url: string;
-  support_chat_embedding_api_key: string;
-  support_chat_model: string;
-  support_chat_system_prompt: string;
-  support_chat_max_turns: number;
-  support_chat_max_request_tokens: number;
-  support_chat_rl_user_per_day: number;
-  support_chat_rl_user_per_min: number;
-  support_chat_rl_ip_per_hour: number;
-  support_chat_faqs: SupportChatFAQ[];
-
-  // 客服知识库 RAG（add-support-knowledge-rag §10）：admin-only 8 项配置。
-  // 与后端 dto.SettingsResponse.SupportChatRAG* 一一对应；不暴露给 PublicSettings。
-  support_chat_rag_enabled: boolean;
-  support_chat_rag_doc_url: string;
-  support_chat_rag_doc_depth: number;
-  support_chat_rag_doc_cron: string;
-  support_chat_rag_embed_provider: string;
-  support_chat_rag_embed_model: string;
-  support_chat_rag_top_k: number;
-  support_chat_rag_chunk_size: number;
-  support_chat_rag_chunk_overlap: number;
-
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
@@ -798,18 +702,7 @@ export interface UpdateSettingsRequest {
   passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
-  company_upgrade_charge_enabled?: boolean; // 企业升级是否收费/冻结资金
-  company_upgrade_fee?: number;
-  company_applications_enabled?: boolean;
-  company_iam_enabled?: boolean;
-  company_public_ids_finalized?: boolean;
-  company_billing_integration_enabled?: boolean;
-  company_documentation_url?: string;
   audit_log_retention_days?: number; // 审计日志保留天数
-  // 可信代理动态拉取
-  trusted_proxies_dynamic_enabled?: boolean;
-  trusted_proxies_dynamic_sources?: TrustedProxyDynamicSource[];
-  trusted_proxies_dynamic_extra_cidrs?: string[];
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -875,14 +768,12 @@ export interface UpdateSettingsRequest {
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
-  home_product_menu_items?: CustomMenuItem[];
   compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
-  custom_menu_embed_auth_params?: boolean;
   custom_endpoints?: CustomEndpoint[];
   smtp_host?: string;
   smtp_port?: number;
@@ -894,8 +785,18 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
-  captcha_provider?: string;
-  captcha_config?: Record<string, string>;
+  tencent_captcha_enabled?: boolean;
+  tencent_captcha_app_id?: string;
+  tencent_captcha_app_secret_key?: string;
+  tencent_captcha_cloud_secret_id?: string;
+  tencent_captcha_cloud_secret_key?: string;
+  tencent_captcha_region?: string;
+  aliyun_captcha_enabled?: boolean;
+  aliyun_captcha_access_key_id?: string;
+  aliyun_captcha_access_key_secret?: string;
+  aliyun_captcha_scene_id?: string;
+  aliyun_captcha_prefix?: string;
+  aliyun_captcha_region?: string;
   api_key_acl_trust_forwarded_ip?: boolean;
   forwarded_client_ip_headers?: string[];
   linuxdo_connect_enabled?: boolean;
@@ -991,6 +892,8 @@ export interface UpdateSettingsRequest {
   enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
+  openai_codex_client_version?: string;
+  openai_codex_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;
@@ -1032,8 +935,6 @@ export interface UpdateSettingsRequest {
   payment_visible_method_wxpay_source?: string;
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
-  /** 充值赠送活动；nil 不修改、enabled=false 关闭、enabled=true + tiers 生效。 */
-  payment_recharge_promo?: RechargePromo | null;
   openai_low_upstream_rate_priority_enabled?: boolean;
   openai_oauth_scheduling_rate_multiplier?: number;
   openai_advanced_scheduler_enabled?: boolean;
@@ -1072,51 +973,6 @@ export interface UpdateSettingsRequest {
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
-
-  // Support Ticket（客服工单）feature switches & defaults
-  // 后端 admin.UpdateSettingsRequest 使用指针类型实现 PATCH 语义；
-  // 前端通过可选属性表达"未提交即不修改"。
-  support_ticket_enabled?: boolean;
-  support_ticket_categories?: string[];
-  support_ticket_default_priority?: string;
-  support_ticket_notify_emails?: NotifyEmailEntry[];
-
-  // Support Chat（客服浮窗 add-support-chat-widget D2）：admin 端完整 16 字段，
-  // 全部为可选 partial-update。
-  support_chat_enabled?: boolean;
-  support_chat_excluded_routes?: string[];
-  support_chat_anonymous_llm?: boolean;
-  support_chat_title?: string;
-  support_chat_welcome?: string;
-  support_chat_icon?: string;
-  support_chat_llm_enabled?: boolean;
-  // change-support-chat-external-llm：base_url + api_key 替换 api_key_id。
-  // api_key 为可选 partial-update：当 admin 没改动 api_key 输入时，前端应**不要**包含此字段
-  // （避免把掩码值回写到 DB）。后端识别"请求值等于已存值的掩码"作为 leave-unchanged 信号，
-  // 前端做 omit-on-unchanged 是更显式的契约。
-  support_chat_llm_base_url?: string;
-  support_chat_llm_api_key?: string;
-  support_chat_embedding_base_url?: string;
-  support_chat_embedding_api_key?: string;
-  support_chat_model?: string;
-  support_chat_system_prompt?: string;
-  support_chat_max_turns?: number;
-  support_chat_max_request_tokens?: number;
-  support_chat_rl_user_per_day?: number;
-  support_chat_rl_user_per_min?: number;
-  support_chat_rl_ip_per_hour?: number;
-  support_chat_faqs?: SupportChatFAQ[];
-
-  // 客服知识库 RAG（add-support-knowledge-rag §10）：admin-only partial-update。
-  support_chat_rag_enabled?: boolean;
-  support_chat_rag_doc_url?: string;
-  support_chat_rag_doc_depth?: number;
-  support_chat_rag_doc_cron?: string;
-  support_chat_rag_embed_provider?: string;
-  support_chat_rag_embed_model?: string;
-  support_chat_rag_top_k?: number;
-  support_chat_rag_chunk_size?: number;
-  support_chat_rag_chunk_overlap?: number;
 
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
@@ -1506,40 +1362,6 @@ export async function updateRectifierSettings(
   return data;
 }
 
-// ==================== Fal Upscale Settings ====================
-
-/** fal upscale 系统配置（OpenAI 出图回包分辨率不足时同步放大）。 */
-export interface FalUpscaleSettings {
-  endpoint: string;
-  timeout_seconds: number;
-  /** token 仅回显是否已设置，不回显明文 */
-  token_set: boolean;
-}
-
-/** 更新入参：token 为空表示保留现有 token。 */
-export interface UpdateFalUpscaleSettings {
-  endpoint: string;
-  timeout_seconds: number;
-  token: string;
-}
-
-export async function getFalUpscaleSettings(): Promise<FalUpscaleSettings> {
-  const { data } = await apiClient.get<FalUpscaleSettings>(
-    "/admin/settings/fal-upscale",
-  );
-  return data;
-}
-
-export async function updateFalUpscaleSettings(
-  settings: UpdateFalUpscaleSettings,
-): Promise<FalUpscaleSettings> {
-  const { data } = await apiClient.put<FalUpscaleSettings>(
-    "/admin/settings/fal-upscale",
-    settings,
-  );
-  return data;
-}
-
 // ==================== OpenAI Fast Policy Settings ====================
 
 /**
@@ -1672,38 +1494,6 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
-// ── Support Chat：外部 LLM 凭据探活（change-support-chat-external-llm §4） ──
-//
-// 让 admin 在 Settings 页里点 "Test connection" 探测一下当前填的 base_url + api_key
-// 是否能 reach 到一个 OpenAI-compatible 上游。后端会 5s 超时 POST 一个 max_tokens=1
-// 的 ping payload，并把结果归一化成 ok/latency/status_code/error 四字段返回。
-export interface TestSupportChatLLMConnectionRequest {
-  base_url: string;
-  /** 可以是 cleartext，也可以是后端 GET 下发的掩码——后端会识别掩码并替换为已存值。 */
-  api_key: string;
-  /** 可选：缺省时后端取 support_chat_model（gpt-4o-mini）。 */
-  model?: string;
-}
-
-export interface TestSupportChatLLMConnectionResult {
-  ok: boolean;
-  latency_ms: number;
-  /** 没真正发出 HTTP（如 invalid_base_url）时为 null。 */
-  status_code: number | null;
-  /** 归一化错误码：timeout / dns_lookup_failed / connection_refused / tls_error / invalid_base_url / missing_api_key / upstream non-2xx / 或上游 error.message 原文。 */
-  error?: string;
-}
-
-export async function adminTestSupportChatLLMConnection(
-  payload: TestSupportChatLLMConnectionRequest,
-): Promise<TestSupportChatLLMConnectionResult> {
-  const { data } = await apiClient.post<TestSupportChatLLMConnectionResult>(
-    "/admin/support/chat/test-llm-connection",
-    payload,
-  );
-  return data;
-}
-
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -1727,8 +1517,6 @@ export const settingsAPI = {
   updateStreamTimeoutSettings,
   getRectifierSettings,
   updateRectifierSettings,
-  getFalUpscaleSettings,
-  updateFalUpscaleSettings,
   getBetaPolicySettings,
   updateBetaPolicySettings,
   getWebSearchEmulationConfig,

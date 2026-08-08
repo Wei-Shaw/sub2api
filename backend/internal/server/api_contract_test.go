@@ -5,7 +5,6 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -50,10 +49,6 @@ func TestAPIContracts(t *testing.T) {
 				"message": "success",
 				"data": {
 					"id": 1,
-					"account_id": "1719905235756637",
-					"external_user_id": "1719905235756637",
-					"identity_type": "root",
-					"must_change_password": false,
 					"email": "alice@example.com",
 					"email_bound": true,
 					"username": "alice",
@@ -235,7 +230,6 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
-					"fallback_group_ids": [],
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
@@ -287,7 +281,6 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
-							"fallback_group_ids": [],
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
@@ -396,11 +389,6 @@ func TestAPIContracts(t *testing.T) {
 						"max_reasoning_effort": "",
 						"reasoning_effort_mappings": null,
 						"rpm_limit": 0,
-						"kiro_auto_sticky_enabled": false,
-						"kiro_sticky_session_ttl_seconds": 0,
-						"kiro_cache_emulation_enabled": false,
-						"kiro_endpoint_mode": "q",
-						"kiro_cache_emulation_ratio": 0,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -734,15 +722,6 @@ func TestAPIContracts(t *testing.T) {
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
-						"trusted_proxies_dynamic_enabled": false,
-						"trusted_proxies_dynamic_sources": [
-							{"id":"cloudflare-v4","name":"Cloudflare IPv4","url":"https://www.cloudflare.com/ips-v4","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
-							{"id":"cloudflare-v6","name":"Cloudflare IPv6","url":"https://www.cloudflare.com/ips-v6","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
-							{"id":"cnmcdn","name":"CNM CDN","url":"https://cnmcdn.net/ip1.txt","enabled":false,"interval_seconds":86400,"timeout_seconds":30}
-						],
-						"trusted_proxies_dynamic_extra_cidrs": [],
-						"trusted_proxies_static_cidrs": [],
-						"trusted_proxies_dynamic_source_statuses": [],
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -762,16 +741,18 @@ func TestAPIContracts(t *testing.T) {
 					"turnstile_enabled": true,
 					"turnstile_site_key": "site-key",
 					"turnstile_secret_key_configured": true,
-					"captcha_provider": "turnstile",
-					"captcha_enabled": true,
-					"captcha_site_key": "site-key",
-					"captcha_secret_key_configured": true,
-					"captcha_tencent_secret_id_configured": false,
-					"captcha_tencent_secret_key_configured": false,
-					"captcha_config": {
-						"enabled": "true",
-						"site_key": "site-key"
-					},
+					"tencent_captcha_enabled": false,
+					"tencent_captcha_app_id": "",
+					"tencent_captcha_app_secret_key_configured": false,
+					"tencent_captcha_cloud_secret_id_configured": false,
+					"tencent_captcha_cloud_secret_key_configured": false,
+					"tencent_captcha_region": "cn",
+					"aliyun_captcha_enabled": false,
+					"aliyun_captcha_access_key_id": "",
+					"aliyun_captcha_access_key_secret_configured": false,
+					"aliyun_captcha_scene_id": "",
+					"aliyun_captcha_prefix": "",
+					"aliyun_captcha_region": "cn",
 						"linuxdo_connect_enabled": false,
 						"linuxdo_connect_client_id": "",
 						"linuxdo_connect_client_secret_configured": false,
@@ -835,13 +816,6 @@ func TestAPIContracts(t *testing.T) {
 						"api_key_acl_trust_forwarded_ip": false,
 					"forwarded_client_ip_headers": [],
 					"contact_info": "support",
-					"company_upgrade_charge_enabled": true,
-					"company_upgrade_fee": 20,
-					"company_applications_enabled": false,
-					"company_iam_enabled": false,
-					"company_public_ids_finalized": false,
-					"company_billing_integration_enabled": false,
-					"company_documentation_url": "",
 					"doc_url": "https://docs.example.com",
 					"auth_source_default_email_balance": 0,
 					"auth_source_default_email_concurrency": 5,
@@ -881,7 +855,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"kiro":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}, "fal":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -905,7 +879,6 @@ func TestAPIContracts(t *testing.T) {
 						"identity_patch_prompt": "",
 						"invitation_code_enabled": false,
 						"home_content": "",
-						"home_product_menu_items": [],
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
@@ -965,12 +938,13 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
 					"custom_menu_items": [],
-					"custom_menu_embed_auth_params": false,
-					"custom_menu_version": "",
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1027,39 +1001,7 @@ func TestAPIContracts(t *testing.T) {
 					"wechat_connect_redirect_url": "",
 					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
 					"wechat_connect_scopes": "snsapi_login",
-					"allow_user_view_error_requests": false,
-					"support_ticket_enabled": false,
-					"support_ticket_categories": ["充值", "账号", "API", "Bug", "其他"],
-					"support_ticket_default_priority": "normal",
-					"support_ticket_notify_emails": [],
-					"support_chat_enabled": false,
-					"support_chat_excluded_routes": ["/payment", "/purchase", "/admin/*"],
-					"support_chat_anonymous_llm": false,
-					"support_chat_title": "客服小助手",
-					"support_chat_welcome": "你好，请问有什么可以帮助你？",
-					"support_chat_icon": "💬",
-					"support_chat_llm_enabled": false,
-					"support_chat_llm_base_url": "",
-					"support_chat_llm_api_key": "",
-					"support_chat_embedding_base_url": "",
-					"support_chat_embedding_api_key": "",
-					"support_chat_model": "gpt-4o-mini",
-					"support_chat_system_prompt": "",
-					"support_chat_max_turns": 5,
-					"support_chat_max_request_tokens": 16000,
-					"support_chat_rl_user_per_day": 50,
-					"support_chat_rl_user_per_min": 5,
-					"support_chat_rl_ip_per_hour": 20,
-					"support_chat_faqs": null,
-					"support_chat_rag_enabled": false,
-					"support_chat_rag_doc_url": "",
-					"support_chat_rag_doc_depth": 1,
-					"support_chat_rag_doc_cron": "daily-03",
-					"support_chat_rag_embed_provider": "gemini",
-					"support_chat_rag_embed_model": "gemini-embedding-001",
-					"support_chat_rag_top_k": 5,
-					"support_chat_rag_chunk_size": 800,
-					"support_chat_rag_chunk_overlap": 80
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1120,15 +1062,6 @@ func TestAPIContracts(t *testing.T) {
 						"session_binding_enabled": false,
 						"step_up_enabled": false,
 						"audit_log_retention_days": 180,
-						"trusted_proxies_dynamic_enabled": false,
-						"trusted_proxies_dynamic_sources": [
-							{"id":"cloudflare-v4","name":"Cloudflare IPv4","url":"https://www.cloudflare.com/ips-v4","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
-							{"id":"cloudflare-v6","name":"Cloudflare IPv6","url":"https://www.cloudflare.com/ips-v6","enabled":false,"interval_seconds":86400,"timeout_seconds":30},
-							{"id":"cnmcdn","name":"CNM CDN","url":"https://cnmcdn.net/ip1.txt","enabled":false,"interval_seconds":86400,"timeout_seconds":30}
-						],
-						"trusted_proxies_dynamic_extra_cidrs": [],
-						"trusted_proxies_static_cidrs": [],
-						"trusted_proxies_dynamic_source_statuses": [],
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
@@ -1148,16 +1081,18 @@ func TestAPIContracts(t *testing.T) {
 					"turnstile_enabled": false,
 					"turnstile_site_key": "",
 					"turnstile_secret_key_configured": false,
-					"captcha_provider": "turnstile",
-					"captcha_enabled": false,
-					"captcha_site_key": "",
-					"captcha_secret_key_configured": false,
-					"captcha_tencent_secret_id_configured": false,
-					"captcha_tencent_secret_key_configured": false,
-					"captcha_config": {
-						"enabled": "false",
-						"site_key": ""
-					},
+					"tencent_captcha_enabled": false,
+					"tencent_captcha_app_id": "",
+					"tencent_captcha_app_secret_key_configured": false,
+					"tencent_captcha_cloud_secret_id_configured": false,
+					"tencent_captcha_cloud_secret_key_configured": false,
+					"tencent_captcha_region": "cn",
+					"aliyun_captcha_enabled": false,
+					"aliyun_captcha_access_key_id": "",
+					"aliyun_captcha_access_key_secret_configured": false,
+					"aliyun_captcha_scene_id": "",
+					"aliyun_captcha_prefix": "",
+					"aliyun_captcha_region": "cn",
 					"linuxdo_connect_enabled": false,
 					"linuxdo_connect_client_id": "",
 					"linuxdo_connect_client_secret_configured": false,
@@ -1217,22 +1152,14 @@ func TestAPIContracts(t *testing.T) {
 					"api_key_acl_trust_forwarded_ip": false,
 					"forwarded_client_ip_headers": [],
 					"contact_info": "",
-					"company_upgrade_charge_enabled": true,
-					"company_upgrade_fee": 20,
-					"company_applications_enabled": false,
-					"company_iam_enabled": false,
-					"company_public_ids_finalized": false,
-					"company_billing_integration_enabled": false,
-					"company_documentation_url": "",
 					"doc_url": "",
 					"home_content": "",
-					"home_product_menu_items": [],
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"kiro":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}, "fal":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1241,8 +1168,6 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_wechat_platform_quotas": null,
 					"auth_source_default_dingtalk_platform_quotas": null,
 					"custom_menu_items": [],
-					"custom_menu_embed_auth_params": false,
-					"custom_menu_version": "",
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
@@ -1318,6 +1243,9 @@ func TestAPIContracts(t *testing.T) {
 					"openai_advanced_scheduler_effective_weight_previous_response": "5",
 					"openai_advanced_scheduler_effective_weight_session_sticky": "3",
 					"openai_codex_user_agent":           "",
+					"openai_codex_client_version":       "",
+					"openai_codex_client_version_synced": "",
+					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
@@ -1412,39 +1340,7 @@ func TestAPIContracts(t *testing.T) {
 					"auth_source_default_dingtalk_grant_on_signup": false,
 					"auth_source_default_dingtalk_grant_on_first_bind": false,
 					"force_email_on_third_party_signup": false,
-					"allow_user_view_error_requests": false,
-					"support_ticket_enabled": false,
-					"support_ticket_categories": ["充值", "账号", "API", "Bug", "其他"],
-					"support_ticket_default_priority": "normal",
-					"support_ticket_notify_emails": [],
-					"support_chat_enabled": false,
-					"support_chat_excluded_routes": ["/payment", "/purchase", "/admin/*"],
-					"support_chat_anonymous_llm": false,
-					"support_chat_title": "客服小助手",
-					"support_chat_welcome": "你好，请问有什么可以帮助你？",
-					"support_chat_icon": "💬",
-					"support_chat_llm_enabled": false,
-					"support_chat_llm_base_url": "",
-					"support_chat_llm_api_key": "",
-					"support_chat_embedding_base_url": "",
-					"support_chat_embedding_api_key": "",
-					"support_chat_model": "gpt-4o-mini",
-					"support_chat_system_prompt": "",
-					"support_chat_max_turns": 5,
-					"support_chat_max_request_tokens": 16000,
-					"support_chat_rl_user_per_day": 50,
-					"support_chat_rl_user_per_min": 5,
-					"support_chat_rl_ip_per_hour": 20,
-					"support_chat_faqs": null,
-					"support_chat_rag_enabled": false,
-					"support_chat_rag_doc_url": "",
-					"support_chat_rag_doc_depth": 1,
-					"support_chat_rag_doc_cron": "daily-03",
-					"support_chat_rag_embed_provider": "gemini",
-					"support_chat_rag_embed_model": "gemini-embedding-001",
-					"support_chat_rag_top_k": 5,
-					"support_chat_rag_chunk_size": 800,
-					"support_chat_rag_chunk_overlap": 80
+					"allow_user_view_error_requests": false
 				}
 			}`,
 		},
@@ -1488,76 +1384,6 @@ func TestAPIContracts(t *testing.T) {
 	}
 }
 
-func TestAPIKeyFallbackGroupsPersistThroughHTTP(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	deps := newContractDeps(t)
-	deps.groupRepo.SetActive([]service.Group{
-		{ID: 10, Name: "OpenAI Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
-		{ID: 20, Name: "OpenAI Metered", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
-		{ID: 30, Name: "OpenAI Backup Subscription", Platform: service.PlatformOpenAI, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeSubscription},
-	})
-	deps.userSubRepo.SetActiveByUserID(1, []service.UserSubscription{
-		{GroupID: 10},
-		{GroupID: 30},
-	})
-
-	type apiKeyResponse struct {
-		Code int `json:"code"`
-		Data struct {
-			ID               int64   `json:"id"`
-			GroupID          *int64  `json:"group_id"`
-			FallbackGroupIDs []int64 `json:"fallback_group_ids"`
-		} `json:"data"`
-	}
-	decodeAPIKey := func(body string) apiKeyResponse {
-		t.Helper()
-		var payload apiKeyResponse
-		require.NoError(t, json.Unmarshal([]byte(body), &payload))
-		require.Zero(t, payload.Code, body)
-		return payload
-	}
-	headers := map[string]string{"Content-Type": "application/json"}
-
-	status, body := doRequest(t, deps.router, http.MethodPost, "/api/v1/keys",
-		`{"name":"Subscription Key","custom_key":"sk_fallback_contract_123456","group_id":10,"fallback_group_ids":[20,30]}`,
-		headers,
-	)
-	require.Equal(t, http.StatusOK, status, body)
-	created := decodeAPIKey(body)
-	require.Equal(t, int64(100), created.Data.ID)
-	require.Equal(t, ptr(int64(10)), created.Data.GroupID)
-	require.Equal(t, []int64{20, 30}, created.Data.FallbackGroupIDs)
-
-	status, body = doRequest(t, deps.router, http.MethodPut, "/api/v1/keys/100",
-		`{"fallback_group_ids":[30,20]}`,
-		headers,
-	)
-	require.Equal(t, http.StatusOK, status, body)
-	updated := decodeAPIKey(body)
-	require.Equal(t, []int64{30, 20}, updated.Data.FallbackGroupIDs)
-
-	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys/100", "", nil)
-	require.Equal(t, http.StatusOK, status, body)
-	reloaded := decodeAPIKey(body)
-	require.Equal(t, []int64{30, 20}, reloaded.Data.FallbackGroupIDs)
-
-	status, body = doRequest(t, deps.router, http.MethodGet, "/api/v1/keys?page=1&page_size=10", "", nil)
-	require.Equal(t, http.StatusOK, status, body)
-	var listed struct {
-		Code int `json:"code"`
-		Data struct {
-			Items []struct {
-				FallbackGroupIDs []int64 `json:"fallback_group_ids"`
-			} `json:"items"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(body), &listed))
-	require.Zero(t, listed.Code, body)
-	require.Len(t, listed.Data.Items, 1)
-	require.Equal(t, []int64{30, 20}, listed.Data.Items[0].FallbackGroupIDs)
-}
-
 type contractDeps struct {
 	now         time.Time
 	router      http.Handler
@@ -1578,20 +1404,17 @@ func newContractDeps(t *testing.T) *contractDeps {
 	userRepo := &stubUserRepo{
 		users: map[int64]*service.User{
 			1: {
-				ID:             1,
-				AccountID:      "1719905235756637",
-				ExternalUserID: "1719905235756637",
-				IdentityType:   service.IdentityTypeRoot,
-				Email:          "alice@example.com",
-				Username:       "alice",
-				Notes:          "hello",
-				Role:           service.RoleUser,
-				Balance:        12.5,
-				Concurrency:    5,
-				Status:         service.StatusActive,
-				AllowedGroups:  nil,
-				CreatedAt:      now,
-				UpdatedAt:      now,
+				ID:            1,
+				Email:         "alice@example.com",
+				Username:      "alice",
+				Notes:         "hello",
+				Role:          service.RoleUser,
+				Balance:       12.5,
+				Concurrency:   5,
+				Status:        service.StatusActive,
+				AllowedGroups: nil,
+				CreatedAt:     now,
+				UpdatedAt:     now,
 			},
 		},
 	}
@@ -1627,11 +1450,11 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -1662,8 +1485,6 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
 	v1Keys.POST("/keys", apiKeyHandler.Create)
-	v1Keys.GET("/keys/:id", apiKeyHandler.GetByID)
-	v1Keys.PUT("/keys/:id", apiKeyHandler.Update)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
@@ -1755,19 +1576,6 @@ func (r *stubUserRepo) GetFirstAdmin(ctx context.Context) (*service.User, error)
 		}
 	}
 	return nil, service.ErrUserNotFound
-}
-
-func (r *stubUserRepo) ListAdmins(ctx context.Context) ([]service.User, error) {
-	out := make([]service.User, 0)
-	for _, user := range r.users {
-		if user.Role == service.RoleAdmin && user.Status == service.StatusActive {
-			out = append(out, *user)
-		}
-	}
-	if len(out) == 0 {
-		return nil, nil
-	}
-	return out, nil
 }
 
 func (r *stubUserRepo) Update(ctx context.Context, user *service.User, fields service.UserUpdateFields) error {
@@ -1934,18 +1742,12 @@ func (stubGroupRepo) Create(ctx context.Context, group *service.Group) error {
 	return errors.New("not implemented")
 }
 
-func (r *stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
-	for i := range r.active {
-		if r.active[i].ID == id {
-			group := r.active[i]
-			return &group, nil
-		}
-	}
+func (stubGroupRepo) GetByID(ctx context.Context, id int64) (*service.Group, error) {
 	return nil, service.ErrGroupNotFound
 }
 
-func (r *stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
-	return r.GetByID(ctx, id)
+func (stubGroupRepo) GetByIDLite(ctx context.Context, id int64) (*service.Group, error) {
+	return nil, service.ErrGroupNotFound
 }
 
 func (stubGroupRepo) Update(ctx context.Context, group *service.Group) error {
@@ -2391,20 +2193,17 @@ func (stubUserSubscriptionRepo) Create(ctx context.Context, sub *service.UserSub
 func (stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
-func (r *stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	for i := range r.activeByUser[userID] {
-		if r.activeByUser[userID][i].GroupID == groupID {
-			sub := r.activeByUser[userID][i]
-			return &sub, nil
-		}
-	}
-	return nil, service.ErrSubscriptionNotFound
+func (stubUserSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSubscription) error {
 	return errors.New("not implemented")
@@ -2448,10 +2247,10 @@ func (stubUserSubscriptionRepo) UpdateStatus(ctx context.Context, subscriptionID
 func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, periodicStart time.Time) error {
 	return errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {

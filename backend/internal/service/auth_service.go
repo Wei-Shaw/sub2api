@@ -44,6 +44,7 @@ var (
 	ErrInvitationCodeRequired  = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
 	ErrInvitationCodeInvalid   = infraerrors.BadRequest("INVITATION_CODE_INVALID", "invalid or used invitation code")
 	ErrOAuthInvitationRequired = infraerrors.Forbidden("OAUTH_INVITATION_REQUIRED", "invitation code required to complete oauth registration")
+	ErrCaptchaProviderConflict = infraerrors.ServiceUnavailable("CAPTCHA_PROVIDER_CONFLICT", "multiple captcha providers are enabled")
 )
 
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
@@ -54,13 +55,11 @@ const refreshTokenPrefix = "rt_"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
-	UserID             int64  `json:"user_id"`
-	Email              string `json:"email"`
-	Role               string `json:"role"`
-	TokenVersion       int64  `json:"token_version"` // Used to invalidate tokens on password change
-	IdentityType       string `json:"identity_type,omitempty"`
-	AuthzGeneration    int64  `json:"authz_generation,omitempty"`
-	MustChangePassword bool   `json:"must_change_password,omitempty"`
+	UserID          int64  `json:"user_id"`
+	Email           string `json:"email"`
+	Role            string `json:"role"`
+	TokenVersion    int64  `json:"token_version"` // Used to invalidate tokens on password change
+	AuthzGeneration int64  `json:"authz_generation,omitempty"`
 	// SessionID 会话 ID（与 refresh token family 对应），用于单会话撤销与 step-up 授权绑定。
 	SessionID string `json:"sid,omitempty"`
 	// BindingHash 会话指纹哈希（IP+UA），会话绑定开启时校验；空值表示旧 token（平滑升级）。
@@ -77,12 +76,21 @@ type AuthService struct {
 	cfg                   *config.Config
 	settingService        *SettingService
 	emailService          *EmailService
-	captchaService        *CaptchaService
+	turnstileService      *TurnstileService
+	tencentCaptchaService *TencentCaptchaService
+	aliyunCaptchaService  *AliyunCaptchaService
 	emailQueueService     *EmailQueueService
 	promoService          *PromoService
 	affiliateService      *AffiliateService
 	defaultSubAssigner    DefaultSubscriptionAssigner
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+}
+
+type CaptchaProof struct {
+	// TurnstileToken 承载 Cloudflare Turnstile token；阿里云验证码复用该字段承载 captchaVerifyParam
+	TurnstileToken string
+	TencentTicket  string
+	TencentRandstr string
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -105,7 +113,7 @@ func NewAuthService(
 	cfg *config.Config,
 	settingService *SettingService,
 	emailService *EmailService,
-	captchaService *CaptchaService,
+	turnstileService *TurnstileService,
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
@@ -120,7 +128,7 @@ func NewAuthService(
 		cfg:                   cfg,
 		settingService:        settingService,
 		emailService:          emailService,
-		captchaService:        captchaService,
+		turnstileService:      turnstileService,
 		emailQueueService:     emailQueueService,
 		promoService:          promoService,
 		affiliateService:      affiliateService,
@@ -134,6 +142,14 @@ func (s *AuthService) EntClient() *dbent.Client {
 		return nil
 	}
 	return s.entClient
+}
+
+func (s *AuthService) SetTencentCaptchaService(tencentCaptchaService *TencentCaptchaService) {
+	s.tencentCaptchaService = tencentCaptchaService
+}
+
+func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptchaService) {
+	s.aliyunCaptchaService = aliyunCaptchaService
 }
 
 // Register 用户注册，返回token和用户
@@ -377,80 +393,202 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 	}, nil
 }
 
-// VerifyCaptchaForRegister 在注册场景下验证 Captcha。
-// 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成 Captcha 校验，
+// VerifyCaptchaForRegister 在注册场景下验证当前启用的验证码。
+// 当邮箱验证开启且已提交验证码时，说明验证码发送阶段已完成验证码校验，
 // 此处跳过二次校验，避免一次性 token 在注册提交时重复使用导致误报失败。
-func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
+func (s *AuthService) VerifyCaptchaForRegister(ctx context.Context, proof CaptchaProof, remoteIP, verifyCode string) error {
 	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Captcha check on register")
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate captcha check on register")
 		return nil
 	}
-	return s.VerifyCaptcha(ctx, token, remoteIP)
+	return s.VerifyCaptcha(ctx, proof, remoteIP)
 }
 
-// VerifyCaptchaPayloadForRegister 是 captcha_payload 协议下的注册阶段入口（design.md D2）。
-//
-// 与 VerifyCaptchaForRegister 行为完全对齐，仅 payload 携带方式不同。所有 4 个 captcha-gated
-// handler 改造完成后，VerifyCaptchaForRegister 会被废弃。
+func (s *AuthService) VerifyCaptcha(ctx context.Context, proof CaptchaProof, remoteIP string) error {
+	required := s.cfg != nil && s.cfg.Server.Mode == "release" && s.cfg.Turnstile.Required
+	if s.settingService == nil {
+		if required {
+			return ErrTurnstileNotConfigured
+		}
+		return nil
+	}
+
+	providerConfig, err := s.settingService.GetCaptchaProviderConfig(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Failed to read captcha provider settings")
+		return ErrServiceUnavailable
+	}
+	turnstileEnabled := providerConfig.TurnstileEnabled
+	tencentEnabled := providerConfig.Tencent.Enabled
+	aliyunEnabled := providerConfig.Aliyun.Enabled
+	if captchaProvidersConflict(turnstileEnabled, tencentEnabled, aliyunEnabled) {
+		return ErrCaptchaProviderConflict
+	}
+	if tencentEnabled {
+		if s.tencentCaptchaService == nil {
+			return ErrTencentCaptchaNotConfigured
+		}
+		return s.tencentCaptchaService.VerifyTicketWithConfig(ctx, providerConfig.Tencent, proof.TencentTicket, proof.TencentRandstr, remoteIP)
+	}
+	if aliyunEnabled {
+		if s.aliyunCaptchaService == nil {
+			return ErrAliyunCaptchaNotConfigured
+		}
+		return s.aliyunCaptchaService.VerifyParamWithConfig(ctx, providerConfig.Aliyun, proof.TurnstileToken)
+	}
+	if turnstileEnabled {
+		if s.turnstileService == nil || strings.TrimSpace(providerConfig.TurnstileSecretKey) == "" {
+			return ErrTurnstileNotConfigured
+		}
+		return s.turnstileService.VerifyTokenWithSecret(ctx, providerConfig.TurnstileSecretKey, proof.TurnstileToken, remoteIP)
+	}
+	if required {
+		return ErrTurnstileNotConfigured
+	}
+	return nil
+}
+
+// VerifyCaptchaPayload keeps the structured captcha_payload API used by organization IAM login.
+func (s *AuthService) VerifyCaptchaPayload(ctx context.Context, payload map[string]string, remoteIP string) error {
+	return s.VerifyCaptcha(ctx, CaptchaProof{
+		TurnstileToken: strings.TrimSpace(payload["token"]),
+		TencentTicket:  strings.TrimSpace(firstNonEmpty(payload["ticket"], payload["tencent_captcha_ticket"])),
+		TencentRandstr: strings.TrimSpace(firstNonEmpty(payload["randstr"], payload["tencent_captcha_randstr"])),
+	}, remoteIP)
+}
+
 func (s *AuthService) VerifyCaptchaPayloadForRegister(ctx context.Context, payload map[string]string, remoteIP, verifyCode string) error {
 	if s.IsEmailVerifyEnabled(ctx) && strings.TrimSpace(verifyCode) != "" {
-		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verify flow detected, skip duplicate Captcha check on register")
 		return nil
 	}
 	return s.VerifyCaptchaPayload(ctx, payload, remoteIP)
 }
 
-// VerifyCaptcha 验证当前启用的人机验证 token。
-func (s *AuthService) VerifyCaptcha(ctx context.Context, token string, remoteIP string) error {
-	return s.VerifyCaptchaPayload(ctx, map[string]string{"token": token}, remoteIP)
+func (s *AuthService) SendIAMRecoveryEmailCode(ctx context.Context, userID int64, email string, locale ...string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
+	}
+	email = strings.TrimSpace(email)
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || !strings.EqualFold(parsed.Address, email) {
+		return infraerrors.BadRequest("RECOVERY_EMAIL_INVALID", "recovery email is invalid")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.StatusEQ(StatusActive)).
+		SetRecoveryEmail(email).
+		ClearRecoveryEmailVerifiedAt().
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	siteName := "Sub2API"
+	if s.settingService != nil {
+		siteName = s.settingService.GetSiteName(ctx)
+	}
+	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
 }
 
-// VerifyCaptchaPayload 是 captcha_payload 协议下的统一入口（design.md D2）。
-//
-// 与历史 VerifyCaptcha(ctx, token, remoteIP) 行为对齐，区别仅在于把 payload 形态从单 token 字符串
-// 拓宽为结构化 map，让 tencent_captcha 的 {ticket, randstr} 等多字段 provider 在 service 层无需特殊分支。
-func (s *AuthService) VerifyCaptchaPayload(ctx context.Context, payload map[string]string, remoteIP string) error {
-	required := s.cfg != nil && s.cfg.Server.Mode == "release" && (s.cfg.Turnstile.Required || s.cfg.Captcha.Required)
-
-	if required {
-		if s.settingService == nil {
-			logger.LegacyPrintf("service.auth", "%s", "[Auth] Captcha required but settings service is not configured")
-			return ErrCaptchaNotConfigured
-		}
-		runtime := s.settingService.GetCaptchaRuntime(ctx)
-		if !runtime.Enabled || runtime.SecretKey == "" {
-			logger.LegacyPrintf("service.auth", "[Auth] Captcha required but not configured (provider=%s enabled=%v secret_configured=%v)", runtime.Provider, runtime.Enabled, runtime.SecretKey != "")
-			if runtime.Provider == CaptchaProviderTurnstile {
-				return ErrTurnstileNotConfigured
-			}
-			return ErrCaptchaNotConfigured
-		}
+func (s *AuthService) VerifyIAMRecoveryEmail(ctx context.Context, userID int64, email, code string) error {
+	if s.emailService == nil || s.entClient == nil {
+		return ErrServiceUnavailable
 	}
-
-	if s.captchaService == nil {
-		if required {
-			logger.LegacyPrintf("service.auth", "%s", "[Auth] Captcha required but service not configured")
-			return ErrCaptchaNotConfigured
-		}
-		return nil // 服务未配置则跳过验证
+	email = strings.TrimSpace(email)
+	if err := s.emailService.VerifyCode(ctx, email, strings.TrimSpace(code)); err != nil {
+		return err
 	}
-
-	if !required && s.settingService != nil {
-		runtime := s.settingService.GetCaptchaRuntime(ctx)
-		if runtime.Enabled && runtime.SecretKey == "" {
-			logger.LegacyPrintf("service.auth", "[Auth] Captcha enabled but secret key not configured (provider=%s)", runtime.Provider)
-		}
+	duplicate, err := s.entClient.User.Query().Where(
+		entuser.IDNEQ(userID),
+		entuser.IdentityTypeEQ(IdentityTypeIAM),
+		entuser.RecoveryEmailEqualFold(email),
+		entuser.RecoveryEmailVerifiedAtNotNil(),
+	).Exist(ctx)
+	if err != nil {
+		return err
 	}
-
-	return s.captchaService.VerifyPayload(ctx, payload, remoteIP)
+	if duplicate {
+		return infraerrors.Conflict("RECOVERY_EMAIL_IN_USE", "recovery email is already in use")
+	}
+	updated, err := s.entClient.User.Update().
+		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.RecoveryEmailEqualFold(email)).
+		SetRecoveryEmailVerifiedAt(time.Now().UTC()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if updated != 1 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
-// IsCaptchaEnabled 检查是否启用人机验证。
-func (s *AuthService) IsCaptchaEnabled(ctx context.Context) bool {
-	if s.captchaService == nil {
+// captchaProvidersConflict 同一时间仅允许启用一家人机验证服务商
+func captchaProvidersConflict(enabled ...bool) bool {
+	count := 0
+	for _, e := range enabled {
+		if e {
+			count++
+		}
+	}
+	return count > 1
+}
+
+// VerifyActionCaptchaIfEnabled 仅保护动作触发的扩展入口（OAuth 登录启动、passkey 登录），
+// 腾讯天御与阿里云验证码启用时拦截；不扩大 Cloudflare Turnstile 的既有覆盖范围。
+func (s *AuthService) VerifyActionCaptchaIfEnabled(ctx context.Context, proof CaptchaProof, remoteIP string) error {
+	if s == nil || s.settingService == nil {
+		return ErrServiceUnavailable
+	}
+
+	providerConfig, err := s.settingService.GetCaptchaProviderConfig(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Failed to read captcha provider settings")
+		return ErrServiceUnavailable
+	}
+	tencentEnabled := providerConfig.Tencent.Enabled
+	aliyunEnabled := providerConfig.Aliyun.Enabled
+	if !tencentEnabled && !aliyunEnabled {
+		return nil
+	}
+	if captchaProvidersConflict(providerConfig.TurnstileEnabled, tencentEnabled, aliyunEnabled) {
+		return ErrCaptchaProviderConflict
+	}
+	if aliyunEnabled {
+		if s.aliyunCaptchaService == nil {
+			return ErrAliyunCaptchaNotConfigured
+		}
+		return s.aliyunCaptchaService.VerifyParamWithConfig(ctx, providerConfig.Aliyun, proof.TurnstileToken)
+	}
+	if s.tencentCaptchaService == nil {
+		return ErrTencentCaptchaNotConfigured
+	}
+	return s.tencentCaptchaService.VerifyTicketWithConfig(
+		ctx,
+		providerConfig.Tencent,
+		proof.TencentTicket,
+		proof.TencentRandstr,
+		remoteIP,
+	)
+}
+
+// VerifyTurnstileForRegister 保留旧内部接口，生产 handler 使用 VerifyCaptchaForRegister。
+func (s *AuthService) VerifyTurnstileForRegister(ctx context.Context, token, remoteIP, verifyCode string) error {
+	return s.VerifyCaptchaForRegister(ctx, CaptchaProof{TurnstileToken: token}, remoteIP, verifyCode)
+}
+
+// VerifyTurnstile 保留旧内部接口，生产 handler 使用 VerifyCaptcha。
+func (s *AuthService) VerifyTurnstile(ctx context.Context, token string, remoteIP string) error {
+	return s.VerifyCaptcha(ctx, CaptchaProof{TurnstileToken: token}, remoteIP)
+}
+
+// IsTurnstileEnabled 检查是否启用Turnstile验证
+func (s *AuthService) IsTurnstileEnabled(ctx context.Context) bool {
+	if s.turnstileService == nil {
 		return false
 	}
-	return s.captchaService.IsEnabled(ctx)
+	return s.turnstileService.IsEnabled(ctx)
 }
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -971,12 +1109,6 @@ func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context
 	if s == nil || user == nil || user.ID <= 0 {
 		return
 	}
-	// Identity types without an email (e.g. IAM users identified by login name)
-	// have no email identity to backfill. Skip to avoid unnecessary work and to
-	// prevent operating on a nil identity downstream.
-	if strings.TrimSpace(user.Email) == "" {
-		return
-	}
 	identity, created := s.ensureEmailAuthIdentity(ctx, user, "auth_service_login_backfill")
 	if s.shouldApplyEmailFirstBindDefaults(ctx, user.ID, identity, created) {
 		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, user.ID, "email"); err != nil {
@@ -991,15 +1123,15 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	identity *dbent.AuthIdentity,
 	created bool,
 ) bool {
-	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
-		return false
-	}
 	source := emailAuthIdentitySource(identity.Metadata)
 	if source == "auth_service_login_backfill" {
 		return false
 	}
 	if created {
 		return true
+	}
+	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
+		return false
 	}
 	if source != "auth_service_dual_write" {
 		return false
@@ -1246,15 +1378,12 @@ func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash str
 	}
 
 	claims := &JWTClaims{
-		UserID:             user.ID,
-		Email:              user.Email,
-		Role:               user.Role,
-		TokenVersion:       resolvedTokenVersion(user),
-		IdentityType:       user.IdentityType,
-		AuthzGeneration:    user.AuthzGeneration,
-		MustChangePassword: user.MustChangePassword,
-		SessionID:          sessionID,
-		BindingHash:        bindingHash,
+		UserID:       user.ID,
+		Email:        user.Email,
+		Role:         user.Role,
+		TokenVersion: resolvedTokenVersion(user),
+		SessionID:    sessionID,
+		BindingHash:  bindingHash,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -1354,10 +1483,11 @@ func (s *AuthService) IsPasswordResetEnabled(ctx context.Context) bool {
 // shouldProceed is false when we should silently return success (to prevent enumeration)
 func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendBaseURL string) (string, string, bool) {
 	// Check if user exists (but don't reveal this to the caller)
-	user, err := s.resolvePasswordResetUser(ctx, email)
+	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for unknown email")
+			// Security: Log but don't reveal that user doesn't exist
+			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for non-existent email: %s", email)
 			return "", "", false
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email for password reset: %v", err)
@@ -1366,7 +1496,7 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 
 	// Check if user is active
 	if !user.IsActive() {
-		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user")
+		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
 		return "", "", false
 	}
 
@@ -1380,97 +1510,6 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	resetURL := fmt.Sprintf("%s/reset-password", strings.TrimSuffix(frontendBaseURL, "/"))
 
 	return siteName, resetURL, true
-}
-
-// resolvePasswordResetUser preserves personal email recovery while allowing a
-// verified IAM recovery address. Recovery addresses are never login identifiers.
-func (s *AuthService) resolvePasswordResetUser(ctx context.Context, email string) (*User, error) {
-	email = strings.TrimSpace(email)
-	if user, err := s.userRepo.GetByEmail(ctx, email); err == nil {
-		return user, nil
-	} else if !errors.Is(err, ErrUserNotFound) {
-		return nil, err
-	}
-	if s.entClient == nil {
-		return nil, ErrUserNotFound
-	}
-	ids, err := s.entClient.User.Query().
-		Where(
-			entuser.IdentityTypeEQ(IdentityTypeIAM),
-			entuser.RecoveryEmailEqualFold(email),
-			entuser.RecoveryEmailVerifiedAtNotNil(),
-		).
-		Limit(2).
-		IDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) != 1 {
-		return nil, ErrUserNotFound
-	}
-	return s.userRepo.GetByID(ctx, ids[0])
-}
-
-// SendIAMRecoveryEmailCode stores the requested address as unverified before
-// sending a code. A failed delivery leaves no trusted recovery route behind.
-func (s *AuthService) SendIAMRecoveryEmailCode(ctx context.Context, userID int64, email string, locale ...string) error {
-	if s.emailService == nil || s.entClient == nil {
-		return ErrServiceUnavailable
-	}
-	email = strings.TrimSpace(email)
-	parsed, err := mail.ParseAddress(email)
-	if err != nil || !strings.EqualFold(parsed.Address, email) {
-		return infraerrors.BadRequest("RECOVERY_EMAIL_INVALID", "recovery email is invalid")
-	}
-	updated, err := s.entClient.User.Update().
-		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.StatusEQ(StatusActive)).
-		SetRecoveryEmail(email).
-		ClearRecoveryEmailVerifiedAt().
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	if updated != 1 {
-		return ErrUserNotFound
-	}
-	siteName := "Sub2API"
-	if s.settingService != nil {
-		siteName = s.settingService.GetSiteName(ctx)
-	}
-	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
-}
-
-func (s *AuthService) VerifyIAMRecoveryEmail(ctx context.Context, userID int64, email, code string) error {
-	if s.emailService == nil || s.entClient == nil {
-		return ErrServiceUnavailable
-	}
-	email = strings.TrimSpace(email)
-	if err := s.emailService.VerifyCode(ctx, email, strings.TrimSpace(code)); err != nil {
-		return err
-	}
-	duplicate, err := s.entClient.User.Query().Where(
-		entuser.IDNEQ(userID),
-		entuser.IdentityTypeEQ(IdentityTypeIAM),
-		entuser.RecoveryEmailEqualFold(email),
-		entuser.RecoveryEmailVerifiedAtNotNil(),
-	).Exist(ctx)
-	if err != nil {
-		return err
-	}
-	if duplicate {
-		return infraerrors.Conflict("RECOVERY_EMAIL_IN_USE", "recovery email is already in use")
-	}
-	updated, err := s.entClient.User.Update().
-		Where(entuser.IDEQ(userID), entuser.IdentityTypeEQ(IdentityTypeIAM), entuser.RecoveryEmailEqualFold(email)).
-		SetRecoveryEmailVerifiedAt(time.Now().UTC()).
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	if updated != 1 {
-		return ErrUserNotFound
-	}
-	return nil
 }
 
 // RequestPasswordReset 请求密码重置（同步发送）
@@ -1539,7 +1578,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	}
 
 	// Get user
-	user, err := s.resolvePasswordResetUser(ctx, email)
+	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return ErrInvalidResetToken // Token was valid but user was deleted
@@ -1559,16 +1598,13 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		return fmt.Errorf("hash password: %w", err)
 	}
 
-	// Update password and generations atomically so existing access tokens and
-	// organization authorization caches become stale immediately.
-	if s.entClient == nil {
-		return ErrServiceUnavailable
-	}
-	if _, err := s.entClient.User.UpdateOneID(user.ID).
-		SetPasswordHash(hashedPassword).
-		SetMustChangePassword(false).
-		AddAuthzGeneration(1).
-		Save(ctx); err != nil {
+	// Update password and increment TokenVersion
+	user.PasswordHash = hashedPassword
+	user.TokenVersion++ // Invalidate all existing tokens
+
+	// TokenVersion 无对应数据库列（见 resolvedTokenVersion：由 email+password_hash 指纹推导），
+	// 写回 password_hash 本身即可让旧 token 失效。
+	if err := s.userRepo.Update(ctx, user, UserUpdateFields{PasswordHash: true}); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error updating password for user %d: %v", user.ID, err)
 		return ErrServiceUnavailable
 	}
@@ -1579,7 +1615,7 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 		// Don't return error - password was already changed successfully
 	}
 
-	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user %d", user.ID)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user: %s", email)
 	return nil
 }
 

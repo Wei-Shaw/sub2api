@@ -110,11 +110,15 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	t.Parallel()
 
 	upstreamModel := "claude-sonnet-4-20250514"
+	upstreamResponseModel := "claude-sonnet-4-20250513"
+	upstreamModelMismatch := true
 	log := &service.UsageLog{
-		RequestID:      "req_4",
-		Model:          upstreamModel,
-		RequestedModel: "claude-sonnet-4",
-		UpstreamModel:  &upstreamModel,
+		RequestID:             "req_4",
+		Model:                 upstreamModel,
+		RequestedModel:        "claude-sonnet-4",
+		UpstreamModel:         &upstreamModel,
+		UpstreamResponseModel: &upstreamResponseModel,
+		UpstreamModelMismatch: &upstreamModelMismatch,
 	}
 
 	userDTO := UsageLogFromService(log)
@@ -126,10 +130,14 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	userJSON, err := json.Marshal(userDTO)
 	require.NoError(t, err)
 	require.NotContains(t, string(userJSON), "upstream_model")
+	require.NotContains(t, string(userJSON), "upstream_response_model")
+	require.NotContains(t, string(userJSON), "upstream_model_mismatch")
 
 	adminJSON, err := json.Marshal(adminDTO)
 	require.NoError(t, err)
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
+	require.Contains(t, string(adminJSON), `"upstream_response_model":"claude-sonnet-4-20250513"`)
+	require.Contains(t, string(adminJSON), `"upstream_model_mismatch":true`)
 }
 
 func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {

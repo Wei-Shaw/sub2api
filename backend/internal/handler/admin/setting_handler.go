@@ -49,37 +49,12 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func cloneStringMap(src map[string]string) map[string]string {
-	dst := make(map[string]string, len(src))
-	for key, value := range src {
-		dst[key] = value
-	}
-	return dst
-}
-
-func captchaEditableFields(provider string) (publicFields, secretFields []string) {
-	switch provider {
-	case service.CaptchaProviderTurnstile, service.CaptchaProviderHcaptcha:
-		return []string{"site_key"}, []string{"secret_key"}
-	case service.CaptchaProviderTencent:
-		return []string{"captcha_app_id"}, []string{"app_secret_key", "secret_id", "secret_key"}
-	default:
-		return nil, nil
-	}
-}
-
-func captchaPrimarySiteField(provider string) string {
-	if provider == service.CaptchaProviderTencent {
-		return "captcha_app_id"
-	}
-	return "site_key"
-}
-
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService           *service.SettingService
 	emailService             *service.EmailService
-	captchaService           *service.CaptchaService
+	turnstileService         *service.TurnstileService
+	aliyunCaptchaService     *service.AliyunCaptchaService
 	opsService               *service.OpsService
 	paymentConfigService     *service.PaymentConfigService
 	paymentService           *service.PaymentService
@@ -90,11 +65,11 @@ type SettingHandler struct {
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, captchaService *service.CaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
-		captchaService:       captchaService,
+		turnstileService:     turnstileService,
 		opsService:           opsService,
 		paymentConfigService: paymentConfigService,
 		paymentService:       paymentService,
@@ -106,6 +81,37 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetAliyunCaptchaService attaches the Aliyun captcha credential validator without
+// changing the constructor signature used by existing unit tests.
+func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.AliyunCaptchaService) {
+	h.aliyunCaptchaService = aliyunCaptchaService
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if src == nil {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+func captchaEditableFields(provider string) ([]string, []string) {
+	if provider == service.CaptchaProviderTencent {
+		return []string{"enabled", "captcha_app_id"}, []string{"app_secret_key", "secret_id", "secret_key"}
+	}
+	return []string{"enabled", "site_key"}, []string{"secret_key"}
+}
+
+func captchaPrimarySiteField(provider string) string {
+	if provider == service.CaptchaProviderTencent {
+		return "captcha_app_id"
+	}
+	return "site_key"
 }
 
 // SetStepUpDeps attaches the services backing the step-up switch preconditions
@@ -167,19 +173,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PasskeyRPOrigins:                                       passkeyRPOrigins,
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
-		CompanyUpgradeChargeEnabled:                            settings.CompanyUpgradeChargeEnabled,
-		CompanyUpgradeFee:                                      settings.CompanyUpgradeFee,
-		CompanyApplicationsEnabled:                             settings.CompanyApplicationsEnabled,
-		CompanyIAMEnabled:                                      settings.CompanyIAMEnabled,
-		CompanyPublicIDsFinalized:                              settings.CompanyPublicIDsFinalized,
-		CompanyBillingIntegrationEnabled:                       settings.CompanyBillingIntegrationEnabled,
-		CompanyDocumentationURL:                                settings.CompanyDocumentationURL,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
-		TrustedProxiesDynamicEnabled:                           settings.TrustedProxiesDynamicEnabled,
-		TrustedProxiesDynamicSources:                           settings.TrustedProxiesDynamicSources,
-		TrustedProxiesDynamicExtraCIDRs:                        settings.TrustedProxiesDynamicExtraCIDRs,
-		TrustedProxiesStaticCIDRs:                              service.GetStaticTrustedProxies(),
-		TrustedProxiesDynamicSourceStatuses:                    service.GetTrustedProxySourceStatuses(),
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                settings.LoginAgreementUpdatedAt,
@@ -194,13 +188,18 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TurnstileEnabled:                                       settings.TurnstileEnabled,
 		TurnstileSiteKey:                                       settings.TurnstileSiteKey,
 		TurnstileSecretKeyConfigured:                           settings.TurnstileSecretKeyConfigured,
-		CaptchaProvider:                                        settings.CaptchaProvider,
-		CaptchaEnabled:                                         settings.CaptchaEnabled,
-		CaptchaSiteKey:                                         settings.CaptchaSiteKey,
-		CaptchaSecretKeyConfigured:                             settings.CaptchaSecretKeyConfigured,
-		CaptchaTencentSecretIDConfigured:                       settings.CaptchaTencentSecretIDConfigured,
-		CaptchaTencentSecretKeyConfigured:                      settings.CaptchaTencentSecretKeyConfigured,
-		CaptchaConfig:                                          service.MaskCaptchaConfigForSettings(settings.CaptchaProvider, settings.CaptchaConfig),
+		TencentCaptchaEnabled:                                  settings.TencentCaptchaEnabled,
+		TencentCaptchaAppID:                                    settings.TencentCaptchaAppID,
+		TencentCaptchaAppSecretKeyConfigured:                   settings.TencentCaptchaAppSecretKeyConfigured,
+		TencentCaptchaCloudSecretIDConfigured:                  settings.TencentCaptchaCloudSecretIDConfigured,
+		TencentCaptchaCloudSecretKeyConfigured:                 settings.TencentCaptchaCloudSecretKeyConfigured,
+		TencentCaptchaRegion:                                   settings.TencentCaptchaRegion,
+		AliyunCaptchaEnabled:                                   settings.AliyunCaptchaEnabled,
+		AliyunCaptchaAccessKeyID:                               settings.AliyunCaptchaAccessKeyID,
+		AliyunCaptchaAccessKeySecretConfigured:                 settings.AliyunCaptchaAccessKeySecretConfigured,
+		AliyunCaptchaSceneID:                                   settings.AliyunCaptchaSceneID,
+		AliyunCaptchaPrefix:                                    settings.AliyunCaptchaPrefix,
+		AliyunCaptchaRegion:                                    settings.AliyunCaptchaRegion,
 		APIKeyACLTrustForwardedIP:                              settings.APIKeyACLTrustForwardedIP,
 		ForwardedClientIPHeaders:                               settings.ForwardedClientIPHeaders,
 		LinuxDoConnectEnabled:                                  settings.LinuxDoConnectEnabled,
@@ -278,7 +277,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ContactInfo:                                            settings.ContactInfo,
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
-		HomeProductMenuItems:                                   dto.ParseCustomMenuItems(settings.HomeProductMenuItems),
 		CompactHomeEnabled:                                     settings.CompactHomeEnabled,
 		HideCcsImportButton:                                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            settings.PurchaseSubscriptionEnabled,
@@ -286,8 +284,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TableDefaultPageSize:                                   settings.TableDefaultPageSize,
 		TablePageSizeOptions:                                   settings.TablePageSizeOptions,
 		CustomMenuItems:                                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
-		CustomMenuEmbedAuthParams:                              settings.CustomMenuEmbedAuthParams,
-		CustomMenuVersion:                                      settings.CustomMenuVersion,
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                                     settings.DefaultConcurrency,
 		DefaultBalance:                                         settings.DefaultBalance,
@@ -327,6 +323,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableClientDatelineNormalization:                      settings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:                            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                                   settings.OpenAICodexUserAgent,
+		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
+		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
+		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,
@@ -407,44 +406,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
-
-		SupportTicketEnabled:         settings.SupportTicketEnabled,
-		SupportTicketCategories:      append([]string(nil), settings.SupportTicketCategories...),
-		SupportTicketDefaultPriority: settings.SupportTicketDefaultPriority,
-		SupportTicketNotifyEmails:    dto.NotifyEmailEntriesFromService(settings.SupportTicketNotifyEmails),
-
-		// 客服浮窗（add-support-chat-widget D2）：admin 端完整暴露 16 个 setting。
-		// excluded_routes / faqs 用 append-copy 避免共享底层 slice。
-		SupportChatEnabled:          settings.SupportChatEnabled,
-		SupportChatExcludedRoutes:   append([]string(nil), settings.SupportChatExcludedRoutes...),
-		SupportChatAnonymousLLM:     settings.SupportChatAnonymousLLM,
-		SupportChatTitle:            settings.SupportChatTitle,
-		SupportChatWelcome:          settings.SupportChatWelcome,
-		SupportChatIcon:             settings.SupportChatIcon,
-		SupportChatLLMEnabled:       settings.SupportChatLLMEnabled,
-		SupportChatLLMBaseURL:       settings.SupportChatLLMBaseURL,
-		SupportChatLLMAPIKey:        settings.SupportChatLLMAPIKey,
-		SupportChatEmbeddingBaseURL: settings.SupportChatEmbeddingBaseURL,
-		SupportChatEmbeddingAPIKey:  settings.SupportChatEmbeddingAPIKey,
-		SupportChatModel:            settings.SupportChatModel,
-		SupportChatSystemPrompt:     settings.SupportChatSystemPrompt,
-		SupportChatMaxTurns:         settings.SupportChatMaxTurns,
-		SupportChatMaxRequestTokens: settings.SupportChatMaxRequestTokens,
-		SupportChatRLUserPerDay:     settings.SupportChatRLUserPerDay,
-		SupportChatRLUserPerMin:     settings.SupportChatRLUserPerMin,
-		SupportChatRLIPPerHour:      settings.SupportChatRLIPPerHour,
-		SupportChatFAQs:             append([]service.SupportChatFAQ(nil), settings.SupportChatFAQs...),
-
-		// 客服知识库 RAG (add-support-knowledge-rag)：9 个 admin-only 字段
-		SupportChatRAGEnabled:       settings.SupportChatRAGEnabled,
-		SupportChatRAGDocURL:        settings.SupportChatRAGDocURL,
-		SupportChatRAGDocDepth:      settings.SupportChatRAGDocDepth,
-		SupportChatRAGDocCron:       settings.SupportChatRAGDocCron,
-		SupportChatRAGEmbedProvider: settings.SupportChatRAGEmbedProvider,
-		SupportChatRAGEmbedModel:    settings.SupportChatRAGEmbedModel,
-		SupportChatRAGTopK:          settings.SupportChatRAGTopK,
-		SupportChatRAGChunkSize:     settings.SupportChatRAGChunkSize,
-		SupportChatRAGChunkOverlap:  settings.SupportChatRAGChunkOverlap,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

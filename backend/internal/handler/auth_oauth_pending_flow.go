@@ -66,22 +66,25 @@ type bindPendingOAuthLoginRequest struct {
 }
 
 type createPendingOAuthAccountRequest struct {
-	Email            string `json:"email" binding:"required,email"`
-	VerifyCode       string `json:"verify_code,omitempty"`
-	Password         string `json:"password" binding:"required,min=6"`
-	InvitationCode   string `json:"invitation_code,omitempty"`
-	AffCode          string `json:"aff_code,omitempty"`
-	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
-	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
+	Email                 string `json:"email" binding:"required,email"`
+	VerifyCode            string `json:"verify_code,omitempty"`
+	Password              string `json:"password" binding:"required,min=6"`
+	TurnstileToken        string `json:"turnstile_token,omitempty"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
+	InvitationCode        string `json:"invitation_code,omitempty"`
+	AffCode               string `json:"aff_code,omitempty"`
+	AdoptDisplayName      *bool  `json:"adopt_display_name,omitempty"`
+	AdoptAvatar           *bool  `json:"adopt_avatar,omitempty"`
 }
 
 type sendPendingOAuthVerifyCodeRequest struct {
-	Email             string            `json:"email" binding:"required,email"`
-	CaptchaPayload    map[string]string `json:"captcha_payload"`
-	CaptchaToken      string            `json:"captcha_token,omitempty"`
-	TurnstileToken    string            `json:"turnstile_token,omitempty"`
-	PendingAuthToken  string            `json:"pending_auth_token,omitempty"`
-	PendingOAuthToken string            `json:"pending_oauth_token,omitempty"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token,omitempty"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket,omitempty"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr,omitempty"`
+	PendingAuthToken      string `json:"pending_auth_token,omitempty"`
+	PendingOAuthToken     string `json:"pending_oauth_token,omitempty"`
 }
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {
@@ -566,11 +569,8 @@ func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
 		return
 	}
 
-	if err := h.authService.VerifyCaptchaPayload(
-		c.Request.Context(),
-		extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken),
-		ip.GetClientIP(c),
-	); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1695,7 +1695,6 @@ func (h *AuthHandler) bindPendingOAuthLogin(c *gin.Context, provider string) {
 	}
 
 	clearCookies()
-	h.issueSsoSession(c, user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
@@ -1758,6 +1757,11 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 	}
 	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1886,7 +1890,6 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 	// createPendingOAuthAccount = 注册新账户，需要把钉钉昵称同步到 users.username 作为初始值
 	h.maybeSyncDingTalkAfterRegistration(c.Request.Context(), session, user.ID)
 	clearCookies()
-	h.issueSsoSession(c, user.ID)
 	writeOAuthTokenPairResponse(c, tokenPair)
 }
 
@@ -1995,6 +1998,21 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		response.Success(c, payload)
 		return
 	}
+	// ─── 安全修复（账号接管 0day）────────────────────────────────────────────
+	// 非终态 session（如 choose_account_action_required）的 TargetUserID 可能来自
+	// 攻击者提交的他人邮箱：createPendingOAuthAccount / SendPendingOAuthVerifyCode
+	// 发现邮箱已存在时会把本 session 指向该邮箱用户，全程无密码、无邮箱验证码、
+	// 无账号所有权证明。若此时带着 adoption decision 继续执行，下方的
+	// applyPendingOAuthAdoption 会把本 OAuth identity 直接绑定到 TargetUserID，
+	// 攻击者随后再次 OAuth 登录即被系统识别为受害者本人（完整账号接管）。
+	// 只有两类 session 允许在此处执行 adoption/binding：
+	//   1. canIssueTokenPair == true —— 登录终态，identity 已安全绑定该用户；
+	//   2. intent == bind_current_user —— 已登录用户主动发起绑定（绑定目标来自登录态 cookie）。
+	// 其余状态一律只返回 payload，不绑定、不消费 session。
+	if !canIssueTokenPair && !strings.EqualFold(strings.TrimSpace(session.Intent), oauthIntentBindCurrentUser) {
+		response.Success(c, payload)
+		return
+	}
 	if !adoptionDecision.hasDecision() {
 		adoptionRequired, _ := payload["adoption_required"].(bool)
 		if adoptionRequired {
@@ -2041,7 +2059,6 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		payload["refresh_token"] = tokenPair.RefreshToken
 		payload["expires_in"] = tokenPair.ExpiresIn
 		payload["token_type"] = "Bearer"
-		h.issueSsoSession(c, loginUser.ID)
 	}
 
 	clearCookies()

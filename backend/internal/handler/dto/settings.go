@@ -3,7 +3,6 @@ package dto
 import (
 	"encoding/json"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -15,16 +14,8 @@ type CustomMenuItem struct {
 	IconSVG    string `json:"icon_svg"`
 	URL        string `json:"url"`
 	PageSlug   string `json:"page_slug,omitempty"`
-	Action     string `json:"action,omitempty"` // "iframe", "same_tab", or "new_tab"
-	Visibility string `json:"visibility"`       // "user" or "admin"
+	Visibility string `json:"visibility"` // "user" or "admin"
 	SortOrder  int    `json:"sort_order"`
-	// DocURL 可选的"使用指南"文档链接。非空时前端在菜单标签旁渲染问号图标，
-	// 点击在新标签打开该链接。空串表示不展示。仅接受绝对 http(s) URL。
-	DocURL string `json:"doc_url,omitempty"`
-	// ShowRedDot 表示该菜单项是否需要显示未读红点提醒。true 时前端在标签旁渲染红点，
-	// 用户首次点击后按 (userId, itemId, custom_menu_version) 粒度做 dismiss 持久化；
-	// no-op 保存不会改变 custom_menu_version，因此不打扰已看过的用户。默认 false。
-	ShowRedDot bool `json:"show_red_dot,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -36,42 +27,38 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled              bool     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
-	FrontendURL                      string   `json:"frontend_url"`
-	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	PasskeyEnabled                   bool     `json:"passkey_enabled"`
-	PasskeyConfigured                bool     `json:"passkey_configured"`
-	PasskeyRPID                      string   `json:"passkey_rp_id"`
-	PasskeyRPOrigins                 []string `json:"passkey_rp_origins"`
-	SessionBindingEnabled            bool     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
-	StepUpEnabled                    bool     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA（upstream）
-	CompanyUpgradeChargeEnabled      bool     `json:"company_upgrade_charge_enabled"` // 企业升级是否收费/冻结资金
-	CompanyUpgradeFee                float64  `json:"company_upgrade_fee"`
-	CompanyApplicationsEnabled       bool     `json:"company_applications_enabled"`
-	CompanyIAMEnabled                bool     `json:"company_iam_enabled"`
-	CompanyPublicIDsFinalized        bool     `json:"company_public_ids_finalized"`
-	CompanyBillingIntegrationEnabled bool     `json:"company_billing_integration_enabled"`
-	CompanyDocumentationURL          string   `json:"company_documentation_url"`
-	AuditLogRetentionDays            int      `json:"audit_log_retention_days"` // 审计日志保留天数
-
-	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
-	TrustedProxiesDynamicEnabled    bool                                `json:"trusted_proxies_dynamic_enabled"`
-	TrustedProxiesDynamicSources    []service.TrustedProxyDynamicSource `json:"trusted_proxies_dynamic_sources"`
-	TrustedProxiesDynamicExtraCIDRs []string                            `json:"trusted_proxies_dynamic_extra_cidrs"`
-	// 静态 config.yaml 里的 CIDR（只读展示；admin 无法改）
-	TrustedProxiesStaticCIDRs []string `json:"trusted_proxies_static_cidrs"`
-	// 各 source 的运行时状态（只读）
-	TrustedProxiesDynamicSourceStatuses []service.TrustedProxySourceStatus `json:"trusted_proxies_dynamic_source_statuses"`
-	LoginAgreementEnabled               bool                               `json:"login_agreement_enabled"`
-	LoginAgreementMode                  string                             `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt             string                             `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments             []LoginAgreementDocument           `json:"login_agreement_documents"`
+	RegistrationEnabled                 bool                                `json:"registration_enabled"`
+	EmailVerifyEnabled                  bool                                `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist    []string                            `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                    bool                                `json:"promo_code_enabled"`
+	PasswordResetEnabled                bool                                `json:"password_reset_enabled"`
+	FrontendURL                         string                              `json:"frontend_url"`
+	InvitationCodeEnabled               bool                                `json:"invitation_code_enabled"`
+	TotpEnabled                         bool                                `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured         bool                                `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	PasskeyEnabled                      bool                                `json:"passkey_enabled"`
+	PasskeyConfigured                   bool                                `json:"passkey_configured"`
+	PasskeyRPID                         string                              `json:"passkey_rp_id"`
+	PasskeyRPOrigins                    []string                            `json:"passkey_rp_origins"`
+	SessionBindingEnabled               bool                                `json:"session_binding_enabled"` // 会话 IP/UA 绑定
+	StepUpEnabled                       bool                                `json:"step_up_enabled"`         // 敏感操作 step-up 2FA
+	CompanyUpgradeChargeEnabled         bool                                `json:"company_upgrade_charge_enabled"`
+	CompanyUpgradeFee                   float64                             `json:"company_upgrade_fee"`
+	CompanyApplicationsEnabled          bool                                `json:"company_applications_enabled"`
+	CompanyIAMEnabled                   bool                                `json:"company_iam_enabled"`
+	CompanyPublicIDsFinalized           bool                                `json:"company_public_ids_finalized"`
+	CompanyBillingIntegrationEnabled    bool                                `json:"company_billing_integration_enabled"`
+	CompanyDocumentationURL             string                              `json:"company_documentation_url"`
+	AuditLogRetentionDays               int                                 `json:"audit_log_retention_days"` // 审计日志保留天数
+	TrustedProxiesDynamicEnabled        bool                                `json:"trusted_proxies_dynamic_enabled"`
+	TrustedProxiesDynamicSources        []service.TrustedProxyDynamicSource `json:"trusted_proxies_dynamic_sources"`
+	TrustedProxiesDynamicExtraCIDRs     []string                            `json:"trusted_proxies_dynamic_extra_cidrs"`
+	TrustedProxiesStaticCIDRs           []string                            `json:"trusted_proxies_static_cidrs"`
+	TrustedProxiesDynamicSourceStatuses []service.TrustedProxySourceStatus  `json:"trusted_proxies_dynamic_source_statuses"`
+	LoginAgreementEnabled               bool                                `json:"login_agreement_enabled"`
+	LoginAgreementMode                  string                              `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt             string                              `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments             []LoginAgreementDocument            `json:"login_agreement_documents"`
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -81,31 +68,30 @@ type SystemSettings struct {
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
 
-	TurnstileEnabled             bool   `json:"turnstile_enabled"`
-	TurnstileSiteKey             string `json:"turnstile_site_key"`
-	TurnstileSecretKeyConfigured bool   `json:"turnstile_secret_key_configured"`
-	// CaptchaProvider 取值：turnstile / hcaptcha / tencent_captcha。
-	CaptchaProvider string `json:"captcha_provider"`
-	CaptchaEnabled  bool   `json:"captcha_enabled"`
-	// CaptchaSiteKey 是当前 provider 的"前端公钥"——provider-aware：
-	//   - Turnstile / hCaptcha: site_key
-	//   - Tencent: captcha_app_id
-	CaptchaSiteKey string `json:"captcha_site_key"`
-	// CaptchaSecretKeyConfigured 表示当前 provider 的主密钥是否已配置：
-	//   - Turnstile / hCaptcha: secret_key
-	//   - Tencent: app_secret_key
-	CaptchaSecretKeyConfigured bool `json:"captcha_secret_key_configured"`
-	// CaptchaTencentSecretIDConfigured 仅在 provider = tencent_captcha 时有意义，对应腾讯云 IAM SecretId。
-	CaptchaTencentSecretIDConfigured bool `json:"captcha_tencent_secret_id_configured"`
-	// CaptchaTencentSecretKeyConfigured 仅在 provider = tencent_captcha 时有意义，对应腾讯云 IAM SecretKey。
-	CaptchaTencentSecretKeyConfigured bool `json:"captcha_tencent_secret_key_configured"`
-	// CaptchaConfig 是已脱敏的 captcha_config 副本。可见字段（D7）：
-	//   - Turnstile / hCaptcha: enabled, site_key
-	//   - Tencent: enabled, captcha_app_id
-	// 任何 *_configured: bool 字段都不会出现在该 map 中——它们走专用字段；前端不应在此读取密钥真值。
-	CaptchaConfig             map[string]string `json:"captcha_config"`
-	APIKeyACLTrustForwardedIP bool              `json:"api_key_acl_trust_forwarded_ip"`
-	ForwardedClientIPHeaders  []string          `json:"forwarded_client_ip_headers"`
+	TurnstileEnabled                       bool              `json:"turnstile_enabled"`
+	TurnstileSiteKey                       string            `json:"turnstile_site_key"`
+	TurnstileSecretKeyConfigured           bool              `json:"turnstile_secret_key_configured"`
+	CaptchaProvider                        string            `json:"captcha_provider"`
+	CaptchaEnabled                         bool              `json:"captcha_enabled"`
+	CaptchaSiteKey                         string            `json:"captcha_site_key"`
+	CaptchaSecretKeyConfigured             bool              `json:"captcha_secret_key_configured"`
+	CaptchaTencentSecretIDConfigured       bool              `json:"captcha_tencent_secret_id_configured"`
+	CaptchaTencentSecretKeyConfigured      bool              `json:"captcha_tencent_secret_key_configured"`
+	CaptchaConfig                          map[string]string `json:"captcha_config"`
+	TencentCaptchaEnabled                  bool              `json:"tencent_captcha_enabled"`
+	TencentCaptchaAppID                    string            `json:"tencent_captcha_app_id"`
+	TencentCaptchaAppSecretKeyConfigured   bool              `json:"tencent_captcha_app_secret_key_configured"`
+	TencentCaptchaCloudSecretIDConfigured  bool              `json:"tencent_captcha_cloud_secret_id_configured"`
+	TencentCaptchaCloudSecretKeyConfigured bool              `json:"tencent_captcha_cloud_secret_key_configured"`
+	TencentCaptchaRegion                   string            `json:"tencent_captcha_region"`
+	AliyunCaptchaEnabled                   bool              `json:"aliyun_captcha_enabled"`
+	AliyunCaptchaAccessKeyID               string            `json:"aliyun_captcha_access_key_id"`
+	AliyunCaptchaAccessKeySecretConfigured bool              `json:"aliyun_captcha_access_key_secret_configured"`
+	AliyunCaptchaSceneID                   string            `json:"aliyun_captcha_scene_id"`
+	AliyunCaptchaPrefix                    string            `json:"aliyun_captcha_prefix"`
+	AliyunCaptchaRegion                    string            `json:"aliyun_captcha_region"`
+	APIKeyACLTrustForwardedIP              bool              `json:"api_key_acl_trust_forwarded_ip"`
+	ForwardedClientIPHeaders               []string          `json:"forwarded_client_ip_headers"`
 
 	LinuxDoConnectEnabled                bool   `json:"linuxdo_connect_enabled"`
 	LinuxDoConnectClientID               string `json:"linuxdo_connect_client_id"`
@@ -187,7 +173,6 @@ type SystemSettings struct {
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
-	HomeProductMenuItems        []CustomMenuItem `json:"home_product_menu_items"`
 	CompactHomeEnabled          bool             `json:"compact_home_enabled"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
@@ -195,8 +180,6 @@ type SystemSettings struct {
 	TableDefaultPageSize        int              `json:"table_default_page_size"`
 	TablePageSizeOptions        []int            `json:"table_page_size_options"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
-	CustomMenuEmbedAuthParams   bool             `json:"custom_menu_embed_auth_params"`
-	CustomMenuVersion           string           `json:"custom_menu_version"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
 	DefaultConcurrency           int                          `json:"default_concurrency"`
@@ -247,6 +230,9 @@ type SystemSettings struct {
 	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
+	OpenAICodexClientVersionSynced         string `json:"openai_codex_client_version_synced"`
+	OpenAICodexVersionAutoSyncEnabled      bool   `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -324,10 +310,6 @@ type SystemSettings struct {
 	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
 	PaymentAlipayMobilePrecreateDeepLink bool `json:"payment_alipay_mobile_precreate_deep_link"`
 
-	// 充值赠送活动配置（与 BalanceRechargeMultiplier 互不影响，叠加方式为加法）。
-	// 当未配置或活动关闭时返回 nil，前端据此判断是否渲染 banner / 红点。
-	PaymentRechargePromo *AdminRechargePromo `json:"payment_recharge_promo,omitempty"`
-
 	// 余额、订阅到期与账号限额通知
 	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold       float64            `json:"balance_low_notify_threshold"`
@@ -365,54 +347,39 @@ type SystemSettings struct {
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas,omitempty"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
-
-	// 客服工单系统（D1）。`SupportTicketEnabled` 同时镜像到 PublicSettings，
-	// 用于前端 sidebar 入口与 POST /support/tickets 的 404 守卫。
-	SupportTicketEnabled         bool     `json:"support_ticket_enabled"`
-	SupportTicketCategories      []string `json:"support_ticket_categories"`
-	SupportTicketDefaultPriority string   `json:"support_ticket_default_priority"`
-	// SupportTicketNotifyEmails 是"工单新建 / 新回复"事件的管理员方向邮件白名单。
-	// 语义与 AccountQuotaNotifyEmails 对齐（disabled=true 项 UI 保留但不发送），
-	// 空列表 → 通知服务退化为向所有 role=admin 用户发送。
-	SupportTicketNotifyEmails []NotifyEmailEntry `json:"support_ticket_notify_emails"`
-
-	// 客服聊天浮窗（add-support-chat-widget）。
-	// 三个 *_enabled / excluded_routes / anonymous_llm 字段同时镜像到 PublicSettings；
-	// 其余为 admin-only。FAQ 走单独的 JSON 数组结构（service.SupportChatFAQ）。
-	SupportChatEnabled        bool     `json:"support_chat_enabled"`
-	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
-	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
-	SupportChatTitle          string   `json:"support_chat_title"`
-	SupportChatWelcome        string   `json:"support_chat_welcome"`
-	SupportChatIcon           string   `json:"support_chat_icon"`
-	SupportChatLLMEnabled     bool     `json:"support_chat_llm_enabled"`
-	// 外部 OpenAI-compatible upstream 凭据。SupportChatLLMAPIKey 在 GET 响应中返回掩码值
-	// （非空时形如 "sk-***" + last4，长度<4 时返回 "***"，空值返回 ""）；
-	// PUT 时若请求值等于当前存储的掩码，则视为"未修改"——后端不会回写该字段。
-	SupportChatLLMBaseURL       string                   `json:"support_chat_llm_base_url"`
-	SupportChatLLMAPIKey        string                   `json:"support_chat_llm_api_key"`
-	SupportChatEmbeddingBaseURL string                   `json:"support_chat_embedding_base_url"`
-	SupportChatEmbeddingAPIKey  string                   `json:"support_chat_embedding_api_key"`
-	SupportChatModel            string                   `json:"support_chat_model"`
-	SupportChatSystemPrompt     string                   `json:"support_chat_system_prompt"`
-	SupportChatMaxTurns         int                      `json:"support_chat_max_turns"`
-	SupportChatMaxRequestTokens int                      `json:"support_chat_max_request_tokens"`
-	SupportChatRLUserPerDay     int                      `json:"support_chat_rl_user_per_day"`
-	SupportChatRLUserPerMin     int                      `json:"support_chat_rl_user_per_min"`
-	SupportChatRLIPPerHour      int                      `json:"support_chat_rl_ip_per_hour"`
-	SupportChatFAQs             []service.SupportChatFAQ `json:"support_chat_faqs"`
-
-	// 客服知识库 RAG（add-support-knowledge-rag）：8 项 admin-only 配置；不暴露给 PublicSettings。
-	SupportChatRAGEnabled       bool   `json:"support_chat_rag_enabled"`
-	SupportChatRAGDocURL        string `json:"support_chat_rag_doc_url"`
-	SupportChatRAGDocDepth      int    `json:"support_chat_rag_doc_depth"`
-	SupportChatRAGDocCron       string `json:"support_chat_rag_doc_cron"`
-	SupportChatRAGEmbedProvider string `json:"support_chat_rag_embed_provider"`
-	SupportChatRAGEmbedModel    string `json:"support_chat_rag_embed_model"`
-	SupportChatRAGTopK          int    `json:"support_chat_rag_top_k"`
-	SupportChatRAGChunkSize     int    `json:"support_chat_rag_chunk_size"`
-	SupportChatRAGChunkOverlap  int    `json:"support_chat_rag_chunk_overlap"`
+	AllowUserViewErrorRequests   bool                     `json:"allow_user_view_error_requests"`
+	SupportTicketEnabled         bool                     `json:"support_ticket_enabled"`
+	SupportTicketCategories      []string                 `json:"support_ticket_categories"`
+	SupportTicketDefaultPriority string                   `json:"support_ticket_default_priority"`
+	SupportTicketNotifyEmails    []NotifyEmailEntry       `json:"support_ticket_notify_emails"`
+	SupportChatEnabled           bool                     `json:"support_chat_enabled"`
+	SupportChatExcludedRoutes    []string                 `json:"support_chat_excluded_routes"`
+	SupportChatAnonymousLLM      bool                     `json:"support_chat_anonymous_llm"`
+	SupportChatTitle             string                   `json:"support_chat_title"`
+	SupportChatWelcome           string                   `json:"support_chat_welcome"`
+	SupportChatIcon              string                   `json:"support_chat_icon"`
+	SupportChatLLMEnabled        bool                     `json:"support_chat_llm_enabled"`
+	SupportChatLLMBaseURL        string                   `json:"support_chat_llm_base_url"`
+	SupportChatLLMAPIKey         string                   `json:"support_chat_llm_api_key"`
+	SupportChatEmbeddingBaseURL  string                   `json:"support_chat_embedding_base_url"`
+	SupportChatEmbeddingAPIKey   string                   `json:"support_chat_embedding_api_key"`
+	SupportChatModel             string                   `json:"support_chat_model"`
+	SupportChatSystemPrompt      string                   `json:"support_chat_system_prompt"`
+	SupportChatMaxTurns          int                      `json:"support_chat_max_turns"`
+	SupportChatMaxRequestTokens  int                      `json:"support_chat_max_request_tokens"`
+	SupportChatRLUserPerDay      int                      `json:"support_chat_rl_user_per_day"`
+	SupportChatRLUserPerMin      int                      `json:"support_chat_rl_user_per_min"`
+	SupportChatRLIPPerHour       int                      `json:"support_chat_rl_ip_per_hour"`
+	SupportChatFAQs              []service.SupportChatFAQ `json:"support_chat_faqs"`
+	SupportChatRAGEnabled        bool                     `json:"support_chat_rag_enabled"`
+	SupportChatRAGDocURL         string                   `json:"support_chat_rag_doc_url"`
+	SupportChatRAGDocDepth       int                      `json:"support_chat_rag_doc_depth"`
+	SupportChatRAGDocCron        string                   `json:"support_chat_rag_doc_cron"`
+	SupportChatRAGEmbedProvider  string                   `json:"support_chat_rag_embed_provider"`
+	SupportChatRAGEmbedModel     string                   `json:"support_chat_rag_embed_model"`
+	SupportChatRAGTopK           int                      `json:"support_chat_rag_top_k"`
+	SupportChatRAGChunkSize      int                      `json:"support_chat_rag_chunk_size"`
+	SupportChatRAGChunkOverlap   int                      `json:"support_chat_rag_chunk_overlap"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -437,9 +404,13 @@ type PublicSettings struct {
 	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
 	TurnstileEnabled                 bool                     `json:"turnstile_enabled"`
 	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
-	CaptchaProvider                  string                   `json:"captcha_provider"`
-	CaptchaEnabled                   bool                     `json:"captcha_enabled"`
-	CaptchaSiteKey                   string                   `json:"captcha_site_key"`
+	TencentCaptchaEnabled            bool                     `json:"tencent_captcha_enabled"`
+	TencentCaptchaAppID              string                   `json:"tencent_captcha_app_id"`
+	TencentCaptchaRegion             string                   `json:"tencent_captcha_region"`
+	AliyunCaptchaEnabled             bool                     `json:"aliyun_captcha_enabled"`
+	AliyunCaptchaSceneID             string                   `json:"aliyun_captcha_scene_id"`
+	AliyunCaptchaPrefix              string                   `json:"aliyun_captcha_prefix"`
+	AliyunCaptchaRegion              string                   `json:"aliyun_captcha_region"`
 	SiteName                         string                   `json:"site_name"`
 	SiteLogo                         string                   `json:"site_logo"`
 	SiteSubtitle                     string                   `json:"site_subtitle"`
@@ -447,7 +418,6 @@ type PublicSettings struct {
 	ContactInfo                      string                   `json:"contact_info"`
 	DocURL                           string                   `json:"doc_url"`
 	HomeContent                      string                   `json:"home_content"`
-	HomeProductMenuItems             []CustomMenuItem         `json:"home_product_menu_items"`
 	CompactHomeEnabled               bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton              bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled      bool                     `json:"purchase_subscription_enabled"`
@@ -455,8 +425,6 @@ type PublicSettings struct {
 	TableDefaultPageSize             int                      `json:"table_default_page_size"`
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  []CustomMenuItem         `json:"custom_menu_items"`
-	CustomMenuEmbedAuthParams        bool                     `json:"custom_menu_embed_auth_params"`
-	CustomMenuVersion                string                   `json:"custom_menu_version"`
 	CustomEndpoints                  []CustomEndpoint         `json:"custom_endpoints"`
 	DingTalkOAuthEnabled             bool                     `json:"dingtalk_oauth_enabled"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
@@ -470,9 +438,6 @@ type PublicSettings struct {
 	GoogleOAuthEnabled               bool                     `json:"google_oauth_enabled"`
 	SoraClientEnabled                bool                     `json:"sora_client_enabled"`
 	BackendModeEnabled               bool                     `json:"backend_mode_enabled"`
-	CompanyApplicationsEnabled       bool                     `json:"company_applications_enabled"`
-	CompanyIAMEnabled                bool                     `json:"company_iam_enabled"`
-	CompanyDocumentationURL          string                   `json:"company_documentation_url"`
 	PaymentEnabled                   bool                     `json:"payment_enabled"`
 	Version                          string                   `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。
@@ -497,18 +462,6 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
-
-	// 客服工单功能开关（categories / default_priority 不在 PublicSettings 暴露）。
-	SupportTicketEnabled bool `json:"support_ticket_enabled"`
-
-	// 客服浮窗（add-support-chat-widget）：与 service.PublicSettings 6 字段保持一致，
-	// 用于浮窗渲染守卫、匿名 LLM 策略，以及 bubble/panel 的外观（标题/欢迎语/图标）。
-	SupportChatEnabled        bool     `json:"support_chat_enabled"`
-	SupportChatExcludedRoutes []string `json:"support_chat_excluded_routes"`
-	SupportChatAnonymousLLM   bool     `json:"support_chat_anonymous_llm"`
-	SupportChatTitle          string   `json:"support_chat_title"`
-	SupportChatWelcome        string   `json:"support_chat_welcome"`
-	SupportChatIcon           string   `json:"support_chat_icon"`
 }
 
 type LoginAgreementDocument struct {
@@ -589,58 +542,6 @@ type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
 }
 
-// AdminRechargePromo 是管理员表单交换的 RechargePromo DTO。
-// 与 service.RechargePromo 同形，但专门挂在 dto 层避免循环依赖。
-type AdminRechargePromo struct {
-	Enabled    bool                     `json:"enabled"`
-	ValidFrom  *time.Time               `json:"valid_from,omitempty"`
-	ValidUntil *time.Time               `json:"valid_until,omitempty"`
-	Tiers      []AdminRechargePromoTier `json:"tiers"`
-	Version    string                   `json:"version,omitempty"`
-}
-
-// AdminRechargePromoTier 一个赠送档位（金额单位 = 网关本币）。
-type AdminRechargePromoTier struct {
-	MinAmount float64 `json:"min_amount"`
-	BonusRate float64 `json:"bonus_rate"`
-}
-
-// AdminRechargePromoFromService 把 service 层结构转为 DTO，nil 透传。
-func AdminRechargePromoFromService(p *service.RechargePromo) *AdminRechargePromo {
-	if p == nil {
-		return nil
-	}
-	tiers := make([]AdminRechargePromoTier, 0, len(p.Tiers))
-	for _, t := range p.Tiers {
-		tiers = append(tiers, AdminRechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
-	}
-	return &AdminRechargePromo{
-		Enabled:    p.Enabled,
-		ValidFrom:  p.ValidFrom,
-		ValidUntil: p.ValidUntil,
-		Tiers:      tiers,
-		Version:    p.Version,
-	}
-}
-
-// ToService 把 DTO 转为 service 层结构，nil 透传；Version 字段会被服务层重新计算并覆盖。
-func (p *AdminRechargePromo) ToService() *service.RechargePromo {
-	if p == nil {
-		return nil
-	}
-	tiers := make([]service.RechargePromoTier, 0, len(p.Tiers))
-	for _, t := range p.Tiers {
-		tiers = append(tiers, service.RechargePromoTier{MinAmount: t.MinAmount, BonusRate: t.BonusRate})
-	}
-	return &service.RechargePromo{
-		Enabled:    p.Enabled,
-		ValidFrom:  p.ValidFrom,
-		ValidUntil: p.ValidUntil,
-		Tiers:      tiers,
-		Version:    p.Version,
-	}
-}
-
 // EmailTemplateEventOption 描述可编辑的通知邮件事件。
 type EmailTemplateEventOption struct {
 	Value       string `json:"value"`
@@ -709,11 +610,6 @@ func ParseCustomMenuItems(raw string) []CustomMenuItem {
 	var items []CustomMenuItem
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []CustomMenuItem{}
-	}
-	for i := range items {
-		if items[i].Action == "" {
-			items[i].Action = "iframe"
-		}
 	}
 	return items
 }

@@ -127,6 +127,9 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, int16(*filters.BillingType))
 	}
 	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
+	if filters.UpstreamModelMismatch != nil {
+		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
+	}
 	if filters.StartTime != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
 		args = append(args, *filters.StartTime)
@@ -155,6 +158,13 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		return nil, nil, err
 	}
 	return logs, page, nil
+}
+
+func upstreamModelMismatchCondition(column string, mismatch bool) string {
+	if mismatch {
+		return column + " IS TRUE"
+	}
+	return column + " IS FALSE"
 }
 
 func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
@@ -437,6 +447,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		model                     string
 		requestedModel            sql.NullString
 		upstreamModel             sql.NullString
+		upstreamResponseModel     sql.NullString
+		upstreamModelMismatch     sql.NullBool
 		groupID                   sql.NullInt64
 		subscriptionID            sql.NullInt64
 		inputTokens               int
@@ -507,6 +519,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&model,
 		&requestedModel,
 		&upstreamModel,
+		&upstreamResponseModel,
+		&upstreamModelMismatch,
 		&groupID,
 		&subscriptionID,
 		&inputTokens,
@@ -673,6 +687,13 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	if upstreamModel.Valid {
 		log.UpstreamModel = &upstreamModel.String
 	}
+	if upstreamResponseModel.Valid {
+		log.UpstreamResponseModel = &upstreamResponseModel.String
+	}
+	if upstreamModelMismatch.Valid {
+		value := upstreamModelMismatch.Bool
+		log.UpstreamModelMismatch = &value
+	}
 	if channelID.Valid {
 		value := channelID.Int64
 		log.ChannelID = &value
@@ -766,6 +787,13 @@ func nullString(v *string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: *v, Valid: true}
+}
+
+func nullBool(v *bool) sql.NullBool {
+	if v == nil {
+		return sql.NullBool{}
+	}
+	return sql.NullBool{Bool: *v, Valid: true}
 }
 
 func nullStringIntMapJSON(v map[string]int) any {

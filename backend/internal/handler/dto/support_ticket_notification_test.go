@@ -6,6 +6,7 @@
 // nil-safe 展平语义：
 //   - service.SupportTicketNotification.ActorUserID *int64（nil / 非 nil）
 //   - service.SupportTicketNotification.ReadAt *time.Time（nil / 非 nil）
+//
 // 前端会对 DTO 字段做直接 v-for，因此必须保证：
 //   - nil → 0 / zero time 而不是 undefined；
 //   - 空切片 → []T{} 而不是 null。

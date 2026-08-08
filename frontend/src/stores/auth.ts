@@ -6,7 +6,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, organizationAPI, passkeyAPI, type IAMLoginRequest, type LoginResponse } from '@/api'
-import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
+import type {
+  User,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  ActionCaptchaRequestProof
+} from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -260,7 +266,6 @@ export const useAuthStore = defineStore('auth', () => {
   async function loginIAM(credentials: IAMLoginRequest): Promise<AuthResponse> {
     try {
       const response = await organizationAPI.loginIAM(credentials)
-      response.user.organization = response.organization
       setAuthFromResponse(response)
       return response
     } catch (error) {
@@ -270,7 +275,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function applyAuthResponse(response: AuthResponse): void {
-	setAuthFromResponse(response)
+    setAuthFromResponse(response)
   }
 
   /**
@@ -291,9 +296,9 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function loginWithPasskey(): Promise<User> {
+  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
     try {
-      const response = await passkeyAPI.login()
+      const response = await passkeyAPI.login(proof)
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {

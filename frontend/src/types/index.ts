@@ -99,24 +99,11 @@ export interface User {
   created_at: string
   updated_at: string
   deleted_at?: string | null
-  account_id?: string
-  external_user_id?: string
-  identity_type?: 'root' | 'iam'
-  login_name?: string
-  iam_principal?: string
-  must_change_password?: boolean
-  organization?: import('./organization').OrganizationContext
-  organization_finance?: import('./organization').FinanceSummary
 }
 
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
-  // IAM 用户绑定的恢复邮箱；普通用户使用 email。
-  recovery_email?: string
-  company_id?: string
-  company_name?: string
-  organization_role?: 'owner' | 'member'
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
@@ -127,11 +114,19 @@ export interface AdminUser extends User {
 export interface LoginRequest {
   email: string
   password: string
-  // captcha_payload 是新协议（design.md D2）：结构化 captcha 凭证，
-  // turnstile / hcaptcha 走 {token: "..."}，腾讯天御走 {ticket, randstr}。
-  // captcha_token / turnstile_token 是兼容窗口字段，下个 release 移除。
-  captcha_payload?: Record<string, string>
-  captcha_token?: string
+  turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
+}
+
+export interface TencentCaptchaRequestProof {
+  tencent_captcha_ticket: string
+  tencent_captcha_randstr: string
+}
+
+// 动作触发式验证码（OAuth 启动、passkey 等入口）的请求凭据：
+// 腾讯填 tencent_captcha_*，阿里云的 captchaVerifyParam 复用 turnstile_token 字段
+export interface ActionCaptchaRequestProof extends Partial<TencentCaptchaRequestProof> {
   turnstile_token?: string
 }
 
@@ -139,9 +134,9 @@ export interface RegisterRequest {
   email: string
   password: string
   verify_code?: string
-  captcha_payload?: Record<string, string>
-  captcha_token?: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   promo_code?: string
   invitation_code?: string
   aff_code?: string
@@ -153,8 +148,6 @@ export interface AffiliateInvitee {
   username: string
   created_at?: string
   total_rebate: number
-  /** 邀请人给该被邀请用户的私人备注；空字符串表示未设置。 */
-  inviter_note: string
 }
 
 export interface UserAffiliateDetail {
@@ -177,9 +170,9 @@ export interface AffiliateTransferResponse {
 
 export interface SendVerifyCodeRequest {
   email: string
-  captcha_payload?: Record<string, string>
-  captcha_token?: string
   turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
   pending_auth_token?: string
   pending_oauth_token?: string
 }
@@ -189,28 +182,14 @@ export interface SendVerifyCodeResponse {
   countdown: number
 }
 
-export type CustomMenuAction = 'iframe' | 'same_tab' | 'new_tab'
-
 export interface CustomMenuItem {
   id: string
   label: string
   icon_svg: string
   url: string
   page_slug?: string
-  action?: CustomMenuAction
   visibility: 'user' | 'admin'
   sort_order: number
-  /**
-   * 可选的"使用指南"文档链接。非空时侧边栏在菜单标签右侧渲染一个问号图标，
-   * 点击在新标签页打开此链接。空串或未设置表示不展示问号图标。
-   */
-  doc_url?: string
-  /**
-   * 是否在该菜单项上展示未读红点提醒。默认 false（不展示）。
-   * 开启后，用户首次看到该菜单项（点击 sidebar / drawer / 直接进入对应页面）
-   * 即会在本地 dismiss；已 dismiss 的项在 custom_menu_version 不变的前提下不会重新亮起来。
-   */
-  show_red_dot?: boolean
 }
 
 export interface CustomEndpoint {
@@ -239,11 +218,18 @@ export interface PublicSettings {
   login_agreement_revision?: string
   login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
+  captcha_provider?: 'turnstile' | 'hcaptcha' | 'tencent_captcha' | 'aliyun_captcha' | string
+  captcha_enabled?: boolean
+  captcha_site_key?: string
+  tencent_captcha_enabled?: boolean
+  tencent_captcha_app_id?: string
+  tencent_captcha_region?: string
   passkey_enabled?: boolean
   turnstile_site_key: string
-  captcha_provider: 'turnstile' | 'hcaptcha' | 'tencent_captcha' | string
-  captcha_enabled: boolean
-  captcha_site_key: string
+  aliyun_captcha_enabled?: boolean
+  aliyun_captcha_scene_id?: string
+  aliyun_captcha_prefix?: string
+  aliyun_captcha_region?: string
   site_name: string
   site_logo: string
   site_subtitle: string
@@ -251,7 +237,6 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
-  home_product_menu_items: CustomMenuItem[]
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
@@ -259,8 +244,6 @@ export interface PublicSettings {
   table_default_page_size: number
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
-  custom_menu_embed_auth_params: boolean
-  custom_menu_version: string
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
   dingtalk_oauth_enabled?: boolean
@@ -273,9 +256,6 @@ export interface PublicSettings {
   github_oauth_enabled: boolean
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
-  company_applications_enabled: boolean
-  company_iam_enabled: boolean
-  company_documentation_url: string
   version: string
   // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
   // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
@@ -291,20 +271,6 @@ export interface PublicSettings {
   model_plaza_require_auth: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
-  /** D1 客服工单总开关；关闭时 sidebar 入口隐藏，POST 工单接口直接 404。 */
-  support_ticket_enabled: boolean
-  /** 客服浮窗总开关；为 false 时浮窗组件不渲染。 */
-  support_chat_enabled: boolean
-  /** 客服浮窗排除路由列表（admin 配 + 前端硬编码合并去重）。每项支持 `*` 后缀通配。 */
-  support_chat_excluded_routes: string[]
-  /** 客服浮窗匿名 LLM 开关；false 时未登录用户输入禁用。 */
-  support_chat_anonymous_llm: boolean
-  /** 浮窗 panel header 标题；空字符串时前端回退到 i18n 默认。 */
-  support_chat_title?: string
-  /** 浮窗 panel 欢迎语；空字符串时前端回退到 i18n 默认。 */
-  support_chat_welcome?: string
-  /** 浮窗 bubble/panel 图标；支持 emoji 或图片 URL；空字符串时前端回退到内置默认头像。 */
-  support_chat_icon?: string
   allow_user_view_error_requests?: boolean
 }
 
@@ -319,8 +285,6 @@ export interface AuthResponse {
 export interface CurrentUserResponse extends User {
   run_mode?: 'standard' | 'simple'
 }
-
-export * from './organization'
 
 // ==================== Subscription Types ====================
 
@@ -559,7 +523,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'fal' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'composite'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -600,13 +564,6 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
-  // 按分辨率 + quality 二维计费矩阵（最高优先级，未命中时回退到上面单维价）
-  // shape: { "1024x1024": { "low": 0.006, "medium": 0.053, "high": 0.211 }, ... }
-  image_pricing_matrix?: Record<string, Record<string, number>> | null
-  // 仅 platform=openai 分组生效：true 时混合调度“fal 优先 + openai 兜底”
-  image_prefer_fal?: boolean
-  image_decode_size_on_rsp?: boolean
-  image_upscale_on_rsp?: boolean
   video_rate_independent: boolean
   video_rate_multiplier: number
   video_price_480p: number | null
@@ -631,11 +588,6 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
-  kiro_auto_sticky_enabled: boolean
-  kiro_sticky_session_ttl_seconds: number
-  kiro_cache_emulation_enabled: boolean
-  kiro_cache_emulation_ratio: number
-  kiro_endpoint_mode?: string
   created_at: string
   updated_at: string
 }
@@ -739,8 +691,6 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
-  fallback_group_ids: number[]
-  organization_subscription_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -770,8 +720,6 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
-  fallback_group_ids?: number[]
-  organization_subscription_id?: number | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -785,8 +733,6 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
-  fallback_group_ids?: number[]
-  organization_subscription_id?: number | null
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -818,10 +764,6 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
-  image_pricing_matrix?: Record<string, Record<string, number>> | null
-  image_prefer_fal?: boolean
-  image_decode_size_on_rsp?: boolean
-  image_upscale_on_rsp?: boolean
   video_rate_independent?: boolean
   video_rate_multiplier?: number
   video_price_480p?: number | null
@@ -853,11 +795,6 @@ export interface CreateGroupRequest {
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
-  kiro_auto_sticky_enabled?: boolean
-  kiro_sticky_session_ttl_seconds?: number
-  kiro_cache_emulation_enabled?: boolean
-  kiro_cache_emulation_ratio?: number
-  kiro_endpoint_mode?: string
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -882,10 +819,6 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
-  image_pricing_matrix?: Record<string, Record<string, number>> | null
-  image_prefer_fal?: boolean
-  image_decode_size_on_rsp?: boolean
-  image_upscale_on_rsp?: boolean
   video_rate_independent?: boolean
   video_rate_multiplier?: number
   video_price_480p?: number | null
@@ -917,16 +850,12 @@ export interface UpdateGroupRequest {
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
-  kiro_auto_sticky_enabled?: boolean
-  kiro_sticky_session_ttl_seconds?: number
-  kiro_cache_emulation_enabled?: boolean
-  kiro_cache_emulation_ratio?: number
-  kiro_endpoint_mode?: string
   copy_accounts_from_group_ids?: number[]
 }
 
 // ==================== Account & Proxy Types ====================
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'kiro' | 'grok' | 'fal'
+
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1165,10 +1094,13 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
-    kiro_credit_unit_price_usd?: number
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    codex_reset_credit_snapshot?: {
+      available_count?: number
+      credits?: { expires_at?: string }[]
+    }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1203,12 +1135,6 @@ export interface Account {
   overload_until: string | null
   temp_unschedulable_until: string | null
   temp_unschedulable_reason: string | null
-  kiro_quota_state?: string | null
-  kiro_quota_reason?: string | null
-  kiro_quota_reset_at?: string | null
-  kiro_runtime_state?: string | null
-  kiro_runtime_reason?: string | null
-  kiro_runtime_reset_at?: string | null
 
   // Session window fields (5-hour window)
   session_window_start: string | null
@@ -1296,7 +1222,6 @@ export interface WindowStats {
   cost: number // Account cost (account multiplier)
   standard_cost?: number
   user_cost?: number
-  kiro_credits?: number
 }
 
 export interface UsageProgress {
@@ -1312,21 +1237,6 @@ export interface UsageProgress {
 export interface AntigravityModelQuota {
   utilization: number // 使用率 0-100
   reset_time: string  // 重置时间 ISO8601
-}
-
-export interface KiroCreditProgress {
-  current_usage: number
-  usage_limit: number
-  percentage_used: number
-  days_remaining?: number
-  expiry_date?: string | null
-}
-
-export interface KiroOverageInfo {
-  current_overages: number
-  overage_charges: number
-  currency_code?: string
-  currency_symbol?: string
 }
 
 export interface GrokQuotaWindow {
@@ -1399,19 +1309,6 @@ export interface AccountUsageInfo {
     amount?: number
     minimum_balance?: number
   }> | null
-  kiro_subscription_name?: string | null
-  kiro_subscription_type?: string | null
-  kiro_reset_at?: string | null
-  kiro_overages_enabled?: boolean
-  kiro_credit?: KiroCreditProgress | null
-  kiro_bonus?: KiroCreditProgress | null
-  kiro_overage?: KiroOverageInfo | null
-  kiro_quota_state?: string | null
-  kiro_quota_reason?: string | null
-  kiro_quota_reset_at?: string | null
-  kiro_runtime_state?: string | null
-  kiro_runtime_reason?: string | null
-  kiro_runtime_reset_at?: string | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean
   forbidden_reason?: string
@@ -1730,12 +1627,6 @@ export interface UsageLog {
   image_output_tokens: number
   image_output_cost: number
 
-  // 异步媒体任务结果（fal 等异步出图）
-  task_id?: number | null
-  image_urls?: string[] | null
-  cos_urls?: string[] | null
-  billing_status?: string | null
-
   // User-Agent
   user_agent: string | null
   ip_address?: string | null
@@ -1761,6 +1652,8 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  upstream_response_model?: string | null
+  upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）
@@ -1991,8 +1884,7 @@ export interface UserUsageTrendPoint {
 export interface UserSpendingRankingItem {
   user_id: number
   email: string
-  username?: string
-  login_name?: string
+  username: string
   actual_cost: number
   requests: number
   tokens: number
@@ -2426,6 +2318,30 @@ export interface UpdateScheduledTestPlanRequest {
 
 // Payment types
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
+export type {
+  OrganizationRole,
+  OrganizationStatus,
+  IAMMemberStatus,
+  OrganizationContext,
+  CompanyApplication,
+  CompanyUpgradeEligibility,
+  OrganizationAuditEvent,
+  CompanyApplicationDetail,
+  OrganizationNameChangeRequest,
+  AdminOrganization,
+  AdminOrganizationDetail,
+  FinanceSummary,
+  IAMMember,
+  ManagedPolicy,
+  OrganizationSubscription,
+  OrganizationSpendLimitRule,
+  OrganizationSpendUsage,
+  OrganizationUsageParams,
+  OrganizationUsageStats,
+  OrganizationUsageTrendPoint,
+  OrganizationUsageRow,
+  PaginatedOrganizationUsage,
+} from './organization'
 
 export type {
   PlatformQuotaItem,

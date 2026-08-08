@@ -139,10 +139,6 @@ security:
     enabled: false
     # Allowed upstream hosts for API proxying
     # 允许代理的上游 API 主机列表
-    # If you enable Kiro OAuth / IDC, also allow Kiro auth and AWS SSO OIDC hosts.
-    # 如果启用 Kiro OAuth / IDC，请同时放行 Kiro 鉴权域名和 AWS SSO OIDC 域名。
-    # If you enable Kiro runtime forwarding, also allow the corresponding AWS Q API endpoint.
-    # 如果启用 Kiro 运行时转发，还需要放行对应的 AWS Q API 域名。
     upstream_hosts:
       - "api.openai.com"
       - "api.anthropic.com"
@@ -153,11 +149,6 @@ security:
       - "api.minimaxi.com"
       - "generativelanguage.googleapis.com"
       - "cloudcode-pa.googleapis.com"
-      - "prod.us-east-1.auth.desktop.kiro.dev"
-      - "oidc.us-east-1.amazonaws.com"
-      - "oidc.*.amazonaws.com"
-      - "device.sso.*.amazonaws.com"
-      - "q.*.amazonaws.com"
       - "*.openai.azure.com"
     # Allowed hosts for pricing data download
     # 允许下载定价数据的主机列表
@@ -190,7 +181,7 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com https://js.hcaptcha.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com https://*.hcaptcha.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
@@ -278,6 +269,16 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Stop rewriting load-shed Codex originators to the official CLI identity.
+  # 关闭「把落在上游降载桶的 Codex originator 改写为官方 CLI 身份（codex_cli_rs）」。
+  #
+  # 上游 /backend-api/codex 按 originator 分桶调度容量：命中降载桶的请求即使 HTTP 200，
+  # 也会立刻推 server_is_overloaded 错误事件，网关据此判定瞬时上游故障并冷却账号，
+  # 对外表现为 Codex 账号频繁过载不可用。归一化只替换身份段，保留版本/OS/架构/终端指纹，
+  # 改写后 originator 与 User-Agent 首段仍然配套。
+  #
+  # 默认 false（即归一化开启）；仅当上游调整分桶、使归一化反而落入降载桶时才置 true。
+  disable_codex_originator_normalization: false
   # Enable Codex image-generation bridge injection for /openai/v1/responses.
   # 是否为 Codex /responses 请求自动注入 image_generation 工具与桥接指令。
   #
@@ -470,9 +471,6 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
-  # Kiro stream keepalive interval (seconds), 0=use default 25
-  # Kiro 流式 keepalive 间隔（秒），0=使用默认 25
-  kiro_stream_keepalive_interval: 25
   # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
   # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
   image_stream_data_interval_timeout: 900
@@ -1188,11 +1186,6 @@ turnstile:
   # 在 release 模式下要求 Turnstile 验证（启用后，若未配置则登录/注册会失败）
   required: false
 
-captcha:
-  # Require one configured captcha provider in release mode. Supports turnstile or hcaptcha.
-  # 在 release 模式下要求配置一个人机验证服务商，支持 turnstile 或 hcaptcha。
-  required: false
-
 # =============================================================================
 # Gemini OAuth (Required for Gemini accounts)
 # Gemini OAuth 配置（Gemini 账户必需）
@@ -1276,28 +1269,6 @@ update:
   # Leave empty for direct connection (recommended for overseas servers)
   # 留空表示直连（适用于海外服务器）
   proxy_url: ""
-
-# =============================================================================
-# Company Accounts And IAM (企业账户与 IAM)
-# =============================================================================
-company:
-  # Keep both product switches off until the public-ID backfill, final
-  # constraints, billing-path acceptance tests, and reconciliation checks pass.
-  # 在公共 ID 回填、最终约束、计费链路验收和对账检查通过前保持关闭。
-  applications_enabled: false
-  iam_enabled: false
-  public_ids_finalized: false
-  billing_integration_enabled: false
-  # Optional HTTP(S) guide shown beside the enterprise console menu.
-  documentation_url: ""
-  upgrade_fee: 20
-  upgrade_currency: "USD"
-  default_member_limit: 20
-  outbox_poll_seconds: 5
-  outbox_max_attempts: 10
-  reconcile_interval_seconds: 300
-  review_queue_alert_seconds: 86400
-  outbox_lag_alert_seconds: 300
 
 # =============================================================================
 # Image Storage (异步图片任务结果对象存储)

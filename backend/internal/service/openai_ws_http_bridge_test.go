@@ -220,6 +220,69 @@ func TestProxyOpenAIWSHTTPBridgeTurnSSEErrorFailoverSafety(t *testing.T) {
 	}
 }
 
+// 桥接转发 error / response.failed 给 WS 客户端前必须把容量降载码改写为可重试
+// 的 server_error：Codex 对 server_is_overloaded/slow_down 判致命并终止会话。
+// 账号状态判定使用改写前的原始事件，不受影响。
+func TestProxyOpenAIWSHTTPBridgeTurnRewritesCapacityShedCodeForClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name    string
+		turn    int
+		body    string
+		wantErr bool
+	}{
+		{
+			name:    "turn2_error_frame",
+			turn:    2,
+			body:    "data: {\"type\":\"error\",\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}\n\n",
+			wantErr: true,
+		},
+		{
+			// response.failed 不走 error 事件分支：即便 turn 1 也会被当终止事件
+			// 原样转发（不 failover），因此改写必须在这里同样生效。
+			name: "turn1_bare_response_failed",
+			turn: 1,
+			body: "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_shed\",\"status\":\"failed\",\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			account := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+			payload := []byte(`{"type":"response.create","model":"gpt-5","input":"hi"}`)
+			var writes [][]byte
+
+			_, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+				context.Background(), c, account, "sk-test", payload, len(payload),
+				"gpt-5", "", "", "", "", tt.turn,
+				func(message []byte) error {
+					writes = append(writes, append([]byte(nil), message...))
+					return nil
+				},
+			)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Len(t, writes, 1)
+			require.Contains(t, string(writes[0]), `"code":"server_error"`)
+			require.NotContains(t, string(writes[0]), "server_is_overloaded")
+			require.Contains(t, string(writes[0]), "Our servers are currently overloaded")
+		})
+	}
+}
+
 func TestProxyOpenAIWSHTTPBridgeTurnRequiresTerminalEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
