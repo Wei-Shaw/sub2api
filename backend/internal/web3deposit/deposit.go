@@ -1,6 +1,7 @@
 package web3deposit
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -36,4 +37,9 @@ type Deposit struct {
 	CreditedAt       *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+type UserDepositReader interface {
+	ListUserDeposits(ctx context.Context, userID int64, page, pageSize int) ([]Deposit, int64, error)
+	GetUserDeposit(ctx context.Context, userID, depositID int64) (Deposit, error)
 }

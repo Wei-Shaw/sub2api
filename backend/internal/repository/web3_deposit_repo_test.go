@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -131,6 +132,35 @@ func TestWeb3DepositRepositoryReturnsNotFound(t *testing.T) {
 
 	_, err := repo.GetByEvent(context.Background(), 1030, testWeb3DepositTxHash, 7)
 	require.True(t, errors.Is(err, web3deposit.ErrDepositNotFound))
+}
+
+func TestWeb3DepositRepositoryPaginatesAndScopesUserDeposits(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+	for logIndex := uint64(1); logIndex <= 3; logIndex++ {
+		deposit := testWeb3DepositRecord(logIndex)
+		deposit.TxHash = fmt.Sprintf("0x%064x", logIndex)
+		_, err := repo.Create(ctx, deposit)
+		require.NoError(t, err)
+	}
+	other := testWeb3DepositRecord(4)
+	other.UserID = 99
+	other.TxHash = fmt.Sprintf("0x%064x", 4)
+	_, err := repo.Create(ctx, other)
+	require.NoError(t, err)
+
+	page, total, err := repo.ListUserDeposits(ctx, 42, 1, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, page, 2)
+	require.Greater(t, page[0].ID, page[1].ID)
+
+	owned, err := repo.GetUserDeposit(ctx, 42, page[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), owned.UserID)
+
+	_, err = repo.GetUserDeposit(ctx, 99, page[0].ID)
+	require.ErrorIs(t, err, web3deposit.ErrDepositNotFound)
 }
 
 func TestWeb3DepositRepositoryRejectsInvalidValues(t *testing.T) {

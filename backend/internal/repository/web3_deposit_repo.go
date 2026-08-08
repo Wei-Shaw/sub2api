@@ -23,6 +23,7 @@ type Web3DepositRepository struct {
 var _ depositdomain.DetectedDepositStore = (*Web3DepositRepository)(nil)
 var _ depositdomain.DepositCreditEligibilitySource = (*Web3DepositRepository)(nil)
 var _ depositdomain.PendingFinalizationSource = (*Web3DepositRepository)(nil)
+var _ depositdomain.UserDepositReader = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -148,6 +149,51 @@ func (r *Web3DepositRepository) ListByUser(ctx context.Context, userID int64) ([
 		deposits = append(deposits, web3DepositFromEnt(entity))
 	}
 	return deposits, nil
+}
+
+func (r *Web3DepositRepository) ListUserDeposits(ctx context.Context, userID int64, page, pageSize int) ([]depositdomain.Deposit, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	query := r.client.Web3Deposit.Query().Where(web3deposit.UserIDEQ(userID))
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count web3 deposits by user: %w", err)
+	}
+	entities, err := query.
+		Order(
+			dbent.Desc(web3deposit.FieldCreatedAt),
+			dbent.Desc(web3deposit.FieldID),
+		).
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		All(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list paginated web3 deposits by user: %w", err)
+	}
+
+	deposits := make([]depositdomain.Deposit, 0, len(entities))
+	for _, entity := range entities {
+		deposits = append(deposits, web3DepositFromEnt(entity))
+	}
+	return deposits, int64(total), nil
+}
+
+func (r *Web3DepositRepository) GetUserDeposit(ctx context.Context, userID, depositID int64) (depositdomain.Deposit, error) {
+	entity, err := r.client.Web3Deposit.Query().
+		Where(
+			web3deposit.IDEQ(depositID),
+			web3deposit.UserIDEQ(userID),
+		).
+		Only(ctx)
+	return web3DepositResult(entity, err, "get web3 deposit by user")
 }
 
 func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {

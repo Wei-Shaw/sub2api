@@ -24,7 +24,7 @@ func TestWeb3DepositConfigRouteUsesPaymentAuthentication(t *testing.T) {
 	RegisterPaymentRoutes(
 		router.Group("/api/v1"),
 		handler.NewPaymentHandler(nil, nil),
-		handler.NewWeb3DepositHandler(&config.Config{}, nil, nil),
+		handler.NewWeb3DepositHandler(&config.Config{}, nil, nil, nil),
 		handler.NewPaymentWebhookHandler(nil, nil),
 		admin.NewPaymentHandler(nil, nil),
 		jwtAuth,

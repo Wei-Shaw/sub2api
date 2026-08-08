@@ -30,7 +30,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 				},
 			},
 		},
-	}}, nil, nil)
+	}}, nil, nil, nil)
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
 
@@ -194,5 +194,7 @@ func authenticatedWeb3DepositTestRouter(handler *Web3DepositHandler) *gin.Engine
 		c.Next()
 	})
 	router.POST("/api/v1/payment/web3/address", handler.GetOrCreateAddress)
+	router.GET("/api/v1/payment/web3/deposits", handler.ListDeposits)
+	router.GET("/api/v1/payment/web3/deposits/:id", handler.GetDeposit)
 	return router
 }

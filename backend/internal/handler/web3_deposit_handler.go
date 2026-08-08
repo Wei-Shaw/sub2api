@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -18,6 +20,7 @@ type Web3DepositHandler struct {
 	cfg              *config.Config
 	addressAllocator web3DepositAddressAllocator
 	networkRuntime   *web3deposit.ConfluxNetworkRuntime
+	deposits         web3deposit.UserDepositReader
 }
 
 type web3DepositAddressAllocator interface {
@@ -33,8 +36,9 @@ func NewWeb3DepositHandler(
 	cfg *config.Config,
 	addressAllocator *web3deposit.AddressAllocator,
 	networkRuntime *web3deposit.ConfluxNetworkRuntime,
+	deposits web3deposit.UserDepositReader,
 ) *Web3DepositHandler {
-	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, networkRuntime: networkRuntime}
+	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, networkRuntime: networkRuntime, deposits: deposits}
 }
 
 // GetConfig returns the publicly safe Web3 deposit configuration.
@@ -71,6 +75,106 @@ func (h *Web3DepositHandler) GetOrCreateAddress(c *gin.Context) {
 		Address:  address.Address,
 		Networks: networks,
 	})
+}
+
+type web3DepositUserResponse struct {
+	ID             int64      `json:"id"`
+	ChainID        string     `json:"chain_id"`
+	TokenContract  string     `json:"token_contract"`
+	TxHash         string     `json:"tx_hash"`
+	LogIndex       string     `json:"log_index"`
+	BlockNumber    string     `json:"block_number"`
+	FromAddress    string     `json:"from_address"`
+	ToAddress      string     `json:"to_address"`
+	TokenAmount    string     `json:"token_amount"`
+	CreditedAmount *string    `json:"credited_amount,omitempty"`
+	Status         string     `json:"status"`
+	DetectedAt     time.Time  `json:"detected_at"`
+	FinalizedAt    *time.Time `json:"finalized_at,omitempty"`
+	CreditedAt     *time.Time `json:"credited_at,omitempty"`
+}
+
+// ListDeposits returns the authenticated user's Web3 deposit history.
+// GET /api/v1/payment/web3/deposits
+func (h *Web3DepositHandler) ListDeposits(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	deposits, total, err := h.deposits.ListUserDeposits(c.Request.Context(), subject.UserID, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_HISTORY_FAILED", "failed to load web3 deposit history").WithCause(err))
+		return
+	}
+	items := make([]web3DepositUserResponse, 0, len(deposits))
+	for _, deposit := range deposits {
+		items = append(items, web3DepositUserFromDomain(deposit))
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+// GetDeposit returns one Web3 deposit owned by the authenticated user.
+// GET /api/v1/payment/web3/deposits/:id
+func (h *Web3DepositHandler) GetDeposit(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	depositID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || depositID <= 0 {
+		response.ErrorFrom(c, infraerrors.BadRequest("WEB3_DEPOSIT_ID_INVALID", "invalid web3 deposit id"))
+		return
+	}
+	deposit, err := h.deposits.GetUserDeposit(c.Request.Context(), subject.UserID, depositID)
+	if errors.Is(err, web3deposit.ErrDepositNotFound) {
+		response.ErrorFrom(c, infraerrors.NotFound("WEB3_DEPOSIT_NOT_FOUND", "web3 deposit not found"))
+		return
+	}
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_DETAIL_FAILED", "failed to load web3 deposit").WithCause(err))
+		return
+	}
+	response.Success(c, web3DepositUserFromDomain(deposit))
+}
+
+func web3DepositUserFromDomain(deposit web3deposit.Deposit) web3DepositUserResponse {
+	return web3DepositUserResponse{
+		ID:             deposit.ID,
+		ChainID:        strconv.FormatUint(deposit.ChainID, 10),
+		TokenContract:  deposit.TokenContract,
+		TxHash:         deposit.TxHash,
+		LogIndex:       strconv.FormatUint(deposit.LogIndex, 10),
+		BlockNumber:    strconv.FormatUint(deposit.BlockNumber, 10),
+		FromAddress:    deposit.FromAddress,
+		ToAddress:      deposit.ToAddress,
+		TokenAmount:    deposit.TokenAmount,
+		CreditedAmount: deposit.CreditedAmount,
+		Status:         web3DepositUserStatus(deposit.Status),
+		DetectedAt:     deposit.DetectedAt,
+		FinalizedAt:    deposit.FinalizedAt,
+		CreditedAt:     deposit.CreditedAt,
+	}
+}
+
+func web3DepositUserStatus(status web3deposit.DepositStatus) string {
+	switch status {
+	case web3deposit.DepositStatusCredited:
+		return "credited"
+	case web3deposit.DepositStatusBelowMinimum:
+		return "below_minimum"
+	case web3deposit.DepositStatusManualReview:
+		return "under_review"
+	case web3deposit.DepositStatusOrphaned, web3deposit.DepositStatusFailed, web3deposit.DepositStatusIgnored:
+		return "failed"
+	default:
+		return "confirming"
+	}
 }
 
 func resolveWeb3DepositWallet(cfg config.Web3DepositConfig) (web3deposit.ConfiguredWallet, []string, error) {
