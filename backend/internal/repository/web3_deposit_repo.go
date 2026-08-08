@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -14,6 +15,8 @@ import (
 type Web3DepositRepository struct {
 	client *dbent.Client
 }
+
+var _ depositdomain.DetectedDepositStore = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -84,6 +87,22 @@ func (r *Web3DepositRepository) Create(ctx context.Context, deposit depositdomai
 		return depositdomain.Deposit{}, fmt.Errorf("create web3 deposit: %w", err)
 	}
 	return web3DepositFromEnt(entity), nil
+}
+
+func (r *Web3DepositRepository) UpsertDetected(ctx context.Context, deposit depositdomain.Deposit) (depositdomain.Deposit, error) {
+	created, err := r.Create(ctx, deposit)
+	if err == nil {
+		return created, nil
+	}
+	if !errors.Is(err, depositdomain.ErrDepositAlreadyExists) {
+		return depositdomain.Deposit{}, fmt.Errorf("upsert detected web3 deposit: %w", err)
+	}
+
+	existing, err := r.GetByEvent(ctx, deposit.ChainID, deposit.TxHash, deposit.LogIndex)
+	if err != nil {
+		return depositdomain.Deposit{}, fmt.Errorf("get existing detected web3 deposit: %w", err)
+	}
+	return existing, nil
 }
 
 func (r *Web3DepositRepository) GetByEvent(ctx context.Context, chainID uint64, txHash string, logIndex uint64) (depositdomain.Deposit, error) {

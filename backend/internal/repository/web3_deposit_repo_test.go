@@ -83,6 +83,48 @@ func TestWeb3DepositRepositoryEventIdentityIncludesLogIndex(t *testing.T) {
 	require.Len(t, deposits, 3)
 }
 
+func TestWeb3DepositRepositoryUpsertDetectedReturnsExistingWithoutChangingFacts(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+	original := testWeb3DepositRecord(7)
+	original.Status = web3deposit.DepositStatusConfirming
+	created, err := repo.Create(ctx, original)
+	require.NoError(t, err)
+
+	duplicate := testWeb3DepositRecord(7)
+	duplicate.UserID = 99
+	duplicate.DepositAddressID = 88
+	duplicate.BlockNumber = 54321
+	duplicate.BlockHash = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	duplicate.RawAmount = "7654321"
+	duplicate.TokenAmount = "7.654321"
+
+	stored, err := repo.UpsertDetected(ctx, duplicate)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, stored.ID)
+	require.Equal(t, original.UserID, stored.UserID)
+	require.Equal(t, original.DepositAddressID, stored.DepositAddressID)
+	require.Equal(t, original.BlockNumber, stored.BlockNumber)
+	require.Equal(t, original.BlockHash, stored.BlockHash)
+	require.Equal(t, original.RawAmount, stored.RawAmount)
+	require.Equal(t, original.TokenAmount, stored.TokenAmount)
+	require.Equal(t, web3deposit.DepositStatusConfirming, stored.Status)
+}
+
+func TestWeb3DepositRepositoryUpsertDetectedCreatesDifferentLogIndexes(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+
+	first, err := repo.UpsertDetected(ctx, testWeb3DepositRecord(7))
+	require.NoError(t, err)
+	second, err := repo.UpsertDetected(ctx, testWeb3DepositRecord(8))
+	require.NoError(t, err)
+
+	require.NotEqual(t, first.ID, second.ID)
+	require.Equal(t, uint64(7), first.LogIndex)
+	require.Equal(t, uint64(8), second.LogIndex)
+}
+
 func TestWeb3DepositRepositoryReturnsNotFound(t *testing.T) {
 	repo := newWeb3DepositRepository(t)
 
