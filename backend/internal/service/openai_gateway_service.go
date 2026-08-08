@@ -422,6 +422,7 @@ type OpenAIGatewayService struct {
 	userPlatformQuotaRepo     UserPlatformQuotaRepository
 	cosService                *COSImageTransferService
 	billingContextResolver    *BillingContextResolver
+	costCenter                CostCenterWriter
 	liveAttestation           liveattestation.Provider
 	liveAttestationCipher     SecretEncryptor
 
@@ -460,6 +461,12 @@ type OpenAIGatewayService struct {
 func (s *OpenAIGatewayService) SetBillingContextResolver(resolver *BillingContextResolver) {
 	if s != nil {
 		s.billingContextResolver = resolver
+	}
+}
+
+func (s *OpenAIGatewayService) SetCostCenterWriter(writer CostCenterWriter) {
+	if s != nil {
+		s.costCenter = writer
 	}
 }
 

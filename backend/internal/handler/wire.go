@@ -156,6 +156,7 @@ func ProvideGatewayHandler(
 	gatewayService.SetBillingContextResolver(billingContextResolver)
 	openAIGatewayService.SetBillingContextResolver(billingContextResolver)
 	gatewayService.SetCostCenterWriter(costCenter)
+	openAIGatewayService.SetCostCenterWriter(costCenter)
 	usageService.SetBillingContextResolver(billingContextResolver)
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,

@@ -937,7 +937,14 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 }
 
 func (s *GatewayService) writeCostCenterUsage(ctx context.Context, usageLog *UsageLog, subscription bool) {
-	if s == nil || s.costCenter == nil || usageLog == nil || usageLog.RequestID == "" {
+	if s == nil {
+		return
+	}
+	writeCostCenterUsageEvents(ctx, s.costCenter, usageLog, subscription)
+}
+
+func writeCostCenterUsageEvents(ctx context.Context, writer CostCenterWriter, usageLog *UsageLog, subscription bool) {
+	if writer == nil || usageLog == nil || usageLog.RequestID == "" {
 		return
 	}
 	accountCost := usageLog.TotalCost * 1
@@ -973,19 +980,25 @@ func (s *GatewayService) writeCostCenterUsage(ctx context.Context, usageLog *Usa
 	userID := usageLog.UserID
 	requestID := usageLog.RequestID
 	if source != "subscription" {
-		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"})
+		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"}); err != nil {
+			slog.Warn("cost center usage income event failed", "request_id", requestID, "error", err)
+		}
 	}
 	if accountCost > 0 {
-		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"})
+		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: usageLog.Model, Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"}); err != nil {
+			slog.Warn("cost center upstream event failed", "request_id", requestID, "error", err)
+		}
 	}
 	// Subscription cash is deferred until linked token usage is finalized. The
 	// repository resolves the frozen entitlement by user/group and applies the
 	// realization factor under a row lock, making retries idempotent.
 	if source == "subscription" {
-		if recognizer, ok := s.costCenter.(interface {
+		if recognizer, ok := writer.(interface {
 			RecognizeSubscriptionUsageForUsage(context.Context, int64, *int64, string, int64, float64, time.Time) (*CostCenterEvent, error)
 		}); ok && usageLog.GroupID != nil {
-			_, _ = recognizer.RecognizeSubscriptionUsageForUsage(ctx, userID, usageLog.GroupID, requestID, int64(usageLog.TotalTokens()), float64(usageLog.TotalTokens()), usageLog.CreatedAt)
+			if _, err := recognizer.RecognizeSubscriptionUsageForUsage(ctx, userID, usageLog.GroupID, requestID, int64(usageLog.TotalTokens()), float64(usageLog.TotalTokens()), usageLog.CreatedAt); err != nil {
+				slog.Warn("cost center subscription recognition failed", "request_id", requestID, "error", err)
+			}
 		}
 	}
 }
