@@ -3,6 +3,7 @@ package service
 import (
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,16 @@ const (
 	settingKeyBackupRecords  = "backup_records"
 
 	maxBackupRecords = 100
+
+	// backupScheduledLeaderLockKey gates the *scheduled* backup so a multi-instance
+	// deployment produces one dump per schedule instead of one per instance. The
+	// existing opMu only guards a single process. Manual backups are intentionally
+	// left ungated: they are operator-initiated and already return
+	// ErrBackupInProgress within an instance.
+	backupScheduledLeaderLockKey = "backup:scheduled:leader"
+	// backupScheduledLeaderLockTTL must exceed the worst-case dump+upload runtime
+	// so the lock cannot expire mid-backup. It matches the run context timeout.
+	backupScheduledLeaderLockTTL = 30 * time.Minute
 )
 
 var (
@@ -146,6 +157,10 @@ type BackupService struct {
 	shuttingDown atomic.Bool        // 阻止新备份启动
 	bgCtx        context.Context    // 所有后台操作的 parent context
 	bgCancel     context.CancelFunc // 取消所有活跃后台操作
+
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
 }
 
 func NewBackupService(
@@ -165,7 +180,18 @@ func NewBackupService(
 		dumper:                  dumper,
 		bgCtx:                   bgCtx,
 		bgCancel:                bgCancel,
+		instanceID:              uuid.NewString(),
 	}
+}
+
+// SetLeaderLock wires the cross-instance guard for scheduled backups. Leaving it
+// unset keeps the previous single-instance behaviour.
+func (s *BackupService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 // Start 启动定时备份调度器并清理孤立记录
@@ -421,6 +447,16 @@ func (s *BackupService) runScheduledBackup() {
 
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
 	defer cancel()
+
+	// Multi-instance guard: the cron fires on every instance, and opMu is only a
+	// per-process mutex, so without gating N instances would run N concurrent
+	// pg_dumps against the same database at the same minute.
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, backupScheduledLeaderLockKey, s.instanceID, backupScheduledLeaderLockTTL)
+	if !ok {
+		logger.LegacyPrintf("service.backup", "[Backup] 定时备份跳过: 另一实例正在执行")
+		return
+	}
+	defer release()
 
 	// 读取定时备份配置中的过期天数
 	schedule, _ := s.GetSchedule(ctx)

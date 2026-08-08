@@ -2,13 +2,26 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"sync"
 	"time"
 
 	"github.com/alitto/pond/v2"
+	"github.com/google/uuid"
+)
+
+const (
+	// channelMonitorLeaderLockKeyPrefix gates each monitor individually rather
+	// than electing one runner for all of them, so checks still spread across
+	// instances instead of piling onto a single leader.
+	channelMonitorLeaderLockKeyPrefix = "channel_monitor:run:"
+	// channelMonitorLeaderLockTTL must exceed the worst-case runtime of one check
+	// so the lock cannot expire mid-run. It matches the runOne context timeout.
+	channelMonitorLeaderLockTTL = monitorRequestTimeout + monitorPingTimeout + monitorRunOneBuffer
 )
 
 // MonitorScheduler 调度器接口，供 ChannelMonitorService 在 CRUD 时回调，
@@ -63,6 +76,10 @@ type ChannelMonitorRunner struct {
 	// 防止单次检测耗时 > interval 时同一 monitor 被并发执行。
 	inFlight   map[int64]struct{}
 	inFlightMu sync.Mutex
+
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
 }
 
 // scheduledMonitor 单个监控的运行时上下文。
@@ -109,7 +126,18 @@ func newChannelMonitorRunner(svc monitorRunnerSvc, settingService *SettingServic
 		parentCancel:   cancel,
 		tasks:          make(map[int64]*scheduledMonitor),
 		inFlight:       make(map[int64]struct{}),
+		instanceID:     uuid.NewString(),
 	}
+}
+
+// SetLeaderLock wires the cross-instance guard. Leaving it unset keeps the
+// previous single-instance behaviour.
+func (r *ChannelMonitorRunner) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if r == nil {
+		return
+	}
+	r.lockCache = lockCache
+	r.db = db
 }
 
 // Start 加载所有 enabled monitor 并为每个建立独立定时任务。
@@ -308,6 +336,22 @@ func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 				"monitor_id", id, "name", name, "panic", rec)
 		}
 	}()
+
+	// Multi-instance guard: every instance schedules every enabled monitor, and
+	// inFlight is only a per-process map, so without gating one monitor would be
+	// probed once per instance each interval. Locking per monitor (rather than
+	// electing a single runner) keeps checks spread across instances.
+	release, ok := tryAcquireSingletonLeaderLock(
+		ctx, r.lockCache, r.db,
+		fmt.Sprintf("%s%d:leader", channelMonitorLeaderLockKeyPrefix, id),
+		r.instanceID, channelMonitorLeaderLockTTL,
+	)
+	if !ok {
+		slog.Debug("channel_monitor: skip, another instance is running this monitor",
+			"monitor_id", id, "name", name)
+		return
+	}
+	defer release()
 
 	if _, err := r.svc.RunCheck(ctx, id); err != nil {
 		if errors.Is(err, ErrChannelMonitorAPIKeyDecryptFailed) {
