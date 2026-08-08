@@ -142,6 +142,18 @@ func (h *Web3DepositHandler) Ignore(c *gin.Context) {
 	response.Success(c, gin.H{"status": web3deposit.DepositStatusIgnored})
 }
 
+func (h *Web3DepositHandler) Retry(c *gin.Context) {
+	id, ok := adminDepositID(c)
+	if !ok {
+		return
+	}
+	if err := h.operator.RetryFailedDeposit(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, adminDepositOperationError(err))
+		return
+	}
+	response.Success(c, gin.H{"status": web3deposit.DepositStatusReadyToCredit})
+}
+
 func adminDepositID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {

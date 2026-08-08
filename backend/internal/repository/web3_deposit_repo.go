@@ -285,6 +285,17 @@ func (r *Web3DepositRepository) IgnoreReviewedDeposit(ctx context.Context, depos
 	return nil
 }
 
+func (r *Web3DepositRepository) RetryFailedDeposit(ctx context.Context, depositID int64) error {
+	updated, err := r.client.Web3Deposit.Update().Where(web3deposit.IDEQ(depositID), web3deposit.StatusEQ(string(depositdomain.DepositStatusFailed))).SetStatus(string(depositdomain.DepositStatusReadyToCredit)).ClearFailureReason().SetNextRetryAt(time.Now().UTC()).Save(ctx)
+	if err != nil {
+		return fmt.Errorf("retry failed web3 deposit: %w", err)
+	}
+	if updated != 1 {
+		return depositdomain.ErrAdminDepositStateConflict
+	}
+	return nil
+}
+
 func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {
 	storedFromBlock, err := web3DepositUint64ToInt64(fromBlock, "finalizer from block")
 	if err != nil {

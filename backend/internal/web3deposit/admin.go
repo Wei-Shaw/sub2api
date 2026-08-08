@@ -26,6 +26,7 @@ type AdminDepositReader interface {
 type AdminDepositOperator interface {
 	ApproveReviewedDeposit(ctx context.Context, depositID int64) error
 	IgnoreReviewedDeposit(ctx context.Context, depositID int64, reason string) error
+	RetryFailedDeposit(ctx context.Context, depositID int64) error
 }
 
 var ErrAdminDepositStateConflict = errors.New("web3 deposit state does not allow admin operation")
