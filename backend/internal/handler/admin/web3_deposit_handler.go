@@ -13,14 +13,15 @@ import (
 )
 
 type Web3DepositHandler struct {
-	deposits web3deposit.AdminDepositReader
-	operator web3deposit.AdminDepositOperator
-	runtime  *web3deposit.ScannerRuntime
-	network  *web3deposit.ConfluxNetworkRuntime
+	deposits  web3deposit.AdminDepositReader
+	operator  web3deposit.AdminDepositOperator
+	runtime   *web3deposit.ScannerRuntime
+	network   *web3deposit.ConfluxNetworkRuntime
+	rescanner *web3deposit.BoundedRescanner
 }
 
-func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtime *web3deposit.ScannerRuntime, network *web3deposit.ConfluxNetworkRuntime) *Web3DepositHandler {
-	return &Web3DepositHandler{deposits: deposits, operator: operator, runtime: runtime, network: network}
+func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtime *web3deposit.ScannerRuntime, network *web3deposit.ConfluxNetworkRuntime, rescanner *web3deposit.BoundedRescanner) *Web3DepositHandler {
+	return &Web3DepositHandler{deposits: deposits, operator: operator, runtime: runtime, network: network, rescanner: rescanner}
 }
 
 func (h *Web3DepositHandler) List(c *gin.Context) {
@@ -152,6 +153,29 @@ func (h *Web3DepositHandler) Retry(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"status": web3deposit.DepositStatusReadyToCredit})
+}
+
+func (h *Web3DepositHandler) Rescan(c *gin.Context) {
+	var input struct {
+		FromBlock string `json:"from_block"`
+		ToBlock   string `json:"to_block"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "Invalid rescan request")
+		return
+	}
+	fromBlock, err1 := strconv.ParseUint(input.FromBlock, 10, 64)
+	toBlock, err2 := strconv.ParseUint(input.ToBlock, 10, 64)
+	if err1 != nil || err2 != nil {
+		response.BadRequest(c, "Invalid block range")
+		return
+	}
+	result, err := h.rescanner.Rescan(c.Request.Context(), fromBlock, toBlock)
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("WEB3_DEPOSIT_RESCAN_INVALID", err.Error()))
+		return
+	}
+	response.Success(c, result)
 }
 
 func adminDepositID(c *gin.Context) (int64, bool) {

@@ -135,6 +135,7 @@ func registerWeb3DepositRoutes(admin *gin.RouterGroup, h *handler.Handlers, step
 	group.POST("/:id/approve", h.Admin.Web3Deposit.Approve)
 	group.POST("/:id/ignore", h.Admin.Web3Deposit.Ignore)
 	group.POST("/:id/retry", h.Admin.Web3Deposit.Retry)
+	group.POST("/rescan", h.Admin.Web3Deposit.Rescan)
 }
 
 func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
