@@ -715,13 +715,16 @@ export default {
         videoFirstFrameLabel: '首帧 / 参考图（可选）',
         imageUploadHint:
           '建议 PNG/JPEG，宽高均 ≥ 8 像素，编辑建议小于约 4MB。上传源图会走 /images/edits（图生图）；不上传则走 /images/generations 文生图。',
+        videoFirstFrameHint:
+          '可选首帧/参考图用于图生视频。建议 PNG/JPEG，宽高均 ≥ 8 像素。',
         audioUploadLabel: '音频文件（STT 可选）',
         audioUploadHint: '上传真实音频做转写；不上传则用静音 WAV 仅测连通。',
-        videoUploadUrlLabel: '视频 output.upload_url（ZDR，可选）',
-        videoUploadUrlPlaceholder: 'https://your-public-host/v1/media/uploads/<token>',
-        videoUploadUrlHint:
-          '零数据保留（ZDR）账号完整出片需要：公网 HTTPS 地址，接受成品 MP4 的 PUT。不填则只验证连通性，不会真正出视频。',
-        mediaTooLarge: '文件过大（管理端测试上传上限约 6MB）。'
+        mediaTooLarge: '文件过大（管理端测试上传上限约 6MB）。',
+        chooseImageFile: '选择图片',
+        chooseAudioFile: '选择音频',
+        uploadPreviewAlt: '上传预览',
+        fileReadFailed: '读取所选文件失败',
+        noResponseBody: '服务器未返回响应体'
       REDACTED,
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -1389,6 +1392,9 @@ export default {
       reAuthorizedSuccess: '账号重新授权成功',
       // Test Modal
       testAccountConnection: '测试账号连接',
+      errorPrefix: '错误：{messageREDACTED',
+      imagePreviewAlt: '测试图片 {indexREDACTED',
+      imageLightboxAlt: '图片预览',
       account: '账号',
       readyToTest: '准备测试。点击"开始测试"按钮开始...',
       connectingToApi: '连接 API 中...',
@@ -1411,13 +1417,13 @@ export default {
       imagePromptPlaceholder: '例如：生成一只戴宇航员头盔的橘猫，像素插画风格，纯色背景。',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint:
-        '调用独立 /v1/images/generations 生图（Grok 使用 response_format=b64_json 以兼容 ZDR），并在下方预览返回图片。',
+        '调用独立 /v1/images/generations 生图，并在下方预览返回图片。',
       imageTestMode: '模式：生图测试',
       videoPromptLabel: '视频提示词',
       videoPromptPlaceholder: '例如：一只红球在白地板上弹跳一次，动作简短。',
       videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
       videoTestHint:
-        '调用独立 /v1/videos/generations。零数据保留（ZDR）账号必须提供公网可 PUT 的 output.upload_url，xAI 才会把成品 MP4 写回去；管理端测试不托管该上传接收地址，因此 ZDR 账号只会得到「连通性成功」，不会实际生成视频文件。',
+        '调用独立 /v1/videos/generations，轮询至完成后下载成品视频并在页面上预览。',
       videoTestMode: '模式：视频生成测试',
       sendingVideoRequest: '正在发送视频生成测试请求...',
       imagePreview: '生成结果：',

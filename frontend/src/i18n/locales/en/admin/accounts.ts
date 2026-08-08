@@ -645,14 +645,17 @@ export default {
         videoFirstFrameLabel: 'First-frame / reference image (optional)',
         imageUploadHint:
           'PNG/JPEG recommended, both sides ≥ 8 px, under ~4 MB for edits. Uploading a source image switches to /images/edits (image-to-image). Leave empty for text-to-image /images/generations.',
+        videoFirstFrameHint:
+          'Optional first-frame / reference image for image-to-video. PNG/JPEG recommended, both sides ≥ 8 px.',
         audioUploadLabel: 'Audio file (optional for STT)',
         audioUploadHint:
           'Upload a real audio clip to transcribe. Without a file, a silent WAV is used for connectivity only.',
-        videoUploadUrlLabel: 'Video output.upload_url (ZDR, optional)',
-        videoUploadUrlPlaceholder: 'https://your-public-host/v1/media/uploads/<token>',
-        videoUploadUrlHint:
-          'Required for full video generation on Zero Data Retention teams: a public HTTPS URL that accepts PUT of the finished MP4. Without it, the test only verifies connectivity.',
-        mediaTooLarge: 'File is too large (max ~6 MB for admin test uploads).'
+        mediaTooLarge: 'File is too large (max ~6 MB for admin test uploads).',
+        chooseImageFile: 'Choose image',
+        chooseAudioFile: 'Choose audio',
+        uploadPreviewAlt: 'Upload preview',
+        fileReadFailed: 'Failed to read the selected file',
+        noResponseBody: 'No response body from server'
       REDACTED,
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -1337,6 +1340,9 @@ export default {
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
       testAccountConnection: 'Test Account Connection',
+      errorPrefix: 'Error: {messageREDACTED',
+      imagePreviewAlt: 'Test image {indexREDACTED',
+      imageLightboxAlt: 'Image preview',
       account: 'Account',
       readyToTest: 'Ready to test. Click "Start Test" to begin...',
       connectingToApi: 'Connecting to API...',
@@ -1361,13 +1367,13 @@ export default {
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
       imageTestHint:
-        'Calls standalone /v1/images/generations (Grok uses response_format=b64_json for ZDR-safe previews) and shows the returned image below.',
+        'Calls standalone /v1/images/generations and shows the returned image below.',
       imageTestMode: 'Mode: Image generation test',
       videoPromptLabel: 'Video prompt',
       videoPromptPlaceholder: 'Example: A red ball bouncing once on a white floor, short simple motion.',
       videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
       videoTestHint:
-        'Calls standalone /v1/videos/generations. Zero Data Retention (ZDR) teams require a public output.upload_url so xAI can PUT the finished MP4 — this admin probe does not host that receiver, so ZDR accounts get connectivity-only success without producing a video file.',
+        'Calls standalone /v1/videos/generations, polls until done, then downloads the finished video for on-page preview.',
       videoTestMode: 'Mode: Video generation test',
       sendingVideoRequest: 'Sending video generation request...',
       imagePreview: 'Generated images:',

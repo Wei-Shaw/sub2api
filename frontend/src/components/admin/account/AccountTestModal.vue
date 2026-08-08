@@ -103,16 +103,38 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ imageUploadLabel REDACTEDREDACTED
         </label>
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-500/20 dark:file:text-primary-300"
-          :disabled="status === 'connecting'"
-          @change="onImageFileChange"
-        />
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.grok.imageUploadHint') REDACTEDREDACTED</p>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm shrink-0"
+            :disabled="status === 'connecting'"
+            @click="imageFileInput?.click()"
+          >
+            {{ t('admin.accounts.grok.chooseImageFile') REDACTEDREDACTED
+          </button>
+          <span class="min-w-0 truncate text-xs text-gray-500 dark:text-gray-400">
+            {{
+              uploadImageName
+                ? t('common.selectedFile', { name: uploadImageName REDACTED)
+                : t('common.noFileSelected')
+            REDACTEDREDACTED
+          </span>
+          <input
+            ref="imageFileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            class="hidden"
+            :disabled="status === 'connecting'"
+            @change="onImageFileChange"
+          />
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ imageUploadHint REDACTEDREDACTED</p>
         <div v-if="uploadImagePreview" class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-500">
-          <img :src="uploadImagePreview" alt="upload preview" class="max-h-40 w-full object-contain bg-gray-50 dark:bg-dark-700" />
+          <img
+            :src="uploadImagePreview"
+            :alt="t('admin.accounts.grok.uploadPreviewAlt')"
+            class="max-h-40 w-full object-contain bg-gray-50 dark:bg-dark-700"
+          />
         </div>
       </div>
 
@@ -120,29 +142,32 @@
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.grok.audioUploadLabel') REDACTEDREDACTED
         </label>
-        <input
-          type="file"
-          accept="audio/*,.wav,.mp3,.m4a,.ogg,.webm"
-          class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 dark:text-gray-300 dark:file:bg-primary-500/20 dark:file:text-primary-300"
-          :disabled="status === 'connecting'"
-          @change="onAudioFileChange"
-        />
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm shrink-0"
+            :disabled="status === 'connecting'"
+            @click="audioFileInput?.click()"
+          >
+            {{ t('admin.accounts.grok.chooseAudioFile') REDACTEDREDACTED
+          </button>
+          <span class="min-w-0 truncate text-xs text-gray-500 dark:text-gray-400">
+            {{
+              uploadAudioName
+                ? t('common.selectedFile', { name: uploadAudioName REDACTED)
+                : t('common.noFileSelected')
+            REDACTEDREDACTED
+          </span>
+          <input
+            ref="audioFileInput"
+            type="file"
+            accept="audio/*,.wav,.mp3,.m4a,.ogg,.webm"
+            class="hidden"
+            :disabled="status === 'connecting'"
+            @change="onAudioFileChange"
+          />
+        </div>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.grok.audioUploadHint') REDACTEDREDACTED</p>
-        <p v-if="uploadAudioName" class="text-xs text-gray-600 dark:text-gray-300">{{ uploadAudioName REDACTEDREDACTED</p>
-      </div>
-
-      <div v-if="supportsVideoUploadURL" class="space-y-1.5">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.accounts.grok.videoUploadUrlLabel') REDACTEDREDACTED
-        </label>
-        <input
-          v-model="videoUploadURL"
-          type="url"
-          class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-100"
-          :placeholder="t('admin.accounts.grok.videoUploadUrlPlaceholder')"
-          :disabled="status === 'connecting'"
-        />
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.grok.videoUploadUrlHint') REDACTEDREDACTED</p>
       </div>
 
       <!-- Terminal Output -->
@@ -210,7 +235,11 @@
             class="group/img relative cursor-pointer overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
             @click="previewImageUrl = image.url"
           >
-            <img :src="image.url" :alt="`test-image-${index + 1REDACTED`" class="max-h-[360px] w-full object-contain" />
+            <img
+              :src="image.url"
+              :alt="t('admin.accounts.imagePreviewAlt', { index: index + 1 REDACTED)"
+              class="max-h-[360px] w-full object-contain"
+            />
             <div class="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/img:bg-black/20">
               <Icon name="eye" size="lg" class="text-white opacity-0 drop-shadow-lg transition-opacity group-hover/img:opacity-100" :stroke-width="2" />
             </div>
@@ -267,7 +296,7 @@
             </button>
             <img
               :src="previewImageUrl"
-              alt="preview"
+              :alt="t('admin.accounts.imageLightboxAlt')"
               class="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
             />
           </div>
@@ -388,9 +417,11 @@ const testMode = ref<'default' | 'compact'>('default')
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
+const uploadImageName = ref('')
 const uploadAudioDataURL = ref('')
 const uploadAudioName = ref('')
-const videoUploadURL = ref('')
+const imageFileInput = ref<HTMLInputElement | null>(null)
+const audioFileInput = ref<HTMLInputElement | null>(null)
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
@@ -481,18 +512,23 @@ const supportsImageUpload = computed(
   () => isGrokAccount.value && (grokTestMode.value === 'image' || grokTestMode.value === 'video')
 )
 const supportsAudioUpload = computed(() => isGrokAccount.value && grokTestMode.value === 'stt')
-const supportsVideoUploadURL = computed(() => isGrokAccount.value && grokTestMode.value === 'video')
 const imageUploadLabel = computed(() =>
   grokTestMode.value === 'video'
     ? t('admin.accounts.grok.videoFirstFrameLabel')
     : t('admin.accounts.grok.imageUploadLabel')
 )
 
+const imageUploadHint = computed(() =>
+  grokTestMode.value === 'video'
+    ? t('admin.accounts.grok.videoFirstFrameHint')
+    : t('admin.accounts.grok.imageUploadHint')
+)
+
 const readFileAsDataURL = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.onerror = () => reject(new Error(t('admin.accounts.grok.fileReadFailed')))
     reader.readAsDataURL(file)
   REDACTED)
 
@@ -502,6 +538,7 @@ const onImageFileChange = async (event: Event) => {
   if (!file) {
     uploadImageDataURL.value = ''
     uploadImagePreview.value = ''
+    uploadImageName.value = ''
     return
   REDACTED
   if (file.size > 6 * 1024 * 1024) {
@@ -514,9 +551,13 @@ const onImageFileChange = async (event: Event) => {
     const dataURL = await readFileAsDataURL(file)
     uploadImageDataURL.value = dataURL
     uploadImagePreview.value = dataURL
+    uploadImageName.value = file.name
   REDACTED catch {
     uploadImageDataURL.value = ''
     uploadImagePreview.value = ''
+    uploadImageName.value = ''
+    errorMessage.value = t('admin.accounts.grok.fileReadFailed')
+    status.value = 'error'
   REDACTED
 REDACTED
 
@@ -540,15 +581,19 @@ const onAudioFileChange = async (event: Event) => {
   REDACTED catch {
     uploadAudioDataURL.value = ''
     uploadAudioName.value = ''
+    errorMessage.value = t('admin.accounts.grok.fileReadFailed')
+    status.value = 'error'
   REDACTED
 REDACTED
 
 const clearMediaUploads = () => {
   uploadImageDataURL.value = ''
   uploadImagePreview.value = ''
+  uploadImageName.value = ''
   uploadAudioDataURL.value = ''
   uploadAudioName.value = ''
-  videoUploadURL.value = ''
+  if (imageFileInput.value) imageFileInput.value.value = ''
+  if (audioFileInput.value) audioFileInput.value.value = ''
 REDACTED
 
 const promptInputLabel = computed(() => {
@@ -805,7 +850,6 @@ const startTest = async () => {
       mode?: string
       image_data_url?: string
       audio_data_url?: string
-      video_upload_url?: string
     REDACTED = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
@@ -831,9 +875,6 @@ const startTest = async () => {
       if (uploadAudioDataURL.value && grokTestMode.value === 'stt') {
         requestBody.audio_data_url = uploadAudioDataURL.value
       REDACTED
-      if (videoUploadURL.value.trim() && grokTestMode.value === 'video') {
-        requestBody.video_upload_url = videoUploadURL.value.trim()
-      REDACTED
     REDACTED
 
     // Use the configured API base; EventSource does not support POST.
@@ -857,7 +898,7 @@ const startTest = async () => {
 
     const reader = response.body?.getReader()
     if (!reader) {
-      throw new Error('No response body')
+      throw new Error(t('admin.accounts.grok.noResponseBody'))
     REDACTED
 
     const decoder = new TextDecoder()
@@ -891,9 +932,9 @@ const startTest = async () => {
       return
     REDACTED
     status.value = 'error'
-    const msg = error instanceof Error ? error.message : 'Unknown error'
+    const msg = error instanceof Error ? error.message : t('common.unknownError')
     errorMessage.value = msg
-    addLine(`Error: ${msgREDACTED`, 'text-red-400')
+    addLine(t('admin.accounts.errorPrefix', { message: msg REDACTED), 'text-red-400')
   REDACTED
 REDACTED
 
@@ -991,13 +1032,13 @@ REDACTED) => {
         status.value = 'success'
       REDACTED else {
         status.value = 'error'
-        errorMessage.value = event.error || 'Test failed'
+        errorMessage.value = event.error || t('admin.accounts.testFailed')
       REDACTED
       break
 
     case 'error':
       status.value = 'error'
-      errorMessage.value = event.error || 'Unknown error'
+      errorMessage.value = event.error || t('common.unknownError')
       if (streamingContent.value) {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
