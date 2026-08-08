@@ -225,14 +225,21 @@ const zoom = ref<ZoomState>(resetZoom())
 const zoomed = computed(() => isZoomed(zoom.value))
 
 const allBucketStarts = computed(() => {
+  // X-axis always spans the UI-selected range [requested_start, requested_end).
+  // Partial backfill leaves empty cells until coverage_start/data_through fill in.
   const step = Math.max(60, props.coverage.bucket_seconds) * 1000
-  const coverageStart = new Date(props.coverage.coverage_start).getTime()
   const requestedStart = new Date(props.coverage.requested_start).getTime()
-  const end = new Date(props.coverage.data_through).getTime()
-  const effectiveStart = Math.max(coverageStart, requestedStart)
-  if (![effectiveStart, end].every(Number.isFinite) || effectiveStart >= end) return []
+  const requestedEndRaw = props.coverage.requested_end
+    ? new Date(props.coverage.requested_end).getTime()
+    : NaN
+  // Fallback for older payloads without requested_end.
+  const dataThrough = new Date(props.coverage.data_through).getTime()
+  const end = Number.isFinite(requestedEndRaw) && requestedEndRaw > requestedStart
+    ? requestedEndRaw
+    : dataThrough
+  if (![requestedStart, end].every(Number.isFinite) || requestedStart >= end) return []
   const starts: string[] = []
-  for (let cursor = Math.floor(effectiveStart / step) * step; cursor < end; cursor += step) {
+  for (let cursor = Math.floor(requestedStart / step) * step; cursor < end; cursor += step) {
     starts.push(new Date(cursor).toISOString())
   REDACTED
   return starts
@@ -246,18 +253,19 @@ REDACTED))
 const pulseMinWidth = computed(() => {
   const count = Math.max(1, bucketStarts.value.length)
   if (!zoomed.value) return '0px'
-  // Wider cells when more zoomed-in (smaller span)
-  const intensity = Math.min(8, Math.round((1 - zoom.value.span) / 0.1))
-  const width = 4 + intensity * 3
-  const gap = intensity >= 5 ? 3 : 2
+  // Zoom in = fewer columns + wider min cell (span shrinks → intensity grows).
+  const intensity = Math.min(12, Math.round((1 - zoom.value.span) / 0.08))
+  const width = 6 + intensity * 4
+  const gap = intensity >= 4 ? 3 : 2
   return `${count * width + Math.max(0, count - 1) * gapREDACTEDpx`
 REDACTED)
 const pulseStyle = computed(() => {
   const count = Math.max(1, bucketStarts.value.length)
-  const intensity = zoomed.value ? Math.min(8, Math.round((1 - zoom.value.span) / 0.1)) : 0
-  const gapPx = !zoomed.value ? (count > 24 ? 1 : 2) : intensity >= 5 ? 3 : 2
+  const intensity = zoomed.value ? Math.min(12, Math.round((1 - zoom.value.span) / 0.08)) : 0
+  const gapPx = !zoomed.value ? (count > 24 ? 1 : 2) : intensity >= 4 ? 3 : 2
   const heightPx = 16
-  const minCell = !zoomed.value ? '0' : `${4 + intensity * 3REDACTEDpx`
+  // Unzoomed: equal flex fractions. Zoomed: enforce growing min width so blocks lengthen.
+  const minCell = !zoomed.value ? '0' : `${6 + intensity * 4REDACTEDpx`
   return {
     gridTemplateColumns: `repeat(${countREDACTED, minmax(${minCellREDACTED, 1fr))`,
     gap: `${gapPxREDACTEDpx`,
@@ -305,11 +313,13 @@ function onMatrixWheel(event: WheelEvent) {
   const track = scrollRef.value
   const target = event.target as HTMLElement | null
   const pulse = target?.closest('.pulse-track') as HTMLElement | null
-  // Only zoom when over a pulse track (or Ctrl/⌘+wheel); otherwise allow page/matrix scroll.
-  const wantsZoom = Boolean(pulse) || event.ctrlKey || event.metaKey
-  if (!wantsZoom && !event.shiftKey && Math.abs(event.deltaX) <= Math.abs(event.deltaY)) {
-    return
-  REDACTED
+  const overMatrix = Boolean(target?.closest('.matrix-scroll'))
+  // Plain vertical wheel over the matrix zooms X (narrower range → wider cells).
+  // Shift+wheel or horizontal delta pans; leave non-matrix page scroll alone.
+  const isPan = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
+  if (!overMatrix && !pulse) return
+  // When not zoomed and user scrolls vertically outside pulse, still zoom if over matrix body.
+  if (!overMatrix && !isPan) return
   event.preventDefault()
   const ratioEl = pulse || track
   const ratio = clientXRatio(event.clientX, ratioEl)
@@ -321,7 +331,13 @@ function resetMatrixZoom() {
 REDACTED
 
 watch(
-  () => [props.coverage.coverage_start, props.coverage.data_through, props.coverage.bucket_seconds],
+  () => [
+    props.coverage.requested_start,
+    props.coverage.requested_end,
+    props.coverage.coverage_start,
+    props.coverage.data_through,
+    props.coverage.bucket_seconds,
+  ],
   () => {
     zoom.value = resetZoom()
   REDACTED,

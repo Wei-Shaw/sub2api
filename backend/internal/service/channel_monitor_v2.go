@@ -149,7 +149,11 @@ type ChannelMonitorV2HealthThresholds struct {
 REDACTED
 
 type ChannelMonitorV2Coverage struct {
-	RequestedStart        time.Time `json:"requested_start"`
+	RequestedStart time.Time `json:"requested_start"`
+	// RequestedEnd is the exclusive upper bound of the UI-selected window
+	// (filter.End). Charts/matrices should plot [RequestedStart, RequestedEnd)
+	// even when CoverageStart is later (partial backfill).
+	RequestedEnd          time.Time `json:"requested_end"`
 	CoverageStart         time.Time `json:"coverage_start"`
 	DataThrough           time.Time `json:"data_through"`
 	ComputedAt            time.Time `json:"computed_at"`

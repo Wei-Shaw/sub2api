@@ -99,6 +99,7 @@ describe('RelayPulseMatrix', () => {
         REDACTED],
         coverage: {
           requested_start: '2026-08-01T00:00:00Z',
+          requested_end: '2026-08-01T00:03:00Z',
           coverage_start: '2026-08-01T00:00:00Z',
           data_through: '2026-08-01T00:03:00Z',
           computed_at: '2026-08-01T00:03:00Z',
@@ -138,5 +139,38 @@ describe('RelayPulseMatrix', () => {
     // No click-to-open modal
     await cells[0].trigger('click')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+  REDACTED)
+REDACTED)
+
+describe('RelayPulseMatrix axis range', () => {
+  it('uses selected requested range for the X axis even with partial coverage', () => {
+    const wrapper = mount(RelayPulseMatrix, {
+      props: {
+        rows: [{
+          platform: 'openai',
+          group_id: 7,
+          group_name: '默认组',
+          model: 'gpt-5',
+          metrics: metrics(10),
+          health,
+          buckets: [
+            { bucket_start: '2026-08-01T00:02:00Z', metrics: metrics(10), health REDACTED,
+          ],
+        REDACTED],
+        coverage: {
+          requested_start: '2026-08-01T00:00:00Z',
+          requested_end: '2026-08-01T00:05:00Z',
+          coverage_start: '2026-08-01T00:02:00Z',
+          data_through: '2026-08-01T00:03:00Z',
+          computed_at: '2026-08-01T00:03:00Z',
+          aggregation_lag_seconds: 0,
+          coverage_complete: false,
+          bucket_seconds: 60,
+        REDACTED,
+        healthMode: 'overall',
+      REDACTED,
+    REDACTED)
+    // 5 minutes @ 60s buckets → 5 cells spanning the selected range
+    expect(wrapper.findAll('.pulse-cell')).toHaveLength(5)
   REDACTED)
 REDACTED)

@@ -179,10 +179,7 @@ REDACTED)
 const visibleTrend = computed(() => sliceByZoom(props.trend || [], zoom.value))
 
 function onChartWheel(event: WheelEvent) {
-  // Ctrl/⌘+wheel or shift/horizontal pan; leave plain vertical wheel for page scroll.
-  const wantsZoom =
-    event.ctrlKey || event.metaKey || event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
-  if (!wantsZoom) return
+  // Plain vertical wheel zooms X (narrower time range); shift/horizontal pans.
   event.preventDefault()
   const ratio = clientXRatio(event.clientX, chartRef.value)
   zoom.value = applyWheelZoom(zoom.value, event, ratio)

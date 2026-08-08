@@ -86,6 +86,8 @@ REDACTED
 
 export interface MonitorCoverage {
   requested_start: string
+  /** Exclusive upper bound of the UI-selected range (filter end). */
+  requested_end?: string
   coverage_start: string
   data_through: string
   computed_at: string

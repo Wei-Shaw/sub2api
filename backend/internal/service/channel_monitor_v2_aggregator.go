@@ -15,9 +15,6 @@ const (
 	// Retention walks back to the longest stored tier (1d rollup = 90d). Per-tier
 	// prune in the repository drops short-lived 1m/user/hist facts earlier.
 	channelMonitorV2RetentionMax = 90 * 24 * time.Hour
-	// Product bootstrap goal: fill the UI ranges 90m / 24h / 7d / 30d first.
-	// Banner hides once coveredFrom reaches this depth; 90d retention continues silently.
-	channelMonitorV2BootstrapWindow = ChannelMonitorV2BootstrapProductWindow
 	// First tick after upgrade prioritizes the default 90m view (with small padding).
 	channelMonitorV2BootstrapFirst = 2 * time.Hour
 	// Always refresh a small trailing window so late writes land without
@@ -186,23 +183,6 @@ func (s *ChannelMonitorV2Aggregator) loop() {
 			return
 	REDACTED
 REDACTED
-REDACTED
-
-func (s *ChannelMonitorV2Aggregator) bootstrapActive() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.cursorLoaded {
-		return true
-REDACTED
-	if !s.hasAggregated {
-		return true
-REDACTED
-	if s.backfillFailures >= 3 {
-		return false
-REDACTED
-	now := time.Now().UTC().Truncate(time.Minute)
-	target := now.Add(-channelMonitorV2BootstrapWindow)
-	return s.backfillAt.IsZero() || s.backfillAt.After(target)
 REDACTED
 
 func (s *ChannelMonitorV2Aggregator) passiveAggregationAllowed(ctx context.Context) bool {
