@@ -72,6 +72,76 @@ func TestSetupDefaultAdminConcurrency(t *testing.T) {
 	})
 }
 
+func TestAutoSetupEnabledForRailwayEnv(t *testing.T) {
+	t.Setenv("RAILWAY_ENVIRONMENT", "production")
+	t.Setenv("PORT", "1234")
+	t.Setenv("DATABASE_URL", "postgres://user:pass@db.railway.internal:5432/sub2api?sslmode=require")
+	t.Setenv("REDIS_URL", "redis://default:secret@redis.railway.internal:6379/0")
+
+	if !AutoSetupEnabled() {
+		t.Fatalf("AutoSetupEnabled() = false, want true for Railway env")
+	}
+}
+
+func TestAutoSetupFromEnvParsesRailwayConnectionURLs(t *testing.T) {
+	t.Setenv("DATA_DIR", t.TempDir())
+	t.Setenv("DATABASE_URL", "postgres://railway:secret@db.railway.internal:5432/sub2api?sslmode=require")
+	t.Setenv("REDIS_URL", "rediss://default:redis-secret@redis.railway.internal:6380/2")
+	t.Setenv("PORT", "8765")
+	t.Setenv("ADMIN_EMAIL", "admin@example.com")
+
+	cfg := &SetupConfig{
+		Database: databaseConfigFromEnv(),
+		Redis:    redisConfigFromEnv(),
+		Server: ServerConfig{
+			Host: getEnvStringWithFallback("0.0.0.0", "SERVER_HOST"),
+			Port: getEnvIntWithFallback(8080, "SERVER_PORT", "PORT"),
+			Mode: getEnvOrDefault("SERVER_MODE", "release"),
+		},
+	}
+
+	if cfg.Database.Host != "db.railway.internal" {
+		t.Fatalf("Database.Host = %q, want db.railway.internal", cfg.Database.Host)
+	}
+	if cfg.Database.Port != 5432 {
+		t.Fatalf("Database.Port = %d, want 5432", cfg.Database.Port)
+	}
+	if cfg.Database.User != "railway" {
+		t.Fatalf("Database.User = %q, want railway", cfg.Database.User)
+	}
+	if cfg.Database.Password != "secret" {
+		t.Fatalf("Database.Password = %q, want secret", cfg.Database.Password)
+	}
+	if cfg.Database.DBName != "sub2api" {
+		t.Fatalf("Database.DBName = %q, want sub2api", cfg.Database.DBName)
+	}
+	if cfg.Database.SSLMode != "require" {
+		t.Fatalf("Database.SSLMode = %q, want require", cfg.Database.SSLMode)
+	}
+
+	if cfg.Redis.Host != "redis.railway.internal" {
+		t.Fatalf("Redis.Host = %q, want redis.railway.internal", cfg.Redis.Host)
+	}
+	if cfg.Redis.Port != 6380 {
+		t.Fatalf("Redis.Port = %d, want 6380", cfg.Redis.Port)
+	}
+	if cfg.Redis.Username != "default" {
+		t.Fatalf("Redis.Username = %q, want default", cfg.Redis.Username)
+	}
+	if cfg.Redis.Password != "redis-secret" {
+		t.Fatalf("Redis.Password = %q, want redis-secret", cfg.Redis.Password)
+	}
+	if cfg.Redis.DB != 2 {
+		t.Fatalf("Redis.DB = %d, want 2", cfg.Redis.DB)
+	}
+	if !cfg.Redis.EnableTLS {
+		t.Fatalf("Redis.EnableTLS = false, want true")
+	}
+	if cfg.Server.Port != 8765 {
+		t.Fatalf("Server.Port = %d, want 8765", cfg.Server.Port)
+	}
+}
+
 func TestNeedsSetupSkipsWhenSkipSetupIsEnabled(t *testing.T) {
 	tests := []struct {
 		name  string

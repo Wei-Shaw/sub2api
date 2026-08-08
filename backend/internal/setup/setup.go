@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -541,7 +542,17 @@ func generateSecret(length int) (string, error) {
 // AutoSetupEnabled checks if auto setup is enabled via environment variable
 func AutoSetupEnabled() bool {
 	val := os.Getenv("AUTO_SETUP")
-	return val == "true" || val == "1" || val == "yes"
+	if val == "true" || val == "1" || val == "yes" {
+		return true
+	}
+
+	if !hasRailwayEnv() {
+		return false
+	}
+
+	return strings.TrimSpace(os.Getenv("PORT")) != "" &&
+		(strings.TrimSpace(os.Getenv("DATABASE_URL")) != "" || strings.TrimSpace(os.Getenv("DATABASE_HOST")) != "" || strings.TrimSpace(os.Getenv("PGHOST")) != "") &&
+		(strings.TrimSpace(os.Getenv("REDIS_URL")) != "" || strings.TrimSpace(os.Getenv("REDIS_HOST")) != "")
 }
 
 // getEnvOrDefault gets environment variable or returns default value
@@ -562,6 +573,190 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
+func getEnvIntWithFallback(defaultValue int, keys ...string) int {
+	for _, key := range keys {
+		if val := strings.TrimSpace(os.Getenv(key)); val != "" {
+			if i, err := strconv.Atoi(val); err == nil {
+				return i
+			}
+		}
+	}
+	return defaultValue
+}
+
+func getEnvStringWithFallback(defaultValue string, keys ...string) string {
+	for _, key := range keys {
+		if val := strings.TrimSpace(os.Getenv(key)); val != "" {
+			return val
+		}
+	}
+	return defaultValue
+}
+
+func hasRailwayEnv() bool {
+	for _, key := range []string{"RAILWAY_ENVIRONMENT", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_STATIC_URL"} {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func parseDatabaseConfigFromURL(raw string) (DatabaseConfig, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return DatabaseConfig{}, false
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return DatabaseConfig{}, false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "postgres", "postgresql":
+	default:
+		return DatabaseConfig{}, false
+	}
+
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return DatabaseConfig{}, false
+	}
+
+	port := 5432
+	if rawPort := strings.TrimSpace(parsed.Port()); rawPort != "" {
+		if parsedPort, err := strconv.Atoi(rawPort); err == nil {
+			port = parsedPort
+		}
+	}
+
+	user := ""
+	password := ""
+	if parsed.User != nil {
+		user = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
+
+	dbName := strings.TrimPrefix(strings.TrimSpace(parsed.Path), "/")
+	if dbName == "" {
+		dbName = "sub2api"
+	}
+
+	sslmode := strings.TrimSpace(parsed.Query().Get("sslmode"))
+	if sslmode == "" {
+		sslmode = "disable"
+	}
+
+	return DatabaseConfig{
+		Host:     host,
+		Port:     port,
+		User:     user,
+		Password: password,
+		DBName:   dbName,
+		SSLMode:  sslmode,
+	}, true
+}
+
+func parseRedisConfigFromURL(raw string) (RedisConfig, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return RedisConfig{}, false
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return RedisConfig{}, false
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "redis", "rediss":
+	default:
+		return RedisConfig{}, false
+	}
+
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return RedisConfig{}, false
+	}
+
+	port := 6379
+	if rawPort := strings.TrimSpace(parsed.Port()); rawPort != "" {
+		if parsedPort, err := strconv.Atoi(rawPort); err == nil {
+			port = parsedPort
+		}
+	}
+
+	username := ""
+	password := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
+
+	db := 0
+	if rawDB := strings.TrimSpace(strings.TrimPrefix(parsed.Path, "/")); rawDB != "" {
+		if parsedDB, err := strconv.Atoi(rawDB); err == nil {
+			db = parsedDB
+		}
+	}
+	if queryDB := strings.TrimSpace(parsed.Query().Get("db")); queryDB != "" {
+		if parsedDB, err := strconv.Atoi(queryDB); err == nil {
+			db = parsedDB
+		}
+	}
+
+	enableTLS := strings.EqualFold(strings.TrimSpace(parsed.Scheme), "rediss")
+	if rawTLS := strings.TrimSpace(parsed.Query().Get("tls")); rawTLS != "" {
+		switch strings.ToLower(rawTLS) {
+		case "1", "true", "yes", "on":
+			enableTLS = true
+		case "0", "false", "no", "off":
+			enableTLS = false
+		}
+	}
+
+	return RedisConfig{
+		Host:      host,
+		Port:      port,
+		Username:  username,
+		Password:  password,
+		DB:        db,
+		EnableTLS: enableTLS,
+	}, true
+}
+
+func databaseConfigFromEnv() DatabaseConfig {
+	if cfg, ok := parseDatabaseConfigFromURL(getEnvStringWithFallback("", "DATABASE_URL")); ok {
+		if cfg.SSLMode == "" {
+			cfg.SSLMode = "disable"
+		}
+		return cfg
+	}
+
+	return DatabaseConfig{
+		Host:     getEnvStringWithFallback("localhost", "DATABASE_HOST", "PGHOST"),
+		Port:     getEnvIntWithFallback(5432, "DATABASE_PORT", "PGPORT"),
+		User:     getEnvStringWithFallback("postgres", "DATABASE_USER", "PGUSER"),
+		Password: getEnvStringWithFallback("", "DATABASE_PASSWORD", "PGPASSWORD"),
+		DBName:   getEnvStringWithFallback("sub2api", "DATABASE_DBNAME", "PGDATABASE"),
+		SSLMode:  getEnvStringWithFallback("disable", "DATABASE_SSLMODE", "PGSSLMODE"),
+	}
+}
+
+func redisConfigFromEnv() RedisConfig {
+	if cfg, ok := parseRedisConfigFromURL(getEnvStringWithFallback("", "REDIS_URL")); ok {
+		return cfg
+	}
+
+	return RedisConfig{
+		Host:      getEnvStringWithFallback("localhost", "REDIS_HOST"),
+		Port:      getEnvIntWithFallback(6379, "REDIS_PORT"),
+		Username:  getEnvStringWithFallback("", "REDIS_USERNAME"),
+		Password:  getEnvStringWithFallback("", "REDIS_PASSWORD"),
+		DB:        getEnvIntWithFallback(0, "REDIS_DB"),
+		EnableTLS: strings.EqualFold(getEnvStringWithFallback("false", "REDIS_ENABLE_TLS"), "true"),
+	}
+}
+
 // AutoSetupFromEnv performs automatic setup using environment variables
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
@@ -576,29 +771,15 @@ func AutoSetupFromEnv() error {
 
 	// Build config from environment variables
 	cfg := &SetupConfig{
-		Database: DatabaseConfig{
-			Host:     getEnvOrDefault("DATABASE_HOST", "localhost"),
-			Port:     getEnvIntOrDefault("DATABASE_PORT", 5432),
-			User:     getEnvOrDefault("DATABASE_USER", "postgres"),
-			Password: getEnvOrDefault("DATABASE_PASSWORD", ""),
-			DBName:   getEnvOrDefault("DATABASE_DBNAME", "sub2api"),
-			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),
-		},
-		Redis: RedisConfig{
-			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
-			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
-			Username:  getEnvOrDefault("REDIS_USERNAME", ""),
-			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
-			DB:        getEnvIntOrDefault("REDIS_DB", 0),
-			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
-		},
+		Database: databaseConfigFromEnv(),
+		Redis:    redisConfigFromEnv(),
 		Admin: AdminConfig{
 			Email:    getEnvOrDefault("ADMIN_EMAIL", "admin@sub2api.local"),
 			Password: getEnvOrDefault("ADMIN_PASSWORD", ""),
 		},
 		Server: ServerConfig{
-			Host: getEnvOrDefault("SERVER_HOST", "0.0.0.0"),
-			Port: getEnvIntOrDefault("SERVER_PORT", 8080),
+			Host: getEnvStringWithFallback("0.0.0.0", "SERVER_HOST"),
+			Port: getEnvIntWithFallback(8080, "SERVER_PORT", "PORT"),
 			Mode: getEnvOrDefault("SERVER_MODE", "release"),
 		},
 		JWT: JWTConfig{
