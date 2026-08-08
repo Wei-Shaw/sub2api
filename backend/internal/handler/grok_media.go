@@ -188,6 +188,10 @@ REDACTED
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	mediaEligibilityRejected := false
 	switchCount := 0
+	videoCreateStartedAt := ""
+	if isGrokVideoCreateEndpoint(endpoint) {
+		videoCreateStartedAt = service.GrokVideoPendingCreatedAtNow()
+REDACTED
 	maxAccountSwitches := h.maxAccountSwitches
 	if maxAccountSwitches <= 0 {
 		maxAccountSwitches = 3
@@ -425,6 +429,8 @@ REDACTED
 				VideoResolution:      result.VideoResolution,
 				VideoDurationSeconds: result.VideoDurationSeconds,
 				OriginalModel:        clientRequestedModel(c, requestModel),
+				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
+				CreatedAt: videoCreateStartedAt,
 		REDACTED); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed",
 					zap.Int64("account_id", account.ID),
@@ -587,6 +593,14 @@ REDACTED
 	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
 	// Official default duration is 8s when neither status nor create provided it.
 	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
+	// E2E latency for async video: create accept → this discovery of done+url.
+	// Bill on discovery (status/content), not after further client polls; duration
+	// must not be only the single discovery hop (~hundreds of ms).
+	if pending != nil {
+		if e2e := service.GrokVideoE2EDuration(pending.CreatedAt, time.Now()); e2e > 0 {
+			merged.Duration = e2e
+	REDACTED
+REDACTED
 	return &merged
 REDACTED
 

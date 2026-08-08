@@ -2,9 +2,33 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestGrokVideoE2EDurationFromCreatedAt(t *testing.T) {
+	t.Parallel()
+	created := time.Now().UTC().Add(-45 * time.Second)
+	d := GrokVideoE2EDuration(created.Format(time.RFC3339Nano), time.Now().UTC())
+	require.GreaterOrEqual(t, d, 44*time.Second)
+	require.LessOrEqual(t, d, 47*time.Second)
+
+	require.Equal(t, time.Duration(0), GrokVideoE2EDuration("", time.Now()))
+	require.Equal(t, time.Duration(0), GrokVideoE2EDuration("not-a-time", time.Now()))
+	// Future CreatedAt clamps to zero (clock skew).
+	require.Equal(t, time.Duration(0), GrokVideoE2EDuration(time.Now().Add(time.Hour).UTC().Format(time.RFC3339Nano), time.Now()))
+REDACTED
+
+func TestGrokVideoPendingCreatedAtStampOnStoreShape(t *testing.T) {
+	t.Parallel()
+	// GrokVideoPendingCreatedAtNow must be parseable by GrokVideoE2EDuration.
+	stamp := GrokVideoPendingCreatedAtNow()
+	require.NotEmpty(t, stamp)
+	d := GrokVideoE2EDuration(stamp, time.Now().UTC().Add(2*time.Second))
+	require.GreaterOrEqual(t, d, time.Second)
+	require.LessOrEqual(t, d, 3*time.Second)
+REDACTED
 
 func TestIsGrokVideoStatusBillable(t *testing.T) {
 	t.Parallel()
