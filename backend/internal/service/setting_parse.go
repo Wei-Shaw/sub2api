@@ -329,6 +329,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		TencentCaptchaAppSecretKeyConfigured:   settings[SettingKeyTencentCaptchaAppSecretKey] != "",
 		TencentCaptchaCloudSecretIDConfigured:  settings[SettingKeyTencentCaptchaCloudSecretID] != "",
 		TencentCaptchaCloudSecretKeyConfigured: settings[SettingKeyTencentCaptchaCloudSecretKey] != "",
+		TencentCaptchaRegion:                   normalizeTencentCaptchaRegion(settings[SettingKeyTencentCaptchaRegion]),
 		AliyunCaptchaEnabled:                   settings[SettingKeyAliyunCaptchaEnabled] == "true",
 		AliyunCaptchaAccessKeyID:               settings[SettingKeyAliyunCaptchaAccessKeyID],
 		AliyunCaptchaAccessKeySecretConfigured: settings[SettingKeyAliyunCaptchaAccessKeySecret] != "",

@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery } = vi.hoisted(() => {
+const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -13,12 +13,17 @@ const { list, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, ro
 
   return {
     list: vi.fn(),
+		exportList: vi.fn(),
     getStats: vi.fn(),
     getSnapshotV2: vi.fn(),
     getById: vi.fn(),
     getModelStats: vi.fn(),
     listErrorLogs: vi.fn(),
     routeQuery: {} as Record<string, string>,
+		aoaToSheet: vi.fn(() => ({})),
+		sheetAddAoa: vi.fn(),
+		saveAs: vi.fn(),
+		xlsxWrite: vi.fn(() => new Uint8Array([1, 2, 3])),
   }
 })
 
@@ -27,6 +32,12 @@ const messages: Record<string, string> = {
   'admin.dashboard.day': 'Day',
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
+	'usage.requestedModel': 'Requested model',
+	'usage.sentUpstreamModel': 'Sent upstream model',
+	'usage.upstreamResponseModel': 'Upstream response model',
+	'usage.upstreamModelMismatch': 'Upstream model mismatch',
+	'common.yes': 'Yes',
+	'common.no': 'No',
 }
 
 const formatLocalDate = (date: Date): string => {
@@ -54,8 +65,20 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
-    list: vi.fn(),
+		list: exportList,
   },
+}))
+
+vi.mock('file-saver', () => ({ saveAs }))
+
+vi.mock('xlsx', () => ({
+	utils: {
+		aoa_to_sheet: aoaToSheet,
+		sheet_add_aoa: sheetAddAoa,
+		book_new: vi.fn(() => ({})),
+		book_append_sheet: vi.fn(),
+	},
+	write: xlsxWrite,
 }))
 
 vi.mock('@/api/admin/ops', () => ({
@@ -538,4 +561,63 @@ describe('admin UsageView ranking tab', () => {
     expect((wrapper.vm as any).filters.user_id).toBe(5)
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ user_id: 5 }), expect.anything())
   })
+})
+
+describe('admin UsageView model audit export', () => {
+	beforeEach(() => {
+		vi.useFakeTimers()
+		list.mockReset().mockResolvedValue({ items: [], total: 0, pages: 0 })
+		exportList.mockReset().mockResolvedValue({
+			items: [{
+				id: 1,
+				created_at: '2026-08-04T00:00:00Z',
+				model: 'gpt-5.6-sol',
+				upstream_model: 'gpt-5.5',
+				upstream_response_model: 'gpt-5.4',
+				upstream_model_mismatch: true,
+				request_type: 'sync',
+				input_tokens: 1,
+				output_tokens: 1,
+				cache_read_tokens: 0,
+				cache_creation_tokens: 0,
+				duration_ms: 10,
+			}],
+			total: 1,
+			pages: 1,
+		})
+		getStats.mockReset().mockResolvedValue({
+			total_requests: 0, total_input_tokens: 0, total_output_tokens: 0,
+			total_cache_tokens: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0,
+		})
+		getSnapshotV2.mockReset().mockResolvedValue({ trend: [], models: [], groups: [] })
+		getModelStats.mockReset().mockResolvedValue({ models: [] })
+		aoaToSheet.mockClear()
+		sheetAddAoa.mockClear()
+		saveAs.mockClear()
+		xlsxWrite.mockClear()
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	it('exports requested, sent, response, and mismatch as separate admin columns', async () => {
+		const wrapper = mountRouteFilteredUsageView()
+		vi.advanceTimersByTime(120)
+		await flushPromises()
+
+		await (wrapper.vm as any).exportToExcel()
+		await flushPromises()
+
+		const headers = aoaToSheet.mock.calls[0][0][0]
+		expect(headers.slice(4, 8)).toEqual([
+			'Requested model',
+			'Sent upstream model',
+			'Upstream response model',
+			'Upstream model mismatch',
+		])
+		const row = sheetAddAoa.mock.calls[0][1][0]
+		expect(row.slice(4, 8)).toEqual(['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'Yes'])
+		expect(saveAs).toHaveBeenCalledTimes(1)
+	})
 })
