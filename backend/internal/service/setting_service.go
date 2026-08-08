@@ -80,11 +80,12 @@ type SettingService struct {
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
 }
 
-// DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
+// DefaultPlatformQuotaSetting 单 platform 四档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
 type DefaultPlatformQuotaSetting struct {
-	DailyLimitUSD   *float64 `json:"daily"`
-	WeeklyLimitUSD  *float64 `json:"weekly"`
-	MonthlyLimitUSD *float64 `json:"monthly"`
+	FiveHourLimitUSD *float64 `json:"five_hour"`
+	DailyLimitUSD    *float64 `json:"daily"`
+	WeeklyLimitUSD   *float64 `json:"weekly"`
+	MonthlyLimitUSD  *float64 `json:"monthly"`
 }
 
 type ProviderDefaultGrantSettings struct {

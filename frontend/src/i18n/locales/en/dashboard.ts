@@ -24,6 +24,7 @@ export default {
     platformOther: 'Other',
     platformQuota: {
       title: 'Quota Usage',
+      five_hour: '5-hour',
       daily: 'Daily',
       weekly: 'Weekly',
       monthly: 'Monthly (30-day rolling)',

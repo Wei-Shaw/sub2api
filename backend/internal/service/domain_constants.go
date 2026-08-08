@@ -572,8 +572,8 @@ const (
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
 )
 
-// SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台日/周/月 USD 上限（JSON）。
-// 值为 map[platform]{daily,weekly,monthly}，null/缺省 = 不限制；0 = 禁用；>0 = USD 上限。
+// SettingKeyDefaultPlatformQuotas —— 系统全局：每用户 × 平台 5 小时/日/周/月 USD 上限（JSON）。
+// 值为 map[platform]{five_hour,daily,weekly,monthly}，null/缺省 = 不限制；0 = 禁用；>0 = USD 上限。
 const SettingKeyDefaultPlatformQuotas = "default_platform_quotas"
 
 // SettingKeyAuthSourcePlatformQuotas 返回某 auth source 的 platform quota JSON key。

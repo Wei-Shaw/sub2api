@@ -11,12 +11,15 @@ vi.mock('@/api/client', () => ({
 }))
 
 import {
+  batchResetPlatformQuotaWindows,
   batchUpdateLimits,
   bindUserAuthIdentity,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
   type BatchUpdateUserLimitsResponse,
+  type BatchResetPlatformQuotaWindowsRequest,
+  type BatchResetPlatformQuotaWindowsResponse,
 } from '@/api/admin/users'
 
 type Assert<T extends true> = T
@@ -79,6 +82,19 @@ const batchRequestContractExact: Assert<
 > = true
 const batchResponseContractExact: Assert<
   IsExact<BatchUpdateUserLimitsResponse, { affected: number }>
+> = true
+const batchQuotaResetRequestContractExact: Assert<
+  IsExact<
+    BatchResetPlatformQuotaWindowsRequest,
+    {
+      user_ids: number[]
+      platforms: Array<'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'>
+      windows: Array<'five_hour' | 'daily' | 'weekly' | 'monthly'>
+    }
+  >
+> = true
+const batchQuotaResetResponseContractExact: Assert<
+  IsExact<BatchResetPlatformQuotaWindowsResponse, { affected: number }>
 > = true
 
 describe('admin users api auth identity binding', () => {
@@ -146,5 +162,21 @@ describe('admin users api auth identity binding', () => {
     expect(result).toEqual({ affected: 2 })
     expect(batchRequestContractExact).toBe(true)
     expect(batchResponseContractExact).toBe(true)
+  })
+
+  it('posts an explicit batch platform quota reset selection', async () => {
+    const request: BatchResetPlatformQuotaWindowsRequest = {
+      user_ids: [4, 7],
+      platforms: ['openai'],
+      windows: ['five_hour', 'daily'],
+    }
+    post.mockResolvedValue({ data: { affected: 2 } satisfies BatchResetPlatformQuotaWindowsResponse })
+
+    const result = await batchResetPlatformQuotaWindows(request)
+
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-platform-quotas/reset', request)
+    expect(result).toEqual({ affected: 2 })
+    expect(batchQuotaResetRequestContractExact).toBe(true)
+    expect(batchQuotaResetResponseContractExact).toBe(true)
   })
 })

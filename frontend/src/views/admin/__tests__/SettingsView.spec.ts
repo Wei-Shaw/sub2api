@@ -524,10 +524,10 @@ const baseSettingsResponse = {
   account_quota_notify_emails: [],
   // 平台限额嵌套字段（新后端契约）
   default_platform_quotas: {
-    anthropic:   { daily: null, weekly: null, monthly: null },
-    openai:      { daily: null, weekly: 12.5, monthly: null },
-    gemini:      { daily: null, weekly: null, monthly: 200 },
-    antigravity: { daily: null, weekly: null, monthly: null },
+    anthropic:   { five_hour: 2, daily: null, weekly: null, monthly: null },
+    openai:      { five_hour: null, daily: null, weekly: 12.5, monthly: null },
+    gemini:      { five_hour: null, daily: null, weekly: null, monthly: 200 },
+    antigravity: { five_hour: null, daily: null, weekly: null, monthly: null },
   },
 };
 
@@ -1760,6 +1760,7 @@ describe("admin SettingsView platform quota matrix", () => {
     for (const p of platforms) {
       expect(quotas).toHaveProperty(p);
       const pq = quotas[p] as Record<string, unknown>;
+      expect(pq).toHaveProperty("five_hour");
       expect(pq).toHaveProperty("daily");
       expect(pq).toHaveProperty("weekly");
       expect(pq).toHaveProperty("monthly");
@@ -1774,8 +1775,8 @@ describe("admin SettingsView platform quota matrix", () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       default_platform_quotas: {
-        anthropic: { daily: 5, weekly: null, monthly: null },
-        openai:    { daily: null, weekly: 12.5, monthly: null },
+        anthropic: { five_hour: 1.5, daily: 5, weekly: null, monthly: null },
+        openai:    { five_hour: null, daily: null, weekly: 12.5, monthly: null },
         // gemini / antigravity 缺失 → 应被归一化为全 null
       },
     });
@@ -1790,11 +1791,12 @@ describe("admin SettingsView platform quota matrix", () => {
     const payload = updateSettings.mock.calls.at(-1)![0] as Record<string, unknown>;
     const quotas = payload["default_platform_quotas"] as Record<string, Record<string, unknown>>;
 
+    expect(quotas["anthropic"]?.["five_hour"]).toBe(1.5);
     expect(quotas["anthropic"]?.["daily"]).toBe(5);
     expect(quotas["openai"]?.["weekly"]).toBe(12.5);
     // 缺失平台应补全为 null
-    expect(quotas["gemini"]).toEqual({ daily: null, weekly: null, monthly: null });
-    expect(quotas["antigravity"]).toEqual({ daily: null, weekly: null, monthly: null });
+    expect(quotas["gemini"]).toEqual({ five_hour: null, daily: null, weekly: null, monthly: null });
+    expect(quotas["antigravity"]).toEqual({ five_hour: null, daily: null, weekly: null, monthly: null });
   });
 
   it("空输入（v-model.number 产出 \"\"）在提交时清洗为 null 而非空字符串", async () => {
@@ -1802,10 +1804,10 @@ describe("admin SettingsView platform quota matrix", () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
       default_platform_quotas: {
-        anthropic: { daily: 10, weekly: null, monthly: null },
-        openai:    { daily: null, weekly: null, monthly: null },
-        gemini:    { daily: null, weekly: null, monthly: null },
-        antigravity: { daily: null, weekly: null, monthly: null },
+        anthropic: { five_hour: null, daily: 10, weekly: null, monthly: null },
+        openai:    { five_hour: null, daily: null, weekly: null, monthly: null },
+        gemini:    { five_hour: null, daily: null, weekly: null, monthly: null },
+        antigravity: { five_hour: null, daily: null, weekly: null, monthly: null },
       },
     });
 
@@ -1815,10 +1817,8 @@ describe("admin SettingsView platform quota matrix", () => {
 
     // 找到 anthropic daily 输入框并清空（模拟用户删除值）
     const inputs = wrapper.findAll('input[type="number"]');
-    const anthropicDailyInput = inputs.find((i) => {
-      const parent = i.element.closest("tr");
-      return parent?.textContent?.includes("anthropic");
-    });
+    const anthropicRow = inputs.filter((i) => i.element.closest("tr")?.textContent?.includes("anthropic"));
+    const anthropicDailyInput = anthropicRow[1];
 
     if (anthropicDailyInput) {
       // 设置为空字符串，模拟 v-model.number 在清空时产出 ""

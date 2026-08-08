@@ -423,17 +423,21 @@ func parseUserPlatformQuotaHash(m map[string]string) *service.UserPlatformQuotaC
 		return n
 	}
 	return &service.UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:      parseFloat(m["daily_usage"]),
-		WeeklyUsageUSD:     parseFloat(m["weekly_usage"]),
-		MonthlyUsageUSD:    parseFloat(m["monthly_usage"]),
-		Version:            parseInt64(m["version"]),
-		SchemaVersion:      parseInt64(m["schema_version"]),
-		DailyLimitUSD:      parseFloatPtr(m["daily_limit"]),
-		WeeklyLimitUSD:     parseFloatPtr(m["weekly_limit"]),
-		MonthlyLimitUSD:    parseFloatPtr(m["monthly_limit"]),
-		DailyWindowStart:   parseTimePtr(m["daily_window_start"]),
-		WeeklyWindowStart:  parseTimePtr(m["weekly_window_start"]),
-		MonthlyWindowStart: parseTimePtr(m["monthly_window_start"]),
+		FiveHourUsageUSD:    parseFloat(m["five_hour_usage"]),
+		DailyUsageUSD:       parseFloat(m["daily_usage"]),
+		WeeklyUsageUSD:      parseFloat(m["weekly_usage"]),
+		MonthlyUsageUSD:     parseFloat(m["monthly_usage"]),
+		Version:             parseInt64(m["version"]),
+		SchemaVersion:       parseInt64(m["schema_version"]),
+		ResetGeneration:     parseInt64(m["reset_generation"]),
+		FiveHourLimitUSD:    parseFloatPtr(m["five_hour_limit"]),
+		DailyLimitUSD:       parseFloatPtr(m["daily_limit"]),
+		WeeklyLimitUSD:      parseFloatPtr(m["weekly_limit"]),
+		MonthlyLimitUSD:     parseFloatPtr(m["monthly_limit"]),
+		FiveHourWindowStart: parseTimePtr(m["five_hour_window_start"]),
+		DailyWindowStart:    parseTimePtr(m["daily_window_start"]),
+		WeeklyWindowStart:   parseTimePtr(m["weekly_window_start"]),
+		MonthlyWindowStart:  parseTimePtr(m["monthly_window_start"]),
 	}
 }
 
@@ -474,14 +478,18 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 	}
 
 	pipe.HSet(ctx, key,
+		"five_hour_usage", entry.FiveHourUsageUSD,
 		"daily_usage", entry.DailyUsageUSD,
 		"weekly_usage", entry.WeeklyUsageUSD,
 		"monthly_usage", entry.MonthlyUsageUSD,
 		"version", entry.Version,
 		"schema_version", entry.SchemaVersion,
+		"reset_generation", entry.ResetGeneration,
+		"five_hour_limit", fmtFloatPtr(entry.FiveHourLimitUSD),
 		"daily_limit", fmtFloatPtr(entry.DailyLimitUSD),
 		"weekly_limit", fmtFloatPtr(entry.WeeklyLimitUSD),
 		"monthly_limit", fmtFloatPtr(entry.MonthlyLimitUSD),
+		"five_hour_window_start", fmtTimePtr(entry.FiveHourWindowStart),
 		"daily_window_start", fmtTimePtr(entry.DailyWindowStart),
 		"weekly_window_start", fmtTimePtr(entry.WeeklyWindowStart),
 		"monthly_window_start", fmtTimePtr(entry.MonthlyWindowStart),
@@ -495,6 +503,18 @@ func (c *billingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID 
 	return c.rdb.Del(ctx, userPlatformQuotaCacheKey(userID, platform)).Err()
 }
 
+// DeleteUserPlatformQuotaCaches invalidates multiple quota entries with one Redis command.
+func (c *billingCache) DeleteUserPlatformQuotaCaches(ctx context.Context, keys []service.UserPlatformQuotaKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	redisKeys := make([]string, len(keys))
+	for i, key := range keys {
+		redisKeys[i] = userPlatformQuotaCacheKey(key.UserID, key.Platform)
+	}
+	return c.rdb.Del(ctx, redisKeys...).Err()
+}
+
 // updateUserPlatformQuotaUsageScript 缓存累加：EXISTS + schema_version 双重守卫。
 // 旧版 entry（schema_version != ARGV[3]，包括缺字段的 0 值）不参与累加，由上层走 DB fallback 后
 // SetCache 重建为新版 entry —— 若此处仍累加，上层覆盖时会丢失这部分增量，导致 Redis usage 比真实偏小。
@@ -503,9 +523,11 @@ func (c *billingCache) DeleteUserPlatformQuotaCache(ctx context.Context, userID 
 // KEYS[2] = 脏集 key（dirty set）
 // ARGV[1] = cost (string float)
 // ARGV[2] = ttl seconds
-// ARGV[3] = expected schema_version (Go 侧 UserPlatformQuotaCacheSchemaV1)
+// ARGV[3] = expected schema_version (Go 侧 UserPlatformQuotaCacheSchemaV2)
 // ARGV[4] = dirty set member（空串则不 SADD）
 // ARGV[5] = 脏集兜底 TTL 秒
+// ARGV[6] = now unix seconds
+// ARGV[7] = five-hour window seconds
 const updateUserPlatformQuotaUsageScript = `
 if redis.call("EXISTS", KEYS[1]) == 0 then
     return 0
@@ -513,6 +535,15 @@ end
 local ver = redis.call("HGET", KEYS[1], "schema_version")
 if ver == false or tonumber(ver) ~= tonumber(ARGV[3]) then
     return 0
+end
+local now = tonumber(ARGV[6])
+local five_hour_seconds = tonumber(ARGV[7])
+local five_hour_start = tonumber(redis.call("HGET", KEYS[1], "five_hour_window_start") or 0)
+if five_hour_start == 0 or (now - five_hour_start) >= five_hour_seconds then
+    redis.call("HSET", KEYS[1], "five_hour_usage", ARGV[1])
+    redis.call("HSET", KEYS[1], "five_hour_window_start", ARGV[6])
+else
+    redis.call("HINCRBYFLOAT", KEYS[1], "five_hour_usage", ARGV[1])
 end
 redis.call("HINCRBYFLOAT", KEYS[1], "daily_usage", ARGV[1])
 redis.call("HINCRBYFLOAT", KEYS[1], "weekly_usage", ARGV[1])
@@ -548,9 +579,11 @@ func (c *billingCache) IncrUserPlatformQuotaUsageCache(ctx context.Context, user
 		[]string{userPlatformQuotaCacheKey(userID, platform), userPlatformQuotaDirtySetKey()},
 		strconv.FormatFloat(cost, 'f', -1, 64),
 		int(ttl.Seconds()),
-		service.UserPlatformQuotaCacheSchemaV1,
+		service.UserPlatformQuotaCacheSchemaV2,
 		member,
 		userPlatformQuotaDirtyTTLSeconds,
+		time.Now().Unix(),
+		int((5 * time.Hour).Seconds()),
 	).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return err

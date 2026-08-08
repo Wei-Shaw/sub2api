@@ -109,6 +109,10 @@ func (s *userPlatformQuotaRepoStub) ResetExpiredWindow(context.Context, int64, s
 	panic("unexpected ResetExpiredWindow call")
 }
 
+func (s *userPlatformQuotaRepoStub) BatchResetWindows(context.Context, []int64, []string, []string, time.Time) ([]UserPlatformQuotaKey, error) {
+	panic("unexpected BatchResetWindows call")
+}
+
 func (s *userPlatformQuotaRepoStub) BatchSnapshotUsage(_ context.Context, _ []UserPlatformQuotaSnapshot, _ time.Time) error {
 	return nil
 }

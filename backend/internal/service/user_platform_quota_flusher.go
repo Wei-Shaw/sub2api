@@ -40,9 +40,9 @@ type FlusherMetrics struct {
 // flusherMaxBatchesPerTick 单次 tick 最多消费的批数，防止 tick 执行时间过长。
 const flusherMaxBatchesPerTick = 16
 
-// maxFlushBatchSize 限制单批行数,必须 ≤ repository.BatchSnapshotUsage 的 batchRows(6000),
+// maxFlushBatchSize 限制单批行数,必须 ≤ repository.BatchSnapshotUsage 的 batchRows(5000),
 // 以保证单次 flush 的 snapshots 仅生成一条 UPSERT(单事务原子)。两处需手动保持一致。
-const maxFlushBatchSize = 6000
+const maxFlushBatchSize = 5000
 
 // defaultFlushBatchSize 是配置 flush_batch_size 非法(≤0)时的回退值。
 const defaultFlushBatchSize = 1000
@@ -150,18 +150,21 @@ func (s *UserPlatformQuotaUsageFlusher) flushOneBatch(parentCtx context.Context)
 		if e == nil {
 			continue
 		}
-		if e.DailyWindowStart == nil || e.WeeklyWindowStart == nil || e.MonthlyWindowStart == nil {
+		if e.FiveHourWindowStart == nil || e.DailyWindowStart == nil || e.WeeklyWindowStart == nil || e.MonthlyWindowStart == nil {
 			continue
 		}
 		snaps = append(snaps, UserPlatformQuotaSnapshot{
-			UserID:             key.UserID,
-			Platform:           key.Platform,
-			DailyUsageUSD:      e.DailyUsageUSD,
-			WeeklyUsageUSD:     e.WeeklyUsageUSD,
-			MonthlyUsageUSD:    e.MonthlyUsageUSD,
-			DailyWindowStart:   *e.DailyWindowStart,
-			WeeklyWindowStart:  *e.WeeklyWindowStart,
-			MonthlyWindowStart: *e.MonthlyWindowStart,
+			UserID:              key.UserID,
+			Platform:            key.Platform,
+			FiveHourUsageUSD:    e.FiveHourUsageUSD,
+			DailyUsageUSD:       e.DailyUsageUSD,
+			WeeklyUsageUSD:      e.WeeklyUsageUSD,
+			MonthlyUsageUSD:     e.MonthlyUsageUSD,
+			FiveHourWindowStart: *e.FiveHourWindowStart,
+			DailyWindowStart:    *e.DailyWindowStart,
+			WeeklyWindowStart:   *e.WeeklyWindowStart,
+			MonthlyWindowStart:  *e.MonthlyWindowStart,
+			ResetGeneration:     e.ResetGeneration,
 		})
 	}
 
@@ -175,16 +178,8 @@ func (s *UserPlatformQuotaUsageFlusher) flushOneBatch(parentCtx context.Context)
 		return true
 	}
 
-	// 已知竞态(admin 写 × flusher 刷,仅 flusher_enabled=true 时存在):
-	// admin ResetExpiredWindow/UpsertForUser 是"先写 DB 再 DeleteCache"。若本批已 SPOP + BatchGet
-	// 读到旧 usage 快照(此刻 member 已离开脏集),而 admin 随后写 DB、本行 UPSERT 又在 admin 写之后落库,
-	// 则旧快照会覆盖 admin 刚写入的值;DeleteCache 后 Redis MISS,下次 preflight 从 DB 重载被覆盖的旧值。
-	// 因 member 已被 SPOP,admin 侧 SREM/清脏标记无法拦截本批(故未做)。影响有限,暂列为已知取舍:
-	//   - UpsertForUser 改 limit,而本 UPSERT 不写 limit 列 → limit 配置不受影响;
-	//   - ResetExpiredWindow 改 usage,但 preflight windowExpired 会在窗口真正过期时自愈重置,
-	//     仅"强制重置未过期窗口"且与本批精确交错时短暂失效;
-	//   - 低频 admin 操作 + 默认 flusher_enabled=false。彻底消除需 version OCC(DB 加 version 列条件 UPSERT),
-	//     成本高;启用 flusher 后如需强一致再评估。
+	// 快照携带 reset_generation；BatchSnapshotUsage 仅覆盖代次相同的记录，
+	// 因此管理员重置前读取的旧快照会在重置后被忽略。
 
 	// 5. 写入 DB
 	start := time.Now()

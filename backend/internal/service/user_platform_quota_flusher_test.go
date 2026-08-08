@@ -72,12 +72,15 @@ func flusherPtrTime(t time.Time) *time.Time { return &t }
 func makeEntry(daily, weekly, monthly float64) *UserPlatformQuotaCacheEntry {
 	now := time.Now().UTC()
 	return &UserPlatformQuotaCacheEntry{
-		DailyUsageUSD:      daily,
-		WeeklyUsageUSD:     weekly,
-		MonthlyUsageUSD:    monthly,
-		DailyWindowStart:   flusherPtrTime(now),
-		WeeklyWindowStart:  flusherPtrTime(now),
-		MonthlyWindowStart: flusherPtrTime(now),
+		FiveHourUsageUSD:    daily,
+		DailyUsageUSD:       daily,
+		WeeklyUsageUSD:      weekly,
+		MonthlyUsageUSD:     monthly,
+		FiveHourWindowStart: flusherPtrTime(now),
+		DailyWindowStart:    flusherPtrTime(now),
+		WeeklyWindowStart:   flusherPtrTime(now),
+		MonthlyWindowStart:  flusherPtrTime(now),
+		ResetGeneration:     3,
 	}
 }
 
@@ -480,6 +483,9 @@ func TestScenario_NinetyPercentCompany(t *testing.T) {
 	// 验证绝对值语义：第 1 条 snap 的各窗口 usage 应等于 entries[0] 的值
 	snap0 := writer.receivedSnaps[0]
 	entry0 := entries[0]
+	if snap0.FiveHourUsageUSD != entry0.FiveHourUsageUSD {
+		t.Errorf("snap[0].FiveHourUsageUSD = %v, want %v", snap0.FiveHourUsageUSD, entry0.FiveHourUsageUSD)
+	}
 	if snap0.DailyUsageUSD != entry0.DailyUsageUSD {
 		t.Errorf("snap[0].DailyUsageUSD = %v, want %v", snap0.DailyUsageUSD, entry0.DailyUsageUSD)
 	}
@@ -488,6 +494,9 @@ func TestScenario_NinetyPercentCompany(t *testing.T) {
 	}
 	if snap0.MonthlyUsageUSD != entry0.MonthlyUsageUSD {
 		t.Errorf("snap[0].MonthlyUsageUSD = %v, want %v", snap0.MonthlyUsageUSD, entry0.MonthlyUsageUSD)
+	}
+	if snap0.ResetGeneration != entry0.ResetGeneration {
+		t.Errorf("snap[0].ResetGeneration = %v, want %v", snap0.ResetGeneration, entry0.ResetGeneration)
 	}
 
 	// FlushBatchSizeTotal 应为 5（本批 keys 数量）

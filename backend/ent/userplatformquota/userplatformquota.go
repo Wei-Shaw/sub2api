@@ -25,24 +25,32 @@ const (
 	FieldUserID = "user_id"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
+	// FieldFiveHourLimitUsd holds the string denoting the five_hour_limit_usd field in the database.
+	FieldFiveHourLimitUsd = "five_hour_limit_usd"
 	// FieldDailyLimitUsd holds the string denoting the daily_limit_usd field in the database.
 	FieldDailyLimitUsd = "daily_limit_usd"
 	// FieldWeeklyLimitUsd holds the string denoting the weekly_limit_usd field in the database.
 	FieldWeeklyLimitUsd = "weekly_limit_usd"
 	// FieldMonthlyLimitUsd holds the string denoting the monthly_limit_usd field in the database.
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
+	// FieldFiveHourUsageUsd holds the string denoting the five_hour_usage_usd field in the database.
+	FieldFiveHourUsageUsd = "five_hour_usage_usd"
 	// FieldDailyUsageUsd holds the string denoting the daily_usage_usd field in the database.
 	FieldDailyUsageUsd = "daily_usage_usd"
 	// FieldWeeklyUsageUsd holds the string denoting the weekly_usage_usd field in the database.
 	FieldWeeklyUsageUsd = "weekly_usage_usd"
 	// FieldMonthlyUsageUsd holds the string denoting the monthly_usage_usd field in the database.
 	FieldMonthlyUsageUsd = "monthly_usage_usd"
+	// FieldFiveHourWindowStart holds the string denoting the five_hour_window_start field in the database.
+	FieldFiveHourWindowStart = "five_hour_window_start"
 	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
 	FieldWeeklyWindowStart = "weekly_window_start"
 	// FieldMonthlyWindowStart holds the string denoting the monthly_window_start field in the database.
 	FieldMonthlyWindowStart = "monthly_window_start"
+	// FieldResetGeneration holds the string denoting the reset_generation field in the database.
+	FieldResetGeneration = "reset_generation"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// Table holds the table name of the userplatformquota in the database.
@@ -64,15 +72,19 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldUserID,
 	FieldPlatform,
+	FieldFiveHourLimitUsd,
 	FieldDailyLimitUsd,
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
+	FieldFiveHourUsageUsd,
 	FieldDailyUsageUsd,
 	FieldWeeklyUsageUsd,
 	FieldMonthlyUsageUsd,
+	FieldFiveHourWindowStart,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
+	FieldResetGeneration,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -101,12 +113,18 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
 	PlatformValidator func(string) error
+	// DefaultFiveHourUsageUsd holds the default value on creation for the "five_hour_usage_usd" field.
+	DefaultFiveHourUsageUsd float64
 	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
 	DefaultDailyUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
 	DefaultWeeklyUsageUsd float64
 	// DefaultMonthlyUsageUsd holds the default value on creation for the "monthly_usage_usd" field.
 	DefaultMonthlyUsageUsd float64
+	// DefaultResetGeneration holds the default value on creation for the "reset_generation" field.
+	DefaultResetGeneration int64
+	// ResetGenerationValidator is a validator for the "reset_generation" field. It is called by the builders before save.
+	ResetGenerationValidator func(int64) error
 )
 
 // OrderOption defines the ordering options for the UserPlatformQuota queries.
@@ -142,6 +160,11 @@ func ByPlatform(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPlatform, opts...).ToFunc()
 }
 
+// ByFiveHourLimitUsd orders the results by the five_hour_limit_usd field.
+func ByFiveHourLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourLimitUsd, opts...).ToFunc()
+}
+
 // ByDailyLimitUsd orders the results by the daily_limit_usd field.
 func ByDailyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDailyLimitUsd, opts...).ToFunc()
@@ -155,6 +178,11 @@ func ByWeeklyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthlyLimitUsd orders the results by the monthly_limit_usd field.
 func ByMonthlyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyLimitUsd, opts...).ToFunc()
+}
+
+// ByFiveHourUsageUsd orders the results by the five_hour_usage_usd field.
+func ByFiveHourUsageUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourUsageUsd, opts...).ToFunc()
 }
 
 // ByDailyUsageUsd orders the results by the daily_usage_usd field.
@@ -172,6 +200,11 @@ func ByMonthlyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyUsageUsd, opts...).ToFunc()
 }
 
+// ByFiveHourWindowStart orders the results by the five_hour_window_start field.
+func ByFiveHourWindowStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFiveHourWindowStart, opts...).ToFunc()
+}
+
 // ByDailyWindowStart orders the results by the daily_window_start field.
 func ByDailyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDailyWindowStart, opts...).ToFunc()
@@ -185,6 +218,11 @@ func ByWeeklyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthlyWindowStart orders the results by the monthly_window_start field.
 func ByMonthlyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyWindowStart, opts...).ToFunc()
+}
+
+// ByResetGeneration orders the results by the reset_generation field.
+func ByResetGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldResetGeneration, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

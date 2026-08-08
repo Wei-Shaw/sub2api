@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +36,10 @@ type UserHandler struct {
 	totpService           *service.TotpService                // 角色提升为管理员的 step-up 门控
 	userService           *service.UserService
 	settingService        *service.SettingService // step-up 功能开关
+}
+
+type userPlatformQuotaBatchCacheInvalidator interface {
+	DeleteUserPlatformQuotaCaches(ctx context.Context, keys []service.UserPlatformQuotaKey) error
 }
 
 // NewUserHandler creates a new admin user handler
@@ -714,10 +720,32 @@ type UpdateUserPlatformQuotasRequest struct {
 
 // PlatformQuotaInput 单平台限额输入；limit 字段为 nil 表示不限制。
 type PlatformQuotaInput struct {
-	Platform        string   `json:"platform" binding:"required"`
-	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
+	Platform         string                `json:"platform" binding:"required"`
+	FiveHourLimitUSD OptionalNullableFloat `json:"five_hour_limit_usd"`
+	DailyLimitUSD    *float64              `json:"daily_limit_usd"`
+	WeeklyLimitUSD   *float64              `json:"weekly_limit_usd"`
+	MonthlyLimitUSD  *float64              `json:"monthly_limit_usd"`
+}
+
+// OptionalNullableFloat 区分字段省略与显式 JSON null，避免旧客户端更新其他窗口时
+// 意外清空已有的 5 小时限额。
+type OptionalNullableFloat struct {
+	Present bool
+	Value   *float64
+}
+
+func (o *OptionalNullableFloat) UnmarshalJSON(data []byte) error {
+	o.Present = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		o.Value = nil
+		return nil
+	}
+	var value float64
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	o.Value = &value
+	return nil
 }
 
 // platform 合法性由 service.IsAllowedQuotaPlatform / service.AllowedQuotaPlatforms 统一判断（单一源）。
@@ -757,20 +785,27 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 			return
 		}
 		seen[q.Platform] = struct{}{}
-		// daily_limit_usd / weekly_limit_usd / monthly_limit_usd 的语义：
+		// five_hour_limit_usd / daily_limit_usd / weekly_limit_usd / monthly_limit_usd 的语义：
 		//   nil / not set → 无限额（完全放行）
 		//   0            → 完全禁用（任何请求都会被拒绝，因为 usage >= 0 恒成立）
 		//   > 0          → USD 限额上限
 		// 拦截 NaN / ±Inf：客户端可发送超大数（如 1e308 × 2）使 JSON 反序列化得到 +Inf，
 		// 进入 DB 后 cache check 中 usage >= limit 永不成立，limit 等同失效。
-		for _, f := range []struct {
+		limits := []struct {
 			name string
 			val  *float64
 		}{
 			{"daily_limit_usd", q.DailyLimitUSD},
 			{"weekly_limit_usd", q.WeeklyLimitUSD},
 			{"monthly_limit_usd", q.MonthlyLimitUSD},
-		} {
+		}
+		if q.FiveHourLimitUSD.Present {
+			limits = append(limits, struct {
+				name string
+				val  *float64
+			}{"five_hour_limit_usd", q.FiveHourLimitUSD.Value})
+		}
+		for _, f := range limits {
 			if f.val == nil {
 				continue
 			}
@@ -786,38 +821,44 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 		}
 	}
 
-	records := make([]service.UserPlatformQuotaRecord, 0, len(req.Quotas))
-	for _, q := range req.Quotas {
-		records = append(records, service.UserPlatformQuotaRecord{
-			UserID:          userID,
-			Platform:        q.Platform,
-			DailyLimitUSD:   q.DailyLimitUSD,
-			WeeklyLimitUSD:  q.WeeklyLimitUSD,
-			MonthlyLimitUSD: q.MonthlyLimitUSD,
-		})
-	}
-
 	ctx := c.Request.Context()
 	// 校验用户是否存在，避免 FK 违反导致 500；用户不存在时返回 404。
 	if _, err := h.adminService.GetUser(ctx, userID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	// 在 UpsertForUser 之前抓取 before snapshot 用于审计 before/after 对比。
-	// ListByUser 失败不阻断主操作（best-effort），仅记录降级 warn。
+	// 在 UpsertForUser 之前读取快照，同时用于兼容旧客户端省略 five_hour_limit_usd 的情况。
 	beforeRecords, beforeErr := h.userPlatformQuotaRepo.ListByUser(ctx, userID)
 	if beforeErr != nil {
-		slog.Warn("quota audit before snapshot failed", "user_id", userID, "err", beforeErr)
+		response.ErrorFrom(c, beforeErr)
+		return
+	}
+	beforeByPlatform := make(map[string]service.UserPlatformQuotaRecord, len(beforeRecords))
+	for _, r := range beforeRecords {
+		beforeByPlatform[r.Platform] = r
+	}
+	records := make([]service.UserPlatformQuotaRecord, 0, len(req.Quotas))
+	for _, q := range req.Quotas {
+		fiveHourLimit := q.FiveHourLimitUSD.Value
+		if !q.FiveHourLimitUSD.Present {
+			if previous, ok := beforeByPlatform[q.Platform]; ok {
+				fiveHourLimit = previous.FiveHourLimitUSD
+			}
+		}
+		records = append(records, service.UserPlatformQuotaRecord{
+			UserID:           userID,
+			Platform:         q.Platform,
+			FiveHourLimitUSD: fiveHourLimit,
+			DailyLimitUSD:    q.DailyLimitUSD,
+			WeeklyLimitUSD:   q.WeeklyLimitUSD,
+			MonthlyLimitUSD:  q.MonthlyLimitUSD,
+		})
 	}
 	if err := h.userPlatformQuotaRepo.UpsertForUser(ctx, userID, records); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	beforeByPlatform := make(map[string]service.UserPlatformQuotaRecord, len(beforeRecords))
-	for _, r := range beforeRecords {
-		beforeByPlatform[r.Platform] = r
-	}
 	afterPlatforms := make(map[string]struct{}, len(records))
 	for _, r := range records {
 		afterPlatforms[r.Platform] = struct{}{}
@@ -825,12 +866,14 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 	changes := make([]map[string]any, 0, len(records))
 	for _, r := range records {
 		entry := map[string]any{
-			"platform":          r.Platform,
-			"daily_limit_usd":   r.DailyLimitUSD,
-			"weekly_limit_usd":  r.WeeklyLimitUSD,
-			"monthly_limit_usd": r.MonthlyLimitUSD,
+			"platform":            r.Platform,
+			"five_hour_limit_usd": r.FiveHourLimitUSD,
+			"daily_limit_usd":     r.DailyLimitUSD,
+			"weekly_limit_usd":    r.WeeklyLimitUSD,
+			"monthly_limit_usd":   r.MonthlyLimitUSD,
 		}
 		if prev, ok := beforeByPlatform[r.Platform]; ok {
+			entry["before_five_hour_limit_usd"] = prev.FiveHourLimitUSD
 			entry["before_daily_limit_usd"] = prev.DailyLimitUSD
 			entry["before_weekly_limit_usd"] = prev.WeeklyLimitUSD
 			entry["before_monthly_limit_usd"] = prev.MonthlyLimitUSD
@@ -844,11 +887,12 @@ func (h *UserHandler) UpdateUserPlatformQuotas(c *gin.Context) {
 			continue
 		}
 		changes = append(changes, map[string]any{
-			"platform":                 prev.Platform,
-			"removed":                  true,
-			"before_daily_limit_usd":   prev.DailyLimitUSD,
-			"before_weekly_limit_usd":  prev.WeeklyLimitUSD,
-			"before_monthly_limit_usd": prev.MonthlyLimitUSD,
+			"platform":                   prev.Platform,
+			"removed":                    true,
+			"before_five_hour_limit_usd": prev.FiveHourLimitUSD,
+			"before_daily_limit_usd":     prev.DailyLimitUSD,
+			"before_weekly_limit_usd":    prev.WeeklyLimitUSD,
+			"before_monthly_limit_usd":   prev.MonthlyLimitUSD,
 		})
 	}
 	// before_snapshot_available 让审计消费方能识别 changes 中是否带 before_* 字段；
@@ -893,9 +937,10 @@ type ResetUserPlatformQuotaWindowRequest struct {
 }
 
 var allowedWindowsForQuotaReset = map[string]struct{}{
-	"daily":   {},
-	"weekly":  {},
-	"monthly": {},
+	"five_hour": {},
+	"daily":     {},
+	"weekly":    {},
+	"monthly":   {},
 }
 
 // ResetUserPlatformQuotaWindow POST /admin/users/:id/platform-quotas/reset
@@ -965,4 +1010,114 @@ func (h *UserHandler) ResetUserPlatformQuotaWindow(c *gin.Context) {
 		out = append(out, quotaview.LazyZeroQuotaForResponse(records[i], now, true))
 	}
 	response.Success(c, map[string]any{"platform_quotas": out})
+}
+
+// BatchResetUserPlatformQuotaWindowsRequest 是批量重置接口的请求体。
+type BatchResetUserPlatformQuotaWindowsRequest struct {
+	UserIDs   []int64  `json:"user_ids" binding:"required"`
+	Platforms []string `json:"platforms" binding:"required"`
+	Windows   []string `json:"windows" binding:"required"`
+}
+
+// BatchResetUserPlatformQuotaWindows 仅重置显式指定用户、平台和窗口的用量。
+func (h *UserHandler) BatchResetUserPlatformQuotaWindows(c *gin.Context) {
+	if h.userPlatformQuotaRepo == nil {
+		response.Error(c, 503, "platform quota service not available")
+		return
+	}
+
+	var req BatchResetUserPlatformQuotaWindowsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.UserIDs) == 0 || len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids must contain between 1 and 500 items")
+		return
+	}
+	if len(req.Platforms) == 0 || len(req.Platforms) > len(service.AllowedQuotaPlatforms) {
+		response.BadRequest(c, fmt.Sprintf("platforms must contain between 1 and %d items", len(service.AllowedQuotaPlatforms)))
+		return
+	}
+	if len(req.Windows) == 0 || len(req.Windows) > len(allowedWindowsForQuotaReset) {
+		response.BadRequest(c, fmt.Sprintf("windows must contain between 1 and %d items", len(allowedWindowsForQuotaReset)))
+		return
+	}
+
+	if duplicate, invalid := validateUniquePositiveIDs(req.UserIDs); invalid != "" {
+		response.BadRequest(c, invalid)
+		return
+	} else if duplicate {
+		response.BadRequest(c, "duplicate user id")
+		return
+	}
+	if err := validateQuotaResetValues(req.Platforms, service.IsAllowedQuotaPlatform, "platform"); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := validateQuotaResetValues(req.Windows, func(value string) bool {
+		_, ok := allowedWindowsForQuotaReset[value]
+		return ok
+	}, "window"); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	ctx := c.Request.Context()
+	now := time.Now().UTC()
+	keys, err := h.userPlatformQuotaRepo.BatchResetWindows(ctx, req.UserIDs, req.Platforms, req.Windows, now)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if h.billingCache != nil {
+		if batchInvalidator, ok := h.billingCache.(userPlatformQuotaBatchCacheInvalidator); ok {
+			if err := batchInvalidator.DeleteUserPlatformQuotaCaches(ctx, keys); err != nil {
+				slog.Error("ALERT: batch quota cache invalidation failed after reset", "affected", len(keys), "err", err)
+			}
+		} else {
+			for _, key := range keys {
+				if err := h.billingCache.DeleteUserPlatformQuotaCache(ctx, key.UserID, key.Platform); err != nil {
+					slog.Error("ALERT: quota cache invalidation failed after batch reset", "user_id", key.UserID, "platform", key.Platform, "err", err)
+				}
+			}
+		}
+	}
+
+	slog.Info("admin.quota_windows_batch_reset",
+		"actor_admin_id", getAdminIDFromContext(c),
+		"target_user_ids", req.UserIDs,
+		"platforms", req.Platforms,
+		"windows", req.Windows,
+		"affected", len(keys))
+	response.Success(c, gin.H{"affected": len(keys)})
+}
+
+func validateUniquePositiveIDs(ids []int64) (duplicate bool, invalidMessage string) {
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return false, "user_ids must contain only positive integers"
+		}
+		if _, ok := seen[id]; ok {
+			return true, ""
+		}
+		seen[id] = struct{}{}
+	}
+	return false, ""
+}
+
+func validateQuotaResetValues(values []string, allowed func(string) bool, label string) error {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !allowed(value) {
+			return fmt.Errorf("invalid %s: %s", label, value)
+		}
+		if _, ok := seen[value]; ok {
+			return fmt.Errorf("duplicate %s: %s", label, value)
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
 }

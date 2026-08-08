@@ -33,6 +33,9 @@ func (f *fakeRepoForAdapter) ResetExpiredWindow(_ context.Context, userID int64,
 	f.resetCalledWith = [4]any{userID, platform, window, newStart}
 	return f.resetErr
 }
+func (f *fakeRepoForAdapter) BatchResetWindows(_ context.Context, _ []int64, _, _ []string, _ time.Time) ([]UserPlatformQuotaKey, error) {
+	return nil, nil
+}
 func (f *fakeRepoForAdapter) UpsertForUser(_ context.Context, userID int64, records []UserPlatformQuotaRecord) error {
 	f.upsertCalledUserID = userID
 	f.upsertCalledWith = records

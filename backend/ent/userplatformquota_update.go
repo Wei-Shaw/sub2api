@@ -83,6 +83,33 @@ func (_u *UserPlatformQuotaUpdate) SetNillablePlatform(v *string) *UserPlatformQ
 	return _u
 }
 
+// SetFiveHourLimitUsd sets the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdate) SetFiveHourLimitUsd(v float64) *UserPlatformQuotaUpdate {
+	_u.mutation.ResetFiveHourLimitUsd()
+	_u.mutation.SetFiveHourLimitUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourLimitUsd sets the "five_hour_limit_usd" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdate) SetNillableFiveHourLimitUsd(v *float64) *UserPlatformQuotaUpdate {
+	if v != nil {
+		_u.SetFiveHourLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourLimitUsd adds value to the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdate) AddFiveHourLimitUsd(v float64) *UserPlatformQuotaUpdate {
+	_u.mutation.AddFiveHourLimitUsd(v)
+	return _u
+}
+
+// ClearFiveHourLimitUsd clears the value of the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdate) ClearFiveHourLimitUsd() *UserPlatformQuotaUpdate {
+	_u.mutation.ClearFiveHourLimitUsd()
+	return _u
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_u *UserPlatformQuotaUpdate) SetDailyLimitUsd(v float64) *UserPlatformQuotaUpdate {
 	_u.mutation.ResetDailyLimitUsd()
@@ -164,6 +191,27 @@ func (_u *UserPlatformQuotaUpdate) ClearMonthlyLimitUsd() *UserPlatformQuotaUpda
 	return _u
 }
 
+// SetFiveHourUsageUsd sets the "five_hour_usage_usd" field.
+func (_u *UserPlatformQuotaUpdate) SetFiveHourUsageUsd(v float64) *UserPlatformQuotaUpdate {
+	_u.mutation.ResetFiveHourUsageUsd()
+	_u.mutation.SetFiveHourUsageUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourUsageUsd sets the "five_hour_usage_usd" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdate) SetNillableFiveHourUsageUsd(v *float64) *UserPlatformQuotaUpdate {
+	if v != nil {
+		_u.SetFiveHourUsageUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourUsageUsd adds value to the "five_hour_usage_usd" field.
+func (_u *UserPlatformQuotaUpdate) AddFiveHourUsageUsd(v float64) *UserPlatformQuotaUpdate {
+	_u.mutation.AddFiveHourUsageUsd(v)
+	return _u
+}
+
 // SetDailyUsageUsd sets the "daily_usage_usd" field.
 func (_u *UserPlatformQuotaUpdate) SetDailyUsageUsd(v float64) *UserPlatformQuotaUpdate {
 	_u.mutation.ResetDailyUsageUsd()
@@ -227,6 +275,26 @@ func (_u *UserPlatformQuotaUpdate) AddMonthlyUsageUsd(v float64) *UserPlatformQu
 	return _u
 }
 
+// SetFiveHourWindowStart sets the "five_hour_window_start" field.
+func (_u *UserPlatformQuotaUpdate) SetFiveHourWindowStart(v time.Time) *UserPlatformQuotaUpdate {
+	_u.mutation.SetFiveHourWindowStart(v)
+	return _u
+}
+
+// SetNillableFiveHourWindowStart sets the "five_hour_window_start" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdate) SetNillableFiveHourWindowStart(v *time.Time) *UserPlatformQuotaUpdate {
+	if v != nil {
+		_u.SetFiveHourWindowStart(*v)
+	}
+	return _u
+}
+
+// ClearFiveHourWindowStart clears the value of the "five_hour_window_start" field.
+func (_u *UserPlatformQuotaUpdate) ClearFiveHourWindowStart() *UserPlatformQuotaUpdate {
+	_u.mutation.ClearFiveHourWindowStart()
+	return _u
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_u *UserPlatformQuotaUpdate) SetDailyWindowStart(v time.Time) *UserPlatformQuotaUpdate {
 	_u.mutation.SetDailyWindowStart(v)
@@ -284,6 +352,27 @@ func (_u *UserPlatformQuotaUpdate) SetNillableMonthlyWindowStart(v *time.Time) *
 // ClearMonthlyWindowStart clears the value of the "monthly_window_start" field.
 func (_u *UserPlatformQuotaUpdate) ClearMonthlyWindowStart() *UserPlatformQuotaUpdate {
 	_u.mutation.ClearMonthlyWindowStart()
+	return _u
+}
+
+// SetResetGeneration sets the "reset_generation" field.
+func (_u *UserPlatformQuotaUpdate) SetResetGeneration(v int64) *UserPlatformQuotaUpdate {
+	_u.mutation.ResetResetGeneration()
+	_u.mutation.SetResetGeneration(v)
+	return _u
+}
+
+// SetNillableResetGeneration sets the "reset_generation" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdate) SetNillableResetGeneration(v *int64) *UserPlatformQuotaUpdate {
+	if v != nil {
+		_u.SetResetGeneration(*v)
+	}
+	return _u
+}
+
+// AddResetGeneration adds value to the "reset_generation" field.
+func (_u *UserPlatformQuotaUpdate) AddResetGeneration(v int64) *UserPlatformQuotaUpdate {
+	_u.mutation.AddResetGeneration(v)
 	return _u
 }
 
@@ -352,6 +441,11 @@ func (_u *UserPlatformQuotaUpdate) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "UserPlatformQuota.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ResetGeneration(); ok {
+		if err := userplatformquota.ResetGenerationValidator(v); err != nil {
+			return &ValidationError{Name: "reset_generation", err: fmt.Errorf(`ent: validator failed for field "UserPlatformQuota.reset_generation": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserPlatformQuota.user"`)
 	}
@@ -382,6 +476,15 @@ func (_u *UserPlatformQuotaUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(userplatformquota.FieldPlatform, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FiveHourLimitUsd(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourLimitUsd(); ok {
+		_spec.AddField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.FiveHourLimitUsdCleared() {
+		_spec.ClearField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(userplatformquota.FieldDailyLimitUsd, field.TypeFloat64, value)
 	}
@@ -409,6 +512,12 @@ func (_u *UserPlatformQuotaUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(userplatformquota.FieldMonthlyLimitUsd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.FiveHourUsageUsd(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourUsageUsd(); ok {
+		_spec.AddField(userplatformquota.FieldFiveHourUsageUsd, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.DailyUsageUsd(); ok {
 		_spec.SetField(userplatformquota.FieldDailyUsageUsd, field.TypeFloat64, value)
 	}
@@ -427,6 +536,12 @@ func (_u *UserPlatformQuotaUpdate) sqlSave(ctx context.Context) (_node int, err 
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(userplatformquota.FieldMonthlyUsageUsd, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.FiveHourWindowStart(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourWindowStart, field.TypeTime, value)
+	}
+	if _u.mutation.FiveHourWindowStartCleared() {
+		_spec.ClearField(userplatformquota.FieldFiveHourWindowStart, field.TypeTime)
+	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldDailyWindowStart, field.TypeTime, value)
 	}
@@ -444,6 +559,12 @@ func (_u *UserPlatformQuotaUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if _u.mutation.MonthlyWindowStartCleared() {
 		_spec.ClearField(userplatformquota.FieldMonthlyWindowStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ResetGeneration(); ok {
+		_spec.SetField(userplatformquota.FieldResetGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedResetGeneration(); ok {
+		_spec.AddField(userplatformquota.FieldResetGeneration, field.TypeInt64, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -548,6 +669,33 @@ func (_u *UserPlatformQuotaUpdateOne) SetNillablePlatform(v *string) *UserPlatfo
 	return _u
 }
 
+// SetFiveHourLimitUsd sets the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdateOne) SetFiveHourLimitUsd(v float64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.ResetFiveHourLimitUsd()
+	_u.mutation.SetFiveHourLimitUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourLimitUsd sets the "five_hour_limit_usd" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdateOne) SetNillableFiveHourLimitUsd(v *float64) *UserPlatformQuotaUpdateOne {
+	if v != nil {
+		_u.SetFiveHourLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourLimitUsd adds value to the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdateOne) AddFiveHourLimitUsd(v float64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.AddFiveHourLimitUsd(v)
+	return _u
+}
+
+// ClearFiveHourLimitUsd clears the value of the "five_hour_limit_usd" field.
+func (_u *UserPlatformQuotaUpdateOne) ClearFiveHourLimitUsd() *UserPlatformQuotaUpdateOne {
+	_u.mutation.ClearFiveHourLimitUsd()
+	return _u
+}
+
 // SetDailyLimitUsd sets the "daily_limit_usd" field.
 func (_u *UserPlatformQuotaUpdateOne) SetDailyLimitUsd(v float64) *UserPlatformQuotaUpdateOne {
 	_u.mutation.ResetDailyLimitUsd()
@@ -629,6 +777,27 @@ func (_u *UserPlatformQuotaUpdateOne) ClearMonthlyLimitUsd() *UserPlatformQuotaU
 	return _u
 }
 
+// SetFiveHourUsageUsd sets the "five_hour_usage_usd" field.
+func (_u *UserPlatformQuotaUpdateOne) SetFiveHourUsageUsd(v float64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.ResetFiveHourUsageUsd()
+	_u.mutation.SetFiveHourUsageUsd(v)
+	return _u
+}
+
+// SetNillableFiveHourUsageUsd sets the "five_hour_usage_usd" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdateOne) SetNillableFiveHourUsageUsd(v *float64) *UserPlatformQuotaUpdateOne {
+	if v != nil {
+		_u.SetFiveHourUsageUsd(*v)
+	}
+	return _u
+}
+
+// AddFiveHourUsageUsd adds value to the "five_hour_usage_usd" field.
+func (_u *UserPlatformQuotaUpdateOne) AddFiveHourUsageUsd(v float64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.AddFiveHourUsageUsd(v)
+	return _u
+}
+
 // SetDailyUsageUsd sets the "daily_usage_usd" field.
 func (_u *UserPlatformQuotaUpdateOne) SetDailyUsageUsd(v float64) *UserPlatformQuotaUpdateOne {
 	_u.mutation.ResetDailyUsageUsd()
@@ -692,6 +861,26 @@ func (_u *UserPlatformQuotaUpdateOne) AddMonthlyUsageUsd(v float64) *UserPlatfor
 	return _u
 }
 
+// SetFiveHourWindowStart sets the "five_hour_window_start" field.
+func (_u *UserPlatformQuotaUpdateOne) SetFiveHourWindowStart(v time.Time) *UserPlatformQuotaUpdateOne {
+	_u.mutation.SetFiveHourWindowStart(v)
+	return _u
+}
+
+// SetNillableFiveHourWindowStart sets the "five_hour_window_start" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdateOne) SetNillableFiveHourWindowStart(v *time.Time) *UserPlatformQuotaUpdateOne {
+	if v != nil {
+		_u.SetFiveHourWindowStart(*v)
+	}
+	return _u
+}
+
+// ClearFiveHourWindowStart clears the value of the "five_hour_window_start" field.
+func (_u *UserPlatformQuotaUpdateOne) ClearFiveHourWindowStart() *UserPlatformQuotaUpdateOne {
+	_u.mutation.ClearFiveHourWindowStart()
+	return _u
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_u *UserPlatformQuotaUpdateOne) SetDailyWindowStart(v time.Time) *UserPlatformQuotaUpdateOne {
 	_u.mutation.SetDailyWindowStart(v)
@@ -749,6 +938,27 @@ func (_u *UserPlatformQuotaUpdateOne) SetNillableMonthlyWindowStart(v *time.Time
 // ClearMonthlyWindowStart clears the value of the "monthly_window_start" field.
 func (_u *UserPlatformQuotaUpdateOne) ClearMonthlyWindowStart() *UserPlatformQuotaUpdateOne {
 	_u.mutation.ClearMonthlyWindowStart()
+	return _u
+}
+
+// SetResetGeneration sets the "reset_generation" field.
+func (_u *UserPlatformQuotaUpdateOne) SetResetGeneration(v int64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.ResetResetGeneration()
+	_u.mutation.SetResetGeneration(v)
+	return _u
+}
+
+// SetNillableResetGeneration sets the "reset_generation" field if the given value is not nil.
+func (_u *UserPlatformQuotaUpdateOne) SetNillableResetGeneration(v *int64) *UserPlatformQuotaUpdateOne {
+	if v != nil {
+		_u.SetResetGeneration(*v)
+	}
+	return _u
+}
+
+// AddResetGeneration adds value to the "reset_generation" field.
+func (_u *UserPlatformQuotaUpdateOne) AddResetGeneration(v int64) *UserPlatformQuotaUpdateOne {
+	_u.mutation.AddResetGeneration(v)
 	return _u
 }
 
@@ -830,6 +1040,11 @@ func (_u *UserPlatformQuotaUpdateOne) check() error {
 			return &ValidationError{Name: "platform", err: fmt.Errorf(`ent: validator failed for field "UserPlatformQuota.platform": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ResetGeneration(); ok {
+		if err := userplatformquota.ResetGenerationValidator(v); err != nil {
+			return &ValidationError{Name: "reset_generation", err: fmt.Errorf(`ent: validator failed for field "UserPlatformQuota.reset_generation": %w`, err)}
+		}
+	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "UserPlatformQuota.user"`)
 	}
@@ -877,6 +1092,15 @@ func (_u *UserPlatformQuotaUpdateOne) sqlSave(ctx context.Context) (_node *UserP
 	if value, ok := _u.mutation.Platform(); ok {
 		_spec.SetField(userplatformquota.FieldPlatform, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FiveHourLimitUsd(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourLimitUsd(); ok {
+		_spec.AddField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.FiveHourLimitUsdCleared() {
+		_spec.ClearField(userplatformquota.FieldFiveHourLimitUsd, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.DailyLimitUsd(); ok {
 		_spec.SetField(userplatformquota.FieldDailyLimitUsd, field.TypeFloat64, value)
 	}
@@ -904,6 +1128,12 @@ func (_u *UserPlatformQuotaUpdateOne) sqlSave(ctx context.Context) (_node *UserP
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(userplatformquota.FieldMonthlyLimitUsd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.FiveHourUsageUsd(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedFiveHourUsageUsd(); ok {
+		_spec.AddField(userplatformquota.FieldFiveHourUsageUsd, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.DailyUsageUsd(); ok {
 		_spec.SetField(userplatformquota.FieldDailyUsageUsd, field.TypeFloat64, value)
 	}
@@ -922,6 +1152,12 @@ func (_u *UserPlatformQuotaUpdateOne) sqlSave(ctx context.Context) (_node *UserP
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(userplatformquota.FieldMonthlyUsageUsd, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.FiveHourWindowStart(); ok {
+		_spec.SetField(userplatformquota.FieldFiveHourWindowStart, field.TypeTime, value)
+	}
+	if _u.mutation.FiveHourWindowStartCleared() {
+		_spec.ClearField(userplatformquota.FieldFiveHourWindowStart, field.TypeTime)
+	}
 	if value, ok := _u.mutation.DailyWindowStart(); ok {
 		_spec.SetField(userplatformquota.FieldDailyWindowStart, field.TypeTime, value)
 	}
@@ -939,6 +1175,12 @@ func (_u *UserPlatformQuotaUpdateOne) sqlSave(ctx context.Context) (_node *UserP
 	}
 	if _u.mutation.MonthlyWindowStartCleared() {
 		_spec.ClearField(userplatformquota.FieldMonthlyWindowStart, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ResetGeneration(); ok {
+		_spec.SetField(userplatformquota.FieldResetGeneration, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedResetGeneration(); ok {
+		_spec.AddField(userplatformquota.FieldResetGeneration, field.TypeInt64, value)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

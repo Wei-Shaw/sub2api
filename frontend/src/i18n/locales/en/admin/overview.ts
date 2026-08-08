@@ -450,6 +450,19 @@ export default {
         success: 'Updated limits for {count} users',
         failed: 'Failed to update user limits'
       },
+      bulkQuotaReset: {
+        action: 'Reset quotas ({count})',
+        title: 'Reset platform quotas',
+        selectedCount: '{count} users selected',
+        platforms: 'Platforms',
+        windows: 'Quota windows',
+        selectionLimit: 'Select no more than {max} users at a time.',
+        submit: 'Reset quotas',
+        resetting: 'Resetting...',
+        confirm: 'Reset usage for {count} users in these platforms and windows?\nPlatforms: {platforms}\nWindows: {windows}',
+        success: 'Reset {count} platform quota records',
+        failed: 'Failed to reset platform quotas'
+      },
       editUser: 'Edit User',
       deleteUser: 'Delete User',
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",
@@ -733,9 +746,10 @@ export default {
       platformQuota: {
         menuItem: 'Platform Quotas',
         title: 'Platform Quotas',
-        subtitle: 'Configure daily / weekly / monthly USD usage limits for each upstream platform for user {email}',
+        subtitle: 'Configure 5-hour / daily / weekly / monthly USD usage limits for each upstream platform for user {email}',
         columns: {
           platform: 'Platform',
+          fiveHour: '5-hour (USD)',
           daily: 'Daily (USD)',
           weekly: 'Weekly (USD)',
           monthly: 'Monthly (USD, 30-day rolling)',
@@ -746,7 +760,7 @@ export default {
         saving: 'Saving...',
         cancel: 'Cancel',
         clearAll: 'Clear All (remove all limits)',
-        clearAllConfirm: 'Clear daily / weekly / monthly limits for ALL platforms? All platforms will become "unlimited" with no local undo — you must manually re-enter values before saving.',
+        clearAllConfirm: 'Clear 5-hour / daily / weekly / monthly limits for ALL platforms? All platforms will become "unlimited" with no local undo; you must manually re-enter values before saving.',
         reset: {
           button: 'Reset window',
           confirm: 'Reset the {window} usage for {platform} for this user? This is effective immediately.',
@@ -757,6 +771,7 @@ export default {
         updateFailed: 'Save failed',
         loadFailed: 'Load failed',
         hint: 'Empty = no limit for that window.',
+        windowFiveHour: '5-hour',
         windowDaily: 'daily',
         windowWeekly: 'weekly',
         windowMonthly: 'monthly',

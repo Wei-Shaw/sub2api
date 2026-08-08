@@ -1802,7 +1802,7 @@ func resolvedTokenVersion(user *User) int64 {
 	return user.TokenVersion ^ fingerprint
 }
 
-// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（platform × 3 window）以
+// snapshotPlatformQuotaDefaults 把 plan.PlatformQuotas（platform × 4 window）以
 // BulkInsertInitial 形式写入 user_platform_quotas 表。失败 fail-open（仅 warn log）。
 func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID int64, plan *signupGrantPlan) error {
 	if s.userPlatformQuotaRepo == nil || plan == nil || len(plan.PlatformQuotas) == 0 {
@@ -1820,6 +1820,7 @@ func (s *AuthService) snapshotPlatformQuotaDefaults(ctx context.Context, userID 
 			Platform: platform,
 		}
 		if q != nil {
+			rec.FiveHourLimitUSD = q.FiveHourLimitUSD
 			rec.DailyLimitUSD = q.DailyLimitUSD
 			rec.WeeklyLimitUSD = q.WeeklyLimitUSD
 			rec.MonthlyLimitUSD = q.MonthlyLimitUSD

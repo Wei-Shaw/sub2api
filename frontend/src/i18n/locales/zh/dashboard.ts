@@ -24,6 +24,7 @@ export default {
     platformOther: '其他',
     platformQuota: {
       title: '配额用量',
+      five_hour: '5 小时',
       daily: '日',
       weekly: '周',
       monthly: '月（近30天）',

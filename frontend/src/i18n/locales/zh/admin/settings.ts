@@ -379,10 +379,11 @@ export default {
         subscriptionValidityDays: '有效期（天）',
         defaultPlatformQuotas: '默认平台限额（注册时分配）',
         defaultPlatformQuotasHint: '新用户注册时自动写入平台限额记录；已有用户不受影响。留空 = 该平台该窗口不限制。',
-        platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
+        platformQuotaNotice: '5 小时限额和月限额分别采用 5 小时、30 天滚动窗口',
       },
       platformQuota: {
         platform:    '平台',
+        fiveHour:    '5 小时限额 (USD)',
         daily:       '日限额 (USD)',
         weekly:      '周限额 (USD)',
         monthly:     '月限额 (USD, 30天滚动)',

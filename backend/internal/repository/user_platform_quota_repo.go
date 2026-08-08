@@ -16,17 +16,21 @@ import (
 // UserPlatformQuotaRecord 是 repository 层的传输结构体，
 // 与 ent.UserPlatformQuota 实体解耦，供业务层使用。
 type UserPlatformQuotaRecord struct {
-	UserID             int64
-	Platform           string
-	DailyLimitUSD      *float64
-	WeeklyLimitUSD     *float64
-	MonthlyLimitUSD    *float64
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   *time.Time
-	WeeklyWindowStart  *time.Time
-	MonthlyWindowStart *time.Time
+	UserID              int64
+	Platform            string
+	FiveHourLimitUSD    *float64
+	DailyLimitUSD       *float64
+	WeeklyLimitUSD      *float64
+	MonthlyLimitUSD     *float64
+	FiveHourUsageUSD    float64
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	FiveHourWindowStart *time.Time
+	DailyWindowStart    *time.Time
+	WeeklyWindowStart   *time.Time
+	MonthlyWindowStart  *time.Time
+	ResetGeneration     int64
 }
 
 // ErrUserPlatformQuotaNotFound 用于 ResetExpiredWindow 等需要"必须命中已有记录"的方法。
@@ -38,14 +42,23 @@ var ErrUserPlatformQuotaFKViolation = errors.New("user platform quota snapshot F
 // UserPlatformQuotaSnapshot 是 BatchSnapshotUsage 的输入结构体，
 // 表示 Redis 当前窗口快照（用于绝对值覆盖写入 DB）。
 type UserPlatformQuotaSnapshot struct {
-	UserID             int64
-	Platform           string
-	DailyUsageUSD      float64
-	WeeklyUsageUSD     float64
-	MonthlyUsageUSD    float64
-	DailyWindowStart   time.Time
-	WeeklyWindowStart  time.Time
-	MonthlyWindowStart time.Time
+	UserID              int64
+	Platform            string
+	FiveHourUsageUSD    float64
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	FiveHourWindowStart time.Time
+	DailyWindowStart    time.Time
+	WeeklyWindowStart   time.Time
+	MonthlyWindowStart  time.Time
+	ResetGeneration     int64
+}
+
+// UserPlatformQuotaKey 标识一条活跃的 user x platform 配额记录。
+type UserPlatformQuotaKey struct {
+	UserID   int64
+	Platform string
 }
 
 // UserPlatformQuotaRepository 定义用户平台配额的数据访问接口。
@@ -58,8 +71,10 @@ type UserPlatformQuotaRepository interface {
 	ListByUser(ctx context.Context, userID int64) ([]UserPlatformQuotaRecord, error)
 	// IncrementUsageWithReset 原子地累加用量，若窗口已过期则先重置再累加。
 	IncrementUsageWithReset(ctx context.Context, userID int64, platform string, cost float64, now time.Time) error
-	// ResetExpiredWindow 重置指定窗口（daily/weekly/monthly）的用量与起始时间。
+	// ResetExpiredWindow 重置指定窗口（five_hour/daily/weekly/monthly）的用量与起始时间。
 	ResetExpiredWindow(ctx context.Context, userID int64, platform string, window string, newStart time.Time) error
+	// BatchResetWindows 批量重置显式选中的窗口，返回实际命中的 user×platform key。
+	BatchResetWindows(ctx context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]UserPlatformQuotaKey, error)
 	// UpsertForUser 全量替换该用户所有平台限额配置（详见 service.UserPlatformQuotaRepository.UpsertForUser）。
 	UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error
 	// BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入(非累加)。
@@ -96,21 +111,21 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 	client := clientFromContext(ctx, r.client)
 
 	var sb strings.Builder
-	_, _ = sb.WriteString("INSERT INTO user_platform_quotas (user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at) VALUES ")
-	args := make([]any, 0, len(records)*6)
+	_, _ = sb.WriteString("INSERT INTO user_platform_quotas (user_id, platform, five_hour_limit_usd, daily_limit_usd, weekly_limit_usd, monthly_limit_usd, five_hour_usage_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at) VALUES ")
+	args := make([]any, 0, len(records)*7)
 	// 统一时间戳：避免循环内多次 time.Now() 让同一批记录的 created_at/updated_at
 	// 出现亚毫秒级偏差（与 UpsertForUser 的 now := time.Now() 风格一致）。
 	now := time.Now()
 	for i, rec := range records {
-		base := i * 6
+		base := i * 7
 		if i > 0 {
 			_, _ = sb.WriteString(",")
 		}
-		fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,0,0,0,$%d,$%d)",
-			base+1, base+2, base+3, base+4, base+5, base+6, base+6)
+		fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,0,0,0,0,$%d,$%d)",
+			base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+7)
 		args = append(args,
 			rec.UserID, rec.Platform,
-			rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
+			rec.FiveHourLimitUSD, rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
 			now,
 		)
 	}
@@ -120,6 +135,7 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 	// - 保护管理员通过 UpsertForUser 设置的个性化 limit 不被静默覆盖
 	_, _ = sb.WriteString(` ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL
 		DO UPDATE SET
+			five_hour_limit_usd = COALESCE(user_platform_quotas.five_hour_limit_usd, EXCLUDED.five_hour_limit_usd),
 			daily_limit_usd   = COALESCE(user_platform_quotas.daily_limit_usd, EXCLUDED.daily_limit_usd),
 			weekly_limit_usd  = COALESCE(user_platform_quotas.weekly_limit_usd, EXCLUDED.weekly_limit_usd),
 			monthly_limit_usd = COALESCE(user_platform_quotas.monthly_limit_usd, EXCLUDED.monthly_limit_usd),
@@ -167,7 +183,7 @@ func (r *userPlatformQuotaRepository) ListByUser(ctx context.Context, userID int
 	return out, nil
 }
 
-// IncrementUsageWithReset 原子累加 cost 到 (user, platform) 三个窗口的 *_usage_usd。
+// IncrementUsageWithReset 原子累加 cost 到 (user, platform) 四个窗口的 *_usage_usd。
 // 行为：
 //   - 若记录存在：在事务内 SELECT FOR UPDATE，按 (prev_window_start vs current_window_start)
 //     判断是否需要重置（不同 = 重置为 cost；相同 = 累加 cost）
@@ -193,33 +209,37 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 			// 致事务回滚、本次 cost 丢失；DO UPDATE 把 cost 累加到既有 usage 上。
 			// 写法与本文件 insertLimitsRow / BulkInsertInitial 的 ON CONFLICT 一致。
 			const insertSQL = `INSERT INTO user_platform_quotas
-				(user_id, platform, daily_usage_usd, weekly_usage_usd, monthly_usage_usd,
-				 daily_window_start, weekly_window_start, monthly_window_start, created_at, updated_at)
-				VALUES ($1, $2, $3, $3, $3, $4, $5, $6, $7, $7)
-				ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE SET
-					daily_usage_usd   = user_platform_quotas.daily_usage_usd   + EXCLUDED.daily_usage_usd,
+					(user_id, platform, five_hour_usage_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd,
+					 five_hour_window_start, daily_window_start, weekly_window_start, monthly_window_start, created_at, updated_at)
+					VALUES ($1, $2, $3, $3, $3, $3, $4, $5, $6, $7, $8, $8)
+					ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE SET
+						five_hour_usage_usd = user_platform_quotas.five_hour_usage_usd + EXCLUDED.five_hour_usage_usd,
+						daily_usage_usd   = user_platform_quotas.daily_usage_usd   + EXCLUDED.daily_usage_usd,
 					weekly_usage_usd  = user_platform_quotas.weekly_usage_usd  + EXCLUDED.weekly_usage_usd,
 					monthly_usage_usd = user_platform_quotas.monthly_usage_usd + EXCLUDED.monthly_usage_usd,
 					updated_at        = EXCLUDED.updated_at`
-			// $6 = now：30 天滚动月度窗口以当前时刻为起始
+			// 5 小时和 30 天滚动窗口都以当前时刻为起始。
 			_, e := txClient.ExecContext(txCtx, insertSQL,
 				userID, platform, cost,
-				timezone.StartOfDay(now), timezone.StartOfWeek(now), now, now)
+				now, timezone.StartOfDay(now), timezone.StartOfWeek(now), now, now)
 			return e
 		}
 		if err != nil {
 			return err
 		}
 
+		newFiveHour, newFiveHourStart := durationMaybeReset(existing.FiveHourUsageUsd, existing.FiveHourWindowStart, cost, now, 5*time.Hour)
 		newDaily := maybeReset(existing.DailyUsageUsd, existing.DailyWindowStart, timezone.StartOfDay(now), cost)
 		newWeekly := maybeReset(existing.WeeklyUsageUsd, existing.WeeklyWindowStart, timezone.StartOfWeek(now), cost)
 		// 30 天滚动月度窗口：过期时重置为 cost 并以 now 为新起始，否则累加保留原起始
 		newMonthly, newMonthlyStart := monthlyMaybeReset(existing.MonthlyUsageUsd, existing.MonthlyWindowStart, cost, now)
 
 		_, e := existing.Update().
+			SetFiveHourUsageUsd(newFiveHour).
 			SetDailyUsageUsd(newDaily).
 			SetWeeklyUsageUsd(newWeekly).
 			SetMonthlyUsageUsd(newMonthly).
+			SetFiveHourWindowStart(newFiveHourStart).
 			SetDailyWindowStart(timezone.StartOfDay(now)).
 			SetWeeklyWindowStart(timezone.StartOfWeek(now)).
 			SetMonthlyWindowStart(newMonthlyStart). // 30 天滚动：仅过期时更新起始
@@ -228,7 +248,7 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 	})
 }
 
-// ResetExpiredWindow 无条件重置指定窗口（daily/weekly/monthly）的用量与起始时间。
+// ResetExpiredWindow 无条件重置指定窗口（five_hour/daily/weekly/monthly）的用量与起始时间。
 //
 // ⚠️ 命名警告（NOT a "check-then-reset" helper）：
 //
@@ -248,8 +268,11 @@ func (r *userPlatformQuotaRepository) ResetExpiredWindow(ctx context.Context, us
 			userplatformquota.UserIDEQ(userID),
 			userplatformquota.PlatformEQ(platform),
 			userplatformquota.DeletedAtIsNil(),
-		)
+		).
+		AddResetGeneration(1)
 	switch window {
+	case "five_hour":
+		upd = upd.SetFiveHourUsageUsd(0).SetFiveHourWindowStart(newStart)
 	case "daily":
 		upd = upd.SetDailyUsageUsd(0).SetDailyWindowStart(newStart)
 	case "weekly":
@@ -267,6 +290,55 @@ func (r *userPlatformQuotaRepository) ResetExpiredWindow(ctx context.Context, us
 		return ErrUserPlatformQuotaNotFound
 	}
 	return nil
+}
+
+// BatchResetWindows 批量重置显式指定的用户、平台和窗口。
+// 每条命中记录的 reset_generation 递增一次，防止并发中的旧缓存快照覆盖重置结果。
+func (r *userPlatformQuotaRepository) BatchResetWindows(ctx context.Context, userIDs []int64, platforms, windows []string, newStart time.Time) ([]UserPlatformQuotaKey, error) {
+	if len(userIDs) == 0 || len(platforms) == 0 || len(windows) == 0 {
+		return nil, nil
+	}
+
+	sets := []string{"reset_generation = reset_generation + 1", "updated_at = $1"}
+	seen := make(map[string]struct{}, len(windows))
+	for _, window := range windows {
+		if _, ok := seen[window]; ok {
+			continue
+		}
+		seen[window] = struct{}{}
+		switch window {
+		case "five_hour":
+			sets = append(sets, "five_hour_usage_usd = 0", "five_hour_window_start = $1")
+		case "daily":
+			sets = append(sets, "daily_usage_usd = 0", "daily_window_start = $1")
+		case "weekly":
+			sets = append(sets, "weekly_usage_usd = 0", "weekly_window_start = $1")
+		case "monthly":
+			sets = append(sets, "monthly_usage_usd = 0", "monthly_window_start = $1")
+		default:
+			return nil, fmt.Errorf("unknown window %q", window)
+		}
+	}
+
+	query := `UPDATE user_platform_quotas SET ` + strings.Join(sets, ", ") + `
+		WHERE user_id = ANY($2) AND platform = ANY($3) AND deleted_at IS NULL
+		RETURNING user_id, platform`
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, query, newStart, pq.Array(userIDs), pq.Array(platforms))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	keys := make([]UserPlatformQuotaKey, 0)
+	for rows.Next() {
+		var key UserPlatformQuotaKey
+		if err := rows.Scan(&key.UserID, &key.Platform); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
 }
 
 // withTx 在事务中执行 fn，若 ctx 中已有事务则复用。
@@ -296,17 +368,21 @@ func (r *userPlatformQuotaRepository) withTx(ctx context.Context, fn func(txCtx 
 // 注意 ent 生成字段名为 DailyLimitUsd（非 DailyLimitUSD）。
 func entQuotaToRecord(e *dbent.UserPlatformQuota) *UserPlatformQuotaRecord {
 	return &UserPlatformQuotaRecord{
-		UserID:             e.UserID,
-		Platform:           e.Platform,
-		DailyLimitUSD:      e.DailyLimitUsd,
-		WeeklyLimitUSD:     e.WeeklyLimitUsd,
-		MonthlyLimitUSD:    e.MonthlyLimitUsd,
-		DailyUsageUSD:      e.DailyUsageUsd,
-		WeeklyUsageUSD:     e.WeeklyUsageUsd,
-		MonthlyUsageUSD:    e.MonthlyUsageUsd,
-		DailyWindowStart:   e.DailyWindowStart,
-		WeeklyWindowStart:  e.WeeklyWindowStart,
-		MonthlyWindowStart: e.MonthlyWindowStart,
+		UserID:              e.UserID,
+		Platform:            e.Platform,
+		FiveHourLimitUSD:    e.FiveHourLimitUsd,
+		DailyLimitUSD:       e.DailyLimitUsd,
+		WeeklyLimitUSD:      e.WeeklyLimitUsd,
+		MonthlyLimitUSD:     e.MonthlyLimitUsd,
+		FiveHourUsageUSD:    e.FiveHourUsageUsd,
+		DailyUsageUSD:       e.DailyUsageUsd,
+		WeeklyUsageUSD:      e.WeeklyUsageUsd,
+		MonthlyUsageUSD:     e.MonthlyUsageUsd,
+		FiveHourWindowStart: e.FiveHourWindowStart,
+		DailyWindowStart:    e.DailyWindowStart,
+		WeeklyWindowStart:   e.WeeklyWindowStart,
+		MonthlyWindowStart:  e.MonthlyWindowStart,
+		ResetGeneration:     e.ResetGeneration,
 	}
 }
 
@@ -324,7 +400,12 @@ func maybeReset(prevUsage float64, prevStart *time.Time, currStart time.Time, co
 // 过期条件：prevStart 为 nil 或 now - prevStart >= 30×24h（与订阅模式 NeedsMonthlyReset 语义一致）。
 // 过期时重置为 cost，否则累加。返回 (newUsage, newWindowStart)。
 func monthlyMaybeReset(prevUsage float64, prevStart *time.Time, cost float64, now time.Time) (float64, time.Time) {
-	if prevStart == nil || now.Sub(*prevStart) >= 30*24*time.Hour {
+	return durationMaybeReset(prevUsage, prevStart, cost, now, 30*24*time.Hour)
+}
+
+// durationMaybeReset 处理固定时长的滚动窗口。
+func durationMaybeReset(prevUsage float64, prevStart *time.Time, cost float64, now time.Time, duration time.Duration) (float64, time.Time) {
+	if prevStart == nil || now.Sub(*prevStart) >= duration {
 		return cost, now
 	}
 	return prevUsage + cost, *prevStart
@@ -396,11 +477,11 @@ func softDeleteMissingPlatforms(ctx context.Context, client *dbent.Client, userI
 // affected=0 时由调用方 UpsertForUser 走 insertLimitsRow 路径创建新行。
 func updateLimitsRow(ctx context.Context, client *dbent.Client, userID int64, rec UserPlatformQuotaRecord, now time.Time) (int64, error) {
 	const query = `UPDATE user_platform_quotas
-		SET daily_limit_usd = $1, weekly_limit_usd = $2, monthly_limit_usd = $3,
-		    deleted_at = NULL, updated_at = $4
-		WHERE user_id = $5 AND platform = $6 AND deleted_at IS NULL`
+		SET five_hour_limit_usd = $1, daily_limit_usd = $2, weekly_limit_usd = $3, monthly_limit_usd = $4,
+		    deleted_at = NULL, updated_at = $5
+		WHERE user_id = $6 AND platform = $7 AND deleted_at IS NULL`
 	res, err := client.ExecContext(ctx, query,
-		rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD, now,
+		rec.FiveHourLimitUSD, rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD, now,
 		userID, rec.Platform)
 	if err != nil {
 		return 0, err
@@ -414,13 +495,13 @@ func updateLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 // affected=0 时说明另一个并发请求刚完成 INSERT，fallback 到 updateLimitsRow 覆写 limits 值。
 func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, rec UserPlatformQuotaRecord, now time.Time) error {
 	const query = `INSERT INTO user_platform_quotas
-		(user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
-		 daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, 0, 0, 0, $6, $6)
+		(user_id, platform, five_hour_limit_usd, daily_limit_usd, weekly_limit_usd, monthly_limit_usd,
+		 five_hour_usage_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 0, $7, $7)
 		ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO NOTHING`
 	res, err := client.ExecContext(ctx, query,
 		userID, rec.Platform,
-		rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
+		rec.FiveHourLimitUSD, rec.DailyLimitUSD, rec.WeeklyLimitUSD, rec.MonthlyLimitUSD,
 		now)
 	if err != nil {
 		return err
@@ -437,18 +518,17 @@ func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 	return nil
 }
 
-// batchRows 是 BatchSnapshotUsage 每批最大行数（9 参/行 × 6000 ≈ 54000 参,低于 Postgres 65535 上限）。
-const batchRows = 6000
+// batchRows 是 BatchSnapshotUsage 每批最大行数（11 参/行 × 5000 + 1 个共用参数，低于 Postgres 65535 上限）。
+const batchRows = 5000
 
 // BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入（非累加）。
-// 每批最多 batchRows 行；$1=now 共用；每行 8 个 per-row 参（user_id, platform, 3×usage, 3×window_start）。
+// 每批最多 batchRows 行；$1=now 共用；每行 11 个 per-row 参数。
 // FK 违反（user_id 不存在）返回 ErrUserPlatformQuotaFKViolation。
 //
 // 注意:snapshots 超过 batchRows 会分多条 SQL 执行且【非单事务】——若某子批 FK 失败,
 // 先前子批已写入无法回滚。调用方(flusher)应保证单次 batchSize ≤ batchRows
-// (默认 flush_batch_size=1000 < 6000,安全)。
-// 另注:启用 flusher 后,本绝对值覆盖与 admin 直写 DB(ResetExpiredWindow/UpsertForUser)存在覆盖竞态,
-// 详见 service/user_platform_quota_flusher.go 中 flushOneBatch 的"已知竞态"注释。
+// (默认 flush_batch_size=1000 < 5000,安全)。
+// reset_generation 条件阻止管理员重置前读取的旧缓存快照覆盖重置结果。
 func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
 	if len(snapshots) == 0 {
 		return nil
@@ -466,35 +546,39 @@ func (r *userPlatformQuotaRepository) BatchSnapshotUsage(ctx context.Context, sn
 		var sb strings.Builder
 		_, _ = sb.WriteString(
 			"INSERT INTO user_platform_quotas" +
-				" (user_id, platform, daily_usage_usd, weekly_usage_usd, monthly_usage_usd," +
-				" daily_window_start, weekly_window_start, monthly_window_start, created_at, updated_at)" +
+				" (user_id, platform, five_hour_usage_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd," +
+				" five_hour_window_start, daily_window_start, weekly_window_start, monthly_window_start, reset_generation, created_at, updated_at)" +
 				" VALUES ")
 
-		// $1 = now（共用）；每行 8 个 per-row 参，从 $2 起连续编号。
+		// $1 = now（共用）；每行 11 个 per-row 参数，从 $2 起连续编号。
 		args := []any{now}
 		for i, s := range batch {
 			if i > 0 {
 				_, _ = sb.WriteString(",")
 			}
 			b := len(args) // 当前 per-row 第一个参数的 0-based 索引，实际占位符 = b+1
-			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$1,$1)",
-				b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8)
+			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$1,$1)",
+				b+1, b+2, b+3, b+4, b+5, b+6, b+7, b+8, b+9, b+10, b+11)
 			args = append(args,
 				s.UserID, s.Platform,
-				s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD,
-				s.DailyWindowStart, s.WeeklyWindowStart, s.MonthlyWindowStart,
+				s.FiveHourUsageUSD, s.DailyUsageUSD, s.WeeklyUsageUSD, s.MonthlyUsageUSD,
+				s.FiveHourWindowStart, s.DailyWindowStart, s.WeeklyWindowStart, s.MonthlyWindowStart,
+				s.ResetGeneration,
 			)
 		}
 
 		_, _ = sb.WriteString(
 			" ON CONFLICT (user_id, platform) WHERE deleted_at IS NULL DO UPDATE SET" +
+				"  five_hour_usage_usd   = EXCLUDED.five_hour_usage_usd," +
 				"  daily_usage_usd      = EXCLUDED.daily_usage_usd," +
 				"  weekly_usage_usd     = EXCLUDED.weekly_usage_usd," +
 				"  monthly_usage_usd    = EXCLUDED.monthly_usage_usd," +
+				"  five_hour_window_start = EXCLUDED.five_hour_window_start," +
 				"  daily_window_start   = EXCLUDED.daily_window_start," +
 				"  weekly_window_start  = EXCLUDED.weekly_window_start," +
 				"  monthly_window_start = EXCLUDED.monthly_window_start," +
-				"  updated_at           = EXCLUDED.updated_at")
+				"  updated_at           = EXCLUDED.updated_at" +
+				" WHERE user_platform_quotas.reset_generation = EXCLUDED.reset_generation")
 
 		if _, err := client.ExecContext(ctx, sb.String(), args...); err != nil {
 			var pqErr *pq.Error

@@ -96,11 +96,14 @@ func TestBillingErrorDetails_T10_QuotaExhaustedReturns429WithRetryAfter(t *testi
 	// quota 超限映射 429 + Retry-After（RFC 6585 / 与 RPM 一致），
 	// 让 SDK（OpenAI 兼容客户端等）能按 Retry-After 自动退避。
 	// 旧实现用 403 导致客户端不退避直接报错。
-	// 三个窗口共用同一映射分支，循环覆盖避免漏测某个窗口的 status/code。
+	// 四个窗口共用同一映射分支，循环覆盖避免漏测某个窗口的 status/code。
 	cases := []struct {
 		name string
 		err  error
 	}{
+		{"five_hour", service.ErrUserPlatformFiveHourQuotaExhausted.WithMetadata(map[string]string{
+			"window_resets_at": time.Now().Add(60 * time.Minute).UTC().Format(time.RFC3339),
+		})},
 		{"daily", service.ErrUserPlatformDailyQuotaExhausted.WithMetadata(map[string]string{
 			"window_resets_at": time.Now().Add(60 * time.Minute).UTC().Format(time.RFC3339),
 		})},

@@ -88,6 +88,21 @@ func TestMonthlyMaybeReset_Active(t *testing.T) {
 	}
 }
 
+func TestDurationMaybeReset_FiveHourBoundary(t *testing.T) {
+	start := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+
+	usage, nextStart := durationMaybeReset(3, &start, 0.5, start.Add(5*time.Hour-time.Nanosecond), 5*time.Hour)
+	if usage != 3.5 || !nextStart.Equal(start) {
+		t.Errorf("active window = (%v, %v), want (3.5, %v)", usage, nextStart, start)
+	}
+
+	boundary := start.Add(5 * time.Hour)
+	usage, nextStart = durationMaybeReset(3, &start, 0.5, boundary, 5*time.Hour)
+	if usage != 0.5 || !nextStart.Equal(boundary) {
+		t.Errorf("expired window = (%v, %v), want (0.5, %v)", usage, nextStart, boundary)
+	}
+}
+
 // TestUpdateLimitsRowQuery_HasDeletedAtGuard 通过读取源文件验证 updateLimitsRow
 // 的 SQL WHERE 子句包含 deleted_at IS NULL 守卫（I-NEW-1）。
 // 此防回归测试可在无 DB 的 CI 环境中运行，防止意外删除该守卫。
