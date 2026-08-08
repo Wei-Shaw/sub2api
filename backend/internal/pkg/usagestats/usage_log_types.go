@@ -274,13 +274,14 @@ type UsageLogFilters struct {
 	RequestID string
 	Model     string
 	// ModelFilterSource controls how Model is matched. Empty preserves raw usage_logs.model semantics.
-	ModelFilterSource string
-	RequestType       *int16
-	Stream            *bool
-	BillingType       *int8
-	BillingMode       string
-	StartTime         *time.Time
-	EndTime           *time.Time
+	ModelFilterSource     string
+	RequestType           *int16
+	Stream                *bool
+	BillingType           *int8
+	BillingMode           string
+	UpstreamModelMismatch *bool
+	StartTime             *time.Time
+	EndTime               *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
 }
