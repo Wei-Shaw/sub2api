@@ -7,7 +7,7 @@ import (
 )
 
 func TestUsageLogMixedImageCostsMigrationDefinesAuditColumns(t *testing.T) {
-	content, err := FS.ReadFile("196_usage_log_mixed_image_costs.sql")
+	content, err := FS.ReadFile("222_usage_log_mixed_image_costs.sql")
 	require.NoError(t, err)
 
 	sql := string(content)

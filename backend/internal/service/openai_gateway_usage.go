@@ -537,30 +537,52 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, webSearchMultiplier), nil
 	}
 
+	var imageCost *CostBreakdown
+	var tokenCost *CostBreakdown
 	if result != nil && result.ImageCount > 0 && !isGrokVideoUsageResult(result, billingModels) {
-		for _, candidate := range billingModels {
-			candidate = strings.TrimSpace(candidate)
-			if candidate == "" {
-				continue
-			}
-			resolved := s.resolveOpenAIChannelPricing(ctx, candidate, apiKey)
-			if resolved != nil && resolved.Mode == BillingModeToken {
-				tokenCost, err := s.calculateOpenAIRecordUsageTokenCost(ctx, apiKey, candidate, multiplier, usageTokensWithoutImages(tokens, result.Usage), serviceTier, longContextBillingGate)
+		if s.resolver != nil && apiKey != nil && apiKey.Group != nil {
+			groupID := apiKey.Group.ID
+			for _, candidate := range billingModels {
+				candidate = strings.TrimSpace(candidate)
+				if candidate == "" {
+					continue
+				}
+				resolved := s.resolver.Resolve(ctx, PricingInput{Model: candidate, GroupID: &groupID})
+				if resolved == nil || resolved.Mode != BillingModeToken {
+					continue
+				}
+				if resolved.Source != PricingSourceChannel && isOpenAIImageBillingModelAlias(candidate) {
+					continue
+				}
+				candidateCost, err := s.calculateOpenAIRecordUsageTokenCost(
+					ctx,
+					apiKey,
+					candidate,
+					multiplier,
+					usageTokensWithoutImages(tokens, result.Usage),
+					serviceTier,
+					longContextBillingGate,
+				)
 				if err != nil {
+					if isUsagePricingUnavailableError(err) {
+						continue
+					}
 					return nil, err
 				}
-				imageCost := s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier)
-				return combineOpenAIImageCosts(tokenCost, imageCost, imageMultiplier), nil
+				tokenCost = candidateCost
+				break
 			}
 		}
-		// 非 token 渠道定价保持原有图片按次计费。
-		return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+		if tokenCost == nil {
+			// 非 token 渠道定价保持原有图片按次计费。
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+		}
+		imageCost = s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier)
 	}
 
 	// Token path (optional search surcharge is additive — never replaces token cost).
-	var tokenCost *CostBreakdown
 	var lastErr error
-	if len(billingModels) > 0 && billingModel != "" {
+	if tokenCost == nil && len(billingModels) > 0 && billingModel != "" {
 		for _, candidate := range billingModels {
 			candidate = strings.TrimSpace(candidate)
 			if candidate == "" {
@@ -616,11 +638,17 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		return nil, fmt.Errorf("calculate OpenAI usage cost failed for billing models %s: %w", strings.Join(billingModels, ","), lastErr)
 	}
 	if searchCost == nil || (searchCost.TotalCost == 0 && searchCost.ActualCost == 0) {
+		if imageCost != nil {
+			return combineOpenAIImageCosts(tokenCost, imageCost, imageMultiplier), nil
+		}
 		return tokenCost, nil
 	}
 	// Additive: tokens + search surcharge.
 	tokenCost.TotalCost += searchCost.TotalCost
 	tokenCost.ActualCost += searchCost.ActualCost
+	if imageCost != nil {
+		return combineOpenAIImageCosts(tokenCost, imageCost, imageMultiplier), nil
+	}
 	return tokenCost, nil
 }
 
