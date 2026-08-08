@@ -710,6 +710,10 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== Payment Admin Routes ====================
   {
+    path: '/admin/web3-deposits', name: 'AdminWeb3Deposits', component: () => import('@/views/admin/Web3DepositsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Web3 Deposits', titleKey: 'nav.web3Deposits' }
+  },
+  {
     path: '/admin/orders/dashboard',
     name: 'AdminPaymentDashboard',
     component: () => import('@/views/admin/orders/AdminPaymentDashboardView.vue'),
