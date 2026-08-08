@@ -118,7 +118,46 @@
 
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
-      <div v-if="hasOpenAIUsageFallback" class="space-y-1">
+      <!-- free 账号：只显示月度窗口（上游 wham/usage primary_window） -->
+      <div v-if="isOpenAIFreePlan" class="space-y-1">
+        <UsageProgressBar
+          v-if="openaiFreeMonthly"
+          :label="openaiFreeMonthlyLabel"
+          :utilization="openaiFreeMonthly.utilization"
+          :resets-at="openaiFreeMonthly.resets_at"
+          :show-now-when-idle="true"
+          color="indigo"
+        />
+        <div v-if="!openaiFreeMonthly && !openaiQuotaLoading" class="text-xs text-gray-400">-</div>
+        <OpenAIQuotaResetCell :account="account">
+          <template #pre-actions>
+            <button
+              type="button"
+              class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="openaiQuotaLoading"
+              @click="loadOpenAIQuota"
+            >
+              <svg
+                class="h-2.5 w-2.5"
+                :class="{ 'animate-spin': openaiQuotaLoading }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              {{ t('admin.accounts.usageWindow.activeQuery') }}
+            </button>
+          </template>
+        </OpenAIQuotaResetCell>
+      </div>
+      <!-- 付费账号：保持 5h/7d 窗口 -->
+      <div v-else-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
           label="5h"
@@ -617,6 +656,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import type { OpenAIQuotaUsage } from '@/api/admin/accounts'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
@@ -733,6 +773,51 @@ const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+// ===== OpenAI free 账号月度窗口（上游 wham/usage primary_window） =====
+const openaiQuota = ref<OpenAIQuotaUsage | null>(null)
+const openaiQuotaLoading = ref(false)
+
+const isOpenAIFreePlan = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  const plan = (openaiQuota.value?.plan_type || props.account.credentials?.plan_type || '').toString().toLowerCase()
+  return plan === 'free'
+})
+
+const openaiFreeMonthly = computed(() => {
+  const pw = openaiQuota.value?.rate_limit?.primary_window
+  if (!pw) return null
+  return {
+    utilization: pw.used_percent ?? 0,
+    resets_at: pw.reset_at ? new Date(pw.reset_at * 1000).toISOString() : null,
+  }
+})
+
+const openaiFreeMonthlyLabel = computed(() => {
+  const pw = openaiQuota.value?.rate_limit?.primary_window
+  if (pw?.limit_window_seconds && pw.limit_window_seconds >= 2592000) {
+    return '30d'
+  }
+  if (pw?.limit_window_seconds && pw.limit_window_seconds >= 86400 * 7) {
+    return '7d'
+  }
+  if (pw?.limit_window_seconds && pw.limit_window_seconds >= 86400) {
+    return '1d'
+  }
+  return 'quota'
+})
+
+const loadOpenAIQuota = async () => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
+  openaiQuotaLoading.value = true
+  try {
+    openaiQuota.value = await adminAPI.accounts.refreshOpenAIQuota(props.account.id)
+  } catch (e: any) {
+    console.error('Failed to load OpenAI quota:', e)
+  } finally {
+    openaiQuotaLoading.value = false
+  }
+}
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
@@ -1522,6 +1607,10 @@ onMounted(() => {
   if (!shouldAutoLoadUsageOnMount.value) return
   const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
   requestAutoLoad(source)
+  // OpenAI 账号：自动加载 quota（free 号月度窗口 / 付费号也可查）
+  if (props.account.platform === 'openai' && props.account.type === 'oauth') {
+    loadOpenAIQuota()
+  }
 })
 
 watch(
