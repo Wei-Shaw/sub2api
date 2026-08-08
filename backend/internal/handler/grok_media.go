@@ -422,7 +422,8 @@ REDACTED
 		REDACTED
 			// Defer billing until status polling observes video.url. Persist create-time
 			// model/duration/resolution so status can still price if upstream omits them.
-			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, service.GrokVideoPendingBilling{
+			// Retry once: missing pending causes silent underpricing (status omits resolution).
+			pending := service.GrokVideoPendingBilling{
 				Model:                requestModel,
 				BillingModel:         firstNonEmptyString(result.BillingModel, requestModel),
 				UpstreamModel:        result.UpstreamModel,
@@ -431,12 +432,22 @@ REDACTED
 				OriginalModel:        clientRequestedModel(c, requestModel),
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,
-		REDACTED); err != nil {
-				reqLog.Warn("grok_media.store_video_pending_billing_failed",
+		REDACTED
+			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
+				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",
 					zap.Int64("account_id", account.ID),
 					zap.String("request_id", result.ResponseID),
 					zap.Error(err),
 				)
+				if err2 := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err2 != nil {
+					// Response body may already be committed; completion path will fail-closed
+					// when pending is still missing and status cannot price duration.
+					reqLog.Error("grok_media.store_video_pending_billing_failed",
+						zap.Int64("account_id", account.ID),
+						zap.String("request_id", result.ResponseID),
+						zap.Error(err2),
+					)
+			REDACTED
 		REDACTED
 	REDACTED
 		// Status poll OR content download can observe official done+video.url.
@@ -540,6 +551,28 @@ REDACTED
 	if taskRequestID == "" {
 		return nil
 REDACTED
+	// Load create-time snapshot before claim so we can fail-closed without burning the claim
+	// when Redis lost pending and status cannot price the job.
+	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
+	if loadErr != nil {
+		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
+REDACTED
+	if pending == nil {
+		// Status omits resolution; without pending we would silently default to 480p and underbill.
+		// Allow billing only when official status carries duration (still may default resolution).
+		if statusResult.VideoDurationSeconds <= 0 {
+			reqLog.Error("grok_media.video_billing_skipped_missing_pending",
+				zap.String("request_id", taskRequestID),
+				zap.String("reason", "no create-time snapshot and status has no video.duration"),
+			)
+			return nil
+	REDACTED
+		reqLog.Error("grok_media.video_billing_without_pending",
+			zap.String("request_id", taskRequestID),
+			zap.Int("status_duration_seconds", statusResult.VideoDurationSeconds),
+			zap.String("note", "resolution falls back to default 480p; investigate pending store failures"),
+		)
+REDACTED
 	claimed, err := h.gatewayService.ClaimGrokVideoBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
 	if err != nil {
 		reqLog.Warn("grok_media.video_billing_claim_failed", zap.String("request_id", taskRequestID), zap.Error(err))
@@ -548,10 +581,6 @@ REDACTED
 	if !claimed {
 		reqLog.Debug("grok_media.video_billing_already_claimed", zap.String("request_id", taskRequestID))
 		return nil
-REDACTED
-	pending, loadErr := h.gatewayService.LoadGrokVideoPendingBilling(ctx, taskRequestID, subject.UserID, apiKey.ID)
-	if loadErr != nil {
-		reqLog.Warn("grok_media.video_pending_billing_load_failed", zap.String("request_id", taskRequestID), zap.Error(loadErr))
 REDACTED
 	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult

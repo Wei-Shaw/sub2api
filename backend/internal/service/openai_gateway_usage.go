@@ -489,9 +489,13 @@ REDACTED
 	if result != nil && result.SearchCount > 0 {
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
 		if price == nil || *price <= 0 {
-			logger.L().Warn("openai_usage.grok_search_price_per_1k_unset_free",
+			// Silent free search is a revenue leak; error-level so ops/alerts notice.
+			// Billing still proceeds at $0 so requests are not failed mid-flight.
+			logger.L().Error("openai_usage.search_price_per_1k_unset_free",
 				zap.Int("search_count", result.SearchCount),
 				zap.String("model", billingModel),
+				zap.Int64("api_key_id", apiKey.ID),
+				zap.Any("group_id", apiKey.GroupID),
 			)
 	REDACTED
 		searchCost = s.billingService.CalculateSearchCost(result.SearchCount, price, webSearchMultiplier)

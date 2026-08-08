@@ -101,6 +101,8 @@ REDACTED
 	// Those sessions still consumed upstream audio time and must be billed.
 	if elapsed > 0 {
 		result := &service.OpenAIForwardResult{
+			// One durable id per WS session so retries cannot collapse or double under client ids.
+			RequestID:  service.StableGrokRealtimeBillingRequestID(""),
 			Model:      model,
 			Duration:   elapsed,
 			AudioUsage: &service.AudioUsage{Mode: "realtime", DurationOrUnits: elapsed.Minutes()REDACTED,
@@ -233,6 +235,12 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 REDACTED
 	if result.AudioUsage == nil {
 		return
+REDACTED
+	// Ensure forced durable request ids even if callers forget (realtime/tts/stt money path).
+	if mode := strings.TrimSpace(result.AudioUsage.Mode); mode == "realtime" {
+		result.RequestID = service.StableGrokRealtimeBillingRequestID(result.RequestID)
+REDACTED else {
+		result.RequestID = service.StableGrokAudioBillingRequestID(result.RequestID)
 REDACTED
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
