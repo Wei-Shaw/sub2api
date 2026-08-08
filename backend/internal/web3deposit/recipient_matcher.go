@@ -25,6 +25,8 @@ type RecipientMatcher struct {
 	chunkSize int
 }
 
+var _ ScannerRecipientMatcher = (*RecipientMatcher)(nil)
+
 func NewRecipientMatcher(lookup ActiveDepositAddressLookup, chunkSize int) *RecipientMatcher {
 	if chunkSize <= 0 {
 		chunkSize = DefaultRecipientLookupChunkSize

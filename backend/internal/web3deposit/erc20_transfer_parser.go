@@ -47,7 +47,7 @@ func ParseERC20TransferLog(chainID uint64, tokenAddress common.Address, log type
 		return TransferEvent{}, ErrTransferDataInvalid
 	}
 
-	return NewTransferEvent(
+	event, err := NewTransferEvent(
 		DepositEventID{
 			ChainID:  chainID,
 			TxHash:   log.TxHash,
@@ -59,6 +59,11 @@ func ParseERC20TransferLog(chainID uint64, tokenAddress common.Address, log type
 		to,
 		new(big.Int).SetBytes(log.Data),
 	)
+	if err != nil {
+		return TransferEvent{}, err
+	}
+	event.TransactionIndex = uint64(log.TxIndex)
+	return event, nil
 }
 
 func parseERC20AddressTopic(topic common.Hash) (common.Address, error) {

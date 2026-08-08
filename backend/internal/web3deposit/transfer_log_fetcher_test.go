@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 )
@@ -148,6 +149,20 @@ func TestTransferLogFetcherHonorsPreCanceledContext(t *testing.T) {
 	_, err := fetcher.Fetch(ctx, 1, 1)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, client.calls)
+}
+
+func TestTransferLogFetcherReadsLatestBlock(t *testing.T) {
+	client := &transferLogRPCStub{call: func(_ context.Context, result any, method string, args ...any) error {
+		require.Equal(t, "eth_blockNumber", method)
+		require.Empty(t, args)
+		*result.(*hexutil.Uint64) = hexutil.Uint64(12345)
+		return nil
+	}}
+	fetcher := NewTransferLogFetcher(client, 1030, common.Address{}, TransferLogFetcherOptions{})
+
+	blockNumber, err := fetcher.LatestBlock(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, uint64(12345), blockNumber)
 }
 
 type transferLogRPCStub struct {

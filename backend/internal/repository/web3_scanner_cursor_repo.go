@@ -14,6 +14,8 @@ type Web3ScannerCursorRepository struct {
 	client *dbent.Client
 }
 
+var _ web3deposit.ScannerCursorSource = (*Web3ScannerCursorRepository)(nil)
+
 func NewWeb3ScannerCursorRepository(client *dbent.Client) *Web3ScannerCursorRepository {
 	return &Web3ScannerCursorRepository{client: client}
 }

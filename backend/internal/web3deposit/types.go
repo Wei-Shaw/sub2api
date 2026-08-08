@@ -31,12 +31,13 @@ type DepositEventID struct {
 }
 
 type TransferEvent struct {
-	ID          DepositEventID
-	BlockNumber uint64
-	BlockHash   common.Hash
-	From        common.Address
-	To          common.Address
-	rawAmount   *big.Int
+	ID               DepositEventID
+	BlockNumber      uint64
+	TransactionIndex uint64
+	BlockHash        common.Hash
+	From             common.Address
+	To               common.Address
+	rawAmount        *big.Int
 }
 
 func NewTransferEvent(

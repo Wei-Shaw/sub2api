@@ -23,6 +23,7 @@ func TestParseERC20TransferLog(t *testing.T) {
 	require.Equal(t, log.TxHash, event.ID.TxHash)
 	require.Equal(t, uint64(log.Index), event.ID.LogIndex)
 	require.Equal(t, log.BlockNumber, event.BlockNumber)
+	require.Equal(t, uint64(log.TxIndex), event.TransactionIndex)
 	require.Equal(t, log.BlockHash, event.BlockHash)
 	require.Equal(t, from, event.From)
 	require.Equal(t, to, event.To)

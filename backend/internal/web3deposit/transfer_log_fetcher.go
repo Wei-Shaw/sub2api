@@ -40,6 +40,8 @@ type TransferLogFetcher struct {
 	shrinkAttempts int
 }
 
+var _ ScannerTransferSource = (*TransferLogFetcher)(nil)
+
 func NewTransferLogFetcher(
 	client RPCRequestClient,
 	chainID uint64,
@@ -62,6 +64,14 @@ func NewTransferLogFetcher(
 		maxBlockRange:  options.MaxBlockRange,
 		shrinkAttempts: options.ShrinkAttempts,
 	}
+}
+
+func (f *TransferLogFetcher) LatestBlock(ctx context.Context) (uint64, error) {
+	var blockNumber hexutil.Uint64
+	if err := f.client.CallContext(ctx, &blockNumber, "eth_blockNumber"); err != nil {
+		return 0, fmt.Errorf("read latest transfer block: %w", err)
+	}
+	return uint64(blockNumber), nil
 }
 
 func (f *TransferLogFetcher) Fetch(ctx context.Context, fromBlock, toBlock uint64) ([]TransferEvent, error) {
