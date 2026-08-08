@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,6 +104,7 @@ func NewConfluxRPCPool(ctx context.Context, rawURLs []string, options ConfluxRPC
 func (p *ConfluxRPCPool) CallContext(ctx context.Context, result any, method string, args ...any) error {
 	endpoints := p.candidates()
 	failedEndpointIDs := make([]string, 0, len(endpoints))
+	rangeTooLarge := false
 	for _, endpoint := range endpoints {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -118,10 +120,14 @@ func (p *ConfluxRPCPool) CallContext(ctx context.Context, result any, method str
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		p.markUnhealthy(endpoint)
 		failedEndpointIDs = append(failedEndpointIDs, endpoint.id)
+		if isConfluxRPCRangeTooLargeError(err) {
+			rangeTooLarge = true
+			continue
+		}
+		p.markUnhealthy(endpoint)
 	}
-	return &ConfluxRPCPoolError{Method: method, EndpointIDs: failedEndpointIDs}
+	return &ConfluxRPCPoolError{Method: method, EndpointIDs: failedEndpointIDs, RangeTooLarge: rangeTooLarge}
 }
 
 func (p *ConfluxRPCPool) EndpointStates() []ConfluxRPCEndpointState {
@@ -193,8 +199,9 @@ func (p *ConfluxRPCPool) markUnhealthy(endpoint *confluxRPCEndpoint) {
 }
 
 type ConfluxRPCPoolError struct {
-	Method      string
-	EndpointIDs []string
+	Method        string
+	EndpointIDs   []string
+	RangeTooLarge bool
 }
 
 func (e *ConfluxRPCPoolError) Error() string {
@@ -203,4 +210,36 @@ func (e *ConfluxRPCPoolError) Error() string {
 
 func (e *ConfluxRPCPoolError) Unwrap() error {
 	return ErrConfluxRPCUnavailable
+}
+
+func IsConfluxRPCRangeTooLarge(err error) bool {
+	var poolError *ConfluxRPCPoolError
+	if errors.As(err, &poolError) {
+		return poolError.RangeTooLarge
+	}
+	return isConfluxRPCRangeTooLargeError(err)
+}
+
+func isConfluxRPCRangeTooLargeError(err error) bool {
+	type errorCoder interface {
+		ErrorCode() int
+	}
+	var coded errorCoder
+	if errors.As(err, &coded) && coded.ErrorCode() == -32005 {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{
+		"too many results",
+		"query returned more than",
+		"block range is too wide",
+		"block range too large",
+		"exceed maximum block range",
+		"response size exceeded",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }

@@ -137,11 +137,26 @@ func TestNewConfluxRPCPoolIsolatesDialFailure(t *testing.T) {
 	require.True(t, pool.EndpointStates()[1].Healthy)
 }
 
+func TestConfluxRPCRangeTooLargeClassification(t *testing.T) {
+	require.True(t, isConfluxRPCRangeTooLargeError(confluxRPCErrorStub{code: -32005, message: "request rejected"}))
+	require.True(t, isConfluxRPCRangeTooLargeError(errors.New("query returned more than 10000 results")))
+	require.True(t, isConfluxRPCRangeTooLargeError(errors.New("block range is too wide")))
+	require.False(t, isConfluxRPCRangeTooLargeError(confluxRPCErrorStub{code: -32000, message: "execution failed"}))
+}
+
 type confluxRPCCallerStub struct {
 	calls  atomic.Int32
 	call   func(context.Context, any, string, ...any) error
 	closed atomic.Bool
 }
+
+type confluxRPCErrorStub struct {
+	code    int
+	message string
+}
+
+func (e confluxRPCErrorStub) Error() string  { return e.message }
+func (e confluxRPCErrorStub) ErrorCode() int { return e.code }
 
 func (s *confluxRPCCallerStub) CallContext(ctx context.Context, result any, method string, args ...any) error {
 	s.calls.Add(1)
