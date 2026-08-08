@@ -373,8 +373,31 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+          <template #cell-priority="{ row }">
+            <div class="inline-flex w-28 items-center gap-1.5" @click.stop>
+              <input
+                :value="getPriorityDraft(row)"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                class="h-8 w-16 rounded-md border border-gray-300 bg-white px-2 text-sm font-mono text-gray-700 transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:disabled:bg-dark-700"
+                :disabled="isPrioritySaving(row.id)"
+                :aria-label="t('admin.accounts.priorityQuickEditLabel', { name: row.name })"
+                :title="t('admin.accounts.priorityQuickEditHint')"
+                data-test="account-priority-input"
+                @input="setPriorityDraft(row, ($event.target as HTMLInputElement).value)"
+                @blur="commitPriorityDraft(row)"
+                @keydown.enter.prevent="commitPriorityDraft(row)"
+                @keydown.esc.prevent="resetPriorityDraft(row)"
+              />
+              <Icon
+                v-if="isPrioritySaving(row.id)"
+                name="refresh"
+                size="xs"
+                class="animate-spin text-primary-500"
+              />
+            </div>
           </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
@@ -605,6 +628,8 @@ const scheduleModelOptions = ref<SelectOption[]>([])
 const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
+const priorityDrafts = reactive<Record<number, string>>({})
+const savingPriorityIds = ref<Set<number>>(new Set())
 const probingUpstreamBilling = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
@@ -629,15 +654,24 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'scheduler_score', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
 const HIDDEN_COLUMNS_CURRENT_VERSION = 'scheduler-score-hidden-by-default'
 
 // Sorting settings
+const ACCOUNT_FILTERS_STORAGE_KEY = 'account-table-filters'
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
 type AccountSortOrder = 'asc' | 'desc'
+type AccountListFilterValues = {
+  platform: string
+  type: string
+  status: string
+  privacy_mode: string
+  group: string
+  search: string
+}
 type AccountSortState = {
   sort_by: string
   sort_order: AccountSortOrder
@@ -654,6 +688,56 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'created_at',
   'expires_at'
 ])
+const sanitizePersistedAccountFilter = (value: unknown): string => {
+  return typeof value === 'string' ? value : ''
+}
+
+const getRouteSearchFilter = (): string | null => {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('search')
+}
+
+const loadInitialAccountFilters = (): AccountListFilterValues => {
+  const routeSearch = getRouteSearchFilter()
+  const fallback: AccountListFilterValues = {
+    platform: '',
+    type: '',
+    status: '',
+    privacy_mode: '',
+    group: '',
+    search: routeSearch ?? ''
+  }
+
+  if (typeof window === 'undefined') return fallback
+
+  try {
+    const raw = window.localStorage.getItem(ACCOUNT_FILTERS_STORAGE_KEY)
+    if (!raw) return fallback
+
+    const parsed = JSON.parse(raw) as Partial<Record<keyof AccountListFilterValues, unknown>>
+    return {
+      platform: sanitizePersistedAccountFilter(parsed.platform),
+      type: sanitizePersistedAccountFilter(parsed.type),
+      status: sanitizePersistedAccountFilter(parsed.status),
+      privacy_mode: sanitizePersistedAccountFilter(parsed.privacy_mode),
+      group: sanitizePersistedAccountFilter(parsed.group),
+      search: routeSearch ?? sanitizePersistedAccountFilter(parsed.search)
+    }
+  } catch (error) {
+    console.error('Failed to load saved account filters:', error)
+    return fallback
+  }
+}
+
+const saveAccountFiltersToStorage = (filters: AccountListFilterValues) => {
+  if (typeof window === 'undefined') return
+
+  try {
+    window.localStorage.setItem(ACCOUNT_FILTERS_STORAGE_KEY, JSON.stringify(filters))
+  } catch (error) {
+    console.error('Failed to save account filters:', error)
+  }
+}
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
   try {
@@ -916,12 +1000,7 @@ const {
 } = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: {
-    platform: '',
-    type: '',
-    status: '',
-    privacy_mode: '',
-    group: '',
-    search: '',
+    ...loadInitialAccountFilters(),
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
@@ -1041,6 +1120,20 @@ const debouncedReload = () => {
   pendingTodayStatsRefresh.value = true
   baseDebouncedReload()
 }
+
+watch(
+  () => ({
+    platform: params.platform,
+    type: params.type,
+    status: params.status,
+    privacy_mode: params.privacy_mode,
+    group: params.group,
+    search: params.search
+  }),
+  (filters) => {
+    saveAccountFiltersToStorage(filters)
+  }
+)
 
 const handlePageChange = (page: number) => {
   syncAccountListDerivedParams()
@@ -1927,6 +2020,51 @@ const handleProbeUpstreamBilling = async (account: Account) => {
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
+}
+const getPriorityDraft = (account: Account) => priorityDrafts[account.id] ?? String(account.priority)
+const setPriorityDraft = (account: Account, value: string) => {
+  priorityDrafts[account.id] = value
+}
+const resetPriorityDraft = (account: Account) => {
+  delete priorityDrafts[account.id]
+}
+const parsePriorityDraft = (value: string) => {
+  const priority = Number(value.trim())
+  return Number.isInteger(priority) && priority >= 1 ? priority : null
+}
+const setPrioritySaving = (accountId: number, saving: boolean) => {
+  const next = new Set(savingPriorityIds.value)
+  if (saving) next.add(accountId)
+  else next.delete(accountId)
+  savingPriorityIds.value = next
+}
+const isPrioritySaving = (accountId: number) => savingPriorityIds.value.has(accountId)
+const commitPriorityDraft = async (account: Account) => {
+  if (isPrioritySaving(account.id)) return
+
+  const priority = parsePriorityDraft(getPriorityDraft(account))
+  if (priority === null) {
+    resetPriorityDraft(account)
+    appStore.showError(t('admin.accounts.priorityInvalid'))
+    return
+  }
+  if (priority === account.priority) {
+    resetPriorityDraft(account)
+    return
+  }
+
+  setPrioritySaving(account.id, true)
+  try {
+    const updated = await adminAPI.accounts.update(account.id, { priority })
+    patchAccountInList(updated)
+    resetPriorityDraft(updated)
+    enterAutoRefreshSilentWindow()
+  } catch (error) {
+    resetPriorityDraft(account)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.priorityUpdateFailed')))
+  } finally {
+    setPrioritySaving(account.id, false)
+  }
 }
 const formatExportTimestamp = () => {
   const now = new Date()

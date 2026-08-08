@@ -96,6 +96,10 @@ export default {
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
+      priorityQuickEditLabel: 'Edit priority for {name}',
+      priorityQuickEditHint: 'Press Enter or blur to save priority',
+      priorityInvalid: 'Enter an integer priority greater than or equal to 1',
+      priorityUpdateFailed: 'Failed to update priority',
       groupCountTotal: '{count} groups total',
       platforms: {
         anthropic: 'Anthropic',
