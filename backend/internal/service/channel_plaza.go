@@ -28,7 +28,8 @@ type PlazaModel struct {
 // PlazaGroup 模型广场中以分组为顶层的条目。
 //
 // 与 AvailableGroupRef 相比多了 Description 与 Models；Models 来自该分组关联渠道的
-// 支持模型（按分组平台隔离，防跨平台泄漏），与「可用渠道」页口径一致。
+// 支持模型（普通分组按分组平台隔离，Composite 分组展开关联渠道已配置的
+// 具体平台），与「可用渠道」页口径一致。
 type PlazaGroup struct {
 	ID                 int64
 	Name               string
@@ -99,8 +100,12 @@ func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, err
 		order = append(order, g.ID)
 	}
 
-	// modelIdx[groupID][modelName] = index into byGroup[groupID].Models
-	modelIdx := make(map[int64]map[string]int, len(groups))
+	type modelKey struct {
+		platform string
+		name     string
+	}
+	// modelIdx[groupID][platform+modelName] = index into byGroup[groupID].Models
+	modelIdx := make(map[int64]map[modelKey]int, len(groups))
 	for i := range channels {
 		ch := &channels[i]
 		if ch.Status != StatusActive {
@@ -117,23 +122,28 @@ func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, err
 			}
 			idx := modelIdx[gid]
 			if idx == nil {
-				idx = make(map[string]int, len(supported))
+				idx = make(map[modelKey]int, len(supported))
 				modelIdx[gid] = idx
 			}
 			for j := range supported {
 				m := supported[j]
-				if m.Platform != pg.Platform {
+				if pg.Platform == PlatformComposite {
+					if !isConcreteRequestPlatform(m.Platform) {
+						continue
+					}
+				} else if m.Platform != pg.Platform {
 					continue
 				}
 				pricing := plazaImageDisplayPricing(m.Pricing, groupEnt[gid])
-				if at, seen := idx[m.Name]; seen {
+				key := modelKey{platform: m.Platform, name: m.Name}
+				if at, seen := idx[key]; seen {
 					// 先见者胜；仅当已存条目无定价而新条目有定价时升级。
 					if pg.Models[at].Pricing == nil && pricing != nil {
 						pg.Models[at].Pricing = pricing
 					}
 					continue
 				}
-				idx[m.Name] = len(pg.Models)
+				idx[key] = len(pg.Models)
 				pg.Models = append(pg.Models, PlazaModel{
 					Name:     m.Name,
 					Platform: m.Platform,
@@ -150,7 +160,12 @@ func (s *ChannelService) ListPlazaGroups(ctx context.Context) ([]PlazaGroup, err
 		if len(pg.Models) == 0 {
 			continue
 		}
-		sort.SliceStable(pg.Models, func(i, j int) bool { return pg.Models[i].Name < pg.Models[j].Name })
+		sort.SliceStable(pg.Models, func(i, j int) bool {
+			if pg.Models[i].Name != pg.Models[j].Name {
+				return pg.Models[i].Name < pg.Models[j].Name
+			}
+			return pg.Models[i].Platform < pg.Models[j].Platform
+		})
 		for j := range pg.Models {
 			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(pg.Models[j].Name, officialMemo)
 		}

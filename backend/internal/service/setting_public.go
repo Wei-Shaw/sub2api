@@ -173,6 +173,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTurnstileSiteKey,
 		SettingKeyTencentCaptchaEnabled,
 		SettingKeyTencentCaptchaAppID,
+		SettingKeyTencentCaptchaRegion,
 		SettingKeyAliyunCaptchaEnabled,
 		SettingKeyAliyunCaptchaSceneID,
 		SettingKeyAliyunCaptchaPrefix,
@@ -309,6 +310,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
 		TencentCaptchaEnabled:            settings[SettingKeyTencentCaptchaEnabled] == "true",
 		TencentCaptchaAppID:              settings[SettingKeyTencentCaptchaAppID],
+		TencentCaptchaRegion:             normalizeTencentCaptchaRegion(settings[SettingKeyTencentCaptchaRegion]),
 		AliyunCaptchaEnabled:             settings[SettingKeyAliyunCaptchaEnabled] == "true",
 		AliyunCaptchaSceneID:             settings[SettingKeyAliyunCaptchaSceneID],
 		AliyunCaptchaPrefix:              settings[SettingKeyAliyunCaptchaPrefix],
@@ -504,6 +506,7 @@ type PublicSettingsInjectionPayload struct {
 	TurnstileSiteKey                 string                   `json:"turnstile_site_key"`
 	TencentCaptchaEnabled            bool                     `json:"tencent_captcha_enabled"`
 	TencentCaptchaAppID              string                   `json:"tencent_captcha_app_id"`
+	TencentCaptchaRegion             string                   `json:"tencent_captcha_region"`
 	AliyunCaptchaEnabled             bool                     `json:"aliyun_captcha_enabled"`
 	AliyunCaptchaSceneID             string                   `json:"aliyun_captcha_scene_id"`
 	AliyunCaptchaPrefix              string                   `json:"aliyun_captcha_prefix"`
@@ -583,6 +586,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TurnstileSiteKey:                 settings.TurnstileSiteKey,
 		TencentCaptchaEnabled:            settings.TencentCaptchaEnabled,
 		TencentCaptchaAppID:              settings.TencentCaptchaAppID,
+		TencentCaptchaRegion:             settings.TencentCaptchaRegion,
 		AliyunCaptchaEnabled:             settings.AliyunCaptchaEnabled,
 		AliyunCaptchaSceneID:             settings.AliyunCaptchaSceneID,
 		AliyunCaptchaPrefix:              settings.AliyunCaptchaPrefix,

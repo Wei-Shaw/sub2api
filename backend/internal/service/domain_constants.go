@@ -171,6 +171,7 @@ const (
 	SettingKeyTencentCaptchaAppSecretKey   = "tencent_captcha_app_secret_key"
 	SettingKeyTencentCaptchaCloudSecretID  = "tencent_captcha_cloud_secret_id"
 	SettingKeyTencentCaptchaCloudSecretKey = "tencent_captcha_cloud_secret_key"
+	SettingKeyTencentCaptchaRegion         = "tencent_captcha_region" // 站点："cn"|"intl"，决定前端 SDK 脚本与服务端接入点
 
 	// 阿里云验证码 2.0 设置（与 Turnstile、腾讯天御互斥，同一时间仅可启用一家）
 	SettingKeyAliyunCaptchaEnabled         = "aliyun_captcha_enabled"           // 是否启用阿里云验证码

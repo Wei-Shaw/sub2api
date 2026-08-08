@@ -28,6 +28,11 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 		"gemini-pro-agent",
 		"gpt-oss-120b-medium",
 		"tab_flash_lite_preview",
+		"gemini-3.6-flash",
+		"gemini-3.6-flash-high",
+		"gemini-3.6-flash-low",
+		"gemini-3.6-flash-medium",
+		"gemini-3.6-flash-tiered",
 	}
 
 	for _, id := range requiredIDs {

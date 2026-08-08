@@ -59,13 +59,22 @@
       <tbody>
         <tr
           v-for="m in sortedModels"
-          :key="m.name"
+          :key="`${m.platform}:${m.name}`"
           class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
         >
           <!-- 模型名 + 非 token 计费模式徽章 -->
           <td class="border-r border-gray-100 py-2.5 pl-5 pr-4 align-middle dark:border-dark-700/60">
             <div class="flex flex-wrap items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ m.name }}</span>
+              <span
+                v-if="platform && m.platform !== platform"
+                :class="[
+                  'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+                  platformBadgeLightClass(m.platform)
+                ]"
+              >
+                {{ platformLabel(m.platform) }}
+              </span>
               <span
                 v-if="billingMode(m) !== BILLING_MODE_TOKEN"
                 class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
@@ -203,7 +212,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatScaled } from '@/utils/pricing'
-import { platformAccentColor } from '@/utils/platformColors'
+import { platformAccentColor, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_IMAGE,
