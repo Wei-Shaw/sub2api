@@ -501,6 +501,13 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        sessionStickyMode: 'Session sticky policy',
+        sessionStickyModeDesc:
+          'Only affects OpenAI session_hash affinity. Normal affinity reuses this account; fallback-only affinity yields to a higher-priority account that supports the request and has an immediate slot. previous_response_id remains bound to its original account.',
+        sessionStickyModeNormal: 'Normal sticky',
+        sessionStickyModeFallbackOnly: 'Sticky only as fallback',
+        sessionStickyModeMissing: 'The server did not return this account session sticky policy, so it cannot be saved safely. Upgrade the backend first.',
+        sessionStickyModeRoundTripFailed: 'The server did not confirm the session sticky policy. The save was rejected; refresh the account and try again.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',

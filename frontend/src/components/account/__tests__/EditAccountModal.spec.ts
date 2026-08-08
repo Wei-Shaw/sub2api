@@ -2,18 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode, appStoreMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
-  authIsSimpleMode: { value: true }
-}))
-
-vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({
+  authIsSimpleMode: { value: true },
+  appStoreMock: {
     showError: vi.fn(),
     showSuccess: vi.fn(),
     showInfo: vi.fn()
-  })
+  }
+}))
+
+vi.mock('@/stores/app', () => ({
+  useAppStore: () => appStoreMock
 }))
 
 vi.mock('@/stores/auth', () => ({
@@ -41,7 +42,8 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  isOpenAISessionStickyMode: (value: unknown) => value === 'normal' || value === 'fallback_only'
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -160,6 +162,7 @@ function buildAccount() {
     priority: 1,
     rate_multiplier: 1,
     status: 'active',
+    openai_session_sticky_mode: 'normal',
     group_ids: [],
     expires_at: null,
     auto_pause_on_expired: false
@@ -314,6 +317,74 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+    appStoreMock.showError.mockReset()
+    appStoreMock.showSuccess.mockReset()
+    appStoreMock.showInfo.mockReset()
+  })
+
+  it('shows and submits the OpenAI session sticky mode for the current account only', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue({ ...account, openai_session_sticky_mode: 'fallback_only' })
+
+    const wrapper = mountModal(account)
+    const modeSelect = wrapper.get<HTMLSelectElement>('[data-testid="openai-session-sticky-mode"]')
+
+    expect(modeSelect.element.value).toBe('normal')
+    await modeSelect.setValue('fallback_only')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.openai_session_sticky_mode).toBe('fallback_only')
+  })
+
+  it('does not render or submit the OpenAI session sticky mode for non-OpenAI accounts', async () => {
+    const account = buildVertexAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="openai-session-sticky-mode"]').exists()).toBe(false)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('openai_session_sticky_mode')
+  })
+
+  it('fails visibly when the OpenAI sticky mode is missing from the server response', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue({ ...account, openai_session_sticky_mode: undefined })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(appStoreMock.showError).toHaveBeenCalledWith(
+      'admin.accounts.openai.sessionStickyModeRoundTripFailed'
+    )
+    expect(wrapper.emitted('updated')).toBeUndefined()
+  })
+
+  it('fails visibly before saving when an OpenAI account has no sticky mode field', async () => {
+    const account = { ...buildAccount(), openai_session_sticky_mode: undefined }
+    updateAccountMock.mockReset()
+
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="openai-session-sticky-mode"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="openai-session-sticky-mode-missing"]').exists()).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    expect(appStoreMock.showError).toHaveBeenCalledWith(
+      'admin.accounts.openai.sessionStickyModeMissing'
+    )
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

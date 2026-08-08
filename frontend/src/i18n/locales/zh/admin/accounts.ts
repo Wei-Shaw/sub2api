@@ -572,6 +572,13 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        sessionStickyMode: '会话粘性策略',
+        sessionStickyModeDesc:
+          '此设置只影响 OpenAI 的 session_hash。正常粘性会继续使用当前账号。仅作保底时，只要有优先级更高且能立即处理请求的账号，就会自动切换过去。previous_response_id 仍固定使用原账号，避免上下文失效。',
+        sessionStickyModeNormal: '正常粘性',
+        sessionStickyModeFallbackOnly: '仅作保底时粘性',
+        sessionStickyModeMissing: '服务端未返回该账号的会话粘性策略，无法安全保存。请先升级后端。',
+        sessionStickyModeRoundTripFailed: '服务端未确认会话粘性策略，保存失败。请刷新账号后重试。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
