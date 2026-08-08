@@ -1,6 +1,7 @@
 package web3deposit
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -11,6 +12,13 @@ var ErrFinalizedDepositAmountInvalid = errors.New("finalized web3 deposit amount
 
 const (
 	ReviewReasonAboveAutoCreditLimit = "amount_above_auto_credit_limit"
+	ReviewReasonUserMissing          = "user_missing"
+	ReviewReasonUserDeleted          = "user_deleted"
+	ReviewReasonUserInactive         = "user_inactive"
+	ReviewReasonAddressMissing       = "deposit_address_missing"
+	ReviewReasonAddressDisabled      = "deposit_address_disabled"
+	ReviewReasonAddressUserMismatch  = "deposit_address_user_mismatch"
+	ReviewReasonAddressMismatch      = "deposit_address_mismatch"
 )
 
 type FinalizedDepositClassification struct {
@@ -33,4 +41,13 @@ func ClassifyFinalizedDepositAmount(tokenAmount string, config ChainConfig) (Fin
 		}, nil
 	}
 	return FinalizedDepositClassification{Status: DepositStatusReadyToCredit}, nil
+}
+
+type DepositCreditEligibility struct {
+	Eligible     bool
+	ReviewReason string
+}
+
+type DepositCreditEligibilitySource interface {
+	CheckCreditEligibility(ctx context.Context, deposit Deposit) (DepositCreditEligibility, error)
 }

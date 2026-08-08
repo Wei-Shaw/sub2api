@@ -8,7 +8,11 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/web3deposit"
+	"github.com/Wei-Shaw/sub2api/ent/web3depositaddress"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	depositdomain "github.com/Wei-Shaw/sub2api/internal/web3deposit"
 )
 
@@ -17,6 +21,7 @@ type Web3DepositRepository struct {
 }
 
 var _ depositdomain.DetectedDepositStore = (*Web3DepositRepository)(nil)
+var _ depositdomain.DepositCreditEligibilitySource = (*Web3DepositRepository)(nil)
 
 func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 	return &Web3DepositRepository{client: client}
@@ -142,6 +147,48 @@ func (r *Web3DepositRepository) ListByUser(ctx context.Context, userID int64) ([
 		deposits = append(deposits, web3DepositFromEnt(entity))
 	}
 	return deposits, nil
+}
+
+func (r *Web3DepositRepository) CheckCreditEligibility(ctx context.Context, deposit depositdomain.Deposit) (depositdomain.DepositCreditEligibility, error) {
+	userEntity, err := r.client.User.Query().
+		Where(user.IDEQ(deposit.UserID)).
+		Only(mixins.SkipSoftDelete(ctx))
+	if dbent.IsNotFound(err) {
+		return ineligibleDeposit(depositdomain.ReviewReasonUserMissing), nil
+	}
+	if err != nil {
+		return depositdomain.DepositCreditEligibility{}, fmt.Errorf("get web3 deposit user eligibility: %w", err)
+	}
+	if userEntity.DeletedAt != nil {
+		return ineligibleDeposit(depositdomain.ReviewReasonUserDeleted), nil
+	}
+	if userEntity.Status != domain.StatusActive {
+		return ineligibleDeposit(depositdomain.ReviewReasonUserInactive), nil
+	}
+
+	addressEntity, err := r.client.Web3DepositAddress.Query().
+		Where(web3depositaddress.IDEQ(deposit.DepositAddressID)).
+		Only(ctx)
+	if dbent.IsNotFound(err) {
+		return ineligibleDeposit(depositdomain.ReviewReasonAddressMissing), nil
+	}
+	if err != nil {
+		return depositdomain.DepositCreditEligibility{}, fmt.Errorf("get web3 deposit address eligibility: %w", err)
+	}
+	if addressEntity.Status != string(depositdomain.AddressStatusActive) {
+		return ineligibleDeposit(depositdomain.ReviewReasonAddressDisabled), nil
+	}
+	if addressEntity.UserID != deposit.UserID {
+		return ineligibleDeposit(depositdomain.ReviewReasonAddressUserMismatch), nil
+	}
+	if !strings.EqualFold(addressEntity.NormalizedAddress, deposit.ToAddress) {
+		return ineligibleDeposit(depositdomain.ReviewReasonAddressMismatch), nil
+	}
+	return depositdomain.DepositCreditEligibility{Eligible: true}, nil
+}
+
+func ineligibleDeposit(reason string) depositdomain.DepositCreditEligibility {
+	return depositdomain.DepositCreditEligibility{ReviewReason: reason}
 }
 
 func web3DepositResult(entity *dbent.Web3Deposit, err error, operation string) (depositdomain.Deposit, error) {

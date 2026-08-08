@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
@@ -145,6 +146,104 @@ func TestWeb3DepositRepositoryRejectsInvalidValues(t *testing.T) {
 	overflowChainID.ChainID = uint64(math.MaxInt64) + 1
 	_, err = repo.Create(ctx, overflowChainID)
 	require.ErrorContains(t, err, "exceeds PostgreSQL BIGINT")
+}
+
+func TestWeb3DepositRepositoryChecksCreditEligibility(t *testing.T) {
+	tests := []struct {
+		name       string
+		configure  func(context.Context, *Web3DepositRepository, *dbent.User, *dbent.Web3DepositAddress, *web3deposit.Deposit)
+		wantReason string
+	}{
+		{name: "eligible"},
+		{
+			name: "missing user",
+			configure: func(_ context.Context, _ *Web3DepositRepository, _ *dbent.User, _ *dbent.Web3DepositAddress, deposit *web3deposit.Deposit) {
+				deposit.UserID = 999
+			},
+			wantReason: web3deposit.ReviewReasonUserMissing,
+		},
+		{
+			name: "deleted user",
+			configure: func(ctx context.Context, repo *Web3DepositRepository, user *dbent.User, _ *dbent.Web3DepositAddress, _ *web3deposit.Deposit) {
+				require.NoError(t, repo.client.User.UpdateOneID(user.ID).SetDeletedAt(time.Now()).Exec(ctx))
+			},
+			wantReason: web3deposit.ReviewReasonUserDeleted,
+		},
+		{
+			name: "disabled user",
+			configure: func(ctx context.Context, repo *Web3DepositRepository, user *dbent.User, _ *dbent.Web3DepositAddress, _ *web3deposit.Deposit) {
+				require.NoError(t, repo.client.User.UpdateOneID(user.ID).SetStatus("disabled").Exec(ctx))
+			},
+			wantReason: web3deposit.ReviewReasonUserInactive,
+		},
+		{
+			name: "missing address",
+			configure: func(_ context.Context, _ *Web3DepositRepository, _ *dbent.User, _ *dbent.Web3DepositAddress, deposit *web3deposit.Deposit) {
+				deposit.DepositAddressID = 999
+			},
+			wantReason: web3deposit.ReviewReasonAddressMissing,
+		},
+		{
+			name: "disabled address",
+			configure: func(ctx context.Context, repo *Web3DepositRepository, _ *dbent.User, address *dbent.Web3DepositAddress, _ *web3deposit.Deposit) {
+				require.NoError(t, repo.client.Web3DepositAddress.UpdateOneID(address.ID).SetStatus(string(web3deposit.AddressStatusDisabled)).Exec(ctx))
+			},
+			wantReason: web3deposit.ReviewReasonAddressDisabled,
+		},
+		{
+			name: "address user mismatch",
+			configure: func(ctx context.Context, repo *Web3DepositRepository, _ *dbent.User, _ *dbent.Web3DepositAddress, deposit *web3deposit.Deposit) {
+				otherUser, err := repo.client.User.Create().
+					SetEmail("address-owner-mismatch@example.com").
+					SetPasswordHash("password-hash").
+					Save(ctx)
+				require.NoError(t, err)
+				deposit.UserID = otherUser.ID
+			},
+			wantReason: web3deposit.ReviewReasonAddressUserMismatch,
+		},
+		{
+			name: "address mismatch",
+			configure: func(_ context.Context, _ *Web3DepositRepository, _ *dbent.User, _ *dbent.Web3DepositAddress, deposit *web3deposit.Deposit) {
+				deposit.ToAddress = "0xffffffffffffffffffffffffffffffffffffffff"
+			},
+			wantReason: web3deposit.ReviewReasonAddressMismatch,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newWeb3DepositRepository(t)
+			ctx := context.Background()
+			userEntity, err := repo.client.User.Create().
+				SetEmail(test.name + "@example.com").
+				SetPasswordHash("password-hash").
+				Save(ctx)
+			require.NoError(t, err)
+			addressEntity, err := repo.client.Web3DepositAddress.Create().
+				SetUserID(userEntity.ID).
+				SetWalletID("evm_deposit_v1").
+				SetDerivationIndex(1).
+				SetAddress(testWeb3DepositToAddress).
+				SetNormalizedAddress(testWeb3DepositToAddress).
+				Save(ctx)
+			require.NoError(t, err)
+			deposit := web3deposit.Deposit{
+				UserID:           userEntity.ID,
+				DepositAddressID: addressEntity.ID,
+				ToAddress:        testWeb3DepositToAddress,
+			}
+			if test.configure != nil {
+				test.configure(ctx, repo, userEntity, addressEntity, &deposit)
+			}
+
+			eligibility, err := repo.CheckCreditEligibility(ctx, deposit)
+
+			require.NoError(t, err)
+			require.Equal(t, test.wantReason == "", eligibility.Eligible)
+			require.Equal(t, test.wantReason, eligibility.ReviewReason)
+		})
+	}
 }
 
 func testWeb3DepositRecord(logIndex uint64) web3deposit.Deposit {
