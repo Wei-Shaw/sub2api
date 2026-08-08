@@ -216,4 +216,43 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it('OpenAI 未识别模型可由用户显式选择生图测试', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'custom-image-v2', display_name: 'Custom Image V2' }
+    ])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {\"type\":\"test_complete\",\"success\":true}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal({
+      id: 78,
+      name: 'OpenAI Custom Image Account',
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'custom-image-v2'
+    expect((wrapper.vm as any).supportsOpenAIImageTest).toBe(false)
+    ;(wrapper.vm as any).testMode = 'image'
+    await flushPromises()
+    expect((wrapper.vm as any).supportsImageTest).toBe(true)
+    expect((wrapper.vm as any).testPrompt).toContain('orange cat astronaut')
+
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'custom-image-v2',
+      prompt: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
+      mode: 'image'
+    })
+  })
 })

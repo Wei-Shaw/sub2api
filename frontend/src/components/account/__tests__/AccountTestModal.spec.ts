@@ -148,6 +148,45 @@ describe('AccountTestModal', () => {
     })
   })
 
+  it('posts explicit image mode for an unrecognized OpenAI image model', async () => {
+    getAvailableModelsMock.mockResolvedValue([
+      { id: 'custom-image-v2', display_name: 'Custom Image V2' }
+    ])
+
+    const wrapper = mount(AccountTestModal, {
+      props: {
+        show: true,
+        account: buildAccount()
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          TextArea: TextAreaStub,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    ;(wrapper.vm as any).selectedModelId = 'custom-image-v2'
+    expect((wrapper.vm as any).supportsOpenAIImageTest).toBe(false)
+    ;(wrapper.vm as any).testMode = 'image'
+    await flushPromises()
+    expect((wrapper.vm as any).supportsImageTest).toBe(true)
+
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, options] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(options.body)).toMatchObject({
+      model_id: 'custom-image-v2',
+      prompt: 'admin.accounts.imagePromptDefault',
+      mode: 'image'
+    })
+  })
+
   it('renders Chat Completions path status from test SSE', async () => {
     const encoder = new TextEncoder()
     const chunks = [

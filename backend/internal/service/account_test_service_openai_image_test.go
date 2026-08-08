@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -50,6 +51,55 @@ func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *tes
 	require.Contains(t, rec.Body.String(), "Calling Codex /responses image tool")
 	require.Contains(t, rec.Body.String(), "data:image/png;base64,aGVsbG8=")
 	require.Contains(t, rec.Body.String(), "\"success\":true")
+}
+
+func TestAccountTestService_OpenAIImageModePreservesAutomaticDetectionAndSupportsExplicitOverride(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		mode    string
+	}{
+		{name: "automatic detector wins over compact mode", modelID: "gpt-image-2", mode: AccountTestModeCompact},
+		{name: "explicit image mode supports unrecognized compatible model", modelID: "custom-image-v2", mode: AccountTestModeImage},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
+
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"data":[{"b64_json":"aGVsbG8="}]}`)),
+				},
+			}
+			svc := &AccountTestService{httpUpstream: upstream, cfg: &config.Config{}}
+			account := &Account{
+				ID:       55,
+				Name:     "openai-apikey",
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":  "test-api-key",
+					"base_url": "https://image-upstream.example/v1",
+				},
+			}
+
+			err := svc.testOpenAIAccountConnection(c, account, tt.modelID, "draw a test image", tt.mode)
+			require.NoError(t, err)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, "https://image-upstream.example/v1/images/generations", upstream.lastReq.URL.String())
+
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(upstream.lastBody, &payload))
+			require.Equal(t, tt.modelID, payload["model"])
+			require.Equal(t, "draw a test image", payload["prompt"])
+		})
+	}
 }
 
 func TestAccountTestService_OpenAIImageAPIKeyUsesConfiguredV1BaseURL(t *testing.T) {
