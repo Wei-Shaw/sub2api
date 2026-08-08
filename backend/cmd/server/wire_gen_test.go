@@ -92,6 +92,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // upstreamBillingProbe
 		nil, // ollamaCloudUsage
 		nil, // auditLog
+		nil, // scannerRuntime
 		nil, // confluxNetworkRuntime
 		nil, // promptAudit
 	)

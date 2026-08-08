@@ -115,6 +115,7 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
+	scannerRuntime *web3deposit.ScannerRuntime,
 	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntime,
 	promptAudit *securityaudit.PromptService,
 ) func() {
@@ -129,7 +130,8 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
-			{"ConfluxNetworkRuntime", func() error {
+			{"Web3DepositRuntime", func() error {
+				scannerRuntime.Stop()
 				confluxNetworkRuntime.Close()
 				return nil
 			}},

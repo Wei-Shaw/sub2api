@@ -301,6 +301,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	web3DepositAddressRepository := repository.NewWeb3DepositAddressRepository(client)
 	addressAllocator := web3deposit.NewAddressAllocator(web3DepositWalletRepository, web3DepositWalletRepository, web3DepositAddressRepository)
 	confluxNetworkRuntime := web3deposit.NewConfluxNetworkRuntime(configConfig)
+	web3ScannerCursorRepository := repository.NewWeb3ScannerCursorRepository(client)
+	web3ScannerBatchRepository := repository.NewWeb3ScannerBatchRepository(client)
+	scannerRuntime := web3deposit.ProvideScannerRuntime(configConfig, confluxNetworkRuntime, web3ScannerCursorRepository, web3ScannerCursorRepository, web3DepositAddressRepository, web3ScannerBatchRepository)
 	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, confluxNetworkRuntime)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
@@ -342,7 +345,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, confluxNetworkRuntime, promptService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, scannerRuntime, confluxNetworkRuntime, promptService)
 	application := &Application{
 		Server:      httpServer,
 		PromptAudit: promptService,
@@ -412,6 +415,7 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
+	scannerRuntime *web3deposit.ScannerRuntime,
 	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntime,
 	promptAudit *securityaudit.PromptService,
 ) func() {
@@ -425,7 +429,8 @@ func provideCleanup(
 		}
 
 		parallelSteps := []cleanupStep{
-			{"ConfluxNetworkRuntime", func() error {
+			{"Web3DepositRuntime", func() error {
+				scannerRuntime.Stop()
 				confluxNetworkRuntime.Close()
 				return nil
 			}},
