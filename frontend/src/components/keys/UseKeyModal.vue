@@ -790,26 +790,33 @@ $env:XAI_API_KEY="${apiKeyREDACTED"`
 export XAI_API_KEY="${apiKeyREDACTED"`
   REDACTED
 
-  // Shape follows official Grok Build docs (docs.x.ai/build/settings + custom-models guide).
-  // Text models only (Responses). Image/video: grok-imagine-image / grok-imagine-video on media endpoints.
+  // Shape follows Grok Build user guide (~/.grok/docs + custom-models) and production-ready Sub2API setups.
+  // Text models only (Responses). Image/video: Imagine model IDs on media endpoints / feature overrides.
   // Credential order: api_key field → env_key → signed-in session → XAI_API_KEY global fallback.
+  const modelsListUrl = `${baseUrl.replace(/\/+$/, '')REDACTED/models`
   const configContent = `# Grok Build CLI → Sub2API Grok group (API key auth).
-# Official docs: https://docs.x.ai/build/settings
+# Docs: ~/.grok/docs/user-guide/05-configuration.md + 11-custom-models.md
 # Verify after save: grok inspect
-#
-# Text / agent models only. Image & video use separate Imagine model IDs on media endpoints
-# (e.g. grok-imagine-image, grok-imagine-video) — not the catalog below.
 #
 # IMPORTANT: api_backend must be "responses" for Sub2API Grok (POST /v1/responses).
 # If omitted, Grok Build defaults to chat_completions (/v1/chat/completions).
-
-# Global inference base (same role as env GROK_MODELS_BASE_URL).
-# Grok also lists models from {models_base_urlREDACTED/models when this is set.
-[endpoints]
-models_base_url = "${baseUrlREDACTED"
-
+# Keep api_backend = "responses" on every model entry.
+#
 # Prefer env_key over hardcoding api_key (never commit secrets).
 # Also export GROK_MODELS_BASE_URL + XAI_API_KEY in the shell block above.
+
+# Global inference / catalog endpoints (same role as env GROK_MODELS_BASE_URL).
+# When models_base_url is set, Grok uses API-key Bearer auth (no grok login required).
+[endpoints]
+models_base_url = "${baseUrlREDACTED"              # inference base; model list defaults to {baseREDACTED/models
+models_list_url = "${modelsListUrlREDACTED"        # optional override (env: GROK_MODELS_LIST_URL)
+xai_api_base_url = "${baseUrlREDACTED"             # public xAI API base override for gateway routing
+cli_chat_proxy_base_url = "${baseUrlREDACTED"      # CLI chat-proxy base (env: GROK_CLI_CHAT_PROXY_BASE_URL)
+
+# Prefer API key when using a custom gateway (matches Sub2API).
+# Requires XAI_API_KEY env or per-model env_key / api_key.
+[auth]
+preferred_method = "api_key"
 
 [model."grok-4.5"]
 model = "grok-4.5"                          # id sent to the API
@@ -867,11 +874,27 @@ supports_backend_search = true
 # xAI recommends grok-build* for coding/agent sessions; use grok-4.5 for general chat.
 default = "grok-4.5"
 web_search = "grok-4.5"                     # client-side web_search tool model (must exist as [model.*])
+image_description = "grok-4.5"              # vision/describe-image helper model
 # Optional environment-wide sampling defaults (per-model values win):
 # temperature = 0.7
 # top_p = 0.95
 # max_completion_tokens = 8192
-# max_retries = 8`
+# max_retries = 8
+
+[session]
+auto_compact_threshold_percent = 80         # auto-compact at this % of context_window (default 85)
+
+# Imagine tools: model IDs go to Sub2API media endpoints (not the text [model.*] catalog).
+# Enable only if the Grok group allows image/video generation.
+[features]
+image_gen = true
+video_gen = true
+image_gen_model_override = "grok-imagine-image-quality"   # or grok-imagine-image
+image_edit_model_override = "grok-imagine-edit"
+# Optional feature flags (defaults shown in docs):
+# telemetry = false
+# remote_fetch = true                         # set false for air-gapped / pure-gateway catalogs
+# lsp_tools = false`
 
   return [
     { path: envPath, content: envContent REDACTED,

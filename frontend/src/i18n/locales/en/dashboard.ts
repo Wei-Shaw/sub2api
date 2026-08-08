@@ -174,13 +174,13 @@ export default {
         claudeDescription: 'Configure Claude Code to send Messages API traffic through your Sub2API Grok group.',
         codexDescription: 'Configure Codex to send Responses API traffic through your Sub2API Grok group.',
         configTomlHint:
-          'Official path: ~/.grok/config.toml (or $GROK_HOME). Prefer env_key = "XAI_API_KEY" over api_key. Every model must set api_backend = "responses" for Sub2API. Back up before merge, then run grok inspect.',
+          'Official path: ~/.grok/config.toml (or $GROK_HOME). Fill [endpoints] (models_base_url / models_list_url / xai_api_base_url / cli_chat_proxy_base_url), [auth] preferred_method=api_key, [models], [session], and [features] image/video overrides. Prefer env_key over api_key; every text model needs api_backend=responses. Back up before merge, then run grok inspect.',
         codexConfigTomlHint:
-          'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways. Back up ~/.codex/config.toml before merge.',
+          'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
         note:
-          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save config.toml as ~/.grok/config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml (endpoints/auth/models/session/features) as ~/.grok/config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
         noteWindows:
-          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
         claudeNote:
           'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
         codexNote:

@@ -178,13 +178,13 @@ export default {
         claudeDescription: '配置 Claude Code，让 Messages API 请求通过当前 Sub2API Grok 分组发送。',
         codexDescription: '配置 Codex，让 Responses API 请求通过当前 Sub2API Grok 分组发送。',
         configTomlHint:
-          '官方路径：~/.grok/config.toml（或 $GROK_HOME）。优先 env_key = "XAI_API_KEY"，勿硬编码 api_key。Sub2API 上每个模型必须 api_backend = "responses"。合并前请备份，保存后运行 grok inspect。',
+          '官方路径：~/.grok/config.toml（或 $GROK_HOME）。请填写 [endpoints]（models_base_url / models_list_url / xai_api_base_url / cli_chat_proxy_base_url）、[auth] preferred_method=api_key、[models]、[session]、[features] 图片/视频覆盖。优先 env_key，勿硬编码 api_key；文本模型必须 api_backend=responses。合并前备份，保存后运行 grok inspect。',
         codexConfigTomlHint:
-          'Codex 官方：wire_api 仅支持 "responses"；优先 env_key，勿与 experimental_bearer_token 混用；非 OpenAI 网关请 supports_websockets = false。合并前备份 ~/.codex/config.toml。',
+          'Codex 官方：wire_api 仅支持 "responses"；优先 env_key，勿与 experimental_bearer_token 混用；非 OpenAI 网关默认 supports_websockets = false（Sub2API 仍可接客户端 WS 并桥接到 HTTP/SSE）。合并前备份 ~/.codex/config.toml。',
         note:
-          '导出 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将 config.toml 保存为 ~/.grok/config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
+          '导出 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将完整 config.toml（endpoints/auth/models/session/features）保存为 ~/.grok/config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
         noteWindows:
-          '设置 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将 config.toml 保存为 %USERPROFILE%\\.grok\\config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
+          '设置 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将完整 config.toml 保存为 %USERPROFILE%\\.grok\\config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
         claudeNote:
           '二选一：终端环境变量仅当前会话；~/.claude/settings.json 可持久化。请勿把含 API Key 的文件提交到仓库。',
         codexNote:
