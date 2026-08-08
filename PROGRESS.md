@@ -23,14 +23,14 @@
 - ownership: backend paths declared by the approved Spec
 - worktree/branch: `/Users/admin/code/opensource/sub2api/.worktrees/openai-fallback-only-sticky-backend` / `codex/openai-fallback-only-sticky-backend`
 - worker: `backend_worker`
-- reviewer: `/root/frontend_review`
+- reviewer: `/root/backend_review`
 - started_at: `2026-08-08T10:45:00Z`
-- finished_at: pending
-- verification: pending RED/GREEN and focused tests
-- commit: pending
-- review_findings: pending
-- verdict: pending
-- integration_ancestor: no
+- finished_at: `2026-08-08T15:06:00Z`
+- verification: initial enum compile RED; scheduler behavior GREEN; later race RED proved legacy order `[91002,91001]` instead of `[91002,91003,91001]` and advanced duplicated candidates; final RED proved image-incompatible primary was selected and a primary acquire error terminated selection. Final GREEN=`FallbackOnlySticky|PreviousResponse` 100 tests, focused service/repository/admin handler 8286 tests, broad backend 8539 tests across 105 packages, `git diff --check` exit 0.
+- commit: `d825d366b feat(admin): 支持账号级 OpenAI session sticky fallback 策略`
+- review_findings: reviewer successively blocked non-atomic probe/acquire, weighted sticky bypass, incomplete multi-primary retry, missing image capability filtering, and early return on primary acquire error. Each finding received a failing regression test before the implementation was corrected; `previous_response_id` ordering remained unchanged.
+- verdict: implementation verification `PASS`; independent immutable-tip re-review remains Task 3.
+- integration_ancestor: yes
 
 ## Task 2
 
@@ -48,6 +48,18 @@
 - verdict: `PASS`
 - integration_ancestor: no
 
-## Tasks 3-5
+## Task 3
 
-- status: pending tasks 1 and 2
+- task_id: `3`
+- dependencies: tasks 1 and 2
+- ownership: integration, review, history convergence and local merge Gate
+- worktree/branch: `/Users/admin/code/opensource/sub2api/.worktrees/openai-fallback-only-sticky` / `codex/openai-fallback-only-sticky`
+- started_at: `2026-08-08T14:00:00Z`
+- finished_at: pending local `merge-main`
+- verification: rewritten feature tip=`5d7f211e4`; backend focused 8286 tests PASS; backend broad 8539 tests / 105 packages PASS; frontend typecheck PASS; EditAccountModal focused 54/54 PASS. Full frontend remains base-equivalent at 1436/1438 with only `admin.system.rollback.spec.ts` 2 failures and 10 `GroupsView` unhandled mock errors.
+- commits: `d825d366b feat(admin): 支持账号级 OpenAI session sticky fallback 策略`; `5d7f211e4 feat(admin): add per-account OpenAI session sticky fallback mode（账号级）`
+- verdict: pending final immutable-tip review and `merge-main`
+
+## Tasks 4-5
+
+- status: pending Task 3
