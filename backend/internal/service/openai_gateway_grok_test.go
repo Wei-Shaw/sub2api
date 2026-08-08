@@ -2737,6 +2737,31 @@ func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestHandleGrokAccountUpstreamErrorFreeUsageExhaustionUses24HourCooldown(t *testing.T) {
+	account := &Account{ID: 631, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+
+	svc.handleGrokAccountUpstreamError(
+		context.Background(),
+		account,
+		http.StatusTooManyRequests,
+		nil,
+		[]byte(grokFreeUsageExhaustedTestBody),
+	)
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, before.Add(grokFreeUsageExhaustionCooldown), repo.lastRateLimitResetAt, time.Second)
+	require.Equal(t, 1, repo.updateCalls)
+	snapshot, ok := repo.updates[account.ID][grokQuotaSnapshotExtraKey].(*xai.QuotaSnapshot)
+	require.True(t, ok)
+	require.NotNil(t, snapshot.Tokens)
+	require.EqualValues(t, xai.GrokFreeRolling24hTokenLimit, *snapshot.Tokens.Limit)
+	require.Zero(t, *snapshot.Tokens.Remaining)
+}
+
 func TestGrokRateLimitResetAtForAccountEscalatesRepeated429s(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	retryAfter := 45
