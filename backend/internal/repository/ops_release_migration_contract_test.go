@@ -83,3 +83,20 @@ func TestTTFTAlertEvaluationStatusMigrationKeepsV2AndV3WritersCompatible(t *test
 	require.Contains(t, dropSQL, "drop constraint if exists ops_alert_rule_evaluations_status_check")
 	require.NotContains(t, dropSQL, "validate constraint")
 }
+
+func TestOpsClassificationV3TriggerAndBackfillUseSeparateTransactions(t *testing.T) {
+	triggerMigration, err := migrations.FS.ReadFile("209_reclassify_confirmed_upstream_failures.sql")
+	require.NoError(t, err)
+	backfillMigration, err := migrations.FS.ReadFile("210_backfill_ops_error_classification_v3.sql")
+	require.NoError(t, err)
+
+	triggerSQL := strings.ToLower(string(triggerMigration))
+	backfillSQL := strings.ToLower(string(backfillMigration))
+	require.Contains(t, triggerSQL, "create trigger ops_error_logs_normalize_v3_mixed_writer")
+	require.Contains(t, triggerSQL, "before insert on ops_error_logs")
+	require.NotContains(t, triggerSQL, "update ops_error_logs",
+		"the trigger lock must commit before the historical backfill starts")
+	require.Equal(t, 15, strings.Count(backfillSQL, "update ops_error_logs"))
+	require.NotContains(t, backfillSQL, "create trigger")
+	require.NotContains(t, backfillSQL, "create or replace function")
+}

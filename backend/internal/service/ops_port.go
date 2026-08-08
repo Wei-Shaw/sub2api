@@ -119,6 +119,9 @@ type OpsInsertErrorLogInput struct {
 	AlertFamily           string
 	ClassificationReason  string
 	ClassificationVersion int
+	// Recovered means an upstream attempt failed but the final request completed
+	// through retry/failover. Wire status alone cannot establish this for streams.
+	Recovered bool
 
 	UpstreamStatusCode   *int
 	UpstreamErrorMessage *string

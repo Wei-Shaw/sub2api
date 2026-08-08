@@ -279,6 +279,66 @@ func TestOpsErrorLoggerMiddleware_HardSkipsIngressRejection(t *testing.T) {
 	require.Zero(t, OpsErrorLogEnqueuedTotal(), "ingress rejection must not enter the error queue")
 }
 
+func TestOpsErrorLoggerMiddleware_DistinguishesCommittedStreamFailureFromRecovery(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 4)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.GET("/failed", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusBadGateway,
+			Message:            "upstream stream terminated",
+		}})
+		service.MarkResponseCommitted(c)
+		c.Status(http.StatusOK)
+	})
+	router.GET("/recovered", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusBadGateway,
+			Message:            "first account failed, failover succeeded",
+		}})
+		c.Status(http.StatusOK)
+	})
+	router.GET("/recovered-stream", func(c *gin.Context) {
+		c.Set(opsStreamKey, true)
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusBadGateway,
+			Message:            "first account failed before failover stream succeeded",
+		}})
+		_, _ = c.Writer.WriteString("data: {\"type\":\"response.output_text.delta\"}\n\n")
+	})
+	router.GET("/in-band-failed", func(c *gin.Context) {
+		c.Set(opsStreamKey, true)
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusBadGateway,
+			Message:            "upstream response.failed after first SSE chunk",
+		}})
+		_, _ = c.Writer.WriteString("data: {\"type\":\"response.output_text.delta\"}\n\n")
+		service.MarkResponseCommitted(c)
+	})
+
+	for _, path := range []string{"/failed", "/recovered", "/recovered-stream", "/in-band-failed"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+	}
+
+	failed := <-opsErrorLogQueue
+	recovered := <-opsErrorLogQueue
+	recoveredStream := <-opsErrorLogQueue
+	inBandFailed := <-opsErrorLogQueue
+	require.False(t, failed.entry.Recovered)
+	require.Equal(t, http.StatusBadGateway, failed.entry.StatusCode)
+	require.True(t, recovered.entry.Recovered)
+	require.Equal(t, http.StatusOK, recovered.entry.StatusCode)
+	require.True(t, recoveredStream.entry.Recovered)
+	require.Equal(t, http.StatusOK, recoveredStream.entry.StatusCode)
+	require.False(t, inBandFailed.entry.Recovered)
+	require.Equal(t, http.StatusBadGateway, inBandFailed.entry.StatusCode)
+}
+
 func TestNormalizeOpsPersistentUserAgentBoundsAndPreservesUTF8(t *testing.T) {
 	value := strings.Repeat("a", opsErrorLogMaxUserAgentBytes-1) + "你" + strings.Repeat("b", 32)
 	got := normalizeOpsPersistentUserAgent("  " + value + "  ")

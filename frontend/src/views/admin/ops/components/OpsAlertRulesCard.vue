@@ -264,6 +264,13 @@ const metricDefinitions = computed(() => {
 		recommendedOperator: '>=', recommendedThreshold: 10
 	},
 	{
+		type: 'platform_credential_failure_count',
+		group: 'system',
+		label: t('admin.ops.alertRules.metrics.platformCredentialFailureCount'),
+		description: t('admin.ops.alertRules.metricDescriptions.platformCredentialFailureCount'),
+		recommendedOperator: '>=', recommendedThreshold: 5
+	},
+	{
 		type: 'compatibility_error_count',
 		group: 'system',
 		label: t('admin.ops.alertRules.metrics.compatibilityErrorCount'),

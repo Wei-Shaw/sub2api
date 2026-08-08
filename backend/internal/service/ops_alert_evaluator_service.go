@@ -681,7 +681,7 @@ func (s *OpsAlertEvaluatorService) evaluateRuleMetric(
 		dataAsOf := end.UTC()
 		result.DataAsOf = &dataAsOf
 	case "availability_failure_rate", "platform_failure_rate", "provider_failure_rate", "unknown_failure_rate",
-		"platform_capacity_failure_count", "compatibility_error_count", "client_rejected_count",
+		"platform_capacity_failure_count", "platform_credential_failure_count", "compatibility_error_count", "client_rejected_count",
 		"business_limited_count", "cancelled_count", "security_blocked_count", "recovered_provider_error_count":
 		stats, err := s.opsRepo.GetErrorClassificationStats(ctx, &OpsDashboardFilter{
 			StartTime: start, EndTime: end, Platform: platform, GroupID: groupID, QueryMode: OpsQueryModeRaw,
@@ -775,7 +775,7 @@ func isSupportedOpsAlertMetric(metricType string) bool {
 	switch metricType {
 	case "success_rate", "error_rate", "upstream_error_rate",
 		"availability_failure_rate", "platform_failure_rate", "provider_failure_rate", "unknown_failure_rate",
-		"platform_capacity_failure_count", "compatibility_error_count", "client_rejected_count",
+		"platform_capacity_failure_count", "platform_credential_failure_count", "compatibility_error_count", "client_rejected_count",
 		"business_limited_count", "cancelled_count", "security_blocked_count", "recovered_provider_error_count",
 		"ttft_p95_seconds", "ttft_p99_seconds", "ttft_max_seconds",
 		"cpu_usage_percent", "memory_usage_percent", "concurrency_queue_depth",
@@ -837,6 +837,8 @@ func opsClassificationMetricValue(metricType string, stats *OpsErrorClassificati
 		return float64(stats.UnknownFailureCount) / float64(eligible) * 100, eligible, stats.UnknownFailureCount, true
 	case "platform_capacity_failure_count":
 		return float64(stats.PlatformCapacityCount), totalObserved, stats.PlatformCapacityCount, totalObserved > 0
+	case "platform_credential_failure_count":
+		return float64(stats.PlatformCredentialCount), totalObserved, stats.PlatformCredentialCount, totalObserved > 0
 	case "compatibility_error_count":
 		return float64(stats.CompatibilityCount), totalObserved, stats.CompatibilityCount, totalObserved > 0
 	case "client_rejected_count":

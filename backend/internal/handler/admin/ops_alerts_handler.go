@@ -25,6 +25,7 @@ var validOpsAlertMetricTypes = []string{
 	"provider_failure_rate",
 	"unknown_failure_rate",
 	"platform_capacity_failure_count",
+	"platform_credential_failure_count",
 	"compatibility_error_count",
 	"client_rejected_count",
 	"business_limited_count",

@@ -712,6 +712,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		if status < 400 {
+			// An explicit in-band failure always wins over the wire status and any
+			// upstream retry context captured on the same request.
+			if _, ok := service.GetOpsStreamError(c); ok {
+				logOpsStreamError(c, ops, status)
+				return
+			}
+
 			// Even when the client request succeeds, we still want to persist upstream error attempts
 			// (retries/failover) so ops can observe upstream instability that gets "covered" by retries.
 			var events []*service.OpsUpstreamErrorEvent
@@ -745,6 +752,47 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 						hasUpstreamContext = true
 					}
 				}
+			}
+			if service.IsResponseCommitted(c) {
+				// Error writers explicitly mark a committed response. A written stream
+				// alone is not failure evidence: failover can finish successfully after
+				// an earlier upstream attempt was recorded.
+				intendedStatus := http.StatusBadGateway
+				message := "Request failed after response stream started"
+				if len(events) > 0 {
+					if last := events[len(events)-1]; last != nil {
+						if last.UpstreamStatusCode >= 400 {
+							intendedStatus = last.UpstreamStatusCode
+						}
+						if value := strings.TrimSpace(last.Message); value != "" {
+							message = value
+						}
+					}
+				}
+				if value, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
+					switch code := value.(type) {
+					case int:
+						if code >= 400 {
+							intendedStatus = code
+						}
+					case int64:
+						if code >= 400 {
+							intendedStatus = int(code)
+						}
+					}
+				}
+				if value, ok := c.Get(service.OpsUpstreamErrorMessageKey); ok {
+					if candidate, ok := value.(string); ok && strings.TrimSpace(candidate) != "" {
+						message = strings.TrimSpace(candidate)
+					}
+				}
+				errType := "api_error"
+				if hasUpstreamContext {
+					errType = "upstream_error"
+				}
+				service.MarkOpsStreamFailure(c, errType, "", message, intendedStatus)
+				logOpsStreamError(c, ops, status)
+				return
 			}
 			if !hasUpstreamContext {
 				// 没有上游错误上下文，但网关可能在已固化的 200 流上就地补发了 SSE 错误帧
@@ -932,6 +980,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				UpstreamErrorMessage: upstreamErrorMessage,
 				UpstreamErrorDetail:  upstreamErrorDetail,
 				UpstreamErrors:       events,
+				Recovered:            true,
 
 				CreatedAt: time.Now(),
 			}
@@ -1224,6 +1273,7 @@ func logOpsStreamError(c *gin.Context, ops *service.OpsService, wireStatus int) 
 		CreatedAt: time.Now(),
 	}
 	applyOpsLatencyFieldsFromContext(c, entry)
+	applyOpsUpstreamFieldsFromContext(c, entry)
 
 	if apiKey != nil {
 		entry.APIKeyID = &apiKey.ID

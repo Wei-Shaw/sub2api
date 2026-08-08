@@ -3,20 +3,21 @@ package service
 import "time"
 
 type OpsErrorClassificationStats struct {
-	SuccessCount           int64
-	FinalErrorCount        int64
-	SLAFailureCount        int64
-	PlatformFailureCount   int64
-	ProviderFailureCount   int64
-	UnknownFailureCount    int64
-	PlatformCapacityCount  int64
-	CompatibilityCount     int64
-	ClientRejectedCount    int64
-	BusinessLimitedCount   int64
-	CancelledCount         int64
-	SecurityBlockedCount   int64
-	RecoveredProviderCount int64
-	DataAsOf               time.Time
+	SuccessCount            int64
+	FinalErrorCount         int64
+	SLAFailureCount         int64
+	PlatformFailureCount    int64
+	ProviderFailureCount    int64
+	UnknownFailureCount     int64
+	PlatformCapacityCount   int64
+	PlatformCredentialCount int64
+	CompatibilityCount      int64
+	ClientRejectedCount     int64
+	BusinessLimitedCount    int64
+	CancelledCount          int64
+	SecurityBlockedCount    int64
+	RecoveredProviderCount  int64
+	DataAsOf                time.Time
 }
 
 // Ops alert rule/event models.
