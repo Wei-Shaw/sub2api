@@ -46,8 +46,8 @@ REDACTED
 		"/videos/edits":             {"grok_media.go"REDACTED,
 		"/videos/extensions":        {"grok_media.go"REDACTED,
 		"/models/*modelAction":      {"gemini_v1beta_handler.go"REDACTED,
-		"/tts":                       {"grok_audio.go"REDACTED,
-		"/web_search":                {"gateway_web_search.go"REDACTED,
+		"/tts":                      {"grok_audio.go"REDACTED,
+		"/web_search":               {"gateway_web_search.go"REDACTED,
 REDACTED
 	excluded := map[string]string{
 		"/messages/count_tokens":     "tokenization only; it does not execute a model request",
