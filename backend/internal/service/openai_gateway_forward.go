@@ -1072,7 +1072,6 @@ REDACTED
 			req.Header.Del("OpenAI-Beta")
 			req.Header.Del("originator")
 	REDACTED else {
-			req.Header.Set("OpenAI-Beta", "responses=experimental")
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 	REDACTED
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -1124,6 +1123,8 @@ REDACTED
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
+	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
+	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
 
 	return req, nil
 REDACTED
