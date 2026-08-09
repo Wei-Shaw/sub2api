@@ -489,6 +489,97 @@ func TestHandleGeminiUpstreamError_GoogleOneCapacityExhaustedUsesTierCooldown(t 
 	require.True(t, repo.lastRateLimitReset.Before(after.Add(5*time.Minute).Add(2*time.Second)))
 }
 
+func TestHandleGeminiUpstreamError_VertexServiceAccountTransient429UsesConfiguredFallback(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	data := `{"enabled":true,"cooldown_seconds":12}`
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = data
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	rlSvc.SetSettingService(settingSvc)
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: rlSvc,
+	}
+	account := &Account{ID: 512, Platform: PlatformGemini, Type: AccountTypeServiceAccount}
+	body := []byte(`{"error":{"code":429,"message":"Resource exhausted, please try again later","status":"RESOURCE_EXHAUSTED"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, int64(512), repo.lastRateLimitID)
+	require.True(t, !repo.lastRateLimitReset.Before(before.Add(12*time.Second)) && !repo.lastRateLimitReset.After(after.Add(12*time.Second)))
+}
+
+func TestHandleGeminiUpstreamError_VertexServiceAccountTransient429UsesDefaultFallback(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: rlSvc,
+	}
+	account := &Account{ID: 513, Platform: PlatformGemini, Type: AccountTypeServiceAccount}
+	body := []byte(`{"error":{"code":429,"message":"Resource exhausted, please try again later","status":"RESOURCE_EXHAUSTED"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, int64(513), repo.lastRateLimitID)
+	require.True(t, !repo.lastRateLimitReset.Before(before.Add(5*time.Second)) && !repo.lastRateLimitReset.After(after.Add(5*time.Second)))
+}
+
+func TestHandleGeminiUpstreamError_VertexServiceAccountTransient429HonorsDisabledFallback(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	data := `{"enabled":false,"cooldown_seconds":12}`
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = data
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	rlSvc.SetSettingService(settingSvc)
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: rlSvc,
+	}
+	account := &Account{ID: 514, Platform: PlatformGemini, Type: AccountTypeServiceAccount}
+	body := []byte(`{"error":{"code":429,"message":"Resource exhausted, please try again later","status":"RESOURCE_EXHAUSTED"}}`)
+
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+
+	require.Zero(t, repo.rateLimitCalls)
+}
+
+func TestHandleGeminiUpstreamError_VertexServiceAccountUsesExplicitResetHint(t *testing.T) {
+	repo := &rateLimit429AccountRepoStub{}
+	settingRepo := newMockSettingRepo()
+	data := `{"enabled":true,"cooldown_seconds":12}`
+	settingRepo.data[SettingKeyRateLimit429CooldownSettings] = data
+
+	settingSvc := NewSettingService(settingRepo, &config.Config{})
+	rlSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	rlSvc.SetSettingService(settingSvc)
+	svc := &GeminiMessagesCompatService{
+		accountRepo:      repo,
+		rateLimitService: rlSvc,
+	}
+	account := &Account{ID: 515, Platform: PlatformGemini, Type: AccountTypeServiceAccount}
+	body := []byte(`{"error":{"code":429,"message":"Please retry in 30s","status":"RESOURCE_EXHAUSTED"}}`)
+
+	before := time.Now()
+	svc.handleGeminiUpstreamError(context.Background(), account, http.StatusTooManyRequests, http.Header{}, body)
+	after := time.Now()
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Equal(t, int64(515), repo.lastRateLimitID)
+	require.WithinDuration(t, before.Add(30*time.Second), repo.lastRateLimitReset, 2*time.Second)
+	require.True(t, repo.lastRateLimitReset.Before(after.Add(30*time.Second).Add(2*time.Second)))
+}
+
 type geminiErrorPolicyRepo struct {
 	mockAccountRepoForGemini
 	setErrorCalls            int
