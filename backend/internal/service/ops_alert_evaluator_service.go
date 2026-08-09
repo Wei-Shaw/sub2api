@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -36,6 +37,7 @@ type OpsAlertEvaluatorService struct {
 	opsRepo      OpsRepository
 	emailService *EmailService
 	proxyRepo    ProxyRepository
+	web3Deposits web3deposit.AdminDepositReader
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -69,12 +71,14 @@ func NewOpsAlertEvaluatorService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
+	web3Deposits web3deposit.AdminDepositReader,
 ) *OpsAlertEvaluatorService {
 	return &OpsAlertEvaluatorService{
 		opsService:   opsService,
 		opsRepo:      opsRepo,
 		emailService: emailService,
 		proxyRepo:    proxyRepo,
+		web3Deposits: web3Deposits,
 		redisClient:  redisClient,
 		cfg:          cfg,
 		instanceID:   uuid.NewString(),
@@ -581,6 +585,41 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 			return 0, false
 		}
 		return float64(n), true
+	case "web3_rpc_unhealthy":
+		if !s.web3AlertMetricsEnabled() {
+			return 0, false
+		}
+		if web3deposit.SnapshotRuntimeMetrics().RPCHealthy {
+			return 0, true
+		}
+		return 1, true
+	case "web3_scanner_lag_blocks":
+		if !s.web3AlertMetricsEnabled() {
+			return 0, false
+		}
+		return float64(web3deposit.SnapshotRuntimeMetrics().ScannerLagBlocks), true
+	case "web3_finalizer_lag_blocks":
+		if !s.web3AlertMetricsEnabled() {
+			return 0, false
+		}
+		return float64(web3deposit.SnapshotRuntimeMetrics().FinalizerLagBlocks), true
+	case "web3_credit_failures_total":
+		if !s.web3AlertMetricsEnabled() {
+			return 0, false
+		}
+		return float64(web3deposit.SnapshotRuntimeMetrics().CreditFailures), true
+	case "web3_manual_review_count":
+		if !s.web3AlertMetricsEnabled() {
+			return 0, false
+		}
+		if s == nil || s.web3Deposits == nil {
+			return 0, false
+		}
+		counts, err := s.web3Deposits.CountAdminDepositsByStatus(ctx)
+		if err != nil {
+			return 0, false
+		}
+		return float64(counts[web3deposit.DepositStatusManualReview]), true
 	}
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
@@ -616,6 +655,26 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 	default:
 		return 0, false
 	}
+}
+
+func (s *OpsAlertEvaluatorService) web3AlertMetricsEnabled() bool {
+	if s == nil || s.cfg == nil {
+		return true
+	}
+	if !s.cfg.Web3Deposit.Enabled {
+		return false
+	}
+	for _, network := range s.cfg.Web3Deposit.Networks {
+		if !network.Enabled {
+			continue
+		}
+		for _, asset := range network.Assets {
+			if strings.TrimSpace(asset.ContractAddress) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func compareMetric(value float64, operator string, threshold float64) bool {

@@ -76,7 +76,7 @@
 
 - [x] 10.1 增加充值筛选、详情、runtime 健康和游标延迟 API。
 - [x] 10.2 增加 approve、retry、ignore 和 bounded rescan。
-- [ ] 10.3 管理写操作接入管理员鉴权、step-up 和操作审计。
+- [x] 10.3 管理写操作接入管理员鉴权、step-up 和操作审计。
 - [x] 10.4 增加管理员 Web3 充值工作台，默认突出 manual review 和 failed。
 - [x] 10.5 验证管理员不能修改链上金额、用户、Token、tx hash 或 finalized 事实。
 
@@ -84,7 +84,7 @@
 
 - [x] 11.1 增加 RPC、scanner、finalizer、credit 和地址分配结构化日志。
 - [x] 11.2 增加链高度延迟、状态堆积、重试、孤块和入账失败指标。
-- [ ] 11.3 增加 scanner 停滞、无健康 RPC、manual review 堆积和 credit failed 告警。
+- [x] 11.3 增加 scanner 停滞、无健康 RPC、manual review 堆积和 credit failed 告警。
 - [x] 11.4 编写密钥恢复、RPC 切换、补扫、人工审核和功能关闭运行手册。
 - [x] 11.5 为第二期归集记录 `wallet_id + derivation_index` 恢复验证证据。
 
@@ -99,6 +99,6 @@
 
 ## 当前状态备注
 
-- 代码侧已实现并接线：配置默认关闭、HD 地址分配、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账、管理审核/补扫、用户地址与充值历史页面。
-- 已执行验证：`go test ./internal/web3deposit/... ./internal/handler/... ./internal/repository/... ./migrations/... -run 'Web3|web3|Deposit' -count=1`；`pnpm test:run web3Deposit admin.web3Deposits`。
-- 仍需补证或补实现：生产 HD wallet 离线基线、migration 典型查询 `EXPLAIN`、管理写操作审计、告警规则、真实链小额灰度和全量上线基线。
+- 代码侧已实现并接线：配置默认关闭、HD 地址分配、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账、受限补扫边界、管理审核审计、runtime scanner/finalizer 延迟、Web3 充值默认告警规则、用户地址与充值历史页面。
+- 已执行验证：`go test ./internal/web3deposit/... ./internal/handler/... ./internal/repository/... ./migrations/... -run 'Web3|web3|Deposit' -count=1`；`go test ./internal/handler/... ./internal/server/middleware/... -run 'Web3|web3|Audit' -count=1`；`go test ./internal/web3deposit/... ./internal/handler/admin -run 'Web3|web3|ScannerFinalizer|Audit' -count=1`；`pnpm test:run web3Deposit admin.web3Deposits`；`pnpm typecheck`。
+- 仍需补证或补实现：生产 HD wallet 离线基线、migration 典型查询 `EXPLAIN`、Web3 子余额向主余额的用户入口、真实链小额灰度和全量上线基线。
