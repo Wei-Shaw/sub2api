@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -122,6 +124,57 @@ func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {
 	require.Equal(t, uint64(120), rescanner.toBlock)
 }
 
+func TestWeb3DepositHandlerWritesAuditExtras(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repository := &web3DepositAuditCaptureRepository{}
+	auditService := service.NewAuditLogService(repository, nil)
+	auditService.Start()
+
+	deposit := web3deposit.Deposit{ID: 7, Status: web3deposit.DepositStatusManualReview}
+	operator := &adminDepositOperatorStub{}
+	rescanner := &adminRescannerStub{}
+	handler := &Web3DepositHandler{deposits: &adminDepositReaderStub{deposit: deposit}, operator: operator, rescanner: rescanner}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 77})
+		c.Set(string(servermiddleware.ContextKeyUserRole), "admin")
+		c.Next()
+	})
+	router.Use(gin.HandlerFunc(servermiddleware.NewAuditLogMiddleware(auditService)))
+	router.POST("/api/v1/admin/web3-deposits/:id/ignore", handler.Ignore)
+	router.POST("/api/v1/admin/web3-deposits/rescan", handler.Rescan)
+
+	ignoreResponse := httptest.NewRecorder()
+	router.ServeHTTP(ignoreResponse, httptest.NewRequest(http.MethodPost, "/api/v1/admin/web3-deposits/7/ignore", bytes.NewBufferString(`{"reason":"large manual review"}`)))
+	require.Equal(t, http.StatusOK, ignoreResponse.Code)
+
+	rescanResponse := httptest.NewRecorder()
+	router.ServeHTTP(rescanResponse, httptest.NewRequest(http.MethodPost, "/api/v1/admin/web3-deposits/rescan", bytes.NewBufferString(`{"network_key":"network","asset_key":"usdt0","from_block":"100","to_block":"120"}`)))
+	require.Equal(t, http.StatusOK, rescanResponse.Code)
+	auditService.Stop()
+
+	logs := repository.snapshot()
+	require.Len(t, logs, 2)
+	byAction := make(map[string]*service.AuditLog, len(logs))
+	for _, log := range logs {
+		byAction[log.Action] = log
+	}
+	ignore := byAction["admin.web3_deposits.ignore"]
+	require.NotNil(t, ignore)
+	require.EqualValues(t, 7, ignore.Extra["deposit_id"])
+	require.Equal(t, "manual_review", ignore.Extra["old_status"])
+	require.Equal(t, "ignored", ignore.Extra["new_status"])
+	require.Equal(t, "large manual review", ignore.Extra["reason"])
+
+	rescan := byAction["admin.web3_deposits.rescan"]
+	require.NotNil(t, rescan)
+	require.Equal(t, "network", rescan.Extra["network_key"])
+	require.Equal(t, "usdt0", rescan.Extra["asset_key"])
+	require.EqualValues(t, 100, rescan.Extra["from_block"])
+	require.EqualValues(t, 120, rescan.Extra["to_block"])
+}
+
 func assertAdminWeb3DepositJSON(t *testing.T, item map[string]any) {
 	t.Helper()
 	require.Equal(t, float64(7), item["id"])
@@ -153,6 +206,41 @@ type adminRescannerStub struct {
 	assetKey   string
 	fromBlock  uint64
 	toBlock    uint64
+}
+
+type adminDepositOperatorStub struct{}
+
+func (s *adminDepositOperatorStub) ApproveReviewedDeposit(context.Context, int64) error { return nil }
+func (s *adminDepositOperatorStub) IgnoreReviewedDeposit(context.Context, int64, string) error {
+	return nil
+}
+func (s *adminDepositOperatorStub) RetryFailedDeposit(context.Context, int64) error { return nil }
+
+type web3DepositAuditCaptureRepository struct {
+	logs []*service.AuditLog
+}
+
+func (r *web3DepositAuditCaptureRepository) BatchInsert(_ context.Context, logs []*service.AuditLog) (int64, error) {
+	r.logs = append(r.logs, logs...)
+	return int64(len(logs)), nil
+}
+func (r *web3DepositAuditCaptureRepository) Insert(_ context.Context, log *service.AuditLog) error {
+	r.logs = append(r.logs, log)
+	return nil
+}
+func (r *web3DepositAuditCaptureRepository) List(context.Context, *service.AuditLogFilter) (*service.AuditLogList, error) {
+	return &service.AuditLogList{}, nil
+}
+func (r *web3DepositAuditCaptureRepository) GetByID(context.Context, int64) (*service.AuditLog, error) {
+	return nil, service.ErrAuditLogNotFound
+}
+func (r *web3DepositAuditCaptureRepository) Count(context.Context) (int64, error) { return 0, nil }
+func (r *web3DepositAuditCaptureRepository) TruncateAll(context.Context) error    { return nil }
+func (r *web3DepositAuditCaptureRepository) DeleteBefore(context.Context, time.Time, int) (int64, error) {
+	return 0, nil
+}
+func (r *web3DepositAuditCaptureRepository) snapshot() []*service.AuditLog {
+	return append([]*service.AuditLog(nil), r.logs...)
 }
 
 func (s *adminRescannerStub) Rescan(_ context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (web3deposit.BoundedRescanResult, error) {

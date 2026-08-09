@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/gin-gonic/gin"
 )
@@ -187,6 +188,7 @@ func (h *Web3DepositHandler) Approve(c *gin.Context) {
 		response.ErrorFrom(c, adminDepositOperationError(err))
 		return
 	}
+	setWeb3DepositAuditExtra(c, deposit.ID, deposit.Status, web3deposit.DepositStatusReadyToCredit, "")
 	response.Success(c, gin.H{"status": web3deposit.DepositStatusReadyToCredit})
 }
 
@@ -202,10 +204,16 @@ func (h *Web3DepositHandler) Ignore(c *gin.Context) {
 		response.BadRequest(c, "Reason is required")
 		return
 	}
+	deposit, err := h.deposits.GetAdminDeposit(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	if err := h.operator.IgnoreReviewedDeposit(c.Request.Context(), id, input.Reason); err != nil {
 		response.ErrorFrom(c, adminDepositOperationError(err))
 		return
 	}
+	setWeb3DepositAuditExtra(c, deposit.ID, deposit.Status, web3deposit.DepositStatusIgnored, input.Reason)
 	response.Success(c, gin.H{"status": web3deposit.DepositStatusIgnored})
 }
 
@@ -214,10 +222,16 @@ func (h *Web3DepositHandler) Retry(c *gin.Context) {
 	if !ok {
 		return
 	}
+	deposit, err := h.deposits.GetAdminDeposit(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	if err := h.operator.RetryFailedDeposit(c.Request.Context(), id); err != nil {
 		response.ErrorFrom(c, adminDepositOperationError(err))
 		return
 	}
+	setWeb3DepositAuditExtra(c, deposit.ID, deposit.Status, web3deposit.DepositStatusReadyToCredit, "")
 	response.Success(c, gin.H{"status": web3deposit.DepositStatusReadyToCredit})
 }
 
@@ -247,7 +261,27 @@ func (h *Web3DepositHandler) Rescan(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.BadRequest("WEB3_DEPOSIT_RESCAN_INVALID", err.Error()))
 		return
 	}
+	servermiddleware.SetAuditExtra(c, map[string]any{
+		"network_key": strings.TrimSpace(input.NetworkKey),
+		"asset_key":   strings.TrimSpace(input.AssetKey),
+		"from_block":  fromBlock,
+		"to_block":    toBlock,
+		"result":      "success",
+	})
 	response.Success(c, result)
+}
+
+func setWeb3DepositAuditExtra(c *gin.Context, depositID int64, oldStatus, newStatus web3deposit.DepositStatus, reason string) {
+	fields := map[string]any{
+		"deposit_id": depositID,
+		"old_status": string(oldStatus),
+		"new_status": string(newStatus),
+		"result":     "success",
+	}
+	if strings.TrimSpace(reason) != "" {
+		fields["reason"] = reason
+	}
+	servermiddleware.SetAuditExtra(c, fields)
 }
 
 func adminDepositID(c *gin.Context) (int64, bool) {
