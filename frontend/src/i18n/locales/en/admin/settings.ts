@@ -16,12 +16,21 @@ export default {
       features: {
         channelMonitor: {
           title: 'Channel Monitor',
-          description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',
+          description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',
           configureLink: 'Configure monitors in Channel Management > Channel Monitor',
           enabled: 'Enable Channel Monitor',
-          enabledHint: 'Disabling stops background checks; existing history is preserved.',
+          enabledHint: 'Disabling stops both the V1 scheduler and V2 aggregation; existing config and history are kept.',
+          mode: 'Monitor mode',
+          modeHint: 'Default is V1 (active probes). Switch to V2 only when you want passive aggregation; only one implementation can be active at a time.',
+          modeV2: 'V2 passive monitoring',
+          modeV1: 'V1 active probes',
+          modeV2Hint: 'Opt-in: aggregates health metrics from real gateway traffic without upstream probe traffic. V1 probes stop while V2 is active.',
+          modeV1Hint: 'Default: runs scheduled upstream health checks for configured channel monitors (probe traffic).',
           defaultInterval: 'Default check interval (seconds)',
-          defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+          defaultIntervalHint: 'V1 only: default interval for new monitors (overridable per monitor). Range 15 – 3600 seconds.',
+          hideThroughput: 'Hide throughput rates from users (RPM / TPM)',
+          hideThroughputHint:
+            'When on, the user Channel Monitor page and user APIs omit RPM and TPM so fleet volume cannot be reverse-estimated from rates × window. Admins still see full metrics. Error rates, latency, and cache rates remain visible.',
         },
         availableChannels: {
           title: 'Available Channels',
@@ -119,9 +128,9 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn)",
+          "Emails from allowlist domains can register without a quota. When the allowlist is not empty, every other registrable domain can register one account. Empty the allowlist to remove the quota for all domains (for example, {'@'}qq.com, {'@'}gmail.com, *.edu.cn).",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
-        emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
+        emailSuffixWhitelistInputHint: 'Empty the allowlist to remove the registration quota. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
@@ -409,7 +418,12 @@ export default {
         title: 'Gateway Scheduling Settings',
         description: 'Control API Key scheduling behavior',
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
-        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.',
+        accountSchedulingThresholdsTitle: 'Platform Account Auto-Pause Thresholds',
+        accountSchedulingThresholdsDescription: 'When an account\'s current native usage window (OpenAI Codex/Anthropic session, or Grok request/token utilization) reaches this percent, Sub2API temporarily removes it from scheduling until the window resets. Use 100 to disable.',
+        accountSchedulingThresholdsGlobalHint: 'System-wide default for every account on that platform. Individual accounts can still override this in the account editor.',
+        accountSchedulingThresholdsDisabledHint: '100 disables platform auto-pause. Values 1–99 pause scheduling once utilization reaches that percent.',
+        accountSchedulingThresholdsRangeHint: 'Integer 1–100 (percent). OpenAI/Anthropic/Grok only.'
       },
       upstreamBillingProbe: {
         title: 'Upstream Rate Auto Detection',
@@ -436,6 +450,17 @@ export default {
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
+        grokDefaultTextModel: 'Default Grok text model',
+        grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
+        grokCrossClientMap: 'Map other clients to Grok',
+        grokCrossClientMapHint: 'Disabled by default. When enabled, GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above.',
+        grokDefaultBaseURLMode: 'Default Grok upstream',
+        grokDefaultBaseURLModeHint: 'Used only when a Grok account has no explicit base URL. Media and voice endpoints continue to use their official API hosts.',
+        grokBaseURLModeCLI: 'CLI chat proxy',
+        grokBaseURLModeAPI: 'Public API',
+        grokBaseURLModeUSEast1: 'Regional API (us-east-1)',
+        grokBaseURLModeUSWest2: 'Regional API (us-west-2)',
+        grokBaseURLModeEUWest1: 'Regional API (eu-west-1)',
         fingerprintUnification: 'Fingerprint Unification',
         fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
         metadataPassthrough: 'Metadata Passthrough',

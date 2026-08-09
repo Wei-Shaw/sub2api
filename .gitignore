@@ -151,3 +151,6 @@ output/
 .github/hooks/
 .github/prompts/
 .github/skills/
+
+# Vitest / Vite cache at repo root
+.vite/

@@ -199,6 +199,87 @@ func TestRegisterOAuthEmailAccountRollsBackCreatedUserWhenTokenPairGenerationFai
 	require.Empty(t, redeemRepo.updateCalls)
 }
 
+func TestRegisterOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{},
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:              "true",
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		},
+		&emailCacheStub{data: &VerificationCodeData{
+			Code:      "246810",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		}},
+		nil,
+	)
+
+	_, _, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"second@custom.example",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+}
+
+func TestRegisterVerifiedOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		&refreshTokenCacheStub{},
+		map[string]string{
+			SettingKeyRegistrationEnabled:              "true",
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		},
+		&emailCacheStub{},
+		nil,
+	)
+
+	_, _, err := authService.RegisterVerifiedOAuthEmailAccount(
+		context.Background(),
+		"second@custom.example",
+		"secret-123",
+		"",
+		"oidc",
+	)
+
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+}
+
+func TestSendPendingOAuthVerifyCode_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1}}
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		nil,
+		map[string]string{
+			SettingKeyRegistrationEnabled:              "true",
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		},
+		&emailCacheStub{},
+		nil,
+	)
+
+	_, err := authService.SendPendingOAuthVerifyCode(context.Background(), "second@custom.example")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+}
+
+func TestSendPendingOAuthVerifyCode_NilServiceReturnsUnavailable(t *testing.T) {
+	var authService *AuthService
+
+	_, err := authService.SendPendingOAuthVerifyCode(context.Background(), "fresh@example.com")
+
+	require.ErrorIs(t, err, ErrServiceUnavailable)
+}
+
 func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *testing.T) {
 	userRepo := &userRepoStub{nextID: 42}
 	emailCache := &emailCacheStub{

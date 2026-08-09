@@ -1935,9 +1935,11 @@ func (d *openAIWSFirstDialBlockingCaptureDialer) Dial(
 	wsURL string,
 	headers http.Header,
 	proxyURL string,
+	accountID int64,
 ) (openAIWSClientConn, int, http.Header, error) {
 	_ = wsURL
 	_ = proxyURL
+	_ = accountID
 	d.mu.Lock()
 	d.dialCount++
 	dialNumber := d.dialCount

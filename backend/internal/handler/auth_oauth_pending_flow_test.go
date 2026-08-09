@@ -1686,7 +1686,7 @@ func TestCreateOIDCOAuthAccountExistingEmailNormalizesLegacySpacingAndCase(t *te
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 }
 
-func TestCreateOIDCOAuthAccountRejectsEmailOutsideRegistrationSuffixWhitelist(t *testing.T) {
+func TestCreateOIDCOAuthAccountRejectsSecondEmailOutsideRegistrationSuffixWhitelist(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
 		emailVerifyEnabled: true,
 		emailCache: &oauthPendingFlowEmailCacheStub{
@@ -1703,6 +1703,14 @@ func TestCreateOIDCOAuthAccountRejectsEmailOutsideRegistrationSuffixWhitelist(t 
 		},
 	})
 	ctx := context.Background()
+	_, err := client.User.Create().
+		SetEmail("existing@gmail.com").
+		SetUsername("existing-gmail-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
 
 	session, err := client.PendingAuthSession.Create().
 		SetSessionToken("suffix-whitelist-session-token").
@@ -1731,7 +1739,7 @@ func TestCreateOIDCOAuthAccountRejectsEmailOutsideRegistrationSuffixWhitelist(t 
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	payload := decodeJSONBody(t, recorder)
-	require.Equal(t, "EMAIL_SUFFIX_NOT_ALLOWED", payload["reason"])
+	require.Equal(t, "EMAIL_DOMAIN_REGISTRATION_LIMIT", payload["reason"])
 
 	count, err := client.User.Query().Where(dbuser.EmailEQ("foo@gmail.com")).Count(ctx)
 	require.NoError(t, err)
@@ -3264,6 +3272,8 @@ type oauthPendingFlowUserRepo struct {
 	options oauthPendingFlowUserRepoOptions
 }
 
+var _ service.RegistrationEmailDomainRepository = (*oauthPendingFlowUserRepo)(nil)
+
 type oauthPendingFlowUserRepoOptions struct {
 	rejectDeleteWhileAuthIdentityExists bool
 }
@@ -3304,6 +3314,35 @@ func (r *oauthPendingFlowUserRepo) CreateWithEmailAliasGuard(ctx context.Context
 		return service.ErrEmailExists
 	}
 	return r.Create(ctx, user)
+}
+
+func (r *oauthPendingFlowUserRepo) CountUsersByEmailDomain(ctx context.Context, domain string) (int, error) {
+	domain = service.NormalizeRegistrationEmailDomain(domain)
+	if domain == "" {
+		return 0, nil
+	}
+	emails, err := r.client.User.Query().Select(dbuser.FieldEmail).Strings(ctx)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, email := range emails {
+		if service.RegistrationEmailDomain(email) == domain {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (r *oauthPendingFlowUserRepo) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *service.User, domain string) error {
+	count, err := r.CountUsersByEmailDomain(ctx, domain)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return service.ErrEmailDomainRegistrationLimit
+	}
+	return r.CreateWithEmailAliasGuard(ctx, user)
 }
 
 func (r *oauthPendingFlowUserRepo) GetByID(ctx context.Context, id int64) (*service.User, error) {

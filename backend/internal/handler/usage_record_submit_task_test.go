@@ -199,3 +199,33 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_ImageResultUsesMandator
 
 	require.True(t, called.Load(), "image usage task must be mandatory when async submit is dropped")
 }
+
+func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_SearchCountUsesMandatoryFallback(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        "drop",
+		OverflowSamplePercent: 0,
+		AutoScaleEnabled:      false,
+	})
+	t.Cleanup(pool.Stop)
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+
+	block := make(chan struct{})
+	release := make(chan struct{})
+	pool.Submit(func(ctx context.Context) {
+		close(block)
+		<-release
+	})
+	<-block
+	pool.Submit(func(ctx context.Context) {})
+
+	var called atomic.Bool
+	h.submitOpenAIUsageRecordTask(context.Background(), &service.OpenAIForwardResult{SearchCount: 3}, func(ctx context.Context) {
+		called.Store(true)
+	})
+	close(release)
+
+	require.True(t, called.Load(), "search surcharge usage task must be mandatory when async submit is dropped")
+}

@@ -104,7 +104,9 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
