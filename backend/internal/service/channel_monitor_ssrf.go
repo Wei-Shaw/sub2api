@@ -4,7 +4,14 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync/atomic"
 )
+
+// monitorAllowPrivateEndpoints 由 ProvideChannelMonitorService 在启动时按 security.url_allowlist
+// 设置：白名单整体关闭(enabled=false)或显式允许私网(allow_private_hosts=true)时放行私网/内网 endpoint，
+// 与 http_upstream.shouldValidateResolvedIP 等出站服务的语义一致，便于内网部署。
+// 默认 false：未注入配置的场景（含单测）保持原有 SSRF 防护。
+var monitorAllowPrivateEndpoints atomic.Bool
 
 // SSRF 防护 helper：
 //   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
@@ -86,6 +93,10 @@ func isPrivateIP(ip net.IP) bool {
 //
 // hostname 是 IP 字面量时也走同一路径。
 func isPrivateOrLoopbackHost(ctx context.Context, hostname string) (bool, error) {
+	// 运维显式允许私网时不再按 host/IP 拒绝；validateEndpoint 的 https / origin-only 校验仍照常执行。
+	if monitorAllowPrivateEndpoints.Load() {
+		return false, nil
+	}
 	if isBlockedHostname(hostname) {
 		return true, nil
 	}
@@ -112,6 +123,10 @@ func isPrivateOrLoopbackHost(ctx context.Context, hostname string) (bool, error)
 // safeDialContext 在真实 dial 前再次校验目标 IP，防止 DNS rebinding。
 // 解析 hostname 后逐个 IP 尝试连接，命中私网即拒绝（即便 validateEndpoint 时返回的是公网 IP）。
 func safeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	// 运维显式允许私网时跳过 dial 层的 IP 重校验（DNS-rebinding 防护），直接连接。
+	if monitorAllowPrivateEndpoints.Load() {
+		return monitorDialer.DialContext(ctx, network, address)
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err

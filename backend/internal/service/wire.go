@@ -901,10 +901,15 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache Lead
 
 // ProvideChannelMonitorService 创建渠道监控服务（CRUD + RunCheck + 用户视图聚合）。
 // 加密器复用 wire 中已注入的 SecretEncryptor（AES-256-GCM）。
+// 同时按 security.url_allowlist 设置监控的 SSRF 私网放行开关，与本项目其它出站服务保持一致：
+// 白名单整体关闭(enabled=false)或显式允许私网(allow_private_hosts=true)时放行私网 endpoint（内网部署默认放行）。
 func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
+	cfg *config.Config,
 ) *ChannelMonitorService {
+	allowlist := cfg.Security.URLAllowlist
+	monitorAllowPrivateEndpoints.Store(!allowlist.Enabled || allowlist.AllowPrivateHosts)
 	return NewChannelMonitorService(repo, encryptor)
 }
 
