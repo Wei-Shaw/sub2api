@@ -95,23 +95,18 @@
   }
 
   .btn-danger {
-    @apply bg-gradient-to-r from-red-500 to-red-600;
-    @apply text-white shadow-md shadow-red-500/25;
-    @apply hover:from-red-600 hover:to-red-700 hover:shadow-lg hover:shadow-red-500/30;
+    @apply bg-red-600 text-white shadow-none;
+    @apply hover:bg-red-700;
   }
 
   .btn-success {
-    @apply bg-gradient-to-r from-emerald-500 to-emerald-600;
-    @apply text-white shadow-md shadow-emerald-500/25;
-    @apply hover:from-emerald-600 hover:to-emerald-700 hover:shadow-lg hover:shadow-emerald-500/30;
-    @apply dark:shadow-emerald-500/20;
+    @apply bg-emerald-600 text-white shadow-none;
+    @apply hover:bg-emerald-700;
   }
 
   .btn-warning {
-    @apply bg-gradient-to-r from-amber-500 to-amber-600;
-    @apply text-white shadow-md shadow-amber-500/25;
-    @apply hover:from-amber-600 hover:to-amber-700 hover:shadow-lg hover:shadow-amber-500/30;
-    @apply dark:shadow-amber-500/20;
+    @apply bg-amber-600 text-white shadow-none;
+    @apply hover:bg-amber-700;
   }
 
   .btn-stripe {
@@ -229,7 +224,7 @@
   }
 
   .card-hover {
-    @apply hover:shadow-card-hover;
+    @apply hover:shadow-none;
     @apply hover:border-gray-200 dark:hover:border-dark-600;
   }
 
@@ -385,15 +380,15 @@
   /* ============ 模态框 ============ */
   .modal-overlay {
     @apply fixed inset-0 z-50;
-    @apply bg-black/50 backdrop-blur-sm;
+    @apply bg-black/65 backdrop-blur-[2px];
     @apply flex items-center justify-center p-2 sm:p-4;
   }
 
   .modal-content {
     @apply w-full;
     @apply max-h-[95vh] sm:max-h-[90vh];
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-sm shadow-2xl;
+    @apply bg-[#faf8f3] dark:bg-dark-900;
+    @apply rounded-sm shadow-xl;
     @apply border border-gray-200 dark:border-dark-700;
     @apply flex flex-col;
   }
@@ -485,8 +480,8 @@
   .dialog-container {
     @apply flex w-full flex-col;
     @apply max-h-[90vh];
-    @apply rounded-sm bg-white dark:bg-dark-800;
-    @apply shadow-xl;
+    @apply rounded-sm bg-[#faf8f3] dark:bg-dark-900;
+    @apply border border-gray-200 shadow-xl dark:border-dark-700;
   }
 
   .dialog-header {
@@ -833,6 +828,23 @@
 .app-header a:focus-visible {
   outline: 2px solid #c8a96a;
   outline-offset: 2px;
+}
+
+/* 页面级组件沿用首页的方正细线语言，保留 rounded-full 语义胶囊和头像。 */
+.app-shell :where(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+  border-radius: 0.25rem;
+}
+
+.app-shell :where(.shadow-sm) {
+  box-shadow: none;
+}
+
+.app-shell :where(.rounded-2xl, .rounded-3xl)[class~="bg-white"] {
+  border: 1px solid var(--easyhub-line);
+}
+
+.dark .app-shell :where(.rounded-2xl, .rounded-3xl)[class~="dark:bg-dark-800"] {
+  border-color: var(--easyhub-line);
 }
 
 .app-main {

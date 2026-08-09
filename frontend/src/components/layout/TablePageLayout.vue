@@ -46,7 +46,7 @@ onUnmounted(() => {
 <style scoped>
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
-  @apply flex flex-col gap-6;
+  @apply flex flex-col gap-5;
   height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
@@ -60,7 +60,7 @@ onUnmounted(() => {
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex h-full flex-col overflow-hidden rounded-sm border border-gray-200 bg-[#faf8f3] shadow-none dark:border-dark-700 dark:bg-dark-900;
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -76,7 +76,7 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(thead) {
-  @apply bg-gray-50/80 dark:bg-dark-800/80 backdrop-blur-sm;
+  @apply bg-[#f1eee7]/95 backdrop-blur-sm dark:bg-dark-800/95;
 }
 
 .table-scroll-container :deep(tbody) {
@@ -84,11 +84,11 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply px-5 py-4 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
+  @apply border-b border-gray-200 px-5 py-3.5 text-left font-mono text-xs font-medium uppercase tracking-[0.08em] text-gray-600 dark:border-dark-700 dark:text-dark-300;
 }
 
 .table-scroll-container :deep(td) {
-  @apply px-5 py-4 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-dark-800;
+  @apply border-b border-gray-100 px-5 py-3.5 text-sm text-gray-700 dark:border-dark-800 dark:text-gray-300;
 }
 
 /* 移动端：恢复正常滚动 */
