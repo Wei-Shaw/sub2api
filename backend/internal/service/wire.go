@@ -241,6 +241,7 @@ func ProvideAccountTestService(
 		httpUpstream,
 		cfg,
 		tlsFPProfileService,
+		openAIGatewayService,
 	)
 	service.agentIdentityWS = openAIGatewayService
 	service.SetSettingService(settingService)

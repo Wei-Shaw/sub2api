@@ -16,6 +16,10 @@ import (
 
 const upstreamModelsBodyLimit int64 = 8 << 20
 
+type openAIModelsManifestFetcher interface {
+	FetchCodexModelsManifest(context.Context, *Account, string, string) (*CodexModelsManifest, error)
+}
+
 // UpstreamModelSyncErrorKind classifies model sync failures for safe HTTP mapping.
 type UpstreamModelSyncErrorKind string
 
@@ -84,6 +88,9 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 	if account.Platform == PlatformAntigravity && account.Type != AccountTypeAPIKey {
 		return s.fetchAntigravityOAuthUpstreamModels(ctx, account)
 	}
+	if account.IsOpenAIOAuth() {
+		return s.fetchOpenAIOAuthUpstreamModels(ctx, account)
+	}
 
 	if s.httpUpstream == nil {
 		return nil, newUpstreamModelSyncConfigError("Upstream HTTP client is not configured", nil)
@@ -128,6 +135,48 @@ func (s *AccountTestService) FetchUpstreamSupportedModels(ctx context.Context, a
 		return nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
 	}
 
+	return models, nil
+}
+
+func (s *AccountTestService) fetchOpenAIOAuthUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	if s.openAIModelsManifest == nil {
+		return nil, newUpstreamModelSyncConfigError("OpenAI models manifest service is not configured", nil)
+	}
+
+	manifest, err := s.openAIModelsManifest.FetchCodexModelsManifest(ctx, account, "", "")
+	if err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("Failed to request OpenAI models manifest", err)
+	}
+	if manifest == nil || manifest.NotModified {
+		return nil, newUpstreamModelSyncUpstreamError("OpenAI models manifest response was unusable", nil)
+	}
+
+	var envelope struct {
+		Models []struct {
+			Slug string `json:"slug"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(manifest.Body, &envelope); err != nil {
+		return nil, newUpstreamModelSyncUpstreamError("OpenAI models manifest response was not valid JSON", err)
+	}
+
+	seen := make(map[string]struct{}, len(envelope.Models))
+	models := make([]string, 0, len(envelope.Models))
+	for _, model := range envelope.Models {
+		slug := strings.TrimSpace(model.Slug)
+		if slug == "" {
+			continue
+		}
+		if _, ok := seen[slug]; ok {
+			continue
+		}
+		seen[slug] = struct{}{}
+		models = append(models, slug)
+	}
+	if len(models) == 0 {
+		return nil, newUpstreamModelSyncUpstreamError("OpenAI models manifest returned no supported models", nil)
+	}
+	sort.Strings(models)
 	return models, nil
 }
 
