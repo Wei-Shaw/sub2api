@@ -122,6 +122,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if req.TencentCaptchaCloudSecretKey != "" {
 		changed = append(changed, "tencent_captcha_cloud_secret_key")
 	}
+	if before.TencentCaptchaRegion != after.TencentCaptchaRegion {
+		changed = append(changed, "tencent_captcha_region")
+	}
 	if before.AliyunCaptchaEnabled != after.AliyunCaptchaEnabled {
 		changed = append(changed, "aliyun_captcha_enabled")
 	}
