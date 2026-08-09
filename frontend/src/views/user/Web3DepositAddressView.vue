@@ -17,10 +17,9 @@
             </template>
             <template v-else>
               <Icon name="creditCard" size="xl" class="text-primary-500" />
-              <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">{{ t('web3Deposit.createHint') }}</p>
-              <button class="btn btn-primary mt-5" :disabled="creating || !config?.enabled" @click="createAddress">
-                {{ creating ? t('web3Deposit.creating') : t('web3Deposit.createAddress') }}
-              </button>
+              <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">
+                {{ unavailableMessage || t('web3Deposit.errors.loadAddress') }}
+              </p>
             </template>
           </div>
 
@@ -86,7 +85,6 @@ const config = ref<Web3DepositConfig>()
 const address = ref<Web3DepositAddress>()
 const qrCode = ref('')
 const loading = ref(true)
-const creating = ref(false)
 const selectedNetworkKey = ref('')
 const selectedAssetKey = ref('')
 const network = computed(() => config.value?.networks.find(item => item.key === selectedNetworkKey.value) || config.value?.networks[0])
@@ -118,29 +116,19 @@ async function renderQRCode(value?: string) {
 async function load() {
   loading.value = true
   try {
-    const [configResponse, addressResponse] = await Promise.all([web3DepositAPI.getConfig(), web3DepositAPI.getAddress()])
+    const configResponse = await web3DepositAPI.getConfig()
     config.value = configResponse.data
-    address.value = addressResponse.data
     selectedNetworkKey.value = config.value.networks[0]?.key || ''
     selectedAssetKey.value = config.value.networks[0]?.assets[0]?.key || ''
-    await renderQRCode(address.value.address)
+    if (config.value.enabled) {
+      const addressResponse = await web3DepositAPI.getOrCreateAddress()
+      address.value = addressResponse.data
+      await renderQRCode(address.value.address)
+    }
   } catch (error) {
     appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.loadAddress')))
   } finally {
     loading.value = false
-  }
-}
-
-async function createAddress() {
-  creating.value = true
-  try {
-    const response = await web3DepositAPI.getOrCreateAddress()
-    address.value = response.data
-    await renderQRCode(address.value.address)
-  } catch (error) {
-    appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.createAddress')))
-  } finally {
-    creating.value = false
   }
 }
 

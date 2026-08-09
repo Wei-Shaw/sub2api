@@ -11,10 +11,6 @@ export const web3DepositAPI = {
     return apiClient.get<Web3DepositConfig>('/payment/web3/config')
   },
 
-  getAddress() {
-    return apiClient.get<Web3DepositAddress>('/payment/web3/address')
-  },
-
   getOrCreateAddress() {
     return apiClient.post<Web3DepositAddress>('/payment/web3/address')
   },
