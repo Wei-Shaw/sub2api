@@ -416,8 +416,9 @@ REDACTED
 func TestAuthService_Register_EmailSuffixNotAllowed(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"other.com": 1REDACTEDREDACTED
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	_, _, err := service.Register(context.Background(), "user@other.com", "password")
@@ -430,8 +431,9 @@ REDACTED
 func TestAuthService_Register_NonWhitelistDomainAllowsFirstAccount(t *testing.T) {
 	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
 	svc := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	_, user, err := svc.Register(context.Background(), "first@custom.example", "password")
@@ -442,12 +444,79 @@ REDACTED
 func TestAuthService_Register_NonWhitelistDomainRejectsSecondAccount(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
 	svc := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	_, _, err := svc.Register(context.Background(), "second@sub.custom.example", "password")
 	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+REDACTED
+
+// 域名限量注册开关默认关闭：白名单外域名保持 PR5423 之前的严格拒绝语义，
+// 即使该域名下还没有任何账户也不放行。
+func TestAuthService_Register_NonWhitelistDomainRejectedWhenQuotaDisabledByDefault(t *testing.T) {
+	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+REDACTED, nil, nil)
+
+	_, _, err := svc.Register(context.Background(), "first@custom.example", "password")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, "EMAIL_SUFFIX_NOT_ALLOWED", appErr.Reason)
+	require.Empty(t, repo.created)
+	require.Zero(t, repo.domainLimitedCreates)
+REDACTED
+
+func TestAuthService_Register_NonWhitelistDomainRejectedWhenQuotaExplicitlyDisabled(t *testing.T) {
+	repo := &userRepoStub{nextID: 9, domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "false",
+REDACTED, nil, nil)
+
+	_, _, err := svc.Register(context.Background(), "first@custom.example", "password")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+	require.Empty(t, repo.created)
+REDACTED
+
+// 开关关闭不影响白名单命中域名的正常注册。
+func TestAuthService_Register_WhitelistDomainAllowedWhenQuotaDisabled(t *testing.T) {
+	repo := &userRepoStub{nextID: 12REDACTED
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+REDACTED, nil, nil)
+
+	_, user, err := svc.Register(context.Background(), "user@example.com", "password")
+REDACTED
+	require.Equal(t, int64(12), user.ID)
+	require.Zero(t, repo.domainLimitedCreates)
+REDACTED
+
+func TestAuthService_SendVerifyCode_NonWhitelistDomainRejectedWhenQuotaDisabled(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+REDACTED, nil, nil)
+
+	err := svc.SendVerifyCode(context.Background(), "user@custom.example")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+REDACTED
+
+func TestAuthService_SendVerifyCodeAsync_NonWhitelistDomainRejectedWhenQuotaDisabled(t *testing.T) {
+	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
+	svc := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled:              "true",
+		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+REDACTED, nil, nil)
+
+	_, err := svc.SendVerifyCodeAsync(context.Background(), "user@custom.example")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
 REDACTED
 
 func TestAuthService_Register_EmptyWhitelistAllowsAllDomains(t *testing.T) {
@@ -477,8 +546,9 @@ REDACTED
 func TestAuthService_SendVerifyCode_EmailSuffixNotAllowed(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"other.com": 1REDACTEDREDACTED
 	service := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com","@company.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	err := service.SendVerifyCode(context.Background(), "user@other.com")
@@ -490,8 +560,9 @@ REDACTED
 func TestAuthService_SendVerifyCode_NonWhitelistDomainLimit(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
 	svc := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	err := svc.SendVerifyCode(context.Background(), "user@custom.example")
@@ -501,8 +572,9 @@ REDACTED
 func TestAuthService_SendVerifyCodeAsync_NonWhitelistDomainLimit(t *testing.T) {
 	repo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
 	svc := newAuthService(repo, map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+		SettingKeyRegistrationEnabled:                 "true",
+		SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+		SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 REDACTED, nil, nil)
 
 	_, err := svc.SendVerifyCodeAsync(context.Background(), "user@custom.example")
