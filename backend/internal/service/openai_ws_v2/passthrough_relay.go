@@ -1039,7 +1039,7 @@ func isTokenEvent(eventType string) bool {
 	if strings.HasPrefix(eventType, "response.output") {
 		return true
 	}
-	return eventType == "response.completed" || eventType == "response.done"
+	return false
 }
 
 func minDuration(a, b time.Duration) time.Duration {
