@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -92,6 +93,8 @@ func GenerateNonce() (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
+var generateCSPNonce = GenerateNonce
+
 // GetNonceFromContext retrieves the CSP nonce from gin context
 func GetNonceFromContext(c *gin.Context) string {
 	if nonce, exists := c.Get(CSPNonceKey); exists {
@@ -134,11 +137,12 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 
 		if cfg.Enabled {
 			// Generate nonce for this request
-			nonce, err := GenerateNonce()
+			nonce, err := generateCSPNonce()
 			if err != nil {
-				// crypto/rand 失败时降级为无 nonce 的 CSP 策略
-				log.Printf("[SecurityHeaders] %v — 降级为无 nonce 的 CSP", err)
-				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'unsafe-inline'"))
+				// Never relax script-src when the nonce cannot be generated.
+				log.Printf("[SecurityHeaders] %v — rejecting response because CSP nonce generation failed", err)
+				c.AbortWithStatus(http.StatusInternalServerError)
+				return
 			} else {
 				c.Set(CSPNonceKey, nonce)
 				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'nonce-"+nonce+"'"))
@@ -166,12 +170,6 @@ func enhanceCSPPolicy(policy string) string {
 	// Add nonce placeholder to script-src if not present
 	if !strings.Contains(policy, NonceTemplate) && !strings.Contains(policy, "'nonce-") {
 		policy = addToDirective(policy, "script-src", NonceTemplate)
-	}
-
-	for _, required := range requiredCSPDirectiveValues {
-		if !directiveHasValue(policy, required.directive, required.value) {
-			policy = addToDirective(policy, required.directive, required.value)
-		}
 	}
 
 	return policy

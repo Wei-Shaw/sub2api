@@ -15,7 +15,7 @@ import (
 func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)
-	cache := NewSchedulerCache(rdb)
+	cache := NewSchedulerCache(rdb, nil)
 
 	bucket := service.SchedulerBucket{GroupID: 2, Platform: service.PlatformGemini, Mode: service.SchedulerModeSingle}
 	now := time.Now().UTC().Truncate(time.Second)
@@ -108,7 +108,7 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 func TestSchedulerCacheRetireAndReopenFencesOldEpochIntegration(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)
-	cache := NewSchedulerCache(rdb)
+	cache := NewSchedulerCache(rdb, nil)
 	bucket := service.SchedulerBucket{GroupID: 77, Platform: service.PlatformAntigravity, Mode: service.SchedulerModeForced}
 	account := service.Account{ID: 7701, Platform: service.PlatformAntigravity, Type: service.AccountTypeOAuth}
 
@@ -141,7 +141,7 @@ func TestSchedulerCacheRetireAndReopenFencesOldEpochIntegration(t *testing.T) {
 func TestSchedulerCacheGroupLifecycleLeaseOwnerAndTTLIntegration(t *testing.T) {
 	ctx := context.Background()
 	rdb := testRedis(t)
-	cache := NewSchedulerCache(rdb)
+	cache := NewSchedulerCache(rdb, nil)
 	const groupID int64 = 78
 	const ttl = 500 * time.Millisecond
 

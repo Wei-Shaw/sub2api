@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -125,11 +126,29 @@ func TestSecurityHeaders(t *testing.T) {
 
 		csp := w.Header().Get("Content-Security-Policy")
 		assert.NotEmpty(t, csp)
-		// Policy is auto-enhanced with nonce and Cloudflare Insights domain
+		// Policy is auto-enhanced only with a nonce; configured source lists are
+		// never widened with third-party domains.
 		assert.Contains(t, csp, "default-src 'self'")
 		assert.Contains(t, csp, "'nonce-")
-		assert.Contains(t, csp, CloudflareInsightsDomain)
-		assert.Equal(t, 1, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
+		assert.NotContains(t, csp, CloudflareInsightsDomain)
+		assert.Equal(t, 0, countDirectiveValue(csp, "worker-src", TencentCaptchaWorkerSource))
+	})
+
+	t.Run("csp_nonce_failure_fails_closed", func(t *testing.T) {
+		original := generateCSPNonce
+		generateCSPNonce = func() (string, error) { return "", errors.New("entropy unavailable") }
+		defer func() { generateCSPNonce = original }()
+
+		middleware := SecurityHeaders(config.CSPConfig{Enabled: true, Policy: "default-src 'self'"}, nil)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+		middleware(c)
+
+		assert.True(t, c.IsAborted())
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.NotContains(t, w.Header().Get("Content-Security-Policy"), "'unsafe-inline'")
 	})
 
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
@@ -295,7 +314,7 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Contains(t, enhanced, NonceTemplate)
-		assert.Contains(t, enhanced, CloudflareInsightsDomain)
+		assert.NotContains(t, enhanced, CloudflareInsightsDomain)
 	})
 
 	t.Run("does_not_duplicate_nonce_placeholder", func(t *testing.T) {
@@ -307,7 +326,7 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, count)
 	})
 
-	t.Run("does_not_duplicate_cloudflare_domain", func(t *testing.T) {
+	t.Run("preserves_explicit_cloudflare_domain", func(t *testing.T) {
 		policy := "default-src 'self'; script-src 'self' https://static.cloudflareinsights.com"
 		enhanced := enhanceCSPPolicy(policy)
 
@@ -315,28 +334,29 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, count)
 	})
 
-	t.Run("adds_tencent_captcha_domain_for_web_sdk", func(t *testing.T) {
+	t.Run("does_not_widen_policy_with_provider_domains", func(t *testing.T) {
 		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__"
 		enhanced := enhanceCSPPolicy(policy)
 
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", TencentCaptchaDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", TencentCaptchaStaticDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "frame-src", TencentCaptchaDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "style-src", TencentCaptchaStaticDomain))
 		assert.Contains(t, config.DefaultCSPPolicy, "style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com")
+		assert.Contains(t, config.DefaultCSPPolicy, "object-src 'none'")
 
 		// 入口脚本会再从 CDN 拉核心 JS，国际站还会换用 ca./global. 两个主机；
 		// 缺任意一个都会让天御 SDK 触发 script-src 拦截。
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaCDNDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaGlobalDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaGlobalCDNDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaPrehandleDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", TencentCaptchaJQueryDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "connect-src", TencentCaptchaDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "connect-src", TencentCaptchaPrehandleDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "connect-src", TencentCaptchaRceDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", TencentCaptchaGlobalDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", TencentCaptchaPrehandleDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "worker-src", TencentCaptchaWorkerSource))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaCDNDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaGlobalDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaGlobalCDNDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaPrehandleDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", TencentCaptchaJQueryDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "connect-src", TencentCaptchaDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "connect-src", TencentCaptchaPrehandleDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "connect-src", TencentCaptchaRceDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "frame-src", TencentCaptchaGlobalDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "frame-src", TencentCaptchaPrehandleDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "worker-src", TencentCaptchaWorkerSource))
 	})
 
 	t.Run("does_not_duplicate_tencent_captcha_worker_source", func(t *testing.T) {
@@ -360,7 +380,7 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 
 		assert.Contains(t, enhanced, "script-src")
 		assert.Contains(t, enhanced, NonceTemplate)
-		assert.Contains(t, enhanced, CloudflareInsightsDomain)
+		assert.NotContains(t, enhanced, CloudflareInsightsDomain)
 	})
 
 	t.Run("preserves_existing_nonce", func(t *testing.T) {
@@ -372,32 +392,32 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Contains(t, enhanced, "'nonce-existing'")
 	})
 
-	t.Run("adds_airwallex_domains_for_payment_sdk", func(t *testing.T) {
+	t.Run("does_not_add_airwallex_domains", func(t *testing.T) {
 		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__; style-src 'self'; frame-src 'self'"
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Contains(t, enhanced, "script-src 'self' __CSP_NONCE__")
-		assert.Contains(t, enhanced, AirwallexStaticDomain)
-		assert.Contains(t, enhanced, AirwallexCheckoutDomain)
-		assert.Contains(t, enhanced, AirwallexDemoStaticDomain)
-		assert.Contains(t, enhanced, AirwallexDemoCheckoutDomain)
+		assert.NotContains(t, enhanced, AirwallexStaticDomain)
+		assert.NotContains(t, enhanced, AirwallexCheckoutDomain)
+		assert.NotContains(t, enhanced, AirwallexDemoStaticDomain)
+		assert.NotContains(t, enhanced, AirwallexDemoCheckoutDomain)
 		assert.Contains(t, enhanced, "style-src 'self'")
 		assert.Contains(t, enhanced, "frame-src 'self'")
 	})
 
-	t.Run("does_not_duplicate_airwallex_domains", func(t *testing.T) {
+	t.Run("preserves_only_explicit_airwallex_domains", func(t *testing.T) {
 		policy := "default-src 'self'; script-src 'self' https://static.airwallex.com https://static-demo.airwallex.com; frame-src https://checkout.airwallex.com https://checkout-demo.airwallex.com"
 		enhanced := enhanceCSPPolicy(policy)
 
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", AirwallexStaticDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", AirwallexCheckoutDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexStaticDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexCheckoutDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", AirwallexCheckoutDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "style-src", AirwallexStaticDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "style-src", AirwallexCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", AirwallexDemoStaticDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "script-src", AirwallexDemoCheckoutDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoStaticDomain))
-		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "script-src", AirwallexDemoCheckoutDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "style-src", AirwallexDemoStaticDomain))
+		assert.Equal(t, 0, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexDemoCheckoutDomain))
 	})
 }

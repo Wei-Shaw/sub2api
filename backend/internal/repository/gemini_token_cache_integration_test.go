@@ -20,13 +20,16 @@ type GeminiTokenCacheSuite struct {
 
 func (s *GeminiTokenCacheSuite) SetupTest() {
 	s.IntegrationRedisSuite.SetupTest()
-	s.cache = NewGeminiTokenCache(s.rdb)
+	s.cache = newGeminiTokenCache(s.rdb, testCredentialCipher(s.T(), "6", "primary"))
 }
 
 func (s *GeminiTokenCacheSuite) TestDeleteAccessToken() {
 	cacheKey := "project-123"
 	token := "token-value"
 	require.NoError(s.T(), s.cache.SetAccessToken(s.ctx, cacheKey, token, time.Minute))
+	raw, err := s.rdb.Get(s.ctx, encryptedOAuthTokenKeyPrefix+cacheKey).Result()
+	require.NoError(s.T(), err)
+	require.NotContains(s.T(), raw, token)
 
 	got, err := s.cache.GetAccessToken(s.ctx, cacheKey)
 	require.NoError(s.T(), err)

@@ -4,12 +4,13 @@
     <!-- iframe mode -->
     <iframe
       v-if="isHomeContentUrl"
-      :src="homeContent.trim()"
+      :src="sanitizedHomeUrl"
       class="h-screen w-full border-0"
+      sandbox=""
+      referrerpolicy="no-referrer"
       allowfullscreen
     ></iframe>
-    <!-- HTML mode - SECURITY: homeContent is admin-only setting, XSS risk is acceptable -->
-    <div v-else v-html="homeContent"></div>
+    <div v-else v-html="sanitizedHomeHtml"></div>
   </div>
 
   <!-- Compact Home Page -->
@@ -480,6 +481,7 @@ import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
+import DOMPurify from 'dompurify'
 
 const { t } = useI18n()
 
@@ -495,11 +497,20 @@ const homeContent = computed(() => appStore.cachedPublicSettings?.home_content |
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
 
-// Check if homeContent is a URL (for iframe display)
-const isHomeContentUrl = computed(() => {
+const sanitizedHomeHtml = computed(() => DOMPurify.sanitize(homeContent.value, {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['iframe', 'object', 'embed', 'form', 'style'],
+  FORBID_ATTR: ['style'],
+}))
+
+const sanitizedHomeUrl = computed(() => {
   const content = homeContent.value.trim()
-  return content.startsWith('http://') || content.startsWith('https://')
+  if (!content.startsWith('http://') && !content.startsWith('https://')) return ''
+  return sanitizeUrl(content)
 })
+
+// Check if homeContent is a URL (for iframe display)
+const isHomeContentUrl = computed(() => sanitizedHomeUrl.value !== '')
 
 // Theme
 const isDark = ref(document.documentElement.classList.contains('dark'))

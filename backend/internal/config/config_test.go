@@ -14,6 +14,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	original, existed := os.LookupEnv("CREDENTIAL_ENCRYPTION_KEY")
+	if !existed || strings.TrimSpace(original) == "" {
+		_ = os.Setenv("CREDENTIAL_ENCRYPTION_KEY", strings.Repeat("a", 64))
+	}
+	code := m.Run()
+	if existed {
+		_ = os.Setenv("CREDENTIAL_ENCRYPTION_KEY", original)
+	} else {
+		_ = os.Unsetenv("CREDENTIAL_ENCRYPTION_KEY")
+	}
+	os.Exit(code)
+}
+
 func resetViperWithJWTSecret(t *testing.T) {
 	t.Helper()
 	viper.Reset()
@@ -21,6 +35,28 @@ func resetViperWithJWTSecret(t *testing.T) {
 	t.Setenv("CONFIG_FILE", "")
 	t.Setenv("DATA_DIR", "")
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+	t.Setenv("CREDENTIAL_ENCRYPTION_KEY", strings.Repeat("a", 64))
+}
+
+func TestCredentialEncryptionKeyReleaseModeValidation(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_MODE", "release")
+	t.Setenv("CREDENTIAL_ENCRYPTION_KEY", "")
+	_, err := Load()
+	require.ErrorContains(t, err, "credential_encryption.key is required in release mode")
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_MODE", "release")
+	t.Setenv("CREDENTIAL_ENCRYPTION_KEY", "abcd")
+	_, err = Load()
+	require.ErrorContains(t, err, "64 hexadecimal characters")
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_MODE", "release")
+	t.Setenv("CREDENTIAL_ENCRYPTION_KEY_ID", "primary-2026")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "primary-2026", cfg.CredentialEncryption.KeyID)
 }
 
 func TestLoadServerTimingConfig(t *testing.T) {

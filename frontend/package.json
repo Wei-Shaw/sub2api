@@ -22,7 +22,7 @@
     "@vueuse/core": "^10.7.0",
     "axios": "^1.18.0",
     "chart.js": "^4.4.1",
-    "dompurify": "^3.3.1",
+    "dompurify": "3.4.13",
     "driver.js": "^1.4.0",
     "file-saver": "^2.0.5",
     "marked": "^17.0.1",
@@ -32,12 +32,10 @@
     "vue-chartjs": "^5.3.0",
     "vue-draggable-plus": "^0.6.1",
     "vue-i18n": "^9.14.5",
-    "vue-router": "^4.2.5",
-    "xlsx": "^0.18.5"
+    "vue-router": "^4.2.5"
   },
   "devDependencies": {
     "@intlify/message-compiler": "9.14.5",
-    "@types/dompurify": "^3.0.5",
     "@types/file-saver": "^2.0.7",
     "@types/mdx": "^2.0.13",
     "@types/node": "^20.10.5",
@@ -63,7 +61,11 @@
     "overrides": {
       "js-cookie": "3.0.7",
       "form-data@<4.0.6": ">=4.0.6",
-      "postcss@<8.5.18": ">=8.5.18"
+      "postcss@<8.5.18": ">=8.5.18",
+      "yaml@>=1.0.0 <1.10.3": "1.10.3",
+      "uuid@<11.1.1": "11.1.1",
+      "uuid@>=13.0.0 <13.0.1": "13.0.1",
+      "mermaid@<11.16.1": "11.16.1"
     }
   }
 }

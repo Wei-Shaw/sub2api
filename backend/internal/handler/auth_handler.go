@@ -312,20 +312,14 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 	// Get the login session
 	session, err := h.totpService.GetLoginSession(c.Request.Context(), req.TempToken)
 	if err != nil || session == nil {
-		tokenPrefix := ""
-		if len(req.TempToken) >= 8 {
-			tokenPrefix = req.TempToken[:8]
-		}
 		slog.Debug("login_2fa_session_invalid",
-			"temp_token_prefix", tokenPrefix,
 			"error", err)
 		response.BadRequest(c, "Invalid or expired 2FA session")
 		return
 	}
 
 	slog.Debug("login_2fa_session_found",
-		"user_id", session.UserID,
-		"email", session.Email)
+		"user_id", session.UserID)
 
 	// Verify the TOTP code
 	if err := h.totpService.VerifyCode(c.Request.Context(), session.UserID, req.TotpCode); err != nil {
@@ -336,7 +330,26 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		return
 	}
 
-	// Get the user (before session deletion so we can check backend mode)
+	// Claim the temporary session before any login side effect or token mint.
+	// Every concurrent caller may validate the same time-window TOTP code, but
+	// Redis atomically returns the session to exactly one of them.
+	consumedSession, err := h.totpService.ConsumeLoginSession(c.Request.Context(), req.TempToken)
+	if err != nil {
+		slog.Debug("login_2fa_session_consume_failed",
+			"user_id", session.UserID,
+			"error", err)
+		response.InternalError(c, "Failed to consume 2FA session")
+		return
+	}
+	if consumedSession == nil || consumedSession.UserID != session.UserID {
+		slog.Debug("login_2fa_session_already_consumed",
+			"user_id", session.UserID)
+		response.BadRequest(c, "Invalid or expired 2FA session")
+		return
+	}
+	session = consumedSession
+
+	// Get the user only after the one-time session has been claimed.
 	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -408,9 +421,6 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 			return
 		}
 	}
-
-	// Delete the login session (only after all checks pass)
-	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
 
 	if session.PendingOAuthBind == nil {
 		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)

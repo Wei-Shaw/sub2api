@@ -20,6 +20,7 @@ func RegisterAdminRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
+	requiredStepUpAuth := middleware.NewRequiredStepUpAuthMiddleware(stepUpAuth)
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	// 面板全局按用户限流（默认管理员豁免，可在系统设置中关闭豁免）
@@ -35,31 +36,31 @@ func RegisterAdminRoutes(
 		registerDashboardRoutes(admin, h)
 
 		// 用户管理
-		registerUserManagementRoutes(admin, h)
+		registerUserManagementRoutes(admin, h, requiredStepUpAuth)
 
 		// 分组管理
 		registerGroupRoutes(admin, h)
 
 		// 账号管理
-		registerAccountRoutes(admin, h, stepUpAuth)
+		registerAccountRoutes(admin, h, requiredStepUpAuth)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
 		// OpenAI OAuth
-		registerOpenAIOAuthRoutes(admin, h)
+		registerOpenAIOAuthRoutes(admin, h, requiredStepUpAuth)
 
 		// Gemini OAuth
-		registerGeminiOAuthRoutes(admin, h)
+		registerGeminiOAuthRoutes(admin, h, requiredStepUpAuth)
 
 		// Antigravity OAuth
-		registerAntigravityOAuthRoutes(admin, h)
+		registerAntigravityOAuthRoutes(admin, h, requiredStepUpAuth)
 
 		// Grok OAuth
-		registerGrokOAuthRoutes(admin, h)
+		registerGrokOAuthRoutes(admin, h, requiredStepUpAuth)
 
 		// 代理管理
-		registerProxyRoutes(admin, h, stepUpAuth)
+		registerProxyRoutes(admin, h, requiredStepUpAuth)
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
@@ -68,19 +69,19 @@ func RegisterAdminRoutes(
 		registerPromoCodeRoutes(admin, h)
 
 		// 系统设置
-		registerSettingsRoutes(admin, h)
+		registerSettingsRoutes(admin, h, requiredStepUpAuth)
 
 		// 数据管理
-		registerDataManagementRoutes(admin, h, stepUpAuth)
+		registerDataManagementRoutes(admin, h, requiredStepUpAuth)
 
 		// 数据库备份恢复
-		registerBackupRoutes(admin, h, stepUpAuth)
+		registerBackupRoutes(admin, h, requiredStepUpAuth)
 
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
 		// 系统管理
-		registerSystemRoutes(admin, h)
+		registerSystemRoutes(admin, h, requiredStepUpAuth)
 
 		// 订阅管理
 		registerSubscriptionRoutes(admin, h)
@@ -288,8 +289,10 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	users := admin.Group("/users")
+func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
+	// User records contain authentication identities and can create or promote
+	// administrators. Require recent 2FA for the entire management surface.
+	users := admin.Group("/users", gin.HandlerFunc(requiredStepUpAuth))
 	{
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
@@ -345,8 +348,13 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+func registerAccountRoutes(
+	admin *gin.RouterGroup,
+	h *handler.Handlers,
+	requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware,
+) {
 	accounts := admin.Group("/accounts")
+	requireStepUp := gin.HandlerFunc(requiredStepUpAuth)
 	{
 		accounts.GET("", h.Admin.Account.List)
 		accounts.GET("/upstream-billing-probe/settings", h.Admin.Account.GetUpstreamBillingProbeSettings)
@@ -355,25 +363,25 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/ollama-cloud-usage/settings", h.Admin.Account.GetOllamaCloudUsageSettings)
 		accounts.PUT("/ollama-cloud-usage/settings", h.Admin.Account.UpdateOllamaCloudUsageSettings)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
-		accounts.POST("", h.Admin.Account.Create)
-		accounts.POST("/:id/duplicate", h.Admin.Account.Duplicate)
+		accounts.POST("", requireStepUp, h.Admin.Account.Create)
+		accounts.POST("/:id/duplicate", requireStepUp, h.Admin.Account.Duplicate)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
-		accounts.POST("/import/codex-session", h.Admin.Account.ImportCodexSession)
-		accounts.POST("/sync/crs", h.Admin.Account.SyncFromCRS)
+		accounts.POST("/import/codex-session", requireStepUp, h.Admin.Account.ImportCodexSession)
+		accounts.POST("/sync/crs", requireStepUp, h.Admin.Account.SyncFromCRS)
 		accounts.POST("/sync/crs/preview", h.Admin.Account.PreviewFromCRS)
-		accounts.PUT("/:id", h.Admin.Account.Update)
+		accounts.PUT("/:id", requireStepUp, h.Admin.Account.Update)
 		accounts.PUT("/:id/upstream-billing-probe", h.Admin.Account.SetUpstreamBillingProbeEnabled)
 		accounts.POST("/:id/upstream-billing-probe", h.Admin.Account.ProbeUpstreamBilling)
 		accounts.GET("/:id/ollama-cloud-usage", h.Admin.Account.GetOllamaCloudUsage)
-		accounts.PUT("/:id/ollama-cloud-usage/session", h.Admin.Account.SaveOllamaCloudUsageSession)
-		accounts.DELETE("/:id/ollama-cloud-usage/session", h.Admin.Account.DeleteOllamaCloudUsageSession)
+		accounts.PUT("/:id/ollama-cloud-usage/session", requireStepUp, h.Admin.Account.SaveOllamaCloudUsageSession)
+		accounts.DELETE("/:id/ollama-cloud-usage/session", requireStepUp, h.Admin.Account.DeleteOllamaCloudUsageSession)
 		accounts.PUT("/:id/ollama-cloud-usage/auto-refresh", h.Admin.Account.SetOllamaCloudUsageAutoRefresh)
 		accounts.POST("/:id/ollama-cloud-usage/refresh", h.Admin.Account.RefreshOllamaCloudUsage)
-		accounts.DELETE("/:id", h.Admin.Account.Delete)
+		accounts.DELETE("/:id", requireStepUp, h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
-		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)
+		accounts.POST("/:id/apply-oauth-credentials", requireStepUp, h.Admin.Account.ApplyOAuthCredentials)
 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)
 		accounts.POST("/:id/refresh-tier", h.Admin.Account.RefreshTier)
 		accounts.GET("/:id/stats", h.Admin.Account.GetStats)
@@ -391,14 +399,14 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/models/sync-upstream-preview", h.Admin.Account.SyncUpstreamModelsPreview)
 		accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
 		accounts.POST("/:id/models/sync-upstream", h.Admin.Account.SyncUpstreamModels)
-		accounts.POST("/batch", h.Admin.Account.BatchCreate)
-		// 账号导出泄露上游凭证原文——要求 step-up 2FA
-		accounts.GET("/data", gin.HandlerFunc(stepUpAuth), h.Admin.Account.ExportData)
-		accounts.POST("/data", h.Admin.Account.ImportData)
-		accounts.POST("/batch-update-credentials", h.Admin.Account.BatchUpdateCredentials)
+		accounts.POST("/batch", requireStepUp, h.Admin.Account.BatchCreate)
+		// 账号导出泄露上游凭证原文——无论功能开关如何都强制 step-up 2FA。
+		accounts.GET("/data", requireStepUp, h.Admin.Account.ExportData)
+		accounts.POST("/data", requireStepUp, h.Admin.Account.ImportData)
+		accounts.POST("/batch-update-credentials", requireStepUp, h.Admin.Account.BatchUpdateCredentials)
 		accounts.POST("/batch-refresh-tier", h.Admin.Account.BatchRefreshTier)
-		accounts.POST("/bulk-update", h.Admin.Account.BulkUpdate)
-		accounts.POST("/batch-delete", h.Admin.Account.BatchDelete)
+		accounts.POST("/bulk-update", requireStepUp, h.Admin.Account.BulkUpdate)
+		accounts.POST("/batch-delete", requireStepUp, h.Admin.Account.BatchDelete)
 		accounts.POST("/batch-clear-error", h.Admin.Account.BatchClearError)
 		accounts.POST("/batch-refresh", h.Admin.Account.BatchRefresh)
 
@@ -406,15 +414,15 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
 		// Spark 影子账号
-		accounts.POST("/:id/shadow", h.Admin.OpenAIOAuth.CreateShadow)
+		accounts.POST("/:id/shadow", requireStepUp, h.Admin.OpenAIOAuth.CreateShadow)
 
 		// Claude OAuth routes
 		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
 		accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)
-		accounts.POST("/exchange-code", h.Admin.OAuth.ExchangeCode)
-		accounts.POST("/exchange-setup-token-code", h.Admin.OAuth.ExchangeSetupTokenCode)
-		accounts.POST("/cookie-auth", h.Admin.OAuth.CookieAuth)
-		accounts.POST("/setup-token-cookie-auth", h.Admin.OAuth.SetupTokenCookieAuth)
+		accounts.POST("/exchange-code", requireStepUp, h.Admin.OAuth.ExchangeCode)
+		accounts.POST("/exchange-setup-token-code", requireStepUp, h.Admin.OAuth.ExchangeSetupTokenCode)
+		accounts.POST("/cookie-auth", requireStepUp, h.Admin.OAuth.CookieAuth)
+		accounts.POST("/setup-token-cookie-auth", requireStepUp, h.Admin.OAuth.SetupTokenCookieAuth)
 	}
 }
 
@@ -430,65 +438,70 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	openai := admin.Group("/openai")
+	requireStepUp := gin.HandlerFunc(requiredStepUpAuth)
 	{
 		openai.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
-		openai.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
-		openai.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
-		openai.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
-		openai.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
-		openai.POST("/create-from-codex-pat", h.Admin.OpenAIOAuth.CreateAccountFromCodexPAT)
+		openai.POST("/exchange-code", requireStepUp, h.Admin.OpenAIOAuth.ExchangeCode)
+		openai.POST("/refresh-token", requireStepUp, h.Admin.OpenAIOAuth.RefreshToken)
+		openai.POST("/accounts/:id/refresh", requireStepUp, h.Admin.OpenAIOAuth.RefreshAccountToken)
+		openai.POST("/create-from-oauth", requireStepUp, h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+		openai.POST("/create-from-codex-pat", requireStepUp, h.Admin.OpenAIOAuth.CreateAccountFromCodexPAT)
 		openai.GET("/accounts/:id/quota", h.Admin.OpenAIOAuth.QueryQuota)
 		openai.POST("/accounts/:id/quota/refresh", h.Admin.OpenAIOAuth.RefreshQuota)
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 	}
 }
 
-func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	gemini := admin.Group("/gemini")
 	{
 		gemini.POST("/oauth/auth-url", h.Admin.GeminiOAuth.GenerateAuthURL)
-		gemini.POST("/oauth/exchange-code", h.Admin.GeminiOAuth.ExchangeCode)
+		gemini.POST("/oauth/exchange-code", gin.HandlerFunc(requiredStepUpAuth), h.Admin.GeminiOAuth.ExchangeCode)
 		gemini.GET("/oauth/capabilities", h.Admin.GeminiOAuth.GetCapabilities)
 	}
 }
 
-func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	antigravity := admin.Group("/antigravity")
+	requireStepUp := gin.HandlerFunc(requiredStepUpAuth)
 	{
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
-		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
-		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
+		antigravity.POST("/oauth/exchange-code", requireStepUp, h.Admin.AntigravityOAuth.ExchangeCode)
+		antigravity.POST("/oauth/refresh-token", requireStepUp, h.Admin.AntigravityOAuth.RefreshToken)
 	}
 }
 
-func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	grok := admin.Group("/grok")
+	requireStepUp := gin.HandlerFunc(requiredStepUpAuth)
 	{
 		grok.GET("/oauth/capabilities", h.Admin.GrokOAuth.GetCapabilities)
 		grok.POST("/oauth/auth-url", h.Admin.GrokOAuth.GenerateAuthURL)
-		grok.POST("/oauth/exchange-code", h.Admin.GrokOAuth.ExchangeCode)
-		grok.POST("/oauth/refresh-token", h.Admin.GrokOAuth.RefreshToken)
-		grok.POST("/oauth/sso-token", h.Admin.GrokOAuth.ValidateSSOToken)
-		grok.POST("/oauth/password", h.Admin.GrokOAuth.AuthorizePassword)
-		grok.POST("/oauth/create-from-oauth", h.Admin.GrokOAuth.CreateAccountFromOAuth)
-		grok.POST("/sso-to-oauth", h.Admin.GrokOAuth.CreateAccountsFromSSO)
-		grok.POST("/oauth/reconcile", h.Admin.GrokOAuth.ReconcileOAuthAccounts)
-		grok.POST("/accounts/:id/refresh", h.Admin.GrokOAuth.RefreshAccountToken)
+		grok.POST("/oauth/exchange-code", requireStepUp, h.Admin.GrokOAuth.ExchangeCode)
+		grok.POST("/oauth/refresh-token", requireStepUp, h.Admin.GrokOAuth.RefreshToken)
+		grok.POST("/oauth/sso-token", requireStepUp, h.Admin.GrokOAuth.ValidateSSOToken)
+		grok.POST("/oauth/password", requireStepUp, h.Admin.GrokOAuth.AuthorizePassword)
+		grok.POST("/oauth/create-from-oauth", requireStepUp, h.Admin.GrokOAuth.CreateAccountFromOAuth)
+		grok.POST("/sso-to-oauth", requireStepUp, h.Admin.GrokOAuth.CreateAccountsFromSSO)
+		grok.POST("/oauth/reconcile", requireStepUp, h.Admin.GrokOAuth.ReconcileOAuthAccounts)
+		grok.POST("/accounts/:id/refresh", requireStepUp, h.Admin.GrokOAuth.RefreshAccountToken)
 		grok.GET("/accounts/:id/quota", h.Admin.GrokOAuth.QueryQuota)
 		grok.POST("/accounts/:id/reset-quota", h.Admin.GrokOAuth.ResetQuota)
 		grok.GET("/runtime-sanity", h.Admin.GrokOAuth.RuntimeSanity)
 	}
 }
 
-func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
-	proxies := admin.Group("/proxies")
+func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
+	// Proxy DTOs and exports include credentials, while mutations can redirect
+	// upstream traffic. Protect the whole surface independently of the optional
+	// global step-up feature flag.
+	proxies := admin.Group("/proxies", gin.HandlerFunc(requiredStepUpAuth))
 	{
 		proxies.GET("", h.Admin.Proxy.List)
 		proxies.GET("/all", h.Admin.Proxy.GetAll)
-		// 代理导出泄露账号密码原文——要求 step-up 2FA
-		proxies.GET("/data", gin.HandlerFunc(stepUpAuth), h.Admin.Proxy.ExportData)
+		proxies.GET("/data", h.Admin.Proxy.ExportData)
 		proxies.POST("/data", h.Admin.Proxy.ImportData)
 		proxies.GET("/:id", h.Admin.Proxy.GetByID)
 		proxies.POST("", h.Admin.Proxy.Create)
@@ -531,7 +544,7 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	adminSettings := admin.Group("/settings")
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
@@ -545,8 +558,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.POST("/email-templates/:event/:locale/restore-official", h.Admin.Setting.RestoreOfficialEmailTemplate)
 		// Admin API Key 管理
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
-		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
-		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		adminSettings.POST("/admin-api-key/regenerate", gin.HandlerFunc(requiredStepUpAuth), h.Admin.Setting.RegenerateAdminAPIKey)
+		adminSettings.DELETE("/admin-api-key", gin.HandlerFunc(requiredStepUpAuth), h.Admin.Setting.DeleteAdminAPIKey)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)
@@ -573,8 +586,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
-	dataManagement := admin.Group("/data-management")
+func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
+	// This surface manages external storage credentials and database exports.
+	dataManagement := admin.Group("/data-management", gin.HandlerFunc(requiredStepUpAuth))
 	{
 		dataManagement.GET("/agent/health", h.Admin.DataManagement.GetAgentHealth)
 		dataManagement.GET("/config", h.Admin.DataManagement.GetConfig)
@@ -586,30 +600,29 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		dataManagement.POST("/sources/:source_type/profiles/:profile_id/activate", h.Admin.DataManagement.SetActiveSourceProfile)
 		dataManagement.POST("/s3/test", h.Admin.DataManagement.TestS3)
 		dataManagement.GET("/s3/profiles", h.Admin.DataManagement.ListS3Profiles)
-		// 修改 S3 目标可将数据备份外泄——要求 step-up 2FA
-		dataManagement.POST("/s3/profiles", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.CreateS3Profile)
-		dataManagement.PUT("/s3/profiles/:profile_id", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.UpdateS3Profile)
+		dataManagement.POST("/s3/profiles", h.Admin.DataManagement.CreateS3Profile)
+		dataManagement.PUT("/s3/profiles/:profile_id", h.Admin.DataManagement.UpdateS3Profile)
 		dataManagement.DELETE("/s3/profiles/:profile_id", h.Admin.DataManagement.DeleteS3Profile)
-		dataManagement.POST("/s3/profiles/:profile_id/activate", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.SetActiveS3Profile)
-		dataManagement.POST("/backups", gin.HandlerFunc(stepUpAuth), h.Admin.DataManagement.CreateBackupJob)
+		dataManagement.POST("/s3/profiles/:profile_id/activate", h.Admin.DataManagement.SetActiveS3Profile)
+		dataManagement.POST("/backups", h.Admin.DataManagement.CreateBackupJob)
 		dataManagement.GET("/backups", h.Admin.DataManagement.ListBackupJobs)
 		dataManagement.GET("/backups/:job_id", h.Admin.DataManagement.GetBackupJob)
 	}
 }
 
-func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
-	backup := admin.Group("/backups")
+func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
+	// Backup configuration, payloads and restore operations contain or control
+	// the entire database. Protect the whole surface unconditionally.
+	backup := admin.Group("/backups", gin.HandlerFunc(requiredStepUpAuth))
 	{
 		// S3 存储配置
 		backup.GET("/s3-config", h.Admin.Backup.GetS3Config)
-		// 修改 S3 目标可将数据库备份外泄——要求 step-up 2FA
-		backup.PUT("/s3-config", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateS3Config)
+		backup.PUT("/s3-config", h.Admin.Backup.UpdateS3Config)
 		backup.POST("/s3-config/test", h.Admin.Backup.TestS3Connection)
 
 		// 异步生图对象存储配置（与备份共用 S3 客户端，可直接复用备份凭证）
 		backup.GET("/image-storage", h.Admin.Backup.GetImageStorageConfig)
-		// 同 S3 配置：改写对象存储目标可将生成内容导向外部账号——要求 step-up 2FA
-		backup.PUT("/image-storage", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.UpdateImageStorageConfig)
+		backup.PUT("/image-storage", h.Admin.Backup.UpdateImageStorageConfig)
 		backup.POST("/image-storage/test", h.Admin.Backup.TestImageStorageConnection)
 
 		// 定时备份配置
@@ -617,27 +630,26 @@ func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAut
 		backup.PUT("/schedule", h.Admin.Backup.UpdateSchedule)
 
 		// 备份操作
-		backup.POST("", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.CreateBackup)
+		backup.POST("", h.Admin.Backup.CreateBackup)
 		backup.GET("", h.Admin.Backup.ListBackups)
 		backup.GET("/:id", h.Admin.Backup.GetBackup)
 		backup.DELETE("/:id", h.Admin.Backup.DeleteBackup)
-		// 备份下载链接可直接取走整库数据——要求 step-up 2FA
-		backup.GET("/:id/download-url", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.GetDownloadURL)
+		backup.GET("/:id/download-url", h.Admin.Backup.GetDownloadURL)
 
-		// 恢复操作：整库覆盖可回滚安全设置（含 step-up 开关本身）——要求 step-up 2FA
-		backup.POST("/:id/restore", gin.HandlerFunc(stepUpAuth), h.Admin.Backup.RestoreBackup)
+		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
 	}
 }
 
-func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerSystemRoutes(admin *gin.RouterGroup, h *handler.Handlers, requiredStepUpAuth middleware.RequiredStepUpAuthMiddleware) {
 	system := admin.Group("/system")
+	requireStepUp := gin.HandlerFunc(requiredStepUpAuth)
 	{
 		system.GET("/version", h.Admin.System.GetVersion)
 		system.GET("/check-updates", h.Admin.System.CheckUpdates)
 		system.GET("/rollback-versions", h.Admin.System.GetRollbackVersions)
-		system.POST("/update", h.Admin.System.PerformUpdate)
-		system.POST("/rollback", h.Admin.System.Rollback)
-		system.POST("/restart", h.Admin.System.RestartService)
+		system.POST("/update", requireStepUp, h.Admin.System.PerformUpdate)
+		system.POST("/rollback", requireStepUp, h.Admin.System.Rollback)
+		system.POST("/restart", requireStepUp, h.Admin.System.RestartService)
 	}
 }
 

@@ -12,6 +12,12 @@ import (
 // StepUpAuthMiddleware 敏感操作 step-up 2FA 门控中间件类型。
 type StepUpAuthMiddleware gin.HandlerFunc
 
+// RequiredStepUpAuthMiddleware 是不受 step_up_enabled 功能开关影响的强制门控。
+// 它用于上游凭证导入、OAuth token 交换等一旦被滥用便可持久化接管资源的操作。
+type RequiredStepUpAuthMiddleware gin.HandlerFunc
+
+const contextKeyRequiredStepUp = "sub2api.required_step_up"
+
 // stepUpGrantChecker 抽象 TOTP step-up 授权检查能力（由 TotpService 实现）。
 type stepUpGrantChecker interface {
 	HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error)
@@ -50,7 +56,37 @@ func NewStepUpAuthMiddleware(
 	userService *service.UserService,
 	settingService *service.SettingService,
 ) StepUpAuthMiddleware {
-	return StepUpAuthMiddleware(stepUpAuth(totpService, userService, stepUpSettingsOrNil(settingService)))
+	return StepUpAuthMiddleware(stepUpAuth(
+		stepUpGrantCheckerOrNil(totpService),
+		stepUpUserReaderOrNil(userService),
+		stepUpSettingsOrNil(settingService),
+	))
+}
+
+// NewRequiredStepUpAuthMiddleware 将既有 step-up 门控提升为强制门控。
+// 强制门控跳过功能开关读取，因此设置关闭或读取异常都不能放行敏感请求。
+func NewRequiredStepUpAuthMiddleware(stepUpAuth StepUpAuthMiddleware) RequiredStepUpAuthMiddleware {
+	return RequiredStepUpAuthMiddleware(func(c *gin.Context) {
+		if stepUpAuth == nil {
+			AbortWithError(c, 503, "STEP_UP_UNAVAILABLE", "Step-up verification service unavailable")
+			return
+		}
+		c.Set(contextKeyRequiredStepUp, true)
+		gin.HandlerFunc(stepUpAuth)(c)
+	})
+}
+
+// IsStepUpRequired reports whether the current route requires step-up regardless of the feature flag.
+func IsStepUpRequired(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	required, ok := c.Get(contextKeyRequiredStepUp)
+	if !ok {
+		return false
+	}
+	value, ok := required.(bool)
+	return ok && value
 }
 
 // stepUpSettingsOrNil 将可能为 nil 的具体指针归一化为接口，
@@ -60,6 +96,20 @@ func stepUpSettingsOrNil(settingService *service.SettingService) stepUpSettingRe
 		return nil
 	}
 	return settingService
+}
+
+func stepUpGrantCheckerOrNil(totpService *service.TotpService) stepUpGrantChecker {
+	if totpService == nil {
+		return nil
+	}
+	return totpService
+}
+
+func stepUpUserReaderOrNil(userService *service.UserService) stepUpUserReader {
+	if userService == nil {
+		return nil
+	}
+	return userService
 }
 
 func stepUpAuth(grantChecker stepUpGrantChecker, userReader stepUpUserReader, settings stepUpSettingReader) gin.HandlerFunc {
@@ -80,7 +130,12 @@ func EnforceStepUp(
 	userService *service.UserService,
 	settingService *service.SettingService,
 ) bool {
-	return enforceStepUp(c, totpService, userService, stepUpSettingsOrNil(settingService))
+	return enforceStepUp(
+		c,
+		stepUpGrantCheckerOrNil(totpService),
+		stepUpUserReaderOrNil(userService),
+		stepUpSettingsOrNil(settingService),
+	)
 }
 
 // EnforceStepUpAlways 与 EnforceStepUp 语义相同但不读取功能开关，无条件执行门控。
@@ -91,13 +146,13 @@ func EnforceStepUpAlways(
 	totpService *service.TotpService,
 	userService *service.UserService,
 ) bool {
-	return enforceStepUp(c, totpService, userService, nil)
+	return enforceStepUp(c, stepUpGrantCheckerOrNil(totpService), stepUpUserReaderOrNil(userService), nil)
 }
 
 func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader stepUpUserReader, settings stepUpSettingReader) bool {
 	// 功能开关关闭时直接放行（含 admin API key），恢复门控引入前的行为。
-	// settings 为 nil 时保持门控（fail-closed）：正常装配不会出现 nil。
-	if settings != nil && !settings.IsStepUpEnabled(c.Request.Context()) {
+	// 强制门控路由不读取功能开关；settings 为 nil 时也保持门控（fail-closed）。
+	if !IsStepUpRequired(c) && settings != nil && !settings.IsStepUpEnabled(c.Request.Context()) {
 		return true
 	}
 
@@ -106,10 +161,13 @@ func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader s
 			"Admin API key cannot access this endpoint; a two-factor verified admin session is required")
 		return false
 	}
-
 	subject, ok := GetAuthSubjectFromContext(c)
 	if !ok || subject.UserID <= 0 {
 		AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+		return false
+	}
+	if grantChecker == nil || userReader == nil {
+		AbortWithError(c, 503, "STEP_UP_UNAVAILABLE", "Step-up verification service unavailable")
 		return false
 	}
 

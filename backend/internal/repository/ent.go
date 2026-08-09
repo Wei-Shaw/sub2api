@@ -88,6 +88,15 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 		_ = client.Close()
 		return nil, nil, fmt.Errorf("validate config after secret bootstrap: %w", err)
 	}
+	credentialCipher, err := NewCredentialCipher(cfg)
+	if err != nil {
+		_ = client.Close()
+		return nil, nil, fmt.Errorf("initialize account credential encryption: %w", err)
+	}
+	if err := migrateLegacyAccountCredentials(migrationCtx, drv.DB(), credentialCipher); err != nil {
+		_ = client.Close()
+		return nil, nil, fmt.Errorf("migrate account credentials: %w", err)
+	}
 
 	// SIMPLE 模式：启动时补齐各平台默认分组。
 	// - anthropic/openai/gemini: 确保存在 <platform>-default

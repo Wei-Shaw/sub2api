@@ -53,15 +53,21 @@ var (
 // maxTokenLength 限制 token 大小，避免超长 header 触发解析时的异常内存分配。
 const maxTokenLength = 8192
 
+// currentTokenVersionEpoch distinguishes durable token_version claims from the
+// pre-migration fingerprint scheme. Legacy tokens omit the field (zero) and
+// are deterministically rejected after migration 221.
+const currentTokenVersionEpoch = 1
+
 // refreshTokenPrefix is the prefix for refresh tokens to distinguish them from access tokens.
 const refreshTokenPrefix = "rt_"
 
 // JWTClaims JWT载荷数据
 type JWTClaims struct {
-	UserID       int64  `json:"user_id"`
-	Email        string `json:"email"`
-	Role         string `json:"role"`
-	TokenVersion int64  `json:"token_version"` // Used to invalidate tokens on password change
+	UserID            int64  `json:"user_id"`
+	Email             string `json:"email"`
+	Role              string `json:"role"`
+	TokenVersion      int64  `json:"token_version"`
+	TokenVersionEpoch int    `json:"token_version_epoch"`
 	// SessionID 会话 ID（与 refresh token family 对应），用于单会话撤销与 step-up 授权绑定。
 	SessionID string `json:"sid,omitempty"`
 	// BindingHash 会话指纹哈希（IP+UA），会话绑定开启时校验；空值表示旧 token（平滑升级）。
@@ -1296,39 +1302,40 @@ func (s *AuthService) ValidateToken(tokenString string) (*JWTClaims, error) {
 		return nil, ErrTokenTooLarge
 	}
 
-	// 使用解析器并限制可接受的签名算法，防止算法混淆。
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{
-		jwt.SigningMethodHS256.Name,
-		jwt.SigningMethodHS384.Name,
-		jwt.SigningMethodHS512.Name,
-	}))
-
-	// 保留默认 claims 校验（exp/nbf），避免放行过期或未生效的 token。
+	// Verify structure, the one algorithm we mint, and the signature before
+	// considering expiration. Separating these stages prevents a combined
+	// "bad signature + expired" parser error from being treated as a refreshable
+	// expired token.
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Name}),
+		jwt.WithoutClaimsValidation(),
+	)
 	token, err := parser.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (any, error) {
-		// 验证签名方法
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(s.cfg.JWT.Secret), nil
 	})
-
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			// token 过期但仍返回 claims（用于 RefreshToken 等场景）
-			// jwt-go 在解析时即使遇到过期错误，token.Claims 仍会被填充
-			if claims, ok := token.Claims.(*JWTClaims); ok {
-				return claims, ErrTokenExpired
-			}
-			return nil, ErrTokenExpired
-		}
+	if err != nil || token == nil || !token.Valid {
 		return nil, ErrInvalidToken
 	}
 
-	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
-		return claims, nil
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok || claims.ExpiresAt == nil || claims.IssuedAt == nil || claims.NotBefore == nil {
+		return nil, ErrInvalidToken
+	}
+	if claims.TokenVersionEpoch != currentTokenVersionEpoch {
+		return claims, ErrTokenRevoked
 	}
 
-	return nil, ErrInvalidToken
+	now := time.Now()
+	if claims.IssuedAt.Time.After(now) || claims.NotBefore.Time.After(now) {
+		return nil, ErrInvalidToken
+	}
+	if !now.Before(claims.ExpiresAt.Time) {
+		return claims, ErrTokenExpired
+	}
+	return claims, nil
 }
 
 func randomHexString(byteLength int) (string, error) {
@@ -1358,11 +1365,13 @@ func (s *AuthService) GenerateToken(ctx context.Context, user *User) (string, er
 	if err != nil {
 		return "", fmt.Errorf("generate session id: %w", err)
 	}
-	return s.generateAccessToken(user, sessionID, sessionBindingHashFromContext(ctx))
+	return s.generateAccessToken(user, sessionID, sessionBindingHashFromContext(ctx), resolvedTokenVersion(user))
 }
 
 // generateAccessToken 生成带会话 ID 与绑定指纹的 access token。
-func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash string) (string, error) {
+// tokenVersion is explicit so a refresh already in flight cannot cross a
+// concurrent revoke-all boundary and mint a token at the newly advanced stamp.
+func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash string, tokenVersion int64) (string, error) {
 	now := time.Now()
 	var expiresAt time.Time
 	if s.cfg.JWT.AccessTokenExpireMinutes > 0 {
@@ -1373,12 +1382,13 @@ func (s *AuthService) generateAccessToken(user *User, sessionID, bindingHash str
 	}
 
 	claims := &JWTClaims{
-		UserID:       user.ID,
-		Email:        user.Email,
-		Role:         user.Role,
-		TokenVersion: resolvedTokenVersion(user),
-		SessionID:    sessionID,
-		BindingHash:  bindingHash,
+		UserID:            user.ID,
+		Email:             user.Email,
+		Role:              user.Role,
+		TokenVersion:      tokenVersion,
+		TokenVersionEpoch: currentTokenVersionEpoch,
+		SessionID:         sessionID,
+		BindingHash:       bindingHash,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -1456,8 +1466,13 @@ func (s *AuthService) RefreshToken(ctx context.Context, oldTokenString string) (
 		}
 	}
 
-	// 生成新token
-	return s.GenerateToken(ctx, user)
+	// Generate at the version authenticated above. If revoke-all advances the
+	// database stamp concurrently, this token remains stale and is rejected.
+	sessionID, err := randomHexString(8)
+	if err != nil {
+		return "", fmt.Errorf("generate session id: %w", err)
+	}
+	return s.generateAccessToken(user, sessionID, sessionBindingHashFromContext(ctx), claims.TokenVersion)
 }
 
 // IsPasswordResetEnabled 检查是否启用密码重置功能
@@ -1597,8 +1612,8 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, token, newPasswo
 	user.PasswordHash = hashedPassword
 	user.TokenVersion++ // Invalidate all existing tokens
 
-	// TokenVersion 无对应数据库列（见 resolvedTokenVersion：由 email+password_hash 指纹推导），
-	// 写回 password_hash 本身即可让旧 token 失效。
+	// Production repositories persist the password change and atomically advance
+	// token_version in the same transaction.
 	if err := s.userRepo.Update(ctx, user, UserUpdateFields{PasswordHash: true}); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error updating password for user %d: %v", user.ID, err)
 		return ErrServiceUnavailable
@@ -1632,6 +1647,13 @@ type TokenPairWithUser struct {
 // GenerateTokenPair 生成Access Token和Refresh Token对
 // familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
 func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
+	return s.generateTokenPairAtVersion(ctx, user, familyID, resolvedTokenVersion(user))
+}
+
+// generateTokenPairAtVersion mints both halves of a session at one already
+// authenticated security stamp. Keeping it explicit closes the race where a
+// stale refresh observes a post-revocation user row and resurrects a session.
+func (s *AuthService) generateTokenPairAtVersion(ctx context.Context, user *User, familyID string, tokenVersion int64) (*TokenPair, error) {
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, errors.New("refresh token cache not configured")
@@ -1648,13 +1670,13 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 	}
 
 	// 生成Access Token（携带会话ID与绑定指纹）
-	accessToken, err := s.generateAccessToken(user, familyID, sessionBindingHashFromContext(ctx))
+	accessToken, err := s.generateAccessToken(user, familyID, sessionBindingHashFromContext(ctx), tokenVersion)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
 
 	// 生成Refresh Token
-	refreshToken, err := s.generateRefreshToken(ctx, user, familyID)
+	refreshToken, err := s.generateRefreshToken(ctx, user, familyID, tokenVersion)
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
@@ -1667,7 +1689,7 @@ func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyI
 }
 
 // generateRefreshToken 生成并存储Refresh Token
-func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, familyID string) (string, error) {
+func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, familyID string, tokenVersion int64) (string, error) {
 	// 生成随机Token
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -1691,29 +1713,18 @@ func (s *AuthService) generateRefreshToken(ctx context.Context, user *User, fami
 	ttl := time.Duration(s.cfg.JWT.RefreshTokenExpireDays) * 24 * time.Hour
 
 	data := &RefreshTokenData{
-		UserID:       user.ID,
-		TokenVersion: resolvedTokenVersion(user),
-		FamilyID:     familyID,
-		BindingHash:  sessionBindingHashFromContext(ctx),
-		CreatedAt:    now,
-		ExpiresAt:    now.Add(ttl),
+		UserID:            user.ID,
+		TokenVersion:      tokenVersion,
+		TokenVersionEpoch: currentTokenVersionEpoch,
+		FamilyID:          familyID,
+		BindingHash:       sessionBindingHashFromContext(ctx),
+		CreatedAt:         now,
+		ExpiresAt:         now.Add(ttl),
 	}
 
 	// 存储Token数据
 	if err := s.refreshTokenCache.StoreRefreshToken(ctx, tokenHash, data, ttl); err != nil {
 		return "", fmt.Errorf("store refresh token: %w", err)
-	}
-
-	// 添加到用户Token集合
-	if err := s.refreshTokenCache.AddToUserTokenSet(ctx, user.ID, tokenHash, ttl); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to add token to user set: %v", err)
-		// 不影响主流程
-	}
-
-	// 添加到家族Token集合
-	if err := s.refreshTokenCache.AddToFamilyTokenSet(ctx, familyID, tokenHash, ttl); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to add token to family set: %v", err)
-		// 不影响主流程
 	}
 
 	return rawToken, nil
@@ -1734,22 +1745,44 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 
 	tokenHash := hashToken(refreshToken)
 
-	// 获取Token数据
-	data, err := s.refreshTokenCache.GetRefreshToken(ctx, tokenHash)
+	// Atomically consume the token. Exactly one concurrent request can proceed;
+	// a replay returns the consumed tombstone so its user can be invalidated.
+	data, err := s.refreshTokenCache.ConsumeRefreshToken(ctx, tokenHash)
 	if err != nil {
+		if errors.Is(err, ErrRefreshTokenReused) {
+			if data == nil || data.UserID <= 0 {
+				return nil, ErrRefreshTokenReused
+			}
+			// A family marker blocks the winner's child refresh state. Advancing the
+			// persistent user stamp also invalidates any stateless child access token
+			// that raced ahead of replay detection.
+			if revokeErr := s.RevokeAllUserTokens(ctx, data.UserID); revokeErr != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to invalidate user after refresh token replay: user=%d err=%v", data.UserID, revokeErr)
+				return nil, ErrServiceUnavailable
+			}
+			if acknowledger, ok := s.refreshTokenCache.(RefreshTokenReplayAcknowledger); ok {
+				if acknowledgeErr := acknowledger.AcknowledgeRefreshTokenReplay(ctx, tokenHash); acknowledgeErr != nil {
+					// The persistent stamp has already advanced, so the winner is
+					// invalid even if tombstone cleanup needs a later retry.
+					logger.LegacyPrintf("service.auth", "[Auth] Failed to acknowledge refresh token replay: user=%d err=%v", data.UserID, acknowledgeErr)
+				}
+			}
+			return nil, ErrRefreshTokenReused
+		}
 		if errors.Is(err, ErrRefreshTokenNotFound) {
-			// Token不存在，可能是已被使用（Token轮转）或已过期
-			logger.LegacyPrintf("service.auth", "[Auth] Refresh token not found, possible reuse attack")
+			logger.LegacyPrintf("service.auth", "[Auth] Refresh token not found")
 			return nil, ErrRefreshTokenInvalid
 		}
 		logger.LegacyPrintf("service.auth", "[Auth] Error getting refresh token: %v", err)
 		return nil, ErrServiceUnavailable
 	}
+	if data.TokenVersionEpoch != currentTokenVersionEpoch {
+		_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
+		return nil, ErrTokenRevoked
+	}
 
 	// 检查Token是否过期
 	if time.Now().After(data.ExpiresAt) {
-		// 删除过期Token
-		_ = s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash)
 		return nil, ErrRefreshTokenExpired
 	}
 
@@ -1789,15 +1822,12 @@ func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string)
 		}
 	}
 
-	// Token轮转：立即使旧Token失效
-	if err := s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to delete old refresh token: %v", err)
-		// 继续处理，不影响主流程
-	}
-
 	// 生成新的Token对，保持同一个家族ID
-	pair, err := s.GenerateTokenPair(ctx, user, data.FamilyID)
+	pair, err := s.generateTokenPairAtVersion(ctx, user, data.FamilyID, data.TokenVersion)
 	if err != nil {
+		if errors.Is(err, ErrRefreshTokenReused) {
+			return nil, ErrRefreshTokenReused
+		}
 		return nil, err
 	}
 	return &TokenPairWithUser{
@@ -1838,15 +1868,14 @@ func (s *AuthService) RevokeAllUserSessions(ctx context.Context, userID int64) e
 }
 
 // RevokeAllUserTokens invalidates both stateless access tokens and refresh sessions.
-//
-// 注意：users 表没有 token_version 列（resolvedTokenVersion 由 email+password_hash
-// 指纹推导），因此对 user.TokenVersion 自增只影响内存副本。之前紧跟其后的整行
-// Update 不写任何有效数据，却会用旧快照覆盖并发写入的列，故已移除。
-// 会话撤销由下面的 refresh session 清理承担；改密路径通过 password_hash 变化
-// 改变指纹，从而使旧 token 失效。
+// The database increment is authoritative; Redis cleanup is defense in depth.
 func (s *AuthService) RevokeAllUserTokens(ctx context.Context, userID int64) error {
-	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
-		return fmt.Errorf("get user: %w", err)
+	versionRepo, ok := s.userRepo.(UserTokenVersionRepository)
+	if !ok {
+		return fmt.Errorf("persistent token version repository unavailable: %w", ErrServiceUnavailable)
+	}
+	if _, err := versionRepo.IncrementTokenVersion(ctx, userID); err != nil {
+		return fmt.Errorf("increment token version: %w", err)
 	}
 
 	if err := s.RevokeAllUserSessions(ctx, userID); err != nil {
@@ -1869,6 +1898,9 @@ func resolvedTokenVersion(user *User) int64 {
 		return user.TokenVersion
 	}
 
+	// Compatibility fallback for in-memory repositories and older unit-test
+	// fixtures. Production userRepository instances always hydrate the durable
+	// token_version column and set TokenVersionResolved.
 	material := strings.ToLower(strings.TrimSpace(user.Email)) + "\n" + user.PasswordHash
 	sum := sha256.Sum256([]byte(material))
 	fingerprint := int64(binary.BigEndian.Uint64(sum[:8]) & 0x7fffffffffffffff)

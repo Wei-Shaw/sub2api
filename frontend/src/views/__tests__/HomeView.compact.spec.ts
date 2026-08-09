@@ -76,13 +76,25 @@ describe('HomeView compact mode', () => {
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
   })
 
+  it('sanitizes active content from custom HTML', () => {
+    const wrapper = mountHome({
+      home_content: '<img id="probe" src="x" onerror="window.pwned=true"><script>window.pwned=true</script>',
+    })
+
+    expect(wrapper.find('script').exists()).toBe(false)
+    expect(wrapper.get('#probe').attributes('onerror')).toBeUndefined()
+  })
+
   it('renders custom URL content ahead of compact mode', () => {
     const wrapper = mountHome({
       compact_home_enabled: true,
       home_content: ' https://example.com/home ',
     })
 
-    expect(wrapper.get('iframe').attributes('src')).toBe('https://example.com/home')
+    const frame = wrapper.get('iframe')
+    expect(frame.attributes('src')).toBe('https://example.com/home')
+    expect(frame.attributes('sandbox')).toBe('')
+    expect(frame.attributes('referrerpolicy')).toBe('no-referrer')
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
   })
 

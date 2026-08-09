@@ -131,6 +131,10 @@ func (s *refreshTokenCacheStub) GetRefreshToken(context.Context, string) (*Refre
 	return nil, ErrRefreshTokenNotFound
 }
 
+func (s *refreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*RefreshTokenData, error) {
+	return nil, ErrRefreshTokenNotFound
+}
+
 func (s *refreshTokenCacheStub) DeleteRefreshToken(context.Context, string) error {
 	return nil
 }

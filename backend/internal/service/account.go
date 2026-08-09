@@ -20,12 +20,16 @@ import (
 )
 
 type Account struct {
-	ID                      int64
-	Name                    string
-	Notes                   *string
-	Platform                string
-	Type                    string
-	Credentials             map[string]any
+	ID          int64
+	Name        string
+	Notes       *string
+	Platform    string
+	Type        string
+	Credentials map[string]any
+	// CredentialStorage is the authenticated database representation observed
+	// when this account was loaded. It is never serialized or exposed and is
+	// used only for storage-boundary CAS diagnostics/migrations.
+	CredentialStorage       map[string]any `json:"-"`
 	Extra                   map[string]any
 	ProxyID                 *int64
 	ProxyFallbackOriginID   *int64

@@ -28,9 +28,47 @@ func newSchedulerCacheUnitWithRedis(t *testing.T) (*schedulerCache, *miniredis.M
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	cache, ok := newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize).(*schedulerCache)
+	cache, ok := newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize, nil).(*schedulerCache)
 	require.True(t, ok)
 	return cache, mr
+}
+
+func TestPurgeLegacySchedulerAccountPayloadsPreservesPersistentFencingState(t *testing.T) {
+	ctx := context.Background()
+	cache, mr := newSchedulerCacheUnitWithRedis(t)
+	bucket := service.SchedulerBucket{GroupID: 91, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+
+	legacyAccountKey := schedulerAccountKey("42")
+	legacyMetaKey := schedulerAccountMetaKey("42")
+	mr.Set(legacyAccountKey, `{"Credentials":{"access_token":"legacy-secret"}}`)
+	mr.Set(legacyMetaKey, `{"Credentials":{"api_key":"legacy-secret"}}`)
+
+	preserved := map[string]string{
+		schedulerAccountLastUsedPrefix + "42":              "1700000000000",
+		schedulerBucketKey(schedulerEpochPrefix, bucket):   "7",
+		schedulerBucketKey(schedulerRetiredPrefix, bucket): "1",
+		schedulerBucketKey(schedulerLockPrefix, bucket):    "snapshot-owner",
+		schedulerGroupLifecycleLockKey(bucket.GroupID):     "lifecycle-owner",
+		schedulerOutboxWatermarkKey:                        "1234",
+		schedulerBucketSetKey:                              "persistent-bucket-set-sentinel",
+		schedulerBucketKey(schedulerActivePrefix, bucket):  "7",
+		schedulerBucketKey(schedulerReadyPrefix, bucket):   "1",
+		schedulerBucketKey(schedulerVersionPrefix, bucket): "7",
+		schedulerAccountPrefix + "not-an-account-id":       "unrelated",
+		schedulerAccountMetaPrefix + "not-an-account-id":   "unrelated-meta",
+	}
+	for key, value := range preserved {
+		mr.Set(key, value)
+	}
+
+	require.NoError(t, purgeLegacySchedulerAccountPayloads(ctx, cache.rdb))
+	require.False(t, mr.Exists(legacyAccountKey))
+	require.False(t, mr.Exists(legacyMetaKey))
+	for key, want := range preserved {
+		got, err := mr.Get(key)
+		require.NoError(t, err, key)
+		require.Equal(t, want, got, key)
+	}
 }
 
 func TestSchedulerCacheWriteAccountIDsSkipsUnencodableTimes(t *testing.T) {

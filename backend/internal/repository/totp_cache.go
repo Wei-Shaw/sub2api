@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -10,6 +11,14 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+var consumeTotpLoginSessionScript = redis.NewScript(`
+local value = redis.call("GET", KEYS[1])
+if value then
+  redis.call("DEL", KEYS[1])
+end
+return value
+`)
 
 const (
 	totpSetupKeyPrefix    = "totp:setup:"
@@ -103,6 +112,30 @@ func (c *TotpCache) SetLoginSession(ctx context.Context, tempToken string, sessi
 	return nil
 }
 
+// ConsumeLoginSession atomically returns and deletes a TOTP login session.
+// A Lua GET+DEL is used instead of separate commands so concurrent valid-code
+// requests cannot all proceed to token issuance.
+func (c *TotpCache) ConsumeLoginSession(ctx context.Context, tempToken string) (*service.TotpLoginSession, error) {
+	key := totpLoginKeyPrefix + tempToken
+	result, err := consumeTotpLoginSessionScript.Run(ctx, c.rdb, []string{key}).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("consume login session: %w", err)
+	}
+	data, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("consume login session: unexpected redis result type %T", result)
+	}
+
+	var session service.TotpLoginSession
+	if err := json.Unmarshal([]byte(data), &session); err != nil {
+		return nil, fmt.Errorf("unmarshal consumed login session: %w", err)
+	}
+	return &session, nil
+}
+
 // DeleteLoginSession deletes a TOTP login session
 func (c *TotpCache) DeleteLoginSession(ctx context.Context, tempToken string) error {
 	key := totpLoginKeyPrefix + tempToken
@@ -154,18 +187,21 @@ func totpStepUpKey(userID int64, sessionKey string) string {
 }
 
 // SetStepUpGrant 记录一次 step-up 验证通过（sudo 窗口），绑定用户+会话。
-func (c *TotpCache) SetStepUpGrant(ctx context.Context, userID int64, sessionKey string, ttl time.Duration) error {
-	return c.rdb.Set(ctx, totpStepUpKey(userID, sessionKey), "1", ttl).Err()
+func (c *TotpCache) SetStepUpGrant(ctx context.Context, userID int64, sessionKey, credentialGeneration string, ttl time.Duration) error {
+	if credentialGeneration == "" {
+		return fmt.Errorf("set step-up grant: empty credential generation")
+	}
+	return c.rdb.Set(ctx, totpStepUpKey(userID, sessionKey), credentialGeneration, ttl).Err()
 }
 
 // HasStepUpGrant 检查 step-up 授权是否仍在有效期内。
-func (c *TotpCache) HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error) {
-	_, err := c.rdb.Get(ctx, totpStepUpKey(userID, sessionKey)).Result()
+func (c *TotpCache) HasStepUpGrant(ctx context.Context, userID int64, sessionKey, credentialGeneration string) (bool, error) {
+	storedGeneration, err := c.rdb.Get(ctx, totpStepUpKey(userID, sessionKey)).Result()
 	if err != nil {
 		if err == redis.Nil {
 			return false, nil
 		}
 		return false, fmt.Errorf("get step-up grant: %w", err)
 	}
-	return true, nil
+	return subtle.ConstantTimeCompare([]byte(storedGeneration), []byte(credentialGeneration)) == 1, nil
 }

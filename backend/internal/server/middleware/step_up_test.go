@@ -164,3 +164,96 @@ func TestEnforceStepUpTypedNilSettingServiceFailsClosed(t *testing.T) {
 	require.False(t, ok)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
+
+func TestEnforceStepUpTypedNilDependenciesFailClosed(t *testing.T) {
+	require.Nil(t, stepUpGrantCheckerOrNil(nil))
+	require.Nil(t, stepUpUserReaderOrNil(nil))
+
+	c, rec := newStepUpTestContext(t)
+	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+
+	ok := EnforceStepUpAlways(c, nil, nil)
+
+	require.False(t, ok)
+	require.True(t, c.IsAborted())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_UNAVAILABLE")
+}
+
+func TestRequiredStepUpIgnoresDisabledSetting(t *testing.T) {
+	disabled := stubStepUpSettingReader{enabled: false}
+
+	t.Run("rejects admin api key", func(t *testing.T) {
+		c, rec := newStepUpTestContext(t)
+		c.Set("auth_method", service.AuditAuthMethodAdminAPIKey)
+		required := NewRequiredStepUpAuthMiddleware(StepUpAuthMiddleware(stepUpAuth(
+			stubStepUpGrantChecker{granted: true},
+			stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}},
+			disabled,
+		)))
+
+		gin.HandlerFunc(required)(c)
+
+		require.True(t, IsStepUpRequired(c))
+		require.True(t, c.IsAborted())
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Contains(t, rec.Body.String(), "STEP_UP_ADMIN_API_KEY_FORBIDDEN")
+	})
+
+	t.Run("requires recent grant", func(t *testing.T) {
+		c, rec := newStepUpTestContext(t)
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+		required := NewRequiredStepUpAuthMiddleware(StepUpAuthMiddleware(stepUpAuth(
+			stubStepUpGrantChecker{granted: false},
+			stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}},
+			disabled,
+		)))
+
+		gin.HandlerFunc(required)(c)
+
+		require.True(t, c.IsAborted())
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Contains(t, rec.Body.String(), "STEP_UP_REQUIRED")
+	})
+
+	t.Run("fails closed when grant store is unavailable", func(t *testing.T) {
+		c, rec := newStepUpTestContext(t)
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+		required := NewRequiredStepUpAuthMiddleware(StepUpAuthMiddleware(stepUpAuth(
+			stubStepUpGrantChecker{err: errors.New("redis down")},
+			stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}},
+			disabled,
+		)))
+
+		gin.HandlerFunc(required)(c)
+
+		require.True(t, c.IsAborted())
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Contains(t, rec.Body.String(), "STEP_UP_UNAVAILABLE")
+	})
+
+	t.Run("passes with recent grant", func(t *testing.T) {
+		c, _ := newStepUpTestContext(t)
+		c.Set(string(ContextKeyUser), AuthSubject{UserID: 1})
+		required := NewRequiredStepUpAuthMiddleware(StepUpAuthMiddleware(stepUpAuth(
+			stubStepUpGrantChecker{granted: true},
+			stubStepUpUserReader{user: &service.User{ID: 1, TotpEnabled: true}},
+			disabled,
+		)))
+
+		gin.HandlerFunc(required)(c)
+
+		require.False(t, c.IsAborted())
+	})
+}
+
+func TestRequiredStepUpNilDelegateFailsClosed(t *testing.T) {
+	c, rec := newStepUpTestContext(t)
+	required := NewRequiredStepUpAuthMiddleware(nil)
+
+	gin.HandlerFunc(required)(c)
+
+	require.True(t, c.IsAborted())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Contains(t, rec.Body.String(), "STEP_UP_UNAVAILABLE")
+}

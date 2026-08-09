@@ -2869,6 +2869,10 @@ func (s *oauthPendingFlowRefreshTokenCacheStub) GetRefreshToken(context.Context,
 	return nil, service.ErrRefreshTokenNotFound
 }
 
+func (s *oauthPendingFlowRefreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*service.RefreshTokenData, error) {
+	return nil, service.ErrRefreshTokenNotFound
+}
+
 func (s *oauthPendingFlowRefreshTokenCacheStub) DeleteRefreshToken(context.Context, string) error {
 	return nil
 }
@@ -3551,6 +3555,15 @@ func (s *oauthPendingFlowTotpCacheStub) SetLoginSession(_ context.Context, tempT
 	return nil
 }
 
+func (s *oauthPendingFlowTotpCacheStub) ConsumeLoginSession(_ context.Context, tempToken string) (*service.TotpLoginSession, error) {
+	if s == nil || s.loginSessions == nil {
+		return nil, nil
+	}
+	session := s.loginSessions[tempToken]
+	delete(s.loginSessions, tempToken)
+	return session, nil
+}
+
 func (s *oauthPendingFlowTotpCacheStub) DeleteLoginSession(_ context.Context, tempToken string) error {
 	delete(s.loginSessions, tempToken)
 	return nil
@@ -3576,11 +3589,11 @@ func (s *oauthPendingFlowTotpCacheStub) ClearVerifyAttempts(_ context.Context, u
 	return nil
 }
 
-func (s *oauthPendingFlowTotpCacheStub) SetStepUpGrant(_ context.Context, _ int64, _ string, _ time.Duration) error {
+func (s *oauthPendingFlowTotpCacheStub) SetStepUpGrant(_ context.Context, _ int64, _, _ string, _ time.Duration) error {
 	return nil
 }
 
-func (s *oauthPendingFlowTotpCacheStub) HasStepUpGrant(_ context.Context, _ int64, _ string) (bool, error) {
+func (s *oauthPendingFlowTotpCacheStub) HasStepUpGrant(_ context.Context, _ int64, _, _ string) (bool, error) {
 	return false, nil
 }
 
