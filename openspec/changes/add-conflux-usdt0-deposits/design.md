@@ -489,17 +489,17 @@ type BalanceCreditPostProcessor interface {
 
 ### 16. 管理 API 只允许安全处置
 
-建议挂载到 `/api/v1/admin/payment/web3`：
+挂载到 `/api/v1/admin/web3-deposits`，与当前管理路由保持一致：
 
 | Method | Path | 行为 |
 | --- | --- | --- |
-| GET | `/deposits` | 按状态、用户、地址、tx hash、时间筛选 |
-| GET | `/deposits/:id` | 查看链上事实、验证状态和 Web3 子账户入账结果 |
-| POST | `/deposits/:id/approve` | 对 `manual_review` 重新链上验证后批准入账 |
-| POST | `/deposits/:id/retry` | 重试 `failed` 入账或验证 |
-| POST | `/deposits/:id/ignore` | 明确不入账，必须提供原因和二次确认 |
+| GET | `/` | 按状态、用户、地址、tx hash、时间筛选 |
+| GET | `/:id` | 查看链上事实、验证状态和 Web3 子账户入账结果 |
+| POST | `/:id/approve` | 对 `manual_review` 重新链上验证后批准入账 |
+| POST | `/:id/retry` | 重试 `failed` 入账或验证 |
+| POST | `/:id/ignore` | 明确不入账，必须提供原因和二次确认 |
 | GET | `/runtime` | RPC、leader、游标、latest/finalized 高度和延迟 |
-| POST | `/runtime/rescan` | 创建受限区间补扫任务，不直接任意改游标 |
+| POST | `/rescan` | 创建受限区间补扫任务，不直接任意改游标 |
 
 所有管理写操作复用现有管理员鉴权、step-up 要求和管理操作审计。批准操作不能修改链上金额、用户、Token 或收款地址。
 

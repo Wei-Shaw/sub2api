@@ -2,11 +2,23 @@ package web3deposit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+var (
+	ErrRescanRangeInvalid         = errors.New("web3 deposit rescan range is invalid")
+	ErrRescanRangeTooLarge        = errors.New("web3 deposit rescan range is too large")
+	ErrRescanBeforeScanStartBlock = errors.New("web3 deposit rescan range is before scan start block")
+	ErrRescanBeyondFinalizedBlock = errors.New("web3 deposit rescan range is beyond finalized block")
+)
+
+type RescanFinalitySource interface {
+	FinalizedBlockNumber(ctx context.Context) (uint64, error)
+}
 
 type BoundedRescanResult struct {
 	FromBlock    uint64 `json:"from_block"`
@@ -17,11 +29,13 @@ type BoundedRescanResult struct {
 }
 
 type BoundedRescanner struct {
-	transfer  ScannerTransferSource
-	matcher   ScannerRecipientMatcher
-	persister *DepositEventPersister
-	maxRange  uint64
-	initErr   error
+	transfer       ScannerTransferSource
+	finality       RescanFinalitySource
+	matcher        ScannerRecipientMatcher
+	persister      *DepositEventPersister
+	maxRange       uint64
+	scanStartBlock uint64
+	initErr        error
 }
 
 type BoundedRescannerRegistry struct {
@@ -75,10 +89,17 @@ func newBoundedRescannerForAsset(network config.Web3DepositNetworkConfig, asset 
 		r.initErr = err
 		return r
 	}
+	finality, err := NewRPCCanonicalDepositSource(runtime.Pool())
+	if err != nil {
+		r.initErr = err
+		return r
+	}
 	r.transfer = NewTransferLogFetcher(runtime.Pool(), chain.ChainID, common.HexToAddress(asset.ContractAddress), TransferLogFetcherOptions{MaxBlockRange: network.BlockBatchSize})
+	r.finality = finality
 	r.matcher = NewRecipientMatcher(lookup, DefaultRecipientLookupChunkSize)
 	r.persister = NewDepositEventPersister(store, chain)
 	r.maxRange = network.BlockBatchSize
+	r.scanStartBlock = network.ScanStartBlock
 	return r
 }
 
@@ -97,8 +118,24 @@ func (r *BoundedRescanner) Rescan(ctx context.Context, fromBlock, toBlock uint64
 	if r == nil || r.initErr != nil {
 		return BoundedRescanResult{}, r.initErr
 	}
-	if toBlock < fromBlock || toBlock-fromBlock+1 > r.maxRange {
-		return BoundedRescanResult{}, fmt.Errorf("rescan range must be ordered and no larger than %d blocks", r.maxRange)
+	if toBlock < fromBlock {
+		return BoundedRescanResult{}, ErrRescanRangeInvalid
+	}
+	if r.maxRange == 0 || toBlock-fromBlock+1 > r.maxRange {
+		return BoundedRescanResult{}, fmt.Errorf("%w: no larger than %d blocks", ErrRescanRangeTooLarge, r.maxRange)
+	}
+	if fromBlock < r.scanStartBlock {
+		return BoundedRescanResult{}, fmt.Errorf("%w: scan_start_block=%d", ErrRescanBeforeScanStartBlock, r.scanStartBlock)
+	}
+	if r.finality == nil {
+		return BoundedRescanResult{}, fmt.Errorf("web3 deposit rescan finality source is unavailable")
+	}
+	finalizedBlock, err := r.finality.FinalizedBlockNumber(ctx)
+	if err != nil {
+		return BoundedRescanResult{}, fmt.Errorf("read web3 deposit rescan finalized block: %w", err)
+	}
+	if toBlock > finalizedBlock {
+		return BoundedRescanResult{}, fmt.Errorf("%w: finalized_block=%d", ErrRescanBeyondFinalizedBlock, finalizedBlock)
 	}
 	events, err := r.transfer.Fetch(ctx, fromBlock, toBlock)
 	if err != nil {
