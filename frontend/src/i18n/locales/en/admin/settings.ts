@@ -128,9 +128,9 @@ export default {
         emailVerificationHint: 'Require email verification for new registrations',
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
-          "Only email addresses from the specified domains can register (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn)",
+          "Emails from allowlist domains can register without a quota. When the allowlist is not empty, every other registrable domain can register one account. Empty the allowlist to remove the quota for all domains (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn).",
         emailSuffixWhitelistPlaceholder: "{'@'REDACTEDexample.com, *.edu.cn",
-        emailSuffixWhitelistInputHint: 'Leave empty for no restriction. Use *.edu.cn to match edu.cn and its subdomains.',
+        emailSuffixWhitelistInputHint: 'Empty the allowlist to remove the registration quota. Use *.edu.cn to match edu.cn and its subdomains.',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',

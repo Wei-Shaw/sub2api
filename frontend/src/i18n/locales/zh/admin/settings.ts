@@ -128,9 +128,9 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn）",
+          "白名单域名的邮箱可无限注册；白名单非空时，其他可注册主域名各限注册一个账户。清空白名单后，所有域名均不限制注册数量（例如 {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com, *.edu.cn）",
         emailSuffixWhitelistPlaceholder: "{'@'REDACTEDexample.com, *.edu.cn",
-        emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
+        emailSuffixWhitelistInputHint: '清空白名单后不限制注册数量。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',

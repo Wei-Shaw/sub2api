@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi REDACTED from "vitest";
 import { defineComponent, h REDACTED from "vue";
 import { flushPromises, mount REDACTED from "@vue/test-utils";
 
+import enCommon from "@/i18n/locales/en/common";
+import enSettings from "@/i18n/locales/en/admin/settings";
+import zhCommon from "@/i18n/locales/zh/common";
+import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
 
 const {
@@ -593,6 +597,22 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await usersTabButton?.trigger("click");
   await flushPromises();
 REDACTED
+
+describe("admin SettingsView email domain quota copy", () => {
+  it("documents the email domain quota and empty-whitelist behavior in both locales", () => {
+    expect(zhCommon.auth.emailDomainRegistrationLimit).toContain("主流邮箱");
+    expect(zhCommon.auth.emailDomainRegistrationLimit).toContain("联系客服");
+    expect(enCommon.auth.emailDomainRegistrationLimit).toContain("mainstream email");
+    expect(enCommon.auth.emailDomainRegistrationLimit).toContain("contact support");
+
+    const zhHint = zhSettings.settings.registration.emailSuffixWhitelistHint;
+    const enHint = enSettings.settings.registration.emailSuffixWhitelistHint;
+    expect(zhHint).toContain("其他可注册主域名各限注册一个账户");
+    expect(zhHint).toContain("清空白名单");
+    expect(enHint).toContain("one account");
+    expect(enHint).toContain("empty");
+  REDACTED);
+REDACTED);
 
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
