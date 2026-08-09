@@ -23,22 +23,23 @@ import (
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled              bool                         `json:"registration_enabled"`
-	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
-	FrontendURL                      string                       `json:"frontend_url"`
-	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
-	TotpEnabled                      bool                         `json:"totp_enabled"`             // TOTP 双因素认证
-	PasskeyEnabled                   *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
-	SessionBindingEnabled            *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
-	StepUpEnabled                    *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
-	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
-	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
-	LoginAgreementMode               string                       `json:"login_agreement_mode"`
-	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
-	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
+	RegistrationEnabled                 bool                         `json:"registration_enabled"`
+	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist    []string                     `json:"registration_email_suffix_whitelist"`
+	RegistrationEmailDomainQuotaEnabled *bool                        `json:"registration_email_domain_quota_enabled"` // 非白名单域名限量注册开关（省略=保持现值）
+	PromoCodeEnabled                    bool                         `json:"promo_code_enabled"`
+	PasswordResetEnabled                bool                         `json:"password_reset_enabled"`
+	FrontendURL                         string                       `json:"frontend_url"`
+	InvitationCodeEnabled               bool                         `json:"invitation_code_enabled"`
+	TotpEnabled                         bool                         `json:"totp_enabled"`             // TOTP 双因素认证
+	PasskeyEnabled                      *bool                        `json:"passkey_enabled"`          // Passkey 登录（省略=保持现值）
+	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
+	StepUpEnabled                       *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
+	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"` // 审计日志保留天数
+	LoginAgreementEnabled               bool                         `json:"login_agreement_enabled"`
+	LoginAgreementMode                  string                       `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt             string                       `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments             []dto.LoginAgreementDocument `json:"login_agreement_documents"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -511,6 +512,10 @@ REDACTED
 	passkeyEnabled := previousSettings.PasskeyEnabled
 	if req.PasskeyEnabled != nil {
 		passkeyEnabled = *req.PasskeyEnabled
+REDACTED
+	registrationEmailDomainQuotaEnabled := previousSettings.RegistrationEmailDomainQuotaEnabled
+	if req.RegistrationEmailDomainQuotaEnabled != nil {
+		registrationEmailDomainQuotaEnabled = *req.RegistrationEmailDomainQuotaEnabled
 REDACTED
 	if passkeyEnabled {
 		configured, _, _ := h.settingService.PasskeyConfiguration()
@@ -1489,44 +1494,45 @@ REDACTED
 		DefaultPlatformQuotas:       req.DefaultPlatformQuotas,
 		AccountSchedulingThresholds: req.AccountSchedulingThresholds,
 
-		RegistrationEnabled:              req.RegistrationEnabled,
-		EmailVerifyEnabled:               req.EmailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                 req.PromoCodeEnabled,
-		PasswordResetEnabled:             req.PasswordResetEnabled,
-		FrontendURL:                      req.FrontendURL,
-		InvitationCodeEnabled:            req.InvitationCodeEnabled,
-		TotpEnabled:                      req.TotpEnabled,
-		PasskeyEnabled:                   passkeyEnabled,
-		SessionBindingEnabled:            sessionBindingEnabled,
-		StepUpEnabled:                    stepUpEnabled,
-		AuditLogRetentionDays:            req.AuditLogRetentionDays,
-		LoginAgreementEnabled:            req.LoginAgreementEnabled,
-		LoginAgreementMode:               loginAgreementMode,
-		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
-		LoginAgreementDocuments:          loginAgreementDocuments,
-		SMTPHost:                         req.SMTPHost,
-		SMTPPort:                         req.SMTPPort,
-		SMTPUsername:                     req.SMTPUsername,
-		SMTPPassword:                     req.SMTPPassword,
-		SMTPFrom:                         req.SMTPFrom,
-		SMTPFromName:                     req.SMTPFromName,
-		SMTPUseTLS:                       req.SMTPUseTLS,
-		TurnstileEnabled:                 req.TurnstileEnabled,
-		TurnstileSiteKey:                 req.TurnstileSiteKey,
-		TurnstileSecretKey:               req.TurnstileSecretKey,
-		TencentCaptchaEnabled:            req.TencentCaptchaEnabled,
-		TencentCaptchaAppID:              req.TencentCaptchaAppID,
-		TencentCaptchaAppSecretKey:       req.TencentCaptchaAppSecretKey,
-		TencentCaptchaCloudSecretID:      req.TencentCaptchaCloudSecretID,
-		TencentCaptchaCloudSecretKey:     req.TencentCaptchaCloudSecretKey,
-		TencentCaptchaRegion:             req.TencentCaptchaRegion,
-		AliyunCaptchaEnabled:             req.AliyunCaptchaEnabled,
-		AliyunCaptchaAccessKeyID:         req.AliyunCaptchaAccessKeyID,
-		AliyunCaptchaAccessKeySecret:     req.AliyunCaptchaAccessKeySecret,
-		AliyunCaptchaSceneID:             req.AliyunCaptchaSceneID,
-		AliyunCaptchaPrefix:              req.AliyunCaptchaPrefix,
-		AliyunCaptchaRegion:              req.AliyunCaptchaRegion,
+		RegistrationEnabled:                 req.RegistrationEnabled,
+		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:    req.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled: registrationEmailDomainQuotaEnabled,
+		PromoCodeEnabled:                    req.PromoCodeEnabled,
+		PasswordResetEnabled:                req.PasswordResetEnabled,
+		FrontendURL:                         req.FrontendURL,
+		InvitationCodeEnabled:               req.InvitationCodeEnabled,
+		TotpEnabled:                         req.TotpEnabled,
+		PasskeyEnabled:                      passkeyEnabled,
+		SessionBindingEnabled:               sessionBindingEnabled,
+		StepUpEnabled:                       stepUpEnabled,
+		AuditLogRetentionDays:               req.AuditLogRetentionDays,
+		LoginAgreementEnabled:               req.LoginAgreementEnabled,
+		LoginAgreementMode:                  loginAgreementMode,
+		LoginAgreementUpdatedAt:             loginAgreementUpdatedAt,
+		LoginAgreementDocuments:             loginAgreementDocuments,
+		SMTPHost:                            req.SMTPHost,
+		SMTPPort:                            req.SMTPPort,
+		SMTPUsername:                        req.SMTPUsername,
+		SMTPPassword:                        req.SMTPPassword,
+		SMTPFrom:                            req.SMTPFrom,
+		SMTPFromName:                        req.SMTPFromName,
+		SMTPUseTLS:                          req.SMTPUseTLS,
+		TurnstileEnabled:                    req.TurnstileEnabled,
+		TurnstileSiteKey:                    req.TurnstileSiteKey,
+		TurnstileSecretKey:                  req.TurnstileSecretKey,
+		TencentCaptchaEnabled:               req.TencentCaptchaEnabled,
+		TencentCaptchaAppID:                 req.TencentCaptchaAppID,
+		TencentCaptchaAppSecretKey:          req.TencentCaptchaAppSecretKey,
+		TencentCaptchaCloudSecretID:         req.TencentCaptchaCloudSecretID,
+		TencentCaptchaCloudSecretKey:        req.TencentCaptchaCloudSecretKey,
+		TencentCaptchaRegion:                req.TencentCaptchaRegion,
+		AliyunCaptchaEnabled:                req.AliyunCaptchaEnabled,
+		AliyunCaptchaAccessKeyID:            req.AliyunCaptchaAccessKeyID,
+		AliyunCaptchaAccessKeySecret:        req.AliyunCaptchaAccessKeySecret,
+		AliyunCaptchaSceneID:                req.AliyunCaptchaSceneID,
+		AliyunCaptchaPrefix:                 req.AliyunCaptchaPrefix,
+		AliyunCaptchaRegion:                 req.AliyunCaptchaRegion,
 		APIKeyACLTrustForwardedIP: func() bool {
 			if req.APIKeyACLTrustForwardedIP != nil {
 				return *req.APIKeyACLTrustForwardedIP
@@ -2102,6 +2108,7 @@ REDACTED
 		RegistrationEnabled:                                    updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                                     updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       updatedSettings.RegistrationEmailSuffixWhitelist,
+		RegistrationEmailDomainQuotaEnabled:                    updatedSettings.RegistrationEmailDomainQuotaEnabled,
 		PromoCodeEnabled:                                       updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                                   updatedSettings.PasswordResetEnabled,
 		FrontendURL:                                            updatedSettings.FrontendURL,
