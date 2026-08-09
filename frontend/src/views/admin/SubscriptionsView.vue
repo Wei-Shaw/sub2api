@@ -331,7 +331,7 @@
                   !row.group?.weekly_limit_usd &&
                   !row.group?.monthly_limit_usd
                 "
-                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
+                class="flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50/70 px-3 py-2 dark:border-emerald-800/60 dark:bg-emerald-950/25"
               >
                 <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
                 <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
@@ -684,7 +684,7 @@
       <transition name="modal">
         <div v-if="showGuideModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @mousedown.self="showGuideModal = false">
           <div class="fixed inset-0 bg-black/50" @click="showGuideModal = false"></div>
-          <div class="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-dark-800">
+          <div class="relative max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-sm border border-gray-200 bg-white p-6 shadow-lg dark:border-dark-700 dark:bg-dark-800">
             <button type="button" class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200" @click="showGuideModal = false">
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
@@ -734,7 +734,7 @@
                 <span class="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">3</span>
                 {{ t('admin.subscriptions.guide.step3.title') }}
               </h3>
-              <div class="ml-8 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600">
+              <div class="ml-8 overflow-hidden rounded-sm border border-gray-200 dark:border-dark-600">
                 <table class="w-full text-sm">
                   <tbody>
                     <tr v-for="(row, i) in guideActionRows" :key="i" class="border-b border-gray-100 dark:border-dark-700 last:border-0">
@@ -747,7 +747,7 @@
             </div>
 
             <!-- Tip -->
-            <div class="rounded-lg bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            <div class="rounded-sm border border-[#d8c397] bg-[#f3ead6] p-3 text-xs text-[#705729] dark:border-[#6f5a31] dark:bg-[#241f17] dark:text-[#d7bc7e]">
               {{ t('admin.subscriptions.guide.tip') }}
             </div>
 

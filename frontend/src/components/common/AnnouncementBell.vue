@@ -183,40 +183,32 @@
       <Transition name="modal-fade">
         <div
           v-if="detailModalOpen && selectedAnnouncement"
-          class="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-gradient-to-br from-black/70 via-black/60 to-black/70 p-4 pt-[6vh] backdrop-blur-md"
+          class="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-black/75 p-3 backdrop-blur-sm sm:p-6"
           @click="closeDetail"
         >
           <div
-            class="w-full max-w-[780px] overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+            class="max-h-[calc(100vh-1.5rem)] w-full max-w-[760px] overflow-hidden rounded-sm border border-gray-200 bg-[#f8f6f1] shadow-lg dark:border-white/10 dark:bg-[#121214]"
             @click.stop
           >
-            <!-- Header with Decorative Elements -->
-            <div class="relative overflow-hidden border-b border-gray-100 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-purple-50/30 px-8 py-6 dark:border-dark-700 dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-purple-900/5">
-              <!-- Decorative background elements -->
-              <div class="absolute right-0 top-0 h-full w-64 bg-gradient-to-l from-indigo-100/30 to-transparent dark:from-indigo-900/20"></div>
-              <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-gradient-to-br from-blue-400/20 to-indigo-500/20 blur-3xl"></div>
-              <div class="absolute -left-4 -bottom-4 h-24 w-24 rounded-full bg-gradient-to-tr from-purple-400/20 to-pink-500/20 blur-2xl"></div>
-
-              <div class="relative z-10 flex items-start justify-between gap-4">
+            <div class="border-b border-gray-200 bg-[#f1ece1] px-5 py-5 dark:border-white/10 dark:bg-[#181715] sm:px-7 sm:py-6">
+              <div class="flex items-start justify-between gap-4">
                 <div class="flex-1 min-w-0">
                   <!-- Icon and Category -->
                   <div class="mb-3 flex items-center gap-2">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30">
-                      <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                    <div class="flex h-9 w-9 items-center justify-center rounded-sm border border-[#b99a5d] bg-[#e6d7b8] text-[#705729] dark:border-[#6f5a31] dark:bg-[#2a2419] dark:text-[#d7bc7e]">
+                      <Icon name="bell" size="sm" :stroke-width="1.8" />
                     </div>
                     <div class="flex items-center gap-2">
-                      <span class="rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                      <span class="rounded-sm border border-gray-300 bg-white/60 px-2.5 py-1 text-xs font-medium text-gray-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-[#b3afa7]">
                         {{ t('announcements.title') }}
                       </span>
                       <span
                         v-if="!selectedAnnouncement.read_at"
-                        class="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-600 px-2.5 py-1 text-xs font-medium text-white shadow-lg shadow-blue-500/30"
+                        class="inline-flex items-center gap-1.5 rounded-sm border border-[#b99a5d] bg-[#eee5d2] px-2.5 py-1 text-xs font-medium text-[#705729] dark:border-[#6f5a31] dark:bg-[#2a2419] dark:text-[#d7bc7e]"
                       >
                         <span class="relative flex h-2 w-2">
-                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-                          <span class="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
+                          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#c8a96a] opacity-45"></span>
+                          <span class="relative inline-flex h-2 w-2 rounded-full bg-[#c8a96a]"></span>
                         </span>
                         {{ t('announcements.unread') }}
                       </span>
@@ -224,23 +216,18 @@
                   </div>
 
                   <!-- Title -->
-                  <h2 class="mb-3 text-2xl font-bold leading-tight text-gray-900 dark:text-white">
+                  <h2 class="mb-3 break-words text-xl font-semibold leading-snug tracking-[-0.02em] text-gray-900 dark:text-[#f4f1ea] sm:text-2xl">
                     {{ selectedAnnouncement.title }}
                   </h2>
 
                   <!-- Meta Info -->
-                  <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                  <div class="flex flex-wrap items-center gap-x-4 gap-y-2 font-mono text-xs tracking-wide text-gray-500 dark:text-[#9f9b94] sm:text-sm">
                     <div class="flex items-center gap-1.5">
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                      <Icon name="clock" size="sm" />
                       <time>{{ formatRelativeWithDateTime(selectedAnnouncement.created_at) }}</time>
                     </div>
                     <div class="flex items-center gap-1.5">
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
+                      <Icon name="eye" size="sm" />
                       <span>{{ selectedAnnouncement.read_at ? t('announcements.read') : t('announcements.unread') }}</span>
                     </div>
                   </div>
@@ -249,7 +236,7 @@
                 <!-- Close button -->
                 <button
                   @click="closeDetail"
-                  class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/50 text-gray-500 backdrop-blur-sm transition-all hover:bg-white hover:text-gray-700 hover:shadow-lg dark:bg-dark-700/50 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-sm border border-gray-300 bg-white/50 text-gray-500 transition-colors hover:border-[#b99a5d] hover:text-[#705729] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c8a96a] dark:border-white/10 dark:bg-white/[0.04] dark:text-[#9f9b94] dark:hover:border-[#6f5a31] dark:hover:text-[#d7bc7e]"
                   :aria-label="t('common.close')"
                 >
                   <Icon name="x" size="md" />
@@ -258,13 +245,13 @@
             </div>
 
             <!-- Body with Enhanced Markdown -->
-            <div class="max-h-[60vh] overflow-y-auto bg-white px-8 py-8 dark:bg-dark-800">
+            <div class="max-h-[55vh] overflow-y-auto bg-[#f8f6f1] px-5 py-6 dark:bg-[#121214] sm:px-7 sm:py-7">
               <!-- Content with decorative border -->
               <div class="relative">
                 <!-- Decorative left border -->
-                <div class="absolute left-0 top-0 bottom-0 w-1 rounded-full bg-gradient-to-b from-blue-500 via-indigo-500 to-purple-500"></div>
+                <div class="absolute bottom-0 left-0 top-0 w-0.5 bg-[#c8a96a]"></div>
 
-                <div class="pl-6">
+                <div class="pl-4 sm:pl-5">
                   <div
                     class="markdown-body prose prose-sm max-w-none dark:prose-invert"
                     v-html="renderMarkdown(selectedAnnouncement.content)"
@@ -274,30 +261,26 @@
             </div>
 
             <!-- Footer with Actions -->
-            <div class="border-t border-gray-100 bg-gray-50/50 px-8 py-5 dark:border-dark-700 dark:bg-dark-900/30">
-              <div class="flex items-center justify-between">
+            <div class="border-t border-gray-200 bg-[#f1ece1] px-5 py-4 dark:border-white/10 dark:bg-[#181715] sm:px-7">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                  <Icon name="infoCircle" size="sm" />
                   <span>{{ selectedAnnouncement.read_at ? t('announcements.readStatus') : t('announcements.markReadHint') }}</span>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center justify-end gap-3">
                   <button
                     @click="closeDetail"
-                    class="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:shadow dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600"
+                    class="rounded-sm border border-gray-300 bg-transparent px-5 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:border-[#b99a5d] hover:text-[#705729] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c8a96a] dark:border-white/15 dark:text-[#d0ccc4] dark:hover:border-[#6f5a31] dark:hover:text-[#d7bc7e]"
                   >
                     {{ t('common.close') }}
                   </button>
                   <button
                     v-if="!selectedAnnouncement.read_at"
                     @click="markAsReadAndClose(selectedAnnouncement.id)"
-                    class="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-500/30 transition-all hover:shadow-xl hover:scale-105"
+                    class="rounded-sm border border-[#c8a96a] bg-[#c8a96a] px-5 py-2.5 text-sm font-semibold text-[#111112] transition-colors hover:border-[#d7bc7e] hover:bg-[#d7bc7e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c8a96a]"
                   >
                     <span class="flex items-center gap-2">
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
+                      <Icon name="check" size="sm" :stroke-width="2" />
                       {{ t('announcements.markRead') }}
                     </span>
                   </button>

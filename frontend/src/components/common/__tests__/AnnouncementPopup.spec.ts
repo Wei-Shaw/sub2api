@@ -95,6 +95,7 @@ describe('AnnouncementPopup', () => {
     expect(document.body.querySelector('.markdown-body h2')?.textContent).toBe('Preview heading')
     expect(document.body.querySelector('.markdown-body script')).toBeNull()
     expect(document.body.textContent).toContain('common.close')
+    expect(document.body.textContent).not.toContain('common.time.')
 
     const dismissButton = document.body.querySelector<HTMLButtonElement>(
       '[data-testid="announcement-popup-dismiss"]',

@@ -5,30 +5,64 @@
 
 import { i18n, getLocale } from '@/i18n'
 
+type RelativeTimeMessage = 'never' | 'justNow' | 'minutesAgo' | 'hoursAgo' | 'daysAgo'
+
+function translateRelativeTime(message: RelativeTimeMessage, value?: number): string {
+  const locale = getLocale()
+  const key = `common.time.${message}`
+  const fallback = {
+    en: {
+      never: 'Never',
+      justNow: 'Just now',
+      minutesAgo: `${value ?? 0}m ago`,
+      hoursAgo: `${value ?? 0}h ago`,
+      daysAgo: `${value ?? 0}d ago`
+    },
+    zh: {
+      never: '从未',
+      justNow: '刚刚',
+      minutesAgo: `${value ?? 0}分钟前`,
+      hoursAgo: `${value ?? 0}小时前`,
+      daysAgo: `${value ?? 0}天前`
+    }
+  }[locale][message]
+
+  // 语言包异步加载或 HMR 重建期间可能暂时无消息，避免将 i18n key 直接显示给用户。
+  if (!i18n.global.te(key, locale)) {
+    return fallback
+  }
+
+  const translated = value === undefined
+    ? i18n.global.t(key)
+    : i18n.global.t(key, { n: value })
+
+  return translated === key ? fallback : translated
+}
+
 /**
  * 格式化相对时间
  * @param date 日期字符串或 Date 对象
  * @returns 相对时间字符串，如 "5m ago", "2h ago", "3d ago"
  */
 export function formatRelativeTime(date: string | Date | null | undefined): string {
-  if (!date) return i18n.global.t('common.time.never')
+  if (!date) return translateRelativeTime('never')
 
   const now = new Date()
   const past = new Date(date)
   const diffMs = now.getTime() - past.getTime()
 
   // 处理未来时间或无效日期
-  if (diffMs < 0 || isNaN(diffMs)) return i18n.global.t('common.time.never')
+  if (diffMs < 0 || isNaN(diffMs)) return translateRelativeTime('never')
 
   const diffSecs = Math.floor(diffMs / 1000)
   const diffMins = Math.floor(diffSecs / 60)
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)
 
-  if (diffDays > 0) return i18n.global.t('common.time.daysAgo', { n: diffDays })
-  if (diffHours > 0) return i18n.global.t('common.time.hoursAgo', { n: diffHours })
-  if (diffMins > 0) return i18n.global.t('common.time.minutesAgo', { n: diffMins })
-  return i18n.global.t('common.time.justNow')
+  if (diffDays > 0) return translateRelativeTime('daysAgo', diffDays)
+  if (diffHours > 0) return translateRelativeTime('hoursAgo', diffHours)
+  if (diffMins > 0) return translateRelativeTime('minutesAgo', diffMins)
+  return translateRelativeTime('justNow')
 }
 
 /**
@@ -358,7 +392,7 @@ export function formatRelativeWithDateTime(date: string | Date | null | undefine
   const dateTime = formatDateTime(date)
 
   // 如果是 "从未" 或空字符串，只返回相对时间
-  if (!dateTime || relativeTime === i18n.global.t('common.time.never')) {
+  if (!dateTime || relativeTime === translateRelativeTime('never')) {
     return relativeTime
   }
 
