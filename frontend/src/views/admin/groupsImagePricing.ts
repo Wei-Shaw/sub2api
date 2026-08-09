@@ -1,5 +1,10 @@
+// Composite groups dispatch to the concrete platforms below, and the backend gate
+// (GroupAllowsImageGeneration) is platform-agnostic, so they can serve image
+// generation too. Without this entry the whole image pricing block is hidden and
+// allow_image_generation can only be toggled through the admin API.
 export const imagePricingPlatforms = new Set([
   "antigravity",
+  "composite",
   "gemini",
   "grok",
   "openai",
