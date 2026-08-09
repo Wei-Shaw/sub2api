@@ -50,11 +50,12 @@ func (p *ProxyPool) FailureThresholdValue() int {
 // ProxyPoolWithStats 池列表视图：附带池内代理统计。
 type ProxyPoolWithStats struct {
 	ProxyPool
-	ProxyCount      int64 `json:"proxy_count"`
-	HealthyCount    int64 `json:"healthy_count"`
-	UnhealthyCount  int64 `json:"unhealthy_count"`
-	UnknownCount    int64 `json:"unknown_count"`
-	BoundAccountSum int64 `json:"bound_account_sum"`
+	ProxyCount             int64 `json:"proxy_count"`
+	HealthyCount           int64 `json:"healthy_count"`
+	UnhealthyCount         int64 `json:"unhealthy_count"`
+	UnknownCount           int64 `json:"unknown_count"`
+	BoundAccountSum        int64 `json:"bound_account_sum"`
+	UnassignedAccountCount int64 `json:"unassigned_account_count"`
 }
 
 // ProxyPoolRebindLog 池重绑操作日志。
@@ -70,6 +71,17 @@ type ProxyPoolRebindLog struct {
 	ToProxy      *Proxy    `json:"to_proxy,omitempty"`
 }
 
+// ProxyPoolAccountSummary 管理端池详情中的账号分配摘要。
+type ProxyPoolAccountSummary struct {
+	ID        int64
+	Name      string
+	Platform  string
+	Type      string
+	Status    string
+	ProxyID   *int64
+	ProxyName string
+}
+
 // ProxyPoolRepository 代理池数据访问接口。
 type ProxyPoolRepository interface {
 	CreatePool(ctx context.Context, pool *ProxyPool) (*ProxyPool, error)
@@ -81,6 +93,8 @@ type ProxyPoolRepository interface {
 
 	// ListPoolProxies 返回池内未删除代理（含健康字段）。
 	ListPoolProxies(ctx context.Context, poolID int64) ([]Proxy, error)
+	// ListPoolAccounts 分页返回归属该池的账号及其当前实际代理。
+	ListPoolAccounts(ctx context.Context, poolID int64, offset, limit int) ([]ProxyPoolAccountSummary, int64, error)
 	// AssignProxiesToPool 将 proxies 加入池；已属于其它池的会被改派。
 	AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error)
 	// RemoveProxiesFromPool 将 proxies 从池中移出（pool_id 置 NULL）。

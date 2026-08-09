@@ -210,6 +210,9 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 	if a.ProxyID != nil {
 		create.SetProxyID(*a.ProxyID)
 	}
+	if a.PoolID != nil {
+		create.SetPoolID(*a.PoolID)
+	}
 	if a.LastUsedAt != nil {
 		create.SetLastUsedAt(*a.LastUsedAt)
 	}

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseCodexSessionImportEntriesSupportsRawTokenJSONAndArray(t *testing.T) {
@@ -627,7 +629,8 @@ func TestNormalizeCodexImportUsesJWTSubForAccessTokenOnlyIdentity(t *testing.T) 
 func TestImportCodexSessionsAccessTokenOnlySameWorkspaceDifferentUsersCreatesTwoAccounts(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
 	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}
+	poolID := int64(7)
+	req := CodexSessionImportRequest{PoolID: &poolID, SkipDefaultGroupBind: boolPtr(true)}
 	entries := []codexImportEntry{
 		{Index: 1, Value: buildCodexAccessOnlyImportValue(t, "workspace-1", "user-1")},
 		{Index: 2, Value: buildCodexAccessOnlyImportValue(t, "workspace-1", "user-2")},
@@ -645,6 +648,9 @@ func TestImportCodexSessionsAccessTokenOnlySameWorkspaceDifferentUsersCreatesTwo
 	}
 	if svc.createdAccounts[0].Credentials["chatgpt_user_id"] == svc.createdAccounts[1].Credentials["chatgpt_user_id"] {
 		t.Fatalf("created accounts share user id: %v", svc.createdAccounts)
+	}
+	for _, input := range svc.createdAccounts {
+		require.Equal(t, &poolID, input.PoolID)
 	}
 }
 
@@ -700,7 +706,8 @@ func TestImportCodexSessionsAccessTokenOnlySameUserUpdatesExisting(t *testing.T)
 		Extra: map[string]any{"openai_long_context_billing_enabled": false},
 	}})
 	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	req := CodexSessionImportRequest{SkipDefaultGroupBind: boolPtr(true)}
+	poolID := int64(9)
+	req := CodexSessionImportRequest{PoolID: &poolID, SkipDefaultGroupBind: boolPtr(true)}
 	entries := []codexImportEntry{
 		{Index: 1, Value: map[string]any{"access_token": existingToken}},
 	}
@@ -721,6 +728,7 @@ func TestImportCodexSessionsAccessTokenOnlySameUserUpdatesExisting(t *testing.T)
 	if got := svc.updatedAccounts[0].input.Extra["openai_long_context_billing_enabled"]; got != false {
 		t.Fatalf("openai_long_context_billing_enabled = %v, want false", got)
 	}
+	require.Equal(t, &poolID, svc.updatedAccounts[0].input.PoolID)
 }
 
 func TestImportCodexSessionsUpgradesAccessTokenOnlyAccountWithRefreshToken(t *testing.T) {

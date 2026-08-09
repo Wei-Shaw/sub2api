@@ -822,6 +822,10 @@ func (s *stubAdminService) GetProxyPoolProxies(ctx context.Context, poolID int64
 	return nil, nil
 }
 
+func (s *stubAdminService) GetProxyPoolAccounts(context.Context, int64, int, int) ([]service.ProxyPoolAccountSummary, int64, error) {
+	return nil, 0, nil
+}
+
 func (s *stubAdminService) CreateProxyPool(ctx context.Context, input *service.CreateProxyPoolInput) (*service.ProxyPool, error) {
 	if input == nil || input.Name == "" {
 		return nil, errors.New("pool name is required")

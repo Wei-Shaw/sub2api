@@ -616,8 +616,15 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 	if account.PoolID != nil && *account.PoolID > 0 {
 		// 校验池存在；创建时绑定无效池直接拒绝。
-		if _, poolErr := s.poolRepo.GetPoolByID(ctx, *account.PoolID); poolErr != nil {
+		if s.poolRepo == nil {
+			return nil, ErrProxyPoolNotFound
+		}
+		pool, poolErr := s.poolRepo.GetPoolByID(ctx, *account.PoolID)
+		if poolErr != nil {
 			return nil, fmt.Errorf("proxy pool not found: %w", poolErr)
+		}
+		if pool == nil {
+			return nil, ErrProxyPoolNotFound
 		}
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -626,9 +633,16 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 
 	// 绑定池的账号：立即分配池内健康代理（无健康代理时留空，由池服务后续补齐）。
 	if account.PoolID != nil && *account.PoolID > 0 {
-		if proxyID, assignErr := s.assignPoolHealthyProxy(ctx, *account.PoolID); assignErr == nil && proxyID != nil {
+		proxyID, assignErr := s.assignPoolHealthyProxy(ctx, *account.PoolID)
+		if assignErr != nil {
+			slog.Warn("create_account_pool_proxy_assignment_failed",
+				"account_id", account.ID, "pool_id", *account.PoolID, "error", assignErr)
+		} else if proxyID != nil {
 			account.ProxyID = proxyID
-			_ = s.accountRepo.Update(ctx, account)
+			if updateErr := s.accountRepo.Update(ctx, account); updateErr != nil {
+				slog.Error("create_account_pool_proxy_persist_failed",
+					"account_id", account.ID, "pool_id", *account.PoolID, "proxy_id", *proxyID, "error", updateErr)
+			}
 		}
 	}
 
@@ -841,8 +855,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if *input.PoolID <= 0 {
 			account.PoolID = nil
 		} else {
-			if _, poolErr := s.poolRepo.GetPoolByID(ctx, *input.PoolID); poolErr != nil {
+			if s.poolRepo == nil {
+				return nil, ErrProxyPoolNotFound
+			}
+			pool, poolErr := s.poolRepo.GetPoolByID(ctx, *input.PoolID)
+			if poolErr != nil {
 				return nil, fmt.Errorf("proxy pool not found: %w", poolErr)
+			}
+			if pool == nil {
+				return nil, ErrProxyPoolNotFound
 			}
 			account.PoolID = input.PoolID
 			// 绑定池覆盖独立代理：分配池内健康代理；无健康代理则置空等待池服务补齐。

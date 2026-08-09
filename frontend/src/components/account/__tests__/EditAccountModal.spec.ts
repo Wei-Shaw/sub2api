@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
+import type { ProxyPool } from '@/types'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -104,17 +105,29 @@ const SelectStub = defineComponent({
       default: () => []
     }
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'change'],
   template: `
     <select
       v-bind="$attrs"
       :value="modelValue"
-      @change="$emit('update:modelValue', $event.target.value)"
+      @change="$emit('update:modelValue', $event.target.value); $emit('change', $event.target.value)"
     >
       <option v-for="option in options" :key="option.value" :value="option.value">
         {{ option.label }}
       </option>
     </select>
+  `
+})
+
+const ProxySelectorStub = defineComponent({
+  name: 'ProxySelectorStub',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: `
+    <div>
+      <button type="button" data-testid="select-direct" @click="$emit('update:modelValue', null)">direct</button>
+      <button type="button" data-testid="select-proxy" @click="$emit('update:modelValue', 3)">proxy</button>
+    </div>
   `
 })
 
@@ -290,12 +303,13 @@ function buildOpenAISetupTokenAccount() {
   } as any
 }
 
-function mountModal(account = buildAccount()) {
+function mountModal(account = buildAccount(), pools: ProxyPool[] = []) {
   return mount(EditAccountModal, {
     props: {
       show: true,
       account,
       proxies: [],
+      pools,
       groups: []
     },
     global: {
@@ -303,7 +317,7 @@ function mountModal(account = buildAccount()) {
         BaseDialog: BaseDialogStub,
         Select: SelectStub,
         Icon: true,
-        ProxySelector: true,
+        ProxySelector: ProxySelectorStub,
         GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub
       }
@@ -314,6 +328,84 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it('submits pool_id zero when clearing an existing pool binding', async () => {
+    const account = buildAccount()
+    account.pool_id = 7
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue({ ...account, pool_id: null })
+
+    const wrapper = mountModal(account, [{
+      id: 7,
+      name: 'Primary Pool',
+      status: 'active',
+      health_interval_seconds: 300,
+      failure_threshold: 2,
+      auto_rebind: true,
+      created_at: '2026-08-09T00:00:00Z',
+      updated_at: '2026-08-09T00:00:00Z'
+    }])
+    await wrapper.get('[data-testid="edit-account-pool-select"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.pool_id).toBe(0)
+  })
+
+  it('keeps a newly selected pool when clearing the direct proxy', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset().mockResolvedValue({ ...account, pool_id: 7 })
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account, [{
+      id: 7,
+      name: 'Primary Pool',
+      status: 'active',
+      health_interval_seconds: 300,
+      failure_threshold: 2,
+      auto_rebind: true,
+      created_at: '2026-08-09T00:00:00Z',
+      updated_at: '2026-08-09T00:00:00Z'
+    }])
+    const poolSelect = wrapper
+      .findAllComponents(SelectStub)
+      .find((candidate) => candidate.attributes('data-testid') === 'edit-account-pool-select')
+    expect(poolSelect).toBeDefined()
+    poolSelect?.vm.$emit('update:modelValue', 7)
+    poolSelect?.vm.$emit('change', 7)
+    await wrapper.get('[data-testid="select-direct"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]).toMatchObject({ pool_id: 7, proxy_id: 0 })
+  })
+
+  it('unbinds an existing pool when selecting a concrete proxy', async () => {
+    const account = buildAccount()
+    account.pool_id = 7
+    updateAccountMock.mockReset().mockResolvedValue({ ...account, pool_id: null, proxy_id: 3 })
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="select-proxy"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]).toMatchObject({ pool_id: 0, proxy_id: 3 })
+  })
+
+  it('omits pool_id when an unrelated edit keeps the existing pool', async () => {
+    const account = buildAccount()
+    account.pool_id = 7
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('pool_id')
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {

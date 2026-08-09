@@ -507,6 +507,7 @@ func registerProxyPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		pools.PUT("/:id", h.Admin.ProxyPool.Update)
 		pools.DELETE("/:id", h.Admin.ProxyPool.Delete)
 		pools.GET("/:id/proxies", h.Admin.ProxyPool.GetProxies)
+		pools.GET("/:id/accounts", h.Admin.ProxyPool.GetAccounts)
 		pools.POST("/:id/proxies", h.Admin.ProxyPool.AssignProxies)
 		pools.DELETE("/:id/proxies", h.Admin.ProxyPool.RemoveProxies)
 		pools.POST("/:id/rebind", h.Admin.ProxyPool.Rebind)

@@ -102,6 +102,58 @@ func (s *ProxyPoolRepoSuite) TestAssignAndListPoolProxies() {
 	s.Require().Equal(p2.ID, proxies[0].ID)
 }
 
+func (s *ProxyPoolRepoSuite) TestListPoolAccountsPaginatesAndShowsCurrentProxy() {
+	pool, err := s.repo.CreatePool(s.ctx, &service.ProxyPool{Name: "pool-accounts", Status: service.StatusActive})
+	s.Require().NoError(err)
+	otherPool, err := s.repo.CreatePool(s.ctx, &service.ProxyPool{Name: "pool-accounts-other", Status: service.StatusActive})
+	s.Require().NoError(err)
+	proxy := &service.Proxy{Name: "pool-accounts-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8090, Status: service.StatusActive}
+	s.Require().NoError(s.proxyRepo.Create(s.ctx, proxy))
+	_, err = s.repo.AssignProxiesToPool(s.ctx, pool.ID, []int64{proxy.ID})
+	s.Require().NoError(err)
+
+	mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "pool-account-direct", PoolID: &pool.ID})
+	legacy := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "pool-account-legacy", ProxyID: &proxy.ID})
+	// 显式 pool_id 是归属真源；即使实际代理来自目标池，也不能算入目标池。
+	mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "pool-account-other", PoolID: &otherPool.ID, ProxyID: &proxy.ID})
+
+	accounts, total, err := s.repo.ListPoolAccounts(s.ctx, pool.ID, 1, 1)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), total)
+	s.Require().Len(accounts, 1)
+	s.Require().Equal(legacy.ID, accounts[0].ID)
+	s.Require().Equal("pool-accounts-proxy", accounts[0].ProxyName)
+}
+
+func (s *ProxyPoolRepoSuite) TestDeletePoolClearsForeignKeysAndAllowsNameReuse() {
+	pool, err := s.repo.CreatePool(s.ctx, &service.ProxyPool{Name: "pool-delete-reuse", Status: service.StatusActive})
+	s.Require().NoError(err)
+
+	proxy := &service.Proxy{Name: "pool-delete-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8087, Status: service.StatusActive}
+	s.Require().NoError(s.proxyRepo.Create(s.ctx, proxy))
+	_, err = s.repo.AssignProxiesToPool(s.ctx, pool.ID, []int64{proxy.ID})
+	s.Require().NoError(err)
+	account := mustCreateAccount(s.T(), s.tx.Client(), &service.Account{
+		Name: "pool-delete-account", PoolID: &pool.ID, ProxyID: &proxy.ID,
+	})
+
+	s.Require().NoError(s.repo.DeletePool(s.ctx, pool.ID))
+	deletedProxy, err := s.proxyRepo.GetByID(s.ctx, proxy.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(deletedProxy.PoolID)
+	accountRepo := newAccountRepositoryWithSQL(s.tx.Client(), s.tx, nil)
+	deletedAccount, err := accountRepo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(deletedAccount.PoolID)
+	s.Require().NotNil(deletedAccount.ProxyID)
+	s.Require().Equal(proxy.ID, *deletedAccount.ProxyID)
+
+	recreated, err := s.repo.CreatePool(s.ctx, &service.ProxyPool{Name: "pool-delete-reuse", Status: service.StatusActive})
+	s.Require().NoError(err)
+	s.Require().NotEqual(pool.ID, recreated.ID)
+	s.Require().ErrorIs(s.repo.DeletePool(s.ctx, pool.ID), service.ErrProxyPoolNotFound)
+}
+
 func (s *ProxyPoolRepoSuite) TestUpdateProxyPoolHealth() {
 	proxy := &service.Proxy{Name: "pool-health", Protocol: "http", Host: "127.0.0.1", Port: 8083, Status: service.StatusActive}
 	s.Require().NoError(s.proxyRepo.Create(s.ctx, proxy))
@@ -137,6 +189,8 @@ func (s *ProxyPoolRepoSuite) TestRebindAccountsOffProxy() {
 		})
 		accounts = append(accounts, a)
 	}
+	schedulerCache := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = schedulerCache
 
 	// 账号数统计
 	counts, err := s.repo.CountAccountsByProxyIDs(s.ctx, []int64{from.ID, to.ID})
@@ -148,6 +202,7 @@ func (s *ProxyPoolRepoSuite) TestRebindAccountsOffProxy() {
 	changed, err := s.repo.RebindAccountsOffProxy(s.ctx, from.ID, &to.ID)
 	s.Require().NoError(err)
 	s.Require().Len(changed, 3)
+	s.Require().ElementsMatch([]int64{accounts[0].ID, accounts[1].ID, accounts[2].ID}, schedulerCache.deleteIDs)
 
 	counts, err = s.repo.CountAccountsByProxyIDs(s.ctx, []int64{from.ID, to.ID})
 	s.Require().NoError(err)
@@ -203,6 +258,7 @@ func (s *ProxyPoolRepoSuite) TestListPoolsWithStats() {
 	s.Require().NoError(s.repo.UpdateProxyPoolHealth(s.ctx, p1.ID, service.PoolHealthHealthy, 0, time.Now()))
 
 	mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "pool-stats-acc", ProxyID: &p1.ID})
+	mustCreateAccount(s.T(), s.tx.Client(), &service.Account{Name: "pool-stats-direct", PoolID: &pool.ID})
 
 	stats, err := s.repo.ListPoolsWithStats(s.ctx)
 	s.Require().NoError(err)
@@ -217,5 +273,6 @@ func (s *ProxyPoolRepoSuite) TestListPoolsWithStats() {
 	s.Require().Equal(int64(1), found.ProxyCount)
 	s.Require().Equal(int64(1), found.HealthyCount)
 	s.Require().Equal(int64(0), found.UnhealthyCount)
-	s.Require().Equal(int64(1), found.BoundAccountSum)
+	s.Require().Equal(int64(2), found.BoundAccountSum)
+	s.Require().Equal(int64(1), found.UnassignedAccountCount)
 }

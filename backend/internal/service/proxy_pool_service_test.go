@@ -19,9 +19,10 @@ type fakePoolRepo struct {
 	proxies      map[int64]*Proxy // proxyID -> proxy
 	rebinds      [][2]*int64      // [from, to(nil=direct)]
 	rebindErr    error
+	rebindErrors map[int64]error
 	accountCount map[int64]int64
-	unassigned   []int64 // 池分配补全的待分配账号
-	assignments [][2]int64 // [accountID, proxyID] 池服务分配记录
+	unassigned   []int64    // 池分配补全的待分配账号
+	assignments  [][2]int64 // [accountID, proxyID] 池服务分配记录
 	logs         []ProxyPoolRebindLog
 }
 
@@ -30,6 +31,7 @@ func newFakePoolRepo() *fakePoolRepo {
 		pools:        map[int64]*ProxyPool{},
 		proxies:      map[int64]*Proxy{},
 		accountCount: map[int64]int64{},
+		rebindErrors: map[int64]error{},
 	}
 }
 
@@ -82,6 +84,9 @@ func (f *fakePoolRepo) UpdatePool(ctx context.Context, pool *ProxyPool) error {
 func (f *fakePoolRepo) DeletePool(ctx context.Context, id int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if _, ok := f.pools[id]; !ok {
+		return ErrProxyPoolNotFound
+	}
 	delete(f.pools, id)
 	return nil
 }
@@ -96,6 +101,10 @@ func (f *fakePoolRepo) ListPoolProxies(ctx context.Context, poolID int64) ([]Pro
 		}
 	}
 	return out, nil
+}
+
+func (f *fakePoolRepo) ListPoolAccounts(context.Context, int64, int, int) ([]ProxyPoolAccountSummary, int64, error) {
+	return nil, 0, nil
 }
 
 func (f *fakePoolRepo) AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error) {
@@ -151,6 +160,9 @@ func (f *fakePoolRepo) RebindAccountsOffProxy(ctx context.Context, fromProxyID i
 	defer f.mu.Unlock()
 	if f.rebindErr != nil {
 		return nil, f.rebindErr
+	}
+	if err := f.rebindErrors[fromProxyID]; err != nil {
+		return nil, err
 	}
 	f.rebinds = append(f.rebinds, [2]*int64{&fromProxyID, toProxyID})
 	count := f.accountCount[fromProxyID]
@@ -318,8 +330,9 @@ func TestRebindUnhealthyDistribution(t *testing.T) {
 	repo.accountCount[3] = 5
 
 	pool := &ProxyPool{ID: 1, Name: "pool", Status: StatusActive, HealthIntervalSeconds: 60, FailureThreshold: 2}
-	rebound := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1, p2, p3}, now)
+	rebound, err := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1, p2, p3}, now)
 
+	require.NoError(t, err)
 	require.Equal(t, 5, rebound)
 	require.Len(t, repo.rebinds, 1)
 	require.Equal(t, int64(3), *repo.rebinds[0][0])
@@ -332,24 +345,19 @@ func TestAssignUnassignedBalancesAcrossHealthyProxies(t *testing.T) {
 	now := time.Now()
 	svc := NewProxyPoolService(repo, nil, nil, time.Minute)
 
-	// 池内 2 个健康代理；3 个待分配账号
+	// 两个同负载健康代理；3 个待分配账号应逐次更新负载并轮流选择。
 	p1 := mkPoolProxy(1, 1)
 	p1.PoolHealth = PoolHealthHealthy
 	p2 := mkPoolProxy(2, 1)
 	p2.PoolHealth = PoolHealthHealthy
 	repo.proxies[1] = p1
 	repo.proxies[2] = p2
-	repo.accountCount[1] = 5 // proxy 1 已有 5 个账号 → 应优先分到 proxy 2
 	repo.unassigned = []int64{10, 11, 12}
 
 	pool := &ProxyPool{ID: 1, Name: "pool", Status: StatusActive, HealthIntervalSeconds: 60, FailureThreshold: 2}
 	svc.assignUnassigned(context.Background(), pool, []*Proxy{p1, p2})
 
-	require.Len(t, repo.assignments, 3)
-	// 全部账号分配到账号数较少的 proxy 2
-	for _, a := range repo.assignments {
-		require.Equal(t, int64(2), a[1])
-	}
+	require.Equal(t, [][2]int64{{10, 1}, {11, 2}, {12, 1}}, repo.assignments)
 	// 无健康代理时不分配
 	repo.unassigned = []int64{13}
 	repo.proxies[1].PoolHealth = PoolHealthUnhealthy
@@ -372,8 +380,9 @@ func TestRebindUnhealthyNoCandidateKeepsAccounts(t *testing.T) {
 	repo.accountCount[1] = 5
 
 	pool := &ProxyPool{ID: 1, Name: "pool", Status: StatusActive, HealthIntervalSeconds: 60, FailureThreshold: 2}
-	rebound := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1}, now)
+	rebound, err := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1}, now)
 
+	require.NoError(t, err)
 	require.Equal(t, 0, rebound)
 	require.Empty(t, repo.rebinds)
 }
@@ -392,8 +401,9 @@ func TestRebindUnhealthySkipsZeroAccount(t *testing.T) {
 	repo.accountCount[2] = 0
 
 	pool := &ProxyPool{ID: 1, Name: "pool", Status: StatusActive, HealthIntervalSeconds: 60, FailureThreshold: 2}
-	rebound := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1, p2}, now)
+	rebound, err := svc.rebindUnhealthy(context.Background(), pool, []*Proxy{p1, p2}, now)
 
+	require.NoError(t, err)
 	require.Equal(t, 0, rebound)
 	require.Empty(t, repo.rebinds)
 }
@@ -416,8 +426,9 @@ func TestRunPoolEndToEnd(t *testing.T) {
 	prober.set("http://host-1:8080", true, 100)
 	prober.set("http://host-2:8080", false, 0)
 
-	rebound := svc.RunPool(context.Background(), pool)
+	rebound, err := svc.RunPool(context.Background(), pool)
 
+	require.NoError(t, err)
 	require.Equal(t, 3, rebound)
 	require.Equal(t, PoolHealthHealthy, repo.proxies[1].PoolHealth)
 	require.Equal(t, PoolHealthUnhealthy, repo.proxies[2].PoolHealth)
@@ -431,7 +442,58 @@ func TestRunPoolEndToEnd(t *testing.T) {
 
 	// 第二轮：不健康代理恢复 → 不再改投
 	prober.set("http://host-2:8080", true, 90)
-	rebound2 := svc.RunPool(context.Background(), pool)
+	rebound2, err := svc.RunPool(context.Background(), pool)
+	require.NoError(t, err)
 	require.Equal(t, 0, rebound2)
 	require.Equal(t, PoolHealthHealthy, repo.proxies[2].PoolHealth)
+}
+
+func TestRebindUnhealthyReportsPartialFailure(t *testing.T) {
+	repo := newFakePoolRepo()
+	svc := NewProxyPoolService(repo, nil, nil, time.Minute)
+
+	healthy := mkPoolProxy(1, 1)
+	healthy.PoolHealth = PoolHealthHealthy
+	failed := mkPoolProxy(2, 1)
+	failed.PoolHealth = PoolHealthUnhealthy
+	succeeded := mkPoolProxy(3, 1)
+	succeeded.PoolHealth = PoolHealthUnhealthy
+	repo.accountCount[2] = 2
+	repo.accountCount[3] = 4
+	repo.rebindErrors[2] = errors.New("database unavailable")
+
+	pool := &ProxyPool{ID: 1, Name: "pool", Status: StatusActive, AutoRebind: true}
+	rebound, err := svc.rebindUnhealthy(
+		context.Background(),
+		pool,
+		[]*Proxy{healthy, failed, succeeded},
+		time.Now(),
+	)
+
+	require.Equal(t, 4, rebound)
+	var runErr *ProxyPoolRunError
+	require.ErrorAs(t, err, &runErr)
+	require.Equal(t, 1, runErr.FailedProxies)
+	require.Len(t, repo.rebinds, 1)
+	require.Equal(t, int64(3), *repo.rebinds[0][0])
+}
+
+func TestAdminServiceAssignProxiesRejectsMissingPool(t *testing.T) {
+	repo := newFakePoolRepo()
+	repo.proxies[11] = &Proxy{ID: 11}
+	admin := &adminServiceImpl{poolRepo: repo}
+
+	assigned, err := admin.AssignProxiesToPool(context.Background(), 99, []int64{11})
+
+	require.Zero(t, assigned)
+	require.ErrorIs(t, err, ErrProxyPoolNotFound)
+	require.Nil(t, repo.proxies[11].PoolID)
+}
+
+func TestAdminServiceDeleteMissingPoolReturnsNotFound(t *testing.T) {
+	admin := &adminServiceImpl{poolRepo: newFakePoolRepo()}
+
+	err := admin.DeleteProxyPool(context.Background(), 99)
+
+	require.ErrorIs(t, err, ErrProxyPoolNotFound)
 }

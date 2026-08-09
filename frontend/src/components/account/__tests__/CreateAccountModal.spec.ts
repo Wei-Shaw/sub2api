@@ -75,11 +75,45 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
+  methods: {
+    reset() {
+      this.inputMethod = 'manual'
+    },
+  },
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
+    </div>
+  `,
+})
+
+const SelectStub = defineComponent({
+  name: 'SelectStub',
+  inheritAttrs: false,
+  props: ['modelValue'],
+  emits: ['update:modelValue', 'change'],
+  template: `
+    <button
+      type="button"
+      v-bind="$attrs"
+      :data-value="String(modelValue ?? '')"
+      @click="$emit('update:modelValue', 7); $emit('change', 7)"
+    >
+      select pool
+    </button>
+  `,
+})
+
+const ProxySelectorStub = defineComponent({
+  name: 'ProxySelectorStub',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: `
+    <div>
+      <button type="button" data-testid="select-direct" @click="$emit('update:modelValue', null)">direct</button>
+      <button type="button" data-testid="select-proxy" @click="$emit('update:modelValue', 3)">proxy</button>
     </div>
   `,
 })
@@ -92,10 +126,10 @@ function mountModal() {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         PlatformIcon: true,
-        ProxySelector: true,
+        ProxySelector: ProxySelectorStub,
         ProxyAdBanner: true,
         GroupSelector: true,
         ModelWhitelistSelector: true,
@@ -158,6 +192,28 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
       warnings: [],
     })
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
+  })
+
+  it.each([
+    ['Codex session', '[data-testid="import-codex-session"]', importCodexSessionMock],
+    ['Codex PAT', '[data-testid="import-codex-pat"]', createOpenAICodexPATMock],
+  ])('keeps the selected pool in %s imports when proxy selection is cleared', async (_name, trigger, requestMock) => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="create-account-pool-select"]').trigger('click')
+    // ProxySelector emits null when the pool selection clears the direct proxy.
+    await wrapper.get('[data-testid="select-direct"]').trigger('click')
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Pooled import')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get(trigger).trigger('click')
+    await flushPromises()
+
+    expect(requestMock).toHaveBeenCalledTimes(1)
+    expect(requestMock.mock.calls[0]?.[0]).toMatchObject({ pool_id: 7, proxy_id: null })
+    // Reopening the modal resets the completed flow and must not leak the previous pool.
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.get('[data-testid="create-account-pool-select"]').attributes('data-value')).toBe('')
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {

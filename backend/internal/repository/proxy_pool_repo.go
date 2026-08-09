@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/proxypool"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -18,12 +20,13 @@ import (
 // 读取走 ent，写入（健康字段更新、账号改投）走原生 SQL，
 // 与 proxyRepository 保持一致的事务边界风格。
 type proxyPoolRepository struct {
-	client *dbent.Client
-	sql    sqlExecutor
+	client         *dbent.Client
+	sql            sqlExecutor
+	schedulerCache service.SchedulerCache
 }
 
-func NewProxyPoolRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyPoolRepository {
-	return &proxyPoolRepository{client: client, sql: sqlDB}
+func NewProxyPoolRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.ProxyPoolRepository {
+	return &proxyPoolRepository{client: client, sql: sqlDB, schedulerCache: schedulerCache}
 }
 
 func proxyPoolEntityToService(m *dbent.ProxyPool) *service.ProxyPool {
@@ -62,6 +65,9 @@ func (r *proxyPoolRepository) GetPoolByID(ctx context.Context, id int64) (*servi
 		Where(proxypool.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrProxyPoolNotFound
+		}
 		return nil, err
 	}
 	return proxyPoolEntityToService(m), nil
@@ -100,38 +106,55 @@ func (r *proxyPoolRepository) ListPoolsWithStats(ctx context.Context) ([]service
 		return out, nil
 	}
 
-	// 一次 SQL 汇总所有池的统计（代理健康分布 + 绑定账号数）
+	// 一次 SQL 汇总所有池的代理健康分布与绑定账号数。
+	// 新账号以 accounts.pool_id 为归属真源；历史账号若尚无 pool_id，仍按
+	// 其 proxy 所属池计数。COALESCE 保证迁移期不漏计且不会重复计数。
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT p.pool_id,
-		       COUNT(*)::bigint                                              AS proxy_count,
-		       COUNT(*) FILTER (WHERE p.pool_health = 'healthy')::bigint     AS healthy_count,
-		       COUNT(*) FILTER (WHERE p.pool_health = 'unhealthy')::bigint   AS unhealthy_count,
-		       COUNT(*) FILTER (WHERE p.pool_health = 'unknown')::bigint     AS unknown_count,
-		       COALESCE(SUM(a.ct), 0)::bigint                                AS bound_account_sum
-		FROM proxies p
-		LEFT JOIN LATERAL (
-			SELECT COUNT(*)::bigint AS ct FROM accounts a
-			WHERE a.proxy_id = p.id AND a.deleted_at IS NULL
-		) a ON TRUE
-		WHERE p.pool_id IS NOT NULL AND p.deleted_at IS NULL
-		GROUP BY p.pool_id`)
+		WITH proxy_stats AS (
+			SELECT p.pool_id,
+			       COUNT(*)::bigint                                           AS proxy_count,
+			       COUNT(*) FILTER (WHERE p.pool_health = 'healthy')::bigint   AS healthy_count,
+			       COUNT(*) FILTER (WHERE p.pool_health = 'unhealthy')::bigint AS unhealthy_count,
+			       COUNT(*) FILTER (WHERE p.pool_health = 'unknown')::bigint   AS unknown_count
+			FROM proxies p
+			WHERE p.pool_id IS NOT NULL AND p.deleted_at IS NULL
+			GROUP BY p.pool_id
+		), account_stats AS (
+			SELECT COALESCE(a.pool_id, p.pool_id) AS pool_id,
+			       COUNT(*)::bigint AS bound_account_sum,
+			       COUNT(*) FILTER (WHERE a.pool_id IS NOT NULL AND a.proxy_id IS NULL)::bigint AS unassigned_account_count
+			FROM accounts a
+			LEFT JOIN proxies p ON p.id = a.proxy_id AND p.deleted_at IS NULL
+			WHERE a.deleted_at IS NULL AND COALESCE(a.pool_id, p.pool_id) IS NOT NULL
+			GROUP BY COALESCE(a.pool_id, p.pool_id)
+		)
+		SELECT COALESCE(ps.pool_id, ac.pool_id),
+		       COALESCE(ps.proxy_count, 0),
+		       COALESCE(ps.healthy_count, 0),
+		       COALESCE(ps.unhealthy_count, 0),
+		       COALESCE(ps.unknown_count, 0),
+		       COALESCE(ac.bound_account_sum, 0),
+		       COALESCE(ac.unassigned_account_count, 0)
+		FROM proxy_stats ps
+		FULL OUTER JOIN account_stats ac ON ac.pool_id = ps.pool_id`)
 	if err != nil {
 		return nil, fmt.Errorf("list proxy pool stats: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	type poolStat struct {
-		poolID          int64
-		proxyCount      int64
-		healthyCount    int64
-		unhealthyCount  int64
-		unknownCount    int64
-		boundAccountSum int64
+		poolID                 int64
+		proxyCount             int64
+		healthyCount           int64
+		unhealthyCount         int64
+		unknownCount           int64
+		boundAccountSum        int64
+		unassignedAccountCount int64
 	}
 	statsByPool := make(map[int64]poolStat)
 	for rows.Next() {
 		var s poolStat
-		if err := rows.Scan(&s.poolID, &s.proxyCount, &s.healthyCount, &s.unhealthyCount, &s.unknownCount, &s.boundAccountSum); err != nil {
+		if err := rows.Scan(&s.poolID, &s.proxyCount, &s.healthyCount, &s.unhealthyCount, &s.unknownCount, &s.boundAccountSum, &s.unassignedAccountCount); err != nil {
 			return nil, err
 		}
 		statsByPool[s.poolID] = s
@@ -147,6 +170,7 @@ func (r *proxyPoolRepository) ListPoolsWithStats(ctx context.Context) ([]service
 			out[i].UnhealthyCount = s.unhealthyCount
 			out[i].UnknownCount = s.unknownCount
 			out[i].BoundAccountSum = s.boundAccountSum
+			out[i].UnassignedAccountCount = s.unassignedAccountCount
 		}
 	}
 	return out, nil
@@ -177,8 +201,18 @@ func (r *proxyPoolRepository) DeletePool(ctx context.Context, id int64) error {
 	// 管理端无回收站语义（列表自动过滤已删行），这里用原生 SQL 硬删；
 	// proxies.pool_id 为 ON DELETE SET NULL、rebind_logs.pool_id 为 ON DELETE
 	// CASCADE，硬删安全。
-	_, err := r.sql.ExecContext(ctx, `DELETE FROM proxy_pools WHERE id = $1`, id)
-	return err
+	result, err := r.sql.ExecContext(ctx, `DELETE FROM proxy_pools WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrProxyPoolNotFound
+	}
+	return nil
 }
 
 func (r *proxyPoolRepository) ListPoolProxies(ctx context.Context, poolID int64) ([]service.Proxy, error) {
@@ -193,6 +227,55 @@ func (r *proxyPoolRepository) ListPoolProxies(ctx context.Context, poolID int64)
 		out = append(out, *proxyEntityToService(proxies[i]))
 	}
 	return out, nil
+}
+
+func (r *proxyPoolRepository) ListPoolAccounts(ctx context.Context, poolID int64, offset, limit int) ([]service.ProxyPoolAccountSummary, int64, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	query := func() *dbent.AccountQuery {
+		return r.client.Account.Query().Where(
+			dbaccount.Or(
+				dbaccount.PoolIDEQ(poolID),
+				dbaccount.And(
+					dbaccount.PoolIDIsNil(),
+					dbaccount.HasProxyWith(proxy.PoolIDEQ(poolID)),
+				),
+			),
+		)
+	}
+	total, err := query().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	accounts, err := query().
+		WithProxy().
+		Order(dbent.Asc(dbaccount.FieldID)).
+		Offset(offset).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]service.ProxyPoolAccountSummary, 0, len(accounts))
+	for _, account := range accounts {
+		summary := service.ProxyPoolAccountSummary{
+			ID:       account.ID,
+			Name:     account.Name,
+			Platform: account.Platform,
+			Type:     account.Type,
+			Status:   account.Status,
+			ProxyID:  account.ProxyID,
+		}
+		if account.Edges.Proxy != nil {
+			summary.ProxyName = account.Edges.Proxy.Name
+		}
+		out = append(out, summary)
+	}
+	return out, int64(total), nil
 }
 
 func (r *proxyPoolRepository) AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error) {
@@ -311,7 +394,11 @@ func (r *proxyPoolRepository) RebindAccountsOffProxy(ctx context.Context, fromPr
 		if txErr != dbent.ErrTxStarted {
 			return nil, txErr
 		}
-		return r.rebindAccountsOffProxyOnExec(ctx, r.sql, fromProxyID, toProxyID)
+		accountIDs, err := r.rebindAccountsOffProxyOnExec(ctx, r.sql, fromProxyID, toProxyID)
+		if err == nil {
+			r.deleteSchedulerAccountSnapshotsDetached(ctx, accountIDs)
+		}
+		return accountIDs, err
 	}
 	accountIDs, err := r.rebindAccountsOffProxyOnExec(ctx, tx, fromProxyID, toProxyID)
 	if err != nil {
@@ -321,63 +408,91 @@ func (r *proxyPoolRepository) RebindAccountsOffProxy(ctx context.Context, fromPr
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	r.deleteSchedulerAccountSnapshotsDetached(ctx, accountIDs)
 	return accountIDs, nil
 }
 
 func (r *proxyPoolRepository) rebindAccountsOffProxyOnExec(ctx context.Context, exec sqlExecutor, fromProxyID int64, toProxyID *int64) ([]int64, error) {
-	query := `
+	var targetProxyID any
+	if toProxyID != nil {
+		targetProxyID = *toProxyID
+	}
+	accountIDs, err := queryProxyPoolAccountIDs(ctx, exec, `
 		UPDATE accounts SET proxy_id = $2,
 			proxy_fallback_origin_id = COALESCE(proxy_fallback_origin_id, $1),
-			extra = CASE
-				WHEN platform='openai' AND type='apikey' AND extra ? 'upstream_billing_probe'
-				THEN extra - 'upstream_billing_probe'
-				ELSE extra
-			END,
+			extra = extra - 'upstream_billing_probe' - 'ollama_cloud_usage_snapshot',
 			updated_at = NOW()
 		WHERE proxy_id = $1 AND deleted_at IS NULL
-		RETURNING id`
-	var rows *sql.Rows
-	var err error
-	if toProxyID == nil {
-		rows, err = exec.QueryContext(ctx, query, fromProxyID, nil)
-	} else {
-		rows, err = exec.QueryContext(ctx, query, fromProxyID, *toProxyID)
-	}
+		RETURNING id`, fromProxyID, targetProxyID)
 	if err != nil {
 		return nil, err
 	}
+
+	// 影子账号恒继承母账号代理。即使影子先前发生漂移，也在同一事务中同步到
+	// 母账号的新代理，并让两类探针快照和调度缓存一起失效。
+	if len(accountIDs) > 0 {
+		shadowIDs, shadowErr := queryProxyPoolAccountIDs(ctx, exec, `
+			UPDATE accounts AS shadow SET
+				proxy_id = $2,
+				proxy_fallback_origin_id = COALESCE(shadow.proxy_fallback_origin_id, shadow.proxy_id, $1),
+				extra = shadow.extra - 'upstream_billing_probe' - 'ollama_cloud_usage_snapshot',
+				updated_at = NOW()
+			WHERE shadow.parent_account_id = ANY($3::bigint[])
+				AND shadow.deleted_at IS NULL
+				AND (
+					shadow.proxy_id IS DISTINCT FROM $2
+					OR shadow.extra ? 'upstream_billing_probe'
+					OR shadow.extra ? 'ollama_cloud_usage_snapshot'
+				)
+			RETURNING shadow.id`, fromProxyID, targetProxyID, pq.Array(accountIDs))
+		if shadowErr != nil {
+			return nil, shadowErr
+		}
+		accountIDs = sortedUniqueAccountIDs(append(accountIDs, shadowIDs...))
+	}
+
+	if err := enqueueProxyProbeAccountChanges(ctx, exec, accountIDs); err != nil {
+		return nil, err
+	}
+	return accountIDs, nil
+}
+
+func queryProxyPoolAccountIDs(ctx context.Context, exec sqlExecutor, query string, args ...any) ([]int64, error) {
+	rows, err := exec.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
 	accountIDs := make([]int64, 0)
 	for rows.Next() {
 		var accountID int64
 		if err := rows.Scan(&accountID); err != nil {
-			_ = rows.Close()
 			return nil, err
 		}
 		accountIDs = append(accountIDs, accountID)
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
 		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-
-	if len(accountIDs) > 0 {
-		// 探针快照失效 + 调度器 outbox（与 SweepExpiredProxies 一致）
-		probeAccountIDs, invErr := invalidateProxyProbeSnapshots(ctx, exec, fromProxyID)
-		if invErr != nil {
-			return nil, invErr
-		}
-		if enqErr := enqueueProxyProbeAccountChanges(ctx, exec, probeAccountIDs); enqErr != nil {
-			return nil, enqErr
-		}
-		payload := map[string]any{"account_ids": sortedUniqueAccountIDs(accountIDs)}
-		if enqErr := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); enqErr != nil {
-			return nil, enqErr
-		}
 	}
 	return accountIDs, nil
+}
+
+func (r *proxyPoolRepository) deleteSchedulerAccountSnapshotsDetached(ctx context.Context, accountIDs []int64) {
+	if r == nil || r.schedulerCache == nil || len(accountIDs) == 0 {
+		return
+	}
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	cacheCtx, cancel := context.WithTimeout(base, 2*time.Second)
+	defer cancel()
+	for _, accountID := range accountIDs {
+		if err := r.schedulerCache.DeleteAccount(cacheCtx, accountID); err != nil {
+			logger.LegacyPrintf("repository.proxy_pool", "[Scheduler] delete rebound account snapshot failed: id=%d err=%v", accountID, err)
+		}
+	}
 }
 
 // RecordRebindLog 记录一次池重绑操作（审计/管理端展示）。

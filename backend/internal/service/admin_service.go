@@ -130,6 +130,7 @@ type AdminService interface {
 	ListProxyPools(ctx context.Context) ([]ProxyPoolWithStats, error)
 	GetProxyPool(ctx context.Context, id int64) (*ProxyPool, error)
 	GetProxyPoolProxies(ctx context.Context, poolID int64) ([]ProxyWithAccountCount, error)
+	GetProxyPoolAccounts(ctx context.Context, poolID int64, page, pageSize int) ([]ProxyPoolAccountSummary, int64, error)
 	CreateProxyPool(ctx context.Context, input *CreateProxyPoolInput) (*ProxyPool, error)
 	UpdateProxyPool(ctx context.Context, id int64, input *UpdateProxyPoolInput) (*ProxyPool, error)
 	DeleteProxyPool(ctx context.Context, id int64) error

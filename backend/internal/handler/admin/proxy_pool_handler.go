@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -108,6 +109,26 @@ func (h *ProxyPoolHandler) GetProxies(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// GetAccounts 分页返回归属池的账号及其当前实际代理。
+// GET /api/v1/admin/proxy-pools/:id/accounts
+func (h *ProxyPoolHandler) GetAccounts(c *gin.Context) {
+	id, ok := parsePoolID(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	accounts, total, err := h.adminService.GetProxyPoolAccounts(c.Request.Context(), id, page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.AdminProxyPoolAccountSummary, 0, len(accounts))
+	for i := range accounts {
+		out = append(out, *dto.ProxyPoolAccountSummaryFromService(&accounts[i]))
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
 // Create 创建代理池。
 // POST /api/v1/admin/proxy-pools
 func (h *ProxyPoolHandler) Create(c *gin.Context) {
@@ -122,9 +143,7 @@ func (h *ProxyPoolHandler) Create(c *gin.Context) {
 		Status:                req.Status,
 		HealthIntervalSeconds: req.HealthIntervalSeconds,
 		FailureThreshold:      req.FailureThreshold,
-	}
-	if req.AutoRebind != nil {
-		input.AutoRebind = *req.AutoRebind
+		AutoRebind:            req.AutoRebind,
 	}
 	pool, err := h.adminService.CreateProxyPool(c.Request.Context(), input)
 	if err != nil {
@@ -226,10 +245,24 @@ func (h *ProxyPoolHandler) Rebind(c *gin.Context) {
 	}
 	rebound, err := h.adminService.RunProxyPoolRebind(c.Request.Context(), id)
 	if err != nil {
+		var runErr *service.ProxyPoolRunError
+		if rebound > 0 && errors.As(err, &runErr) {
+			logger.LegacyPrintf("handler.admin.proxy_pool", "manual rebind partially failed: pool_id=%d rebound=%d failed_proxies=%d err=%v", id, rebound, runErr.FailedProxies, err)
+			response.Success(c, gin.H{
+				"rebound_accounts": rebound,
+				"partial_failure":  true,
+				"failed_proxies":   runErr.FailedProxies,
+			})
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"rebound_accounts": rebound})
+	response.Success(c, gin.H{
+		"rebound_accounts": rebound,
+		"partial_failure":  false,
+		"failed_proxies":   0,
+	})
 }
 
 // RebindLogs 池内最近的重绑日志。

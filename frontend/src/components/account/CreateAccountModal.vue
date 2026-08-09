@@ -2730,6 +2730,7 @@
           <div>
             <label class="input-label">{{ t('admin.proxyPools.proxyPool') }}</label>
             <Select
+              data-testid="create-account-pool-select"
               v-model="form.pool_id"
               :options="poolSelectOptions"
               :placeholder="t('admin.proxyPools.noPool')"
@@ -3692,8 +3693,11 @@ const onPoolSelectChange = (value: string | number | boolean | null) => {
   }
 }
 
-const onProxySelectChange = () => {
-  form.pool_id = 0
+const onProxySelectChange = (value: number | null) => {
+  // “直连”(null) 也可能是选择代理池时的联动清空，不能反向抹掉刚选中的池。
+  if (value !== null) {
+    form.pool_id = null
+  }
 }
 const emit = defineEmits<{
   close: []
@@ -4695,6 +4699,7 @@ const resetForm = () => {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
+  form.pool_id = null
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
@@ -5469,7 +5474,8 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       sso_tokens: ssoTokens,
       name: form.name || undefined,
       notes: form.notes || undefined,
-      proxy_id: form.proxy_id,
+      proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
       group_ids: form.group_ids,
       credentials,
       concurrency: form.concurrency,
@@ -5675,7 +5681,8 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -5753,7 +5760,8 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       access_token: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      proxy_id: form.pool_id ? null : form.proxy_id,
+      pool_id: form.pool_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,

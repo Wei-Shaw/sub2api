@@ -66,6 +66,8 @@ export default {
       unhealthyProxies: '不健康代理数',
       unknownProxies: '未探测代理数',
       boundAccounts: '绑定账号',
+      unassignedAccounts: '其中 {count} 个账号待分配代理',
+      unassignedAccountBadge: '{count} 待分配',
       updatedAt: '更新时间',
       detail: '详情',
       noPools: '暂无代理池',
@@ -83,8 +85,19 @@ export default {
       failures: '连续失败',
       lastChecked: '上次探测',
       latency: '延迟',
+      boundToPool: '已绑定：{name}',
+      reassignProxyTitle: '重新绑定代理',
+      reassignProxyConfirm: '将 {count} 个代理移入「{name}」？这些代理会离开原代理池。',
+      reassignProxyAction: '确认重绑',
       removeFromPool: '移出池',
       removeProxyConfirm: '确定将代理 {name} 移出该池吗？',
+      assignedAccounts: '池绑定账号',
+      noAssignedAccounts: '该池暂无绑定账号',
+      accountName: '账号名称',
+      platform: '平台',
+      accountType: '账号类型',
+      currentProxy: '当前代理',
+      directConnection: '直连 / 待分配',
       rebindLogs: '重绑日志',
       noRebindLogs: '暂无重绑记录',
       time: '时间',
@@ -115,9 +128,11 @@ export default {
       removeSuccess: '代理已移出池',
       removeFailed: '移出代理失败',
       rebindDone: '重绑完成，{count} 个账号已切换',
+      rebindPartial: '已切换 {count} 个账号，但 {failed} 个代理的重绑失败',
       rebindFailed: '重绑失败',
       failedToLoad: '加载代理池失败',
       failedToLoadProxies: '加载池内代理失败',
+      failedToLoadAccounts: '加载池绑定账号失败',
       failedToLoadLogs: '加载重绑日志失败'
     },
     proxies: {
@@ -314,7 +329,6 @@ export default {
       fallbackDirect: '回退直连',
       backupProxy: '备用代理',
     },
-
     // Redeem Codes Management
     redeem: {
       title: '兑换码管理',

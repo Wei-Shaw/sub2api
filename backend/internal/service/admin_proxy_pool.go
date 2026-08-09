@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"strings"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // CreateProxyPoolInput 创建代理池入参。
@@ -13,7 +15,7 @@ type CreateProxyPoolInput struct {
 	Status                string
 	HealthIntervalSeconds int
 	FailureThreshold      int
-	AutoRebind            bool
+	AutoRebind            *bool
 }
 
 // UpdateProxyPoolInput 更新代理池入参（零值字段不修改）。
@@ -26,8 +28,10 @@ type UpdateProxyPoolInput struct {
 	AutoRebind            *bool
 }
 
-// ErrProxyPoolNotFound 池不存在。
-var ErrProxyPoolNotFound = errors.New("proxy pool not found")
+var (
+	ErrProxyPoolNotFound      = infraerrors.NotFound("PROXY_POOL_NOT_FOUND", "proxy pool not found")
+	ErrProxyPoolRunInProgress = infraerrors.Conflict("PROXY_POOL_RUN_IN_PROGRESS", "proxy pool sweep is already in progress")
+)
 
 // ListProxyPools 返回全部池（含代理统计）。
 func (s *adminServiceImpl) ListProxyPools(ctx context.Context) ([]ProxyPoolWithStats, error) {
@@ -77,6 +81,22 @@ func (s *adminServiceImpl) GetProxyPoolProxies(ctx context.Context, poolID int64
 	return out, nil
 }
 
+// GetProxyPoolAccounts 分页返回池绑定账号及其当前实际代理。
+func (s *adminServiceImpl) GetProxyPoolAccounts(ctx context.Context, poolID int64, page, pageSize int) ([]ProxyPoolAccountSummary, int64, error) {
+	if s.poolRepo == nil {
+		return nil, 0, nil
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	} else if pageSize > 100 {
+		pageSize = 100
+	}
+	return s.poolRepo.ListPoolAccounts(ctx, poolID, (page-1)*pageSize, pageSize)
+}
+
 // CreateProxyPool 创建代理池。
 func (s *adminServiceImpl) CreateProxyPool(ctx context.Context, input *CreateProxyPoolInput) (*ProxyPool, error) {
 	if s.poolRepo == nil {
@@ -114,8 +134,8 @@ func (s *adminServiceImpl) CreateProxyPool(ctx context.Context, input *CreatePro
 	if pool.FailureThreshold <= 0 {
 		pool.FailureThreshold = 2
 	}
-	if input.AutoRebind {
-		pool.AutoRebind = true
+	if input.AutoRebind != nil {
+		pool.AutoRebind = *input.AutoRebind
 	}
 	created, err := s.poolRepo.CreatePool(ctx, pool)
 	if err != nil {
@@ -177,10 +197,10 @@ func (s *adminServiceImpl) UpdateProxyPool(ctx context.Context, id int64, input 
 	return existing, nil
 }
 
-// DeleteProxyPool 删除池（软删除；池内代理保留，pool_id 置空由 SQL 外键语义处理）。
+// DeleteProxyPool 硬删除池；外键会把代理和账号的 pool_id 置空，并级联清理重绑日志。
 func (s *adminServiceImpl) DeleteProxyPool(ctx context.Context, id int64) error {
 	if s.poolRepo == nil {
-		return nil
+		return ErrProxyPoolNotFound
 	}
 	return s.poolRepo.DeletePool(ctx, id)
 }
@@ -189,6 +209,9 @@ func (s *adminServiceImpl) DeleteProxyPool(ctx context.Context, id int64) error 
 func (s *adminServiceImpl) AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error) {
 	if s.poolRepo == nil {
 		return 0, errors.New("proxy pool repository unavailable")
+	}
+	if _, err := s.poolRepo.GetPoolByID(ctx, poolID); err != nil {
+		return 0, err
 	}
 	if len(proxyIDs) == 0 {
 		return 0, nil
@@ -241,8 +264,8 @@ func (s *adminServiceImpl) RunProxyPoolRebind(ctx context.Context, poolID int64)
 	if s.poolService == nil {
 		return 0, errors.New("proxy pool service unavailable")
 	}
-	rebound := s.poolService.RunPool(ctx, pool)
-	return int64(rebound), nil
+	rebound, err := s.poolService.runPoolManually(ctx, pool)
+	return int64(rebound), err
 }
 
 // ListProxyPoolRebindLogs 返回池内最近的重绑日志。

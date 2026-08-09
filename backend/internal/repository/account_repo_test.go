@@ -22,6 +22,15 @@ const parameterLimitTestDriverName = "sub2api_param_limit_test"
 
 var registerParameterLimitTestDriverOnce sync.Once
 
+func TestAccountEntityToServicePreservesPoolID(t *testing.T) {
+	poolID := int64(17)
+	got := accountEntityToService(&dbent.Account{PoolID: &poolID})
+
+	require.NotNil(t, got)
+	require.NotNil(t, got.PoolID)
+	require.Equal(t, poolID, *got.PoolID)
+}
+
 func TestAccountsToService_LargeActiveAccountSetDoesNotExceedPostgresParameterLimit(t *testing.T) {
 	repo := newParameterLimitAccountRepo(t)
 

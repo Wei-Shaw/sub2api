@@ -8,7 +8,9 @@ import type {
   Proxy,
   ProxyPool,
   ProxyPoolWithStats,
-  ProxyPoolRebindLog
+  ProxyPoolRebindLog,
+  ProxyPoolAccountSummary,
+  PaginatedResponse
 } from '@/types'
 
 /**
@@ -76,6 +78,21 @@ export async function listProxies(id: number): Promise<Proxy[]> {
 }
 
 /**
+ * List accounts assigned to a pool, including each account's current proxy.
+ */
+export async function listAccounts(
+  id: number,
+  page = 1,
+  pageSize = 10
+): Promise<PaginatedResponse<ProxyPoolAccountSummary>> {
+  const { data } = await apiClient.get<PaginatedResponse<ProxyPoolAccountSummary>>(
+    `/admin/proxy-pools/${id}/accounts`,
+    { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
+/**
  * Assign proxies to a pool
  */
 export async function assignProxies(id: number, proxyIds: number[]): Promise<number> {
@@ -95,12 +112,26 @@ export async function removeProxies(id: number, proxyIds: number[]): Promise<num
   return data.removed ?? 0
 }
 
+export interface ProxyPoolRebindResult {
+  reboundAccounts: number
+  partialFailure: boolean
+  failedProxies: number
+}
+
 /**
  * Trigger one round of health probe + auto rebind manually
  */
-export async function rebind(id: number): Promise<number> {
-  const { data } = await apiClient.post<{ rebound_accounts: number }>(`/admin/proxy-pools/${id}/rebind`)
-  return data.rebound_accounts ?? 0
+export async function rebind(id: number): Promise<ProxyPoolRebindResult> {
+  const { data } = await apiClient.post<{
+    rebound_accounts: number
+    partial_failure: boolean
+    failed_proxies: number
+  }>(`/admin/proxy-pools/${id}/rebind`)
+  return {
+    reboundAccounts: data.rebound_accounts ?? 0,
+    partialFailure: data.partial_failure ?? false,
+    failedProxies: data.failed_proxies ?? 0
+  }
 }
 
 /**
@@ -120,6 +151,7 @@ export default {
   update,
   remove,
   listProxies,
+  listAccounts,
   assignProxies,
   removeProxies,
   rebind,

@@ -66,6 +66,8 @@ export default {
       unhealthyProxies: 'Unhealthy',
       unknownProxies: 'Unknown',
       boundAccounts: 'Bound Accounts',
+      unassignedAccounts: '{count} accounts are awaiting proxy assignment',
+      unassignedAccountBadge: '{count} pending',
       updatedAt: 'Updated',
       detail: 'Detail',
       noPools: 'No proxy pools',
@@ -83,8 +85,19 @@ export default {
       failures: 'Failures',
       lastChecked: 'Last Checked',
       latency: 'Latency',
+      boundToPool: 'Bound to: {name}',
+      reassignProxyTitle: 'Reassign Proxies',
+      reassignProxyConfirm: 'Move {count} proxies into "{name}"? They will leave their current pools.',
+      reassignProxyAction: 'Reassign',
       removeFromPool: 'Remove',
       removeProxyConfirm: 'Remove proxy {name} from this pool?',
+      assignedAccounts: 'Assigned Accounts',
+      noAssignedAccounts: 'No accounts are assigned to this pool',
+      accountName: 'Account',
+      platform: 'Platform',
+      accountType: 'Type',
+      currentProxy: 'Current Proxy',
+      directConnection: 'Direct / Pending Assignment',
       rebindLogs: 'Rebind Logs',
       noRebindLogs: 'No rebind records yet',
       time: 'Time',
@@ -115,9 +128,11 @@ export default {
       removeSuccess: 'Proxy removed from pool',
       removeFailed: 'Failed to remove proxy',
       rebindDone: 'Rebind done, {count} accounts switched',
+      rebindPartial: '{count} accounts switched, but rebind failed for {failed} proxies',
       rebindFailed: 'Rebind failed',
       failedToLoad: 'Failed to load proxy pools',
       failedToLoadProxies: 'Failed to load pool proxies',
+      failedToLoadAccounts: 'Failed to load assigned accounts',
       failedToLoadLogs: 'Failed to load rebind logs'
     },
     proxies: {
@@ -316,7 +331,6 @@ export default {
       fallbackDirect: 'Direct connection',
       backupProxy: 'Backup proxy',
     },
-
     // Redeem Codes
     redeem: {
       title: 'Redeem Code Management',

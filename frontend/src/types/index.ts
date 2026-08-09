@@ -917,6 +917,17 @@ export interface ProxyPoolWithStats extends ProxyPool {
   unhealthy_count: number
   unknown_count: number
   bound_account_sum: number
+  unassigned_account_count: number
+}
+
+export interface ProxyPoolAccountSummary {
+  id: number
+  name: string
+  platform: AccountPlatform
+  type: AccountType
+  status: Account['status']
+  proxy_id?: number | null
+  proxy_name?: string
 }
 
 export interface ProxyPoolRebindLog {
@@ -1550,6 +1561,7 @@ export interface CodexSessionImportRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  pool_id?: number | null
   concurrency?: number
   priority?: number
   rate_multiplier?: number
@@ -1569,6 +1581,7 @@ export interface OpenAICodexPATCreateRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  pool_id?: number | null
   concurrency?: number
   priority?: number
   rate_multiplier?: number

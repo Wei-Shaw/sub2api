@@ -900,12 +900,28 @@ func ProxyPoolWithStatsFromService(p *service.ProxyPoolWithStats) *AdminProxyPoo
 		return nil
 	}
 	return &AdminProxyPoolWithStats{
-		AdminProxyPool:  *base,
-		ProxyCount:      p.ProxyCount,
-		HealthyCount:    p.HealthyCount,
-		UnhealthyCount:  p.UnhealthyCount,
-		UnknownCount:    p.UnknownCount,
-		BoundAccountSum: p.BoundAccountSum,
+		AdminProxyPool:         *base,
+		ProxyCount:             p.ProxyCount,
+		HealthyCount:           p.HealthyCount,
+		UnhealthyCount:         p.UnhealthyCount,
+		UnknownCount:           p.UnknownCount,
+		BoundAccountSum:        p.BoundAccountSum,
+		UnassignedAccountCount: p.UnassignedAccountCount,
+	}
+}
+
+func ProxyPoolAccountSummaryFromService(a *service.ProxyPoolAccountSummary) *AdminProxyPoolAccountSummary {
+	if a == nil {
+		return nil
+	}
+	return &AdminProxyPoolAccountSummary{
+		ID:        a.ID,
+		Name:      a.Name,
+		Platform:  a.Platform,
+		Type:      a.Type,
+		Status:    a.Status,
+		ProxyID:   a.ProxyID,
+		ProxyName: a.ProxyName,
 	}
 }
 

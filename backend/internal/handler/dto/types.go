@@ -380,11 +380,23 @@ type AdminProxyPool struct {
 // AdminProxyPoolWithStats 代理池列表 DTO（含统计）。
 type AdminProxyPoolWithStats struct {
 	AdminProxyPool
-	ProxyCount      int64 `json:"proxy_count"`
-	HealthyCount    int64 `json:"healthy_count"`
-	UnhealthyCount  int64 `json:"unhealthy_count"`
-	UnknownCount    int64 `json:"unknown_count"`
-	BoundAccountSum int64 `json:"bound_account_sum"`
+	ProxyCount             int64 `json:"proxy_count"`
+	HealthyCount           int64 `json:"healthy_count"`
+	UnhealthyCount         int64 `json:"unhealthy_count"`
+	UnknownCount           int64 `json:"unknown_count"`
+	BoundAccountSum        int64 `json:"bound_account_sum"`
+	UnassignedAccountCount int64 `json:"unassigned_account_count"`
+}
+
+// AdminProxyPoolAccountSummary 池详情中的账号及当前代理。
+type AdminProxyPoolAccountSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	ProxyID   *int64 `json:"proxy_id,omitempty"`
+	ProxyName string `json:"proxy_name,omitempty"`
 }
 
 // AdminProxyPoolRebindLog 重绑日志 DTO。
