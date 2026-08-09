@@ -22,8 +22,16 @@ import (
 )
 
 var (
-	openAIModelDatePattern     = regexp.MustCompile(`-\d{8}$`)
-	openAIModelBasePattern     = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	openAIModelDatePattern = regexp.MustCompile(`-\d{8}$`)
+	openAIModelBasePattern = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+
+	// internalPricingModels 是计费费率由本仓库维护、不受远程价格仓库覆盖的模型。
+	// codex-auto-review 是 Codex 内部专用模型，LiteLLM 上游无对应条目，远程价格仓库
+	// 未同步其费率时若以远程值为准，会回退为旧费率（见 v0.1.170 的费率调整）。
+	internalPricingModels = map[string]bool{
+		"codex-auto-review": true,
+	}
+
 	openAIGPT54FallbackPricing = &LiteLLMModelPricing{
 		InputCostPerToken:               2.5e-06, // $2.5 per MTok
 		OutputCostPerToken:              1.5e-05, // $15 per MTok
@@ -567,6 +575,13 @@ func (s *PricingService) mergeFallbackPricingData(data map[string]*LiteLLMModelP
 	}
 	merged := 0
 	for modelName, pricing := range fallbackData {
+		if internalPricingModels[modelName] {
+			// 内部专用模型（如 codex-auto-review）费率以本仓库内置值为准，
+			// 覆盖远程同步值，防止远程价格仓库未同步时按旧费率计费。
+			data[modelName] = pricing
+			merged++
+			continue
+		}
 		if _, ok := data[modelName]; ok {
 			continue
 		}

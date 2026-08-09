@@ -378,6 +378,40 @@ func TestPricingService_MergesFallbackOnlyModels(t *testing.T) {
 	require.InDelta(t, 0.034, merged["gemini-3.1-flash-lite-image"].OutputCostPerImage, 1e-12)
 }
 
+func TestMergeFallbackPricingOverridesInternalModelWithStaleRemoteRate(t *testing.T) {
+	svc := &PricingService{cfg: &config.Config{}}
+	svc.cfg.Pricing.FallbackFile = filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json")
+
+	// 模拟远程价格仓库尚未同步 v0.1.170 费率调整：仍为旧费率 5e-06/3e-05/5e-07
+	remoteData, err := svc.parsePricingData([]byte(`{
+		"codex-auto-review": {
+			"input_cost_per_token": 0.000005,
+			"output_cost_per_token": 0.00003,
+			"cache_read_input_token_cost": 0.0000005,
+			"litellm_provider": "openai",
+			"mode": "chat"
+		},
+		"remote-model": {
+			"input_cost_per_token": 0.000002,
+			"litellm_provider": "test",
+			"mode": "chat"
+		}
+	}`))
+	require.NoError(t, err)
+
+	merged := svc.mergeFallbackPricingData(remoteData)
+
+	// 内置兜底值必须覆盖远程旧费率
+	got := merged["codex-auto-review"]
+	require.NotNil(t, got)
+	require.InDelta(t, 0.2e-6, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 1.2e-6, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 0.02e-6, got.CacheReadInputTokenCost, 1e-12)
+
+	// 非内部模型仍以远程值为准，不受影响
+	require.InDelta(t, 0.000002, merged["remote-model"].InputCostPerToken, 1e-12)
+}
+
 func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {
 	sparkPricing := &LiteLLMModelPricing{InputCostPerToken: 1}
 	gpt53Pricing := &LiteLLMModelPricing{InputCostPerToken: 9}
