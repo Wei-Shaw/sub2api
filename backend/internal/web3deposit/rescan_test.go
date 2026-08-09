@@ -63,3 +63,17 @@ func TestBoundedRescannerRejectsInvalidRangeBeforeRPC(t *testing.T) {
 	require.Error(t, err)
 	require.Zero(t, transfer.calls)
 }
+
+func TestBoundedRescannerRegistryRoutesByNetworkAndAsset(t *testing.T) {
+	first := &boundedRescanTransferStub{}
+	second := &boundedRescanTransferStub{}
+	registry := &BoundedRescannerRegistry{rescanners: map[RuntimeKey]*BoundedRescanner{
+		{NetworkKey: "network_a", AssetKey: "asset_a"}: {transfer: first, matcher: &boundedRescanMatcherStub{}, persister: NewDepositEventPersister(&boundedRescanStoreStub{}, ChainConfig{ChainID: 1, TokenDecimals: 6}), maxRange: 10},
+		{NetworkKey: "network_b", AssetKey: "asset_b"}: {transfer: second, matcher: &boundedRescanMatcherStub{}, persister: NewDepositEventPersister(&boundedRescanStoreStub{}, ChainConfig{ChainID: 2, TokenDecimals: 6}), maxRange: 10},
+	}}
+
+	_, err := registry.Rescan(context.Background(), "network_b", "asset_b", 1, 2)
+	require.NoError(t, err)
+	require.Zero(t, first.calls)
+	require.Equal(t, 1, second.calls)
+}

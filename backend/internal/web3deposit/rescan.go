@@ -24,6 +24,27 @@ type BoundedRescanner struct {
 	initErr   error
 }
 
+type BoundedRescannerRegistry struct {
+	rescanners map[RuntimeKey]*BoundedRescanner
+}
+
+func NewBoundedRescannerRegistry(cfg *config.Config, runtimes *ConfluxNetworkRuntimeRegistry, lookup DepositAddressLookup, store DetectedDepositStore) *BoundedRescannerRegistry {
+	registry := &BoundedRescannerRegistry{rescanners: make(map[RuntimeKey]*BoundedRescanner)}
+	if cfg == nil || runtimes == nil {
+		return registry
+	}
+	for _, key := range runtimes.Keys() {
+		networkRuntime, ok := runtimes.Runtime(key.NetworkKey, key.AssetKey)
+		if !ok {
+			continue
+		}
+		network := cfg.Web3Deposit.Networks[key.NetworkKey]
+		asset := network.Assets[key.AssetKey]
+		registry.rescanners[key] = newBoundedRescannerForAsset(network, asset, networkRuntime, lookup, store)
+	}
+	return registry
+}
+
 func NewBoundedRescanner(cfg *config.Config, runtime *ConfluxNetworkRuntime, lookup DepositAddressLookup, store DetectedDepositStore) *BoundedRescanner {
 	r := &BoundedRescanner{}
 	if cfg == nil || runtime == nil || !runtime.Ready() || runtime.Pool() == nil {
@@ -40,6 +61,15 @@ func NewBoundedRescanner(cfg *config.Config, runtime *ConfluxNetworkRuntime, loo
 		r.initErr = fmt.Errorf("web3 deposit asset config missing")
 		return r
 	}
+	return newBoundedRescannerForAsset(network, asset, runtime, lookup, store)
+}
+
+func newBoundedRescannerForAsset(network config.Web3DepositNetworkConfig, asset config.Web3DepositAssetConfig, runtime *ConfluxNetworkRuntime, lookup DepositAddressLookup, store DetectedDepositStore) *BoundedRescanner {
+	r := &BoundedRescanner{}
+	if runtime == nil || !runtime.Ready() || runtime.Pool() == nil {
+		r.initErr = fmt.Errorf("web3 deposit network is unavailable")
+		return r
+	}
 	chain, err := scannerChainConfig(network, asset)
 	if err != nil {
 		r.initErr = err
@@ -50,6 +80,17 @@ func NewBoundedRescanner(cfg *config.Config, runtime *ConfluxNetworkRuntime, loo
 	r.persister = NewDepositEventPersister(store, chain)
 	r.maxRange = network.BlockBatchSize
 	return r
+}
+
+func (r *BoundedRescannerRegistry) Rescan(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (BoundedRescanResult, error) {
+	if r == nil {
+		return BoundedRescanResult{}, fmt.Errorf("web3 deposit rescan registry is unavailable")
+	}
+	rescanner, ok := r.rescanners[RuntimeKey{NetworkKey: networkKey, AssetKey: assetKey}]
+	if !ok {
+		return BoundedRescanResult{}, fmt.Errorf("web3 deposit rescan target is unavailable")
+	}
+	return rescanner.Rescan(ctx, fromBlock, toBlock)
 }
 
 func (r *BoundedRescanner) Rescan(ctx context.Context, fromBlock, toBlock uint64) (BoundedRescanResult, error) {

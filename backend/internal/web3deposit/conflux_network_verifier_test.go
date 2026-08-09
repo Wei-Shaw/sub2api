@@ -137,6 +137,42 @@ func TestConfluxNetworkRuntimeSkipsDisabledFeature(t *testing.T) {
 	require.False(t, dialed)
 }
 
+func TestConfluxNetworkRuntimeRegistryBuildsEveryEnabledNetworkAsset(t *testing.T) {
+	cfg := testConfluxNetworkRuntimeConfig()
+	network := cfg.Web3Deposit.Networks[config.DefaultWeb3DepositNetworkKey]
+	network.Assets["usdc"] = config.Web3DepositAssetConfig{ContractAddress: "0x1111111111111111111111111111111111111111", Decimals: 6}
+	cfg.Web3Deposit.Networks[config.DefaultWeb3DepositNetworkKey] = network
+	cfg.Web3Deposit.Networks["second_network"] = config.Web3DepositNetworkConfig{
+		Enabled: true,
+		ChainID: 1,
+		RPCURLs: []string{"https://second.example"},
+		Assets: map[string]config.Web3DepositAssetConfig{
+			"usdt": {ContractAddress: "0x2222222222222222222222222222222222222222", Decimals: 6},
+		},
+	}
+	expected := testConfluxNetworkExpectation()
+	registry := newConfluxNetworkRuntimeRegistry(context.Background(), cfg, ConfluxRPCPoolOptions{
+		dial: func(_ context.Context, rawURL string, _ *http.Client) (confluxRPCCaller, error) {
+			chainID := "0x406"
+			if rawURL == "https://second.example" {
+				chainID = "0x1"
+			}
+			caller := healthyConfluxRPCResponseCaller(expected.TokenDecimals)
+			caller.responses["eth_chainId"] = chainID
+			return caller, nil
+		},
+	})
+	t.Cleanup(registry.Close)
+
+	require.Equal(t, []RuntimeKey{
+		{NetworkKey: config.DefaultWeb3DepositNetworkKey, AssetKey: "usdc"},
+		{NetworkKey: config.DefaultWeb3DepositNetworkKey, AssetKey: config.DefaultWeb3DepositAssetKey},
+		{NetworkKey: "second_network", AssetKey: "usdt"},
+	}, registry.Keys())
+	require.True(t, registry.AssetReady(config.DefaultWeb3DepositNetworkKey, "usdc"))
+	require.True(t, registry.AssetReady("second_network", "usdt"))
+}
+
 type confluxRPCResponseCaller struct {
 	responses map[string]any
 }

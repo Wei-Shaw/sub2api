@@ -28,6 +28,26 @@ func TestProvideScannerRuntimeAllowsCreditingStageToReachDependencyValidation(t 
 	require.True(t, strings.Contains(status.LastError, "network runtime is unavailable"))
 }
 
+func TestScannerRuntimeRegistryKeepsIndependentEntries(t *testing.T) {
+	readyPool := func() *ConfluxRPCPool {
+		return &ConfluxRPCPool{
+			endpoints: []*confluxRPCEndpoint{{client: successfulConfluxRPCCaller("0x1")}},
+			now:       time.Now,
+		}
+	}
+	networks := &ConfluxNetworkRuntimeRegistry{enabled: true, runtimes: map[RuntimeKey]*ConfluxNetworkRuntime{
+		{NetworkKey: "network_a", AssetKey: "asset_a"}: {enabled: true, ready: true, pool: readyPool()},
+		{NetworkKey: "network_b", AssetKey: "asset_b"}: {enabled: true, ready: true, pool: readyPool()},
+	}}
+	registry := &ScannerRuntimeRegistry{enabled: true, networks: networks, runtimes: map[RuntimeKey]*ScannerRuntime{
+		{NetworkKey: "network_a", AssetKey: "asset_a"}: {status: ScannerRuntimeStatus{State: ScannerRuntimeStateStandby}},
+		{NetworkKey: "network_b", AssetKey: "asset_b"}: {status: ScannerRuntimeStatus{State: ScannerRuntimeStateUnhealthy}},
+	}}
+
+	require.True(t, registry.AssetReady("network_a", "asset_a"))
+	require.False(t, registry.AssetReady("network_b", "asset_b"))
+}
+
 func TestScannerLeaseTimingKeepsThreePollIntervals(t *testing.T) {
 	leaseTTL, renewInterval := scannerLeaseTiming(10 * time.Second)
 	require.Equal(t, DefaultScannerLeaseTTL, leaseTTL)
