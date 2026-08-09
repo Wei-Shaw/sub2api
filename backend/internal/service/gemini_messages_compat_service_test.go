@@ -908,6 +908,40 @@ func TestParseGeminiRateLimitResetTime(t *testing.T) {
 			wantNil:     false,
 			approxDelta: 10,
 		},
+		{
+			name:        "Vertex RetryInfo retryDelay",
+			input:       `{"error":{"code":429,"message":"Resource exhausted. Please try again later.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"39s"}]}}`,
+			wantNil:     false,
+			approxDelta: 39,
+		},
+		{
+			name:        "Vertex RetryInfo 小数秒向上取整",
+			input:       `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"1.5s"}]}}`,
+			wantNil:     false,
+			approxDelta: 2,
+		},
+		{
+			name:        "Vertex RetryInfo 超过上限被截断到 15 分钟",
+			input:       `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"3600s"}]}}`,
+			wantNil:     false,
+			approxDelta: 900,
+		},
+		{
+			name:    "retryDelay 存在但 @type 不是 RetryInfo 则忽略",
+			input:   `{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","retryDelay":"39s"}]}}`,
+			wantNil: true,
+		},
+		{
+			name:    "RetryInfo retryDelay 非法值忽略",
+			input:   `{"error":{"code":429,"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"soon"}]}}`,
+			wantNil: true,
+		},
+		{
+			name:        "quotaResetDelay 与 RetryInfo 并存时先到者优先",
+			input:       `{"error":{"code":429,"details":[{"metadata":{"quotaResetDelay":"120s"}},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"39s"}]}}`,
+			wantNil:     false,
+			approxDelta: 120,
+		},
 	}
 
 	for _, tt := range tests {
