@@ -3,6 +3,10 @@
     <div class="mx-auto max-w-4xl space-y-6">
       <div class="card p-6">
         <div class="mb-5 flex justify-end"><button class="btn btn-secondary" @click="router.push('/web3-deposit/history')">{{ t('web3Deposit.history') }}</button></div>
+        <div v-if="unavailableMessage" role="alert" class="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-200">
+          <p class="font-semibold">{{ t('web3Deposit.unavailable.title') }}</p>
+          <p class="mt-1 text-sm">{{ unavailableMessage }}</p>
+        </div>
         <div class="flex flex-col gap-6 lg:flex-row">
           <div class="flex flex-1 flex-col items-center justify-center rounded-2xl bg-gray-50 p-6 dark:bg-dark-800">
             <div v-if="loading" class="py-24 text-sm text-gray-500">{{ t('web3Deposit.loadingAddress') }}</div>
@@ -79,6 +83,19 @@ const loading = ref(true)
 const creating = ref(false)
 const network = computed(() => config.value?.networks[0])
 const asset = computed(() => network.value?.assets[0])
+const unavailableMessage = computed(() => {
+  if (!config.value || config.value.enabled) return ''
+  switch (config.value.unavailable_reason) {
+    case 'feature_disabled':
+      return t('web3Deposit.unavailable.featureDisabled')
+    case 'user_entry_disabled':
+      return t('web3Deposit.unavailable.userEntryDisabled')
+    case 'runtime_unhealthy':
+      return t('web3Deposit.unavailable.runtimeUnhealthy')
+    default:
+      return t('web3Deposit.unavailable.default')
+  }
+})
 
 async function renderQRCode(value?: string) {
   qrCode.value = value ? await QRCode.toDataURL(value, { width: 320, margin: 2 }) : ''

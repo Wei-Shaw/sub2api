@@ -9,6 +9,13 @@ export default {
     createHint: '准备充值时，创建您的长期 EVM 充值地址。',
     createAddress: '创建充值地址',
     creating: '创建中…',
+    unavailable: {
+      title: 'Web3 充值当前不可用',
+      featureDisabled: '管理员已关闭 Web3 充值功能。',
+      userEntryDisabled: '暂时无法创建新的 Web3 充值地址。',
+      runtimeUnhealthy: '充值网络暂时不可用，请稍后重试。',
+      default: 'Web3 充值暂时不可用，请稍后重试。',
+    },
     network: '网络',
     chainId: 'Chain ID：{id}',
     token: '代币',

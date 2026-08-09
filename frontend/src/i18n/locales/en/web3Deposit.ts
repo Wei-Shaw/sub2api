@@ -9,6 +9,13 @@ export default {
     createHint: 'Create your long-lived EVM deposit address when you are ready to deposit.',
     createAddress: 'Create deposit address',
     creating: 'Creating…',
+    unavailable: {
+      title: 'Web3 deposits are currently unavailable',
+      featureDisabled: 'Web3 deposits have been disabled by the administrator.',
+      userEntryDisabled: 'New Web3 deposit addresses are temporarily unavailable.',
+      runtimeUnhealthy: 'The deposit network is temporarily unavailable. Please try again later.',
+      default: 'Web3 deposits are temporarily unavailable. Please try again later.',
+    },
     network: 'Network',
     chainId: 'Chain ID: {id}',
     token: 'Token',
