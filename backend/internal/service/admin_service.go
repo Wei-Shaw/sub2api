@@ -353,6 +353,8 @@ type CreateAccountInput struct {
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
 	ProbeEnabled       *bool
+	RechargeMultiplier *float64
+	NewAPIGroup        *string
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -386,25 +388,29 @@ type UpdateAccountInput struct {
 	AutoPauseOnExpired    *bool
 	ProbeEnabled          *bool
 	RateSyncEnabled       *bool
+	RechargeMultiplier    *float64
+	NewAPIGroup           *string
 	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 }
 
 // BulkUpdateAccountsInput describes the payload for bulk updating accounts.
 type BulkUpdateAccountsInput struct {
-	AccountIDs     []int64
-	Filters        *BulkUpdateAccountFilters
-	Name           string
-	ProxyID        *int64
-	Concurrency    *int
-	Priority       *int
-	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）
-	LoadFactor     *int
-	Status         string
-	Schedulable    *bool
-	GroupIDs       *[]int64
-	Credentials    map[string]any
-	Extra          map[string]any
-	ProbeEnabled   *bool
+	AccountIDs         []int64
+	Filters            *BulkUpdateAccountFilters
+	Name               string
+	ProxyID            *int64
+	Concurrency        *int
+	Priority           *int
+	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor         *int
+	Status             string
+	Schedulable        *bool
+	GroupIDs           *[]int64
+	Credentials        map[string]any
+	Extra              map[string]any
+	ProbeEnabled       *bool
+	RechargeMultiplier *float64
+	NewAPIGroup        *string
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool

@@ -75,7 +75,7 @@ func TestAdminAccountEditPreservesRateSynchronizedAfterLoad(t *testing.T) {
 	}, &synchronizedRate))
 
 	staleAdminEdit.Name = "name-only-edit"
-	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, staleAdminEdit, nil, nil, nil))
+	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, staleAdminEdit, nil, nil, nil, nil, nil))
 
 	got, err := repo.GetByID(ctx, account.ID)
 	require.NoError(t, err)
@@ -315,7 +315,7 @@ func TestProbeSnapshotCASProtectsManualRateAfterSyncDisabled(t *testing.T) {
 	require.NoError(t, err)
 	manualRate := 0.8
 	syncDisabled := false
-	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, manual, nil, &syncDisabled, &manualRate))
+	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, manual, nil, &syncDisabled, nil, nil, &manualRate))
 
 	probedRate := 0.1
 	err = repo.UpdateUpstreamBillingProbeSnapshot(ctx, inFlight, &service.UpstreamBillingProbeSnapshot{

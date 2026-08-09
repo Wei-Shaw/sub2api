@@ -29,6 +29,8 @@ func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	account *Account,
 	probeEnabled *bool,
 	rateSyncEnabled *bool,
+	rechargeMultiplier *float64,
+	newAPIGroup *string,
 	rateMultiplier *float64,
 ) error {
 	r.mu.Lock()
@@ -49,6 +51,16 @@ func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	}
 	if rateSyncEnabled != nil {
 		updated.Extra[UpstreamBillingRateSyncEnabledExtraKey] = *rateSyncEnabled
+	}
+	if rechargeMultiplier != nil {
+		updated.Extra[UpstreamBillingRechargeMultiplierExtraKey] = *rechargeMultiplier
+	}
+	if newAPIGroup != nil {
+		if *newAPIGroup == "" {
+			delete(updated.Extra, UpstreamBillingNewAPIGroupExtraKey)
+		} else {
+			updated.Extra[UpstreamBillingNewAPIGroupExtraKey] = *newAPIGroup
+		}
 	}
 	switch {
 	case rateMultiplier != nil:
@@ -123,9 +135,11 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 		Credentials:          map[string]any{"api_key": "sk-test"},
 		SkipDefaultGroupBind: true,
 		Extra: map[string]any{
-			UpstreamBillingProbeEnabledExtraKey:    true,
-			UpstreamBillingRateSyncEnabledExtraKey: true,
-			UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
+			UpstreamBillingProbeEnabledExtraKey:       true,
+			UpstreamBillingRateSyncEnabledExtraKey:    true,
+			UpstreamBillingProbeExtraKey:              map[string]any{"status": "ok"},
+			UpstreamBillingRechargeMultiplierExtraKey: 9.0,
+			UpstreamBillingNewAPIGroupExtraKey:        "forged",
 		},
 	})
 
@@ -133,10 +147,14 @@ func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.NotContains(t, created.Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, created.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotContains(t, created.Extra, UpstreamBillingProbeExtraKey)
+	require.NotContains(t, created.Extra, UpstreamBillingRechargeMultiplierExtraKey)
+	require.NotContains(t, created.Extra, UpstreamBillingNewAPIGroupExtraKey)
 }
 
 func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
 	enabled := true
+	rechargeMultiplier := 1.25
+	newAPIGroup := " vip "
 	repo := &upstreamBillingProbeAccountRepo{}
 	created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
 		Name:                 "upstream",
@@ -144,11 +162,15 @@ func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) 
 		Type:                 AccountTypeAPIKey,
 		Credentials:          map[string]any{"api_key": "sk-test"},
 		ProbeEnabled:         &enabled,
+		RechargeMultiplier:   &rechargeMultiplier,
+		NewAPIGroup:          &newAPIGroup,
 		SkipDefaultGroupBind: true,
 	})
 
 	require.NoError(t, err)
 	require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+	require.Equal(t, 1.25, created.Extra[UpstreamBillingRechargeMultiplierExtraKey])
+	require.Equal(t, "vip", created.Extra[UpstreamBillingNewAPIGroupExtraKey])
 
 	_, err = (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
 		Name:                 "oauth",
@@ -159,6 +181,18 @@ func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) 
 		SkipDefaultGroupBind: true,
 	})
 	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+}
+
+func TestCreateAccountRejectsInvalidUpstreamBillingConfiguration(t *testing.T) {
+	zero := 0.0
+	controlGroup := "vip\nadmin"
+	for _, input := range []*CreateAccountInput{
+		{Name: "invalid-recharge", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test"}, RechargeMultiplier: &zero, SkipDefaultGroupBind: true},
+		{Name: "invalid-group", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test"}, NewAPIGroup: &controlGroup, SkipDefaultGroupBind: true},
+	} {
+		_, err := (&adminServiceImpl{accountRepo: &upstreamBillingProbeAccountRepo{}}).CreateAccount(context.Background(), input)
+		require.Error(t, err)
+	}
 }
 
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
@@ -314,6 +348,40 @@ func TestUpdateAccountInvalidatesProbeSnapshotWhenUpstreamIdentityChanges(t *tes
 			}
 		})
 	}
+}
+
+func TestUpdateAccountNormalizesBillingConfigAndInvalidatesProbeSnapshot(t *testing.T) {
+	accountID := int64(139)
+	rechargeMultiplier := 1.4
+	group := " vip "
+	repo := &accountBillingSettingsAdminRepo{
+		upstreamBillingProbeAccountRepo: &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+			accountID: {
+				ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey: true,
+					UpstreamBillingProbeExtraKey:        map[string]any{"status": "ok"},
+				},
+			},
+		}},
+	}
+
+	updated, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		RechargeMultiplier: &rechargeMultiplier,
+		NewAPIGroup:        &group,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1.4, updated.Extra[UpstreamBillingRechargeMultiplierExtraKey])
+	require.Equal(t, "vip", updated.Extra[UpstreamBillingNewAPIGroupExtraKey])
+	require.NotContains(t, updated.Extra, UpstreamBillingProbeExtraKey)
+
+	clearGroup := ""
+	updated, err = (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{
+		NewAPIGroup: &clearGroup,
+	})
+	require.NoError(t, err)
+	require.NotContains(t, updated.Extra, UpstreamBillingNewAPIGroupExtraKey)
 }
 
 func TestUpdateAccountInvalidatesProbeSnapshotWhenProxyChanges(t *testing.T) {
@@ -606,10 +674,12 @@ func TestUpdateAccountExtraDropsManagedBillingProbeFields(t *testing.T) {
 	}}
 
 	err := (&adminServiceImpl{accountRepo: repo}).UpdateAccountExtra(context.Background(), accountID, map[string]any{
-		"custom":                               "value",
-		UpstreamBillingProbeEnabledExtraKey:    true,
-		UpstreamBillingRateSyncEnabledExtraKey: true,
-		UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
+		"custom":                                  "value",
+		UpstreamBillingProbeEnabledExtraKey:       true,
+		UpstreamBillingRateSyncEnabledExtraKey:    true,
+		UpstreamBillingProbeExtraKey:              map[string]any{"status": "ok"},
+		UpstreamBillingRechargeMultiplierExtraKey: 9.0,
+		UpstreamBillingNewAPIGroupExtraKey:        "forged",
 	})
 
 	require.NoError(t, err)
@@ -617,6 +687,8 @@ func TestUpdateAccountExtraDropsManagedBillingProbeFields(t *testing.T) {
 	require.NotContains(t, repo.accounts[accountID].Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, repo.accounts[accountID].Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotContains(t, repo.accounts[accountID].Extra, UpstreamBillingProbeExtraKey)
+	require.NotContains(t, repo.accounts[accountID].Extra, UpstreamBillingRechargeMultiplierExtraKey)
+	require.NotContains(t, repo.accounts[accountID].Extra, UpstreamBillingNewAPIGroupExtraKey)
 }
 
 func TestBulkUpdateAccountsDropsManagedUpstreamBillingProbeState(t *testing.T) {
@@ -625,10 +697,12 @@ func TestBulkUpdateAccountsDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	input := &BulkUpdateAccountsInput{
 		AccountIDs: []int64{1},
 		Extra: map[string]any{
-			"custom":                               "value",
-			UpstreamBillingProbeEnabledExtraKey:    true,
-			UpstreamBillingRateSyncEnabledExtraKey: true,
-			UpstreamBillingProbeExtraKey:           map[string]any{"status": "ok"},
+			"custom":                                  "value",
+			UpstreamBillingProbeEnabledExtraKey:       true,
+			UpstreamBillingRateSyncEnabledExtraKey:    true,
+			UpstreamBillingProbeExtraKey:              map[string]any{"status": "ok"},
+			UpstreamBillingRechargeMultiplierExtraKey: 9.0,
+			UpstreamBillingNewAPIGroupExtraKey:        "forged",
 		},
 	}
 
@@ -641,6 +715,8 @@ func TestBulkUpdateAccountsDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeEnabledExtraKey)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingProbeExtraKey)
+	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingRechargeMultiplierExtraKey)
+	require.NotContains(t, repo.bulkUpdates[0].Extra, UpstreamBillingNewAPIGroupExtraKey)
 }
 
 func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) {
@@ -667,6 +743,36 @@ func TestBulkUpdateAccountsAcceptsDedicatedUpstreamBillingProbeSetting(t *testin
 			require.Equal(t, enabled, *repo.bulkUpdates[0].ProbeEnabled)
 		})
 	}
+}
+
+func TestBulkUpdateAccountsAppliesDedicatedBillingConfiguration(t *testing.T) {
+	rechargeMultiplier := 1.25
+	group := " vip "
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		2: {ID: 2, Platform: PlatformAnthropic, Type: AccountTypeAPIKey},
+	}}
+
+	result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:         []int64{1, 2},
+		RechargeMultiplier: &rechargeMultiplier,
+		NewAPIGroup:        &group,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Len(t, repo.bulkUpdates, 1)
+	require.Equal(t, 1.25, repo.bulkUpdates[0].Extra[UpstreamBillingRechargeMultiplierExtraKey])
+	require.Equal(t, "vip", repo.bulkUpdates[0].Extra[UpstreamBillingNewAPIGroupExtraKey])
+	require.Nil(t, repo.bulkUpdates[0].Extra[UpstreamBillingProbeExtraKey])
+
+	clearGroup := ""
+	_, err = (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs:  []int64{1, 2},
+		NewAPIGroup: &clearGroup,
+	})
+	require.NoError(t, err)
+	require.Nil(t, repo.bulkUpdates[1].Extra[UpstreamBillingNewAPIGroupExtraKey])
 }
 
 func TestBulkUpdateAccountsRejectsProbeSettingForIneligibleTargetBeforeWrite(t *testing.T) {

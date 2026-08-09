@@ -950,6 +950,67 @@
             aria-labelledby="bulk-edit-upstream-billing-auto-probe-label"
           />
         </div>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-upstream-billing-recharge-label"
+                class="input-label mb-0"
+                for="bulk-edit-upstream-billing-recharge-enabled"
+              >
+                {{ t('admin.accounts.upstreamBilling.rechargeMultiplier') }}
+              </label>
+              <input
+                v-model="enableUpstreamBillingRechargeMultiplier"
+                id="bulk-edit-upstream-billing-recharge-enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <input
+              v-model.number="upstreamBillingRechargeMultiplier"
+              id="bulk-edit-upstream-billing-recharge-multiplier"
+              data-testid="bulk-edit-upstream-billing-recharge-multiplier"
+              type="number"
+              min="0"
+              step="any"
+              inputmode="decimal"
+              class="input"
+              :disabled="!enableUpstreamBillingRechargeMultiplier"
+              :aria-labelledby="'bulk-edit-upstream-billing-recharge-label'"
+            />
+            <p class="input-hint">{{ t('admin.accounts.upstreamBilling.rechargeMultiplierHint') }}</p>
+          </div>
+          <div>
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <label
+                id="bulk-edit-upstream-billing-newapi-group-label"
+                class="input-label mb-0"
+                for="bulk-edit-upstream-billing-newapi-group-enabled"
+              >
+                {{ t('admin.accounts.upstreamBilling.newAPIGroup') }}
+              </label>
+              <input
+                v-model="enableUpstreamBillingNewAPIGroup"
+                id="bulk-edit-upstream-billing-newapi-group-enabled"
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <input
+              v-model="upstreamBillingNewAPIGroup"
+              id="bulk-edit-upstream-billing-newapi-group"
+              data-testid="bulk-edit-upstream-billing-newapi-group"
+              type="text"
+              maxlength="100"
+              class="input"
+              :disabled="!enableUpstreamBillingNewAPIGroup"
+              :placeholder="t('admin.accounts.upstreamBilling.newAPIGroup')"
+              :aria-labelledby="'bulk-edit-upstream-billing-newapi-group-label'"
+            />
+            <p class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPIGroupHint') }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- OpenAI API Key WS mode -->
@@ -1480,6 +1541,8 @@ const enableOpenAIFlattenNamespaces = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableUpstreamBillingAutoProbe = ref(false)
+const enableUpstreamBillingRechargeMultiplier = ref(false)
+const enableUpstreamBillingNewAPIGroup = ref(false)
 const enableCodexCLIOnly = ref(false)
 const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
@@ -1513,6 +1576,8 @@ const openaiFlattenNamespacesEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
+const upstreamBillingRechargeMultiplier = ref(1)
+const upstreamBillingNewAPIGroup = ref('')
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
@@ -1784,6 +1849,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.upstream_billing_probe_enabled = upstreamBillingAutoProbeMode.value === 'enabled'
   }
 
+  if (enableUpstreamBillingRechargeMultiplier.value) {
+    updates.upstream_billing_recharge_multiplier = upstreamBillingRechargeMultiplier.value
+  }
+
+  if (enableUpstreamBillingNewAPIGroup.value) {
+    // An empty string is the explicit clear signal understood by the backend.
+    updates.upstream_billing_newapi_group = upstreamBillingNewAPIGroup.value.trim()
+  }
+
   if (enableCodexCLIOnly.value) {
     const extra = ensureExtra()
     extra.codex_cli_only = codexCLIOnlyEnabled.value
@@ -1908,6 +1982,8 @@ const handleSubmit = async () => {
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableUpstreamBillingAutoProbe.value ||
+    enableUpstreamBillingRechargeMultiplier.value ||
+    enableUpstreamBillingNewAPIGroup.value ||
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
@@ -2042,6 +2118,8 @@ watch(
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableUpstreamBillingAutoProbe.value = false
+      enableUpstreamBillingRechargeMultiplier.value = false
+      enableUpstreamBillingNewAPIGroup.value = false
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
@@ -2070,6 +2148,8 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       upstreamBillingAutoProbeMode.value = 'enabled'
+      upstreamBillingRechargeMultiplier.value = 1
+      upstreamBillingNewAPIGroup.value = ''
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'

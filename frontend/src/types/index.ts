@@ -980,12 +980,17 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  object: 'sub2api.key_billing' | 'newapi.group_ratio'
+  provider?: 'sub2api' | 'newapi'
   schema_version: 1
   billing_scope: 'token'
   group_rate_multiplier: number
   user_rate_multiplier?: number
+  raw_resolved_rate_multiplier?: number
+  raw_effective_rate_multiplier?: number
+  recharge_multiplier?: number
   resolved_rate_multiplier: number
+  upstream_group?: string
   peak_rate_enabled: boolean
   peak_start?: string
   peak_end?: string
@@ -1093,6 +1098,8 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
+    upstream_billing_recharge_multiplier?: number
+    upstream_billing_newapi_group?: string
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
     codex_reset_credit_snapshot?: {
       available_count?: number
@@ -1381,6 +1388,8 @@ export interface CreateAccountRequest {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
+  upstream_billing_recharge_multiplier?: number
+  upstream_billing_newapi_group?: string
   confirm_mixed_channel_risk?: boolean
 }
 
@@ -1402,6 +1411,8 @@ export interface UpdateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
+  upstream_billing_recharge_multiplier?: number
+  upstream_billing_newapi_group?: string
   confirm_mixed_channel_risk?: boolean
 }
 

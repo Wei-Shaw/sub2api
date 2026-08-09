@@ -896,12 +896,45 @@
               {{ t('admin.accounts.upstreamBilling.autoProbeHint') }}
             </p>
           </div>
-          <Toggle
-            v-model="upstreamBillingAutoProbeEnabled"
-            data-testid="upstream-billing-auto-probe-antigravity"
-            :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        <Toggle
+          v-model="upstreamBillingAutoProbeEnabled"
+          data-testid="upstream-billing-auto-probe-antigravity"
+          :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        />
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="input-label" for="upstream-billing-recharge-multiplier-antigravity">
+            {{ t('admin.accounts.upstreamBilling.rechargeMultiplier') }}
+          </label>
+          <input
+            id="upstream-billing-recharge-multiplier-antigravity"
+            v-model.number="upstreamBillingRechargeMultiplier"
+            data-testid="upstream-billing-recharge-multiplier"
+            type="number"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            class="input"
           />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.rechargeMultiplierHint') }}</p>
         </div>
+        <div>
+          <label class="input-label" for="upstream-billing-newapi-group-antigravity">
+            {{ t('admin.accounts.upstreamBilling.newAPIGroup') }}
+          </label>
+          <input
+            id="upstream-billing-newapi-group-antigravity"
+            v-model="upstreamBillingNewAPIGroup"
+            data-testid="upstream-billing-newapi-group"
+            type="text"
+            maxlength="100"
+            class="input"
+            :placeholder="t('admin.accounts.upstreamBilling.newAPIGroup')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPIGroupHint') }}</p>
+        </div>
+      </div>
       </div>
 
       <!-- Vertex Service Account -->
@@ -1167,12 +1200,45 @@
               {{ t('admin.accounts.upstreamBilling.autoProbeHint') }}
             </p>
           </div>
-          <Toggle
-            v-model="upstreamBillingAutoProbeEnabled"
-            data-testid="upstream-billing-auto-probe"
-            :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        <Toggle
+          v-model="upstreamBillingAutoProbeEnabled"
+          data-testid="upstream-billing-auto-probe"
+          :aria-label="t('admin.accounts.upstreamBilling.autoProbe')"
+        />
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="input-label" for="upstream-billing-recharge-multiplier">
+            {{ t('admin.accounts.upstreamBilling.rechargeMultiplier') }}
+          </label>
+          <input
+            id="upstream-billing-recharge-multiplier"
+            v-model.number="upstreamBillingRechargeMultiplier"
+            data-testid="upstream-billing-recharge-multiplier"
+            type="number"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            class="input"
           />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.rechargeMultiplierHint') }}</p>
         </div>
+        <div>
+          <label class="input-label" for="upstream-billing-newapi-group">
+            {{ t('admin.accounts.upstreamBilling.newAPIGroup') }}
+          </label>
+          <input
+            id="upstream-billing-newapi-group"
+            v-model="upstreamBillingNewAPIGroup"
+            data-testid="upstream-billing-newapi-group"
+            type="text"
+            maxlength="100"
+            class="input"
+            :placeholder="t('admin.accounts.upstreamBilling.newAPIGroup')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPIGroupHint') }}</p>
+        </div>
+      </div>
 
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
@@ -3732,6 +3798,8 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+const upstreamBillingRechargeMultiplier = ref(1)
+const upstreamBillingNewAPIGroup = ref('')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4620,10 +4688,25 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const billingPayload: CreateAccountRequest = { ...payload }
+    if (payload.type === 'apikey') {
+      billingPayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
+      billingPayload.upstream_billing_recharge_multiplier = upstreamBillingRechargeMultiplier.value
+      const newAPIGroup = upstreamBillingNewAPIGroup.value.trim()
+      if (newAPIGroup) {
+        billingPayload.upstream_billing_newapi_group = newAPIGroup
+      } else {
+        delete billingPayload.upstream_billing_newapi_group
+      }
+    } else {
+      delete billingPayload.upstream_billing_probe_enabled
+      delete billingPayload.upstream_billing_recharge_multiplier
+      delete billingPayload.upstream_billing_newapi_group
+    }
+    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(billingPayload))
     if (
-      payload.type === 'apikey' &&
-      payload.upstream_billing_probe_enabled === true
+      billingPayload.type === 'apikey' &&
+      billingPayload.upstream_billing_probe_enabled === true
     ) {
       try {
         await adminAPI.accounts.probeUpstreamBilling(account.id)
@@ -4671,6 +4754,8 @@ const resetForm = () => {
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
+  upstreamBillingRechargeMultiplier.value = 1
+  upstreamBillingNewAPIGroup.value = ''
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null

@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -399,7 +400,7 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
-	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier)
+	return r.updateAccount(ctx, account, nil, nil, nil, nil, account.RateMultiplier)
 }
 
 // UpdateWithAccountBillingSettings applies an admin account edit while
@@ -410,9 +411,11 @@ func (r *accountRepository) UpdateWithAccountBillingSettings(
 	account *service.Account,
 	probeEnabled *bool,
 	rateSyncEnabled *bool,
+	rechargeMultiplier *float64,
+	newAPIGroup *string,
 	rateMultiplier *float64,
 ) error {
-	return r.updateAccount(ctx, account, probeEnabled, rateSyncEnabled, rateMultiplier)
+	return r.updateAccount(ctx, account, probeEnabled, rateSyncEnabled, rechargeMultiplier, newAPIGroup, rateMultiplier)
 }
 
 func (r *accountRepository) updateAccount(
@@ -420,6 +423,8 @@ func (r *accountRepository) updateAccount(
 	account *service.Account,
 	explicitProbeEnabled *bool,
 	explicitRateSyncEnabled *bool,
+	explicitRechargeMultiplier *float64,
+	explicitNewAPIGroup *string,
 	explicitRateMultiplier *float64,
 ) error {
 	if account == nil {
@@ -451,6 +456,8 @@ func (r *accountRepository) updateAccount(
 		account,
 		explicitProbeEnabled,
 		explicitRateSyncEnabled,
+		explicitRechargeMultiplier,
+		explicitNewAPIGroup,
 		explicitRateMultiplier,
 	)
 	if err != nil {
@@ -480,9 +487,11 @@ func (r *accountRepository) updateLockedAccount(
 	account *service.Account,
 	explicitProbeEnabled *bool,
 	explicitRateSyncEnabled *bool,
+	explicitRechargeMultiplier *float64,
+	explicitNewAPIGroup *string,
 	explicitRateMultiplier *float64,
 ) (*dbent.Account, error) {
-	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled, explicitRateSyncEnabled)
+	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled, explicitRateSyncEnabled, explicitRechargeMultiplier, explicitNewAPIGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -577,6 +586,8 @@ func lockAndMergeAccountProbeExtra(
 	account *service.Account,
 	explicitProbeEnabled *bool,
 	explicitRateSyncEnabled *bool,
+	explicitRechargeMultiplier *float64,
+	explicitNewAPIGroup *string,
 ) (map[string]any, error) {
 	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
 	if err != nil {
@@ -606,6 +617,8 @@ func lockAndMergeAccountProbeExtra(
 			extra -> 'upstream_billing_probe_enabled',
 			extra -> 'upstream_billing_rate_sync_enabled',
 			extra -> 'upstream_billing_probe',
+			extra -> 'upstream_billing_recharge_multiplier',
+			extra -> 'upstream_billing_newapi_group',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
 			extra -> 'ollama_cloud_usage_snapshot'
@@ -631,6 +644,8 @@ func lockAndMergeAccountProbeExtra(
 		currentEnabled               []byte
 		currentRateSyncEnabled       []byte
 		currentSnapshot              []byte
+		currentRechargeMultiplier    []byte
+		currentNewAPIGroup           []byte
 		currentOllamaSession         []byte
 		currentOllamaAutoRefresh     []byte
 		currentOllamaSnapshot        []byte
@@ -642,6 +657,8 @@ func lockAndMergeAccountProbeExtra(
 		&currentEnabled,
 		&currentRateSyncEnabled,
 		&currentSnapshot,
+		&currentRechargeMultiplier,
+		&currentNewAPIGroup,
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
@@ -657,6 +674,8 @@ func lockAndMergeAccountProbeExtra(
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
 		service.UpstreamBillingProbeExtraKey,
+		service.UpstreamBillingRechargeMultiplierExtraKey,
+		service.UpstreamBillingNewAPIGroupExtraKey,
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
@@ -708,9 +727,53 @@ func lockAndMergeAccountProbeExtra(
 		if rateSyncEnabledPresent {
 			extra[service.UpstreamBillingRateSyncEnabledExtraKey] = rateSyncEnabled
 		}
+
+		currentRecharge, rechargePresent, err := decodeAccountExtraJSON(currentRechargeMultiplier)
+		if err != nil {
+			return nil, err
+		}
+		currentGroup, groupPresent, err := decodeAccountExtraJSON(currentNewAPIGroup)
+		if err != nil {
+			return nil, err
+		}
+		if explicitRechargeMultiplier != nil {
+			extra[service.UpstreamBillingRechargeMultiplierExtraKey] = *explicitRechargeMultiplier
+		} else if rechargePresent {
+			extra[service.UpstreamBillingRechargeMultiplierExtraKey] = currentRecharge
+		}
+		if explicitNewAPIGroup != nil {
+			if strings.TrimSpace(*explicitNewAPIGroup) != "" {
+				extra[service.UpstreamBillingNewAPIGroupExtraKey] = strings.TrimSpace(*explicitNewAPIGroup)
+			}
+		} else if groupPresent {
+			extra[service.UpstreamBillingNewAPIGroupExtraKey] = currentGroup
+		}
 	}
 	probeExplicitlyDisabled := probeEnabledPresent && !probeEnabled
-	if identityUnchanged && !probeExplicitlyDisabled {
+	billingConfigChanged := false
+	if probeAccount {
+		if explicitRechargeMultiplier != nil {
+			current, ok := resolveJSONNumber(currentRechargeMultiplier)
+			if !ok {
+				// The absence of the key is the legacy representation of the
+				// default multiplier. Treat an explicit 1 as unchanged so an
+				// ordinary edit does not invalidate a still-valid probe snapshot.
+				billingConfigChanged = !equalAccountProbeMultiplier(*explicitRechargeMultiplier, 1)
+			} else {
+				billingConfigChanged = !equalAccountProbeMultiplier(current, *explicitRechargeMultiplier)
+			}
+		}
+		if explicitNewAPIGroup != nil {
+			current, ok := resolveJSONGroup(currentNewAPIGroup)
+			desired := strings.TrimSpace(*explicitNewAPIGroup)
+			if desired == "" {
+				billingConfigChanged = billingConfigChanged || (ok && current != "")
+			} else {
+				billingConfigChanged = billingConfigChanged || !ok || current != desired
+			}
+		}
+	}
+	if identityUnchanged && !probeExplicitlyDisabled && !billingConfigChanged {
 		if snapshot, ok, err := decodeAccountExtraJSON(currentSnapshot); err != nil {
 			return nil, err
 		} else if ok {
@@ -749,6 +812,39 @@ func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
 		return nil, false, err
 	}
 	return value, true, nil
+}
+
+func resolveJSONNumber(raw []byte) (float64, bool) {
+	value, ok, err := decodeAccountExtraJSON(raw)
+	if err != nil || !ok {
+		return 0, false
+	}
+	switch number := value.(type) {
+	case float64:
+		return number, true
+	case json.Number:
+		parsed, err := number.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func resolveJSONGroup(raw []byte) (string, bool) {
+	value, ok, err := decodeAccountExtraJSON(raw)
+	if err != nil || !ok {
+		return "", false
+	}
+	group, ok := value.(string)
+	return strings.TrimSpace(group), ok
+}
+
+func equalAccountProbeMultiplier(left, right float64) bool {
+	if math.IsNaN(left) || math.IsNaN(right) || math.IsInf(left, 0) || math.IsInf(right, 0) {
+		return false
+	}
+	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+	return math.Abs(left-right) <= 1e-9*scale
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
@@ -2531,6 +2627,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	}
 
 	clearProbeSnapshot := upstreamBillingProbeExplicitlyDisabled(updates) || upstreamBillingProbeSnapshotClearRequested(updates)
+	clearNewAPIGroup := upstreamBillingNewAPIGroupClearRequested(updates)
 	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
@@ -2551,6 +2648,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
 	if clearProbeSnapshot {
 		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+	}
+	if clearNewAPIGroup {
+		extraExpression = "(" + extraExpression + ") - '" + service.UpstreamBillingNewAPIGroupExtraKey + "'"
 	}
 	result, err := client.ExecContext(
 		ctx,
@@ -2668,6 +2768,22 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if err != nil {
 		return err
 	}
+	var expectedRechargeMultiplier any
+	if account.Extra != nil {
+		expectedRechargeMultiplier = account.Extra[service.UpstreamBillingRechargeMultiplierExtraKey]
+	}
+	expectedRechargeMultiplierJSON, err := json.Marshal(expectedRechargeMultiplier)
+	if err != nil {
+		return err
+	}
+	var expectedNewAPIGroup any
+	if account.Extra != nil {
+		expectedNewAPIGroup = account.Extra[service.UpstreamBillingNewAPIGroupExtraKey]
+	}
+	expectedNewAPIGroupJSON, err := json.Marshal(expectedNewAPIGroup)
+	if err != nil {
+		return err
+	}
 	client := clientFromContext(ctx, r.client)
 	proxyMatches, err := lockAndMatchProbeProxyIdentity(ctx, client, account)
 	if err != nil {
@@ -2685,10 +2801,10 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 		SET
 			extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb,
 			rate_multiplier = CASE
-				WHEN $10::numeric IS NOT NULL
-					AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
-					AND extra @> '{"upstream_billing_rate_sync_enabled": true}'::jsonb
-				THEN $10::numeric
+					WHEN $12::numeric IS NOT NULL
+						AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
+						AND extra @> '{"upstream_billing_rate_sync_enabled": true}'::jsonb
+					THEN $12::numeric
 				ELSE rate_multiplier
 			END,
 			updated_at = NOW()
@@ -2697,11 +2813,13 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 			AND type = $4
 			AND credentials = $5::jsonb
 			AND proxy_id IS NOT DISTINCT FROM $6
-			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
-			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
-			AND COALESCE(extra -> 'upstream_billing_rate_sync_enabled', 'null'::jsonb) = $9::jsonb
-			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), rateMultiplier)
+				AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
+				AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
+				AND COALESCE(extra -> 'upstream_billing_rate_sync_enabled', 'null'::jsonb) = $9::jsonb
+				AND COALESCE(extra -> 'upstream_billing_recharge_multiplier', 'null'::jsonb) = $10::jsonb
+				AND COALESCE(extra -> 'upstream_billing_newapi_group', 'null'::jsonb) = $11::jsonb
+				AND deleted_at IS NULL
+		`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), string(expectedRechargeMultiplierJSON), string(expectedNewAPIGroupJSON), rateMultiplier)
 	if err != nil {
 		return err
 	}
@@ -2784,6 +2902,11 @@ func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
 	return ok && value == nil
 }
 
+func upstreamBillingNewAPIGroupClearRequested(extra map[string]any) bool {
+	value, ok := extra[service.UpstreamBillingNewAPIGroupExtraKey]
+	return ok && value == nil
+}
+
 func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 	value, ok := extra[service.OllamaCloudUsageSnapshotExtraKey]
 	return ok && value == nil
@@ -2792,6 +2915,24 @@ func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
+	}
+	if updates.RechargeMultiplier != nil || updates.NewAPIGroup != nil {
+		if updates.Extra == nil {
+			updates.Extra = make(map[string]any)
+		}
+		if updates.RechargeMultiplier != nil {
+			updates.Extra[service.UpstreamBillingRechargeMultiplierExtraKey] = *updates.RechargeMultiplier
+		}
+		if updates.NewAPIGroup != nil {
+			if strings.TrimSpace(*updates.NewAPIGroup) == "" {
+				updates.Extra[service.UpstreamBillingNewAPIGroupExtraKey] = nil
+			} else {
+				updates.Extra[service.UpstreamBillingNewAPIGroupExtraKey] = strings.TrimSpace(*updates.NewAPIGroup)
+			}
+		}
+		if updates.Extra[service.UpstreamBillingProbeExtraKey] == nil {
+			updates.Extra[service.UpstreamBillingProbeExtraKey] = nil
+		}
 	}
 
 	setClauses := make([]string, 0, 8)
@@ -2892,6 +3033,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			idx++
 			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+			}
+			if value, exists := updates.Extra[service.UpstreamBillingNewAPIGroupExtraKey]; exists && value == nil {
+				extraExpression = "(" + extraExpression + ") - '" + service.UpstreamBillingNewAPIGroupExtraKey + "'"
 			}
 			if ollamaCloudUsageSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"

@@ -660,6 +660,49 @@ describe('EditAccountModal', () => {
     )
   })
 
+  it('loads billing configuration from extra and submits managed fields at the top level', async () => {
+    const account = buildAccount()
+    account.extra = {
+      upstream_billing_probe_enabled: true,
+      upstream_billing_rate_sync_enabled: true,
+      upstream_billing_recharge_multiplier: 1.25,
+      upstream_billing_newapi_group: 'default'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="edit-upstream-billing-recharge-multiplier"]').element as HTMLInputElement).value).toBe('1.25')
+    expect((wrapper.get('[data-testid="edit-upstream-billing-newapi-group"]').element as HTMLInputElement).value).toBe('default')
+
+    await wrapper.get('[data-testid="edit-upstream-billing-recharge-multiplier"]').setValue('1.5')
+    await wrapper.get('[data-testid="edit-upstream-billing-newapi-group"]').setValue('  premium  ')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_recharge_multiplier).toBe(1.5)
+    expect(payload?.upstream_billing_newapi_group).toBe('premium')
+    expect(payload?.extra).not.toHaveProperty('upstream_billing_recharge_multiplier')
+    expect(payload?.extra).not.toHaveProperty('upstream_billing_newapi_group')
+  })
+
+  it('sends an empty New API group to clear the configured group', async () => {
+    const account = buildAccount()
+    account.extra = { upstream_billing_newapi_group: 'premium' }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-upstream-billing-newapi-group"]').setValue('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_newapi_group).toBe('')
+  })
+
   it('exposes the upstream billing auto-probe toggle for non-OpenAI API-key accounts', async () => {
     // 探测已放宽到全部 API-key 平台：grok 账号同样能开启并保存。
     const account = buildAccount()

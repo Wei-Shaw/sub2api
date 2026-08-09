@@ -44,9 +44,13 @@ const makeAccount = (overrides: Partial<Account> = {}): Account => ({
 
 const billingData = {
   object: 'sub2api.key_billing' as const,
+  provider: 'sub2api' as const,
   schema_version: 1 as const,
   billing_scope: 'token' as const,
   group_rate_multiplier: 0.8,
+  raw_resolved_rate_multiplier: 0.4,
+  raw_effective_rate_multiplier: 0.6,
+  recharge_multiplier: 1.5,
   resolved_rate_multiplier: 0.6,
   peak_rate_enabled: true,
   peak_start: '09:00',
@@ -356,5 +360,52 @@ describe('UpstreamBillingRateCell', () => {
       'admin.accounts.upstreamBilling.unsupported'
     )
     expect(wrapper.text()).not.toContain('-admin.accounts.upstreamBilling.unsupported')
+  })
+
+  it('shows the provider, New API group, and recharge formula in the details tooltip', async () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe: {
+              status: 'ok',
+              data: {
+                ...billingData,
+                object: 'newapi.group_ratio' as const,
+                provider: 'newapi' as const,
+                upstream_group: 'premium',
+                peak_rate_enabled: false,
+                resolved_rate_multiplier: 0.8,
+                effective_rate_multiplier: 0.8
+              },
+              received_at: '2026-07-13T00:00:00Z',
+              fresh_until: '2026-07-14T00:00:00Z',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-13T00:30:00Z'
+            }
+          }
+        }),
+        now: Date.parse('2026-07-13T00:30:00Z')
+      }
+    })
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.querySelector('[data-testid="upstream-billing-provider"]')?.textContent).toContain(
+      'admin.accounts.upstreamBilling.provider:admin.accounts.upstreamBilling.providerNewAPI'
+    )
+    expect(tooltip.querySelector('[data-testid="upstream-billing-upstream-group"]')?.textContent).toContain(
+      'premium'
+    )
+    expect(tooltip.querySelector('[data-testid="upstream-billing-rate-formula"]')?.textContent).toContain(
+      '0.40x'
+    )
+    expect(tooltip.querySelector('[data-testid="upstream-billing-rate-formula"]')?.textContent).toContain(
+      '1.50x'
+    )
+    wrapper.unmount()
   })
 })

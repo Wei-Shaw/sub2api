@@ -1701,6 +1701,39 @@
           @update:model-value="handleUpstreamBillingAutoProbeChange"
         />
       </div>
+      <div v-if="account?.type === 'apikey'" class="grid gap-4 border-t border-gray-200 pt-4 sm:grid-cols-2 dark:border-dark-600">
+        <div>
+          <label class="input-label" for="edit-upstream-billing-recharge-multiplier">
+            {{ t('admin.accounts.upstreamBilling.rechargeMultiplier') }}
+          </label>
+          <input
+            id="edit-upstream-billing-recharge-multiplier"
+            v-model.number="upstreamBillingRechargeMultiplier"
+            data-testid="edit-upstream-billing-recharge-multiplier"
+            type="number"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            class="input"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.rechargeMultiplierHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label" for="edit-upstream-billing-newapi-group">
+            {{ t('admin.accounts.upstreamBilling.newAPIGroup') }}
+          </label>
+          <input
+            id="edit-upstream-billing-newapi-group"
+            v-model="upstreamBillingNewAPIGroup"
+            data-testid="edit-upstream-billing-newapi-group"
+            type="text"
+            maxlength="100"
+            class="input"
+            :placeholder="t('admin.accounts.upstreamBilling.newAPIGroup')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.upstreamBilling.newAPIGroupHint') }}</p>
+        </div>
+      </div>
 
       <OllamaCloudUsageSettings
         v-if="account?.ollama_cloud_usage?.eligible"
@@ -2859,6 +2892,8 @@ const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
+const upstreamBillingRechargeMultiplier = ref(1)
+const upstreamBillingNewAPIGroup = ref('')
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
@@ -3359,6 +3394,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+  upstreamBillingRechargeMultiplier.value =
+    typeof extra?.upstream_billing_recharge_multiplier === 'number' &&
+    Number.isFinite(extra.upstream_billing_recharge_multiplier) &&
+    extra.upstream_billing_recharge_multiplier > 0
+      ? extra.upstream_billing_recharge_multiplier
+      : 1
+  upstreamBillingNewAPIGroup.value =
+    typeof extra?.upstream_billing_newapi_group === 'string'
+      ? extra.upstream_billing_newapi_group
+      : ''
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -4142,6 +4187,8 @@ const handleSubmit = async () => {
     if (props.account.type === 'apikey') {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
+      updatePayload.upstream_billing_recharge_multiplier = upstreamBillingRechargeMultiplier.value
+      updatePayload.upstream_billing_newapi_group = upstreamBillingNewAPIGroup.value.trim()
       if (upstreamBillingRateSyncEnabled.value) {
         delete updatePayload.rate_multiplier
       }
@@ -4713,6 +4760,8 @@ const handleSubmit = async () => {
       if (props.account.type === 'apikey') {
         delete newExtra.upstream_billing_probe_enabled
         delete newExtra.upstream_billing_rate_sync_enabled
+        delete newExtra.upstream_billing_recharge_multiplier
+        delete newExtra.upstream_billing_newapi_group
       }
       // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {

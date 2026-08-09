@@ -1858,6 +1858,8 @@ func (s *stubAccountRepo) UpdateWithAccountBillingSettings(
 	account *service.Account,
 	probeEnabled *bool,
 	rateSyncEnabled *bool,
+	rechargeMultiplier *float64,
+	newAPIGroup *string,
 	rateMultiplier *float64,
 ) error {
 	return errors.New("not implemented")
