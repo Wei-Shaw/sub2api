@@ -1015,11 +1015,12 @@ func (s *AccountTestService) reconcileGrokTestResponseState(
 	}
 
 	// Body-first free-usage / billing cools (origin complete integration).
+	// Snapshot path above already installs durable rate-limit / free-recovery
+	// and the runtime block when the quota windows are exhausted.
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	if decision.Class == GrokFailureFreeUsage {
 		if resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now); limited && resetAt.After(now) {
-			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
-			blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
+			// Snapshot writer already blocked + persisted the rate-limit/lease.
 		} else if s.accountRepo != nil {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
 			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(grokFreeUsageProbeCooldown), "grok free usage exhausted")

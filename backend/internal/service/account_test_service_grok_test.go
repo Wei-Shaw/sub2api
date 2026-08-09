@@ -81,7 +81,7 @@ func TestObserveGrokTestResponseKeepsEntitlement403Cooldown(t *testing.T) {
 	before := time.Now()
 	svc.observeGrokTestResponse(context.Background(), account, resp)
 	require.Equal(t, 1, repo.tempUnschedCalls)
-	require.Equal(t, "grok entitlement or subscription tier denied", repo.lastTempUnschedReason)
+	require.Equal(t, grokSoftEntitlementReason, repo.lastTempUnschedReason)
 	require.Greater(t, repo.lastTempUnschedUntil, before.Add(29*time.Minute))
 }
 

@@ -13,9 +13,11 @@ import (
 )
 
 func grokFreeUsageExhaustedBody() []byte {
+	// Account-wide free-usage exhaustion (no "for model …" scope) so the
+	// gateway installs a durable rate-limit rather than a per-model soft-block.
 	return []byte(`{
 		"code":"subscription:free-usage-exhausted",
-		"error":"You've used all the included free usage for model grok-4.5-build-free for now. Usage resets over a rolling 24-hour window - tokens (actual/limit): 1065554/1000000."
+		"error":"You've used all the included free usage for now. Usage resets over a rolling 24-hour window - tokens (actual/limit): 1065554/1000000."
 	}`)
 }
 

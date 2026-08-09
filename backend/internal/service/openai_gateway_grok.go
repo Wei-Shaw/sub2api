@@ -30,8 +30,8 @@ const (
 	grokRateLimitSustainedCooldown   = 30 * time.Minute
 	grokRateLimitMaxAdaptiveCooldown = time.Hour
 	grokRateLimitBackoffQuietPeriod  = time.Hour
-	grokFreeUsageExhaustedCode             = "subscription:free-usage-exhausted"
-	grokFreeUsageExhaustedLegacyCode       = "subscription-free-usage-exhausted"
+	grokFreeUsageExhaustedCode       = "subscription:free-usage-exhausted"
+	grokFreeUsageExhaustedLegacyCode = "subscription-free-usage-exhausted"
 )
 
 func (s *OpenAIGatewayService) forwardGrokResponses(

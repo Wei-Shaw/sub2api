@@ -484,8 +484,10 @@ func (s *OpenAIGatewayService) applyGrokUpstreamFailureDecision(
 			s.rateLimitGrok(ctx, account, grokSpendingLimitResetAt(account, time.Now()))
 			return true
 		}
-		// Keep the historical 402/payment reason for ops UI + regression tests.
-		reason = "grok payment required"
+		// Soft billing/entitlement (402 bare, billing_required, subscription
+		// required, …) is handled by the layered 402/403 path so the durable
+		// reason stays grokSoftEntitlementReason instead of a second label.
+		return false
 	case GrokFailureEmptyUpstream:
 		reason = "grok empty model output"
 	case GrokFailureModelCapacity:

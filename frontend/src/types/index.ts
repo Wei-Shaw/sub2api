@@ -544,6 +544,9 @@ export type GroupPlatform =
 	| "grok"
 	| "composite";
 
+/** Model-family → resolution → USD price overrides for Grok video billing. */
+export type VideoModelPrices = Record<string, Record<string, number>>;
+
 export type SubscriptionType = "standard" | "subscription";
 
 export interface OpenAIMessagesDispatchModelConfig {

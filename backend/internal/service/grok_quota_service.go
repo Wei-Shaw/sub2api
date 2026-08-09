@@ -208,23 +208,16 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
 	}
-	// A failed probe must not erase a previously observed snapshot. 401/403 and
-	// transport/server errors commonly carry no quota headers; only successful
-	// responses, or 429 responses with useful rate-limit headers / free-recovery
-	// state, are safe to persist. A successful 200 with no headers is still
-	// persisted as an explicit "no headers" observation so the UI can
-	// distinguish it from never probed.
+	// Always write the probe observation (including permanent 403/404 and
+	// cyber-policy 400s) so the UI can distinguish "probed, failed" from
+	// "never probed". Free-recovery keeps the atomic latch+lease path.
 	var persistErr error
-	persisted := false
-	shouldPersist := probeStatus < 400 || probeStatus == http.StatusTooManyRequests || freeRecoveryPending || limited
-	if shouldPersist && (snapshot.HeadersObserved || probeStatus == http.StatusOK || freeRecoveryPending || limited) {
-		if freeRecoveryPending {
-			persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
-		} else {
-			persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
-		}
-		persisted = persistErr == nil
+	if freeRecoveryPending {
+		persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+	} else {
+		persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
 	}
+	persisted := persistErr == nil
 	if limited && !freeRecoveryPending {
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
