@@ -197,12 +197,17 @@ import { apiClient } from '@/api/client'
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode } from '@/utils/apiError'
 import {
+  formatRegistrationEmailSuffixWhitelistForMessage,
+  isRegistrationEmailSuffixAllowed,
+  normalizeRegistrationEmailSuffixWhitelist
+} from '@/utils/registrationEmailPolicy'
+import {
   clearAllAffiliateReferralCodes,
   loadAffiliateReferralCode,
   oauthAffiliatePayload
 } from '@/utils/oauthAffiliate'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // ==================== Router & Stores ====================
 
@@ -266,6 +271,9 @@ const aliyunCaptchaSceneId = ref<string>('')
 const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('Sub2API')
+const registrationEmailSuffixWhitelist = ref<string[]>([])
+// 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
+const emailDomainQuotaEnabled = ref<boolean>(false)
 
 // Turnstile for resend
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
@@ -365,6 +373,10 @@ onMounted(async () => {
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
+    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
+      settings.registration_email_suffix_whitelist || []
+    )
+    emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
   } catch (error) {
     console.error('Failed to load public settings:', error)
   }
@@ -473,6 +485,13 @@ function isPendingOAuthFlow(): boolean {
   return Boolean(pendingProvider.value.trim())
 }
 
+// 域名限量注册开启时交由后端按额度判定；pending OAuth / 换绑流程沿用后端策略，前端不预检。
+function shouldBypassRegistrationEmailPolicy(): boolean {
+  return (
+    emailDomainQuotaEnabled.value || isPendingOAuthFlow() || Boolean(pendingAuthToken.value.trim())
+  )
+}
+
 function resolvePendingOAuthCallbackRoute(provider: string): string {
   switch (provider.trim().toLowerCase()) {
     case 'linuxdo':
@@ -514,6 +533,12 @@ async function sendCode(): Promise<void> {
   let captchaProofUsed = false
 
   try {
+    if (!shouldBypassRegistrationEmailPolicy() && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
+      errorMessage.value = buildEmailSuffixNotAllowedMessage()
+      appStore.showError(errorMessage.value)
+      return
+    }
+
     const requestPayload = {
       email: email.value,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
@@ -635,6 +660,12 @@ async function handleVerify(): Promise<void> {
     return
   }
 
+  if (!shouldBypassRegistrationEmailPolicy() && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
+    errorMessage.value = buildEmailSuffixNotAllowedMessage()
+    appStore.showError(errorMessage.value)
+    return
+  }
+
   if (!(await acquireCreateAccountActionProof())) {
     return
   }
@@ -733,6 +764,22 @@ function handleBack(): void {
 
   // Go back to registration
   router.push('/register')
+}
+
+function buildEmailSuffixNotAllowedMessage(): string {
+  const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
+    registrationEmailSuffixWhitelist.value
+  )
+  if (normalizedWhitelist.length === 0) {
+    return t('auth.emailSuffixNotAllowed')
+  }
+  const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
+  return t('auth.emailSuffixNotAllowedWithAllowed', {
+    suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
+      separator,
+      more: (count) => t('auth.emailSuffixAllowedMore', { count })
+    })
+  })
 }
 
 function buildRegistrationErrorMessage(error: unknown, fallback: string): string {

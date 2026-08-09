@@ -605,12 +605,18 @@ describe("admin SettingsView email domain quota copy", () => {
     expect(enCommon.auth.emailDomainRegistrationLimit).toContain("mainstream email");
     expect(enCommon.auth.emailDomainRegistrationLimit).toContain("contact support");
 
-    const zhHint = zhSettings.settings.registration.emailSuffixWhitelistHint;
-    const enHint = enSettings.settings.registration.emailSuffixWhitelistHint;
-    expect(zhHint).toContain("其他可注册主域名各限注册一个账户");
-    expect(zhHint).toContain("清空白名单");
-    expect(enHint).toContain("one account");
-    expect(enHint).toContain("empty");
+    // 白名单 hint 描述严格默认语义；额度语义移入独立开关的 hint。
+    const zhWhitelistHint = zhSettings.settings.registration.emailSuffixWhitelistHint;
+    const enWhitelistHint = enSettings.settings.registration.emailSuffixWhitelistHint;
+    expect(zhWhitelistHint).toContain("留空则不限制");
+    expect(enWhitelistHint).toContain("leave empty for no restriction");
+
+    const zhQuotaHint = zhSettings.settings.registration.emailDomainQuotaHint;
+    const enQuotaHint = enSettings.settings.registration.emailDomainQuotaHint;
+    expect(zhQuotaHint).toContain("其他可注册主域名各限注册一个账户");
+    expect(zhQuotaHint).toContain("关闭时非白名单域名直接拒绝");
+    expect(enQuotaHint).toContain("one account");
+    expect(enQuotaHint).toContain("When disabled");
   });
 });
 

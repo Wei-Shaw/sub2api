@@ -33,6 +33,16 @@ func (s *SettingService) IsEmailVerifyEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsRegistrationEmailDomainQuotaEnabled 检查白名单非空时是否放行非白名单域名限量注册。
+// 安全默认：设置缺失或查询出错时按关闭处理（保持白名单严格模式）。
+func (s *SettingService) IsRegistrationEmailDomainQuotaEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailDomainQuotaEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
 // GetRegistrationEmailSuffixWhitelist returns normalized registration email suffix whitelist.
 func (s *SettingService) GetRegistrationEmailSuffixWhitelist(ctx context.Context) []string {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyRegistrationEmailSuffixWhitelist)

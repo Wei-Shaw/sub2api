@@ -1699,7 +1699,8 @@ func TestCreateOIDCOAuthAccountRejectsSecondEmailOutsideRegistrationSuffixWhitel
 			},
 		},
 		settingValues: map[string]string{
-			service.SettingKeyRegistrationEmailSuffixWhitelist: `["@qq.com"]`,
+			service.SettingKeyRegistrationEmailSuffixWhitelist:    `["@qq.com"]`,
+			service.SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
 		},
 	})
 	ctx := context.Background()
@@ -1740,6 +1741,60 @@ func TestCreateOIDCOAuthAccountRejectsSecondEmailOutsideRegistrationSuffixWhitel
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	payload := decodeJSONBody(t, recorder)
 	require.Equal(t, "EMAIL_DOMAIN_REGISTRATION_LIMIT", payload["reason"])
+
+	count, err := client.User.Query().Where(dbuser.EmailEQ("foo@gmail.com")).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+// 域名限量注册开关默认关闭：白名单外域名保持 PR5423 之前的严格拒绝语义，
+// 即使该域名下还没有任何账户也不放行。
+func TestCreateOIDCOAuthAccountRejectsEmailOutsideWhitelistWhenQuotaDisabled(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		emailVerifyEnabled: true,
+		emailCache: &oauthPendingFlowEmailCacheStub{
+			verificationCodes: map[string]*service.VerificationCodeData{
+				"foo@gmail.com": {
+					Code:      "135790",
+					CreatedAt: time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+				},
+			},
+		},
+		settingValues: map[string]string{
+			service.SettingKeyRegistrationEmailSuffixWhitelist: `["@qq.com"]`,
+		},
+	})
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("suffix-strict-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-suffix-strict-123").
+		SetBrowserSessionKey("suffix-strict-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	body := bytes.NewBufferString(`{"email":"foo@gmail.com","verify_code":"135790","password":"secret-123"}`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("suffix-strict-browser-session-key")})
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	payload := decodeJSONBody(t, recorder)
+	require.Equal(t, "EMAIL_SUFFIX_NOT_ALLOWED", payload["reason"])
 
 	count, err := client.User.Query().Where(dbuser.EmailEQ("foo@gmail.com")).Count(ctx)
 	require.NoError(t, err)

@@ -12,22 +12,23 @@ func firstNonEmpty(values ...string) string {
 }
 
 type SystemSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	FrontendURL                      string
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
-	PasskeyEnabled                   bool // Passkey 登录
-	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
-	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
-	AuditLogRetentionDays            int  // 审计日志保留天数（<=0 永久保留）
-	LoginAgreementEnabled            bool
-	LoginAgreementMode               string
-	LoginAgreementUpdatedAt          string
-	LoginAgreementDocuments          []LoginAgreementDocument
+	RegistrationEnabled                 bool
+	EmailVerifyEnabled                  bool
+	RegistrationEmailSuffixWhitelist    []string
+	RegistrationEmailDomainQuotaEnabled bool // 白名单非空时放行非白名单域名限量注册（默认关闭）
+	PromoCodeEnabled                    bool
+	PasswordResetEnabled                bool
+	FrontendURL                         string
+	InvitationCodeEnabled               bool
+	TotpEnabled                         bool // TOTP 双因素认证
+	PasskeyEnabled                      bool // Passkey 登录
+	SessionBindingEnabled               bool // 会话 IP/UA 绑定（变更即失效）
+	StepUpEnabled                       bool // 敏感操作 step-up 2FA 门控
+	AuditLogRetentionDays               int  // 审计日志保留天数（<=0 永久保留）
+	LoginAgreementEnabled               bool
+	LoginAgreementMode                  string
+	LoginAgreementUpdatedAt             string
+	LoginAgreementDocuments             []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int
@@ -322,38 +323,39 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	ForceEmailOnThirdPartySignup     bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
-	PasskeyEnabled                   bool
-	LoginAgreementEnabled            bool
-	LoginAgreementMode               string
-	LoginAgreementUpdatedAt          string
-	LoginAgreementRevision           string
-	LoginAgreementDocuments          []LoginAgreementDocument
-	TurnstileEnabled                 bool
-	TurnstileSiteKey                 string
-	TencentCaptchaEnabled            bool
-	TencentCaptchaAppID              string
-	TencentCaptchaRegion             string
-	AliyunCaptchaEnabled             bool
-	AliyunCaptchaSceneID             string
-	AliyunCaptchaPrefix              string
-	AliyunCaptchaRegion              string
-	SiteName                         string
-	SiteLogo                         string
-	SiteSubtitle                     string
-	APIBaseURL                       string
-	ContactInfo                      string
-	DocURL                           string
-	HomeContent                      string
-	CompactHomeEnabled               bool
-	HideCcsImportButton              bool
+	RegistrationEnabled                 bool
+	EmailVerifyEnabled                  bool
+	ForceEmailOnThirdPartySignup        bool
+	RegistrationEmailSuffixWhitelist    []string
+	RegistrationEmailDomainQuotaEnabled bool
+	PromoCodeEnabled                    bool
+	PasswordResetEnabled                bool
+	InvitationCodeEnabled               bool
+	TotpEnabled                         bool // TOTP 双因素认证
+	PasskeyEnabled                      bool
+	LoginAgreementEnabled               bool
+	LoginAgreementMode                  string
+	LoginAgreementUpdatedAt             string
+	LoginAgreementRevision              string
+	LoginAgreementDocuments             []LoginAgreementDocument
+	TurnstileEnabled                    bool
+	TurnstileSiteKey                    string
+	TencentCaptchaEnabled               bool
+	TencentCaptchaAppID                 string
+	TencentCaptchaRegion                string
+	AliyunCaptchaEnabled                bool
+	AliyunCaptchaSceneID                string
+	AliyunCaptchaPrefix                 string
+	AliyunCaptchaRegion                 string
+	SiteName                            string
+	SiteLogo                            string
+	SiteSubtitle                        string
+	APIBaseURL                          string
+	ContactInfo                         string
+	DocURL                              string
+	HomeContent                         string
+	CompactHomeEnabled                  bool
+	HideCcsImportButton                 bool
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string

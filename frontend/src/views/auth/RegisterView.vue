@@ -362,6 +362,11 @@ import {
 import { buildAuthErrorMessage } from '@/utils/authError'
 import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import {
+  formatRegistrationEmailSuffixWhitelistForMessage,
+  isRegistrationEmailSuffixAllowed,
+  normalizeRegistrationEmailSuffixWhitelist
+} from '@/utils/registrationEmailPolicy'
+import {
   clearAffiliateReferralCode,
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
@@ -369,7 +374,7 @@ import {
 import { storeOAuthPromoCode } from '@/utils/oauthPromoCode'
 import type { LoginAgreementDocument } from '@/types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 // ==================== Router & Stores ====================
@@ -409,6 +414,9 @@ const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
+const registrationEmailSuffixWhitelist = ref<string[]>([])
+// 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
+const emailDomainQuotaEnabled = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -543,6 +551,10 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
+    registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
+      settings.registration_email_suffix_whitelist || []
+    )
+    emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -864,6 +876,22 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email)
 }
 
+function buildEmailSuffixNotAllowedMessage(): string {
+  const normalizedWhitelist = normalizeRegistrationEmailSuffixWhitelist(
+    registrationEmailSuffixWhitelist.value
+  )
+  if (normalizedWhitelist.length === 0) {
+    return t('auth.emailSuffixNotAllowed')
+  }
+  const separator = String(locale.value || '').toLowerCase().startsWith('zh') ? '、' : ', '
+  return t('auth.emailSuffixNotAllowedWithAllowed', {
+    suffixes: formatRegistrationEmailSuffixWhitelistForMessage(normalizedWhitelist, {
+      separator,
+      more: (count) => t('auth.emailSuffixAllowedMore', { count })
+    })
+  })
+}
+
 function validateForm(): boolean {
   // Reset errors
   errors.email = ''
@@ -887,6 +915,13 @@ function validateForm(): boolean {
     isValid = false
   } else if (!validateEmail(formData.email)) {
     errors.email = t('auth.invalidEmail')
+    isValid = false
+  } else if (
+    !emailDomainQuotaEnabled.value &&
+    !isRegistrationEmailSuffixAllowed(formData.email, registrationEmailSuffixWhitelist.value)
+  ) {
+    // 域名限量注册关闭时保持严格白名单预检；开启时交给后端按域名额度判定
+    errors.email = buildEmailSuffixNotAllowedMessage()
     isValid = false
   }
 
