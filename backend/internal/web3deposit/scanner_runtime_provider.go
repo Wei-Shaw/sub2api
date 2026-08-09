@@ -22,6 +22,7 @@ type ScannerRuntimeRegistry struct {
 func ProvideScannerRuntimeRegistry(
 	cfg *config.Config,
 	networks *ConfluxNetworkRuntimeRegistry,
+	walletStore WalletMetadataStore,
 	leaseStore ScannerLeaseStore,
 	cursorSource ScannerCursorSource,
 	addressLookup DepositAddressLookup,
@@ -35,9 +36,29 @@ func ProvideScannerRuntimeRegistry(
 		return registry
 	}
 	registry.enabled = true
+	walletVerifier := NewWalletIdentityVerifier(walletStore)
+	walletErrors := make(map[string]error)
 	for _, key := range networks.Keys() {
 		network := cfg.Web3Deposit.Networks[key.NetworkKey]
 		asset := network.Assets[key.AssetKey]
+		walletErr, verified := walletErrors[network.WalletID]
+		if !verified {
+			wallet, ok := cfg.Web3Deposit.Wallets[network.WalletID]
+			if !ok || walletStore == nil {
+				walletErr = fmt.Errorf("web3 deposit wallet %q is unavailable", network.WalletID)
+			} else {
+				_, walletErr = walletVerifier.Verify(context.Background(), ConfiguredWallet{
+					WalletID:    network.WalletID,
+					AccountPath: wallet.AccountPath,
+					AccountXPub: wallet.AccountXPub,
+				})
+			}
+			walletErrors[network.WalletID] = walletErr
+		}
+		if walletErr != nil {
+			registry.runtimes[key] = failedScannerRuntime(walletErr)
+			continue
+		}
 		networkRuntime, ok := networks.Runtime(key.NetworkKey, key.AssetKey)
 		if !ok || !networkRuntime.Ready() || networkRuntime.Pool() == nil {
 			registry.runtimes[key] = failedScannerRuntime(runtimeUnavailableError(networkRuntime))

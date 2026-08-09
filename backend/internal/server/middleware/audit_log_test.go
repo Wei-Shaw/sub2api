@@ -156,7 +156,7 @@ func TestWeb3DepositMutationAuditRoutesHaveStableActions(t *testing.T) {
 	for route, action := range expected {
 		require.Equal(t, action, auditActionOverrides[route])
 	}
-	for _, key := range []string{"deposit_id", "old_status", "new_status", "reason", "network_key", "asset_key", "from_block", "to_block"} {
+	for _, key := range []string{"deposit_id", "job_id", "old_status", "new_status", "reason", "network_key", "asset_key", "from_block", "to_block"} {
 		require.Contains(t, auditExtraAllowedKeys, key)
 	}
 }

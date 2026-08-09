@@ -46,6 +46,8 @@
             <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.minimumDeposit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.minimum_deposit || '—' }} {{ asset?.display_name || '' }}</dd></div>
               <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.automaticCreditLimit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.automatic_credit_limit || '—' }} {{ asset?.display_name || '' }}</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.feeRate') }}</dt><dd class="mt-1 font-semibold">{{ asset ? t('web3Deposit.feeRateValue', { rate: asset.fee_rate }) : '—' }}</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.creditFinality') }}</dt><dd class="mt-1 font-semibold">{{ asset?.credit_finality || '—' }}</dd></div>
             </dl>
           </div>
         </div>

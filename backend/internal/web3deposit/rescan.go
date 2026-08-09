@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/ethereum/go-ethereum/common"
@@ -14,6 +15,7 @@ var (
 	ErrRescanRangeTooLarge        = errors.New("web3 deposit rescan range is too large")
 	ErrRescanBeforeScanStartBlock = errors.New("web3 deposit rescan range is before scan start block")
 	ErrRescanBeyondFinalizedBlock = errors.New("web3 deposit rescan range is beyond finalized block")
+	ErrRescanTargetUnavailable    = errors.New("web3 deposit rescan target is unavailable")
 )
 
 type RescanFinalitySource interface {
@@ -109,33 +111,25 @@ func (r *BoundedRescannerRegistry) Rescan(ctx context.Context, networkKey, asset
 	}
 	rescanner, ok := r.rescanners[RuntimeKey{NetworkKey: networkKey, AssetKey: assetKey}]
 	if !ok {
-		return BoundedRescanResult{}, fmt.Errorf("web3 deposit rescan target is unavailable")
+		return BoundedRescanResult{}, ErrRescanTargetUnavailable
 	}
 	return rescanner.Rescan(ctx, fromBlock, toBlock)
 }
 
+func (r *BoundedRescannerRegistry) Validate(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) error {
+	if r == nil {
+		return ErrRescanTargetUnavailable
+	}
+	rescanner, ok := r.rescanners[RuntimeKey{NetworkKey: networkKey, AssetKey: assetKey}]
+	if !ok {
+		return ErrRescanTargetUnavailable
+	}
+	return rescanner.Validate(ctx, fromBlock, toBlock)
+}
+
 func (r *BoundedRescanner) Rescan(ctx context.Context, fromBlock, toBlock uint64) (BoundedRescanResult, error) {
-	if r == nil || r.initErr != nil {
-		return BoundedRescanResult{}, r.initErr
-	}
-	if toBlock < fromBlock {
-		return BoundedRescanResult{}, ErrRescanRangeInvalid
-	}
-	if r.maxRange == 0 || toBlock-fromBlock+1 > r.maxRange {
-		return BoundedRescanResult{}, fmt.Errorf("%w: no larger than %d blocks", ErrRescanRangeTooLarge, r.maxRange)
-	}
-	if fromBlock < r.scanStartBlock {
-		return BoundedRescanResult{}, fmt.Errorf("%w: scan_start_block=%d", ErrRescanBeforeScanStartBlock, r.scanStartBlock)
-	}
-	if r.finality == nil {
-		return BoundedRescanResult{}, fmt.Errorf("web3 deposit rescan finality source is unavailable")
-	}
-	finalizedBlock, err := r.finality.FinalizedBlockNumber(ctx)
-	if err != nil {
-		return BoundedRescanResult{}, fmt.Errorf("read web3 deposit rescan finalized block: %w", err)
-	}
-	if toBlock > finalizedBlock {
-		return BoundedRescanResult{}, fmt.Errorf("%w: finalized_block=%d", ErrRescanBeyondFinalizedBlock, finalizedBlock)
+	if err := r.Validate(ctx, fromBlock, toBlock); err != nil {
+		return BoundedRescanResult{}, err
 	}
 	events, err := r.transfer.Fetch(ctx, fromBlock, toBlock)
 	if err != nil {
@@ -151,4 +145,33 @@ func (r *BoundedRescanner) Rescan(ctx context.Context, fromBlock, toBlock uint64
 		return BoundedRescanResult{}, err
 	}
 	return BoundedRescanResult{FromBlock: fromBlock, ToBlock: toBlock, EventCount: len(events), MatchedCount: len(matches), DepositCount: len(deposits)}, nil
+}
+
+func (r *BoundedRescanner) Validate(ctx context.Context, fromBlock, toBlock uint64) error {
+	if r == nil {
+		return ErrRescanTargetUnavailable
+	}
+	if r.initErr != nil {
+		return r.initErr
+	}
+	if fromBlock > math.MaxInt64 || toBlock > math.MaxInt64 || toBlock < fromBlock {
+		return ErrRescanRangeInvalid
+	}
+	if r.maxRange == 0 || toBlock-fromBlock+1 > r.maxRange {
+		return fmt.Errorf("%w: no larger than %d blocks", ErrRescanRangeTooLarge, r.maxRange)
+	}
+	if fromBlock < r.scanStartBlock {
+		return fmt.Errorf("%w: scan_start_block=%d", ErrRescanBeforeScanStartBlock, r.scanStartBlock)
+	}
+	if r.finality == nil {
+		return fmt.Errorf("web3 deposit rescan finality source is unavailable")
+	}
+	finalizedBlock, err := r.finality.FinalizedBlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("read web3 deposit rescan finalized block: %w", err)
+	}
+	if toBlock > finalizedBlock {
+		return fmt.Errorf("%w: finalized_block=%d", ErrRescanBeyondFinalizedBlock, finalizedBlock)
+	}
+	return nil
 }

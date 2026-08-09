@@ -5,6 +5,8 @@ export interface Web3DepositAssetConfig {
   decimals: number
   minimum_deposit: string
   automatic_credit_limit: string
+  fee_rate: string
+  credit_finality: string
 }
 
 export interface Web3DepositNetworkConfig {

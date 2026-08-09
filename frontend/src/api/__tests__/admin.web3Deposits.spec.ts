@@ -38,5 +38,11 @@ describe('admin Web3 deposits API', () => {
       from_block: '100',
       to_block: '120',
     })
+
+    web3DepositsAPI.listRescanJobs(10)
+    expect(get).toHaveBeenCalledWith('/admin/web3-deposits/rescan-jobs', { params: { limit: 10 } })
+
+    web3DepositsAPI.getRescanJob(12)
+    expect(get).toHaveBeenCalledWith('/admin/web3-deposits/rescan-jobs/12')
   })
 })

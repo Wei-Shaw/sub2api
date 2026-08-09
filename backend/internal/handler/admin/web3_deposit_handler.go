@@ -16,11 +16,11 @@ import (
 )
 
 type Web3DepositHandler struct {
-	deposits  web3deposit.AdminDepositReader
-	operator  web3deposit.AdminDepositOperator
-	runtimes  web3DepositScannerRuntimeRegistry
-	networks  web3DepositNetworkRuntimeRegistry
-	rescanner web3DepositRescanner
+	deposits   web3deposit.AdminDepositReader
+	operator   web3deposit.AdminDepositOperator
+	runtimes   web3DepositScannerRuntimeRegistry
+	networks   web3DepositNetworkRuntimeRegistry
+	rescanJobs web3DepositRescanJobs
 }
 
 type web3DepositScannerRuntimeRegistry interface {
@@ -33,12 +33,14 @@ type web3DepositNetworkRuntimeRegistry interface {
 	Find(chainID uint64, tokenContract string) (*web3deposit.ConfluxNetworkRuntime, bool)
 }
 
-type web3DepositRescanner interface {
-	Rescan(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (web3deposit.BoundedRescanResult, error)
+type web3DepositRescanJobs interface {
+	Enqueue(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64, requestedBy int64) (web3deposit.RescanJob, error)
+	List(ctx context.Context, limit int) ([]web3deposit.RescanJob, error)
+	Get(ctx context.Context, id int64) (web3deposit.RescanJob, error)
 }
 
-func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtimes *web3deposit.ScannerRuntimeRegistry, networks *web3deposit.ConfluxNetworkRuntimeRegistry, rescanner *web3deposit.BoundedRescannerRegistry) *Web3DepositHandler {
-	return &Web3DepositHandler{deposits: deposits, operator: operator, runtimes: runtimes, networks: networks, rescanner: rescanner}
+func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtimes *web3deposit.ScannerRuntimeRegistry, networks *web3deposit.ConfluxNetworkRuntimeRegistry, rescanJobs *web3deposit.RescanJobRuntime) *Web3DepositHandler {
+	return &Web3DepositHandler{deposits: deposits, operator: operator, runtimes: runtimes, networks: networks, rescanJobs: rescanJobs}
 }
 
 func (h *Web3DepositHandler) List(c *gin.Context) {
@@ -264,23 +266,116 @@ func (h *Web3DepositHandler) Rescan(c *gin.Context) {
 		response.BadRequest(c, "Invalid block range")
 		return
 	}
-	if h.rescanner == nil {
+	if h.rescanJobs == nil {
 		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit rescan is unavailable"))
 		return
 	}
-	result, err := h.rescanner.Rescan(c.Request.Context(), input.NetworkKey, input.AssetKey, fromBlock, toBlock)
+	job, err := h.rescanJobs.Enqueue(c.Request.Context(), strings.TrimSpace(input.NetworkKey), strings.TrimSpace(input.AssetKey), fromBlock, toBlock, getAdminIDFromContext(c))
+	if errors.Is(err, web3deposit.ErrRescanJobUnavailable) {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit rescan is unavailable"))
+		return
+	}
 	if err != nil {
-		response.ErrorFrom(c, infraerrors.BadRequest("WEB3_DEPOSIT_RESCAN_INVALID", err.Error()))
+		response.ErrorFrom(c, web3DepositRescanJobError(err))
 		return
 	}
 	servermiddleware.SetAuditExtra(c, map[string]any{
+		"job_id":      job.ID,
 		"network_key": strings.TrimSpace(input.NetworkKey),
 		"asset_key":   strings.TrimSpace(input.AssetKey),
 		"from_block":  fromBlock,
 		"to_block":    toBlock,
-		"result":      "success",
+		"result":      "queued",
 	})
-	response.Success(c, result)
+	response.Success(c, web3RescanJobFromDomain(job))
+}
+
+func (h *Web3DepositHandler) ListRescanJobs(c *gin.Context) {
+	if h.rescanJobs == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit rescan is unavailable"))
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	jobs, err := h.rescanJobs.List(c.Request.Context(), limit)
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_RESCAN_JOB_LIST_FAILED", "failed to list web3 deposit rescan jobs").WithCause(err))
+		return
+	}
+	items := make([]web3RescanJobResponse, 0, len(jobs))
+	for _, job := range jobs {
+		items = append(items, web3RescanJobFromDomain(job))
+	}
+	response.Success(c, items)
+}
+
+func (h *Web3DepositHandler) GetRescanJob(c *gin.Context) {
+	if h.rescanJobs == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit rescan is unavailable"))
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("jobId"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid rescan job id")
+		return
+	}
+	job, err := h.rescanJobs.Get(c.Request.Context(), id)
+	if errors.Is(err, web3deposit.ErrRescanJobNotFound) {
+		response.ErrorFrom(c, infraerrors.NotFound("WEB3_DEPOSIT_RESCAN_JOB_NOT_FOUND", "web3 deposit rescan job not found"))
+		return
+	}
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_RESCAN_JOB_GET_FAILED", "failed to load web3 deposit rescan job").WithCause(err))
+		return
+	}
+	response.Success(c, web3RescanJobFromDomain(job))
+}
+
+type web3RescanJobResponse struct {
+	ID           int64                       `json:"id"`
+	NetworkKey   string                      `json:"network_key"`
+	AssetKey     string                      `json:"asset_key"`
+	FromBlock    string                      `json:"from_block"`
+	ToBlock      string                      `json:"to_block"`
+	Status       web3deposit.RescanJobStatus `json:"status"`
+	RequestedBy  int64                       `json:"requested_by"`
+	AttemptCount int                         `json:"attempt_count"`
+	EventCount   int                         `json:"event_count"`
+	MatchedCount int                         `json:"matched_count"`
+	DepositCount int                         `json:"deposit_count"`
+	ErrorMessage string                      `json:"error_message,omitempty"`
+	StartedAt    *time.Time                  `json:"started_at,omitempty"`
+	CompletedAt  *time.Time                  `json:"completed_at,omitempty"`
+	CreatedAt    time.Time                   `json:"created_at"`
+	UpdatedAt    time.Time                   `json:"updated_at"`
+}
+
+func web3RescanJobFromDomain(job web3deposit.RescanJob) web3RescanJobResponse {
+	return web3RescanJobResponse{
+		ID: job.ID, NetworkKey: job.NetworkKey, AssetKey: job.AssetKey,
+		FromBlock: strconv.FormatUint(job.FromBlock, 10), ToBlock: strconv.FormatUint(job.ToBlock, 10),
+		Status: job.Status, RequestedBy: job.RequestedBy, AttemptCount: job.AttemptCount,
+		EventCount: job.EventCount, MatchedCount: job.MatchedCount, DepositCount: job.DepositCount,
+		ErrorMessage: job.ErrorMessage, StartedAt: job.StartedAt, CompletedAt: job.CompletedAt,
+		CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
+	}
+}
+
+func web3DepositRescanJobError(err error) error {
+	if errors.Is(err, web3deposit.ErrRescanJobCreateFailed) {
+		return infraerrors.InternalServer("WEB3_DEPOSIT_RESCAN_JOB_CREATE_FAILED", "failed to create web3 deposit rescan job").WithCause(err)
+	}
+	for _, candidate := range []error{
+		web3deposit.ErrRescanRangeInvalid,
+		web3deposit.ErrRescanRangeTooLarge,
+		web3deposit.ErrRescanBeforeScanStartBlock,
+		web3deposit.ErrRescanBeyondFinalizedBlock,
+		web3deposit.ErrRescanTargetUnavailable,
+	} {
+		if errors.Is(err, candidate) {
+			return infraerrors.BadRequest("WEB3_DEPOSIT_RESCAN_INVALID", err.Error())
+		}
+	}
+	return infraerrors.ServiceUnavailable("WEB3_DEPOSIT_RESCAN_VALIDATION_FAILED", "failed to validate web3 deposit rescan range").WithCause(err)
 }
 
 func setWeb3DepositAuditExtra(c *gin.Context, depositID int64, oldStatus, newStatus web3deposit.DepositStatus, reason string) {

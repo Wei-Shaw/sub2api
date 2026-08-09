@@ -11,6 +11,23 @@ export default {
       manualReview: '待人工审核',
       failed: '处理失败',
     },
+    rescanJobs: {
+      title: '补扫任务',
+      empty: '暂无补扫任务',
+      id: '任务 ID',
+      target: '网络 / 资产',
+      range: '区块范围',
+      status: '状态',
+      result: '执行结果',
+      createdAt: '创建时间',
+      counts: '事件 {events} / 匹配 {matched} / 充值 {deposits}',
+      statuses: {
+        pending: '等待执行',
+        running: '执行中',
+        succeeded: '已完成',
+        failed: '失败',
+      },
+    },
     filters: {
       allStatuses: '全部状态',
       transactionOrAddress: '交易哈希或地址',
@@ -42,6 +59,7 @@ export default {
     },
     messages: {
       loadFailed: '加载 Web3 充值记录失败',
+      loadRescanJobsFailed: '加载补扫任务失败',
       operationCompleted: '操作成功',
       operationFailed: '操作失败',
     },

@@ -98,6 +98,41 @@
         @update:page="nextPage => { page = nextPage; load() }"
         @update:pageSize="nextPageSize => { pageSize = nextPageSize; page = 1; load() }"
       />
+
+      <div class="card overflow-x-auto">
+        <div class="border-b border-gray-200 p-4 dark:border-dark-700">
+          <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.web3Deposits.rescanJobs.title') }}</h2>
+        </div>
+        <div v-if="rescanJobs.length === 0" class="p-8 text-center text-sm text-gray-500">
+          {{ t('admin.web3Deposits.rescanJobs.empty') }}
+        </div>
+        <table v-else class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+          <thead>
+            <tr class="text-left text-xs uppercase text-gray-500">
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.id') }}</th>
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.target') }}</th>
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.range') }}</th>
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.status') }}</th>
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.result') }}</th>
+              <th class="p-4">{{ t('admin.web3Deposits.rescanJobs.createdAt') }}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 text-sm dark:divide-dark-700">
+            <tr v-for="job in rescanJobs" :key="job.id">
+              <td class="p-4 font-mono">#{{ job.id }}</td>
+              <td class="p-4">{{ job.network_key }} / {{ job.asset_key }}</td>
+              <td class="p-4 font-mono">{{ job.from_block }} – {{ job.to_block }}</td>
+              <td class="p-4">{{ rescanJobStatusLabel(job.status) }}</td>
+              <td class="p-4">
+                <span v-if="job.status === 'succeeded'">{{ t('admin.web3Deposits.rescanJobs.counts', { events: job.event_count, matched: job.matched_count, deposits: job.deposit_count }) }}</span>
+                <span v-else-if="job.error_message" class="text-red-600 dark:text-red-400">{{ job.error_message }}</span>
+                <span v-else>—</span>
+              </td>
+              <td class="p-4 text-gray-600 dark:text-gray-300">{{ formatDateTime(job.created_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <BaseDialog
@@ -128,10 +163,11 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
-import web3DepositsAPI, { type AdminWeb3Deposit, type Web3DepositRuntime } from '@/api/admin/web3Deposits'
+import web3DepositsAPI, { type AdminWeb3Deposit, type Web3DepositRuntime, type Web3RescanJob } from '@/api/admin/web3Deposits'
 import { useStepUp, isStepUpCancelled } from '@/composables/useStepUp'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { formatDateTime } from '@/utils/format'
 
 const statusKeys: Record<string, string> = {
   detected: 'detected',
@@ -181,6 +217,7 @@ const { t } = useI18n()
 const items = ref<AdminWeb3Deposit[]>([])
 const stats = ref<Record<string, number>>({})
 const runtimes = ref<Web3DepositRuntime[]>([])
+const rescanJobs = ref<Web3RescanJob[]>([])
 const selectedRuntimeKey = ref('')
 const page = ref(1)
 const pageSize = ref(20)
@@ -215,6 +252,10 @@ function reasonLabel(reason: string) {
   return key ? t(`admin.web3Deposits.reasons.${key}`) : reason
 }
 
+function rescanJobStatusLabel(status: Web3RescanJob['status']) {
+  return t(`admin.web3Deposits.rescanJobs.statuses.${status}`)
+}
+
 async function load() {
   try {
     const params: Record<string, unknown> = {
@@ -241,6 +282,15 @@ async function load() {
     }
   } catch (error) {
     app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadFailed')))
+  }
+  await loadRescanJobs()
+}
+
+async function loadRescanJobs() {
+  try {
+    rescanJobs.value = (await web3DepositsAPI.listRescanJobs()).data
+  } catch (error) {
+    app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadRescanJobsFailed')))
   }
 }
 

@@ -117,6 +117,7 @@ func provideCleanup(
 	auditLog *service.AuditLogService,
 	scannerRuntime *web3deposit.ScannerRuntimeRegistry,
 	creditWorkerRuntime *web3deposit.CreditWorkerRuntime,
+	rescanJobRuntime *web3deposit.RescanJobRuntime,
 	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntimeRegistry,
 	promptAudit *securityaudit.PromptService,
 ) func() {
@@ -132,6 +133,7 @@ func provideCleanup(
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
 			{"Web3DepositRuntime", func() error {
+				rescanJobRuntime.Stop()
 				creditWorkerRuntime.Stop()
 				scannerRuntime.Stop()
 				confluxNetworkRuntime.Close()

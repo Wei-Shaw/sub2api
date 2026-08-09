@@ -94,6 +94,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // auditLog
 		nil, // scannerRuntime
 		nil, // creditWorkerRuntime
+		nil, // rescanJobRuntime
 		nil, // confluxNetworkRuntime
 		nil, // promptAudit
 	)

@@ -58,7 +58,7 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
-	"deposit_id": {}, "old_status": {}, "new_status": {}, "reason": {},
+	"deposit_id": {}, "job_id": {}, "old_status": {}, "new_status": {}, "reason": {},
 	"network_key": {}, "asset_key": {}, "from_block": {}, "to_block": {},
 }
 

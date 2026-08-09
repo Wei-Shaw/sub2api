@@ -122,7 +122,7 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 
 func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {
 	rescanner := &adminRescannerStub{}
-	handler := &Web3DepositHandler{rescanner: rescanner}
+	handler := &Web3DepositHandler{rescanJobs: rescanner}
 	router := gin.New()
 	router.POST("/rescan", handler.Rescan)
 
@@ -134,6 +134,58 @@ func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {
 	require.Equal(t, "usdt0", rescanner.assetKey)
 	require.Equal(t, uint64(100), rescanner.fromBlock)
 	require.Equal(t, uint64(120), rescanner.toBlock)
+	var envelope struct {
+		Data struct {
+			ID        int64                       `json:"id"`
+			Status    web3deposit.RescanJobStatus `json:"status"`
+			FromBlock string                      `json:"from_block"`
+			ToBlock   string                      `json:"to_block"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+	require.Equal(t, int64(9), envelope.Data.ID)
+	require.Equal(t, web3deposit.RescanJobStatusPending, envelope.Data.Status)
+	require.Equal(t, "100", envelope.Data.FromBlock)
+	require.Equal(t, "120", envelope.Data.ToBlock)
+}
+
+func TestWeb3DepositHandlerReadsPersistentRescanJobs(t *testing.T) {
+	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
+	jobs := &adminRescannerStub{jobs: []web3deposit.RescanJob{{ID: 9, Status: web3deposit.RescanJobStatusSucceeded, CreatedAt: now}}}
+	handler := &Web3DepositHandler{rescanJobs: jobs}
+	router := gin.New()
+	router.GET("/rescan-jobs", handler.ListRescanJobs)
+	router.GET("/rescan-jobs/:jobId", handler.GetRescanJob)
+
+	listResponse := httptest.NewRecorder()
+	router.ServeHTTP(listResponse, httptest.NewRequest(http.MethodGet, "/rescan-jobs", nil))
+	require.Equal(t, http.StatusOK, listResponse.Code)
+	var listEnvelope struct {
+		Data []struct {
+			ID int64 `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listResponse.Body.Bytes(), &listEnvelope))
+	require.Len(t, listEnvelope.Data, 1)
+	require.Equal(t, int64(9), listEnvelope.Data[0].ID)
+
+	getResponse := httptest.NewRecorder()
+	router.ServeHTTP(getResponse, httptest.NewRequest(http.MethodGet, "/rescan-jobs/9", nil))
+	require.Equal(t, http.StatusOK, getResponse.Code)
+}
+
+func TestWeb3DepositHandlerRejectsInvalidRescanBeforeQueueing(t *testing.T) {
+	jobs := &adminRescannerStub{enqueueErr: web3deposit.ErrRescanRangeTooLarge}
+	handler := &Web3DepositHandler{rescanJobs: jobs}
+	router := gin.New()
+	router.POST("/rescan", handler.Rescan)
+
+	response := httptest.NewRecorder()
+	body := bytes.NewBufferString(`{"network_key":"network","asset_key":"usdt0","from_block":"100","to_block":"120"}`)
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/rescan", body))
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	require.Zero(t, jobs.fromBlock)
 }
 
 func TestWeb3DepositHandlerWritesAuditExtras(t *testing.T) {
@@ -145,7 +197,7 @@ func TestWeb3DepositHandlerWritesAuditExtras(t *testing.T) {
 	deposit := web3deposit.Deposit{ID: 7, Status: web3deposit.DepositStatusManualReview}
 	operator := &adminDepositOperatorStub{}
 	rescanner := &adminRescannerStub{}
-	handler := &Web3DepositHandler{deposits: &adminDepositReaderStub{deposit: deposit}, operator: operator, rescanner: rescanner}
+	handler := &Web3DepositHandler{deposits: &adminDepositReaderStub{deposit: deposit}, operator: operator, rescanJobs: rescanner}
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -164,6 +216,7 @@ func TestWeb3DepositHandlerWritesAuditExtras(t *testing.T) {
 	rescanResponse := httptest.NewRecorder()
 	router.ServeHTTP(rescanResponse, httptest.NewRequest(http.MethodPost, "/api/v1/admin/web3-deposits/rescan", bytes.NewBufferString(`{"network_key":"network","asset_key":"usdt0","from_block":"100","to_block":"120"}`)))
 	require.Equal(t, http.StatusOK, rescanResponse.Code)
+	require.Equal(t, int64(77), rescanner.requestedBy)
 	auditService.Stop()
 
 	logs := repository.snapshot()
@@ -185,6 +238,8 @@ func TestWeb3DepositHandlerWritesAuditExtras(t *testing.T) {
 	require.Equal(t, "usdt0", rescan.Extra["asset_key"])
 	require.EqualValues(t, 100, rescan.Extra["from_block"])
 	require.EqualValues(t, 120, rescan.Extra["to_block"])
+	require.EqualValues(t, 9, rescan.Extra["job_id"])
+	require.Equal(t, "queued", rescan.Extra["result"])
 }
 
 func assertAdminWeb3DepositJSON(t *testing.T, item map[string]any) {
@@ -214,10 +269,13 @@ func (s scannerRuntimeRegistryStub) Runtime(string, string) (*web3deposit.Scanne
 }
 
 type adminRescannerStub struct {
-	networkKey string
-	assetKey   string
-	fromBlock  uint64
-	toBlock    uint64
+	networkKey  string
+	assetKey    string
+	fromBlock   uint64
+	toBlock     uint64
+	requestedBy int64
+	jobs        []web3deposit.RescanJob
+	enqueueErr  error
 }
 
 type adminDepositOperatorStub struct{}
@@ -255,12 +313,29 @@ func (r *web3DepositAuditCaptureRepository) snapshot() []*service.AuditLog {
 	return append([]*service.AuditLog(nil), r.logs...)
 }
 
-func (s *adminRescannerStub) Rescan(_ context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (web3deposit.BoundedRescanResult, error) {
+func (s *adminRescannerStub) Enqueue(_ context.Context, networkKey, assetKey string, fromBlock, toBlock uint64, requestedBy int64) (web3deposit.RescanJob, error) {
+	if s.enqueueErr != nil {
+		return web3deposit.RescanJob{}, s.enqueueErr
+	}
 	s.networkKey = networkKey
 	s.assetKey = assetKey
 	s.fromBlock = fromBlock
 	s.toBlock = toBlock
-	return web3deposit.BoundedRescanResult{FromBlock: fromBlock, ToBlock: toBlock}, nil
+	s.requestedBy = requestedBy
+	return web3deposit.RescanJob{ID: 9, NetworkKey: networkKey, AssetKey: assetKey, FromBlock: fromBlock, ToBlock: toBlock, Status: web3deposit.RescanJobStatusPending}, nil
+}
+
+func (s *adminRescannerStub) List(context.Context, int) ([]web3deposit.RescanJob, error) {
+	return s.jobs, nil
+}
+
+func (s *adminRescannerStub) Get(_ context.Context, id int64) (web3deposit.RescanJob, error) {
+	for _, job := range s.jobs {
+		if job.ID == id {
+			return job, nil
+		}
+	}
+	return web3deposit.RescanJob{}, web3deposit.ErrRescanJobNotFound
 }
 
 func (s *adminDepositReaderStub) ListAdminDeposits(context.Context, web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {

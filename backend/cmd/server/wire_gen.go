@@ -304,12 +304,14 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	web3ScannerBatchRepository := repository.NewWeb3ScannerBatchRepository(client)
 	web3DepositRepository := repository.NewWeb3DepositRepository(client)
 	web3FinalizerBatchRepository := repository.NewWeb3FinalizerBatchRepository(client)
-	scannerRuntime := web3deposit.ProvideScannerRuntimeRegistry(configConfig, confluxNetworkRuntime, web3ScannerCursorRepository, web3ScannerCursorRepository, web3DepositAddressRepository, web3ScannerBatchRepository, web3DepositRepository, web3DepositRepository, web3FinalizerBatchRepository)
+	scannerRuntime := web3deposit.ProvideScannerRuntimeRegistry(configConfig, confluxNetworkRuntime, web3DepositWalletRepository, web3ScannerCursorRepository, web3ScannerCursorRepository, web3DepositAddressRepository, web3ScannerBatchRepository, web3DepositRepository, web3DepositRepository, web3FinalizerBatchRepository)
 	web3CreditJobRepository := repository.NewWeb3CreditJobRepository(db)
 	web3AccountingRepository := repository.NewWeb3AccountingRepository(db)
 	creditWorkerRuntime := web3deposit.ProvideCreditWorkerRuntime(configConfig, web3CreditJobRepository, web3AccountingRepository)
 	boundedRescanner := web3deposit.NewBoundedRescannerRegistry(configConfig, confluxNetworkRuntime, web3DepositAddressRepository, web3DepositRepository)
-	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, web3DepositRepository, scannerRuntime, confluxNetworkRuntime, boundedRescanner)
+	web3RescanJobRepository := repository.NewWeb3RescanJobRepository(db)
+	rescanJobRuntime := web3deposit.ProvideRescanJobRuntime(configConfig, web3RescanJobRepository, boundedRescanner)
+	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, web3DepositRepository, scannerRuntime, confluxNetworkRuntime, rescanJobRuntime)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, adminWeb3DepositHandler, affiliateHandler, complianceHandler, auditLogHandler, upstreamBillingProbeService, ollamaCloudUsageService)
 	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, scannerRuntime, web3DepositRepository)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
@@ -339,7 +341,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
 	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsRepository, settingRepository, accountRepository, concurrencyService, db, redisClient, configConfig)
 	opsAggregationService := service.ProvideOpsAggregationService(opsRepository, settingRepository, db, redisClient, configConfig)
-	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig, proxyRepository)
+	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig, proxyRepository, web3DepositRepository)
 	opsCleanupService := service.ProvideOpsCleanupService(opsRepository, db, redisClient, configConfig, channelMonitorService, settingRepository, opsService)
 	opsScheduledReportService := service.ProvideOpsScheduledReportService(opsService, userService, emailService, redisClient, configConfig)
 	opsIngressRejectAggregator := service.ProvideOpsIngressRejectAggregator(opsRepository, opsService)
@@ -352,7 +354,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, scannerRuntime, creditWorkerRuntime, confluxNetworkRuntime, promptService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, scannerRuntime, creditWorkerRuntime, rescanJobRuntime, confluxNetworkRuntime, promptService)
 	application := &Application{
 		Server:      httpServer,
 		PromptAudit: promptService,
@@ -424,6 +426,7 @@ func provideCleanup(
 	auditLog *service.AuditLogService,
 	scannerRuntime *web3deposit.ScannerRuntimeRegistry,
 	creditWorkerRuntime *web3deposit.CreditWorkerRuntime,
+	rescanJobRuntime *web3deposit.RescanJobRuntime,
 	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntimeRegistry,
 	promptAudit *securityaudit.PromptService,
 ) func() {
@@ -438,6 +441,7 @@ func provideCleanup(
 
 		parallelSteps := []cleanupStep{
 			{"Web3DepositRuntime", func() error {
+				rescanJobRuntime.Stop()
 				creditWorkerRuntime.Stop()
 				scannerRuntime.Stop()
 				confluxNetworkRuntime.Close()

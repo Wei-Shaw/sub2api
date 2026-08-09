@@ -131,6 +131,8 @@ func registerWeb3DepositRoutes(admin *gin.RouterGroup, h *handler.Handlers, step
 	group.GET("", h.Admin.Web3Deposit.List)
 	group.GET("/stats", h.Admin.Web3Deposit.Stats)
 	group.GET("/runtime", h.Admin.Web3Deposit.Runtime)
+	group.GET("/rescan-jobs", h.Admin.Web3Deposit.ListRescanJobs)
+	group.GET("/rescan-jobs/:jobId", h.Admin.Web3Deposit.GetRescanJob)
 	group.GET("/:id", h.Admin.Web3Deposit.Get)
 	group.POST("/:id/approve", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Approve)
 	group.POST("/:id/ignore", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Ignore)

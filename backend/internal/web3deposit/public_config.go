@@ -40,6 +40,8 @@ type PublicAsset struct {
 	Decimals             int32  `json:"decimals"`
 	MinimumDeposit       string `json:"minimum_deposit"`
 	AutomaticCreditLimit string `json:"automatic_credit_limit"`
+	FeeRate              string `json:"fee_rate"`
+	CreditFinality       string `json:"credit_finality"`
 }
 
 func BuildPublicConfig(cfg config.Web3DepositConfig, readiness PublicConfigReadiness) PublicConfig {
@@ -82,6 +84,8 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, readiness PublicConfigReadi
 				Decimals:             asset.Decimals,
 				MinimumDeposit:       asset.MinimumDeposit,
 				AutomaticCreditLimit: asset.AutoCreditLimit,
+				FeeRate:              "0",
+				CreditFinality:       "finalized",
 			})
 		}
 

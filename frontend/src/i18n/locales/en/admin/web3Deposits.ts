@@ -11,6 +11,23 @@ export default {
       manualReview: 'Manual review',
       failed: 'Failed',
     },
+    rescanJobs: {
+      title: 'Rescan jobs',
+      empty: 'No rescan jobs',
+      id: 'Job ID',
+      target: 'Network / asset',
+      range: 'Block range',
+      status: 'Status',
+      result: 'Result',
+      createdAt: 'Created',
+      counts: 'Events {events} / matched {matched} / deposits {deposits}',
+      statuses: {
+        pending: 'Pending',
+        running: 'Running',
+        succeeded: 'Succeeded',
+        failed: 'Failed',
+      },
+    },
     filters: {
       allStatuses: 'All statuses',
       transactionOrAddress: 'Transaction hash or address',
@@ -42,6 +59,7 @@ export default {
     },
     messages: {
       loadFailed: 'Failed to load Web3 deposits',
+      loadRescanJobsFailed: 'Failed to load rescan jobs',
       operationCompleted: 'Operation completed',
       operationFailed: 'Operation failed',
     },

@@ -49,6 +49,8 @@ const enabledConfig = {
       decimals: 6,
       minimum_deposit: '1.000000',
       automatic_credit_limit: '10000.000000',
+      fee_rate: '0',
+      credit_finality: 'finalized',
     }],
   }],
 }
