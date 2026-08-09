@@ -13,7 +13,8 @@ be started manually. It calls `scripts/sync-upstream-release.sh`, which:
 3. Fetches the official tag into a namespaced ref so upstream and fork tags do
    not collide locally.
 4. Merges that official tag into fork `main` in a temporary worktree.
-5. Runs backend and frontend checks. A conflict or failed check exits without
+5. Rejects new fork-only migrations outside the reserved `fork_` namespace,
+   then runs backend and frontend checks. A conflict or failed check exits without
    changing fork `main` or creating a tag.
 6. Atomically pushes fork `main` and the same version tag.
 7. Dispatches the existing `release.yml` workflow to build release archives and
@@ -38,6 +39,20 @@ required.
 
 No repository secrets are needed unless existing release notifications or
 Docker Hub publishing are also desired.
+
+## Fork migration policy
+
+Upstream owns numeric migration names such as `221_description.sql`. New
+fork-only migrations must instead use
+`fork_YYYYMMDDHHMM_description.sql` (UTC timestamp, lowercase description).
+This keeps the fork out of upstream's growing numeric namespace and gives fork
+migrations deterministic ordering after numeric upstream migrations.
+
+The two previously released fork migrations beginning with `194_` and `195_`
+are grandfathered. Never rename or edit them: deployed databases identify a
+migration by its complete filename and verify its content checksum. The sync
+script runs `scripts/check-fork-migrations.sh` after every upstream merge and
+before tests, tagging, or push, so a future namespace violation fails closed.
 
 ## Version model
 

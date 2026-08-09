@@ -123,6 +123,7 @@ CLAUDE.md
 scripts
 !/scripts/
 /scripts/*
+!/scripts/check-fork-migrations.sh
 !/scripts/sync-upstream-release.sh
 !backend/scripts/
 !backend/scripts/resolve-version.sh

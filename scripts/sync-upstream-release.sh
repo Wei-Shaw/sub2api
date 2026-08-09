@@ -143,6 +143,11 @@ else
     fi
 fi
 
+log "checking fork migration namespace"
+git -C "$worktree_dir" rev-parse --show-toplevel >/dev/null
+"${worktree_dir}/scripts/check-fork-migrations.sh" "$upstream_ref" || \
+    die "fork migration namespace check failed for ${tag}"
+
 if [[ -n "$SYNC_VERIFY_COMMAND" ]]; then
     log "running verification command"
     (cd "$worktree_dir" && /bin/bash -o pipefail -c "$SYNC_VERIFY_COMMAND") || \
