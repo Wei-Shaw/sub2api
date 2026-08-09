@@ -416,6 +416,10 @@ var (
 // ErrNoAvailableAccounts 表示没有可用的账号
 var ErrNoAvailableAccounts = errors.New("no available accounts")
 
+// ErrChannelModelRestricted 表示请求模型不在渠道允许的定价列表中。
+// 这是持久配置拒绝，不应作为可重试的账号容量故障处理。
+var ErrChannelModelRestricted = errors.New("model is not available for this group")
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 

@@ -151,3 +151,23 @@ func TestBuildOpsErrorLogsWhere_UserOwnershipIsDirectOnly(t *testing.T) {
 		t.Fatalf("user ownership must not depend on deleted-key attribution: %s", where)
 	}
 }
+
+func TestBuildOpsErrorLogsWhere_ViewSeparatesSLAFromExcludedClientErrors(t *testing.T) {
+	errorsWhere, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{View: "errors"})
+	if !strings.Contains(errorsWhere, "counts_toward_sla") || !strings.Contains(errorsWhere, "alert_family,'') = 'compatibility'") {
+		t.Fatalf("default errors view must contain only SLA failures or compatibility regressions: %s", errorsWhere)
+	}
+
+	excludedWhere, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{View: "excluded"})
+	if !strings.Contains(excludedWhere, "counts_toward_sla") || !strings.Contains(excludedWhere, "= false") {
+		t.Fatalf("excluded view must select non-SLA client/business errors: %s", excludedWhere)
+	}
+	if !strings.Contains(excludedWhere, "alert_family,'') <> 'compatibility'") {
+		t.Fatalf("compatibility regressions must remain actionable instead of entering excluded view: %s", excludedWhere)
+	}
+
+	allWhere, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{View: "all"})
+	if strings.Contains(allWhere, "counts_toward_sla") || strings.Contains(allWhere, "alert_family,'')") {
+		t.Fatalf("all view must not add SLA classification filters: %s", allWhere)
+	}
+}

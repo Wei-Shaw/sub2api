@@ -204,6 +204,15 @@ func ClassifyOpsError(input OpsErrorClassificationInput) OpsErrorClassification 
 		return result
 	}
 
+	if isOpsChannelModelRestricted(message) {
+		result.FinalOutcome = OpsFinalOutcomeClientRejected
+		result.Responsibility = OpsResponsibilityClient
+		result.ErrorCategory = OpsErrorCategoryClientPolicy
+		result.AlertFamily = OpsAlertFamilyClientQuality
+		result.ClassificationReason = "channel_model_not_available"
+		return result
+	}
+
 	if isOpsUnsupportedModel(message) {
 		result.FinalOutcome = OpsFinalOutcomeClientRejected
 		result.Responsibility = OpsResponsibilityClient
@@ -514,6 +523,10 @@ func isOpsCapabilityConfigurationMessage(message string) bool {
 		strings.Contains(message, "permission is not enabled")
 }
 
+func isOpsChannelModelRestricted(message string) bool {
+	return strings.Contains(message, "model") && strings.Contains(message, "not available for this group")
+}
+
 func isOpsUnsupportedModel(message string) bool {
 	return strings.Contains(message, "model") && (strings.Contains(message, "not supported") ||
 		strings.Contains(message, "not in whitelist") || strings.Contains(message, "not configured"))
@@ -547,6 +560,9 @@ func isOpsUserBusinessLimit(errType string, status int, message string) bool {
 		return true
 	}
 	return strings.Contains(message, "insufficient balance") ||
+		strings.Contains(message, "insufficient account balance") ||
+		strings.Contains(message, "insufficient_balance") ||
+		strings.Contains(message, "insufficient_account_balance") ||
 		strings.Contains(message, "quota exhausted") || strings.Contains(message, "usage limit exceeded") ||
 		strings.Contains(message, "concurrency limit exceeded for user") ||
 		(status == 429 && !strings.Contains(message, "upstream"))

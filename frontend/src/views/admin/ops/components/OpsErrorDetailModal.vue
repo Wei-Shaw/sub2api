@@ -114,6 +114,41 @@
           </div>
         </div>
 
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.finalOutcome') }}</div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ finalOutcomeLabel }}
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.responsibility') }}</div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ responsibilityLabel }}
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.errorCategory') }}</div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ errorCategoryLabel }}
+          </div>
+        </div>
+
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.countsTowardSla') }}</div>
+          <div class="mt-1">
+            <span
+              class="inline-flex items-center rounded-lg px-2 py-1 text-xs font-bold ring-1 ring-inset"
+              :class="detail.counts_toward_sla
+                ? 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-400'
+                : 'bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/30 dark:text-green-400'"
+            >
+              {{ detail.counts_toward_sla ? t('common.yes') : t('common.no') }}
+            </span>
+          </div>
+        </div>
+
       </div>
 
       <!-- Response content (client request -> error_body; upstream -> upstream_error_detail/message) -->
@@ -227,6 +262,38 @@ const detail = ref<OpsErrorDetail | null>(null)
 const showUpstreamList = computed(() => props.errorType === 'request')
 
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
+
+function translatedOrRaw(key: string, raw: string): string {
+  if (!raw) return '—'
+  const translated = t(key)
+  return translated === key ? raw : translated
+}
+
+const finalOutcomeLabel = computed(() => {
+  const outcome = String(detail.value?.final_outcome || '').trim()
+  const keys: Record<string, string> = {
+    recovered: 'recovered',
+    client_rejected: 'clientIgnored',
+    business_limited: 'businessIgnored',
+    security_blocked: 'securityIgnored',
+    cancelled: 'cancelledIgnored',
+    platform_failed: 'platformFailure',
+    provider_failed: 'providerFailure',
+    unknown_failed: 'unknownFailure'
+  }
+  const suffix = keys[outcome]
+  return suffix ? translatedOrRaw(`admin.ops.errorLog.outcomes.${suffix}`, outcome) : outcome || '—'
+})
+
+const responsibilityLabel = computed(() => {
+  const responsibility = String(detail.value?.responsibility || '').trim()
+  return translatedOrRaw(`admin.ops.errorDetails.owner.${responsibility}`, responsibility)
+})
+
+const errorCategoryLabel = computed(() => {
+  const category = String(detail.value?.error_category || '').trim()
+  return translatedOrRaw(`admin.ops.errorLog.categories.${category}`, category)
+})
 
 const primaryResponseBody = computed(() => {
   return resolvePrimaryResponseBody(detail.value, props.errorType)

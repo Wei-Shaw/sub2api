@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -35,10 +36,10 @@ type noAccountErrorClassification struct {
 // classifyNoAccountError decides between 404 model_not_found and 503
 // api_error for "no available accounts" failures.
 //
-// The classifier intentionally does not consume the original error: the
-// selection layer never tells us *why* the pool came up empty (rate-limited
-// vs. unsupported model are both wrapped as ErrNoAvailableAccounts). Instead
-// we re-check pool composition through DiagnoseModelAvailabilityForPlatform.
+// A typed ErrChannelModelRestricted is authoritative and maps directly to a
+// permanent 404 rejection. Legacy ErrNoAvailableAccounts failures still do
+// not explain why the pool came up empty, so those are re-checked through
+// DiagnoseModelAvailabilityForPlatform.
 // Its dedicated database query considers only persistent eligibility
 // (active status + schedulable setting) and model_mapping, bypassing scheduler
 // snapshots and transient filters. That guarantees a 404 is only returned
@@ -63,6 +64,7 @@ func classifyNoAccountError(
 	routingModel string,
 	displayModel string,
 	platform string,
+	cause error,
 ) noAccountErrorClassification {
 	fallback := noAccountErrorClassification{
 		Status:  http.StatusServiceUnavailable,
@@ -74,6 +76,14 @@ func classifyNoAccountError(
 	displayModel = strings.TrimSpace(displayModel)
 	if displayModel == "" {
 		displayModel = routingModel
+	}
+	if errors.Is(cause, service.ErrChannelModelRestricted) {
+		return noAccountErrorClassification{
+			Status:        http.StatusNotFound,
+			ErrType:       "model_not_found",
+			Message:       fmt.Sprintf("Model %q is not available for this group", displayModel),
+			ModelNotFound: true,
+		}
 	}
 	if diag == nil || apiKey == nil || apiKey.GroupID == nil || routingModel == "" {
 		return fallback
@@ -101,12 +111,13 @@ func classifyNoAccountErrorFromGin(
 	routingModel string,
 	displayModel string,
 	platform string,
+	cause error,
 ) noAccountErrorClassification {
 	ctx := context.Background()
 	if c != nil && c.Request != nil {
 		ctx = c.Request.Context()
 	}
-	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform)
+	return classifyNoAccountError(ctx, diag, apiKey, routingModel, displayModel, platform, cause)
 }
 
 func classifyOpenAICompatibleNoAccountErrorFromGin(
@@ -115,6 +126,7 @@ func classifyOpenAICompatibleNoAccountErrorFromGin(
 	apiKey *service.APIKey,
 	routingModel string,
 	displayModel string,
+	cause error,
 ) noAccountErrorClassification {
 	ctx := context.Background()
 	if c != nil && c.Request != nil {
@@ -127,6 +139,7 @@ func classifyOpenAICompatibleNoAccountErrorFromGin(
 		routingModel,
 		displayModel,
 		openAICompatibleRequestPlatform(ctx, apiKey),
+		cause,
 	)
 }
 

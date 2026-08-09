@@ -232,6 +232,12 @@ func TestClassifyOpsError(t *testing.T) {
 			category: OpsErrorCategoryUnsupportedModel, family: OpsAlertFamilyCompatibility,
 		},
 		{
+			name:    "channel model restriction is client policy",
+			input:   OpsErrorClassificationInput{StatusCode: 404, ErrorPhase: "routing", ErrorType: "api_error", ErrorMessage: `Model "gpt-5.6-luna" is not available for this group`},
+			outcome: OpsFinalOutcomeClientRejected, responsibility: OpsResponsibilityClient,
+			category: OpsErrorCategoryClientPolicy, family: OpsAlertFamilyClientQuality,
+		},
+		{
 			name:    "stale upstream status does not hide local group model configuration",
 			input:   OpsErrorClassificationInput{StatusCode: 404, UpstreamStatusCode: intPtr(503), ErrorPhase: "upstream", ErrorType: "model_not_found", ErrorMessage: `Model "example" is not supported by any configured account in this group`},
 			outcome: OpsFinalOutcomeClientRejected, responsibility: OpsResponsibilityClient,
@@ -258,6 +264,12 @@ func TestClassifyOpsError(t *testing.T) {
 		{
 			name:    "balance rejection remains business limited even in auth phase",
 			input:   OpsErrorClassificationInput{StatusCode: 403, ErrorPhase: "auth", ErrorType: "billing_error", ErrorMessage: "Insufficient account balance", IsBusinessLimited: true},
+			outcome: OpsFinalOutcomeBusinessLimited, responsibility: OpsResponsibilityClient,
+			category: OpsErrorCategoryUserQuota, family: OpsAlertFamilyClientQuality,
+		},
+		{
+			name:    "API key auth account balance wording is business limited",
+			input:   OpsErrorClassificationInput{StatusCode: 403, ErrorPhase: "auth", ErrorType: "api_error", ErrorMessage: "Insufficient account balance", IsBusinessLimited: true},
 			outcome: OpsFinalOutcomeBusinessLimited, responsibility: OpsResponsibilityClient,
 			category: OpsErrorCategoryUserQuota, family: OpsAlertFamilyClientQuality,
 		},
