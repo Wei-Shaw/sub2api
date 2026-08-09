@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	coderws "github.com/coder/websocket"
@@ -643,6 +644,9 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 	})
 
 	t.Run("grok_group_maps_claude_cli_model_to_grok_default", func(t *testing.T) {
+		original := xai.RuntimeModelMappingOptions()
+		t.Cleanup(func() { xai.SetRuntimeModelMappingOptions(original) })
+		xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{EnableCrossClientMap: true})
 		apiKey := &service.APIKey{
 			Group: &service.Group{
 				Platform: service.PlatformGrok,

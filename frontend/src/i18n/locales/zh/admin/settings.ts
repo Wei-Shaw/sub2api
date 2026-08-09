@@ -16,12 +16,21 @@ export default {
       features: {
         channelMonitor: {
           title: '渠道监控',
-          description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',
+          description: '启用后在 V1 主动探测与 V2 被动用量监控中二选一。关闭后两种模式的后台任务均停止，用户端入口隐藏。',
           configureLink: '前往 渠道管理 > 渠道监控 配置监控项',
           enabled: '启用渠道监控',
-          enabledHint: '关闭后后台不再执行定时检测，已有数据保留。',
+          enabledHint: '关闭后 V1 调度器与 V2 聚合均停止；已有配置与历史保留。',
+          mode: '监控模式',
+          modeHint: '默认 V1（主动探测）。仅在需要被动聚合时切换到 V2；同一时间只能启用一种实现。',
+          modeV2: 'V2 被动监控',
+          modeV1: 'V1 主动探测',
+          modeV2Hint: '需主动选择：基于真实网关流量聚合健康指标，不向上游发送探活请求；启用期间 V1 探测停止。',
+          modeV1Hint: '默认模式：按配置的渠道监控项定时发起上游健康检查（产生探测流量）。',
           defaultInterval: '默认检测间隔（秒）',
-          defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+          defaultIntervalHint: '仅 V1 模式使用：新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+          hideThroughput: '对用户隐藏吞吐速率（RPM / TPM）',
+          hideThroughputHint:
+            '开启后，用户端渠道监控页面与用户 API 不返回 RPM/TPM，避免用「速率 × 时间窗」反推集群规模。管理员仍可见完整指标；错误率、延迟、缓存率照常展示。',
         },
         availableChannels: {
           title: '可用渠道',
@@ -119,9 +128,12 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
+          "仅允许使用指定域名的邮箱注册账号；留空则不限制（例如 {'@'}qq.com, {'@'}gmail.com, *.edu.cn）",
         emailSuffixWhitelistPlaceholder: "{'@'}example.com, *.edu.cn",
         emailSuffixWhitelistInputHint: '留空则不限制。使用 *.edu.cn 可匹配 edu.cn 及其子域名。',
+        emailDomainQuota: '非白名单域名限量注册',
+        emailDomainQuotaHint:
+          '开启后，白名单非空时，其他可注册主域名各限注册一个账户；关闭时非白名单域名直接拒绝注册。白名单为空时本开关无效果',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
         invitationCode: '邀请码注册',
@@ -402,7 +414,12 @@ export default {
         title: '网关调度设置',
         description: '控制 API Key 的调度行为',
         allowUngroupedKey: '允许未分组 Key 调度',
-        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。',
+        accountSchedulingThresholdsTitle: '平台账号自动停调阈值',
+        accountSchedulingThresholdsDescription: '当账号当前原生用量窗口（OpenAI Codex/Anthropic 会话，或 Grok 请求/Token 利用率）达到该百分比时，Sub2API 会临时将其移出调度，直到窗口重置。填 100 表示禁用。',
+        accountSchedulingThresholdsGlobalHint: '系统级默认值，作用于该平台全部账号。可在账号编辑页对单个账号覆盖。',
+        accountSchedulingThresholdsDisabledHint: '100 表示禁用该平台自动停调；1–99 表示达到该利用率后暂停调度。',
+        accountSchedulingThresholdsRangeHint: '整数 1–100（百分比）。仅 OpenAI / Anthropic / Grok。'
       },
       upstreamBillingProbe: {
         title: '上游倍率自动探测',
@@ -429,6 +446,17 @@ export default {
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',
+        grokDefaultTextModel: '默认 Grok 文本模型',
+        grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
+        grokCrossClientMap: '映射其他客户端模型到 Grok',
+        grokCrossClientMapHint: '默认关闭。开启后，GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型。',
+        grokDefaultBaseURLMode: '默认 Grok 上游',
+        grokDefaultBaseURLModeHint: '仅用于 Grok 账号未配置显式 base URL 的文本请求；媒体和语音仍使用官方 API 主机。',
+        grokBaseURLModeCLI: 'CLI 聊天代理',
+        grokBaseURLModeAPI: '公共 API',
+        grokBaseURLModeUSEast1: '区域 API（us-east-1）',
+        grokBaseURLModeUSWest2: '区域 API（us-west-2）',
+        grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',
