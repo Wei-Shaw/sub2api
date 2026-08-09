@@ -208,16 +208,38 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 		resetAt = extendGrokFreeRecoveryLease(resetAt, now, freeRecoveryPending)
 		blockGrokAccountScheduling(s.runtimeBlocker, account, resetAt)
 	}
-	// Always write the probe observation (including permanent 403/404 and
-	// cyber-policy 400s) so the UI can distinguish "probed, failed" from
-	// "never probed". Free-recovery keeps the atomic latch+lease path.
+	// Persist useful quota observations and account-terminal probe outcomes so
+	// the UI can distinguish "probed, failed" from "never probed". Skip bare
+	// 401/5xx without quota headers so a transient auth blip does not erase a
+	// previously good snapshot (see DoesNotOverwriteSnapshotOnUnauthorized).
 	var persistErr error
-	if freeRecoveryPending {
-		persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
-	} else {
-		persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+	persisted := false
+	shouldPersist := false
+	switch {
+	case freeRecoveryPending, limited:
+		shouldPersist = true
+	case probeStatus < 400:
+		shouldPersist = snapshot.HeadersObserved || probeStatus == http.StatusOK
+	case probeStatus == http.StatusTooManyRequests:
+		shouldPersist = true
+	case probeStatus == http.StatusPaymentRequired,
+		probeStatus == http.StatusForbidden,
+		probeStatus == http.StatusNotFound,
+		probeStatus == http.StatusBadRequest:
+		// Permanent/soft account outcomes and cyber-policy 400 observations.
+		shouldPersist = true
+	default:
+		// 401 and bare 5xx: keep previous snapshot.
+		shouldPersist = false
 	}
-	persisted := persistErr == nil
+	if shouldPersist {
+		if freeRecoveryPending {
+			persistErr = persistGrokFreeRecoveryPendingState(stateCtx, s.accountRepo, account, extraUpdates, resetAt)
+		} else {
+			persistErr = s.accountRepo.UpdateExtra(stateCtx, account.ID, extraUpdates)
+		}
+		persisted = persistErr == nil
+	}
 	if limited && !freeRecoveryPending {
 		persistGrokRateLimit(stateCtx, s.accountRepo, account, resetAt)
 	} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
