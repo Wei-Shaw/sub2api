@@ -98,15 +98,19 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 		UnhealthyUntil *time.Time `json:"unhealthy_until,omitempty"`
 	}
 	type runtimeResponse struct {
-		NetworkKey   string             `json:"network_key"`
-		AssetKey     string             `json:"asset_key"`
-		State        string             `json:"state"`
-		Leader       bool               `json:"leader"`
-		LastError    string             `json:"last_error"`
-		LatestBlock  string             `json:"latest_block"`
-		ScannedBlock string             `json:"scanned_block"`
-		LagBlocks    string             `json:"lag_blocks"`
-		Endpoints    []endpointResponse `json:"endpoints"`
+		NetworkKey           string             `json:"network_key"`
+		AssetKey             string             `json:"asset_key"`
+		State                string             `json:"state"`
+		Leader               bool               `json:"leader"`
+		LastError            string             `json:"last_error"`
+		LatestBlock          string             `json:"latest_block"`
+		ScannedBlock         string             `json:"scanned_block"`
+		FinalizedBlock       string             `json:"finalized_block"`
+		FinalizedCursorBlock string             `json:"finalized_cursor_block"`
+		ScannerLagBlocks     string             `json:"scanner_lag_blocks"`
+		FinalizerLagBlocks   string             `json:"finalizer_lag_blocks"`
+		LagBlocks            string             `json:"lag_blocks"`
+		Endpoints            []endpointResponse `json:"endpoints"`
 	}
 
 	items := make([]runtimeResponse, 0)
@@ -115,16 +119,24 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 			item := runtimeResponse{NetworkKey: key.NetworkKey, AssetKey: key.AssetKey, State: string(web3deposit.ScannerRuntimeStateUnhealthy), Endpoints: []endpointResponse{}}
 			if runtime, ok := h.runtimes.Runtime(key.NetworkKey, key.AssetKey); ok && runtime != nil {
 				status := runtime.Status()
-				lag := uint64(0)
+				scannerLag := uint64(0)
 				if status.LastResult.HeadBlock > status.LastResult.ToBlock {
-					lag = status.LastResult.HeadBlock - status.LastResult.ToBlock
+					scannerLag = status.LastResult.HeadBlock - status.LastResult.ToBlock
+				}
+				finalizerLag := uint64(0)
+				if status.LastResult.FinalizedHead > status.LastResult.FinalizedThrough {
+					finalizerLag = status.LastResult.FinalizedHead - status.LastResult.FinalizedThrough
 				}
 				item.State = string(status.State)
 				item.Leader = status.LeaseHeld
 				item.LastError = status.LastError
 				item.LatestBlock = strconv.FormatUint(status.LastResult.HeadBlock, 10)
 				item.ScannedBlock = strconv.FormatUint(status.LastResult.ToBlock, 10)
-				item.LagBlocks = strconv.FormatUint(lag, 10)
+				item.FinalizedBlock = strconv.FormatUint(status.LastResult.FinalizedHead, 10)
+				item.FinalizedCursorBlock = strconv.FormatUint(status.LastResult.FinalizedThrough, 10)
+				item.ScannerLagBlocks = strconv.FormatUint(scannerLag, 10)
+				item.FinalizerLagBlocks = strconv.FormatUint(finalizerLag, 10)
+				item.LagBlocks = item.ScannerLagBlocks
 			}
 			if h.networks != nil {
 				if network, ok := h.networks.Runtime(key.NetworkKey, key.AssetKey); ok && network != nil {

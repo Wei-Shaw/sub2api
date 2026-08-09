@@ -14,6 +14,9 @@ describe('admin Web3 deposit messages', () => {
   const keys = [
     'admin.web3Deposits.runtime.title',
     'admin.web3Deposits.runtime.lag',
+    'admin.web3Deposits.runtime.scannerLag',
+    'admin.web3Deposits.runtime.finalizerLag',
+    'admin.web3Deposits.runtime.heights',
     'admin.web3Deposits.stats.manualReview',
     'admin.web3Deposits.stats.failed',
     'admin.web3Deposits.filters.allStatuses',

@@ -3,6 +3,9 @@ export default {
     runtime: {
       title: '运行状态',
       lag: '落后 {blocks} 个区块',
+      scannerLag: '扫描落后 {blocks} 个区块',
+      finalizerLag: '最终确认落后 {blocks} 个区块',
+      heights: '链头 {latest} / 已扫描 {scanned} / finalized {finalized} / 已确认 {finalizedCursor}',
     },
     stats: {
       manualReview: '待人工审核',

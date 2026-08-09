@@ -38,6 +38,9 @@ func (r *ScannerFinalizerRunner) ScanNext(ctx context.Context, leaseToken string
 		web3RuntimeMetrics.finalizerFailures.Add(1)
 		slog.Error("web3_deposit_finalize_failed", "error", finalizerErr)
 	} else {
+		scannerResult.FinalizedHead = finalizerResult.FinalizedHead
+		scannerResult.FinalizedThrough = finalizerResult.ToBlock
+		scannerResult.FinalizerAdvanced = finalizerResult.Advanced
 		lag := uint64(0)
 		if finalizerResult.FinalizedHead > finalizerResult.ToBlock {
 			lag = finalizerResult.FinalizedHead - finalizerResult.ToBlock

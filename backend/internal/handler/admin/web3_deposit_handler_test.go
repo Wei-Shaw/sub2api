@@ -96,9 +96,15 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	var envelope struct {
 		Data struct {
 			Runtimes []struct {
-				NetworkKey string `json:"network_key"`
-				AssetKey   string `json:"asset_key"`
-				State      string `json:"state"`
+				NetworkKey           string `json:"network_key"`
+				AssetKey             string `json:"asset_key"`
+				State                string `json:"state"`
+				LatestBlock          string `json:"latest_block"`
+				ScannedBlock         string `json:"scanned_block"`
+				FinalizedBlock       string `json:"finalized_block"`
+				FinalizedCursorBlock string `json:"finalized_cursor_block"`
+				ScannerLagBlocks     string `json:"scanner_lag_blocks"`
+				FinalizerLagBlocks   string `json:"finalizer_lag_blocks"`
 			} `json:"runtimes"`
 		} `json:"data"`
 	}
@@ -106,6 +112,12 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	require.Equal(t, "network", envelope.Data.Runtimes[0].NetworkKey)
 	require.Equal(t, "usdt0", envelope.Data.Runtimes[0].AssetKey)
 	require.Equal(t, "disabled", envelope.Data.Runtimes[0].State)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].LatestBlock)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].ScannedBlock)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].FinalizedBlock)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].FinalizedCursorBlock)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].ScannerLagBlocks)
+	require.Equal(t, "0", envelope.Data.Runtimes[0].FinalizerLagBlocks)
 }
 
 func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {

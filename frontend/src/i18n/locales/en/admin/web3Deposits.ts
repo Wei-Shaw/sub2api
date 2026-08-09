@@ -3,6 +3,9 @@ export default {
     runtime: {
       title: 'Runtime',
       lag: 'Lag: {blocks} blocks',
+      scannerLag: 'Scanner lag: {blocks} blocks',
+      finalizerLag: 'Finalizer lag: {blocks} blocks',
+      heights: 'Head {latest} / scanned {scanned} / finalized {finalized} / finalized cursor {finalizedCursor}',
     },
     stats: {
       manualReview: 'Manual review',

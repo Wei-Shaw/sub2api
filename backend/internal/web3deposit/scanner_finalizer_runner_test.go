@@ -18,7 +18,7 @@ func TestScannerFinalizerRunnerRunsFinalizerAfterScanner(t *testing.T) {
 		}),
 		finalizerRunnerFunc(func(context.Context, string, time.Time) (FinalizerResult, error) {
 			order = append(order, "finalizer")
-			return FinalizerResult{Advanced: true}, nil
+			return FinalizerResult{FinalizedHead: 150, ToBlock: 140, Advanced: true}, nil
 		}),
 	)
 	require.NoError(t, err)
@@ -27,6 +27,9 @@ func TestScannerFinalizerRunnerRunsFinalizerAfterScanner(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, result.Advanced)
+	require.True(t, result.FinalizerAdvanced)
+	require.Equal(t, uint64(150), result.FinalizedHead)
+	require.Equal(t, uint64(140), result.FinalizedThrough)
 	require.Equal(t, []string{"scanner", "finalizer"}, order)
 }
 

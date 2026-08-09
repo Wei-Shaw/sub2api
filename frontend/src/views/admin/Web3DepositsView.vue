@@ -5,7 +5,12 @@
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.runtime.title') }}</div>
           <div class="mt-1 font-semibold">
-            {{ runtimeStateLabel }} · {{ t('admin.web3Deposits.runtime.lag', { blocks: selectedRuntime?.lag_blocks || '0' }) }}
+            {{ runtimeStateLabel }}
+          </div>
+          <div class="mt-2 grid gap-1 text-xs text-gray-500">
+            <div>{{ t('admin.web3Deposits.runtime.scannerLag', { blocks: selectedRuntime?.scanner_lag_blocks || selectedRuntime?.lag_blocks || '0' }) }}</div>
+            <div>{{ t('admin.web3Deposits.runtime.finalizerLag', { blocks: selectedRuntime?.finalizer_lag_blocks || '0' }) }}</div>
+            <div>{{ t('admin.web3Deposits.runtime.heights', { latest: selectedRuntime?.latest_block || '0', scanned: selectedRuntime?.scanned_block || '0', finalized: selectedRuntime?.finalized_block || '0', finalizedCursor: selectedRuntime?.finalized_cursor_block || '0' }) }}</div>
           </div>
           <select v-if="runtimes.length > 1" v-model="selectedRuntimeKey" class="input mt-2 w-full text-sm">
             <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }} / {{ item.asset_key }}</option>

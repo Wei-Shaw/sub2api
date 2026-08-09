@@ -5,7 +5,21 @@ export interface AdminWeb3Deposit {
   id: number; user_id: number; chain_id: number; token_contract: string; tx_hash: string; log_index: number; block_number: number; from_address: string; to_address: string; token_amount: string; credited_amount?: string; status: string; review_reason?: string; failure_reason?: string; detected_at: string; finalized_at?: string; credited_at?: string
 }
 export interface Web3DepositRuntimeEndpoint { id: string; healthy: boolean; unhealthy_until?: string }
-export interface Web3DepositRuntime { network_key: string; asset_key: string; state: string; leader: boolean; last_error: string; latest_block: string; scanned_block: string; lag_blocks: string; endpoints: Web3DepositRuntimeEndpoint[] }
+export interface Web3DepositRuntime {
+  network_key: string
+  asset_key: string
+  state: string
+  leader: boolean
+  last_error: string
+  latest_block: string
+  scanned_block: string
+  finalized_block: string
+  finalized_cursor_block: string
+  scanner_lag_blocks: string
+  finalizer_lag_blocks: string
+  lag_blocks: string
+  endpoints: Web3DepositRuntimeEndpoint[]
+}
 export interface Web3DepositRuntimeResponse { runtimes: Web3DepositRuntime[]; metrics: Record<string, unknown>; status_counts: Record<string, number> }
 
 const web3DepositsAPI = {

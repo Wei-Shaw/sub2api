@@ -35,13 +35,16 @@ type ScannerOptions struct {
 }
 
 type ScannerResult struct {
-	HeadBlock    uint64
-	FromBlock    uint64
-	ToBlock      uint64
-	EventCount   int
-	MatchedCount int
-	DepositCount int
-	Advanced     bool
+	HeadBlock         uint64
+	FromBlock         uint64
+	ToBlock           uint64
+	FinalizedHead     uint64
+	FinalizedThrough  uint64
+	EventCount        int
+	MatchedCount      int
+	DepositCount      int
+	Advanced          bool
+	FinalizerAdvanced bool
 }
 
 type Scanner struct {
