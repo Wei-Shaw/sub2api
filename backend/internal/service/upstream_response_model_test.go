@@ -67,6 +67,56 @@ func TestObserveOpenAISSEBodyIgnoresMalformedPayload(t *testing.T) {
 	require.False(t, observer.Conflict())
 }
 
+func TestObserveAntigravityGeminiSSELineReadsWrapperModelWithoutUnwrap(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name:    "top-level sibling",
+			payload: `{"modelVersion":"gemini-3-pro","response":{"candidates":[]}}`,
+			want:    "gemini-3-pro",
+		},
+		{
+			name:    "single wrapper",
+			payload: `{"response":{"modelVersion":"gemini-3-pro","candidates":[]}}`,
+			want:    "gemini-3-pro",
+		},
+		{
+			name:    "nested response after one wrapper",
+			payload: `{"response":{"response":{"modelVersion":"gemini-3-pro","candidates":[]}}}`,
+			want:    "gemini-3-pro",
+		},
+		{
+			name:    "outer declaration takes precedence",
+			payload: `{"modelVersion":"gemini-outer","response":{"modelVersion":"gemini-inner","candidates":[]}}`,
+			want:    "gemini-outer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			c, _ := gin.CreateTestContext(nil)
+			beginUpstreamResponseModelObservation(c)
+
+			svc := &AntigravityGatewayService{}
+			svc.observeAntigravityGeminiSSELine(c, "data: "+tt.payload)
+
+			require.Equal(t, tt.want, observedUpstreamResponseModel(c))
+			require.False(t, observedUpstreamResponseModelConflict(c))
+		})
+	}
+}
+
+func TestUpstreamResponseModelObserverRejectsMalformedJSONWithModelField(t *testing.T) {
+	observer := &upstreamResponseModelObserver{}
+	observer.ObserveOpenAI([]byte(`{"response":{"model":"gpt-5.4"}`), "response.completed")
+
+	require.Empty(t, observer.Model())
+}
+
 func TestUpstreamResponseModelObserverBoundsUntrustedModelName(t *testing.T) {
 	observer := &upstreamResponseModelObserver{}
 	observer.Observe("  "+strings.Repeat("模", upstreamResponseModelMaxLength+1)+"  ", false)
