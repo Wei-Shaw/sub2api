@@ -484,7 +484,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	c.JSON(http.StatusOK, chatResp)
 
-	return &OpenAIForwardResult{
+	result := &OpenAIForwardResult{
 		RequestID:                     requestID,
 		Usage:                         usage,
 		Model:                         originalModel,
@@ -494,7 +494,16 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
-	}, nil
+	}
+	// Grok chat bridge: bill native search tools found in the terminal Responses body.
+	if account != nil && account.IsGrok() && finalResponse != nil {
+		if body, err := json.Marshal(finalResponse); err == nil {
+			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
+				result.SearchCount = n
+			}
+		}
+	}
+	return result, nil
 }
 
 // handleChatStreamingResponse reads Responses SSE events from upstream,
@@ -527,6 +536,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
+	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
+	searchCount := 0
+	streamSearchSeen := make(map[string]struct{})
+	countSearch := account != nil && account.IsGrok()
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -549,7 +562,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	resultWithUsage := func() *OpenAIForwardResult {
-		return &OpenAIForwardResult{
+		out := &OpenAIForwardResult{
 			RequestID:                     requestID,
 			Usage:                         usage,
 			Model:                         originalModel,
@@ -561,6 +574,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
+		if searchCount > 0 {
+			out.SearchCount = searchCount
+		}
+		return out
 	}
 
 	processDataLine := func(payload string) bool {
@@ -568,6 +585,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
+		}
+		if countSearch {
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 		}
 
 		var event apicompat.ResponsesStreamEvent
