@@ -162,6 +162,33 @@ func (s *GroupService) ListActive(ctx context.Context) ([]Group, error) {
 	return groups, nil
 }
 
+// ListPublic returns every non-exclusive group, including disabled groups, in
+// the same stable order used by the admin group list. The status page needs
+// disabled groups as well so it can explain that they are currently
+// unavailable instead of silently removing them.
+func (s *GroupService) ListPublic(ctx context.Context) ([]Group, error) {
+	const pageSize = 1000
+
+	isExclusive := false
+	all := make([]Group, 0)
+	for page := 1; ; page++ {
+		groups, result, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{
+			Page:      page,
+			PageSize:  pageSize,
+			SortBy:    "sort_order",
+			SortOrder: pagination.SortOrderAsc,
+		}, "", "", "", &isExclusive)
+		if err != nil {
+			return nil, fmt.Errorf("list public groups: %w", err)
+		}
+		all = append(all, groups...)
+		if result == nil || page >= result.Pages {
+			break
+		}
+	}
+	return all, nil
+}
+
 // Update 更新分组
 func (s *GroupService) Update(ctx context.Context, id int64, req UpdateGroupRequest) (*Group, error) {
 	group, err := s.groupRepo.GetByID(ctx, id)
