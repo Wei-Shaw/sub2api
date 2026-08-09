@@ -67,6 +67,56 @@ func TestObserveOpenAISSEBodyIgnoresMalformedPayload(t *testing.T) {
 	require.False(t, observer.Conflict())
 REDACTED
 
+func TestObserveAntigravityGeminiSSELineReadsWrapperModelWithoutUnwrap(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+REDACTED{
+		{
+			name:    "top-level sibling",
+			payload: `{"modelVersion":"gemini-3-pro","response":{"candidates":[]REDACTEDREDACTED`,
+			want:    "gemini-3-pro",
+	REDACTED,
+		{
+			name:    "single wrapper",
+			payload: `{"response":{"modelVersion":"gemini-3-pro","candidates":[]REDACTEDREDACTED`,
+			want:    "gemini-3-pro",
+	REDACTED,
+		{
+			name:    "nested response after one wrapper",
+			payload: `{"response":{"response":{"modelVersion":"gemini-3-pro","candidates":[]REDACTEDREDACTEDREDACTED`,
+			want:    "gemini-3-pro",
+	REDACTED,
+		{
+			name:    "outer declaration takes precedence",
+			payload: `{"modelVersion":"gemini-outer","response":{"modelVersion":"gemini-inner","candidates":[]REDACTEDREDACTED`,
+			want:    "gemini-outer",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			c, _ := gin.CreateTestContext(nil)
+			beginUpstreamResponseModelObservation(c)
+
+			svc := &AntigravityGatewayService{REDACTED
+			svc.observeAntigravityGeminiSSELine(c, "data: "+tt.payload)
+
+			require.Equal(t, tt.want, observedUpstreamResponseModel(c))
+			require.False(t, observedUpstreamResponseModelConflict(c))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestUpstreamResponseModelObserverRejectsMalformedJSONWithModelField(t *testing.T) {
+	observer := &upstreamResponseModelObserver{REDACTED
+	observer.ObserveOpenAI([]byte(`{"response":{"model":"gpt-5.4"REDACTED`), "response.completed")
+
+	require.Empty(t, observer.Model())
+REDACTED
+
 func TestUpstreamResponseModelObserverBoundsUntrustedModelName(t *testing.T) {
 	observer := &upstreamResponseModelObserver{REDACTED
 	observer.Observe("  "+strings.Repeat("模", upstreamResponseModelMaxLength+1)+"  ", false)
