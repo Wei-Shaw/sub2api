@@ -582,6 +582,7 @@ REDACTED
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
 
 	var req struct {
@@ -1074,6 +1075,7 @@ REDACTED else {
 		REDACTED
 			collectedBytes, _ := json.Marshal(collected)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(collectedBytes)
+			observeGeminiImageOutputs(c, collectedBytes)
 			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes, false)
 			c.JSON(http.StatusOK, claudeResp)
 			usage = usageObj2
@@ -1089,12 +1091,9 @@ REDACTED else {
 REDACTED
 
 	// 图片生成计费
-	imageCount := 0
 	imageInputSize := s.extractImageInputSize(body)
 	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
-REDACTED
+	imageCount := resolveGeminiImageCount(c, originalModel, mappedModel)
 
 	return &ForwardResult{
 		RequestID:                     requestID,
@@ -1122,6 +1121,7 @@ REDACTED
 
 func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
 	beginUpstreamResponseModelObservation(c)
+	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
 
 	if strings.TrimSpace(originalModel) == "" {
@@ -1609,6 +1609,7 @@ REDACTED else {
 		REDACTED
 			b, _ := json.Marshal(collected)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(b)
+			observeGeminiImageOutputs(c, b)
 			c.Data(http.StatusOK, "application/json", b)
 			usage = usageObj
 	REDACTED else {
@@ -1625,12 +1626,9 @@ REDACTED
 REDACTED
 
 	// 图片生成计费
-	imageCount := 0
 	imageInputSize := s.extractImageInputSize(body)
 	imageSize := normalizeOpenAIImageSizeTier(imageInputSize)
-	if isImageGenerationModel(originalModel) {
-		imageCount = 1
-REDACTED
+	imageCount := resolveGeminiImageCount(c, originalModel, mappedModel)
 
 	return &ForwardResult{
 		RequestID:                     requestID,
@@ -2012,6 +2010,7 @@ REDACTED
 		observer = beginUpstreamResponseModelObservation(c)
 REDACTED
 	observer.ObserveGemini(unwrappedBody)
+	observeGeminiImageOutputs(c, unwrappedBody)
 
 	var geminiResp map[string]any
 	if err := json.Unmarshal(unwrappedBody, &geminiResp); err != nil {
@@ -2100,6 +2099,7 @@ REDACTED
 			observer = beginUpstreamResponseModelObservation(c)
 	REDACTED
 		observer.ObserveGemini(unwrappedBytes)
+		observeGeminiImageOutputs(c, unwrappedBytes)
 
 		var geminiResp map[string]any
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
@@ -2606,6 +2606,7 @@ REDACTED
 		observer = beginUpstreamResponseModelObservation(c)
 REDACTED
 	observer.ObserveGemini(respBody)
+	observeGeminiImageOutputs(c, respBody)
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -2689,6 +2690,7 @@ REDACTED
 						usage = u
 				REDACTED
 					observer.ObserveGemini(rawBytes)
+					observeGeminiImageOutputs(c, rawBytes)
 
 					if firstTokenMs == nil {
 						ms := int(time.Since(startTime).Milliseconds())
