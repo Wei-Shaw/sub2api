@@ -12,8 +12,9 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-gray-100;
+    @apply bg-[#f3f1eb] text-gray-900 dark:bg-dark-950 dark:text-gray-100;
     @apply min-h-screen;
+    font-family: "Space Grotesk", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   }
 
   /* 自定义滚动条 - 仅针对 Firefox，避免 Chrome 取消 webkit 的全局定制 */
@@ -67,7 +68,7 @@
   /* ============ 按钮样式 ============ */
   .btn {
     @apply inline-flex items-center justify-center gap-2;
-    @apply rounded-xl px-4 py-2.5 text-sm font-medium;
+    @apply rounded-sm px-4 py-2.5 text-sm font-medium;
     @apply transition-all duration-200 ease-out;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
     @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
@@ -75,17 +76,16 @@
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-primary-500 to-primary-600;
-    @apply text-white shadow-md shadow-primary-500/25;
-    @apply hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30;
-    @apply dark:shadow-primary-500/20;
+    @apply bg-primary-600 text-white shadow-none;
+    @apply hover:bg-primary-700;
+    @apply dark:bg-primary-400 dark:text-dark-950 dark:hover:bg-primary-300;
   }
 
   .btn-secondary {
     @apply bg-white dark:bg-dark-800;
     @apply text-gray-700 dark:text-gray-200;
     @apply border border-gray-200 dark:border-dark-600;
-    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-dark-700;
+    @apply shadow-none hover:bg-gray-50 dark:hover:bg-dark-700;
     @apply hover:border-gray-300 dark:hover:border-dark-500;
   }
 
@@ -143,24 +143,24 @@
   }
 
   .btn-sm {
-    @apply rounded-lg px-3 py-1.5 text-xs;
+    @apply rounded-sm px-3 py-1.5 text-xs;
   }
 
   .btn-md {
-    @apply rounded-xl px-4 py-2 text-sm;
+    @apply rounded-sm px-4 py-2 text-sm;
   }
 
   .btn-lg {
-    @apply rounded-2xl px-6 py-3 text-base;
+    @apply rounded-sm px-6 py-3 text-base;
   }
 
   .btn-icon {
-    @apply rounded-xl p-2.5;
+    @apply rounded-sm p-2.5;
   }
 
   /* ============ 输入框样式 ============ */
   .input {
-    @apply w-full rounded-xl px-4 py-2.5 text-sm;
+    @apply w-full rounded-sm px-4 py-2.5 text-sm;
     @apply bg-white dark:bg-dark-800;
     @apply border border-gray-200 dark:border-dark-600;
     @apply text-gray-900 dark:text-gray-100;
@@ -207,37 +207,37 @@
 
   /* ============ 玻璃效果 ============ */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+    @apply bg-[#f8f6f1]/95 backdrop-blur-xl dark:bg-dark-900/95;
   }
 
   .glass-card {
-    @apply bg-white/70 dark:bg-dark-800/70;
+    @apply bg-[#faf8f3]/90 dark:bg-dark-800/70;
     @apply backdrop-blur-xl;
-    @apply rounded-2xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
+    @apply rounded-sm;
+    @apply border border-gray-200 dark:border-dark-700;
+    @apply shadow-none;
     @apply transition-all duration-300;
   }
 
   /* ============ 卡片样式 ============ */
   .card {
-    @apply bg-white dark:bg-dark-800/50;
-    @apply rounded-2xl;
-    @apply border border-gray-100 dark:border-dark-700/50;
-    @apply shadow-card;
+    @apply bg-[#faf8f3] dark:bg-dark-800/50;
+    @apply rounded-sm;
+    @apply border border-gray-200 dark:border-dark-700;
+    @apply shadow-none;
     @apply transition-all duration-300;
   }
 
   .card-hover {
-    @apply hover:-translate-y-0.5 hover:shadow-card-hover;
+    @apply hover:shadow-card-hover;
     @apply hover:border-gray-200 dark:hover:border-dark-600;
   }
 
   .card-glass {
-    @apply bg-white/70 dark:bg-dark-800/70;
+    @apply bg-[#faf8f3]/90 dark:bg-dark-800/70;
     @apply backdrop-blur-xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
+    @apply border border-gray-200 dark:border-dark-700;
+    @apply shadow-none;
   }
 
   .card-header {
@@ -261,7 +261,7 @@
   }
 
   .stat-icon {
-    @apply h-12 w-12 rounded-xl;
+    @apply h-12 w-12 rounded-sm;
     @apply flex items-center justify-center;
     @apply text-xl;
   }
@@ -304,7 +304,7 @@
 
   /* ============ 表格样式 ============ */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700;
+    @apply overflow-x-auto rounded-sm border border-gray-200 dark:border-dark-700;
   }
 
   .table {
@@ -336,7 +336,7 @@
   /* ============ 徽章样式 ============ */
   .badge {
     @apply inline-flex items-center gap-1;
-    @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply rounded-sm px-2.5 py-0.5 text-xs font-medium;
   }
 
   .badge-primary {
@@ -367,9 +367,9 @@
   .dropdown {
     @apply absolute z-50;
     @apply bg-white dark:bg-dark-800;
-    @apply rounded-xl;
+    @apply rounded-sm;
     @apply border border-gray-200 dark:border-dark-700;
-    @apply shadow-lg;
+    @apply shadow-card-hover;
     @apply py-1;
     @apply origin-top-right animate-scale-in;
   }
@@ -393,7 +393,7 @@
     @apply w-full;
     @apply max-h-[95vh] sm:max-h-[90vh];
     @apply bg-white dark:bg-dark-800;
-    @apply rounded-2xl shadow-2xl;
+    @apply rounded-sm shadow-2xl;
     @apply border border-gray-200 dark:border-dark-700;
     @apply flex flex-col;
   }
@@ -485,7 +485,7 @@
   .dialog-container {
     @apply flex w-full flex-col;
     @apply max-h-[90vh];
-    @apply rounded-2xl bg-white dark:bg-dark-800;
+    @apply rounded-sm bg-white dark:bg-dark-800;
     @apply shadow-xl;
   }
 
@@ -509,7 +509,7 @@
     @apply fixed right-4 top-4 z-[100];
     @apply min-w-[320px] max-w-md;
     @apply bg-white dark:bg-dark-800;
-    @apply rounded-xl shadow-lg;
+    @apply rounded-sm shadow-lg;
     @apply border-l-4;
     @apply p-4;
     @apply animate-slide-in-right;
@@ -534,7 +534,7 @@
   /* ============ 侧边栏 ============ */
   .sidebar {
     @apply fixed inset-y-0 left-0 z-40;
-    @apply w-64 bg-white dark:bg-dark-900;
+    @apply w-64 bg-[#f8f6f1] dark:bg-dark-900;
     @apply border-r border-gray-200 dark:border-dark-800;
     @apply flex flex-col;
     @apply transition-transform duration-300;
@@ -544,7 +544,7 @@
   .sidebar-header {
     @apply h-16 px-6;
     @apply flex items-center gap-3;
-    @apply border-b border-gray-100 dark:border-dark-800;
+    @apply border-b border-gray-200 dark:border-dark-700;
     transition:
       padding 0.2s ease,
       gap 0.2s ease;
@@ -555,11 +555,11 @@
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-xl py-2.5;
+    @apply flex items-center gap-3 rounded-none border-l-2 border-transparent py-2.5;
     @apply overflow-hidden;
     @apply text-sm font-medium;
     @apply text-gray-600 dark:text-dark-300;
-    @apply transition-all duration-200;
+    @apply transition-colors duration-200;
     @apply hover:bg-gray-100 dark:hover:bg-dark-800;
     @apply hover:text-gray-900 dark:hover:text-white;
     padding-left: 1.0625rem;
@@ -570,6 +570,7 @@
     @apply bg-primary-50 dark:bg-primary-900/20;
     @apply text-primary-600 dark:text-primary-400;
     @apply hover:bg-primary-100 dark:hover:bg-primary-900/30;
+    @apply border-l-primary-500;
   }
 
   .sidebar-section {
@@ -580,6 +581,7 @@
     @apply mb-2 px-3;
     @apply text-xs font-semibold uppercase tracking-wider;
     @apply text-gray-400 dark:text-dark-500;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
   }
 
   /* ============ 页面头部 ============ */
@@ -588,7 +590,8 @@
   }
 
   .page-title {
-    @apply text-2xl font-bold text-gray-900 dark:text-white;
+    @apply text-2xl font-semibold text-gray-900 dark:text-white;
+    letter-spacing: -0.025em;
   }
 
   .page-description {
@@ -632,11 +635,11 @@
   /* ============ 标签页 ============ */
   .tabs {
     @apply flex gap-1 p-1;
-    @apply rounded-xl bg-gray-100 dark:bg-dark-800;
+    @apply rounded-sm bg-gray-100 dark:bg-dark-800;
   }
 
   .tab {
-    @apply rounded-lg px-4 py-2 text-sm font-medium;
+    @apply rounded-sm px-4 py-2 text-sm font-medium;
     @apply text-gray-600 dark:text-dark-400;
     @apply transition-all duration-200;
     @apply hover:text-gray-900 dark:hover:text-white;
@@ -645,7 +648,7 @@
   .tab-active {
     @apply bg-white dark:bg-dark-700;
     @apply text-gray-900 dark:text-white;
-    @apply shadow-sm;
+    @apply shadow-none;
   }
 
   /* ============ 进度条 ============ */
@@ -690,7 +693,7 @@
   .code-block {
     @apply font-mono text-sm;
     @apply bg-gray-900 text-gray-100;
-    @apply overflow-x-auto rounded-xl p-4;
+    @apply overflow-x-auto rounded-sm p-4;
   }
 
   /* ============ Tour Description ============ */
@@ -750,7 +753,7 @@
 
   /* 玻璃效果 */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
+    @apply bg-[#f8f6f1]/95 backdrop-blur-xl dark:bg-dark-900/95;
   }
 
   /* 隐藏滚动条 */
@@ -769,5 +772,80 @@
 
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ============ EasyHub 内部页面视觉骨架 ============ */
+.app-shell {
+  --easyhub-line: rgba(17, 17, 18, 0.12);
+  --easyhub-line-strong: rgba(17, 17, 18, 0.2);
+  --easyhub-muted: #716d66;
+  isolation: isolate;
+}
+
+.dark .app-shell {
+  --easyhub-line: rgba(255, 255, 255, 0.09);
+  --easyhub-line-strong: rgba(255, 255, 255, 0.18);
+  --easyhub-muted: #a5a29c;
+}
+
+.app-shell-backdrop {
+  opacity: 0.52;
+}
+
+.dark .app-shell-backdrop {
+  opacity: 0.72;
+}
+
+.app-header {
+  border-color: var(--easyhub-line);
+  box-shadow: none;
+}
+
+.app-header-title,
+.sidebar-brand-title {
+  font-family: "Space Grotesk", "PingFang SC", system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
+.app-header p,
+.sidebar-section-title,
+.sidebar .version-badge {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+}
+
+.sidebar,
+.sidebar-header {
+  border-color: var(--easyhub-line);
+}
+
+.sidebar-link-active {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), inset 0 -1px 0 rgba(17, 17, 18, 0.025);
+}
+
+.dark .sidebar-link-active {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.sidebar-link:focus-visible,
+.app-header button:focus-visible,
+.app-header a:focus-visible {
+  outline: 2px solid #c8a96a;
+  outline-offset: 2px;
+}
+
+.app-main {
+  animation: easyhub-content-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes easyhub-content-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-main {
+    animation: none;
   }
 }
