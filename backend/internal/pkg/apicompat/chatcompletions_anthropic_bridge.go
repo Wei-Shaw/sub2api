@@ -249,8 +249,15 @@ func anthropicUserToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 
 // anthropicAssistantToChatMessages handles an Anthropic assistant message.
 // Text content → assistant message content; tool_use blocks → tool_calls on the
-// same assistant message; thinking blocks are dropped (Chat Completions has no
-// inbound thinking field, matching anthropicAssistantToResponses).
+// same assistant message; thinking blocks → assistant reasoning_content.
+//
+// Thinking blocks must be preserved for passback-required OpenAI-compatible
+// upstreams (DeepSeek/Kimi/GLM/Moonshot): when the request runs in thinking
+// mode, DeepSeek rejects multi-turn histories whose assistant messages lack the
+// reasoning_content from the previous turn with 400 "The `reasoning_content`
+// in the thinking mode must be passed back to the API". Mapping thinking →
+// reasoning_content is the exact inverse of chatMessageToAnthropicBlocks, so
+// the reasoning round-trips through the CC conversion intact.
 func anthropicAssistantToChatMessages(raw json.RawMessage) ([]ChatMessage, error) {
 	// Plain string → single assistant message.
 	var s string
@@ -269,6 +276,22 @@ func anthropicAssistantToChatMessages(raw json.RawMessage) ([]ChatMessage, error
 	if text != "" {
 		content, _ := json.Marshal(text)
 		msg.Content = content
+	}
+
+	// Thinking text becomes reasoning_content. The Anthropic signature is
+	// provider-specific ciphertext for the strict upstreams and is not replayed
+	// to CC upstreams (DeepSeek-style thinking carries no signature).
+	var reasoning []string
+	for _, b := range blocks {
+		if b.Type != "thinking" {
+			continue
+		}
+		if t := strings.TrimSpace(b.Thinking); t != "" {
+			reasoning = append(reasoning, t)
+		}
+	}
+	if len(reasoning) > 0 {
+		msg.ReasoningContent = strings.Join(reasoning, "\n\n")
 	}
 
 	for _, b := range blocks {

@@ -388,11 +388,21 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		if err != nil {
 			return nil, nil, err
 		}
-		messages = append(messages, ChatMessage{Role: role, Content: chatContent})
-		// Reasoning only survives across an assistant text message.
-		if role != "assistant" {
+		msg := ChatMessage{Role: role, Content: chatContent}
+		// DeepSeek thinking mode requires the reasoning_content from a prior
+		// reasoning-only / plain-text assistant turn to be passed back on its
+		// assistant message; dropping it yields 400 "The `reasoning_content` in
+		// the thinking mode must be passed back to the API" on the next turn.
+		// A following function_call in the same turn still receives it because
+		// appendAssistantToolCall merges into this message and only fills
+		// ReasoningContent when it is still empty.
+		if role == "assistant" {
+			msg.ReasoningContent = pendingReasoning
+			pendingReasoning = ""
+		} else {
 			pendingReasoning = ""
 		}
+		messages = append(messages, msg)
 	}
 
 	return messages, mediaByCallID, nil

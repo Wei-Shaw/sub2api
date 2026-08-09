@@ -62,6 +62,48 @@ func TestGolden_SingleToolCall(t *testing.T) {
 	require.Equal(t, "need to run curl", asst.ReasoningContent)
 }
 
+// Golden sample: a plain assistant turn (reasoning + text answer, no tool call).
+// The reasoning_content must be passed back on the assistant message, otherwise
+// DeepSeek thinking mode rejects the next turn with 400 "The `reasoning_content`
+// in the thinking mode must be passed back to the API".
+func TestGolden_PlainReasoningTurnPreservesReasoningContent(t *testing.T) {
+	msgs := convertGolden(t, `[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"explain X"}]},
+		{"type":"reasoning","summary":[{"type":"summary_text","text":"thinking about X"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"X is ..."}]},
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"more detail"}]}
+	]`)
+	assertChatInvariants(t, msgs)
+	// The assistant text message carries the reasoning_content that preceded it.
+	found := false
+	for _, m := range msgs {
+		if m.Role == "assistant" {
+			found = true
+			require.Equal(t, "thinking about X", m.ReasoningContent)
+		}
+	}
+	require.True(t, found, "assistant message missing from converted history")
+}
+
+// Golden sample: an assistant message followed by a same-turn function_call (the
+// Responses output shape for a tool call preceded by visible text). The reasoning
+// must survive on the merged assistant tool-call message.
+func TestGolden_ReasoningWithTextThenToolCall(t *testing.T) {
+	msgs := convertGolden(t, `[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"q"}]},
+		{"type":"reasoning","summary":[{"type":"summary_text","text":"plan first"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"let me check"}]},
+		{"type":"function_call","call_id":"A","name":"exec","arguments":"{}"},
+		{"type":"function_call_output","call_id":"A","output":"ok"}
+	]`)
+	assertChatInvariants(t, msgs)
+	for _, m := range msgs {
+		if len(m.ToolCalls) > 0 {
+			require.Equal(t, "plan first", m.ReasoningContent)
+		}
+	}
+}
+
 // Golden sample: parallel tool calls (codex runs git log + git tag at once).
 func TestGolden_ParallelToolCalls(t *testing.T) {
 	msgs := convertGolden(t, `[
