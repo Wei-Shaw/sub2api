@@ -34,9 +34,10 @@ func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 		},
 	}
 
-	got := BuildPublicConfig(cfg)
+	got := BuildPublicConfig(cfg, true)
 
 	require.True(t, got.Enabled)
+	require.Empty(t, got.UnavailableReason)
 	require.Equal(t, []string{"a_network", "z_network"}, []string{got.Networks[0].Key, got.Networks[1].Key})
 	require.Equal(t, "1030", got.Networks[0].ChainID)
 	require.Equal(t, "USDT0", got.Networks[0].Assets[0].DisplayName)
@@ -45,13 +46,19 @@ func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 	require.Equal(t, "10000.000000", got.Networks[0].Assets[0].AutomaticCreditLimit)
 }
 
-func TestBuildPublicConfigDisabledReturnsNoNetworks(t *testing.T) {
-	for _, cfg := range []config.Web3DepositConfig{
-		{Enabled: false, UserEntryEnabled: true},
-		{Enabled: true, UserEntryEnabled: false},
+func TestBuildPublicConfigUnavailableReturnsReasonAndNoNetworks(t *testing.T) {
+	for _, test := range []struct {
+		cfg          config.Web3DepositConfig
+		runtimeReady bool
+		wantReason   PublicConfigUnavailableReason
+	}{
+		{cfg: config.Web3DepositConfig{Enabled: false, UserEntryEnabled: true}, runtimeReady: true, wantReason: PublicConfigUnavailableFeatureDisabled},
+		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: false}, runtimeReady: true, wantReason: PublicConfigUnavailableUserEntryDisabled},
+		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: true}, runtimeReady: false, wantReason: PublicConfigUnavailableRuntimeUnhealthy},
 	} {
-		got := BuildPublicConfig(cfg)
+		got := BuildPublicConfig(test.cfg, test.runtimeReady)
 		require.False(t, got.Enabled)
+		require.Equal(t, test.wantReason, got.UnavailableReason)
 		require.Empty(t, got.Networks)
 		require.NotNil(t, got.Networks)
 	}
@@ -84,7 +91,7 @@ func TestBuildPublicConfigJSONDoesNotExposeInternalConfiguration(t *testing.T) {
 		},
 	}
 
-	payload, err := json.Marshal(BuildPublicConfig(cfg))
+	payload, err := json.Marshal(BuildPublicConfig(cfg, true))
 	require.NoError(t, err)
 
 	serialized := string(payload)

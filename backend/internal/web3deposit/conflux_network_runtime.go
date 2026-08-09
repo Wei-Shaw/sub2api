@@ -64,7 +64,15 @@ func newConfluxNetworkRuntime(ctx context.Context, cfg *config.Config, options C
 }
 
 func (r *ConfluxNetworkRuntime) Ready() bool {
-	return r != nil && r.enabled && r.ready
+	if r == nil || !r.enabled || !r.ready || r.pool == nil {
+		return false
+	}
+	for _, endpoint := range r.pool.EndpointStates() {
+		if endpoint.Healthy {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ConfluxNetworkRuntime) VerificationError() error {

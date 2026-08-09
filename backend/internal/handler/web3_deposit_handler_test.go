@@ -31,6 +31,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 			},
 		},
 	}}, nil, nil, nil, nil)
+	handler.networkRuntime = web3DepositNetworkReadinessStub{ready: true}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
 
@@ -60,6 +61,41 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 	require.Equal(t, "1030", payload.Networks[0].ChainID)
 	require.Equal(t, "1.000000", payload.Networks[0].Assets[0].MinimumDeposit)
 	require.Equal(t, "10000.000000", payload.Networks[0].Assets[0].AutomaticCreditLimit)
+}
+
+type web3DepositNetworkReadinessStub struct {
+	ready bool
+}
+
+func (s web3DepositNetworkReadinessStub) Ready() bool {
+	return s.ready
+}
+
+func TestWeb3DepositHandlerGetConfigReportsUnhealthyRuntime(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewWeb3DepositHandler(&config.Config{Web3Deposit: config.Web3DepositConfig{
+		Enabled:          true,
+		UserEntryEnabled: true,
+		Networks: map[string]config.Web3DepositNetworkConfig{
+			"conflux_espace_mainnet": {Enabled: true},
+		},
+	}}, nil, nil, &web3deposit.ConfluxNetworkRuntime{}, nil)
+	router := gin.New()
+	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/payment/web3/config", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var envelope struct {
+		Data struct {
+			Enabled           bool   `json:"enabled"`
+			UnavailableReason string `json:"unavailable_reason"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
+	require.False(t, envelope.Data.Enabled)
+	require.Equal(t, "runtime_unhealthy", envelope.Data.UnavailableReason)
 }
 
 type web3DepositAddressAllocatorStub struct {

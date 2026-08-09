@@ -9,9 +9,18 @@ import (
 )
 
 type PublicConfig struct {
-	Enabled  bool            `json:"enabled"`
-	Networks []PublicNetwork `json:"networks"`
+	Enabled           bool                          `json:"enabled"`
+	UnavailableReason PublicConfigUnavailableReason `json:"unavailable_reason,omitempty"`
+	Networks          []PublicNetwork               `json:"networks"`
 }
+
+type PublicConfigUnavailableReason string
+
+const (
+	PublicConfigUnavailableFeatureDisabled   PublicConfigUnavailableReason = "feature_disabled"
+	PublicConfigUnavailableUserEntryDisabled PublicConfigUnavailableReason = "user_entry_disabled"
+	PublicConfigUnavailableRuntimeUnhealthy  PublicConfigUnavailableReason = "runtime_unhealthy"
+)
 
 type PublicNetwork struct {
 	Key         string        `json:"key"`
@@ -29,9 +38,18 @@ type PublicAsset struct {
 	AutomaticCreditLimit string `json:"automatic_credit_limit"`
 }
 
-func BuildPublicConfig(cfg config.Web3DepositConfig) PublicConfig {
+func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicConfig {
 	result := PublicConfig{Networks: make([]PublicNetwork, 0)}
-	if !cfg.Enabled || !cfg.UserEntryEnabled {
+	if !cfg.Enabled {
+		result.UnavailableReason = PublicConfigUnavailableFeatureDisabled
+		return result
+	}
+	if !cfg.UserEntryEnabled {
+		result.UnavailableReason = PublicConfigUnavailableUserEntryDisabled
+		return result
+	}
+	if !runtimeReady {
+		result.UnavailableReason = PublicConfigUnavailableRuntimeUnhealthy
 		return result
 	}
 

@@ -88,6 +88,25 @@ func TestConfluxNetworkRuntimeVerifiesEnabledConfiguration(t *testing.T) {
 	require.NotNil(t, runtime.Pool())
 }
 
+func TestConfluxNetworkRuntimeReportsUnhealthyWhenAllEndpointsAreCoolingDown(t *testing.T) {
+	cfg := testConfluxNetworkRuntimeConfig()
+	expected := testConfluxNetworkExpectation()
+	options := ConfluxRPCPoolOptions{
+		FailureCooldown: time.Minute,
+		dial: func(_ context.Context, _ string, _ *http.Client) (confluxRPCCaller, error) {
+			return healthyConfluxRPCResponseCaller(expected.TokenDecimals), nil
+		},
+	}
+
+	runtime := newConfluxNetworkRuntime(context.Background(), cfg, options)
+	t.Cleanup(runtime.Close)
+	require.True(t, runtime.Ready())
+
+	var result string
+	require.Error(t, runtime.Pool().CallContext(context.Background(), &result, "unavailable_method"))
+	require.False(t, runtime.Ready())
+}
+
 func TestConfluxNetworkRuntimeFailsClosed(t *testing.T) {
 	cfg := testConfluxNetworkRuntimeConfig()
 	options := ConfluxRPCPoolOptions{

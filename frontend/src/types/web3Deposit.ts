@@ -16,6 +16,7 @@ export interface Web3DepositNetworkConfig {
 
 export interface Web3DepositConfig {
   enabled: boolean
+  unavailable_reason?: 'feature_disabled' | 'user_entry_disabled' | 'runtime_unhealthy'
   networks: Web3DepositNetworkConfig[]
 }
 

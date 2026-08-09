@@ -20,8 +20,12 @@ type Web3DepositHandler struct {
 	cfg              *config.Config
 	addressAllocator web3DepositAddressAllocator
 	addressReader    web3deposit.UserDepositAddressReader
-	networkRuntime   *web3deposit.ConfluxNetworkRuntime
+	networkRuntime   web3DepositNetworkReadiness
 	deposits         web3deposit.UserDepositReader
+}
+
+type web3DepositNetworkReadiness interface {
+	Ready() bool
 }
 
 type web3DepositAddressAllocator interface {
@@ -47,7 +51,8 @@ func NewWeb3DepositHandler(
 // GetConfig returns the publicly safe Web3 deposit configuration.
 // GET /api/v1/payment/web3/config
 func (h *Web3DepositHandler) GetConfig(c *gin.Context) {
-	response.Success(c, web3deposit.BuildPublicConfig(h.cfg.Web3Deposit))
+	runtimeReady := h.networkRuntime != nil && h.networkRuntime.Ready()
+	response.Success(c, web3deposit.BuildPublicConfig(h.cfg.Web3Deposit, runtimeReady))
 }
 
 // GetOrCreateAddress returns the authenticated user's long-lived EVM deposit address.
