@@ -274,7 +274,8 @@ jobs:
 
   sync-version-file:
     needs: [release]
-    if: ${{ needs.release.result == 'success' }}
+    # Fork custom releases must not create a bot commit on main after publishing.
+    if: ${{ needs.release.result == 'success' && github.repository == 'Wei-Shaw/sub2api' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout default branch
