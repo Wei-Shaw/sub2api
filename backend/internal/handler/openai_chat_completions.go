@@ -345,6 +345,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, nil)
 		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
+		}
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)

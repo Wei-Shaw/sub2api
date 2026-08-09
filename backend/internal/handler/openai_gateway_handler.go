@@ -684,6 +684,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
 		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
+		}
 
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
@@ -1213,6 +1217,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, result.FirstTokenMs)
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, nil)
+		}
+		// 首 Token 慢响应自动冷却：仅影响后续请求的调度
+		if result != nil {
+			h.gatewayService.MaybeCooldownSlowFirstToken(c.Request.Context(), account.ID, result.FirstTokenMs)
 		}
 
 		userAgent := c.GetHeader("User-Agent")

@@ -1002,6 +1002,14 @@ type GatewayConfig struct {
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
 	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
 
+	// SlowFirstTokenCooldownMs: 首 Token 延迟超过此阈值（毫秒）时自动冷却该上游账号。
+	// 0 表示禁用此功能。该冷却在请求完成、failover 循环全部结束后触发，
+	// 不影响当前请求，仅保护后续请求不再选择该慢速账号。
+	SlowFirstTokenCooldownMs int `mapstructure:"slow_first_token_cooldown_ms"`
+	// SlowFirstTokenCooldownSeconds: 慢速首 Token 冷却时长（秒）。
+	// 仅在 SlowFirstTokenCooldownMs > 0 时生效，默认 60 秒。
+	SlowFirstTokenCooldownSeconds int `mapstructure:"slow_first_token_cooldown_seconds"`
+
 	// Antigravity 429 fallback 限流时间（分钟），解析重置时间失败时使用
 	AntigravityFallbackCooldownMinutes int `mapstructure:"antigravity_fallback_cooldown_minutes"`
 
@@ -2235,6 +2243,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.failover_on_400", false)
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.slow_first_token_cooldown_ms", 0)
+	viper.SetDefault("gateway.slow_first_token_cooldown_seconds", 60)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
