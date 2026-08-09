@@ -2981,6 +2981,13 @@ func (s *GeminiMessagesCompatService) handleGeminiUpstreamError(ctx context.Cont
 			} else {
 				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Google One OAuth, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 			}
+		} else if account.IsVertexServiceAccount() {
+			// Vertex service accounts are billed per-use and have no daily quota reset;
+			// their 429 is a per-minute rate limit and should cool down in minutes.
+			// Use geminiCooldownForTier only: GeminiCooldown maps empty oauth_type to aistudio_free (30m).
+			cooldown := geminiCooldownForTier(tierID)
+			ra = time.Now().Add(cooldown)
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Vertex service account, tier=%s) rate limited, cooldown=%v", account.ID, tierID, time.Until(ra).Truncate(time.Second))
 		} else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
