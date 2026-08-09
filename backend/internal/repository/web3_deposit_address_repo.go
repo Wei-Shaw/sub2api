@@ -15,7 +15,7 @@ type Web3DepositAddressRepository struct {
 }
 
 var _ web3deposit.DepositAddressStore = (*Web3DepositAddressRepository)(nil)
-var _ web3deposit.ActiveDepositAddressLookup = (*Web3DepositAddressRepository)(nil)
+var _ web3deposit.DepositAddressLookup = (*Web3DepositAddressRepository)(nil)
 var _ web3deposit.UserDepositAddressReader = (*Web3DepositAddressRepository)(nil)
 
 func NewWeb3DepositAddressRepository(client *dbent.Client) *Web3DepositAddressRepository {
@@ -96,19 +96,16 @@ func (r *Web3DepositAddressRepository) ListByUser(ctx context.Context, userID in
 	return addresses, nil
 }
 
-func (r *Web3DepositAddressRepository) ListActiveByNormalizedAddresses(ctx context.Context, normalizedAddresses []string) ([]web3deposit.DepositAddress, error) {
+func (r *Web3DepositAddressRepository) ListByNormalizedAddresses(ctx context.Context, normalizedAddresses []string) ([]web3deposit.DepositAddress, error) {
 	if len(normalizedAddresses) == 0 {
 		return []web3deposit.DepositAddress{}, nil
 	}
 
 	entities, err := r.client.Web3DepositAddress.Query().
-		Where(
-			web3depositaddress.NormalizedAddressIn(normalizedAddresses...),
-			web3depositaddress.StatusEQ(string(web3deposit.AddressStatusActive)),
-		).
+		Where(web3depositaddress.NormalizedAddressIn(normalizedAddresses...)).
 		All(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list active web3 deposit addresses by normalized addresses: %w", err)
+		return nil, fmt.Errorf("list historical web3 deposit addresses by normalized addresses: %w", err)
 	}
 
 	addresses := make([]web3deposit.DepositAddress, 0, len(entities))

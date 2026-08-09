@@ -10,8 +10,8 @@ import (
 
 const DefaultRecipientLookupChunkSize = 500
 
-type ActiveDepositAddressLookup interface {
-	ListActiveByNormalizedAddresses(ctx context.Context, normalizedAddresses []string) ([]DepositAddress, error)
+type DepositAddressLookup interface {
+	ListByNormalizedAddresses(ctx context.Context, normalizedAddresses []string) ([]DepositAddress, error)
 }
 
 type MatchedTransferEvent struct {
@@ -21,13 +21,13 @@ type MatchedTransferEvent struct {
 }
 
 type RecipientMatcher struct {
-	lookup    ActiveDepositAddressLookup
+	lookup    DepositAddressLookup
 	chunkSize int
 }
 
 var _ ScannerRecipientMatcher = (*RecipientMatcher)(nil)
 
-func NewRecipientMatcher(lookup ActiveDepositAddressLookup, chunkSize int) *RecipientMatcher {
+func NewRecipientMatcher(lookup DepositAddressLookup, chunkSize int) *RecipientMatcher {
 	if chunkSize <= 0 {
 		chunkSize = DefaultRecipientLookupChunkSize
 	}
@@ -46,14 +46,12 @@ func (m *RecipientMatcher) Match(ctx context.Context, events []TransferEvent) ([
 	addressesByNormalizedAddress := make(map[string]DepositAddress, len(normalizedRecipients))
 	for start := 0; start < len(normalizedRecipients); start += m.chunkSize {
 		end := min(start+m.chunkSize, len(normalizedRecipients))
-		addresses, err := m.lookup.ListActiveByNormalizedAddresses(ctx, normalizedRecipients[start:end])
+		addresses, err := m.lookup.ListByNormalizedAddresses(ctx, normalizedRecipients[start:end])
 		if err != nil {
-			return nil, fmt.Errorf("look up active web3 deposit recipients: %w", err)
+			return nil, fmt.Errorf("look up historical web3 deposit recipients: %w", err)
 		}
 		for _, address := range addresses {
-			if address.Status == AddressStatusActive {
-				addressesByNormalizedAddress[strings.ToLower(address.NormalizedAddress)] = address
-			}
+			addressesByNormalizedAddress[strings.ToLower(address.NormalizedAddress)] = address
 		}
 	}
 

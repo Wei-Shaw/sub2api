@@ -18,7 +18,7 @@ func ProvideScannerRuntime(
 	networkRuntime *ConfluxNetworkRuntime,
 	leaseStore ScannerLeaseStore,
 	cursorSource ScannerCursorSource,
-	addressLookup ActiveDepositAddressLookup,
+	addressLookup DepositAddressLookup,
 	batchStore ScannerBatchStore,
 	pendingSource PendingFinalizationSource,
 	eligibilitySource DepositCreditEligibilitySource,

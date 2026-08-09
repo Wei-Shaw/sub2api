@@ -104,7 +104,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(web3deposit.DerivationIndexReserver), new(*Web3DepositWalletRepository)),
 	wire.Bind(new(web3deposit.DepositAddressStore), new(*Web3DepositAddressRepository)),
 	wire.Bind(new(web3deposit.UserDepositAddressReader), new(*Web3DepositAddressRepository)),
-	wire.Bind(new(web3deposit.ActiveDepositAddressLookup), new(*Web3DepositAddressRepository)),
+	wire.Bind(new(web3deposit.DepositAddressLookup), new(*Web3DepositAddressRepository)),
 	wire.Bind(new(web3deposit.ScannerCursorSource), new(*Web3ScannerCursorRepository)),
 	wire.Bind(new(web3deposit.ScannerLeaseStore), new(*Web3ScannerCursorRepository)),
 	wire.Bind(new(web3deposit.ScannerBatchStore), new(*Web3ScannerBatchRepository)),

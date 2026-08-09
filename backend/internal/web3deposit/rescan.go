@@ -24,7 +24,7 @@ type BoundedRescanner struct {
 	initErr   error
 }
 
-func NewBoundedRescanner(cfg *config.Config, runtime *ConfluxNetworkRuntime, lookup ActiveDepositAddressLookup, store DetectedDepositStore) *BoundedRescanner {
+func NewBoundedRescanner(cfg *config.Config, runtime *ConfluxNetworkRuntime, lookup DepositAddressLookup, store DetectedDepositStore) *BoundedRescanner {
 	r := &BoundedRescanner{}
 	if cfg == nil || runtime == nil || !runtime.Ready() || runtime.Pool() == nil {
 		r.initErr = fmt.Errorf("web3 deposit network is unavailable")

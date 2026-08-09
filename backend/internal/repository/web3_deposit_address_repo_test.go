@@ -161,7 +161,7 @@ func TestWeb3DepositAddressRepositoryListsUserHistory(t *testing.T) {
 	require.Equal(t, "evm_deposit_v1", addresses[1].WalletID)
 }
 
-func TestWeb3DepositAddressRepositoryListsActiveByNormalizedAddresses(t *testing.T) {
+func TestWeb3DepositAddressRepositoryListsHistoricalByNormalizedAddresses(t *testing.T) {
 	repo := newWeb3DepositAddressRepository(t)
 	ctx := context.Background()
 	active, err := repo.Create(ctx, web3deposit.DepositAddress{
@@ -172,7 +172,7 @@ func TestWeb3DepositAddressRepositoryListsActiveByNormalizedAddresses(t *testing
 		NormalizedAddress: testWeb3DepositNormalizedAddress,
 	})
 	require.NoError(t, err)
-	_, err = repo.Create(ctx, web3deposit.DepositAddress{
+	disabled, err := repo.Create(ctx, web3deposit.DepositAddress{
 		UserID:            43,
 		WalletID:          "evm_deposit_v1",
 		DerivationIndex:   8,
@@ -182,23 +182,25 @@ func TestWeb3DepositAddressRepositoryListsActiveByNormalizedAddresses(t *testing
 	})
 	require.NoError(t, err)
 
-	addresses, err := repo.ListActiveByNormalizedAddresses(ctx, []string{
+	addresses, err := repo.ListByNormalizedAddresses(ctx, []string{
 		testWeb3DepositNormalizedAddress,
 		"0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
 		"0x9999999999999999999999999999999999999999",
 	})
 	require.NoError(t, err)
-	require.Len(t, addresses, 1)
-	require.Equal(t, active.ID, addresses[0].ID)
-	require.Equal(t, active.UserID, addresses[0].UserID)
-	require.Equal(t, active.NormalizedAddress, addresses[0].NormalizedAddress)
-	require.Equal(t, web3deposit.AddressStatusActive, addresses[0].Status)
+	require.Len(t, addresses, 2)
+	addressesByID := make(map[int64]web3deposit.DepositAddress, len(addresses))
+	for _, address := range addresses {
+		addressesByID[address.ID] = address
+	}
+	require.Equal(t, web3deposit.AddressStatusActive, addressesByID[active.ID].Status)
+	require.Equal(t, web3deposit.AddressStatusDisabled, addressesByID[disabled.ID].Status)
 }
 
-func TestWeb3DepositAddressRepositoryListsNoActiveAddressesForEmptyInput(t *testing.T) {
+func TestWeb3DepositAddressRepositoryListsNoAddressesForEmptyInput(t *testing.T) {
 	repo := newWeb3DepositAddressRepository(t)
 
-	addresses, err := repo.ListActiveByNormalizedAddresses(context.Background(), nil)
+	addresses, err := repo.ListByNormalizedAddresses(context.Background(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, addresses)
 	require.Empty(t, addresses)

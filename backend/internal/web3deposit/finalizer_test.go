@@ -82,6 +82,32 @@ func TestFinalizerRoutesInactiveUserToManualReview(t *testing.T) {
 	require.Equal(t, ReviewReasonUserDeleted, batchStore.batch.Decisions[0].ReviewReason)
 }
 
+func TestFinalizerRoutesDisabledHistoricalAddressToManualReview(t *testing.T) {
+	deposit := finalizerTestDeposit(1, "10")
+	canonical := finalizerCanonicalSource([]Deposit{deposit}, 100)
+	verifier, err := NewCanonicalDepositVerifier(canonical)
+	require.NoError(t, err)
+	batchStore := &finalizerBatchStoreStub{}
+	finalizer, err := NewFinalizer(
+		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 100, LastFinalizedBlock: 100}},
+		canonical,
+		verifier,
+		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		finalizerEligibilityStub{reason: ReviewReasonAddressDisabled},
+		batchStore,
+		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 10, ChainConfig: ChainConfig{
+			MinimumDeposit: decimal.NewFromInt(1), AutoCreditLimit: decimal.NewFromInt(10000),
+		}},
+	)
+	require.NoError(t, err)
+
+	_, err = finalizer.FinalizeNext(context.Background(), "lease-token", time.Now())
+
+	require.NoError(t, err)
+	require.Equal(t, DepositStatusManualReview, batchStore.batch.Decisions[0].Status)
+	require.Equal(t, ReviewReasonAddressDisabled, batchStore.batch.Decisions[0].ReviewReason)
+}
+
 func TestFinalizerMarksCanonicalMismatchOrphaned(t *testing.T) {
 	deposit := finalizerTestDeposit(1, "10")
 	canonical := finalizerCanonicalSource([]Deposit{deposit}, 100)

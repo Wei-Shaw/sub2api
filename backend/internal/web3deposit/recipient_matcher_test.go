@@ -19,7 +19,7 @@ func TestRecipientMatcherMatchesActiveAddressesInEventOrder(t *testing.T) {
 		newRecipientMatcherEvent(t, 2, common.HexToAddress("0x9999999999999999999999999999999999999999")),
 		newRecipientMatcherEvent(t, 3, firstRecipient),
 	}
-	lookup := &activeDepositAddressLookupStub{addresses: []DepositAddress{
+	lookup := &depositAddressLookupStub{addresses: []DepositAddress{
 		{ID: 11, UserID: 101, NormalizedAddress: strings.ToLower(firstRecipient.Hex()), Status: AddressStatusActive},
 		{ID: 12, UserID: 102, NormalizedAddress: strings.ToLower(secondRecipient.Hex()), Status: AddressStatusActive},
 	}}
@@ -30,6 +30,22 @@ func TestRecipientMatcherMatchesActiveAddressesInEventOrder(t *testing.T) {
 		{Event: events[0], DepositAddressID: 12, UserID: 102},
 		{Event: events[2], DepositAddressID: 11, UserID: 101},
 	}, matches)
+}
+
+func TestRecipientMatcherMatchesDisabledHistoricalAddress(t *testing.T) {
+	recipient := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	event := newRecipientMatcherEvent(t, 1, recipient)
+	lookup := &depositAddressLookupStub{addresses: []DepositAddress{{
+		ID:                11,
+		UserID:            101,
+		NormalizedAddress: strings.ToLower(recipient.Hex()),
+		Status:            AddressStatusDisabled,
+	}}}
+
+	matches, err := NewRecipientMatcher(lookup, DefaultRecipientLookupChunkSize).Match(context.Background(), []TransferEvent{event})
+
+	require.NoError(t, err)
+	require.Equal(t, []MatchedTransferEvent{{Event: event, DepositAddressID: 11, UserID: 101}}, matches)
 }
 
 func TestRecipientMatcherNormalizesDeduplicatesAndChunksRecipients(t *testing.T) {
@@ -45,7 +61,7 @@ func TestRecipientMatcherNormalizesDeduplicatesAndChunksRecipients(t *testing.T)
 		events = append(events, newRecipientMatcherEvent(t, uint64(index+1), recipient))
 	}
 	events = append(events, newRecipientMatcherEvent(t, 6, recipients[0]))
-	lookup := &activeDepositAddressLookupStub{}
+	lookup := &depositAddressLookupStub{}
 
 	matches, err := NewRecipientMatcher(lookup, 2).Match(context.Background(), events)
 	require.NoError(t, err)
@@ -62,7 +78,7 @@ func TestRecipientMatcherFailsWholeBatchOnLookupError(t *testing.T) {
 		newRecipientMatcherEvent(t, 1, common.HexToAddress("0x1111111111111111111111111111111111111111")),
 		newRecipientMatcherEvent(t, 2, common.HexToAddress("0x2222222222222222222222222222222222222222")),
 	}
-	lookup := &activeDepositAddressLookupStub{
+	lookup := &depositAddressLookupStub{
 		addresses: []DepositAddress{{
 			ID:                11,
 			UserID:            101,
@@ -78,7 +94,7 @@ func TestRecipientMatcherFailsWholeBatchOnLookupError(t *testing.T) {
 }
 
 func TestRecipientMatcherSkipsLookupForEmptyEvents(t *testing.T) {
-	lookup := &activeDepositAddressLookupStub{}
+	lookup := &depositAddressLookupStub{}
 
 	matches, err := NewRecipientMatcher(lookup, 0).Match(context.Background(), nil)
 	require.NoError(t, err)
@@ -101,14 +117,14 @@ func newRecipientMatcherEvent(t *testing.T, logIndex uint64, recipient common.Ad
 	return event
 }
 
-type activeDepositAddressLookupStub struct {
+type depositAddressLookupStub struct {
 	addresses []DepositAddress
 	calls     [][]string
 	errAtCall int
 	err       error
 }
 
-func (s *activeDepositAddressLookupStub) ListActiveByNormalizedAddresses(_ context.Context, normalizedAddresses []string) ([]DepositAddress, error) {
+func (s *depositAddressLookupStub) ListByNormalizedAddresses(_ context.Context, normalizedAddresses []string) ([]DepositAddress, error) {
 	s.calls = append(s.calls, append([]string(nil), normalizedAddresses...))
 	if s.errAtCall == len(s.calls) {
 		return nil, s.err
@@ -126,7 +142,7 @@ func (s *activeDepositAddressLookupStub) ListActiveByNormalizedAddresses(_ conte
 	return addresses, nil
 }
 
-func (s *activeDepositAddressLookupStub) callSizes() []int {
+func (s *depositAddressLookupStub) callSizes() []int {
 	sizes := make([]int, 0, len(s.calls))
 	for _, call := range s.calls {
 		sizes = append(sizes, len(call))
@@ -134,7 +150,7 @@ func (s *activeDepositAddressLookupStub) callSizes() []int {
 	return sizes
 }
 
-func (s *activeDepositAddressLookupStub) uniqueRecipientCount() int {
+func (s *depositAddressLookupStub) uniqueRecipientCount() int {
 	recipients := make(map[string]struct{})
 	for _, call := range s.calls {
 		for _, address := range call {
