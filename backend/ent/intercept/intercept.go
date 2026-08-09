@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
+	"github.com/Wei-Shaw/sub2api/ent/asyncvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
@@ -77,6 +78,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/videopricing"
 )
 
 // The Query interface represents an operation that queries a graph.
@@ -295,6 +297,33 @@ func (f TraverseAsyncMediaTask) Traverse(ctx context.Context, q ent.Query) error
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.AsyncMediaTaskQuery", q)
+}
+
+// The AsyncVideoTaskFunc type is an adapter to allow the use of ordinary function as a Querier.
+type AsyncVideoTaskFunc func(context.Context, *ent.AsyncVideoTaskQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f AsyncVideoTaskFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.AsyncVideoTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.AsyncVideoTaskQuery", q)
+}
+
+// The TraverseAsyncVideoTask type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseAsyncVideoTask func(context.Context, *ent.AsyncVideoTaskQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseAsyncVideoTask) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseAsyncVideoTask) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.AsyncVideoTaskQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.AsyncVideoTaskQuery", q)
 }
 
 // The AuthIdentityFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1971,6 +2000,33 @@ func (f TraverseUserSubscription) Traverse(ctx context.Context, q ent.Query) err
 	return fmt.Errorf("unexpected query type %T. expect *ent.UserSubscriptionQuery", q)
 }
 
+// The VideoPricingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type VideoPricingFunc func(context.Context, *ent.VideoPricingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f VideoPricingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.VideoPricingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.VideoPricingQuery", q)
+}
+
+// The TraverseVideoPricing type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseVideoPricing func(context.Context, *ent.VideoPricingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseVideoPricing) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseVideoPricing) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.VideoPricingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.VideoPricingQuery", q)
+}
+
 // NewQuery returns the generic Query interface for the given typed query.
 func NewQuery(q ent.Query) (Query, error) {
 	switch q := q.(type) {
@@ -1986,6 +2042,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.AnnouncementReadQuery, predicate.AnnouncementRead, announcementread.OrderOption]{typ: ent.TypeAnnouncementRead, tq: q}, nil
 	case *ent.AsyncMediaTaskQuery:
 		return &query[*ent.AsyncMediaTaskQuery, predicate.AsyncMediaTask, asyncmediatask.OrderOption]{typ: ent.TypeAsyncMediaTask, tq: q}, nil
+	case *ent.AsyncVideoTaskQuery:
+		return &query[*ent.AsyncVideoTaskQuery, predicate.AsyncVideoTask, asyncvideotask.OrderOption]{typ: ent.TypeAsyncVideoTask, tq: q}, nil
 	case *ent.AuthIdentityQuery:
 		return &query[*ent.AuthIdentityQuery, predicate.AuthIdentity, authidentity.OrderOption]{typ: ent.TypeAuthIdentity, tq: q}, nil
 	case *ent.AuthIdentityChannelQuery:
@@ -2110,6 +2168,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.UserPlatformQuotaQuery, predicate.UserPlatformQuota, userplatformquota.OrderOption]{typ: ent.TypeUserPlatformQuota, tq: q}, nil
 	case *ent.UserSubscriptionQuery:
 		return &query[*ent.UserSubscriptionQuery, predicate.UserSubscription, usersubscription.OrderOption]{typ: ent.TypeUserSubscription, tq: q}, nil
+	case *ent.VideoPricingQuery:
+		return &query[*ent.VideoPricingQuery, predicate.VideoPricing, videopricing.OrderOption]{typ: ent.TypeVideoPricing, tq: q}, nil
 	default:
 		return nil, fmt.Errorf("unknown query type %T", q)
 	}

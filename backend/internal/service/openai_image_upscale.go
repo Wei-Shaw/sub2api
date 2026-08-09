@@ -129,20 +129,68 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 ) (outB64 []string, outSizes []string, fallbackURLs []string, changed bool) {
 	outB64 = b64s
 	outSizes = sizes
+	// 入口日志：定位「gpt-image-2 正式环境没有放大」时先看这条是否打出、字段是否合预期。
+	// 只打印元信息（分组/尺寸/图片数量），绝不打印图片字节或 base64 内容。
+	var groupName string
+	var groupID int64
+	var upscaleEnabled bool
+	var decodeEnabled bool
+	var platform string
+	if group != nil {
+		groupName = group.Name
+		groupID = group.ID
+		upscaleEnabled = group.ImageUpscaleOnRspEnabled()
+		decodeEnabled = group.ImageDecodeSizeOnRspEnabled()
+		platform = group.Platform
+	}
+	logger.L().Info("openai.images.upscale.enter",
+		zap.Int64("group_id", groupID),
+		zap.String("group_name", groupName),
+		zap.String("platform", platform),
+		zap.Bool("upscale_switch", upscaleEnabled),
+		zap.Bool("decode_switch", decodeEnabled),
+		zap.String("requested_size", requestedSize),
+		zap.Int("image_count", len(b64s)),
+	)
+
 	if s == nil || s.settingService == nil || group == nil || len(b64s) == 0 {
+		logger.L().Info("openai.images.upscale.skip",
+			zap.String("reason", "nil_dep_or_empty"),
+			zap.Bool("has_service", s != nil),
+			zap.Bool("has_setting_service", s != nil && s.settingService != nil),
+			zap.Bool("has_group", group != nil),
+			zap.Int("image_count", len(b64s)),
+		)
 		return outB64, outSizes, nil, false
 	}
 	if !group.ImageUpscaleOnRspEnabled() {
+		logger.L().Info("openai.images.upscale.skip",
+			zap.String("reason", "switch_off"),
+			zap.Int64("group_id", groupID),
+			zap.String("group_name", groupName),
+		)
 		return outB64, outSizes, nil, false
 	}
 	targetTier, ok := ClassifyImageBillingTier(requestedSize)
 
 	// OpenAI的反代阉割了2K以及以上的生图, 故仅当显式请求了 ≥2K 才触发放大；否则按原图档位计费。
 	if !ok || imageTierRank(targetTier) < imageTierRank(ImageBillingSize2K) {
+		logger.L().Info("openai.images.upscale.skip",
+			zap.String("reason", "target_tier_below_2k"),
+			zap.String("requested_size", requestedSize),
+			zap.String("target_tier", targetTier),
+			zap.Bool("classified", ok),
+		)
 		return outB64, outSizes, nil, false
 	}
 	cfg := s.settingService.GetFalUpscaleSettings(ctx)
 	if !cfg.Configured() {
+		logger.L().Warn("openai.images.upscale.skip",
+			zap.String("reason", "fal_not_configured"),
+			zap.Bool("has_endpoint", strings.TrimSpace(cfg.Endpoint) != ""),
+			zap.Bool("has_token", strings.TrimSpace(cfg.Token) != ""),
+			zap.Int("timeout_seconds", cfg.TimeoutSeconds),
+		)
 		return outB64, outSizes, nil, false
 	}
 	client, err := fal.NewClient(fal.Config{APIKey: cfg.Token})
@@ -150,6 +198,14 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 		logger.L().Warn("openai.images.upscale.client_init_failed", zap.Error(err))
 		return outB64, outSizes, nil, false
 	}
+	logger.L().Info("openai.images.upscale.ready",
+		zap.Int64("group_id", groupID),
+		zap.String("group_name", groupName),
+		zap.String("target_tier", targetTier),
+		zap.String("fal_endpoint", cfg.Endpoint),
+		zap.Int("timeout_seconds", cfg.TimeoutSeconds),
+		zap.Int("image_count", len(b64s)),
+	)
 
 	resultB64 := make([]string, len(b64s))
 	copy(resultB64, b64s)
@@ -161,22 +217,45 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 	var changedMu sync.Mutex
 	sem := make(chan struct{}, maxConcurrentOpenAIImageUpscales)
 
+	var dispatched int
 	for i, b64 := range b64s {
 		if strings.TrimSpace(b64) == "" {
+			logger.L().Info("openai.images.upscale.image_skip",
+				zap.Int("index", i),
+				zap.String("reason", "empty_b64"),
+			)
 			continue
 		}
 		sizeStr, derr := decodeImageSizeFromBase64(b64)
 		if derr != nil {
+			logger.L().Warn("openai.images.upscale.image_skip",
+				zap.Int("index", i),
+				zap.String("reason", "decode_failed"),
+				zap.Error(derr),
+			)
 			continue
 		}
 		realTier, rok := ClassifyImageBillingTier(sizeStr)
 		if !rok {
+			logger.L().Info("openai.images.upscale.image_skip",
+				zap.Int("index", i),
+				zap.String("reason", "real_tier_classify_failed"),
+				zap.String("real_size", sizeStr),
+			)
 			continue
 		}
 		factor := upscaleFactorForTarget(sizeStr, targetTier)
 		if factor == 0 {
+			logger.L().Info("openai.images.upscale.image_skip",
+				zap.Int("index", i),
+				zap.String("reason", "factor_zero"),
+				zap.String("real_size", sizeStr),
+				zap.String("real_tier", realTier),
+				zap.String("target_tier", targetTier),
+			)
 			continue
 		}
+		dispatched++
 
 		sem <- struct{}{}
 		wg.Add(1)
@@ -224,6 +303,14 @@ func (s *OpenAIGatewayService) maybeUpscaleOpenAIImages(
 	if !changed {
 		resultURLs = nil
 	}
+	logger.L().Info("openai.images.upscale.done",
+		zap.Int64("group_id", groupID),
+		zap.String("group_name", groupName),
+		zap.String("target_tier", targetTier),
+		zap.Int("image_count", len(b64s)),
+		zap.Int("dispatched", dispatched),
+		zap.Bool("changed", changed),
+	)
 	return resultB64, resultSizes, resultURLs, changed
 }
 
@@ -353,15 +440,48 @@ func downloadImageBytes(ctx context.Context, hc *http.Client, url string) ([]byt
 // shouldBufferOpenAIImagesForUpscale 预判本请求是否需要为 upscale 缓冲流式响应。
 // 仅当分组开关开、显式请求目标档位 ≥ 2K、且系统配置就绪时为 true。
 func (s *OpenAIGatewayService) shouldBufferOpenAIImagesForUpscale(ctx context.Context, group *Group, requestedSize string) bool {
+	// 流式路径要不要缓冲整段响应，完全取决于本函数返回值；返回 false 时 upscale 根本没机会执行。
+	// 因此这里的日志是「gpt-image-2 流式没放大」问题的第一个必看断点。仅打元信息，不涉及图片字节。
 	if s == nil || s.settingService == nil || group == nil {
+		logger.L().Info("openai.images.upscale.buffer_check",
+			zap.Bool("buffer", false),
+			zap.String("reason", "nil_dep"),
+			zap.String("requested_size", requestedSize),
+		)
 		return false
 	}
 	if !group.ImageUpscaleOnRspEnabled() {
+		logger.L().Info("openai.images.upscale.buffer_check",
+			zap.Bool("buffer", false),
+			zap.String("reason", "switch_off"),
+			zap.Int64("group_id", group.ID),
+			zap.String("group_name", group.Name),
+		)
 		return false
 	}
 	tier, ok := ClassifyImageBillingTier(requestedSize)
 	if !ok || imageTierRank(tier) < imageTierRank(ImageBillingSize2K) {
+		logger.L().Info("openai.images.upscale.buffer_check",
+			zap.Bool("buffer", false),
+			zap.String("reason", "target_tier_below_2k"),
+			zap.String("requested_size", requestedSize),
+			zap.String("target_tier", tier),
+			zap.Bool("classified", ok),
+		)
 		return false
 	}
-	return s.settingService.GetFalUpscaleSettings(ctx).Configured()
+	if !s.settingService.GetFalUpscaleSettings(ctx).Configured() {
+		logger.L().Warn("openai.images.upscale.buffer_check",
+			zap.Bool("buffer", false),
+			zap.String("reason", "fal_not_configured"),
+		)
+		return false
+	}
+	logger.L().Info("openai.images.upscale.buffer_check",
+		zap.Bool("buffer", true),
+		zap.Int64("group_id", group.ID),
+		zap.String("group_name", group.Name),
+		zap.String("target_tier", tier),
+	)
+	return true
 }

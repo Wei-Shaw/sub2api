@@ -40,6 +40,7 @@ type AdminHandlers struct {
 	PromptAudit               *securityaudit.PromptAdminHandler
 	Payment                   *admin.PaymentHandler
 	RechargePromo             *admin.RechargePromoHandler
+	ModelIntro                *admin.ModelIntroHandler
 	Affiliate                 *admin.AffiliateHandler
 	SupportTicket             *admin.SupportTicketHandler
 	SupportTicketNotification *admin.SupportTicketNotificationHandler
@@ -71,6 +72,7 @@ type Handlers struct {
 	Gateway                   *GatewayHandler
 	OpenAIGateway             *OpenAIGatewayHandler
 	FalGateway                *FalGatewayHandler
+	FalVideoGateway           *FalVideoGatewayHandler
 	Setting                   *SettingHandler
 	Totp                      *TotpHandler
 	Passkey                   *PasskeyHandler
@@ -87,6 +89,7 @@ type Handlers struct {
 	AsyncImage                *AsyncImageHandler
 	BatchImage                *BatchImageHandler
 	Organization              *OrganizationHandler
+	VideoModel                *VideoModelHandler
 }
 
 // BuildInfo contains build-time information

@@ -274,6 +274,32 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/video-models',
+    name: 'VideoModels',
+    component: () => import('@/views/user/VideoModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video Models',
+      titleKey: 'videoModels.title',
+      descriptionKey: 'videoModels.description'
+    }
+  },
+  {
+    // 演练台独立页面。slug 可能含 "/"（如 "bytedance/seedance-2.5/text-to-video"），
+    // 因此走 pathMatch 通配；vue-router 会传入 string[]，页面里再 join('/') 恢复。
+    path: '/video-models/:slug(.*)+/playground',
+    name: 'VideoPlayground',
+    component: () => import('@/views/user/VideoPlaygroundView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Video Playground',
+      titleKey: 'videoModels.playground.title',
+      descriptionKey: 'videoModels.description'
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
@@ -701,6 +727,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Recharge Promotions',
       titleKey: 'admin.rechargePromos.title',
       descriptionKey: 'admin.rechargePromos.description'
+    }
+  },
+  {
+    path: '/admin/model-intros',
+    name: 'AdminModelIntros',
+    component: () => import('@/views/admin/AdminModelIntrosView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Intros',
+      titleKey: 'admin.modelIntros.title',
+      descriptionKey: 'admin.modelIntros.description'
     }
   },
   {

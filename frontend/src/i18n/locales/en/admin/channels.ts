@@ -93,7 +93,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: 'Per Request',
-        image: 'Image (Per Request)'
+        image: 'Image (Per Request)',
+        video: 'Video (Per Second)'
       },
       form: {
         name: 'Name',

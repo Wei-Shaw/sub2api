@@ -93,7 +93,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: '按次',
-        image: '图片（按次）'
+        image: '图片（按次）',
+        video: '视频（每秒计费）'
       },
       form: {
         name: '名称',

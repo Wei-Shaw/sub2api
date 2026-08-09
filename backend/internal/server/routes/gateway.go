@@ -416,6 +416,25 @@ func RegisterGatewayRoutes(
 		falGroup.PUT("/*path", h.FalGateway.Native)
 	}
 
+	// 视频异步门面（/tasks/v1/*path，fal 原生协议）。
+	//
+	// 与 /fal 图片门面的关键区别：
+	//   - 不强制 platform=fal，允许混合分组接入（分组内可挂 fal 账号+其他平台账号）
+	//   - handler 内部按 slug 白名单过滤，仅接收 seedance 视频模型
+	//   - 账号选号阶段调用 SelectFalAccountInGroup（无论分组类型都强制取 fal 账号）
+	tasksGroup := r.Group("/tasks/v1")
+	tasksGroup.Use(bodyLimit)
+	tasksGroup.Use(clientRequestID)
+	tasksGroup.Use(opsErrorLogger)
+	tasksGroup.Use(endpointNorm)
+	tasksGroup.Use(gin.HandlerFunc(apiKeyAuth))
+	tasksGroup.Use(requireGroupAnthropic)
+	{
+		tasksGroup.POST("/*path", h.FalVideoGateway.Native)
+		tasksGroup.GET("/*path", h.FalVideoGateway.Native)
+		tasksGroup.PUT("/*path", h.FalVideoGateway.Native)
+	}
+
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.

@@ -20,7 +20,7 @@ const (
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
 		return true
 	}
 	return false

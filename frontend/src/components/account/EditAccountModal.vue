@@ -28,6 +28,33 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <!-- fal 专属：支持视频模型 开关 -->
+        <div
+          v-if="account.platform === 'fal'"
+          class="rounded-lg border border-pink-200 bg-pink-50 p-4 dark:border-pink-900/40 dark:bg-pink-900/10"
+        >
+          <label class="flex items-start gap-3 cursor-pointer">
+            <input
+              v-model="falVideoModelsEnabled"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+            />
+            <span class="flex-1">
+              <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                {{ t('admin.accounts.fal.videoModelsEnabled', '支持视频模型') }}
+              </span>
+              <span class="mt-1 block text-xs text-gray-600 dark:text-gray-400">
+                {{
+                  t(
+                    'admin.accounts.fal.videoModelsEnabledHint',
+                    '开启后，该账号 model_mapping 中"两段及以上"的 fal endpoint（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会被聚合展示到用户菜单"视频模型"页，并允许调度到视频门面 /tasks/v1/{model}。关闭则该账号仅提供图片等非视频能力。'
+                  )
+                }}
+              </span>
+            </span>
+          </label>
+        </div>
+
         <!-- Kiro 直连 AWS 账号不使用 Base URL,隐藏;Kiro 外部中转账号(已配 base_url)显示可编辑 -->
         <!-- fal 接入域名固定（api.fal.ai / queue.fal.run），无需配置 base URL -->
         <div v-if="(account.platform !== 'kiro' || isKiroRelay) && account.platform !== 'fal'">
@@ -2900,6 +2927,7 @@ import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3090,6 +3118,11 @@ const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
+// fal 账号专属："支持视频模型" 开关。
+// 勾选后，账号的 model_mapping value 中两段及以上的 fal endpoint
+// 会被 /user/video-models 聚合并对当前用户暴露。缺省 false，与 backend
+// domain.FalVideoModelsEnabledExtraKey 常量对齐。
+const falVideoModelsEnabled = ref(false)
 const antigravityProjectId = ref('')
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
@@ -3619,6 +3652,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
+  // 回填 fal "支持视频模型" 开关；只有 fal 平台的账号才需要，其它平台恒为 false。
+  falVideoModelsEnabled.value =
+    newAccount.platform === 'fal' && extra?.fal_video_models_enabled === true
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
   kiroCreditUnitPriceUsd.value = typeof kiroCreditUnitPrice === 'number'
     ? kiroCreditUnitPrice
@@ -4856,6 +4892,22 @@ const handleSubmit = async () => {
         newExtra.allow_overages = true
       } else {
         delete newExtra.allow_overages
+      }
+      updatePayload.extra = newExtra
+    }
+
+    // For fal accounts, handle "支持视频模型" toggle in extra.
+    // 与 backend domain.FalVideoModelsEnabledExtraKey 严格对齐；开关关闭时显式删除 key，
+    // 避免残留 true 值影响 /user/video-models 聚合结果。
+    if (props.account.platform === 'fal') {
+      const currentExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        ((props.account.extra as Record<string, unknown>) || {})
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (falVideoModelsEnabled.value) {
+        newExtra.fal_video_models_enabled = true
+      } else {
+        delete newExtra.fal_video_models_enabled
       }
       updatePayload.extra = newExtra
     }

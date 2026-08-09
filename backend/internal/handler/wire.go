@@ -61,6 +61,7 @@ func ProvideAdminHandlers(
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
 	rechargePromoHandler *admin.RechargePromoHandler,
+	modelIntroHandler *admin.ModelIntroHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	supportTicketHandler *admin.SupportTicketHandler,
 	supportTicketNotificationHandler *admin.SupportTicketNotificationHandler,
@@ -115,6 +116,7 @@ func ProvideAdminHandlers(
 		PromptAudit:               promptAuditHandler,
 		Payment:                   paymentHandler,
 		RechargePromo:             rechargePromoHandler,
+		ModelIntro:                modelIntroHandler,
 		Affiliate:                 affiliateHandler,
 		SupportTicket:             supportTicketHandler,
 		SupportTicketNotification: supportTicketNotificationHandler,
@@ -230,6 +232,7 @@ func ProvideHandlers(
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
 	falGatewayHandler *FalGatewayHandler,
+	falVideoGatewayHandler *FalVideoGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	passkeyHandler *PasskeyHandler,
@@ -246,6 +249,7 @@ func ProvideHandlers(
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
 	organizationHandler *OrganizationHandler,
+	videoModelHandler *VideoModelHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -262,6 +266,7 @@ func ProvideHandlers(
 		Gateway:                   gatewayHandler,
 		OpenAIGateway:             openaiGatewayHandler,
 		FalGateway:                falGatewayHandler,
+		FalVideoGateway:           falVideoGatewayHandler,
 		Setting:                   settingHandler,
 		Totp:                      totpHandler,
 		Passkey:                   passkeyHandler,
@@ -278,6 +283,7 @@ func ProvideHandlers(
 		AsyncImage:                asyncImageHandler,
 		BatchImage:                batchImageHandler,
 		Organization:              organizationHandler,
+		VideoModel:                videoModelHandler,
 	}
 }
 
@@ -295,6 +301,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
 	NewFalGatewayHandler,
+	NewFalVideoGatewayHandler, // 视频门面（/tasks/v1/*path）
 	NewTotpHandler,
 	NewPasskeyHandler,
 	ProvideSettingHandler,
@@ -311,6 +318,7 @@ var ProviderSet = wire.NewSet(
 	NewAsyncImageHandler,
 	ProvideBatchImageHandler,
 	NewOrganizationHandler,
+	NewVideoModelHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -347,6 +355,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
 	admin.NewRechargePromoHandler,
+	admin.NewModelIntroHandler,
 	admin.NewAffiliateHandler,
 	admin.NewSupportTicketHandler,             // 工单系统：admin 端
 	admin.NewSupportTicketNotificationHandler, // 工单通知/未读计数：admin 端

@@ -8,6 +8,11 @@ package main
 
 import (
 	"context"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -21,14 +26,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
-	"log"
-	"net/http"
-	"sync"
-	"time"
-)
 
-import (
 	_ "embed"
+
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 )
 
@@ -291,6 +291,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	promptAdminHandler := securityaudit.NewPromptAdminHandler(promptService)
 	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
 	rechargePromoHandler := admin.NewRechargePromoHandler(rechargePromoActivityService)
+	modelIntroService := service.NewModelIntroService(db)
+	accountService := service.NewAccountService(accountRepository, groupRepository)
+	modelIntroHandler := admin.NewModelIntroHandler(modelIntroService, accountService)
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
 	supportTicketRepository := repository.NewSupportTicketRepository(client)
 	supportTicketNotificationRepository := repository.NewSupportTicketNotificationRepository(client)
@@ -335,7 +338,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	costCenterHandler := admin.NewCostCenterHandler(costCenterService)
 	upstreamBillingProbeService := service.ProvideUpstreamBillingProbeService(accountRepository, accountTestService, settingService, leaderLockCache, db)
 	ollamaCloudUsageService := service.ProvideOllamaCloudUsageService(accountRepository, httpUpstream, settingService, secretEncryptor, configConfig, leaderLockCache, db)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, kiroOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, rechargePromoHandler, affiliateHandler, supportTicketHandler, supportTicketNotificationHandler, supportFaqHandler, supportDocIndexHandler, supportChatLogHandler, oidcClientHandler, oidcSigningKeyHandler, oidcProviderSettingsHandler, billingAppHandler, complianceHandler, cosImageHandler, asyncMediaConfigHandler, auditLogHandler, costCenterHandler, upstreamBillingProbeService, ollamaCloudUsageService)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, kiroOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, rechargePromoHandler, modelIntroHandler, affiliateHandler, supportTicketHandler, supportTicketNotificationHandler, supportFaqHandler, supportDocIndexHandler, supportChatLogHandler, oidcClientHandler, oidcSigningKeyHandler, oidcProviderSettingsHandler, billingAppHandler, complianceHandler, cosImageHandler, asyncMediaConfigHandler, auditLogHandler, costCenterHandler, upstreamBillingProbeService, ollamaCloudUsageService)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -343,8 +346,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	securityauditCoordinator := securityaudit.NewCoordinator(legacyEngine, promptService)
 	gatewayHandler := handler.ProvideGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService, securityauditCoordinator, billingContextResolver, costCenterService)
 	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, grokQuotaService, configConfig, securityauditCoordinator)
-	accountService := service.NewAccountService(accountRepository, groupRepository)
 	falGatewayHandler := handler.NewFalGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, cosImageTransferService, configConfig)
+	asyncVideoTaskRepository := repository.NewAsyncVideoTaskRepository(client, db)
+	asyncVideoService := service.ProvideAsyncVideoService(asyncVideoTaskRepository, userRepository, billingService, deferredService, billingContextResolver, billingCacheService, modelPricingResolver, costCenterService, cosImageTransferService, configConfig)
+	falVideoGatewayHandler := handler.NewFalVideoGatewayHandler(gatewayService, accountService, asyncVideoService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)
 	passkeyRepository := repository.NewPasskeyRepository(db)
@@ -382,9 +387,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	notificationOutboxWorker := service.ProvideNotificationOutboxWorker(notificationOutboxRepository, notificationEmailService, configConfig)
 	companyOperationsMonitor := service.ProvideCompanyOperationsMonitor(organizationService, notificationOutboxWorker, apiKeyService, configConfig)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService)
+	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, falGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, plazaHandler, modelPlazaHandler, handlerSupportTicketHandler, supportTicketAttachmentHandler, handlerSupportTicketNotificationHandler, supportChatHandler, oidcProviderHandler, asyncImageHandler, batchImageHandler, organizationHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, falGatewayHandler, falVideoGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, plazaHandler, modelPlazaHandler, handlerSupportTicketHandler, supportTicketAttachmentHandler, handlerSupportTicketNotificationHandler, supportChatHandler, oidcProviderHandler, asyncImageHandler, batchImageHandler, organizationHandler, videoModelHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)

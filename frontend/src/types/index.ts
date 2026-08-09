@@ -1730,6 +1730,11 @@ export interface UsageLog {
   image_output_tokens: number
   image_output_cost: number
 
+  // 视频生成字段（异步 fal 视频，billing_mode=video）
+  video_count?: number | null
+  video_resolution?: string | null
+  video_duration_seconds?: number | null
+
   // 异步媒体任务结果（fal 等异步出图）
   task_id?: number | null
   image_urls?: string[] | null

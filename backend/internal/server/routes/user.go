@@ -72,6 +72,13 @@ func RegisterUserRoutes(
 				passkeys.PATCH("/:id", h.Passkey.Rename)
 				passkeys.DELETE("/:id", h.Passkey.Delete)
 			}
+
+			// 视频模型目录（seedance 系列）+ 定价档位（只读）
+			user.GET("/video-models", h.VideoModel.List)
+			// 视频演练台历史（当前用户 × 指定 slug；heavy 限流避免高频翻页）
+			user.GET("/video-models/tasks", panelRateLimiter.Heavy(), h.VideoModel.ListTasks)
+			// 演练台任务终态后前端用 internal_request_id 查一次拿实扣费用
+			user.GET("/video-models/tasks/by-request/:rid", panelRateLimiter.Heavy(), h.VideoModel.GetTaskByRequestID)
 		}
 
 		// API Key管理

@@ -79,7 +79,9 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	}
 	for _, acc := range accounts {
 		if platform == PlatformComposite {
-			if !isConcreteRequestPlatform(acc.Platform) {
+			// composite 分组下的账号可以是 concrete 5 家（openai/anthropic/gemini/antigravity/grok）
+			// 或 fal（媒体旁路）——都要纳入模型候选统计。
+			if !canBeCompositeMemberPlatform(acc.Platform) {
 				continue
 			}
 		} else if acc.Platform != platform {
@@ -281,7 +283,10 @@ func compositeDefaultModelsListCandidateIDs() []string {
 
 func canCopyAccountsFromGroupPlatform(targetPlatform, sourcePlatform string) bool {
 	if targetPlatform == PlatformComposite {
-		return sourcePlatform == PlatformComposite || isConcreteRequestPlatform(sourcePlatform)
+		// composite 分组允许从任意 composite 分组或"能作为 composite 成员的
+		// concrete 平台"（含 fal）分组复制账号；这样 fal 分组里的账号也能一次
+		// 性合并进 composite 分组，便于统一调度。
+		return sourcePlatform == PlatformComposite || canBeCompositeMemberPlatform(sourcePlatform)
 	}
 	return sourcePlatform == targetPlatform
 }

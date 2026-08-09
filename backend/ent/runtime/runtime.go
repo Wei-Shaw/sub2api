@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
+	"github.com/Wei-Shaw/sub2api/ent/asyncvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
@@ -74,6 +75,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/videopricing"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -472,6 +474,123 @@ func init() {
 	asyncmediataskDescUpstreamEndpoint := asyncmediataskFields[32].Descriptor()
 	// asyncmediatask.UpstreamEndpointValidator is a validator for the "upstream_endpoint" field. It is called by the builders before save.
 	asyncmediatask.UpstreamEndpointValidator = asyncmediataskDescUpstreamEndpoint.Validators[0].(func(string) error)
+	asyncvideotaskMixin := schema.AsyncVideoTask{}.Mixin()
+	asyncvideotaskMixinFields0 := asyncvideotaskMixin[0].Fields()
+	_ = asyncvideotaskMixinFields0
+	asyncvideotaskFields := schema.AsyncVideoTask{}.Fields()
+	_ = asyncvideotaskFields
+	// asyncvideotaskDescCreatedAt is the schema descriptor for created_at field.
+	asyncvideotaskDescCreatedAt := asyncvideotaskMixinFields0[0].Descriptor()
+	// asyncvideotask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	asyncvideotask.DefaultCreatedAt = asyncvideotaskDescCreatedAt.Default.(func() time.Time)
+	// asyncvideotaskDescUpdatedAt is the schema descriptor for updated_at field.
+	asyncvideotaskDescUpdatedAt := asyncvideotaskMixinFields0[1].Descriptor()
+	// asyncvideotask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	asyncvideotask.DefaultUpdatedAt = asyncvideotaskDescUpdatedAt.Default.(func() time.Time)
+	// asyncvideotask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	asyncvideotask.UpdateDefaultUpdatedAt = asyncvideotaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// asyncvideotaskDescInternalRequestID is the schema descriptor for internal_request_id field.
+	asyncvideotaskDescInternalRequestID := asyncvideotaskFields[0].Descriptor()
+	// asyncvideotask.InternalRequestIDValidator is a validator for the "internal_request_id" field. It is called by the builders before save.
+	asyncvideotask.InternalRequestIDValidator = func() func(string) error {
+		validators := asyncvideotaskDescInternalRequestID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(internal_request_id string) error {
+			for _, fn := range fns {
+				if err := fn(internal_request_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// asyncvideotaskDescUpstreamRequestID is the schema descriptor for upstream_request_id field.
+	asyncvideotaskDescUpstreamRequestID := asyncvideotaskFields[1].Descriptor()
+	// asyncvideotask.UpstreamRequestIDValidator is a validator for the "upstream_request_id" field. It is called by the builders before save.
+	asyncvideotask.UpstreamRequestIDValidator = asyncvideotaskDescUpstreamRequestID.Validators[0].(func(string) error)
+	// asyncvideotaskDescStatusURL is the schema descriptor for status_url field.
+	asyncvideotaskDescStatusURL := asyncvideotaskFields[2].Descriptor()
+	// asyncvideotask.StatusURLValidator is a validator for the "status_url" field. It is called by the builders before save.
+	asyncvideotask.StatusURLValidator = asyncvideotaskDescStatusURL.Validators[0].(func(string) error)
+	// asyncvideotaskDescResponseURL is the schema descriptor for response_url field.
+	asyncvideotaskDescResponseURL := asyncvideotaskFields[3].Descriptor()
+	// asyncvideotask.ResponseURLValidator is a validator for the "response_url" field. It is called by the builders before save.
+	asyncvideotask.ResponseURLValidator = asyncvideotaskDescResponseURL.Validators[0].(func(string) error)
+	// asyncvideotaskDescBalanceSource is the schema descriptor for balance_source field.
+	asyncvideotaskDescBalanceSource := asyncvideotaskFields[9].Descriptor()
+	// asyncvideotask.BalanceSourceValidator is a validator for the "balance_source" field. It is called by the builders before save.
+	asyncvideotask.BalanceSourceValidator = asyncvideotaskDescBalanceSource.Validators[0].(func(string) error)
+	// asyncvideotaskDescFacade is the schema descriptor for facade field.
+	asyncvideotaskDescFacade := asyncvideotaskFields[13].Descriptor()
+	// asyncvideotask.DefaultFacade holds the default value on creation for the facade field.
+	asyncvideotask.DefaultFacade = asyncvideotaskDescFacade.Default.(string)
+	// asyncvideotask.FacadeValidator is a validator for the "facade" field. It is called by the builders before save.
+	asyncvideotask.FacadeValidator = asyncvideotaskDescFacade.Validators[0].(func(string) error)
+	// asyncvideotaskDescRequestedModel is the schema descriptor for requested_model field.
+	asyncvideotaskDescRequestedModel := asyncvideotaskFields[14].Descriptor()
+	// asyncvideotask.RequestedModelValidator is a validator for the "requested_model" field. It is called by the builders before save.
+	asyncvideotask.RequestedModelValidator = asyncvideotaskDescRequestedModel.Validators[0].(func(string) error)
+	// asyncvideotaskDescUpstreamModel is the schema descriptor for upstream_model field.
+	asyncvideotaskDescUpstreamModel := asyncvideotaskFields[15].Descriptor()
+	// asyncvideotask.UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
+	asyncvideotask.UpstreamModelValidator = asyncvideotaskDescUpstreamModel.Validators[0].(func(string) error)
+	// asyncvideotaskDescResolution is the schema descriptor for resolution field.
+	asyncvideotaskDescResolution := asyncvideotaskFields[16].Descriptor()
+	// asyncvideotask.ResolutionValidator is a validator for the "resolution" field. It is called by the builders before save.
+	asyncvideotask.ResolutionValidator = asyncvideotaskDescResolution.Validators[0].(func(string) error)
+	// asyncvideotaskDescDurationSeconds is the schema descriptor for duration_seconds field.
+	asyncvideotaskDescDurationSeconds := asyncvideotaskFields[17].Descriptor()
+	// asyncvideotask.DefaultDurationSeconds holds the default value on creation for the duration_seconds field.
+	asyncvideotask.DefaultDurationSeconds = asyncvideotaskDescDurationSeconds.Default.(int)
+	// asyncvideotaskDescAspectRatio is the schema descriptor for aspect_ratio field.
+	asyncvideotaskDescAspectRatio := asyncvideotaskFields[18].Descriptor()
+	// asyncvideotask.AspectRatioValidator is a validator for the "aspect_ratio" field. It is called by the builders before save.
+	asyncvideotask.AspectRatioValidator = asyncvideotaskDescAspectRatio.Validators[0].(func(string) error)
+	// asyncvideotaskDescStatus is the schema descriptor for status field.
+	asyncvideotaskDescStatus := asyncvideotaskFields[19].Descriptor()
+	// asyncvideotask.DefaultStatus holds the default value on creation for the status field.
+	asyncvideotask.DefaultStatus = asyncvideotaskDescStatus.Default.(string)
+	// asyncvideotask.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	asyncvideotask.StatusValidator = asyncvideotaskDescStatus.Validators[0].(func(string) error)
+	// asyncvideotaskDescHeldCost is the schema descriptor for held_cost field.
+	asyncvideotaskDescHeldCost := asyncvideotaskFields[20].Descriptor()
+	// asyncvideotask.DefaultHeldCost holds the default value on creation for the held_cost field.
+	asyncvideotask.DefaultHeldCost = asyncvideotaskDescHeldCost.Default.(float64)
+	// asyncvideotaskDescFinalCost is the schema descriptor for final_cost field.
+	asyncvideotaskDescFinalCost := asyncvideotaskFields[21].Descriptor()
+	// asyncvideotask.DefaultFinalCost holds the default value on creation for the final_cost field.
+	asyncvideotask.DefaultFinalCost = asyncvideotaskDescFinalCost.Default.(float64)
+	// asyncvideotaskDescRateMultiplier is the schema descriptor for rate_multiplier field.
+	asyncvideotaskDescRateMultiplier := asyncvideotaskFields[22].Descriptor()
+	// asyncvideotask.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
+	asyncvideotask.DefaultRateMultiplier = asyncvideotaskDescRateMultiplier.Default.(float64)
+	// asyncvideotaskDescUnitPriceSnapshot is the schema descriptor for unit_price_snapshot field.
+	asyncvideotaskDescUnitPriceSnapshot := asyncvideotaskFields[23].Descriptor()
+	// asyncvideotask.DefaultUnitPriceSnapshot holds the default value on creation for the unit_price_snapshot field.
+	asyncvideotask.DefaultUnitPriceSnapshot = asyncvideotaskDescUnitPriceSnapshot.Default.(float64)
+	// asyncvideotaskDescErrorReason is the schema descriptor for error_reason field.
+	asyncvideotaskDescErrorReason := asyncvideotaskFields[28].Descriptor()
+	// asyncvideotask.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
+	asyncvideotask.ErrorReasonValidator = asyncvideotaskDescErrorReason.Validators[0].(func(string) error)
+	// asyncvideotaskDescClientIP is the schema descriptor for client_ip field.
+	asyncvideotaskDescClientIP := asyncvideotaskFields[31].Descriptor()
+	// asyncvideotask.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
+	asyncvideotask.ClientIPValidator = asyncvideotaskDescClientIP.Validators[0].(func(string) error)
+	// asyncvideotaskDescUserAgent is the schema descriptor for user_agent field.
+	asyncvideotaskDescUserAgent := asyncvideotaskFields[32].Descriptor()
+	// asyncvideotask.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
+	asyncvideotask.UserAgentValidator = asyncvideotaskDescUserAgent.Validators[0].(func(string) error)
+	// asyncvideotaskDescInboundEndpoint is the schema descriptor for inbound_endpoint field.
+	asyncvideotaskDescInboundEndpoint := asyncvideotaskFields[33].Descriptor()
+	// asyncvideotask.InboundEndpointValidator is a validator for the "inbound_endpoint" field. It is called by the builders before save.
+	asyncvideotask.InboundEndpointValidator = asyncvideotaskDescInboundEndpoint.Validators[0].(func(string) error)
+	// asyncvideotaskDescUpstreamEndpoint is the schema descriptor for upstream_endpoint field.
+	asyncvideotaskDescUpstreamEndpoint := asyncvideotaskFields[34].Descriptor()
+	// asyncvideotask.UpstreamEndpointValidator is a validator for the "upstream_endpoint" field. It is called by the builders before save.
+	asyncvideotask.UpstreamEndpointValidator = asyncvideotaskDescUpstreamEndpoint.Validators[0].(func(string) error)
 	authidentityMixin := schema.AuthIdentity{}.Mixin()
 	authidentityMixinFields0 := authidentityMixin[0].Fields()
 	_ = authidentityMixinFields0
@@ -3830,6 +3949,75 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	videopricingMixin := schema.VideoPricing{}.Mixin()
+	videopricingMixinFields0 := videopricingMixin[0].Fields()
+	_ = videopricingMixinFields0
+	videopricingFields := schema.VideoPricing{}.Fields()
+	_ = videopricingFields
+	// videopricingDescCreatedAt is the schema descriptor for created_at field.
+	videopricingDescCreatedAt := videopricingMixinFields0[0].Descriptor()
+	// videopricing.DefaultCreatedAt holds the default value on creation for the created_at field.
+	videopricing.DefaultCreatedAt = videopricingDescCreatedAt.Default.(func() time.Time)
+	// videopricingDescUpdatedAt is the schema descriptor for updated_at field.
+	videopricingDescUpdatedAt := videopricingMixinFields0[1].Descriptor()
+	// videopricing.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	videopricing.DefaultUpdatedAt = videopricingDescUpdatedAt.Default.(func() time.Time)
+	// videopricing.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	videopricing.UpdateDefaultUpdatedAt = videopricingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// videopricingDescModelSlug is the schema descriptor for model_slug field.
+	videopricingDescModelSlug := videopricingFields[0].Descriptor()
+	// videopricing.ModelSlugValidator is a validator for the "model_slug" field. It is called by the builders before save.
+	videopricing.ModelSlugValidator = func() func(string) error {
+		validators := videopricingDescModelSlug.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model_slug string) error {
+			for _, fn := range fns {
+				if err := fn(model_slug); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// videopricingDescResolution is the schema descriptor for resolution field.
+	videopricingDescResolution := videopricingFields[1].Descriptor()
+	// videopricing.ResolutionValidator is a validator for the "resolution" field. It is called by the builders before save.
+	videopricing.ResolutionValidator = func() func(string) error {
+		validators := videopricingDescResolution.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(resolution string) error {
+			for _, fn := range fns {
+				if err := fn(resolution); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// videopricingDescPricePerSecond is the schema descriptor for price_per_second field.
+	videopricingDescPricePerSecond := videopricingFields[2].Descriptor()
+	// videopricing.DefaultPricePerSecond holds the default value on creation for the price_per_second field.
+	videopricing.DefaultPricePerSecond = videopricingDescPricePerSecond.Default.(float64)
+	// videopricingDescCurrency is the schema descriptor for currency field.
+	videopricingDescCurrency := videopricingFields[3].Descriptor()
+	// videopricing.DefaultCurrency holds the default value on creation for the currency field.
+	videopricing.DefaultCurrency = videopricingDescCurrency.Default.(string)
+	// videopricing.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
+	videopricing.CurrencyValidator = videopricingDescCurrency.Validators[0].(func(string) error)
+	// videopricingDescEnabled is the schema descriptor for enabled field.
+	videopricingDescEnabled := videopricingFields[4].Descriptor()
+	// videopricing.DefaultEnabled holds the default value on creation for the enabled field.
+	videopricing.DefaultEnabled = videopricingDescEnabled.Default.(bool)
+	// videopricingDescNote is the schema descriptor for note field.
+	videopricingDescNote := videopricingFields[5].Descriptor()
+	// videopricing.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	videopricing.NoteValidator = videopricingDescNote.Validators[0].(func(string) error)
 }
 
 const (

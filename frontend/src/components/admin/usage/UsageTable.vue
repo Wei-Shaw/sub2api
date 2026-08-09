@@ -53,23 +53,25 @@
         </template>
 
         <template #cell-model="{ row }">
-          <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5 text-xs">
-            <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
-                 class="break-all"
-                 :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-                 :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''">
-              <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
+          <div class="space-y-0.5 text-xs">
+            <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">
+              <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
+                   class="break-all"
+                   :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+                   :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''">
+                <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
+              </div>
             </div>
+            <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5">
+              <div class="break-all font-medium text-gray-900 dark:text-white">
+                {{ row.model }}
+              </div>
+              <div class="break-all text-gray-500 dark:text-gray-400">
+                <span class="mr-0.5">↳</span>{{ row.upstream_model }}
+              </div>
+            </div>
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
           </div>
-          <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5 text-xs">
-            <div class="break-all font-medium text-gray-900 dark:text-white">
-              {{ row.model }}
-            </div>
-            <div class="break-all text-gray-500 dark:text-gray-400">
-              <span class="mr-0.5">↳</span>{{ row.upstream_model }}
-            </div>
-          </div>
-          <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
         </template>
 
         <template #cell-reasoning_effort="{ row }">
@@ -111,8 +113,16 @@
         </template>
 
         <template #cell-tokens="{ row }">
+          <!-- 视频生成请求（billing_mode=video） -->
+          <div v-if="isVideoUsage(row)" class="flex items-center gap-1.5">
+            <svg class="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span class="font-medium text-gray-900 dark:text-white">{{ row.video_count ?? 1 }}{{ t('usage.videoUnit') }}</span>
+            <span class="text-gray-400">({{ formatVideoBillingSize(row, t) }})</span>
+          </div>
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
-          <div v-if="isImageUsage(row)" class="flex items-center gap-1.5">
+          <div v-else-if="isImageUsage(row)" class="flex items-center gap-1.5">
             <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
@@ -172,18 +182,37 @@
 
         <template #cell-result="{ row }">
           <div v-if="resultImageURLs(row).length" class="flex max-w-[180px] flex-wrap items-center gap-1.5">
-            <a
-              v-for="(url, idx) in resultImageURLs(row)"
-              :key="idx"
-              :href="url"
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              :title="t('usage.resultDownload')"
-              class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
-            >
-              <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
-            </a>
+            <!-- 视频缩略图：video-poster 无预生成，展示为可点击缩略块 -->
+            <template v-if="isVideoUsage(row)">
+              <a
+                v-for="(url, idx) in resultImageURLs(row)"
+                :key="`v-${idx}`"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="t('usage.resultDownload')"
+                class="relative block h-12 w-12 overflow-hidden rounded border border-gray-200 bg-black transition hover:ring-2 hover:ring-amber-400 dark:border-dark-700"
+              >
+                <video :src="url" muted preload="metadata" class="h-full w-full object-cover" />
+                <span class="absolute inset-0 flex items-center justify-center">
+                  <svg class="h-4 w-4 text-white drop-shadow" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 3.7A1 1 0 004.8 4.5v11a1 1 0 001.5.86l9-5.5a1 1 0 000-1.72l-9-5.5z" /></svg>
+                </span>
+              </a>
+            </template>
+            <template v-else>
+              <a
+                v-for="(url, idx) in resultImageURLs(row)"
+                :key="idx"
+                :href="url"
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                :title="t('usage.resultDownload')"
+                class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
+              >
+                <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
+              </a>
+            </template>
           </div>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
@@ -387,7 +416,7 @@
               <span class="font-medium text-pink-300">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
             </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="tooltipData && !isImageUsage(tooltipData) && (!tooltipData.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN)">
+            <template v-if="tooltipData && !isImageUsage(tooltipData) && !isVideoUsage(tooltipData) && (!tooltipData.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN)">
               <div v-if="tooltipData && textInputTokens(tooltipData) > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, textInputTokens(tooltipData)) }} {{ t('usage.perMillionTokens') }}</span>
@@ -403,6 +432,20 @@
               <div v-if="tooltipData && hasImageOutputTokens(tooltipData)" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageOutputTokenPrice') }}</span>
                 <span class="font-medium text-pink-300">{{ formatTokenPricePerMillion(tooltipData.image_output_cost ?? 0, tooltipData.image_output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+            </template>
+            <template v-else-if="tooltipData && isVideoUsage(tooltipData)">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.videoCount') }}</span>
+                <span class="font-medium text-white">{{ tooltipData.video_count ?? 1 }}{{ t('usage.videoUnit') }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.videoResolution') }}</span>
+                <span class="font-medium text-white">{{ tooltipData.video_resolution || '-' }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.videoDuration') }}</span>
+                <span class="font-medium text-white">{{ tooltipData.video_duration_seconds ? `${tooltipData.video_duration_seconds}s` : '-' }}</span>
               </div>
             </template>
             <template v-else-if="tooltipData && isImageUsage(tooltipData)">
@@ -514,6 +557,7 @@ import {
   getBillingModeLabel,
   getBillingModeBadgeClass,
   isImageUsage,
+  isVideoUsage,
   getDisplayBillingMode,
   imageUnitPrice,
 } from '@/utils/billingMode'
@@ -523,6 +567,7 @@ import {
   formatImageOutputSize,
   formatImageSizeBreakdown,
   formatImageSizeSource,
+  formatVideoBillingSize,
   hasImageOutputTokens,
   textOutputTokens,
   hasImageOutputCost,

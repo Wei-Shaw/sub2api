@@ -29,8 +29,14 @@ const (
 	// cosDownloadMaxBytes 单张图片下载大小上限。
 	cosDownloadMaxBytes int64 = 32 << 20
 
+	// cosVideoDownloadMaxBytes 单个视频下载大小上限（视频体积远大于图片，独立配置）。
+	cosVideoDownloadMaxBytes int64 = 512 << 20
+
 	// cosDownloadTimeout 单次下载/上传 HTTP 超时。
 	cosDownloadTimeout = 60 * time.Second
+
+	// cosVideoKeyPrefix 视频转存对象 key 的固定前缀（不受 setting.prefix 影响）。
+	cosVideoKeyPrefix = "videos"
 )
 
 var (
@@ -161,6 +167,93 @@ func (s *COSImageTransferService) IsEnabled(ctx context.Context) bool {
 		return false
 	}
 	return cfg.Enabled && cfg.IsConfigured()
+}
+
+// TransferVideos 将一批上游视频 url 转存到 COS。
+//
+// 与 TransferImages 语义一致：返回与输入等长的 cos url 列表，成功项为 COS 地址，
+// 失败（重试耗尽/未启用/未配置/下载体积超限）项为空字符串，调用方据此回退使用原始 url。
+// 第二个返回值表示是否全部成功。
+//
+// 区别：
+//   - 对象 key 前缀强制为 "videos/"（不使用 setting 里配置的 prefix）
+//   - 下载体积上限使用 cosVideoDownloadMaxBytes（512 MiB）
+//   - key 后缀走视频扩展名推断（.mp4/.mov/.webm/.m4v）
+func (s *COSImageTransferService) TransferVideos(ctx context.Context, urls []string) ([]string, bool) {
+	out := make([]string, len(urls))
+	if len(urls) == 0 {
+		return out, true
+	}
+
+	cfg, err := s.loadConfig(ctx)
+	if err != nil || cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer disabled or not configured: enabled=%v, configured=%v, err=%v", cfg != nil && cfg.Enabled, cfg != nil && cfg.IsConfigured(), err)
+		return out, false
+	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer enabled, processing %d videos", len(urls))
+
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] video get store failed: %v", err)
+		return out, false
+	}
+
+	allOK := true
+	for i, rawURL := range urls {
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" {
+			allOK = false
+			continue
+		}
+		cosURL, transferErr := s.transferOneVideo(ctx, store, cfg, rawURL)
+		if transferErr != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer failed after retries url=%s err=%v", rawURL, transferErr)
+			out[i] = "" // 回退：留空，调用方使用原始 url
+			allOK = false
+			continue
+		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer succeeded: %s -> %s", rawURL, cosURL)
+		out[i] = cosURL
+	}
+
+	logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer completed: %d/%d succeeded", len(urls)-countEmpty(out), len(urls))
+	return out, allOK
+}
+
+// transferOneVideo 下载单个视频并上传到 COS，最多重试 cosTransferMaxAttempts 次。
+// 与 transferOne 的差异：使用视频下载体积上限、视频 key 前缀、视频扩展名推断。
+func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store BackupObjectStore, cfg *COSImageConfig, srcURL string) (string, error) {
+	var lastErr error
+	for attempt := 1; attempt <= cosTransferMaxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] video transfer cancelled: %v", ctx.Err())
+			return "", ctx.Err()
+		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] downloading video (attempt %d/%d): %s", attempt, cosTransferMaxAttempts, srcURL)
+		data, contentType, err := s.downloadWithLimit(ctx, srcURL, cosVideoDownloadMaxBytes)
+		if err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] video download failed (attempt %d): %v", attempt, err)
+			lastErr = err
+			continue
+		}
+		logger.LegacyPrintf("service.cos_transfer", "[COS] video download succeeded: size=%d bytes, content-type=%s", len(data), contentType)
+
+		key := s.buildVideoKey(cfg, srcURL, contentType)
+		logger.LegacyPrintf("service.cos_transfer", "[COS] uploading video (attempt %d): key=%s", attempt, key)
+		if _, err := store.Upload(ctx, key, bytes.NewReader(data), contentType); err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] video upload failed (attempt %d): %v", attempt, err)
+			lastErr = err
+			continue
+		}
+		cosURL := s.buildPublicURL(cfg, key)
+		logger.LegacyPrintf("service.cos_transfer", "[COS] video upload succeeded: %s", cosURL)
+		return cosURL, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("video transfer failed")
+	}
+	logger.LegacyPrintf("service.cos_transfer", "[COS] all video transfer attempts failed: %v", lastErr)
+	return "", lastErr
 }
 
 // TransferImages 将一批 fal 图片 url 转存到 COS。
@@ -375,6 +468,12 @@ func safePrefix(s string, n int) string {
 }
 
 func (s *COSImageTransferService) download(ctx context.Context, srcURL string) ([]byte, string, error) {
+	return s.downloadWithLimit(ctx, srcURL, cosDownloadMaxBytes)
+}
+
+// downloadWithLimit 通用下载：由调用方指定单次下载的最大字节数上限。
+// 图片路径复用 cosDownloadMaxBytes；视频路径使用 cosVideoDownloadMaxBytes。
+func (s *COSImageTransferService) downloadWithLimit(ctx context.Context, srcURL string, maxBytes int64) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
 		return nil, "", err
@@ -385,9 +484,12 @@ func (s *COSImageTransferService) download(ctx context.Context, srcURL string) (
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("download image: status %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("download: status %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, cosDownloadMaxBytes))
+	if maxBytes <= 0 {
+		maxBytes = cosDownloadMaxBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
 	if err != nil {
 		return nil, "", err
 	}
@@ -406,6 +508,14 @@ func (s *COSImageTransferService) buildKey(cfg *COSImageConfig, srcURL, contentT
 	}
 	ext := imageExtFromURLOrType(srcURL, contentType)
 	return fmt.Sprintf("%s/%s/%s%s", prefix, time.Now().Format("2006/01/02"), uuid.NewString(), ext)
+}
+
+// buildVideoKey 生成视频专用 COS 对象 key：videos/{yyyy/mm/dd}/{uuid}{ext}
+// 视频前缀固定为 videos/，与图片存储分离，便于对象存储侧做生命周期/权限治理。
+func (s *COSImageTransferService) buildVideoKey(cfg *COSImageConfig, srcURL, contentType string) string {
+	_ = cfg // 保留签名对称，未来若允许自定义 video 前缀可从 cfg 读取
+	ext := videoExtFromURLOrType(srcURL, contentType)
+	return fmt.Sprintf("%s/%s/%s%s", cosVideoKeyPrefix, time.Now().Format("2006/01/02"), uuid.NewString(), ext)
 }
 
 // buildPublicURL 拼接对外可访问地址。
@@ -519,6 +629,35 @@ func imageExtFromURLOrType(srcURL, contentType string) string {
 func isImageExt(ext string) bool {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".webp", ".gif":
+		return true
+	default:
+		return false
+	}
+}
+
+// videoExtFromURLOrType 推断视频扩展名（含点），优先从 url 路径，再从 content-type。
+// 无法识别时兜底 ".mp4"（fal 视频产物绝大多数为 mp4）。
+func videoExtFromURLOrType(srcURL, contentType string) string {
+	if ext := strings.ToLower(path.Ext(stripQuery(srcURL))); isVideoExt(ext) {
+		return ext
+	}
+	switch strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0])) {
+	case "video/mp4":
+		return ".mp4"
+	case "video/quicktime":
+		return ".mov"
+	case "video/webm":
+		return ".webm"
+	case "video/x-m4v":
+		return ".m4v"
+	default:
+		return ".mp4"
+	}
+}
+
+func isVideoExt(ext string) bool {
+	switch ext {
+	case ".mp4", ".mov", ".webm", ".m4v":
 		return true
 	default:
 		return false

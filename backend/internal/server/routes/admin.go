@@ -134,6 +134,9 @@ func RegisterAdminRoutes(
 		// 余额 RPC 接入方（扣费 app）管理
 		registerBillingAppRoutes(admin, h)
 
+		// 模型介绍（cover / 默认参数 / 描述）
+		registerModelIntroRoutes(admin, h)
+
 		registerAuditLogRoutes(admin, h, stepUpAuth)
 
 		registerOrganizationAdminRoutes(admin, h)
@@ -221,6 +224,28 @@ func registerBillingAppRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		apps.PATCH("/:app_id/enabled", h.Admin.BillingApp.SetEnabled)
 		apps.POST("/:app_id/refresh-token", h.Admin.BillingApp.RefreshToken)
 		apps.DELETE("/:app_id", h.Admin.BillingApp.Delete)
+	}
+}
+
+// registerModelIntroRoutes 注册"模型介绍"（cover / 默认参数 / 描述）的 admin CRUD。
+//
+// 采用 wildcard `*model_key` 以支持含 `/` 的模型名（如
+// `bytedance/seedance-2.5/text-to-video`）。handler 内部会 trim 前置 `/`。
+//
+// 候选模型清单接口 `GET /admin/model-intro-candidates` 单独挂在父路径下，
+// 避免与 wildcard `/model-intros/*` 冲突（gin 同方法同路径不允许 static+wildcard）。
+func registerModelIntroRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.ModelIntro == nil {
+		return
+	}
+	admin.GET("/model-intro-candidates", h.Admin.ModelIntro.ListCandidates)
+	intros := admin.Group("/model-intros")
+	{
+		intros.GET("", h.Admin.ModelIntro.List)
+		intros.POST("", h.Admin.ModelIntro.Create)
+		intros.GET("/*model_key", h.Admin.ModelIntro.Get)
+		intros.PUT("/*model_key", h.Admin.ModelIntro.Update)
+		intros.DELETE("/*model_key", h.Admin.ModelIntro.Delete)
 	}
 }
 

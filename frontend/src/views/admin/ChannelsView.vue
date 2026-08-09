@@ -447,6 +447,7 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  :model-candidates="getPricingCandidates(section.platform)"
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -577,6 +578,7 @@
                       :key="pIdx"
                       :entry="entry"
                       :platform="section.platform"
+                      :model-candidates="getPricingCandidates(section.platform)"
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
                     />
@@ -625,7 +627,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -739,6 +741,15 @@ const showDeleteDialog = ref(false)
 const deletingChannel = ref<Channel | null>(null)
 const activeTab = ref<string>('basic')
 
+// ── 定价模型候选清单 ──
+// 每个 platform 下所有已选分组内所有账号 model_mapping key 的并集。
+// 用于 PricingEntryCard → ModelTagInput 的下拉建议，允许管理员从当前渠道
+// 实际能覆盖到的模型中选，而不是靠记忆手写。
+// key: GroupPlatform; value: 已去重排序的模型名数组。
+const pricingModelCandidates = ref<Record<string, string[]>>({})
+// 每个 platform 是否正在加载（避免重复触发）。
+const pricingCandidatesLoading = ref<Record<string, boolean>>({})
+
 // Groups
 const allGroups = ref<AdminGroup[]>([])
 const groupsLoading = ref(false)
@@ -848,7 +859,93 @@ function toggleGroupInSection(sectionIdx: number, groupId: number) {
   } else {
     section.group_ids.push(groupId)
   }
+  // 分组变化会导致候选模型集变化：失效缓存并重新加载。
+  invalidatePricingCandidates(section.platform)
+  void loadPricingCandidatesForPlatform(section.platform)
 }
+
+// ── 定价模型候选加载 ──
+// 数据源：admin GET /accounts?platform=xxx&group=gid + GET /accounts/{id}/models。
+// 聚合每个已选分组下的所有账号的可用模型列表，返回并集。
+// 空 groupIds 或无账号时结果为空数组（下拉不展示）。
+async function loadPricingCandidatesForPlatform(platform: string): Promise<void> {
+  if (pricingCandidatesLoading.value[platform]) return
+  const section = form.platforms.find(s => s.platform === platform)
+  if (!section) return
+  const groupIds = section.group_ids
+  if (!groupIds || groupIds.length === 0) {
+    pricingModelCandidates.value[platform] = []
+    return
+  }
+  pricingCandidatesLoading.value[platform] = true
+  try {
+    // 1) 按 group 拉账号列表（每个 group 单独一次调用，因为 List 接口只支持单值 group）。
+    const accountLists = await Promise.allSettled(
+      groupIds.map(gid =>
+        adminAPI.accounts.list(1, 200, {
+          platform,
+          group: String(gid),
+          status: 'active',
+          lite: 'true'
+        })
+      )
+    )
+    const accountIdSet = new Set<number>()
+    for (const r of accountLists) {
+      if (r.status !== 'fulfilled') continue
+      for (const acc of r.value?.items || []) {
+        if (typeof acc?.id === 'number') accountIdSet.add(acc.id)
+      }
+    }
+    if (accountIdSet.size === 0) {
+      pricingModelCandidates.value[platform] = []
+      return
+    }
+    // 2) 并发拉每个账号的 available models（getAvailableModels 返回各平台 model 数组，
+    //    都包含 id 字段），去重合并。
+    const modelResults = await Promise.allSettled(
+      [...accountIdSet].map(id => adminAPI.accounts.getAvailableModels(id))
+    )
+    const merged = new Set<string>()
+    for (const r of modelResults) {
+      if (r.status !== 'fulfilled') continue
+      for (const m of r.value || []) {
+        // getAvailableModels 各平台返回结构不同（claude/openai/gemini/kiro/xai/antigravity），
+        // 但都定义了 id 字段，用可选链兜底。
+        const id = (m as { id?: string })?.id
+        if (id && typeof id === 'string') merged.add(id)
+      }
+    }
+    pricingModelCandidates.value[platform] = [...merged].sort()
+  } catch (err) {
+    // 加载失败静默降级：下拉不展示，用户仍可自由输入。
+    console.warn('[channels] failed to load pricing model candidates for', platform, err)
+    pricingModelCandidates.value[platform] = []
+  } finally {
+    pricingCandidatesLoading.value[platform] = false
+  }
+}
+
+function invalidatePricingCandidates(platform: string) {
+  delete pricingModelCandidates.value[platform]
+}
+
+function getPricingCandidates(platform: string): string[] {
+  return pricingModelCandidates.value[platform] || []
+}
+
+// activeTab 切换时按需触发候选加载：
+// - 目标 tab 非 basic 才有意义（basic 页不展示定价卡）。
+// - 缓存已有或正在加载中的 platform 跳过（避免抖动）。
+watch(activeTab, (tab) => {
+  if (!showDialog.value) return
+  if (!tab || tab === 'basic') return
+  if (pricingModelCandidates.value[tab] !== undefined) return
+  if (pricingCandidatesLoading.value[tab]) return
+  const section = form.platforms.find(s => s.platform === tab)
+  if (!section || section.group_ids.length === 0) return
+  void loadPricingCandidatesForPlatform(tab)
+})
 
 // ── Pricing helpers ──
 function addPricingEntry(sectionIdx: number) {
@@ -1165,6 +1262,20 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.bedrock_cc_compat
   }
 
+  // 持久化"用户显式反选"的 concrete 平台清单。
+  // 场景：当渠道绑定了 composite（混合）分组时，apiToForm 会把 platformOrder 里所有
+  // concrete 平台的 section 都拉起来；如果不记录反选，则下一次打开时被反选掉的平台
+  // 会被 composite 分支重新点亮。这里把 form.platforms 中 enabled=false 的项显式写入
+  // features_config.disabled_platforms，apiToForm 回填时会据此剔除。
+  const disabledPlatforms = form.platforms
+    .filter(s => !s.enabled)
+    .map(s => s.platform)
+  if (disabledPlatforms.length > 0) {
+    featuresConfig.disabled_platforms = disabledPlatforms
+  } else {
+    delete featuresConfig.disabled_platforms
+  }
+
   return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
 }
 
@@ -1190,6 +1301,17 @@ function apiToForm(channel: Channel): PlatformSection[] {
   }
   for (const p of Object.keys(channel.model_mapping || {})) {
     if (platformOrder.includes(p as GroupPlatform)) activePlatforms.add(p as GroupPlatform)
+  }
+  // 剔除用户此前显式反选的平台（formToAPI 写入 features_config.disabled_platforms）。
+  // 没有这一步，绑定了 composite 分组的渠道每次刷新都会把所有平台重新拉起，
+  // 导致"反选保存无效"。
+  const disabledPlatformsRaw = channel.features_config?.disabled_platforms
+  if (Array.isArray(disabledPlatformsRaw)) {
+    for (const p of disabledPlatformsRaw) {
+      if (typeof p === 'string' && platformOrder.includes(p as GroupPlatform)) {
+        activePlatforms.delete(p as GroupPlatform)
+      }
+    }
   }
 
   // Build sections in platform order
@@ -1339,6 +1461,9 @@ async function openCreateDialog() {
   editingChannel.value = null
   resetForm()
   await Promise.all([loadGroups(), loadAllChannelsForConflict()])
+  // 新建时候选缓存清空，等用户选分组后按需加载。
+  pricingModelCandidates.value = {}
+  pricingCandidatesLoading.value = {}
   showDialog.value = true
 }
 
@@ -1359,6 +1484,15 @@ async function openEditDialog(channel: Channel) {
 
   // Populate ruleAccountNameCache for existing rule accounts
   await populateRuleAccountNameCache()
+
+  // 编辑打开时清空缓存并对所有 enabled section 后台预加载候选模型清单。
+  pricingModelCandidates.value = {}
+  pricingCandidatesLoading.value = {}
+  for (const section of form.platforms) {
+    if (section.enabled && section.group_ids.length > 0) {
+      void loadPricingCandidatesForPlatform(section.platform)
+    }
+  }
 
   showDialog.value = true
 }
@@ -1498,11 +1632,11 @@ async function handleSubmit() {
     }
   }
 
-  // 校验 per_request/image 模式必须有价格 (只校验启用的平台)
+  // 校验 per_request/image/video 模式必须有价格 (只校验启用的平台)
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) continue
-      if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image') &&
+      if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image' || entry.billing_mode === 'video') &&
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
         appStore.showError(t('admin.channels.form.perRequestPriceRequired'))

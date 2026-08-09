@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
+	"github.com/Wei-Shaw/sub2api/ent/asyncvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
@@ -83,6 +84,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/videopricing"
 
 	stdsql "database/sql"
 )
@@ -104,6 +106,8 @@ type Client struct {
 	AnnouncementRead *AnnouncementReadClient
 	// AsyncMediaTask is the client for interacting with the AsyncMediaTask builders.
 	AsyncMediaTask *AsyncMediaTaskClient
+	// AsyncVideoTask is the client for interacting with the AsyncVideoTask builders.
+	AsyncVideoTask *AsyncVideoTaskClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
@@ -228,6 +232,8 @@ type Client struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// VideoPricing is the client for interacting with the VideoPricing builders.
+	VideoPricing *VideoPricingClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -245,6 +251,7 @@ func (c *Client) init() {
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
 	c.AsyncMediaTask = NewAsyncMediaTaskClient(c.config)
+	c.AsyncVideoTask = NewAsyncVideoTaskClient(c.config)
 	c.AuthIdentity = NewAuthIdentityClient(c.config)
 	c.AuthIdentityChannel = NewAuthIdentityChannelClient(c.config)
 	c.BalanceLedger = NewBalanceLedgerClient(c.config)
@@ -307,6 +314,7 @@ func (c *Client) init() {
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
+	c.VideoPricing = NewVideoPricingClient(c.config)
 }
 
 type (
@@ -405,6 +413,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
+		AsyncVideoTask:                NewAsyncVideoTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
 		BalanceLedger:                 NewBalanceLedgerClient(cfg),
@@ -467,6 +476,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		VideoPricing:                  NewVideoPricingClient(cfg),
 	}, nil
 }
 
@@ -492,6 +502,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Announcement:                  NewAnnouncementClient(cfg),
 		AnnouncementRead:              NewAnnouncementReadClient(cfg),
 		AsyncMediaTask:                NewAsyncMediaTaskClient(cfg),
+		AsyncVideoTask:                NewAsyncVideoTaskClient(cfg),
 		AuthIdentity:                  NewAuthIdentityClient(cfg),
 		AuthIdentityChannel:           NewAuthIdentityChannelClient(cfg),
 		BalanceLedger:                 NewBalanceLedgerClient(cfg),
@@ -554,6 +565,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
+		VideoPricing:                  NewVideoPricingClient(cfg),
 	}, nil
 }
 
@@ -584,25 +596,26 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.BalanceLedger,
-		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.BillingApp,
-		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.CompanyUpgradeApplication,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.ManagedPolicy, c.ManagedPolicyAction,
-		c.MemberPolicyAttachment, c.NotificationOutbox, c.OidcAccessToken,
-		c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent, c.OidcRefreshToken,
-		c.Organization, c.OrganizationAuditEvent, c.OrganizationFinancialLedger,
-		c.OrganizationMemberSpendLimit, c.OrganizationMembership,
-		c.OrganizationNameChangeRequest, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
-		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
-		c.SupportTicketNotification, c.SupportTicketRead, c.SupportTicketReply,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.AsyncMediaTask, c.AsyncVideoTask, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BalanceLedger, c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob,
+		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
+		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.CompanyUpgradeApplication, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.ManagedPolicy,
+		c.ManagedPolicyAction, c.MemberPolicyAttachment, c.NotificationOutbox,
+		c.OidcAccessToken, c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent,
+		c.OidcRefreshToken, c.Organization, c.OrganizationAuditEvent,
+		c.OrganizationFinancialLedger, c.OrganizationMemberSpendLimit,
+		c.OrganizationMembership, c.OrganizationNameChangeRequest, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RechargePromoActivity, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SsoSession, c.SubscriptionPlan,
+		c.SupportChatConversation, c.SupportChatMessage, c.SupportDocChunk,
+		c.SupportFaqItem, c.SupportTicket, c.SupportTicketNotification,
+		c.SupportTicketRead, c.SupportTicketReply, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription, c.VideoPricing,
 	} {
 		n.Use(hooks...)
 	}
@@ -613,25 +626,26 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.AsyncMediaTask, c.AuthIdentity, c.AuthIdentityChannel, c.BalanceLedger,
-		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.BillingApp,
-		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ChannelMonitorRequestTemplate, c.CompanyUpgradeApplication,
-		c.CompositeModelRoute, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.ManagedPolicy, c.ManagedPolicyAction,
-		c.MemberPolicyAttachment, c.NotificationOutbox, c.OidcAccessToken,
-		c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent, c.OidcRefreshToken,
-		c.Organization, c.OrganizationAuditEvent, c.OrganizationFinancialLedger,
-		c.OrganizationMemberSpendLimit, c.OrganizationMembership,
-		c.OrganizationNameChangeRequest, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RechargePromoActivity, c.RedeemCode, c.SecuritySecret, c.Setting,
-		c.SsoSession, c.SubscriptionPlan, c.SupportChatConversation,
-		c.SupportChatMessage, c.SupportDocChunk, c.SupportFaqItem, c.SupportTicket,
-		c.SupportTicketNotification, c.SupportTicketRead, c.SupportTicketReply,
-		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
-		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.AsyncMediaTask, c.AsyncVideoTask, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BalanceLedger, c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob,
+		c.BillingApp, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
+		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate,
+		c.CompanyUpgradeApplication, c.CompositeModelRoute, c.ErrorPassthroughRule,
+		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.ManagedPolicy,
+		c.ManagedPolicyAction, c.MemberPolicyAttachment, c.NotificationOutbox,
+		c.OidcAccessToken, c.OidcAuthorizationCode, c.OidcClient, c.OidcConsent,
+		c.OidcRefreshToken, c.Organization, c.OrganizationAuditEvent,
+		c.OrganizationFinancialLedger, c.OrganizationMemberSpendLimit,
+		c.OrganizationMembership, c.OrganizationNameChangeRequest, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RechargePromoActivity, c.RedeemCode,
+		c.SecuritySecret, c.Setting, c.SsoSession, c.SubscriptionPlan,
+		c.SupportChatConversation, c.SupportChatMessage, c.SupportDocChunk,
+		c.SupportFaqItem, c.SupportTicket, c.SupportTicketNotification,
+		c.SupportTicketRead, c.SupportTicketReply, c.TLSFingerprintProfile,
+		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
+		c.UserAttributeDefinition, c.UserAttributeValue, c.UserPlatformQuota,
+		c.UserSubscription, c.VideoPricing,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -652,6 +666,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AnnouncementRead.mutate(ctx, m)
 	case *AsyncMediaTaskMutation:
 		return c.AsyncMediaTask.mutate(ctx, m)
+	case *AsyncVideoTaskMutation:
+		return c.AsyncVideoTask.mutate(ctx, m)
 	case *AuthIdentityMutation:
 		return c.AuthIdentity.mutate(ctx, m)
 	case *AuthIdentityChannelMutation:
@@ -776,6 +792,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
+	case *VideoPricingMutation:
+		return c.VideoPricing.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -1755,6 +1773,139 @@ func (c *AsyncMediaTaskClient) mutate(ctx context.Context, m *AsyncMediaTaskMuta
 		return (&AsyncMediaTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AsyncMediaTask mutation op: %q", m.Op())
+	}
+}
+
+// AsyncVideoTaskClient is a client for the AsyncVideoTask schema.
+type AsyncVideoTaskClient struct {
+	config
+}
+
+// NewAsyncVideoTaskClient returns a client for the AsyncVideoTask from the given config.
+func NewAsyncVideoTaskClient(c config) *AsyncVideoTaskClient {
+	return &AsyncVideoTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `asyncvideotask.Hooks(f(g(h())))`.
+func (c *AsyncVideoTaskClient) Use(hooks ...Hook) {
+	c.hooks.AsyncVideoTask = append(c.hooks.AsyncVideoTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `asyncvideotask.Intercept(f(g(h())))`.
+func (c *AsyncVideoTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AsyncVideoTask = append(c.inters.AsyncVideoTask, interceptors...)
+}
+
+// Create returns a builder for creating a AsyncVideoTask entity.
+func (c *AsyncVideoTaskClient) Create() *AsyncVideoTaskCreate {
+	mutation := newAsyncVideoTaskMutation(c.config, OpCreate)
+	return &AsyncVideoTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AsyncVideoTask entities.
+func (c *AsyncVideoTaskClient) CreateBulk(builders ...*AsyncVideoTaskCreate) *AsyncVideoTaskCreateBulk {
+	return &AsyncVideoTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AsyncVideoTaskClient) MapCreateBulk(slice any, setFunc func(*AsyncVideoTaskCreate, int)) *AsyncVideoTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AsyncVideoTaskCreateBulk{err: fmt.Errorf("calling to AsyncVideoTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AsyncVideoTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AsyncVideoTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AsyncVideoTask.
+func (c *AsyncVideoTaskClient) Update() *AsyncVideoTaskUpdate {
+	mutation := newAsyncVideoTaskMutation(c.config, OpUpdate)
+	return &AsyncVideoTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AsyncVideoTaskClient) UpdateOne(_m *AsyncVideoTask) *AsyncVideoTaskUpdateOne {
+	mutation := newAsyncVideoTaskMutation(c.config, OpUpdateOne, withAsyncVideoTask(_m))
+	return &AsyncVideoTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AsyncVideoTaskClient) UpdateOneID(id int64) *AsyncVideoTaskUpdateOne {
+	mutation := newAsyncVideoTaskMutation(c.config, OpUpdateOne, withAsyncVideoTaskID(id))
+	return &AsyncVideoTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AsyncVideoTask.
+func (c *AsyncVideoTaskClient) Delete() *AsyncVideoTaskDelete {
+	mutation := newAsyncVideoTaskMutation(c.config, OpDelete)
+	return &AsyncVideoTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AsyncVideoTaskClient) DeleteOne(_m *AsyncVideoTask) *AsyncVideoTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AsyncVideoTaskClient) DeleteOneID(id int64) *AsyncVideoTaskDeleteOne {
+	builder := c.Delete().Where(asyncvideotask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AsyncVideoTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for AsyncVideoTask.
+func (c *AsyncVideoTaskClient) Query() *AsyncVideoTaskQuery {
+	return &AsyncVideoTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAsyncVideoTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AsyncVideoTask entity by its id.
+func (c *AsyncVideoTaskClient) Get(ctx context.Context, id int64) (*AsyncVideoTask, error) {
+	return c.Query().Where(asyncvideotask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AsyncVideoTaskClient) GetX(ctx context.Context, id int64) *AsyncVideoTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AsyncVideoTaskClient) Hooks() []Hook {
+	return c.hooks.AsyncVideoTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *AsyncVideoTaskClient) Interceptors() []Interceptor {
+	return c.inters.AsyncVideoTask
+}
+
+func (c *AsyncVideoTaskClient) mutate(ctx context.Context, m *AsyncVideoTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AsyncVideoTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AsyncVideoTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AsyncVideoTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AsyncVideoTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AsyncVideoTask mutation op: %q", m.Op())
 	}
 }
 
@@ -11025,12 +11176,145 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 	}
 }
 
+// VideoPricingClient is a client for the VideoPricing schema.
+type VideoPricingClient struct {
+	config
+}
+
+// NewVideoPricingClient returns a client for the VideoPricing from the given config.
+func NewVideoPricingClient(c config) *VideoPricingClient {
+	return &VideoPricingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `videopricing.Hooks(f(g(h())))`.
+func (c *VideoPricingClient) Use(hooks ...Hook) {
+	c.hooks.VideoPricing = append(c.hooks.VideoPricing, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `videopricing.Intercept(f(g(h())))`.
+func (c *VideoPricingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.VideoPricing = append(c.inters.VideoPricing, interceptors...)
+}
+
+// Create returns a builder for creating a VideoPricing entity.
+func (c *VideoPricingClient) Create() *VideoPricingCreate {
+	mutation := newVideoPricingMutation(c.config, OpCreate)
+	return &VideoPricingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of VideoPricing entities.
+func (c *VideoPricingClient) CreateBulk(builders ...*VideoPricingCreate) *VideoPricingCreateBulk {
+	return &VideoPricingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *VideoPricingClient) MapCreateBulk(slice any, setFunc func(*VideoPricingCreate, int)) *VideoPricingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &VideoPricingCreateBulk{err: fmt.Errorf("calling to VideoPricingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*VideoPricingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &VideoPricingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for VideoPricing.
+func (c *VideoPricingClient) Update() *VideoPricingUpdate {
+	mutation := newVideoPricingMutation(c.config, OpUpdate)
+	return &VideoPricingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *VideoPricingClient) UpdateOne(_m *VideoPricing) *VideoPricingUpdateOne {
+	mutation := newVideoPricingMutation(c.config, OpUpdateOne, withVideoPricing(_m))
+	return &VideoPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *VideoPricingClient) UpdateOneID(id int64) *VideoPricingUpdateOne {
+	mutation := newVideoPricingMutation(c.config, OpUpdateOne, withVideoPricingID(id))
+	return &VideoPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for VideoPricing.
+func (c *VideoPricingClient) Delete() *VideoPricingDelete {
+	mutation := newVideoPricingMutation(c.config, OpDelete)
+	return &VideoPricingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *VideoPricingClient) DeleteOne(_m *VideoPricing) *VideoPricingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *VideoPricingClient) DeleteOneID(id int64) *VideoPricingDeleteOne {
+	builder := c.Delete().Where(videopricing.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &VideoPricingDeleteOne{builder}
+}
+
+// Query returns a query builder for VideoPricing.
+func (c *VideoPricingClient) Query() *VideoPricingQuery {
+	return &VideoPricingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeVideoPricing},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a VideoPricing entity by its id.
+func (c *VideoPricingClient) Get(ctx context.Context, id int64) (*VideoPricing, error) {
+	return c.Query().Where(videopricing.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *VideoPricingClient) GetX(ctx context.Context, id int64) *VideoPricing {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *VideoPricingClient) Hooks() []Hook {
+	return c.hooks.VideoPricing
+}
+
+// Interceptors returns the client interceptors.
+func (c *VideoPricingClient) Interceptors() []Interceptor {
+	return c.inters.VideoPricing
+}
+
+func (c *VideoPricingClient) mutate(ctx context.Context, m *VideoPricingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&VideoPricingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&VideoPricingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&VideoPricingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&VideoPricingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown VideoPricing mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
-		AuthIdentity, AuthIdentityChannel, BalanceLedger, BatchImageEvent,
-		BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
+		AsyncVideoTask, AuthIdentity, AuthIdentityChannel, BalanceLedger,
+		BatchImageEvent, BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompanyUpgradeApplication, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
@@ -11046,12 +11330,12 @@ type (
 		SupportTicketNotification, SupportTicketRead, SupportTicketReply,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		UserSubscription, VideoPricing []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AsyncMediaTask,
-		AuthIdentity, AuthIdentityChannel, BalanceLedger, BatchImageEvent,
-		BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
+		AsyncVideoTask, AuthIdentity, AuthIdentityChannel, BalanceLedger,
+		BatchImageEvent, BatchImageItem, BatchImageJob, BillingApp, ChannelMonitor,
 		ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, CompanyUpgradeApplication, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
@@ -11067,7 +11351,7 @@ type (
 		SupportTicketNotification, SupportTicketRead, SupportTicketReply,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		UserSubscription, VideoPricing []ent.Interceptor
 	}
 )
 

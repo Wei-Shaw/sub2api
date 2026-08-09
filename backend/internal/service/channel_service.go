@@ -345,9 +345,15 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
 // Concrete platforms stay isolated; composite groups may carry concrete-provider
 // pricing rows that are selected by the request's resolved target platform.
+//
+// 对 composite 分组：使用 canBeCompositeMemberPlatform 作为判定依据——
+// 除了 5 家 concrete 文本上游（anthropic/openai/gemini/antigravity/grok），
+// 还包含 fal（fal 账号被允许挂到 composite 分组下参与图片/视频旁路调度，
+// 渠道 fal tab 下配置的 model_pricing 需要被写入该 composite 分组的定价缓存，
+// 否则 fal 网关侧的 pricing lookup 会全部落空）。
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 	if groupPlatform == PlatformComposite {
-		return isConcreteRequestPlatform(pricingPlatform)
+		return canBeCompositeMemberPlatform(pricingPlatform)
 	}
 	return groupPlatform == pricingPlatform
 }
@@ -355,9 +361,16 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // matchingPlatforms 返回分组平台对应的可匹配平台列表。
 // Concrete platforms return themselves; composite is a configuration-time
 // fallback used before a request target has been resolved.
+//
+// composite 分组允许挂载 fal 账号（异步媒体旁路），并且渠道可以在 fal tab 下
+// 配置 fal 平台的 model_pricing / model_mapping。因此当分组是 composite、
+// 请求还没解析出具体 target_platform 时（例如走 fal 原生 /tasks/v1/... 网关时
+// 不会经过文本聊天的 composite 路由，也就不会设置 ForcePlatform），
+// 也要能命中 fal 平台的缓存 key，否则 pricing lookup 会返回 nil。
+// 缓存 key 里带 platform，这里放宽白名单不会跨平台误命中。
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformFal}
 	}
 	return []string{groupPlatform}
 }
@@ -664,6 +677,16 @@ func checkBillingModeRequirements(p ChannelModelPricing) error {
 			return infraerrors.BadRequest(
 				"BILLING_MODE_MISSING_PRICE",
 				"per-request price or intervals required for per_request/image billing mode",
+			)
+		}
+	}
+	// 视频模式：至少需要一档分辨率定价（Intervals，如 480p/720p 每秒单价）
+	// 或默认每秒单价（PerRequestPrice 语义 = USD/s）。二者都空则视为无效配置。
+	if p.BillingMode == BillingModeVideo {
+		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+			return infraerrors.BadRequest(
+				"BILLING_MODE_MISSING_PRICE",
+				"per-second price or resolution intervals required for video billing mode",
 			)
 		}
 	}

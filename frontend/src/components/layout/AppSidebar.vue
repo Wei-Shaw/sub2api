@@ -430,6 +430,22 @@ const BatchImageIcon = {
     )
 }
 
+// VideoModelIcon 视频菜单图标（heroicons/outline film）。
+const VideoModelIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25zM3.75 8.25h16.5m-16.5 7.5h16.5M8.25 3.75v16.5m7.5-16.5v16.5'
+        })
+      ]
+    )
+}
+
 const ChartIcon = {
   render: () =>
     h(
@@ -875,6 +891,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
+    { path: '/video-models', label: t('nav.videoModels'), icon: VideoModelIcon, hideInSimpleMode: true },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
@@ -971,6 +988,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/admin/recharge-promos', label: t('nav.rechargePromos'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagAdminPayment },
+    { path: '/admin/model-intros', label: t('nav.modelIntros'), icon: FolderIcon, hideInSimpleMode: true },
     // D1 客服工单：admin 入口，紧跟在通知/促销组之后、affiliate / orders 之前。
     // featureFlag 关闭时也隐藏入口（后端虽然不卡 feature_enabled，但 sidebar
     // 入口仍跟随开关：保留 admin 直接访问 URL 处理存量的能力）。

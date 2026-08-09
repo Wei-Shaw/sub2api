@@ -96,3 +96,25 @@ export const formatImageSizeBreakdown = (row: ImageUsageRow | null | undefined):
     .map((tier) => `${tier} x ${breakdown[tier]}`)
     .join(', ')
 }
+
+// --- Video size / billing helpers ---
+
+type VideoUsageRow = Pick<UsageLog, 'video_resolution' | 'video_duration_seconds'>
+
+/**
+ * formatVideoBillingSize：把视频计费维度格式化为 "720p · 10s" 这样的一行。
+ * 尽量鲁棒：任一字段缺失时展示 "-"，两者都缺时给出 i18n 提示。
+ */
+export const formatVideoBillingSize = (row: VideoUsageRow | null | undefined, t: Translate): string => {
+  const res = (row?.video_resolution ?? '').trim()
+  const dur = row?.video_duration_seconds ?? 0
+  if (!res && !dur) {
+    return t('usage.videoDimNotRecorded')
+  }
+  const parts: string[] = []
+  parts.push(res || '-')
+  if (dur > 0) {
+    parts.push(`${dur}s`)
+  }
+  return parts.join(' · ')
+}

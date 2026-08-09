@@ -851,9 +851,12 @@ var ProviderSet = wire.NewSet(
 	ProvideAsyncMediaService,
 	ProvideAsyncMediaReconciler,
 	ProvideAsyncMediaConfigService,
+	ProvideAsyncVideoService,    // 视频异步执行内核
+	ProvideAsyncVideoReconciler, // 视频对账 worker
 	NewContentModerationService,
 	ProvideAffiliateService,
 	NewRechargePromoActivityService,
+	NewModelIntroService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
@@ -1017,6 +1020,52 @@ func ProvideAsyncMediaConfigService(
 	s := NewAsyncMediaConfigService(settingRepo, svc, reconciler)
 	s.LoadAndApply(context.Background())
 	return s
+}
+
+// ProvideAsyncVideoService 创建视频异步执行内核，注入付款/缓存/延迟服务。
+func ProvideAsyncVideoService(
+	taskRepo AsyncVideoTaskRepository,
+	userRepo UserRepository,
+	billing *BillingService,
+	deferred *DeferredService,
+	billingContextResolver *BillingContextResolver,
+	billingCache *BillingCacheService,
+	pricingResolver *ModelPricingResolver,
+	costCenter *CostCenterService,
+	cosTransfer *COSImageTransferService,
+	cfg *config.Config,
+) *AsyncVideoService {
+	svc := NewAsyncVideoService(taskRepo, userRepo, billing)
+	svc.SetDeferredService(deferred)
+	svc.SetBillingContextResolver(billingContextResolver)
+	svc.SetBalanceCache(billingCache)
+	svc.SetPricingResolver(pricingResolver)
+	svc.SetCostCenterWriter(costCenter)
+	svc.SetCOSTransferService(cosTransfer)
+	if cfg != nil {
+		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
+			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)
+		}
+		if cfg.AsyncMedia.FailTimeoutSeconds > 0 {
+			svc.SetFailTimeout(time.Duration(cfg.AsyncMedia.FailTimeoutSeconds) * time.Second)
+		}
+	}
+	return svc
+}
+
+// ProvideAsyncVideoReconciler 创建并启动视频异步对账 worker（与 media reconciler 共用配置）。
+func ProvideAsyncVideoReconciler(
+	taskRepo AsyncVideoTaskRepository,
+	exec *AsyncVideoService,
+	accountRepo AccountRepository,
+	cfg *config.Config,
+) *AsyncVideoReconciler {
+	r := NewAsyncVideoReconciler(taskRepo, exec, accountRepo)
+	if cfg != nil && cfg.AsyncMedia.ReconcileIntervalSeconds > 0 {
+		r.SetInterval(time.Duration(cfg.AsyncMedia.ReconcileIntervalSeconds) * time.Second)
+	}
+	r.Start()
+	return r
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。

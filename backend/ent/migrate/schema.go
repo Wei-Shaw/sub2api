@@ -451,6 +451,100 @@ var (
 			},
 		},
 	}
+	// AsyncVideoTasksColumns holds the columns for the "async_video_tasks" table.
+	AsyncVideoTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "internal_request_id", Type: field.TypeString, Size: 64},
+		{Name: "upstream_request_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "status_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "response_url", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "organization_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "payer_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "balance_source", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "authz_generation", Type: field.TypeInt64, Nullable: true},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "channel_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "facade", Type: field.TypeString, Size: 16, Default: "fal"},
+		{Name: "requested_model", Type: field.TypeString, Size: 200},
+		{Name: "upstream_model", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "resolution", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "duration_seconds", Type: field.TypeInt, Default: 0},
+		{Name: "aspect_ratio", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "held_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "final_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
+		{Name: "unit_price_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "request_payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "result_payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "video_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "cos_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "error_reason", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "fail_deadline_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "client_ip", Type: field.TypeString, Nullable: true, Size: 45},
+		{Name: "user_agent", Type: field.TypeString, Nullable: true, Size: 512},
+		{Name: "inbound_endpoint", Type: field.TypeString, Nullable: true, Size: 200},
+		{Name: "upstream_endpoint", Type: field.TypeString, Nullable: true, Size: 200},
+	}
+	// AsyncVideoTasksTable holds the schema information for the "async_video_tasks" table.
+	AsyncVideoTasksTable = &schema.Table{
+		Name:       "async_video_tasks",
+		Columns:    AsyncVideoTasksColumns,
+		PrimaryKey: []*schema.Column{AsyncVideoTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "asyncvideotask_internal_request_id",
+				Unique:  true,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[3]},
+			},
+			{
+				Name:    "asyncvideotask_upstream_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[4]},
+			},
+			{
+				Name:    "asyncvideotask_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[9]},
+			},
+			{
+				Name:    "asyncvideotask_organization_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[10], AsyncVideoTasksColumns[1]},
+			},
+			{
+				Name:    "asyncvideotask_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[8]},
+			},
+			{
+				Name:    "asyncvideotask_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[7]},
+			},
+			{
+				Name:    "asyncvideotask_status",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[22]},
+			},
+			{
+				Name:    "asyncvideotask_status_fail_deadline_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[22], AsyncVideoTasksColumns[32]},
+			},
+			{
+				Name:    "asyncvideotask_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{AsyncVideoTasksColumns[1]},
+			},
+		},
+	}
 	// AuthIdentitiesColumns holds the columns for the "auth_identities" table.
 	AuthIdentitiesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -3126,6 +3220,36 @@ var (
 			},
 		},
 	}
+	// VideoPricingsColumns holds the columns for the "video_pricings" table.
+	VideoPricingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "model_slug", Type: field.TypeString, Size: 200},
+		{Name: "resolution", Type: field.TypeString, Size: 16},
+		{Name: "price_per_second", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "currency", Type: field.TypeString, Size: 8, Default: "USD"},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "note", Type: field.TypeString, Nullable: true, Size: 512},
+	}
+	// VideoPricingsTable holds the schema information for the "video_pricings" table.
+	VideoPricingsTable = &schema.Table{
+		Name:       "video_pricings",
+		Columns:    VideoPricingsColumns,
+		PrimaryKey: []*schema.Column{VideoPricingsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "videopricing_model_slug_resolution",
+				Unique:  true,
+				Columns: []*schema.Column{VideoPricingsColumns[3], VideoPricingsColumns[4]},
+			},
+			{
+				Name:    "videopricing_model_slug",
+				Unique:  false,
+				Columns: []*schema.Column{VideoPricingsColumns[3]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
@@ -3134,6 +3258,7 @@ var (
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AsyncMediaTasksTable,
+		AsyncVideoTasksTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
 		BalanceLedgerTable,
@@ -3196,6 +3321,7 @@ var (
 		UserAttributeValuesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
+		VideoPricingsTable,
 	}
 )
 
@@ -3225,6 +3351,9 @@ func init() {
 	}
 	AsyncMediaTasksTable.Annotation = &entsql.Annotation{
 		Table: "async_media_tasks",
+	}
+	AsyncVideoTasksTable.Annotation = &entsql.Annotation{
+		Table: "async_video_tasks",
 	}
 	AuthIdentitiesTable.ForeignKeys[0].RefTable = UsersTable
 	AuthIdentitiesTable.Annotation = &entsql.Annotation{
@@ -3442,5 +3571,8 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
+	}
+	VideoPricingsTable.Annotation = &entsql.Annotation{
+		Table: "video_pricings",
 	}
 }

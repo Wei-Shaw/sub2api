@@ -3,6 +3,8 @@ package fal
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +34,8 @@ const (
 	bodyLimit int64 = 32 << 20
 	// debugRequestBodyLogLimitBytes 限制 debug 日志中清洗后请求体的最大长度。
 	debugRequestBodyLogLimitBytes = 4 << 10
+	// debugResponseBodyLogLimitBytes 限制 debug 日志中清洗后响应体的最大长度。
+	debugResponseBodyLogLimitBytes = 4 << 10
 	// falPlatformModelsURL 是 fal 平台模型列表 API（固定域名，独立于 queue/sync）。
 	// 文档：https://fal.ai/docs/platform-apis/v1/models
 	falPlatformModelsURL = "https://api.fal.ai/v1/models"
@@ -47,9 +51,17 @@ const (
 type APIError struct {
 	StatusCode int
 	Body       string
+	// RequestID 是本次调用在客户端侧生成的日志级追踪 id（如 fal-abc123def456）。
+	// 与上游平台返回的 request_id 无关，用于把这条错误关联到日志中的
+	// fal_http_request_dump / fal_http_response_dump 两条 debug 记录。
+	// 上层可以把它一路带给终端用户或告警系统，让运维快速定位。
+	RequestID string
 }
 
 func (e *APIError) Error() string {
+	if e.RequestID != "" {
+		return fmt.Sprintf("fal upstream error (HTTP %d, request_id=%s): %s", e.StatusCode, e.RequestID, e.Body)
+	}
 	return fmt.Sprintf("fal upstream error (HTTP %d): %s", e.StatusCode, e.Body)
 }
 
@@ -378,11 +390,16 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 		req.Header.Set("Content-Type", "application/json")
 	}
 
+	// 生成一次调用级 request_id，串联本次 HTTP 请求的所有日志（request_dump/response_dump/failed/summary）。
+	// 该 id 仅用于本进程日志关联，不会写入上游 header，也与 fal 平台返回的 request_id 无关。
+	requestID := newFalRequestID()
+
 	// debug：打印向 fal 上游发起的请求 header 与清洗后的 JSON body，便于排查鉴权/参数问题。
 	// Authorization 含 FAL_KEY，做掩码避免日志泄露密钥；body 中的文件内容会替换为长度摘要。
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
 		logBody, bodySanitized, bodyTruncated := sanitizeRequestBodyForLog(rawBody)
 		slog.Debug("fal_http_request_dump",
+			"request_id", requestID,
 			"method", method,
 			"endpoint", endpoint,
 			"headers", maskedHeaderString(req.Header),
@@ -398,6 +415,7 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		slog.Warn("fal_http_do_failed",
+			"request_id", requestID,
 			"method", method,
 			"endpoint", endpoint,
 			"elapsed_ms", time.Since(doStart).Milliseconds(),
@@ -412,9 +430,18 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 	readStart := time.Now()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit))
 	if err != nil {
+		slog.Warn("fal_http_read_body_failed",
+			"request_id", requestID,
+			"method", method,
+			"endpoint", endpoint,
+			"status", resp.StatusCode,
+			"elapsed_ms", time.Since(readStart).Milliseconds(),
+			"error", err.Error(),
+		)
 		return fmt.Errorf("fal: read response: %w", err)
 	}
 	slog.Debug("fal_http_request",
+		"request_id", requestID,
 		"method", method,
 		"endpoint", endpoint,
 		"status", resp.StatusCode,
@@ -423,8 +450,26 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 		"body_bytes", len(raw),
 	)
 
+	// debug：打印上游返回的响应体，便于结合请求 dump 排查上游行为（含错误响应）。
+	// 与请求体使用同一套清洗逻辑：data:URI 与长 base64 会替换为长度摘要，超长会截断。
+	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+		logBody, bodySanitized, bodyTruncated := sanitizeResponseBodyForLog(raw)
+		slog.Debug("fal_http_response_dump",
+			"request_id", requestID,
+			"method", method,
+			"endpoint", endpoint,
+			"status", resp.StatusCode,
+			"headers", maskedHeaderString(resp.Header),
+			"body", logBody,
+			"body_bytes", len(raw),
+			"body_sanitized", bodySanitized,
+			"body_truncated", bodyTruncated,
+			"body_log_limit_bytes", debugResponseBodyLogLimitBytes,
+		)
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &APIError{StatusCode: resp.StatusCode, Body: string(raw)}
+		return &APIError{StatusCode: resp.StatusCode, Body: string(raw), RequestID: requestID}
 	}
 
 	if out == nil || len(bytes.TrimSpace(raw)) == 0 {
@@ -436,7 +481,28 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody, o
 	return nil
 }
 
+// newFalRequestID 生成本次 HTTP 调用的日志追踪 id：`fal-<8字节hex>`，
+// 用 crypto/rand，无冲突担忧；失败时回退到纳秒时间戳，保证一定有值。
+func newFalRequestID() string {
+	var buf [8]byte
+	if _, err := cryptorand.Read(buf[:]); err != nil {
+		return "fal-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return "fal-" + hex.EncodeToString(buf[:])
+}
+
+// sanitizeResponseBodyForLog 复用清洗逻辑，按响应体的截断上限处理。
+func sanitizeResponseBodyForLog(raw []byte) (body string, sanitized bool, truncated bool) {
+	return sanitizeBodyForLog(raw, debugResponseBodyLogLimitBytes)
+}
+
 func sanitizeRequestBodyForLog(raw []byte) (body string, sanitized bool, truncated bool) {
+	return sanitizeBodyForLog(raw, debugRequestBodyLogLimitBytes)
+}
+
+// sanitizeBodyForLog 对 JSON body 做「文件内容脱敏 + 长度截断」，供请求/响应共用。
+// limitBytes<=0 视为不截断。
+func sanitizeBodyForLog(raw []byte, limitBytes int) (body string, sanitized bool, truncated bool) {
 	if len(raw) == 0 {
 		return "", false, false
 	}
@@ -455,10 +521,10 @@ func sanitizeRequestBodyForLog(raw []byte) (body string, sanitized bool, truncat
 		}
 	}
 
-	if len(body) <= debugRequestBodyLogLimitBytes {
+	if limitBytes <= 0 || len(body) <= limitBytes {
 		return body, sanitized, false
 	}
-	return body[:debugRequestBodyLogLimitBytes] + fmt.Sprintf("...(truncated, bytes=%d)", len(body)), sanitized, true
+	return body[:limitBytes] + fmt.Sprintf("...(truncated, bytes=%d)", len(body)), sanitized, true
 }
 
 func sanitizeJSONValueForLog(v any, key string) (any, bool) {

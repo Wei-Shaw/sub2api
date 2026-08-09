@@ -26,6 +26,8 @@ type Tx struct {
 	AnnouncementRead *AnnouncementReadClient
 	// AsyncMediaTask is the client for interacting with the AsyncMediaTask builders.
 	AsyncMediaTask *AsyncMediaTaskClient
+	// AsyncVideoTask is the client for interacting with the AsyncVideoTask builders.
+	AsyncVideoTask *AsyncVideoTaskClient
 	// AuthIdentity is the client for interacting with the AuthIdentity builders.
 	AuthIdentity *AuthIdentityClient
 	// AuthIdentityChannel is the client for interacting with the AuthIdentityChannel builders.
@@ -150,6 +152,8 @@ type Tx struct {
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
+	// VideoPricing is the client for interacting with the VideoPricing builders.
+	VideoPricing *VideoPricingClient
 
 	// lazily loaded.
 	client     *Client
@@ -287,6 +291,7 @@ func (tx *Tx) init() {
 	tx.Announcement = NewAnnouncementClient(tx.config)
 	tx.AnnouncementRead = NewAnnouncementReadClient(tx.config)
 	tx.AsyncMediaTask = NewAsyncMediaTaskClient(tx.config)
+	tx.AsyncVideoTask = NewAsyncVideoTaskClient(tx.config)
 	tx.AuthIdentity = NewAuthIdentityClient(tx.config)
 	tx.AuthIdentityChannel = NewAuthIdentityChannelClient(tx.config)
 	tx.BalanceLedger = NewBalanceLedgerClient(tx.config)
@@ -349,6 +354,7 @@ func (tx *Tx) init() {
 	tx.UserAttributeValue = NewUserAttributeValueClient(tx.config)
 	tx.UserPlatformQuota = NewUserPlatformQuotaClient(tx.config)
 	tx.UserSubscription = NewUserSubscriptionClient(tx.config)
+	tx.VideoPricing = NewVideoPricingClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

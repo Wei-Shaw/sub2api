@@ -8,6 +8,7 @@ import custom from './custom'
 import support from './support'
 import inbox from './inbox'
 import organization from './organization'
+import videoModels from './videoModels'
 import { mergeLocaleMessages } from '../merge'
 
 const upstream = {
@@ -18,6 +19,7 @@ const upstream = {
   admin,
   ...misc,
   ...inbox,
+  ...videoModels,
 }
 
 export default mergeLocaleMessages(mergeLocaleMessages(mergeLocaleMessages(upstream, custom), support), organization)

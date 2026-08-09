@@ -76,6 +76,7 @@
             <ModelTagInput
               :models="entry.models"
               :platform="props.platform"
+              :candidates="props.modelCandidates"
               @update:models="onModelsUpdate($event)"
               :placeholder="t('admin.channels.form.modelsPlaceholder')"
               class="mt-1"
@@ -226,6 +227,42 @@
             />
           </div>
         </div>
+
+        <!-- Video mode -->
+        <div v-else-if="entry.billing_mode === 'video'">
+          <!-- Default per-second price (fallback when no resolution tier matches) -->
+          <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.channels.form.defaultVideoPrice', '默认每秒单价') }}
+            <span class="ml-1 font-normal text-gray-400">$/s</span>
+          </label>
+          <div class="mt-1 w-48">
+            <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0" class="input text-sm" :placeholder="t('admin.channels.form.pricePlaceholder')" />
+          </div>
+
+          <!-- Video tiers (per resolution) -->
+          <div class="mt-3 flex items-center justify-between">
+            <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {{ t('admin.channels.form.videoTiers', '分辨率档位（每秒）') }}
+            </label>
+            <button type="button" @click="addVideoTier" class="text-xs text-primary-600 hover:text-primary-700">
+              + {{ t('admin.channels.form.addTier') }}
+            </button>
+          </div>
+          <div v-if="entry.intervals && entry.intervals.length > 0" class="mt-2 space-y-2">
+            <IntervalRow
+              v-for="(iv, idx) in entry.intervals"
+              :key="idx"
+              :interval="iv"
+              :mode="entry.billing_mode"
+              @update="updateInterval(idx, $event)"
+              @remove="removeInterval(idx)"
+            />
+          </div>
+          <div v-else class="mt-2 rounded border border-dashed border-gray-300 p-3 text-center text-xs text-gray-400 dark:border-dark-500">
+            {{ t('admin.channels.form.noTiersYet') }}
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -248,8 +285,12 @@ const { t } = useI18n()
 const props = defineProps<{
   entry: PricingFormEntry
   platform?: string
+  /**
+   * 候选模型清单：来自当前渠道该 platform 分组下所有账号的 model_mapping key 汇总。
+   * 由 ChannelsView 懒加载并缓存，透传给内层 ModelTagInput 用于下拉选择。
+   */
+  modelCandidates?: string[]
 }>()
-
 const emit = defineEmits<{
   update: [entry: PricingFormEntry]
   remove: []
@@ -261,7 +302,8 @@ const collapsed = ref(props.entry.models.length > 0)
 const billingModeOptions = computed(() => [
   { value: 'token', label: t('admin.channels.billingMode.token') },
   { value: 'per_request', label: t('admin.channels.billingMode.perRequest') },
-  { value: 'image', label: t('admin.channels.billingMode.image') }
+  { value: 'image', label: t('admin.channels.billingMode.image') },
+  { value: 'video', label: t('admin.channels.billingMode.video', '视频（每秒计费）') }
 ])
 
 const billingModeLabel = computed(() => {
@@ -289,6 +331,21 @@ function addImageTier() {
   const labels = ['1K', '2K', '4K', 'HD']
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '', quality: '',
+    input_price: null, output_price: null, cache_write_price: null,
+    cache_read_price: null, per_request_price: null,
+    sort_order: intervals.length
+  })
+  emit('update', { ...props.entry, intervals })
+}
+
+// addVideoTier 添加一个视频分辨率档位。默认提供 480p/720p 两个模板（Q-B c），
+// 用户可以继续自由增删改。TierLabel 的小写形式（480p / 720p / 1080p / 4k）必须与
+// backend normalizeVideoResolution 的归一化输出完全一致，否则 SubmitAsync 将回退到默认价。
+function addVideoTier() {
+  const intervals = [...(props.entry.intervals || [])]
+  const templates = ['480p', '720p', '1080p', '4k']
+  intervals.push({
+    min_tokens: 0, max_tokens: null, tier_label: templates[intervals.length] || '', quality: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length

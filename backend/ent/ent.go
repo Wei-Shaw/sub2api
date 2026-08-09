@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/asyncmediatask"
+	"github.com/Wei-Shaw/sub2api/ent/asyncvideotask"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/balanceledger"
@@ -80,6 +81,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/videopricing"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -146,6 +148,7 @@ func checkColumn(t, c string) error {
 			announcement.Table:                  announcement.ValidColumn,
 			announcementread.Table:              announcementread.ValidColumn,
 			asyncmediatask.Table:                asyncmediatask.ValidColumn,
+			asyncvideotask.Table:                asyncvideotask.ValidColumn,
 			authidentity.Table:                  authidentity.ValidColumn,
 			authidentitychannel.Table:           authidentitychannel.ValidColumn,
 			balanceledger.Table:                 balanceledger.ValidColumn,
@@ -208,6 +211,7 @@ func checkColumn(t, c string) error {
 			userattributevalue.Table:            userattributevalue.ValidColumn,
 			userplatformquota.Table:             userplatformquota.ValidColumn,
 			usersubscription.Table:              usersubscription.ValidColumn,
+			videopricing.Table:                  videopricing.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

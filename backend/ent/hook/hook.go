@@ -81,6 +81,18 @@ func (f AsyncMediaTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AsyncMediaTaskMutation", m)
 }
 
+// The AsyncVideoTaskFunc type is an adapter to allow the use of ordinary
+// function as AsyncVideoTask mutator.
+type AsyncVideoTaskFunc func(context.Context, *ent.AsyncVideoTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AsyncVideoTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AsyncVideoTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AsyncVideoTaskMutation", m)
+}
+
 // The AuthIdentityFunc type is an adapter to allow the use of ordinary
 // function as AuthIdentity mutator.
 type AuthIdentityFunc func(context.Context, *ent.AuthIdentityMutation) (ent.Value, error)
@@ -823,6 +835,18 @@ func (f UserSubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserSubscriptionMutation", m)
+}
+
+// The VideoPricingFunc type is an adapter to allow the use of ordinary
+// function as VideoPricing mutator.
+type VideoPricingFunc func(context.Context, *ent.VideoPricingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f VideoPricingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.VideoPricingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.VideoPricingMutation", m)
 }
 
 // Condition is a hook condition function.

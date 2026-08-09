@@ -185,3 +185,22 @@ func isConcreteRequestPlatform(platform string) bool {
 		return false
 	}
 }
+
+// canBeCompositeMemberPlatform 判断该平台的账号是否可以加入 composite（混合）分组。
+//
+// 与 isConcreteRequestPlatform 的区别：
+//   - isConcreteRequestPlatform 用于校验 composite 分组的"公共模型路由目标平台"，
+//     只能是 5 家 concrete 文本对话上游（anthropic/openai/gemini/antigravity/grok）。
+//   - canBeCompositeMemberPlatform 用于校验"composite 分组是否允许挂载该平台账号"，
+//     除了 5 家 concrete 上游，还包含 fal（fal 账号在 composite 分组下参与图片/视频
+//     的媒体旁路调度，不通过 composite 路由表暴露公共模型）。
+//
+// 使用点：
+//   - admin_group.go 中"从源分组复制账号到 composite 分组"的平台校验；
+//   - admin_group.go 中"列举 composite 分组下账号支持的模型候选"的账号平台过滤。
+func canBeCompositeMemberPlatform(platform string) bool {
+	if isConcreteRequestPlatform(platform) {
+		return true
+	}
+	return platform == PlatformFal
+}

@@ -24,6 +24,9 @@ type AnnouncementRead func(*sql.Selector)
 // AsyncMediaTask is the predicate function for asyncmediatask builders.
 type AsyncMediaTask func(*sql.Selector)
 
+// AsyncVideoTask is the predicate function for asyncvideotask builders.
+type AsyncVideoTask func(*sql.Selector)
+
 // AuthIdentity is the predicate function for authidentity builders.
 type AuthIdentity func(*sql.Selector)
 
@@ -209,3 +212,6 @@ type UserPlatformQuota func(*sql.Selector)
 
 // UserSubscription is the predicate function for usersubscription builders.
 type UserSubscription func(*sql.Selector)
+
+// VideoPricing is the predicate function for videopricing builders.
+type VideoPricing func(*sql.Selector)

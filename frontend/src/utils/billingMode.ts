@@ -27,8 +27,22 @@ interface ImageBillingRow {
   total_cost: number
 }
 
+interface VideoBillingRow {
+  video_count?: number | null
+  billing_mode?: string | null
+}
+
 export function isImageUsage(row: Pick<ImageBillingRow, 'image_count' | 'billing_mode'> | null | undefined): boolean {
   return (row?.image_count ?? 0) > 0 && row?.billing_mode !== BILLING_MODE_TOKEN && row?.billing_mode !== BILLING_MODE_VIDEO
+}
+
+// isVideoUsage：判断一条 usage_log 是否为视频行。
+// 显式 billing_mode=video 就走视频；老数据兼容：billing_mode=image 且 image_size 形如 "video/{n}s"
+// 也当作视频（后端旧格式，尚未回写）——但当前后端已改为直接写 video_*，历史行会很少。
+export function isVideoUsage(row: (VideoBillingRow & { image_count?: number; image_size?: string | null }) | null | undefined): boolean {
+  if (!row) return false
+  if (row.billing_mode === BILLING_MODE_VIDEO) return true
+  return false
 }
 
 export function getDisplayBillingMode(row: Pick<ImageBillingRow, 'billing_mode' | 'image_count'> | null | undefined): string | null | undefined {
