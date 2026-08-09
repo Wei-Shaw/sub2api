@@ -58,7 +58,7 @@ REDACTED{
 		{name: "grok 4.5", upstreamModel: "grok-4.5", wantReasoning: trueREDACTED,
 REDACTED
 
-	body := []byte(`{
+	bodyTemplate := []byte(`{
 		"model": "grok",
 		"input": "hello",
 		"reasoning": {"effort": "medium", "summary": "auto"REDACTED,
@@ -68,7 +68,7 @@ REDACTED`)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			patched, err := patchGrokResponsesBody(body, tt.upstreamModel)
+			patched, err := patchGrokResponsesBody(append([]byte(nil), bodyTemplate...), tt.upstreamModel)
 		REDACTED
 			require.True(t, json.Valid(patched))
 			require.Equal(t, tt.upstreamModel, gjson.GetBytes(patched, "model").String())
@@ -76,7 +76,7 @@ REDACTED`)
 			if tt.wantReasoning {
 				require.Equal(t, "medium", gjson.GetBytes(patched, "reasoning.effort").String())
 				require.Equal(t, "medium", gjson.GetBytes(patched, "reasoning_effort").String())
-				require.Equal(t, "medium", gjson.GetBytes(patched, "reasoningEffort").String())
+				require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
 				return
 		REDACTED
 
@@ -140,6 +140,61 @@ REDACTED
 	require.Equal(t, 0.1, gjson.GetBytes(patched, "presence_penalty").Float())
 	require.Equal(t, 0.2, gjson.GetBytes(patched, "frequency_penalty").Float())
 	require.Len(t, gjson.GetBytes(patched, "stop").Array(), 1)
+REDACTED
+
+func TestPatchGrokResponsesBodyDropsLogprobsForGrok420Family(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"model":"grok-4.20-0309-reasoning","input":"hello","logprobs":true,"top_logprobs":5REDACTED`)
+	patched, err := patchGrokResponsesBody(body, "grok-4.20-0309-reasoning")
+REDACTED
+	require.False(t, gjson.GetBytes(patched, "logprobs").Exists())
+	require.False(t, gjson.GetBytes(patched, "top_logprobs").Exists())
+REDACTED
+
+func TestPatchGrokResponsesBodyNormalizesReasoningEffortAliases(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+		path string
+		want string
+REDACTED{
+		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"REDACTEDREDACTED`, path: "reasoning.effort", want: "low"REDACTED,
+		{name: "xhigh snake", body: `{"input":"hi","reasoning_effort":"xhigh"REDACTED`, path: "reasoning_effort", want: "high"REDACTED,
+		{name: "max camel", body: `{"input":"hi","reasoningEffort":"max"REDACTED`, path: "reasoning_effort", want: "high"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.5")
+		REDACTED
+			require.Equal(t, tt.want, gjson.GetBytes(patched, tt.path).String(), string(patched))
+			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPatchGrokResponsesBodyAddsDefaultFunctionParameters(t *testing.T) {
+	patched, err := patchGrokResponsesBody(
+		[]byte(`{"input":"hi","tools":[{"type":"function","name":"lookup"REDACTED,{"type":"function","name":"wait","parameters":nullREDACTED]REDACTED`),
+		"grok-4.5",
+	)
+REDACTED
+	for _, tool := range gjson.GetBytes(patched, "tools").Array() {
+		require.Equal(t, "object", tool.Get("parameters.type").String(), string(patched))
+		require.True(t, tool.Get("parameters.properties").IsObject(), string(patched))
+REDACTED
+REDACTED
+
+func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
+	patched, err := normalizeGrokChatReasoningEffort([]byte(`{"reasoningEffort":"ultra"REDACTED`), "grok-4.3")
+REDACTED
+	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
+	require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+
+	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"high"REDACTED`), "grok-composer-2.5-fast")
+REDACTED
+	require.False(t, gjson.GetBytes(patched, "reasoning_effort").Exists())
 REDACTED
 
 func TestPatchGrokResponsesBodyDropsNestedUnsupportedFields(t *testing.T) {
@@ -857,6 +912,33 @@ REDACTED
 	require.False(t, gjson.GetBytes(out, "image.image_url").Exists())
 REDACTED
 
+func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-image-quality",
+		"image":{"image_url":{"url":"https://example.com/first.png"REDACTEDREDACTED,
+		"images":["https://example.com/second.png"],
+		"mask":{"image_url":"https://example.com/mask.png"REDACTED
+REDACTED`)
+
+	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
+REDACTED
+	require.Equal(t, "application/json", contentType)
+	for _, path := range []string{"image", "images.0", "mask"REDACTED {
+		require.Equal(t, "image_url", gjson.GetBytes(out, path+".type").String())
+		require.NotEmpty(t, gjson.GetBytes(out, path+".url").String())
+		require.False(t, gjson.GetBytes(out, path+".image_url").Exists())
+REDACTED
+REDACTED
+
+func TestPrepareGrokImageEditRejectsMoreThanThreeSources(t *testing.T) {
+	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png"]REDACTED`)
+
+	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
+REDACTED
+	require.Nil(t, out)
+	require.Contains(t, err.Error(), "maximum of 3 source images")
+REDACTED
+
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -870,7 +952,7 @@ REDACTED{
 		{name: "image quality passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image-quality", want: "grok-imagine-image-quality"REDACTED,
 		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"REDACTED,
 		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"REDACTED,
-		{name: "video 1.5 text-only fallback", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", want: "grok-imagine-video"REDACTED,
+		{name: "video 1.5 text-only remains explicit", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", want: "grok-imagine-video-1.5"REDACTED,
 		{name: "video 1.5 image-to-video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", hasInputImage: true, want: "grok-imagine-video-1.5"REDACTED,
 REDACTED
 
@@ -962,9 +1044,9 @@ REDACTED{
 			path:             "/v1/videos/generations",
 			body:             `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`,
 			modelMapping:     map[string]any{"grok-imagine-video": "grok-image-video"REDACTED,
-			wantRequestModel: "grok-imagine-video",
-			wantUpstream:     "grok-image-video",
-			wantBody:         `{"model":"grok-image-video","prompt":"waves"REDACTED`,
+			wantRequestModel: "grok-imagine-video-1.5",
+			wantUpstream:     "grok-imagine-video-1.5",
+			wantBody:         `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`,
 			responseBody:     `{"request_id":"video-request-mapped"REDACTED`,
 	REDACTED,
 		{
@@ -1204,16 +1286,62 @@ REDACTEDREDACTED
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 REDACTED
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","duration":10REDACTED`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"waves","resolution":"720p","duration":10REDACTED`, string(upstream.lastBody))
 	require.Equal(t, "video-request-123", result.ResponseID)
-	require.Equal(t, "grok-imagine-video", result.BillingModel)
+	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
-	require.Equal(t, 1, result.ImageCount)
+	// Create accepts the job only — VideoCount stays 0 until status returns video.url.
+	require.Equal(t, 0, result.ImageCount)
 	require.Empty(t, result.ImageSize)
-	require.Equal(t, 1, result.VideoCount)
+	require.Equal(t, 0, result.VideoCount)
 	require.Equal(t, VideoBillingResolution720P, result.VideoResolution)
 	require.Equal(t, 10, result.VideoDurationSeconds)
+REDACTED
+
+func TestForwardGrokMediaVideoGenerationReturnsTaskIDAsResponseID(t *testing.T) {
+	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
+	gin.SetMode(gin.TestMode)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves"REDACTED`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := &Account{
+		ID:          63,
+		Name:        "grok",
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
+	REDACTED,
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"task_id":"video-task-123"REDACTED`)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{httpUpstream: upstreamREDACTED
+
+	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
+REDACTED
+	require.Equal(t, "video-task-123", result.ResponseID)
+REDACTED
+
+func TestExtractGrokMediaVideoRequestIDPreservesExistingPrecedence(t *testing.T) {
+	body := []byte(`{
+		"request_id":"request-id",
+		"id":"id",
+		"task_id":"task-id",
+		"data":{"request_id":"data-request-id","id":"data-id","task_id":"data-task-id"REDACTED,
+		"video":{"request_id":"video-request-id","id":"video-id","task_id":"video-task-id"REDACTED
+REDACTED`)
+
+	require.Equal(t, "request-id", extractGrokMediaVideoRequestID(body))
 REDACTED
 
 func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T) {
@@ -1383,7 +1511,7 @@ REDACTED
 			require.Equal(t, http.MethodPost, upstream.lastReq.Method)
 			require.JSONEq(t, `{"model":"vendor-video-mutation","prompt":"continue","video":{"url":"https://example.com/in.mp4"REDACTED,"duration":6REDACTED`, string(upstream.lastBody))
 			require.Equal(t, "video-mutation-123", result.ResponseID)
-			require.Equal(t, 1, result.VideoCount)
+			require.Equal(t, 0, result.VideoCount)
 			require.Equal(t, 6, result.VideoDurationSeconds)
 			require.Equal(t, "grok-imagine-video", result.BillingModel)
 			require.Equal(t, "vendor-video-mutation", result.UpstreamModel)
@@ -1964,7 +2092,7 @@ REDACTEDREDACTED
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/54/test", nil)
 
-	err := svc.testGrokAccountConnection(c, account, "grok")
+	err := svc.testGrokAccountConnection(c, account, "grok", "", AccountTestModeDefault, AccountTestOptions{REDACTED)
 REDACTED
 	require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer xai-test-key", upstream.lastReq.Header.Get("Authorization"))
@@ -1998,7 +2126,7 @@ REDACTEDREDACTED
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/55/test", nil)
 
-	err := svc.testGrokAccountConnection(c, account, "grok")
+	err := svc.testGrokAccountConnection(c, account, "grok", "", AccountTestModeDefault, AccountTestOptions{REDACTED)
 REDACTED
 	require.Equal(t, "http://grok.example.test/v1/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer third-party-key", upstream.lastReq.Header.Get("Authorization"))
@@ -2026,13 +2154,13 @@ REDACTED
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/56/test", nil)
 	before := time.Now()
 
-	err := svc.testGrokAccountConnection(c, account, "grok")
+	err := svc.testGrokAccountConnection(c, account, "grok", "", AccountTestModeDefault, AccountTestOptions{REDACTED)
 
 REDACTED
-	require.Equal(t, 1, repo.tempUnschedCalls)
-	require.Equal(t, account.ID, repo.lastTempUnschedID)
-	require.Equal(t, "grok payment required", repo.lastTempUnschedReason)
-	require.WithinDuration(t, before.Add(30*time.Minute), repo.lastTempUnschedUntil, time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, before.Add(grokSpendingLimitProbeCooldown), repo.lastRateLimitResetAt, time.Second)
 	require.Contains(t, recorder.Body.String(), `"type":"error"`)
 	require.Contains(t, recorder.Body.String(), "Grok Responses API returned 402")
 REDACTED
@@ -2082,7 +2210,7 @@ REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
-	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "grok-4.5", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream_options.include_usage").Bool())
 	require.True(t, result.Stream)
@@ -2255,7 +2383,7 @@ REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/chat/completions", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
-	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
 	require.NotEmpty(t, upstream.lastReq.Header.Get(grokConversationIDHeader))
 	require.NotEqual(t, "native-client-conversation", upstream.lastReq.Header.Get(grokConversationIDHeader))
@@ -2359,7 +2487,7 @@ REDACTED
 REDACTED
 	require.Equal(t, xai.DefaultCLIBaseURL+"/responses", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer access-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, "sub2api-grok/1.0", upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, xai.CLIUserAgent(xai.CLIClientVersion), upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, grokCLIVersion, upstream.lastReq.Header.Get("X-Grok-Client-Version"))
 	require.Equal(t, "grok-experimental", upstream.lastReq.Header.Get("OpenAI-Beta"))
 	require.Empty(t, upstream.lastReq.Header.Get("originator"))
@@ -2501,6 +2629,20 @@ REDACTED, "\n")
 REDACTED
 REDACTED
 
+func TestHandleGrokAccountUpstreamErrorSpendingLimitUsesRecoverableProbeCool(t *testing.T) {
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	account := &Account{ID: 2570, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	before := time.Now()
+	body := []byte(`{"code":"personal-team-blocked:spending-limit","error":"You have run out of credits"REDACTED`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, before.Add(grokSpendingLimitProbeCooldown), repo.lastRateLimitResetAt, 2*time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
+REDACTED
+
 func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -2558,6 +2700,23 @@ REDACTED
 			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestHandleGrokAccountUpstreamErrorSpendingLimit403RateLimits(t *testing.T) {
+	account := &Account{ID: 614, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+	repo := &grokQuotaAccountRepo{REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	before := time.Now()
+	body := []byte(`{"code":"personal-team-blocked:spending-limit","error":"You have run out of credits"REDACTED`)
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusForbidden, nil, body)
+
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, before.Add(grokSpendingLimitProbeCooldown), repo.lastRateLimitResetAt, 2*time.Second)
+	require.Zero(t, repo.tempUnschedCalls)
+	require.True(t, isGrokSpendingLimitError(body))
 REDACTED
 
 func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
@@ -3189,4 +3348,31 @@ REDACTED
 			require.Equal(t, tt.want, isGrokImageGenerationModel(tt.model))
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestBuildGrokSchedulerExtraUpdates_FeedsThresholdEvaluator(t *testing.T) {
+	int64p := func(v int64) *int64 { return &v REDACTED
+	resetUnix := time.Now().Add(90 * time.Minute).Unix()
+	snapshot := &xai.QuotaSnapshot{
+		Requests: &xai.QuotaWindow{Limit: int64p(100), Remaining: int64p(30)REDACTED,                         // 70% used
+		Tokens:   &xai.QuotaWindow{Limit: int64p(1000), Remaining: int64p(50), ResetUnix: &resetUnixREDACTED, // 95% used (most constrained)
+REDACTED
+
+	updates := buildGrokSchedulerExtraUpdates(snapshot)
+	require.NotNil(t, updates)
+	require.InDelta(t, 95.0, updates["grok_sched_utilization"], 0.001, "picks the most-constrained window")
+	require.Contains(t, updates, "grok_sched_reset_at")
+
+	// The written extras must actually drive EvaluateAccountSchedulingThreshold
+	// (proves the previously-dead read side is now fed).
+	account := &Account{Platform: PlatformGrok, Extra: updatesREDACTED
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformGrok: 90REDACTED, time.Now())
+	require.True(t, decision.ShouldPause)
+	require.InDelta(t, 95.0, decision.UsedPercent, 0.001)
+	require.NotNil(t, decision.Until)
+REDACTED
+
+func TestBuildGrokSchedulerExtraUpdates_NilWhenNoQuotaWindows(t *testing.T) {
+	require.Nil(t, buildGrokSchedulerExtraUpdates(&xai.QuotaSnapshot{REDACTED))
+	require.Nil(t, buildGrokSchedulerExtraUpdates(nil))
 REDACTED

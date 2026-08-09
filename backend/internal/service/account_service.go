@@ -232,7 +232,7 @@ REDACTED
 		Notes:       normalizeAccountNotes(req.Notes),
 		Platform:    req.Platform,
 		Type:        req.Type,
-		Credentials: req.Credentials,
+		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
 		Extra:       req.Extra,
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
@@ -325,7 +325,7 @@ REDACTED
 REDACTED
 
 	if req.Credentials != nil {
-		account.Credentials = *req.Credentials
+		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
 REDACTED
 
 	if req.Extra != nil {

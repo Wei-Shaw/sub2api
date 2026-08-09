@@ -19,6 +19,9 @@ func TestGroupEntityToService_PreservesMessagesDispatchModelConfig(t *testing.T)
 		RateMultiplier:        1,
 		AllowMessagesDispatch: true,
 		DefaultMappedModel:    "gpt-5.4",
+		VideoModelPrices: map[string]map[string]float64{
+			service.VideoPriceFamilyGrokImagineVideo15: {service.VideoBillingResolution720P: 0.14REDACTED,
+	REDACTED,
 		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
 			OpusMappedModel:   "gpt-5.4-nano",
 			SonnetMappedModel: "gpt-5.3-codex",
@@ -32,6 +35,7 @@ REDACTED
 	got := groupEntityToService(group)
 	require.NotNil(t, got)
 	require.Equal(t, group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
+	require.Equal(t, group.VideoModelPrices, got.VideoModelPrices)
 REDACTED
 
 func TestAPIKeyRepository_GetByKeyForAuth_PreservesMessagesDispatchModelConfig_SQLite(t *testing.T) {

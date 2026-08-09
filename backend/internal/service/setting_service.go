@@ -5,13 +5,83 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
 	"sync"
 )
+
+const (
+	GrokDefaultBaseURLModeAPI     = "api"
+	GrokDefaultBaseURLModeUSEast1 = "us-east-1"
+	GrokDefaultBaseURLModeUSWest2 = "us-west-2"
+	GrokDefaultBaseURLModeEUWest1 = "eu-west-1"
+	GrokDefaultBaseURLModeCLI     = "cli"
+)
+
+func normalizeGrokDefaultBaseURLMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case GrokDefaultBaseURLModeAPI:
+		return GrokDefaultBaseURLModeAPI
+	case GrokDefaultBaseURLModeUSEast1:
+		return GrokDefaultBaseURLModeUSEast1
+	case GrokDefaultBaseURLModeUSWest2:
+		return GrokDefaultBaseURLModeUSWest2
+	case GrokDefaultBaseURLModeEUWest1:
+		return GrokDefaultBaseURLModeEUWest1
+	case GrokDefaultBaseURLModeCLI:
+		return GrokDefaultBaseURLModeCLI
+	default:
+		return GrokDefaultBaseURLModeCLI
+REDACTED
+REDACTED
+
+func GrokBaseURLForMode(mode string) string {
+	switch normalizeGrokDefaultBaseURLMode(mode) {
+	case GrokDefaultBaseURLModeAPI:
+		return xai.DefaultBaseURL
+	case GrokDefaultBaseURLModeUSEast1:
+		return xai.DefaultUSEast1BaseURL
+	case GrokDefaultBaseURLModeUSWest2:
+		return xai.DefaultUSWest2BaseURL
+	case GrokDefaultBaseURLModeEUWest1:
+		return xai.DefaultEUWest1BaseURL
+	default:
+		return xai.DefaultCLIBaseURL
+REDACTED
+REDACTED
+
+func (s *SettingService) GetGrokDefaultBaseURLMode(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return GrokDefaultBaseURLModeCLI
+REDACTED
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
+	defer cancel()
+	raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyGrokDefaultBaseURLMode)
+	if err != nil {
+		return GrokDefaultBaseURLModeCLI
+REDACTED
+	return normalizeGrokDefaultBaseURLMode(raw)
+REDACTED
+
+func (s *SettingService) GetGrokDefaultBaseURL(ctx context.Context) string {
+	return GrokBaseURLForMode(s.GetGrokDefaultBaseURLMode(ctx))
+REDACTED
+
+func (s *SettingService) ResolveGrokBaseURL(ctx context.Context, account *Account) string {
+	def := xai.DefaultCLIBaseURL
+	if s != nil {
+		def = s.GetGrokDefaultBaseURL(ctx)
+REDACTED
+	if account == nil {
+		return def
+REDACTED
+	return account.GetGrokBaseURLOr(def)
+REDACTED
 
 var (
 	ErrRegistrationDisabled   = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")

@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 REDACTED
 
 type openaiNonStreamingResult struct {
@@ -36,6 +37,7 @@ type openaiNonStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 REDACTED
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -43,6 +45,10 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 REDACTED
 
 func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (*openaiStreamingResult, error) {
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+REDACTED
 	firstOutputTimeout := time.Duration(0)
 	if account != nil && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffort)
@@ -149,6 +155,16 @@ REDACTED
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+REDACTED
+	// Grok: always enforce an upstream-read idle so hung SSE bodies fail over
+	// instead of holding the OAuth slot until the client cancels. Prefer the
+	// global gateway setting when set; otherwise apply a Grok-only default.
+	if account != nil && account.Platform == PlatformGrok {
+		cfgSec := 0
+		if s.cfg != nil {
+			cfgSec = s.cfg.Gateway.StreamDataIntervalTimeout
+	REDACTED
+		streamInterval = resolveGrokStreamIdleTimeout(cfgSec)
 REDACTED
 	// 仅监控上游数据间隔超时，不被下游写入阻塞影响
 	var intervalTicker *time.Ticker
@@ -288,6 +304,10 @@ REDACTED
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{REDACTED)
+	searchCounter := 0
+	// Dedup search tool calls across SSE events (item.done + response.completed
+	// both list the same call_id — counting both would ~2× the surcharge).
+	streamSearchSeen := make(map[string]struct{REDACTED)
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
@@ -295,6 +315,7 @@ REDACTED
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			searchCount:      searchCounter,
 	REDACTED
 REDACTED
 	flushPending := func(disconnectMessage string) {
@@ -406,6 +427,7 @@ REDACTED
 			dataBytes := []byte(data)
 			eventTypeRaw := gjson.GetBytes(dataBytes, "type").String()
 			eventType := strings.TrimSpace(eventTypeRaw)
+			observer.ObserveOpenAI(dataBytes, eventTypeRaw)
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
 			if openAIStreamEventIsTerminalWithType(data, eventTypeRaw) {
 				sawTerminalEvent = true
@@ -462,6 +484,7 @@ REDACTED
 				line = "data: " + data
 		REDACTED
 			imageCounter.AddSSEData(dataBytes)
+			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -686,6 +709,16 @@ REDACTED(scanBuf)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+		REDACTED
+			// Grok: short cool + account failover when no client-visible bytes
+			// were committed yet (pre-commit). After output started we keep the
+			// legacy stream_timeout path so partial SSE is not dual-written.
+			if account != nil && account.Platform == PlatformGrok {
+				s.tempUnscheduleGrok(ctx, account, grokStreamIdleCooldown, "grok stream idle timeout")
+				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
+					_ = resp.Body.Close()
+					return resultWithUsage(), grokStreamIdleFailoverError(account, streamInterval)
+			REDACTED
 		REDACTED
 			sendErrorEvent("stream_timeout")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
@@ -1110,6 +1143,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if err != nil {
 		return nil, err
 REDACTED
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+REDACTED
+	if bodyHasSSEFraming(body) {
+		observeOpenAISSEBody(observer, string(body))
+REDACTED else {
+		observer.ObserveOpenAI(body, strings.TrimSpace(gjson.GetBytes(body, "type").String()))
+REDACTED
 
 	// Detect SSE responses for ALL account types via Content-Type header.
 	// Some OpenAI-compatible upstreams (including other sub2api instances)
@@ -1180,6 +1222,7 @@ REDACTED
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
 REDACTED, nil
 REDACTED
 
@@ -1274,6 +1317,7 @@ REDACTED
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
 REDACTED, nil
 REDACTED
 
@@ -1310,10 +1354,21 @@ REDACTED
 REDACTED
 
 func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string, clientOutputStarted bool) ([]byte, bool) {
-	if eventType != "response.failed" || len(payload) == 0 || !gjson.ValidBytes(payload) {
+	eventType = strings.TrimSpace(eventType)
+	isFailedEvent := eventType == "response.failed"
+	if (!isFailedEvent && eventType != "error") || len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload, false
 REDACTED
 	updated := payload
+	// 容量降载码对 Codex CLI 是致命错误；事件既然要写给客户端（failover 已不可用），
+	// 就改写为客户端可重试的错误码。error 帧与 response.failed 都要改：上游降载
+	// 总是先推 error 帧再收 failed，两帧携带同一个错误。
+	if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(updated); changed {
+		updated = rewritten
+REDACTED
+	if !isFailedEvent {
+		return updated, !bytes.Equal(updated, payload)
+REDACTED
 	if clientOutputStarted && isOpenAIContextWindowError(extractOpenAISSEErrorMessage(payload), payload) {
 		errorPath := ""
 		switch {

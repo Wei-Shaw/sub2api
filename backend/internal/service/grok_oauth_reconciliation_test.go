@@ -107,6 +107,24 @@ REDACTED
 	return nil
 REDACTED
 
+func (r *grokReconcileRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.accounts {
+		if r.accounts[i].ID != id {
+			continue
+	REDACTED
+		if r.accounts[i].Extra == nil {
+			r.accounts[i].Extra = make(map[string]any)
+	REDACTED
+		for key, value := range updates {
+			r.accounts[i].Extra[key] = value
+	REDACTED
+		break
+REDACTED
+	return nil
+REDACTED
+
 func (r *grokReconcileRepo) SetError(_ context.Context, id int64, message string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

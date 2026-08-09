@@ -21896,8 +21896,17 @@ type GroupMutation struct {
 	addvideo_price_720p                     *float64
 	video_price_1080p                       *float64
 	addvideo_price_1080p                    *float64
+	video_model_prices                      *map[string]map[string]float64
 	web_search_price_per_call               *float64
 	addweb_search_price_per_call            *float64
+	search_price_per_1k                     *float64
+	addsearch_price_per_1k                  *float64
+	audio_realtime_price_per_min            *float64
+	addaudio_realtime_price_per_min         *float64
+	audio_tts_price_per_million_chars       *float64
+	addaudio_tts_price_per_million_chars    *float64
+	audio_stt_price_per_hour                *float64
+	addaudio_stt_price_per_hour             *float64
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -23722,6 +23731,55 @@ func (m *GroupMutation) ResetVideoPrice1080p() {
 	delete(m.clearedFields, group.FieldVideoPrice1080p)
 REDACTED
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (m *GroupMutation) SetVideoModelPrices(value map[string]map[string]float64) {
+	m.video_model_prices = &value
+REDACTED
+
+// VideoModelPrices returns the value of the "video_model_prices" field in the mutation.
+func (m *GroupMutation) VideoModelPrices() (r map[string]map[string]float64, exists bool) {
+	v := m.video_model_prices
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldVideoModelPrices returns the old "video_model_prices" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldVideoModelPrices(ctx context.Context) (v map[string]map[string]float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVideoModelPrices is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVideoModelPrices requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVideoModelPrices: %w", err)
+REDACTED
+	return oldValue.VideoModelPrices, nil
+REDACTED
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (m *GroupMutation) ClearVideoModelPrices() {
+	m.video_model_prices = nil
+	m.clearedFields[group.FieldVideoModelPrices] = struct{REDACTED{REDACTED
+REDACTED
+
+// VideoModelPricesCleared returns if the "video_model_prices" field was cleared in this mutation.
+func (m *GroupMutation) VideoModelPricesCleared() bool {
+	_, ok := m.clearedFields[group.FieldVideoModelPrices]
+	return ok
+REDACTED
+
+// ResetVideoModelPrices resets all changes to the "video_model_prices" field.
+func (m *GroupMutation) ResetVideoModelPrices() {
+	m.video_model_prices = nil
+	delete(m.clearedFields, group.FieldVideoModelPrices)
+REDACTED
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (m *GroupMutation) SetWebSearchPricePerCall(f float64) {
 	m.web_search_price_per_call = &f
@@ -23790,6 +23848,286 @@ func (m *GroupMutation) ResetWebSearchPricePerCall() {
 	m.web_search_price_per_call = nil
 	m.addweb_search_price_per_call = nil
 	delete(m.clearedFields, group.FieldWebSearchPricePerCall)
+REDACTED
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (m *GroupMutation) SetSearchPricePer1k(f float64) {
+	m.search_price_per_1k = &f
+	m.addsearch_price_per_1k = nil
+REDACTED
+
+// SearchPricePer1k returns the value of the "search_price_per_1k" field in the mutation.
+func (m *GroupMutation) SearchPricePer1k() (r float64, exists bool) {
+	v := m.search_price_per_1k
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSearchPricePer1k returns the old "search_price_per_1k" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSearchPricePer1k(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSearchPricePer1k is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSearchPricePer1k requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSearchPricePer1k: %w", err)
+REDACTED
+	return oldValue.SearchPricePer1k, nil
+REDACTED
+
+// AddSearchPricePer1k adds f to the "search_price_per_1k" field.
+func (m *GroupMutation) AddSearchPricePer1k(f float64) {
+	if m.addsearch_price_per_1k != nil {
+		*m.addsearch_price_per_1k += f
+REDACTED else {
+		m.addsearch_price_per_1k = &f
+REDACTED
+REDACTED
+
+// AddedSearchPricePer1k returns the value that was added to the "search_price_per_1k" field in this mutation.
+func (m *GroupMutation) AddedSearchPricePer1k() (r float64, exists bool) {
+	v := m.addsearch_price_per_1k
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (m *GroupMutation) ClearSearchPricePer1k() {
+	m.search_price_per_1k = nil
+	m.addsearch_price_per_1k = nil
+	m.clearedFields[group.FieldSearchPricePer1k] = struct{REDACTED{REDACTED
+REDACTED
+
+// SearchPricePer1kCleared returns if the "search_price_per_1k" field was cleared in this mutation.
+func (m *GroupMutation) SearchPricePer1kCleared() bool {
+	_, ok := m.clearedFields[group.FieldSearchPricePer1k]
+	return ok
+REDACTED
+
+// ResetSearchPricePer1k resets all changes to the "search_price_per_1k" field.
+func (m *GroupMutation) ResetSearchPricePer1k() {
+	m.search_price_per_1k = nil
+	m.addsearch_price_per_1k = nil
+	delete(m.clearedFields, group.FieldSearchPricePer1k)
+REDACTED
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (m *GroupMutation) SetAudioRealtimePricePerMin(f float64) {
+	m.audio_realtime_price_per_min = &f
+	m.addaudio_realtime_price_per_min = nil
+REDACTED
+
+// AudioRealtimePricePerMin returns the value of the "audio_realtime_price_per_min" field in the mutation.
+func (m *GroupMutation) AudioRealtimePricePerMin() (r float64, exists bool) {
+	v := m.audio_realtime_price_per_min
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAudioRealtimePricePerMin returns the old "audio_realtime_price_per_min" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAudioRealtimePricePerMin(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAudioRealtimePricePerMin is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAudioRealtimePricePerMin requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAudioRealtimePricePerMin: %w", err)
+REDACTED
+	return oldValue.AudioRealtimePricePerMin, nil
+REDACTED
+
+// AddAudioRealtimePricePerMin adds f to the "audio_realtime_price_per_min" field.
+func (m *GroupMutation) AddAudioRealtimePricePerMin(f float64) {
+	if m.addaudio_realtime_price_per_min != nil {
+		*m.addaudio_realtime_price_per_min += f
+REDACTED else {
+		m.addaudio_realtime_price_per_min = &f
+REDACTED
+REDACTED
+
+// AddedAudioRealtimePricePerMin returns the value that was added to the "audio_realtime_price_per_min" field in this mutation.
+func (m *GroupMutation) AddedAudioRealtimePricePerMin() (r float64, exists bool) {
+	v := m.addaudio_realtime_price_per_min
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (m *GroupMutation) ClearAudioRealtimePricePerMin() {
+	m.audio_realtime_price_per_min = nil
+	m.addaudio_realtime_price_per_min = nil
+	m.clearedFields[group.FieldAudioRealtimePricePerMin] = struct{REDACTED{REDACTED
+REDACTED
+
+// AudioRealtimePricePerMinCleared returns if the "audio_realtime_price_per_min" field was cleared in this mutation.
+func (m *GroupMutation) AudioRealtimePricePerMinCleared() bool {
+	_, ok := m.clearedFields[group.FieldAudioRealtimePricePerMin]
+	return ok
+REDACTED
+
+// ResetAudioRealtimePricePerMin resets all changes to the "audio_realtime_price_per_min" field.
+func (m *GroupMutation) ResetAudioRealtimePricePerMin() {
+	m.audio_realtime_price_per_min = nil
+	m.addaudio_realtime_price_per_min = nil
+	delete(m.clearedFields, group.FieldAudioRealtimePricePerMin)
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (m *GroupMutation) SetAudioTtsPricePerMillionChars(f float64) {
+	m.audio_tts_price_per_million_chars = &f
+	m.addaudio_tts_price_per_million_chars = nil
+REDACTED
+
+// AudioTtsPricePerMillionChars returns the value of the "audio_tts_price_per_million_chars" field in the mutation.
+func (m *GroupMutation) AudioTtsPricePerMillionChars() (r float64, exists bool) {
+	v := m.audio_tts_price_per_million_chars
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAudioTtsPricePerMillionChars returns the old "audio_tts_price_per_million_chars" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAudioTtsPricePerMillionChars(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAudioTtsPricePerMillionChars is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAudioTtsPricePerMillionChars requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAudioTtsPricePerMillionChars: %w", err)
+REDACTED
+	return oldValue.AudioTtsPricePerMillionChars, nil
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds f to the "audio_tts_price_per_million_chars" field.
+func (m *GroupMutation) AddAudioTtsPricePerMillionChars(f float64) {
+	if m.addaudio_tts_price_per_million_chars != nil {
+		*m.addaudio_tts_price_per_million_chars += f
+REDACTED else {
+		m.addaudio_tts_price_per_million_chars = &f
+REDACTED
+REDACTED
+
+// AddedAudioTtsPricePerMillionChars returns the value that was added to the "audio_tts_price_per_million_chars" field in this mutation.
+func (m *GroupMutation) AddedAudioTtsPricePerMillionChars() (r float64, exists bool) {
+	v := m.addaudio_tts_price_per_million_chars
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (m *GroupMutation) ClearAudioTtsPricePerMillionChars() {
+	m.audio_tts_price_per_million_chars = nil
+	m.addaudio_tts_price_per_million_chars = nil
+	m.clearedFields[group.FieldAudioTtsPricePerMillionChars] = struct{REDACTED{REDACTED
+REDACTED
+
+// AudioTtsPricePerMillionCharsCleared returns if the "audio_tts_price_per_million_chars" field was cleared in this mutation.
+func (m *GroupMutation) AudioTtsPricePerMillionCharsCleared() bool {
+	_, ok := m.clearedFields[group.FieldAudioTtsPricePerMillionChars]
+	return ok
+REDACTED
+
+// ResetAudioTtsPricePerMillionChars resets all changes to the "audio_tts_price_per_million_chars" field.
+func (m *GroupMutation) ResetAudioTtsPricePerMillionChars() {
+	m.audio_tts_price_per_million_chars = nil
+	m.addaudio_tts_price_per_million_chars = nil
+	delete(m.clearedFields, group.FieldAudioTtsPricePerMillionChars)
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (m *GroupMutation) SetAudioSttPricePerHour(f float64) {
+	m.audio_stt_price_per_hour = &f
+	m.addaudio_stt_price_per_hour = nil
+REDACTED
+
+// AudioSttPricePerHour returns the value of the "audio_stt_price_per_hour" field in the mutation.
+func (m *GroupMutation) AudioSttPricePerHour() (r float64, exists bool) {
+	v := m.audio_stt_price_per_hour
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAudioSttPricePerHour returns the old "audio_stt_price_per_hour" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAudioSttPricePerHour(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAudioSttPricePerHour is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAudioSttPricePerHour requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAudioSttPricePerHour: %w", err)
+REDACTED
+	return oldValue.AudioSttPricePerHour, nil
+REDACTED
+
+// AddAudioSttPricePerHour adds f to the "audio_stt_price_per_hour" field.
+func (m *GroupMutation) AddAudioSttPricePerHour(f float64) {
+	if m.addaudio_stt_price_per_hour != nil {
+		*m.addaudio_stt_price_per_hour += f
+REDACTED else {
+		m.addaudio_stt_price_per_hour = &f
+REDACTED
+REDACTED
+
+// AddedAudioSttPricePerHour returns the value that was added to the "audio_stt_price_per_hour" field in this mutation.
+func (m *GroupMutation) AddedAudioSttPricePerHour() (r float64, exists bool) {
+	v := m.addaudio_stt_price_per_hour
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (m *GroupMutation) ClearAudioSttPricePerHour() {
+	m.audio_stt_price_per_hour = nil
+	m.addaudio_stt_price_per_hour = nil
+	m.clearedFields[group.FieldAudioSttPricePerHour] = struct{REDACTED{REDACTED
+REDACTED
+
+// AudioSttPricePerHourCleared returns if the "audio_stt_price_per_hour" field was cleared in this mutation.
+func (m *GroupMutation) AudioSttPricePerHourCleared() bool {
+	_, ok := m.clearedFields[group.FieldAudioSttPricePerHour]
+	return ok
+REDACTED
+
+// ResetAudioSttPricePerHour resets all changes to the "audio_stt_price_per_hour" field.
+func (m *GroupMutation) ResetAudioSttPricePerHour() {
+	m.audio_stt_price_per_hour = nil
+	m.addaudio_stt_price_per_hour = nil
+	delete(m.clearedFields, group.FieldAudioSttPricePerHour)
 REDACTED
 
 // SetClaudeCodeOnly sets the "claude_code_only" field.
@@ -25097,7 +25435,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 55)
+	fields := make([]string, 0, 60)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -25197,8 +25535,23 @@ REDACTED
 	if m.video_price_1080p != nil {
 		fields = append(fields, group.FieldVideoPrice1080p)
 REDACTED
+	if m.video_model_prices != nil {
+		fields = append(fields, group.FieldVideoModelPrices)
+REDACTED
 	if m.web_search_price_per_call != nil {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
+REDACTED
+	if m.search_price_per_1k != nil {
+		fields = append(fields, group.FieldSearchPricePer1k)
+REDACTED
+	if m.audio_realtime_price_per_min != nil {
+		fields = append(fields, group.FieldAudioRealtimePricePerMin)
+REDACTED
+	if m.audio_tts_price_per_million_chars != nil {
+		fields = append(fields, group.FieldAudioTtsPricePerMillionChars)
+REDACTED
+	if m.audio_stt_price_per_hour != nil {
+		fields = append(fields, group.FieldAudioSttPricePerHour)
 REDACTED
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -25337,8 +25690,18 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoPrice720p()
 	case group.FieldVideoPrice1080p:
 		return m.VideoPrice1080p()
+	case group.FieldVideoModelPrices:
+		return m.VideoModelPrices()
 	case group.FieldWebSearchPricePerCall:
 		return m.WebSearchPricePerCall()
+	case group.FieldSearchPricePer1k:
+		return m.SearchPricePer1k()
+	case group.FieldAudioRealtimePricePerMin:
+		return m.AudioRealtimePricePerMin()
+	case group.FieldAudioTtsPricePerMillionChars:
+		return m.AudioTtsPricePerMillionChars()
+	case group.FieldAudioSttPricePerHour:
+		return m.AudioSttPricePerHour()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -25456,8 +25819,18 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldVideoPrice720p(ctx)
 	case group.FieldVideoPrice1080p:
 		return m.OldVideoPrice1080p(ctx)
+	case group.FieldVideoModelPrices:
+		return m.OldVideoModelPrices(ctx)
 	case group.FieldWebSearchPricePerCall:
 		return m.OldWebSearchPricePerCall(ctx)
+	case group.FieldSearchPricePer1k:
+		return m.OldSearchPricePer1k(ctx)
+	case group.FieldAudioRealtimePricePerMin:
+		return m.OldAudioRealtimePricePerMin(ctx)
+	case group.FieldAudioTtsPricePerMillionChars:
+		return m.OldAudioTtsPricePerMillionChars(ctx)
+	case group.FieldAudioSttPricePerHour:
+		return m.OldAudioSttPricePerHour(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -25740,12 +26113,47 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetVideoPrice1080p(v)
 		return nil
+	case group.FieldVideoModelPrices:
+		v, ok := value.(map[string]map[string]float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetVideoModelPrices(v)
+		return nil
 	case group.FieldWebSearchPricePerCall:
 		v, ok := value.(float64)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetWebSearchPricePerCall(v)
+		return nil
+	case group.FieldSearchPricePer1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSearchPricePer1k(v)
+		return nil
+	case group.FieldAudioRealtimePricePerMin:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAudioRealtimePricePerMin(v)
+		return nil
+	case group.FieldAudioTtsPricePerMillionChars:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAudioTtsPricePerMillionChars(v)
+		return nil
+	case group.FieldAudioSttPricePerHour:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAudioSttPricePerHour(v)
 		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
@@ -25953,6 +26361,18 @@ REDACTED
 	if m.addweb_search_price_per_call != nil {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
 REDACTED
+	if m.addsearch_price_per_1k != nil {
+		fields = append(fields, group.FieldSearchPricePer1k)
+REDACTED
+	if m.addaudio_realtime_price_per_min != nil {
+		fields = append(fields, group.FieldAudioRealtimePricePerMin)
+REDACTED
+	if m.addaudio_tts_price_per_million_chars != nil {
+		fields = append(fields, group.FieldAudioTtsPricePerMillionChars)
+REDACTED
+	if m.addaudio_stt_price_per_hour != nil {
+		fields = append(fields, group.FieldAudioSttPricePerHour)
+REDACTED
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
@@ -26013,6 +26433,14 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedVideoPrice1080p()
 	case group.FieldWebSearchPricePerCall:
 		return m.AddedWebSearchPricePerCall()
+	case group.FieldSearchPricePer1k:
+		return m.AddedSearchPricePer1k()
+	case group.FieldAudioRealtimePricePerMin:
+		return m.AddedAudioRealtimePricePerMin()
+	case group.FieldAudioTtsPricePerMillionChars:
+		return m.AddedAudioTtsPricePerMillionChars()
+	case group.FieldAudioSttPricePerHour:
+		return m.AddedAudioSttPricePerHour()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -26153,6 +26581,34 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 	REDACTED
 		m.AddWebSearchPricePerCall(v)
 		return nil
+	case group.FieldSearchPricePer1k:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSearchPricePer1k(v)
+		return nil
+	case group.FieldAudioRealtimePricePerMin:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAudioRealtimePricePerMin(v)
+		return nil
+	case group.FieldAudioTtsPricePerMillionChars:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAudioTtsPricePerMillionChars(v)
+		return nil
+	case group.FieldAudioSttPricePerHour:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddAudioSttPricePerHour(v)
+		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
 		if !ok {
@@ -26239,8 +26695,23 @@ REDACTED
 	if m.FieldCleared(group.FieldVideoPrice1080p) {
 		fields = append(fields, group.FieldVideoPrice1080p)
 REDACTED
+	if m.FieldCleared(group.FieldVideoModelPrices) {
+		fields = append(fields, group.FieldVideoModelPrices)
+REDACTED
 	if m.FieldCleared(group.FieldWebSearchPricePerCall) {
 		fields = append(fields, group.FieldWebSearchPricePerCall)
+REDACTED
+	if m.FieldCleared(group.FieldSearchPricePer1k) {
+		fields = append(fields, group.FieldSearchPricePer1k)
+REDACTED
+	if m.FieldCleared(group.FieldAudioRealtimePricePerMin) {
+		fields = append(fields, group.FieldAudioRealtimePricePerMin)
+REDACTED
+	if m.FieldCleared(group.FieldAudioTtsPricePerMillionChars) {
+		fields = append(fields, group.FieldAudioTtsPricePerMillionChars)
+REDACTED
+	if m.FieldCleared(group.FieldAudioSttPricePerHour) {
+		fields = append(fields, group.FieldAudioSttPricePerHour)
 REDACTED
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
@@ -26301,8 +26772,23 @@ func (m *GroupMutation) ClearField(name string) error {
 	case group.FieldVideoPrice1080p:
 		m.ClearVideoPrice1080p()
 		return nil
+	case group.FieldVideoModelPrices:
+		m.ClearVideoModelPrices()
+		return nil
 	case group.FieldWebSearchPricePerCall:
 		m.ClearWebSearchPricePerCall()
+		return nil
+	case group.FieldSearchPricePer1k:
+		m.ClearSearchPricePer1k()
+		return nil
+	case group.FieldAudioRealtimePricePerMin:
+		m.ClearAudioRealtimePricePerMin()
+		return nil
+	case group.FieldAudioTtsPricePerMillionChars:
+		m.ClearAudioTtsPricePerMillionChars()
+		return nil
+	case group.FieldAudioSttPricePerHour:
+		m.ClearAudioSttPricePerHour()
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
@@ -26420,8 +26906,23 @@ func (m *GroupMutation) ResetField(name string) error {
 	case group.FieldVideoPrice1080p:
 		m.ResetVideoPrice1080p()
 		return nil
+	case group.FieldVideoModelPrices:
+		m.ResetVideoModelPrices()
+		return nil
 	case group.FieldWebSearchPricePerCall:
 		m.ResetWebSearchPricePerCall()
+		return nil
+	case group.FieldSearchPricePer1k:
+		m.ResetSearchPricePer1k()
+		return nil
+	case group.FieldAudioRealtimePricePerMin:
+		m.ResetAudioRealtimePricePerMin()
+		return nil
+	case group.FieldAudioTtsPricePerMillionChars:
+		m.ResetAudioTtsPricePerMillionChars()
+		return nil
+	case group.FieldAudioSttPricePerHour:
+		m.ResetAudioSttPricePerHour()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
@@ -43356,6 +43857,8 @@ type UsageLogMutation struct {
 	model                        *string
 	requested_model              *string
 	upstream_model               *string
+	upstream_response_model      *string
+	upstream_model_mismatch      *bool
 	channel_id                   *int64
 	addchannel_id                *int64
 	model_mapping_chain          *string
@@ -43803,6 +44306,104 @@ REDACTED
 func (m *UsageLogMutation) ResetUpstreamModel() {
 	m.upstream_model = nil
 	delete(m.clearedFields, usagelog.FieldUpstreamModel)
+REDACTED
+
+// SetUpstreamResponseModel sets the "upstream_response_model" field.
+func (m *UsageLogMutation) SetUpstreamResponseModel(s string) {
+	m.upstream_response_model = &s
+REDACTED
+
+// UpstreamResponseModel returns the value of the "upstream_response_model" field in the mutation.
+func (m *UsageLogMutation) UpstreamResponseModel() (r string, exists bool) {
+	v := m.upstream_response_model
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpstreamResponseModel returns the old "upstream_response_model" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldUpstreamResponseModel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamResponseModel is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamResponseModel requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamResponseModel: %w", err)
+REDACTED
+	return oldValue.UpstreamResponseModel, nil
+REDACTED
+
+// ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
+func (m *UsageLogMutation) ClearUpstreamResponseModel() {
+	m.upstream_response_model = nil
+	m.clearedFields[usagelog.FieldUpstreamResponseModel] = struct{REDACTED{REDACTED
+REDACTED
+
+// UpstreamResponseModelCleared returns if the "upstream_response_model" field was cleared in this mutation.
+func (m *UsageLogMutation) UpstreamResponseModelCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldUpstreamResponseModel]
+	return ok
+REDACTED
+
+// ResetUpstreamResponseModel resets all changes to the "upstream_response_model" field.
+func (m *UsageLogMutation) ResetUpstreamResponseModel() {
+	m.upstream_response_model = nil
+	delete(m.clearedFields, usagelog.FieldUpstreamResponseModel)
+REDACTED
+
+// SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
+func (m *UsageLogMutation) SetUpstreamModelMismatch(b bool) {
+	m.upstream_model_mismatch = &b
+REDACTED
+
+// UpstreamModelMismatch returns the value of the "upstream_model_mismatch" field in the mutation.
+func (m *UsageLogMutation) UpstreamModelMismatch() (r bool, exists bool) {
+	v := m.upstream_model_mismatch
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpstreamModelMismatch returns the old "upstream_model_mismatch" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldUpstreamModelMismatch(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamModelMismatch is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamModelMismatch requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamModelMismatch: %w", err)
+REDACTED
+	return oldValue.UpstreamModelMismatch, nil
+REDACTED
+
+// ClearUpstreamModelMismatch clears the value of the "upstream_model_mismatch" field.
+func (m *UsageLogMutation) ClearUpstreamModelMismatch() {
+	m.upstream_model_mismatch = nil
+	m.clearedFields[usagelog.FieldUpstreamModelMismatch] = struct{REDACTED{REDACTED
+REDACTED
+
+// UpstreamModelMismatchCleared returns if the "upstream_model_mismatch" field was cleared in this mutation.
+func (m *UsageLogMutation) UpstreamModelMismatchCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldUpstreamModelMismatch]
+	return ok
+REDACTED
+
+// ResetUpstreamModelMismatch resets all changes to the "upstream_model_mismatch" field.
+func (m *UsageLogMutation) ResetUpstreamModelMismatch() {
+	m.upstream_model_mismatch = nil
+	delete(m.clearedFields, usagelog.FieldUpstreamModelMismatch)
 REDACTED
 
 // SetChannelID sets the "channel_id" field.
@@ -46001,7 +46602,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 45)
+	fields := make([]string, 0, 47)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 REDACTED
@@ -46022,6 +46623,12 @@ REDACTED
 REDACTED
 	if m.upstream_model != nil {
 		fields = append(fields, usagelog.FieldUpstreamModel)
+REDACTED
+	if m.upstream_response_model != nil {
+		fields = append(fields, usagelog.FieldUpstreamResponseModel)
+REDACTED
+	if m.upstream_model_mismatch != nil {
+		fields = append(fields, usagelog.FieldUpstreamModelMismatch)
 REDACTED
 	if m.channel_id != nil {
 		fields = append(fields, usagelog.FieldChannelID)
@@ -46159,6 +46766,10 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.RequestedModel()
 	case usagelog.FieldUpstreamModel:
 		return m.UpstreamModel()
+	case usagelog.FieldUpstreamResponseModel:
+		return m.UpstreamResponseModel()
+	case usagelog.FieldUpstreamModelMismatch:
+		return m.UpstreamModelMismatch()
 	case usagelog.FieldChannelID:
 		return m.ChannelID()
 	case usagelog.FieldModelMappingChain:
@@ -46258,6 +46869,10 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldRequestedModel(ctx)
 	case usagelog.FieldUpstreamModel:
 		return m.OldUpstreamModel(ctx)
+	case usagelog.FieldUpstreamResponseModel:
+		return m.OldUpstreamResponseModel(ctx)
+	case usagelog.FieldUpstreamModelMismatch:
+		return m.OldUpstreamModelMismatch(ctx)
 	case usagelog.FieldChannelID:
 		return m.OldChannelID(ctx)
 	case usagelog.FieldModelMappingChain:
@@ -46391,6 +47006,20 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetUpstreamModel(v)
+		return nil
+	case usagelog.FieldUpstreamResponseModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpstreamResponseModel(v)
+		return nil
+	case usagelog.FieldUpstreamModelMismatch:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpstreamModelMismatch(v)
 		return nil
 	case usagelog.FieldChannelID:
 		v, ok := value.(int64)
@@ -46949,6 +47578,12 @@ REDACTED
 	if m.FieldCleared(usagelog.FieldUpstreamModel) {
 		fields = append(fields, usagelog.FieldUpstreamModel)
 REDACTED
+	if m.FieldCleared(usagelog.FieldUpstreamResponseModel) {
+		fields = append(fields, usagelog.FieldUpstreamResponseModel)
+REDACTED
+	if m.FieldCleared(usagelog.FieldUpstreamModelMismatch) {
+		fields = append(fields, usagelog.FieldUpstreamModelMismatch)
+REDACTED
 	if m.FieldCleared(usagelog.FieldChannelID) {
 		fields = append(fields, usagelog.FieldChannelID)
 REDACTED
@@ -47022,6 +47657,12 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldUpstreamModel:
 		m.ClearUpstreamModel()
+		return nil
+	case usagelog.FieldUpstreamResponseModel:
+		m.ClearUpstreamResponseModel()
+		return nil
+	case usagelog.FieldUpstreamModelMismatch:
+		m.ClearUpstreamModelMismatch()
 		return nil
 	case usagelog.FieldChannelID:
 		m.ClearChannelID()
@@ -47105,6 +47746,12 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldUpstreamModel:
 		m.ResetUpstreamModel()
+		return nil
+	case usagelog.FieldUpstreamResponseModel:
+		m.ResetUpstreamResponseModel()
+		return nil
+	case usagelog.FieldUpstreamModelMismatch:
+		m.ResetUpstreamModelMismatch()
 		return nil
 	case usagelog.FieldChannelID:
 		m.ResetChannelID()

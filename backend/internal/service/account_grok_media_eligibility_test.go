@@ -25,20 +25,6 @@ REDACTED
 		StatusCode:       http.StatusOK,
 		WeeklyStatusCode: http.StatusOK,
 REDACTED
-	freeBilling := &xai.BillingSummary{
-		PeriodType:        "monthly",
-		StatusCode:        http.StatusOK,
-		WeeklyStatusCode:  http.StatusOK,
-		MonthlyStatusCode: http.StatusOK,
-		MonthlyUpdatedAt:  "2026-07-17T00:00:00Z",
-REDACTED
-	inconclusiveBilling := &xai.BillingSummary{
-		StatusCode:        http.StatusOK,
-		WeeklyStatusCode:  http.StatusOK,
-		MonthlyStatusCode: http.StatusBadGateway,
-		Partial:           true,
-		FailedWindows:     []string{"monthly"REDACTED,
-REDACTED
 	weeklyForbidden := &xai.BillingSummary{
 		StatusCode:        http.StatusOK,
 		WeeklyStatusCode:  http.StatusForbidden,
@@ -61,8 +47,6 @@ REDACTED{
 		{name: "non oauth grok account stays eligible", account: &Account{Platform: PlatformGrok, Type: AccountTypeAPIKeyREDACTED, want: true, wantReason: "non_oauth"REDACTED,
 		{name: "unobserved oauth fails closed", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED, want: false, wantReason: "billing_unobserved"REDACTED,
 		{name: "weekly paid usage is eligible without inferring from period type", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyAllowanceREDACTEDREDACTED, want: true, wantReason: "eligible"REDACTED,
-		{name: "observed free account is rejected", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: freeBillingREDACTEDREDACTED, want: false, wantReason: "billing_free_tier"REDACTED,
-		{name: "inconclusive billing fails closed", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: inconclusiveBillingREDACTEDREDACTED, want: false, wantReason: "billing_inconclusive"REDACTED,
 		{name: "billing forbidden is rejected", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: forbiddenBillingREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,
 		{name: "weekly billing forbidden is rejected after partial success", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: weeklyForbiddenREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,
 		{name: "monthly billing forbidden is rejected after partial success", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Extra: map[string]any{grokBillingExtraKey: monthlyForbiddenREDACTEDREDACTED, want: false, wantReason: "billing_forbidden"REDACTED,

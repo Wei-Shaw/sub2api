@@ -180,6 +180,7 @@ REDACTED
 	if writeClientMessage == nil {
 		return nil, errors.New("client websocket writer is nil")
 REDACTED
+	responseModelObserver := &upstreamResponseModelObserver{REDACTED
 
 	body, err := prepareOpenAIWSHTTPBridgeBody(payload)
 	if err != nil {
@@ -207,7 +208,7 @@ REDACTED
 			releaseUpstreamCtx()
 			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 	REDACTED
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg)
+		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg, s.settingService)
 REDACTED else {
 		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 REDACTED
@@ -299,18 +300,20 @@ REDACTED
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
-			RequestID:             responseID,
-			Usage:                 usage,
-			Model:                 originalModel,
-			UpstreamModel:         mappedModel,
-			ServiceTier:           extractOpenAIServiceTierFromBody(body),
-			ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
-			Stream:                reqStream,
-			OpenAIWSMode:          true,
-			UpstreamTerminalEvent: upstreamTerminalEvent,
-			ResponseHeaders:       cloneHeader(resp.Header),
-			Duration:              time.Since(turnStart),
-			FirstTokenMs:          firstTokenMs,
+			RequestID:                     responseID,
+			Usage:                         usage,
+			Model:                         originalModel,
+			UpstreamModel:                 mappedModel,
+			UpstreamResponseModel:         responseModelObserver.Model(),
+			UpstreamResponseModelConflict: responseModelObserver.Conflict(),
+			ServiceTier:                   extractOpenAIServiceTierFromBody(body),
+			ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
+			Stream:                        reqStream,
+			OpenAIWSMode:                  true,
+			UpstreamTerminalEvent:         upstreamTerminalEvent,
+			ResponseHeaders:               cloneHeader(resp.Header),
+			Duration:                      time.Since(turnStart),
+			FirstTokenMs:                  firstTokenMs,
 	REDACTED
 		if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 			result.wsReplayInput = replayInput
@@ -355,6 +358,7 @@ REDACTED
 			upstreamMessage = normalized
 	REDACTED
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
+		responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
 	REDACTED
@@ -421,8 +425,18 @@ REDACTED
 			upstreamEventErr = errors.New(errMessage)
 	REDACTED
 
+		// 客户端写出副本改写容量降载码：Codex 对 error/response.failed 中的
+		// server_is_overloaded / slow_down 判致命并终止会话，改写后走客户端内置
+		// 重试。账号状态与终止事件判定（下方 handleOpenAIWSTerminalTransientFailure）
+		// 仍使用未改写的 upstreamMessage。
+		clientMessage := upstreamMessage
+		if eventType == "error" || eventType == "response.failed" {
+			if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(clientMessage); changed {
+				clientMessage = rewritten
+		REDACTED
+	REDACTED
 		if !clientDisconnected {
-			if err := writeClientMessage(upstreamMessage); err != nil {
+			if err := writeClientMessage(clientMessage); err != nil {
 				if isOpenAIWSClientDisconnectError(err) {
 					clientDisconnected = true
 					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)

@@ -9,23 +9,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
 type grokOAuthClientStub struct {
-	refreshResponse *xai.TokenResponse
-	ssoResponse     *xai.TokenResponse
-	exchangeCalls   int
+	refreshResponse     *xai.TokenResponse
+	ssoResponse         *xai.TokenResponse
+	loginResult         *GrokPasswordLoginResult
+	loginEmail          string
+	loginPassword       string
+	exchangeCalls       int
+	exchangeRedirectURI string
 REDACTED
 
-func (s *grokOAuthClientStub) ExchangeCode(context.Context, string, string, string, string, string) (*xai.TokenResponse, error) {
+func (s *grokOAuthClientStub) ExchangeCode(_ context.Context, _, _, redirectURI, _, _ string) (*xai.TokenResponse, error) {
 	s.exchangeCalls++
-	return &xai.TokenResponse{REDACTED, nil
+	s.exchangeRedirectURI = redirectURI
+	return &xai.TokenResponse{AccessToken: "access-token"REDACTED, nil
 REDACTED
 
 func (s *grokOAuthClientStub) RefreshToken(context.Context, string, string, string) (*xai.TokenResponse, error) {
 	return s.refreshResponse, nil
+REDACTED
+
+func (s *grokOAuthClientStub) LoginWithPassword(_ context.Context, email, password, _ string) (*GrokPasswordLoginResult, error) {
+	s.loginEmail = email
+	s.loginPassword = password
+	return s.loginResult, nil
 REDACTED
 
 func (s *grokOAuthClientStub) ConvertSSOToBuild(context.Context, string, string) (*xai.TokenResponse, error) {
@@ -49,7 +61,19 @@ REDACTED
 	require.Equal(t, "client-id", info.ClientID)
 REDACTED
 
-func TestGrokOAuthServiceExchangeCodeRequiresStateForCallbackURLAndConsumesSession(t *testing.T) {
+func TestGrokOAuthServiceRefreshTokenRejectsEmptyUpstreamResponse(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{REDACTED)
+	defer svc.Stop()
+
+	require.NotPanics(t, func() {
+		info, err := svc.RefreshToken(context.Background(), "refresh-token", "", "client-id")
+		require.Nil(t, info)
+	REDACTED
+		require.Contains(t, err.Error(), "GROK_OAUTH_INVALID_TOKEN_RESPONSE")
+REDACTED)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeConsumesOnlyAfterValidation(t *testing.T) {
 	client := &grokOAuthClientStub{REDACTED
 	svc := NewGrokOAuthService(nil, client)
 	defer svc.Stop()
@@ -71,8 +95,91 @@ REDACTED
 		State:     auth.State,
 REDACTED)
 REDACTED
+	require.Equal(t, 1, client.exchangeCalls)
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID: auth.SessionID,
+		Code:      "replayed-code",
+		State:     auth.State,
+REDACTED)
+REDACTED
 	require.Contains(t, err.Error(), "GROK_OAUTH_SESSION_NOT_FOUND")
+	require.Equal(t, 1, client.exchangeCalls)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeRejectsMissingClientWithoutConsumingSession(t *testing.T) {
+	svc := NewGrokOAuthService(nil, nil)
+	defer svc.Stop()
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+REDACTED
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID: auth.SessionID,
+		Code:      "code",
+		State:     auth.State,
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
+	_, ok := svc.sessionStore.Get(auth.SessionID)
+	require.True(t, ok)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeRequiresStateForBareCode(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+REDACTED
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID: auth.SessionID,
+		Code:      "bare-authorization-code",
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_STATE_REQUIRED")
 	require.Zero(t, client.exchangeCalls)
+	_, ok := svc.sessionStore.Get(auth.SessionID)
+	require.True(t, ok)
+REDACTED
+
+func TestGrokOAuthServiceExchangeCodeRejectsRedirectURIOverride(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+	auth, err := svc.GenerateAuthURL(context.Background(), nil, "")
+REDACTED
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID:   auth.SessionID,
+		Code:        "authorization-code",
+		State:       auth.State,
+		RedirectURI: "http://127.0.0.1:9999/callback",
+REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_REDIRECT_URI_MISMATCH")
+	require.Zero(t, client.exchangeCalls)
+
+	_, err = svc.ExchangeCode(context.Background(), &GrokExchangeCodeInput{
+		SessionID:   auth.SessionID,
+		Code:        "authorization-code",
+		State:       auth.State,
+		RedirectURI: xai.DefaultRedirectURI,
+REDACTED)
+REDACTED
+	require.Equal(t, xai.DefaultRedirectURI, client.exchangeRedirectURI)
+REDACTED
+
+func TestGrokOAuthServiceExternalFlowsRejectMissingClient(t *testing.T) {
+	svc := NewGrokOAuthService(nil, nil)
+	defer svc.Stop()
+
+	_, err := svc.RefreshToken(context.Background(), "refresh-token", "", "")
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
+
+	_, err = svc.ValidateSSOToken(context.Background(), "sso-token", nil)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_CLIENT_NOT_CONFIGURED")
 REDACTED
 
 func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *testing.T) {
@@ -108,6 +215,69 @@ REDACTED
 	require.Equal(t, "user@example.com", credentials["email"])
 	require.Equal(t, "user-sub", credentials["sub"])
 	require.Equal(t, "team-1", credentials["team_id"])
+	require.NotContains(t, credentials, "sso_token")
+REDACTED
+
+func TestGrokOAuthServiceValidateSSOTokenReturnsOAuthTokensWithoutPersistingSSO(t *testing.T) {
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-from-sso",
+			RefreshToken: "refresh-from-sso",
+			TokenType:    "Bearer",
+			ExpiresIn:    3600,
+	REDACTED,
+REDACTED)
+	defer svc.Stop()
+
+	info, err := svc.ValidateSSOToken(context.Background(), "sso-token", nil)
+REDACTED
+	require.Equal(t, "access-from-sso", info.AccessToken)
+	require.Equal(t, "refresh-from-sso", info.RefreshToken)
+
+	creds := svc.BuildAccountCredentials(info)
+	require.NotContains(t, creds, "sso_token")
+	require.NotContains(t, creds, "password")
+REDACTED
+
+func TestGrokOAuthServiceAuthorizePasswordUsesLoginThenSSOAuthorize(t *testing.T) {
+	client := &grokOAuthClientStub{
+		loginResult: &GrokPasswordLoginResult{
+			Email:    "user@example.com",
+			SSOToken: "password-derived-sso",
+	REDACTED,
+		ssoResponse: &xai.TokenResponse{
+			AccessToken:  "access-from-password",
+			RefreshToken: "refresh-from-password",
+			ExpiresIn:    3600,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Grok.PasswordAuthEnabled = true
+	svc := NewGrokOAuthService(nil, client, cfg)
+	defer svc.Stop()
+
+	require.True(t, svc.GetCapabilities().PasswordAuthEnabled)
+	info, err := svc.AuthorizePassword(context.Background(), " user@example.com ", "  super-secret  ", nil)
+REDACTED
+	require.Equal(t, "user@example.com", info.Email)
+	require.Equal(t, "access-from-password", info.AccessToken)
+	creds := svc.BuildAccountCredentials(info)
+	require.NotContains(t, creds, "password")
+	require.NotContains(t, creds, "sso_token")
+	require.Equal(t, "user@example.com", client.loginEmail)
+	require.Equal(t, "  super-secret  ", client.loginPassword)
+REDACTED
+
+func TestGrokOAuthServiceAuthorizePasswordDisabledByDefault(t *testing.T) {
+	client := &grokOAuthClientStub{REDACTED
+	svc := NewGrokOAuthService(nil, client)
+	defer svc.Stop()
+
+	require.False(t, svc.GetCapabilities().PasswordAuthEnabled)
+	_, err := svc.AuthorizePassword(context.Background(), "user@example.com", "secret", nil)
+REDACTED
+	require.Contains(t, err.Error(), "GROK_OAUTH_PASSWORD_AUTH_DISABLED")
+	require.Empty(t, client.loginEmail)
 REDACTED
 
 func makeGrokOAuthJWT(claims map[string]any) string {

@@ -371,6 +371,10 @@ REDACTED{
 						"video_price_720p": null,
 						"video_price_1080p": null,
 						"web_search_price_per_call": null,
+						"search_price_per_1k": null,
+						"audio_tts_price_per_million_chars": null,
+						"audio_stt_price_per_hour": null,
+						"audio_realtime_price_per_min": null,
 						"allow_image_generation": false,
 						"allow_batch_image_generation": false,
 						"batch_image_discount_multiplier": 0,
@@ -880,6 +884,9 @@ REDACTED{
 						"invitation_code_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
+					"grok_default_text_model": "grok-4.5",
+					"grok_default_base_url_mode": "cli",
+					"grok_cross_client_model_map_enabled": true,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -971,6 +978,7 @@ REDACTED{
 					"payment_alipay_mobile_precreate_deep_link": false,
 					"balance_low_notify_enabled": false,
 					"account_quota_notify_enabled": false,
+					"account_scheduling_thresholds": {"anthropic":100,"grok":100,"openai":100REDACTED,
 					"subscription_expiry_notify_enabled": true,
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
@@ -1157,6 +1165,9 @@ REDACTED{
 					"doc_url": "",
 					"home_content": "",
 					"hide_ccs_import_button": false,
+					"grok_default_text_model": "grok-4.5",
+					"grok_default_base_url_mode": "cli",
+					"grok_cross_client_model_map_enabled": true,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -1276,6 +1287,7 @@ REDACTED{
 					"payment_alipay_mobile_precreate_deep_link": false,
 					"balance_low_notify_enabled": false,
 					"account_quota_notify_enabled": false,
+					"account_scheduling_thresholds": {"anthropic":100,"grok":100,"openai":100REDACTED,
 					"subscription_expiry_notify_enabled": true,
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
@@ -2251,10 +2263,10 @@ REDACTED
 func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 REDACTED
-func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error {
 	return errors.New("not implemented")
 REDACTED
-func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error {
+func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, periodicStart time.Time) error {
 	return errors.New("not implemented")
 REDACTED
 func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {

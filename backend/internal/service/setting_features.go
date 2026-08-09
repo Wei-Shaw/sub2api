@@ -11,6 +11,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // IsRegistrationEnabled 检查是否开放注册
@@ -1076,6 +1077,62 @@ REDACTED
 	REDACTED
 REDACTED
 	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
+REDACTED
+
+// GetAccountSchedulingThresholds returns per-platform auto-pause thresholds (1..100).
+// 100 disables the threshold for that platform. Hot-path cached with singleflight.
+func (s *SettingService) GetAccountSchedulingThresholds(ctx context.Context) map[string]int {
+	if s == nil || s.settingRepo == nil {
+		return defaultAccountSchedulingThresholds()
+REDACTED
+	if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+		if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+			return cloneAccountSchedulingThresholds(cached.thresholds)
+	REDACTED
+REDACTED
+
+	result, err, _ := accountSchedulingThresholdsSF.Do(SettingKeyAccountSchedulingThresholds, func() (any, error) {
+		if cached, ok := accountSchedulingThresholdsCache.Load().(*cachedAccountSchedulingThresholds); ok {
+			if cached != nil && len(cached.thresholds) > 0 && time.Now().UnixNano() < cached.expiresAt {
+				return cloneAccountSchedulingThresholds(cached.thresholds), nil
+		REDACTED
+	REDACTED
+
+		thresholds := defaultAccountSchedulingThresholds()
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountSchedulingThresholdsDBTimeout)
+		defer cancel()
+
+		raw, err := s.settingRepo.GetValue(dbCtx, SettingKeyAccountSchedulingThresholds)
+		if err != nil {
+			slog.Warn("failed to get account scheduling thresholds, falling back to defaults", "error", err)
+			accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+				thresholds: cloneAccountSchedulingThresholds(thresholds),
+				expiresAt:  time.Now().Add(accountSchedulingThresholdsErrorTTL).UnixNano(),
+		REDACTED)
+			return cloneAccountSchedulingThresholds(thresholds), nil
+	REDACTED
+
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			if parsed, err := parseAccountSchedulingThresholdsSetting(trimmed); err != nil {
+				slog.Warn("failed to parse account scheduling thresholds, falling back to defaults", "error", err)
+		REDACTED else {
+				thresholds = parsed
+		REDACTED
+	REDACTED
+
+		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+			thresholds: cloneAccountSchedulingThresholds(thresholds),
+			expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+	REDACTED)
+		return cloneAccountSchedulingThresholds(thresholds), nil
+REDACTED)
+	if err != nil {
+		return defaultAccountSchedulingThresholds()
+REDACTED
+	if thresholds, ok := result.(map[string]int); ok {
+		return cloneAccountSchedulingThresholds(thresholds)
+REDACTED
+	return defaultAccountSchedulingThresholds()
 REDACTED
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。

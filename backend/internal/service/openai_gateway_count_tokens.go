@@ -345,10 +345,24 @@ REDACTED
 		return true
 REDACTED
 
+	// OAuth's platform endpoint can be blocked by an upstream proxy before it
+	// reaches the API and return an HTML 403 page without a structured error.
+	// Treat that endpoint-level response like the other unsupported cases so
+	// count_tokens remains a local, non-health-affecting convenience request.
+	if statusCode == http.StatusForbidden && isHTMLResponse(body) {
+		return true
+REDACTED
+
 	return strings.Contains(msg, "input_tokens") &&
 		(strings.Contains(msg, "not found") ||
 			strings.Contains(msg, "not supported") ||
 			strings.Contains(msg, "unsupported"))
+REDACTED
+
+func isHTMLResponse(body []byte) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(string(body)))
+	return strings.HasPrefix(trimmed, "<!doctype html") ||
+		strings.HasPrefix(trimmed, "<html")
 REDACTED
 
 func estimateOpenAIInputTokens(req openAIInputTokensCountRequest) (int, error) {

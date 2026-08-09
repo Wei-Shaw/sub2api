@@ -225,6 +225,26 @@ func WebSearchPricePerCall(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldWebSearchPricePerCall, v))
 REDACTED
 
+// SearchPricePer1k applies equality check predicate on the "search_price_per_1k" field. It's identical to SearchPricePer1kEQ.
+func SearchPricePer1k(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSearchPricePer1k, v))
+REDACTED
+
+// AudioRealtimePricePerMin applies equality check predicate on the "audio_realtime_price_per_min" field. It's identical to AudioRealtimePricePerMinEQ.
+func AudioRealtimePricePerMin(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioTtsPricePerMillionChars applies equality check predicate on the "audio_tts_price_per_million_chars" field. It's identical to AudioTtsPricePerMillionCharsEQ.
+func AudioTtsPricePerMillionChars(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioSttPricePerHour applies equality check predicate on the "audio_stt_price_per_hour" field. It's identical to AudioSttPricePerHourEQ.
+func AudioSttPricePerHour(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioSttPricePerHour, v))
+REDACTED
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1765,6 +1785,16 @@ func VideoPrice1080pNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldVideoPrice1080p))
 REDACTED
 
+// VideoModelPricesIsNil applies the IsNil predicate on the "video_model_prices" field.
+func VideoModelPricesIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldVideoModelPrices))
+REDACTED
+
+// VideoModelPricesNotNil applies the NotNil predicate on the "video_model_prices" field.
+func VideoModelPricesNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldVideoModelPrices))
+REDACTED
+
 // WebSearchPricePerCallEQ applies the EQ predicate on the "web_search_price_per_call" field.
 func WebSearchPricePerCallEQ(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldWebSearchPricePerCall, v))
@@ -1813,6 +1843,206 @@ REDACTED
 // WebSearchPricePerCallNotNil applies the NotNil predicate on the "web_search_price_per_call" field.
 func WebSearchPricePerCallNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldWebSearchPricePerCall))
+REDACTED
+
+// SearchPricePer1kEQ applies the EQ predicate on the "search_price_per_1k" field.
+func SearchPricePer1kEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kNEQ applies the NEQ predicate on the "search_price_per_1k" field.
+func SearchPricePer1kNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kIn applies the In predicate on the "search_price_per_1k" field.
+func SearchPricePer1kIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSearchPricePer1k, vs...))
+REDACTED
+
+// SearchPricePer1kNotIn applies the NotIn predicate on the "search_price_per_1k" field.
+func SearchPricePer1kNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSearchPricePer1k, vs...))
+REDACTED
+
+// SearchPricePer1kGT applies the GT predicate on the "search_price_per_1k" field.
+func SearchPricePer1kGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kGTE applies the GTE predicate on the "search_price_per_1k" field.
+func SearchPricePer1kGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kLT applies the LT predicate on the "search_price_per_1k" field.
+func SearchPricePer1kLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kLTE applies the LTE predicate on the "search_price_per_1k" field.
+func SearchPricePer1kLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSearchPricePer1k, v))
+REDACTED
+
+// SearchPricePer1kIsNil applies the IsNil predicate on the "search_price_per_1k" field.
+func SearchPricePer1kIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSearchPricePer1k))
+REDACTED
+
+// SearchPricePer1kNotNil applies the NotNil predicate on the "search_price_per_1k" field.
+func SearchPricePer1kNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSearchPricePer1k))
+REDACTED
+
+// AudioRealtimePricePerMinEQ applies the EQ predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinNEQ applies the NEQ predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinIn applies the In predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAudioRealtimePricePerMin, vs...))
+REDACTED
+
+// AudioRealtimePricePerMinNotIn applies the NotIn predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAudioRealtimePricePerMin, vs...))
+REDACTED
+
+// AudioRealtimePricePerMinGT applies the GT predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinGTE applies the GTE predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinLT applies the LT predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinLTE applies the LTE predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAudioRealtimePricePerMin, v))
+REDACTED
+
+// AudioRealtimePricePerMinIsNil applies the IsNil predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldAudioRealtimePricePerMin))
+REDACTED
+
+// AudioRealtimePricePerMinNotNil applies the NotNil predicate on the "audio_realtime_price_per_min" field.
+func AudioRealtimePricePerMinNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldAudioRealtimePricePerMin))
+REDACTED
+
+// AudioTtsPricePerMillionCharsEQ applies the EQ predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsNEQ applies the NEQ predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsIn applies the In predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAudioTtsPricePerMillionChars, vs...))
+REDACTED
+
+// AudioTtsPricePerMillionCharsNotIn applies the NotIn predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAudioTtsPricePerMillionChars, vs...))
+REDACTED
+
+// AudioTtsPricePerMillionCharsGT applies the GT predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsGTE applies the GTE predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsLT applies the LT predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsLTE applies the LTE predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAudioTtsPricePerMillionChars, v))
+REDACTED
+
+// AudioTtsPricePerMillionCharsIsNil applies the IsNil predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldAudioTtsPricePerMillionChars))
+REDACTED
+
+// AudioTtsPricePerMillionCharsNotNil applies the NotNil predicate on the "audio_tts_price_per_million_chars" field.
+func AudioTtsPricePerMillionCharsNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldAudioTtsPricePerMillionChars))
+REDACTED
+
+// AudioSttPricePerHourEQ applies the EQ predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourNEQ applies the NEQ predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourIn applies the In predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAudioSttPricePerHour, vs...))
+REDACTED
+
+// AudioSttPricePerHourNotIn applies the NotIn predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAudioSttPricePerHour, vs...))
+REDACTED
+
+// AudioSttPricePerHourGT applies the GT predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourGTE applies the GTE predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourLT applies the LT predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourLTE applies the LTE predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAudioSttPricePerHour, v))
+REDACTED
+
+// AudioSttPricePerHourIsNil applies the IsNil predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldAudioSttPricePerHour))
+REDACTED
+
+// AudioSttPricePerHourNotNil applies the NotNil predicate on the "audio_stt_price_per_hour" field.
+func AudioSttPricePerHourNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldAudioSttPricePerHour))
 REDACTED
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.
