@@ -115,9 +115,9 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
-	scannerRuntime *web3deposit.ScannerRuntime,
+	scannerRuntime *web3deposit.ScannerRuntimeRegistry,
 	creditWorkerRuntime *web3deposit.CreditWorkerRuntime,
-	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntime,
+	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntimeRegistry,
 	promptAudit *securityaudit.PromptService,
 ) func() {
 	return func() {

@@ -8,6 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type publicConfigReadinessStub map[RuntimeKey]bool
+
+func (s publicConfigReadinessStub) AssetReady(networkKey, assetKey string) bool {
+	return s[RuntimeKey{NetworkKey: networkKey, AssetKey: assetKey}]
+}
+
 func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 	cfg := config.Web3DepositConfig{
 		Enabled:          true,
@@ -34,7 +40,11 @@ func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 		},
 	}
 
-	got := BuildPublicConfig(cfg, true)
+	got := BuildPublicConfig(cfg, publicConfigReadinessStub{
+		{NetworkKey: "a_network", AssetKey: "usdt0"}:   true,
+		{NetworkKey: "z_network", AssetKey: "a_token"}: true,
+		{NetworkKey: "z_network", AssetKey: "z_token"}: true,
+	})
 
 	require.True(t, got.Enabled)
 	require.Empty(t, got.UnavailableReason)
@@ -48,15 +58,15 @@ func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 
 func TestBuildPublicConfigUnavailableReturnsReasonAndNoNetworks(t *testing.T) {
 	for _, test := range []struct {
-		cfg          config.Web3DepositConfig
-		runtimeReady bool
-		wantReason   PublicConfigUnavailableReason
+		cfg        config.Web3DepositConfig
+		readiness  PublicConfigReadiness
+		wantReason PublicConfigUnavailableReason
 	}{
-		{cfg: config.Web3DepositConfig{Enabled: false, UserEntryEnabled: true}, runtimeReady: true, wantReason: PublicConfigUnavailableFeatureDisabled},
-		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: false}, runtimeReady: true, wantReason: PublicConfigUnavailableUserEntryDisabled},
-		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: true}, runtimeReady: false, wantReason: PublicConfigUnavailableRuntimeUnhealthy},
+		{cfg: config.Web3DepositConfig{Enabled: false, UserEntryEnabled: true}, readiness: publicConfigReadinessStub{}, wantReason: PublicConfigUnavailableFeatureDisabled},
+		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: false}, readiness: publicConfigReadinessStub{}, wantReason: PublicConfigUnavailableUserEntryDisabled},
+		{cfg: config.Web3DepositConfig{Enabled: true, UserEntryEnabled: true}, readiness: publicConfigReadinessStub{}, wantReason: PublicConfigUnavailableRuntimeUnhealthy},
 	} {
-		got := BuildPublicConfig(test.cfg, test.runtimeReady)
+		got := BuildPublicConfig(test.cfg, test.readiness)
 		require.False(t, got.Enabled)
 		require.Equal(t, test.wantReason, got.UnavailableReason)
 		require.Empty(t, got.Networks)
@@ -91,7 +101,7 @@ func TestBuildPublicConfigJSONDoesNotExposeInternalConfiguration(t *testing.T) {
 		},
 	}
 
-	payload, err := json.Marshal(BuildPublicConfig(cfg, true))
+	payload, err := json.Marshal(BuildPublicConfig(cfg, publicConfigReadinessStub{{NetworkKey: "conflux", AssetKey: "usdt0"}: true}))
 	require.NoError(t, err)
 
 	serialized := string(payload)
@@ -113,4 +123,16 @@ func TestBuildPublicConfigJSONDoesNotExposeInternalConfiguration(t *testing.T) {
 	} {
 		require.NotContains(t, serialized, secret)
 	}
+}
+
+func TestBuildPublicConfigOmitsUnhealthyAssetsAndNetworks(t *testing.T) {
+	cfg := config.Web3DepositConfig{Enabled: true, UserEntryEnabled: true, Networks: map[string]config.Web3DepositNetworkConfig{
+		"network_a": {Enabled: true, Assets: map[string]config.Web3DepositAssetConfig{"healthy": {}, "unhealthy": {}}},
+		"network_b": {Enabled: true, Assets: map[string]config.Web3DepositAssetConfig{"unhealthy": {}}},
+	}}
+	got := BuildPublicConfig(cfg, publicConfigReadinessStub{{NetworkKey: "network_a", AssetKey: "healthy"}: true})
+	require.True(t, got.Enabled)
+	require.Len(t, got.Networks, 1)
+	require.Equal(t, "network_a", got.Networks[0].Key)
+	require.Equal(t, "healthy", got.Networks[0].Assets[0].Key)
 }

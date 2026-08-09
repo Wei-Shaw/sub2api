@@ -20,12 +20,12 @@ type Web3DepositHandler struct {
 	cfg              *config.Config
 	addressAllocator web3DepositAddressAllocator
 	addressReader    web3deposit.UserDepositAddressReader
-	networkRuntime   web3DepositNetworkReadiness
+	runtime          web3DepositRuntimeReadiness
 	deposits         web3deposit.UserDepositReader
 }
 
-type web3DepositNetworkReadiness interface {
-	Ready() bool
+type web3DepositRuntimeReadiness interface {
+	AssetReady(networkKey, assetKey string) bool
 }
 
 type web3DepositAddressAllocator interface {
@@ -42,17 +42,16 @@ func NewWeb3DepositHandler(
 	cfg *config.Config,
 	addressAllocator *web3deposit.AddressAllocator,
 	addressReader web3deposit.UserDepositAddressReader,
-	networkRuntime *web3deposit.ConfluxNetworkRuntime,
+	runtime *web3deposit.ScannerRuntimeRegistry,
 	deposits web3deposit.UserDepositReader,
 ) *Web3DepositHandler {
-	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, addressReader: addressReader, networkRuntime: networkRuntime, deposits: deposits}
+	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, addressReader: addressReader, runtime: runtime, deposits: deposits}
 }
 
 // GetConfig returns the publicly safe Web3 deposit configuration.
 // GET /api/v1/payment/web3/config
 func (h *Web3DepositHandler) GetConfig(c *gin.Context) {
-	runtimeReady := h.networkRuntime != nil && h.networkRuntime.Ready()
-	response.Success(c, web3deposit.BuildPublicConfig(h.cfg.Web3Deposit, runtimeReady))
+	response.Success(c, web3deposit.BuildPublicConfig(h.cfg.Web3Deposit, h.runtime))
 }
 
 // GetOrCreateAddress returns the authenticated user's long-lived EVM deposit address.
@@ -64,12 +63,13 @@ func (h *Web3DepositHandler) GetOrCreateAddress(c *gin.Context) {
 		return
 	}
 
-	wallet, networks, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
+	wallet, _, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if h.networkRuntime != nil && !h.networkRuntime.Ready() {
+	availableNetworks := availableWeb3DepositNetworks(h.cfg.Web3Deposit, h.runtime)
+	if len(availableNetworks) == 0 {
 		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit network is temporarily unavailable"))
 		return
 	}
@@ -82,8 +82,28 @@ func (h *Web3DepositHandler) GetOrCreateAddress(c *gin.Context) {
 	response.Success(c, web3DepositAddressResponse{
 		Assigned: true,
 		Address:  address.Address,
-		Networks: networks,
+		Networks: availableNetworks,
 	})
+}
+
+func availableWeb3DepositNetworks(cfg config.Web3DepositConfig, readiness web3DepositRuntimeReadiness) []string {
+	if readiness == nil {
+		return nil
+	}
+	networks := make([]string, 0, len(cfg.Networks))
+	for networkKey, network := range cfg.Networks {
+		if !network.Enabled {
+			continue
+		}
+		for assetKey := range network.Assets {
+			if readiness.AssetReady(networkKey, assetKey) {
+				networks = append(networks, networkKey)
+				break
+			}
+		}
+	}
+	sort.Strings(networks)
+	return networks
 }
 
 // GetAddress returns the authenticated user's address without allocating one.
@@ -94,11 +114,12 @@ func (h *Web3DepositHandler) GetAddress(c *gin.Context) {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
-	wallet, networks, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
+	wallet, _, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
+	networks := availableWeb3DepositNetworks(h.cfg.Web3Deposit, h.runtime)
 	address, err := h.addressReader.GetByUserAndWallet(c.Request.Context(), subject.UserID, wallet.WalletID)
 	if errors.Is(err, web3deposit.ErrAddressNotFound) {
 		response.Success(c, web3DepositAddressResponse{Assigned: false, Networks: networks})

@@ -16,6 +16,10 @@ type PublicConfig struct {
 
 type PublicConfigUnavailableReason string
 
+type PublicConfigReadiness interface {
+	AssetReady(networkKey, assetKey string) bool
+}
+
 const (
 	PublicConfigUnavailableFeatureDisabled   PublicConfigUnavailableReason = "feature_disabled"
 	PublicConfigUnavailableUserEntryDisabled PublicConfigUnavailableReason = "user_entry_disabled"
@@ -38,7 +42,7 @@ type PublicAsset struct {
 	AutomaticCreditLimit string `json:"automatic_credit_limit"`
 }
 
-func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicConfig {
+func BuildPublicConfig(cfg config.Web3DepositConfig, readiness PublicConfigReadiness) PublicConfig {
 	result := PublicConfig{Networks: make([]PublicNetwork, 0)}
 	if !cfg.Enabled {
 		result.UnavailableReason = PublicConfigUnavailableFeatureDisabled
@@ -48,11 +52,6 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicCo
 		result.UnavailableReason = PublicConfigUnavailableUserEntryDisabled
 		return result
 	}
-	if !runtimeReady {
-		result.UnavailableReason = PublicConfigUnavailableRuntimeUnhealthy
-		return result
-	}
-
 	networkKeys := make([]string, 0, len(cfg.Networks))
 	for networkKey, network := range cfg.Networks {
 		if network.Enabled {
@@ -61,7 +60,6 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicCo
 	}
 	sort.Strings(networkKeys)
 
-	result.Enabled = true
 	result.Networks = make([]PublicNetwork, 0, len(networkKeys))
 	for _, networkKey := range networkKeys {
 		network := cfg.Networks[networkKey]
@@ -73,6 +71,9 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicCo
 
 		assets := make([]PublicAsset, 0, len(assetKeys))
 		for _, assetKey := range assetKeys {
+			if readiness == nil || !readiness.AssetReady(networkKey, assetKey) {
+				continue
+			}
 			asset := network.Assets[assetKey]
 			assets = append(assets, PublicAsset{
 				Key:                  assetKey,
@@ -84,6 +85,9 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicCo
 			})
 		}
 
+		if len(assets) == 0 {
+			continue
+		}
 		result.Networks = append(result.Networks, PublicNetwork{
 			Key:         networkKey,
 			DisplayName: network.DisplayName,
@@ -91,5 +95,10 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, runtimeReady bool) PublicCo
 			Assets:      assets,
 		})
 	}
+	if len(result.Networks) == 0 {
+		result.UnavailableReason = PublicConfigUnavailableRuntimeUnhealthy
+		return result
+	}
+	result.Enabled = true
 	return result
 }

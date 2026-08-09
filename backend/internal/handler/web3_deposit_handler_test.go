@@ -31,7 +31,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 			},
 		},
 	}}, nil, nil, nil, nil)
-	handler.networkRuntime = web3DepositNetworkReadinessStub{ready: true}
+	handler.runtime = web3DepositRuntimeReadinessStub{ready: true}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
 
@@ -63,11 +63,11 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 	require.Equal(t, "10000.000000", payload.Networks[0].Assets[0].AutomaticCreditLimit)
 }
 
-type web3DepositNetworkReadinessStub struct {
+type web3DepositRuntimeReadinessStub struct {
 	ready bool
 }
 
-func (s web3DepositNetworkReadinessStub) Ready() bool {
+func (s web3DepositRuntimeReadinessStub) AssetReady(string, string) bool {
 	return s.ready
 }
 
@@ -79,7 +79,8 @@ func TestWeb3DepositHandlerGetConfigReportsUnhealthyRuntime(t *testing.T) {
 		Networks: map[string]config.Web3DepositNetworkConfig{
 			"conflux_espace_mainnet": {Enabled: true},
 		},
-	}}, nil, nil, &web3deposit.ConfluxNetworkRuntime{}, nil)
+	}}, nil, nil, nil, nil)
+	handler.runtime = web3DepositRuntimeReadinessStub{ready: false}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
 
@@ -155,11 +156,12 @@ func TestWeb3DepositHandlerGetOrCreateAddress(t *testing.T) {
 				"evm_wallet": {AccountXPub: "account_xpub", AccountPath: "m/44'/60'/0'"},
 			},
 			Networks: map[string]config.Web3DepositNetworkConfig{
-				"z_network": {Enabled: true, WalletID: "evm_wallet"},
-				"a_network": {Enabled: true, WalletID: "evm_wallet"},
+				"z_network": {Enabled: true, WalletID: "evm_wallet", Assets: map[string]config.Web3DepositAssetConfig{"usdt": {}}},
+				"a_network": {Enabled: true, WalletID: "evm_wallet", Assets: map[string]config.Web3DepositAssetConfig{"usdt": {}}},
 			},
 		}},
 		addressAllocator: allocator,
+		runtime:          web3DepositRuntimeReadinessStub{ready: true},
 	}
 	router := authenticatedWeb3DepositTestRouter(handler)
 
@@ -216,7 +218,7 @@ func TestWeb3DepositHandlerUnhealthyNetworkDoesNotAllocate(t *testing.T) {
 	handler := &Web3DepositHandler{
 		cfg:              cfg,
 		addressAllocator: allocator,
-		networkRuntime:   web3deposit.NewConfluxNetworkRuntime(cfg),
+		runtime:          web3DepositRuntimeReadinessStub{ready: true},
 	}
 	router := authenticatedWeb3DepositTestRouter(handler)
 
@@ -240,10 +242,11 @@ func TestWeb3DepositHandlerMapsAddressAllocationConflict(t *testing.T) {
 				"evm_wallet": {AccountXPub: "account_xpub", AccountPath: "m/44'/60'/0'"},
 			},
 			Networks: map[string]config.Web3DepositNetworkConfig{
-				"network": {Enabled: true, WalletID: "evm_wallet"},
+				"network": {Enabled: true, WalletID: "evm_wallet", Assets: map[string]config.Web3DepositAssetConfig{"usdt": {}}},
 			},
 		}},
 		addressAllocator: allocator,
+		runtime:          web3DepositRuntimeReadinessStub{ready: true},
 	}
 	router := authenticatedWeb3DepositTestRouter(handler)
 

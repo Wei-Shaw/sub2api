@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -73,6 +74,54 @@ func TestWeb3DepositHandlerUsesAdminJSONContract(t *testing.T) {
 	})
 }
 
+func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
+	runtime, err := web3deposit.NewScannerRuntime(nil, nil, web3deposit.ScannerRuntimeOptions{Enabled: false})
+	require.NoError(t, err)
+	handler := &Web3DepositHandler{
+		deposits: &adminDepositReaderStub{},
+		runtimes: scannerRuntimeRegistryStub{
+			keys:    []web3deposit.RuntimeKey{{NetworkKey: "network", AssetKey: "usdt0"}},
+			runtime: runtime,
+		},
+	}
+	router := gin.New()
+	router.GET("/runtime", handler.Runtime)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/runtime", nil))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var envelope struct {
+		Data struct {
+			Runtimes []struct {
+				NetworkKey string `json:"network_key"`
+				AssetKey   string `json:"asset_key"`
+				State      string `json:"state"`
+			} `json:"runtimes"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
+	require.Equal(t, "network", envelope.Data.Runtimes[0].NetworkKey)
+	require.Equal(t, "usdt0", envelope.Data.Runtimes[0].AssetKey)
+	require.Equal(t, "disabled", envelope.Data.Runtimes[0].State)
+}
+
+func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {
+	rescanner := &adminRescannerStub{}
+	handler := &Web3DepositHandler{rescanner: rescanner}
+	router := gin.New()
+	router.POST("/rescan", handler.Rescan)
+
+	response := httptest.NewRecorder()
+	body := bytes.NewBufferString(`{"network_key":"network","asset_key":"usdt0","from_block":"100","to_block":"120"}`)
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/rescan", body))
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "network", rescanner.networkKey)
+	require.Equal(t, "usdt0", rescanner.assetKey)
+	require.Equal(t, uint64(100), rescanner.fromBlock)
+	require.Equal(t, uint64(120), rescanner.toBlock)
+}
+
 func assertAdminWeb3DepositJSON(t *testing.T, item map[string]any) {
 	t.Helper()
 	require.Equal(t, float64(7), item["id"])
@@ -86,6 +135,32 @@ func assertAdminWeb3DepositJSON(t *testing.T, item map[string]any) {
 
 type adminDepositReaderStub struct {
 	deposit web3deposit.Deposit
+}
+
+type scannerRuntimeRegistryStub struct {
+	keys    []web3deposit.RuntimeKey
+	runtime *web3deposit.ScannerRuntime
+}
+
+func (s scannerRuntimeRegistryStub) Keys() []web3deposit.RuntimeKey { return s.keys }
+
+func (s scannerRuntimeRegistryStub) Runtime(string, string) (*web3deposit.ScannerRuntime, bool) {
+	return s.runtime, s.runtime != nil
+}
+
+type adminRescannerStub struct {
+	networkKey string
+	assetKey   string
+	fromBlock  uint64
+	toBlock    uint64
+}
+
+func (s *adminRescannerStub) Rescan(_ context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (web3deposit.BoundedRescanResult, error) {
+	s.networkKey = networkKey
+	s.assetKey = assetKey
+	s.fromBlock = fromBlock
+	s.toBlock = toBlock
+	return web3deposit.BoundedRescanResult{FromBlock: fromBlock, ToBlock: toBlock}, nil
 }
 
 func (s *adminDepositReaderStub) ListAdminDeposits(context.Context, web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {

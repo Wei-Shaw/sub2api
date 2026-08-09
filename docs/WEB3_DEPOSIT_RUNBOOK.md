@@ -33,10 +33,12 @@ Operational shutdown order:
 
 Use the administrator Web3 Deposit console or `GET /api/v1/admin/web3-deposits/runtime`.
 
-Monitor:
+The response contains one `runtimes` entry for every enabled `network_key + asset_key` pair. Monitor each entry independently:
 
-- `state` and `leader`: exactly one healthy Scanner leader is expected.
-- `latest_block`, `scanned_block`, and `lag_blocks`.
+- `network_key` and `asset_key` identify the runtime and its persisted Scanner cursor.
+- `state` and `leader`: exactly one healthy Scanner leader is expected per pair.
+- `latest_block`, `scanned_block`, and `lag_blocks` per pair.
+- `endpoints[].healthy` and `endpoints[].unhealthy_until` for the pair-specific RPC pool.
 - `metrics.rpc_healthy`.
 - `metrics.scanner_lag_blocks` and `metrics.finalizer_lag_blocks`.
 - `metrics.scanner_failures_total` and `metrics.finalizer_failures_total`.
@@ -64,7 +66,7 @@ If verification fails, the runtime fails closed and must not allocate new addres
 To stop scanning while preserving facts and cursors:
 
 1. Set `WEB3_DEPOSIT_SCANNER_ENABLED=false` and restart instances normally.
-2. Confirm runtime state becomes `disabled` or `stopped` and no instance holds the Scanner lease.
+2. Confirm every runtime state becomes `disabled` or `stopped` and no instance holds a Scanner lease.
 3. Do not alter `web3_scanner_cursors`.
 4. Resolve the incident or RPC configuration.
 5. Re-enable the Scanner and confirm it resumes from its persisted cursor with the configured overlap.
@@ -75,12 +77,13 @@ Duplicate log reads after restart are expected and safe because the event identi
 
 Use the administrator console's **Bounded rescan** action.
 
-1. Determine the exact inclusive start and end block from chain evidence.
-2. Keep the range within the configured block batch size.
-3. Complete step-up verification.
-4. Submit the range and record the returned event, matched, and deposit counts.
-5. Check the deposit list for newly detected events.
-6. Confirm the production Scanner cursor did not change as a result of the operation.
+1. Select the exact `network_key + asset_key` runtime that owns the chain and token contract.
+2. Determine the exact inclusive start and end block from chain evidence.
+3. Keep the range within that network's configured block batch size.
+4. Complete step-up verification.
+5. Submit the target and range, then record the returned event, matched, and deposit counts.
+6. Check the deposit list for newly detected events.
+7. Confirm the production Scanner cursor for the selected pair did not change as a result of the operation.
 
 Run adjacent non-overlapping ranges for a larger recovery window. Repeating the same range is safe and does not create duplicate event facts.
 

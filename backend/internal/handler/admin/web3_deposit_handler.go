@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
@@ -16,13 +17,27 @@ import (
 type Web3DepositHandler struct {
 	deposits  web3deposit.AdminDepositReader
 	operator  web3deposit.AdminDepositOperator
-	runtime   *web3deposit.ScannerRuntime
-	network   *web3deposit.ConfluxNetworkRuntime
-	rescanner *web3deposit.BoundedRescanner
+	runtimes  web3DepositScannerRuntimeRegistry
+	networks  web3DepositNetworkRuntimeRegistry
+	rescanner web3DepositRescanner
 }
 
-func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtime *web3deposit.ScannerRuntime, network *web3deposit.ConfluxNetworkRuntime, rescanner *web3deposit.BoundedRescanner) *Web3DepositHandler {
-	return &Web3DepositHandler{deposits: deposits, operator: operator, runtime: runtime, network: network, rescanner: rescanner}
+type web3DepositScannerRuntimeRegistry interface {
+	Keys() []web3deposit.RuntimeKey
+	Runtime(networkKey, assetKey string) (*web3deposit.ScannerRuntime, bool)
+}
+
+type web3DepositNetworkRuntimeRegistry interface {
+	Runtime(networkKey, assetKey string) (*web3deposit.ConfluxNetworkRuntime, bool)
+	Find(chainID uint64, tokenContract string) (*web3deposit.ConfluxNetworkRuntime, bool)
+}
+
+type web3DepositRescanner interface {
+	Rescan(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64) (web3deposit.BoundedRescanResult, error)
+}
+
+func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtimes *web3deposit.ScannerRuntimeRegistry, networks *web3deposit.ConfluxNetworkRuntimeRegistry, rescanner *web3deposit.BoundedRescannerRegistry) *Web3DepositHandler {
+	return &Web3DepositHandler{deposits: deposits, operator: operator, runtimes: runtimes, networks: networks, rescanner: rescanner}
 }
 
 func (h *Web3DepositHandler) List(c *gin.Context) {
@@ -76,17 +91,57 @@ func (h *Web3DepositHandler) Stats(c *gin.Context) {
 }
 
 func (h *Web3DepositHandler) Runtime(c *gin.Context) {
-	if h.runtime == nil {
-		response.Success(c, gin.H{"state": "disabled"})
-		return
+	type endpointResponse struct {
+		ID             string     `json:"id"`
+		Healthy        bool       `json:"healthy"`
+		UnhealthyUntil *time.Time `json:"unhealthy_until,omitempty"`
 	}
-	status := h.runtime.Status()
-	lag := uint64(0)
-	if status.LastResult.HeadBlock > status.LastResult.ToBlock {
-		lag = status.LastResult.HeadBlock - status.LastResult.ToBlock
+	type runtimeResponse struct {
+		NetworkKey   string             `json:"network_key"`
+		AssetKey     string             `json:"asset_key"`
+		State        string             `json:"state"`
+		Leader       bool               `json:"leader"`
+		LastError    string             `json:"last_error"`
+		LatestBlock  string             `json:"latest_block"`
+		ScannedBlock string             `json:"scanned_block"`
+		LagBlocks    string             `json:"lag_blocks"`
+		Endpoints    []endpointResponse `json:"endpoints"`
+	}
+
+	items := make([]runtimeResponse, 0)
+	if h.runtimes != nil {
+		for _, key := range h.runtimes.Keys() {
+			item := runtimeResponse{NetworkKey: key.NetworkKey, AssetKey: key.AssetKey, State: string(web3deposit.ScannerRuntimeStateUnhealthy), Endpoints: []endpointResponse{}}
+			if runtime, ok := h.runtimes.Runtime(key.NetworkKey, key.AssetKey); ok && runtime != nil {
+				status := runtime.Status()
+				lag := uint64(0)
+				if status.LastResult.HeadBlock > status.LastResult.ToBlock {
+					lag = status.LastResult.HeadBlock - status.LastResult.ToBlock
+				}
+				item.State = string(status.State)
+				item.Leader = status.LeaseHeld
+				item.LastError = status.LastError
+				item.LatestBlock = strconv.FormatUint(status.LastResult.HeadBlock, 10)
+				item.ScannedBlock = strconv.FormatUint(status.LastResult.ToBlock, 10)
+				item.LagBlocks = strconv.FormatUint(lag, 10)
+			}
+			if h.networks != nil {
+				if network, ok := h.networks.Runtime(key.NetworkKey, key.AssetKey); ok && network != nil {
+					for _, endpoint := range network.EndpointStates() {
+						entry := endpointResponse{ID: endpoint.ID, Healthy: endpoint.Healthy}
+						if !endpoint.UnhealthyUntil.IsZero() {
+							until := endpoint.UnhealthyUntil
+							entry.UnhealthyUntil = &until
+						}
+						item.Endpoints = append(item.Endpoints, entry)
+					}
+				}
+			}
+			items = append(items, item)
+		}
 	}
 	counts, _ := h.deposits.CountAdminDepositsByStatus(c.Request.Context())
-	response.Success(c, gin.H{"state": status.State, "leader": status.LeaseHeld, "last_error": status.LastError, "latest_block": strconv.FormatUint(status.LastResult.HeadBlock, 10), "scanned_block": strconv.FormatUint(status.LastResult.ToBlock, 10), "lag_blocks": strconv.FormatUint(lag, 10), "metrics": web3deposit.SnapshotRuntimeMetrics(), "status_counts": counts})
+	response.Success(c, gin.H{"runtimes": items, "metrics": web3deposit.SnapshotRuntimeMetrics(), "status_counts": counts})
 }
 
 func (h *Web3DepositHandler) Approve(c *gin.Context) {
@@ -103,11 +158,16 @@ func (h *Web3DepositHandler) Approve(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.Conflict("WEB3_DEPOSIT_STATE_CONFLICT", "deposit is not awaiting review"))
 		return
 	}
-	if h.network == nil || !h.network.Ready() || h.network.Pool() == nil {
+	if h.networks == nil {
 		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit network is unavailable"))
 		return
 	}
-	source, _ := web3deposit.NewRPCCanonicalDepositSource(h.network.Pool())
+	network, found := h.networks.Find(deposit.ChainID, deposit.TokenContract)
+	if !found || network == nil || !network.Ready() || network.Pool() == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit network is unavailable"))
+		return
+	}
+	source, _ := web3deposit.NewRPCCanonicalDepositSource(network.Pool())
 	finalized, err := source.FinalizedBlockNumber(c.Request.Context())
 	if err != nil || deposit.BlockNumber > finalized {
 		response.ErrorFrom(c, infraerrors.Conflict("WEB3_DEPOSIT_NOT_FINALIZED", "deposit is not finalized"))
@@ -163,10 +223,12 @@ func (h *Web3DepositHandler) Retry(c *gin.Context) {
 
 func (h *Web3DepositHandler) Rescan(c *gin.Context) {
 	var input struct {
-		FromBlock string `json:"from_block"`
-		ToBlock   string `json:"to_block"`
+		NetworkKey string `json:"network_key"`
+		AssetKey   string `json:"asset_key"`
+		FromBlock  string `json:"from_block"`
+		ToBlock    string `json:"to_block"`
 	}
-	if err := c.ShouldBindJSON(&input); err != nil {
+	if err := c.ShouldBindJSON(&input); err != nil || strings.TrimSpace(input.NetworkKey) == "" || strings.TrimSpace(input.AssetKey) == "" {
 		response.BadRequest(c, "Invalid rescan request")
 		return
 	}
@@ -176,7 +238,11 @@ func (h *Web3DepositHandler) Rescan(c *gin.Context) {
 		response.BadRequest(c, "Invalid block range")
 		return
 	}
-	result, err := h.rescanner.Rescan(c.Request.Context(), fromBlock, toBlock)
+	if h.rescanner == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit rescan is unavailable"))
+		return
+	}
+	result, err := h.rescanner.Rescan(c.Request.Context(), input.NetworkKey, input.AssetKey, fromBlock, toBlock)
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.BadRequest("WEB3_DEPOSIT_RESCAN_INVALID", err.Error()))
 		return

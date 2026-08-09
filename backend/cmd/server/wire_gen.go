@@ -299,19 +299,19 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	web3DepositWalletRepository := repository.NewWeb3DepositWalletRepository(client)
 	web3DepositAddressRepository := repository.NewWeb3DepositAddressRepository(client)
 	addressAllocator := web3deposit.NewAddressAllocator(web3DepositWalletRepository, web3DepositWalletRepository, web3DepositAddressRepository)
-	confluxNetworkRuntime := web3deposit.NewConfluxNetworkRuntime(configConfig)
+	confluxNetworkRuntime := web3deposit.NewConfluxNetworkRuntimeRegistry(configConfig)
 	web3ScannerCursorRepository := repository.NewWeb3ScannerCursorRepository(client)
 	web3ScannerBatchRepository := repository.NewWeb3ScannerBatchRepository(client)
 	web3DepositRepository := repository.NewWeb3DepositRepository(client)
 	web3FinalizerBatchRepository := repository.NewWeb3FinalizerBatchRepository(client)
-	scannerRuntime := web3deposit.ProvideScannerRuntime(configConfig, confluxNetworkRuntime, web3ScannerCursorRepository, web3ScannerCursorRepository, web3DepositAddressRepository, web3ScannerBatchRepository, web3DepositRepository, web3DepositRepository, web3FinalizerBatchRepository)
+	scannerRuntime := web3deposit.ProvideScannerRuntimeRegistry(configConfig, confluxNetworkRuntime, web3ScannerCursorRepository, web3ScannerCursorRepository, web3DepositAddressRepository, web3ScannerBatchRepository, web3DepositRepository, web3DepositRepository, web3FinalizerBatchRepository)
 	web3CreditJobRepository := repository.NewWeb3CreditJobRepository(db)
 	web3AccountingRepository := repository.NewWeb3AccountingRepository(db)
 	creditWorkerRuntime := web3deposit.ProvideCreditWorkerRuntime(configConfig, web3CreditJobRepository, web3AccountingRepository)
-	boundedRescanner := web3deposit.NewBoundedRescanner(configConfig, confluxNetworkRuntime, web3DepositAddressRepository, web3DepositRepository)
+	boundedRescanner := web3deposit.NewBoundedRescannerRegistry(configConfig, confluxNetworkRuntime, web3DepositAddressRepository, web3DepositRepository)
 	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, web3DepositRepository, scannerRuntime, confluxNetworkRuntime, boundedRescanner)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, adminWeb3DepositHandler, affiliateHandler, complianceHandler, auditLogHandler, upstreamBillingProbeService, ollamaCloudUsageService)
-	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, confluxNetworkRuntime, web3DepositRepository)
+	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, scannerRuntime, web3DepositRepository)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	modelPlazaHandler := handler.NewModelPlazaHandler(channelService, apiKeyService, settingService)
@@ -422,9 +422,9 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
-	scannerRuntime *web3deposit.ScannerRuntime,
+	scannerRuntime *web3deposit.ScannerRuntimeRegistry,
 	creditWorkerRuntime *web3deposit.CreditWorkerRuntime,
-	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntime,
+	confluxNetworkRuntime *web3deposit.ConfluxNetworkRuntimeRegistry,
 	promptAudit *securityaudit.PromptService,
 ) func() {
 	return func() {
