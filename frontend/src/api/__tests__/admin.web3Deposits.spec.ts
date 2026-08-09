@@ -31,8 +31,10 @@ describe('admin Web3 deposits API', () => {
   })
 
   it('sends bounded block ranges as strings', () => {
-    web3DepositsAPI.rescan('100', '120')
+    web3DepositsAPI.rescan('conflux_espace', 'usdt0', '100', '120')
     expect(post).toHaveBeenCalledWith('/admin/web3-deposits/rescan', {
+      network_key: 'conflux_espace',
+      asset_key: 'usdt0',
       from_block: '100',
       to_block: '120',
     })

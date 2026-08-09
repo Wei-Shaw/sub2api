@@ -27,20 +27,26 @@
           <div class="flex-1 space-y-4">
             <div>
               <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t('web3Deposit.network') }}</p>
-              <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ network?.display_name || 'Conflux eSpace' }}</p>
-              <p class="text-sm text-gray-500">{{ t('web3Deposit.chainId', { id: network?.chain_id || '1030' }) }}</p>
+              <select v-if="(config?.networks.length || 0) > 1" v-model="selectedNetworkKey" class="input mt-2 w-full">
+                <option v-for="item in config?.networks" :key="item.key" :value="item.key">{{ item.display_name }}</option>
+              </select>
+              <p v-else class="mt-1 font-semibold text-gray-900 dark:text-white">{{ network?.display_name || '—' }}</p>
+              <p class="text-sm text-gray-500">{{ t('web3Deposit.chainId', { id: network?.chain_id || '—' }) }}</p>
             </div>
             <div>
               <p class="text-xs font-medium uppercase tracking-wide text-gray-500">{{ t('web3Deposit.token') }}</p>
-              <p class="mt-1 font-semibold text-gray-900 dark:text-white">{{ asset?.display_name || 'USDT0' }}</p>
+              <select v-if="(network?.assets.length || 0) > 1" v-model="selectedAssetKey" class="input mt-2 w-full">
+                <option v-for="item in network?.assets" :key="item.key" :value="item.key">{{ item.display_name }}</option>
+              </select>
+              <p v-else class="mt-1 font-semibold text-gray-900 dark:text-white">{{ asset?.display_name || '—' }}</p>
               <div class="mt-2 flex items-start gap-2">
                 <code class="min-w-0 flex-1 break-all rounded-lg bg-gray-100 px-3 py-2 text-xs dark:bg-dark-800">{{ asset?.contract_address }}</code>
                 <button class="btn btn-secondary" :disabled="!asset" @click="copy(asset?.contract_address || '')">{{ t('web3Deposit.copy') }}</button>
               </div>
             </div>
             <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.minimumDeposit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.minimum_deposit || '1.000000' }} USDT0</dd></div>
-              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.automaticCreditLimit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.automatic_credit_limit || '10000.000000' }} USDT0</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.minimumDeposit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.minimum_deposit || '—' }} {{ asset?.display_name || '' }}</dd></div>
+              <div class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-dark-800"><dt class="text-gray-500">{{ t('web3Deposit.automaticCreditLimit') }}</dt><dd class="mt-1 font-semibold">{{ asset?.automatic_credit_limit || '—' }} {{ asset?.display_name || '' }}</dd></div>
             </dl>
           </div>
         </div>
@@ -60,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -81,8 +87,16 @@ const address = ref<Web3DepositAddress>()
 const qrCode = ref('')
 const loading = ref(true)
 const creating = ref(false)
-const network = computed(() => config.value?.networks[0])
-const asset = computed(() => network.value?.assets[0])
+const selectedNetworkKey = ref('')
+const selectedAssetKey = ref('')
+const network = computed(() => config.value?.networks.find(item => item.key === selectedNetworkKey.value) || config.value?.networks[0])
+const asset = computed(() => network.value?.assets.find(item => item.key === selectedAssetKey.value) || network.value?.assets[0])
+
+watch(network, value => {
+  if (!value?.assets.some(item => item.key === selectedAssetKey.value)) {
+    selectedAssetKey.value = value?.assets[0]?.key || ''
+  }
+})
 const unavailableMessage = computed(() => {
   if (!config.value || config.value.enabled) return ''
   switch (config.value.unavailable_reason) {
@@ -107,6 +121,8 @@ async function load() {
     const [configResponse, addressResponse] = await Promise.all([web3DepositAPI.getConfig(), web3DepositAPI.getAddress()])
     config.value = configResponse.data
     address.value = addressResponse.data
+    selectedNetworkKey.value = config.value.networks[0]?.key || ''
+    selectedAssetKey.value = config.value.networks[0]?.assets[0]?.key || ''
     await renderQRCode(address.value.address)
   } catch (error) {
     appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.loadAddress')))

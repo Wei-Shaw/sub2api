@@ -5,8 +5,11 @@
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.runtime.title') }}</div>
           <div class="mt-1 font-semibold">
-            {{ runtimeStateLabel }} · {{ t('admin.web3Deposits.runtime.lag', { blocks: runtime?.lag_blocks || '0' }) }}
+            {{ runtimeStateLabel }} · {{ t('admin.web3Deposits.runtime.lag', { blocks: selectedRuntime?.lag_blocks || '0' }) }}
           </div>
+          <select v-if="runtimes.length > 1" v-model="selectedRuntimeKey" class="input mt-2 w-full text-sm">
+            <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }} / {{ item.asset_key }}</option>
+          </select>
         </div>
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.stats.manualReview') }}</div>
@@ -98,6 +101,9 @@
       @close="showRescan = false"
     >
       <div class="space-y-3">
+        <select v-model="selectedRuntimeKey" class="input w-full">
+          <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }} / {{ item.asset_key }}</option>
+        </select>
         <input v-model="fromBlock" class="input w-full" :placeholder="t('admin.web3Deposits.dialogs.fromBlock')" />
         <input v-model="toBlock" class="input w-full" :placeholder="t('admin.web3Deposits.dialogs.toBlock')" />
       </div>
@@ -169,7 +175,8 @@ const stepUp = useStepUp()
 const { t } = useI18n()
 const items = ref<AdminWeb3Deposit[]>([])
 const stats = ref<Record<string, number>>({})
-const runtime = ref<Web3DepositRuntime>()
+const runtimes = ref<Web3DepositRuntime[]>([])
+const selectedRuntimeKey = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -178,13 +185,18 @@ const keyword = ref('')
 const showRescan = ref(false)
 const fromBlock = ref('')
 const toBlock = ref('')
+const selectedRuntime = computed(() => runtimes.value.find(item => runtimeKey(item) === selectedRuntimeKey.value) || runtimes.value[0])
 const runtimeStateLabel = computed(() => {
-  const state = runtime.value?.state || ''
+  const state = selectedRuntime.value?.state || ''
   const key = runtimeStateKeys[state]
   return key
     ? t(`admin.web3Deposits.runtimeStates.${key}`)
     : t('admin.web3Deposits.runtimeStates.unknown', { value: state || '—' })
 })
+
+function runtimeKey(item: Web3DepositRuntime) {
+  return `${item.network_key}:${item.asset_key}`
+}
 
 function statusLabel(value: string) {
   const key = statusKeys[value]
@@ -218,7 +230,10 @@ async function load() {
     items.value = list.data.items
     total.value = list.data.total
     stats.value = counts.data
-    runtime.value = state.data
+    runtimes.value = state.data.runtimes
+    if (!runtimes.value.some(item => runtimeKey(item) === selectedRuntimeKey.value)) {
+      selectedRuntimeKey.value = runtimes.value[0] ? runtimeKey(runtimes.value[0]) : ''
+    }
   } catch (error) {
     app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadFailed')))
   }
@@ -256,7 +271,9 @@ function retry(item: AdminWeb3Deposit) {
 }
 
 function rescan() {
-  void run(() => web3DepositsAPI.rescan(fromBlock.value, toBlock.value)).then(() => {
+  const target = selectedRuntime.value
+  if (!target) return
+  void run(() => web3DepositsAPI.rescan(target.network_key, target.asset_key, fromBlock.value, toBlock.value)).then(() => {
     showRescan.value = false
   })
 }
