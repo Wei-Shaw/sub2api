@@ -245,7 +245,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Notes:       normalizeAccountNotes(req.Notes),
 		Platform:    req.Platform,
 		Type:        req.Type,
-		Credentials: req.Credentials,
+		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
 		Extra:       req.Extra,
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
@@ -338,7 +338,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
-		account.Credentials = *req.Credentials
+		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
 	}
 
 	if req.Extra != nil {

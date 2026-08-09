@@ -280,6 +280,11 @@ export interface PublicSettings {
 	service_quota_enabled: boolean;
 	affiliate_enabled: boolean;
 	allow_user_view_error_requests?: boolean;
+	registration_email_domain_quota_enabled?: boolean;
+	/** Exclusive mode: v1 active probes or v2 passive aggregation. Default v2. */
+	channel_monitor_mode?: "v1" | "v2";
+	/** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
+	channel_monitor_hide_throughput?: boolean;
 }
 
 export interface AuthResponse {
@@ -604,6 +609,13 @@ export interface Group {
 	require_privacy_set: boolean;
 	created_at: string;
 	updated_at: string;
+	// Optional model-family x resolution overrides for Grok video pricing.
+	video_model_prices?: VideoModelPrices;
+	// Grok Voice 显式定价（分组级）
+	search_price_per_1k: number | null;
+	audio_realtime_price_per_min: number | null;
+	audio_tts_price_per_million_chars: number | null;
+	audio_stt_price_per_hour: number | null;
 }
 
 export interface AdminGroup extends Group {
@@ -811,6 +823,11 @@ export interface CreateGroupRequest {
 	require_privacy_set?: boolean;
 	// 从指定分组复制账号
 	copy_accounts_from_group_ids?: number[];
+	video_model_prices?: VideoModelPrices;
+	search_price_per_1k?: number | null;
+	audio_realtime_price_per_min?: number | null;
+	audio_tts_price_per_million_chars?: number | null;
+	audio_stt_price_per_hour?: number | null;
 }
 
 export interface UpdateGroupRequest {
@@ -865,6 +882,11 @@ export interface UpdateGroupRequest {
 	require_oauth_only?: boolean;
 	require_privacy_set?: boolean;
 	copy_accounts_from_group_ids?: number[];
+	video_model_prices?: VideoModelPrices;
+	search_price_per_1k?: number | null;
+	audio_realtime_price_per_min?: number | null;
+	audio_tts_price_per_million_chars?: number | null;
+	audio_stt_price_per_hour?: number | null;
 }
 
 // ==================== Account & Proxy Types ====================
@@ -1043,6 +1065,9 @@ export interface TempUnschedulableState {
 	matched_keyword: string;
 	rule_index: number;
 	error_message: string;
+	trigger_count?: number;
+	trigger_threshold?: number;
+	trigger_window_minutes?: number;
 }
 
 export interface TempUnschedulableStatus {
@@ -1343,6 +1368,14 @@ export interface GrokBillingSummary {
 	billing_period_start?: string;
 	billing_period_end?: string;
 	used_percent?: number | null;
+	/** Absolute USD money from billing probes */
+	prepaid_balance?: number | null;
+	monthly_limit?: number | null;
+	monthly_used?: number | null;
+	on_demand_cap?: number | null;
+	on_demand_used?: number | null;
+	top_up_method?: string;
+	is_unified_billing_user?: boolean;
 	plan?: string;
 	status_code?: number;
 	source?: string;
@@ -1404,6 +1437,7 @@ export interface AccountUsageInfo {
 	error_code?: string;
 
 	error?: string; // usage 获取失败时的错误信息
+	thirty_day?: UsageProgress | null;
 }
 
 // OpenAI Codex usage snapshot (from response headers)

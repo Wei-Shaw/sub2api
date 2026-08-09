@@ -1,5 +1,6 @@
 export default {
 	common: {
+
 		loading: "Loading...",
 		submitting: "Submitting...",
 		justNow: "just now",
@@ -102,6 +103,13 @@ export default {
 				withSuffix: "{time} to lift",
 			},
 		},
+		upload: "Upload",
+		remove: "Remove",
+		noFileSelected: "No file selected",
+		selectedFile: "Selected: {name}",
+		fileReadFailed: "Failed to read file",
+		selectImageFile: "Please select an image file",
+		fileTooLargeKb: "File too large ({size} KB), max {max} KB",
 	},
 
 	adminCompliance: {

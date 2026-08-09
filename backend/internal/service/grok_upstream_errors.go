@@ -184,11 +184,10 @@ func grokContentPolicyClientMessage(responseBody []byte) string {
 
 // shouldFailoverGrokUpstreamError is body-aware: Grok content refusals must stay
 // on the current account and be returned to the caller instead of consuming the
-// account pool. A 404 from Grok is treated as account-level (unlike other
-// OpenAI-compatible upstreams that may use 404 for request-specific mismatches).
-// A 405 is likewise account-level: a custom base_url that does not implement
-// /v1/responses fails identically on every retry, so the request must move to
-// another account instead of hammering the same one (upstream #4668).
+// account pool. A 404/405 from Grok is treated as account-level (custom base_url
+// or missing Responses endpoint fails identically on every retry). Free-usage /
+// empty-output / billing bodies also failover even when the HTTP status alone
+// would not (e.g. 400 with free-usage-exhausted).
 func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, responseBody []byte) bool {
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
@@ -196,6 +195,11 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	switch statusCode {
 	case http.StatusNotFound, http.StatusMethodNotAllowed:
 		return true
+	}
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	switch decision.Class {
+	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
+		return decision.ShouldFailover
 	}
 	return s.shouldFailoverUpstreamError(statusCode)
 }

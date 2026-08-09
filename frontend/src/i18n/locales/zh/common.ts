@@ -1,5 +1,6 @@
 export default {
 	common: {
+
 		loading: "加载中...",
 		submitting: "提交中...",
 		justNow: "刚刚",
@@ -102,6 +103,13 @@ export default {
 				withSuffix: "{time} 后解除",
 			},
 		},
+		upload: "上传",
+		remove: "移除",
+		noFileSelected: "未选择文件",
+		selectedFile: "已选：{name}",
+		fileReadFailed: "读取文件失败",
+		selectImageFile: "请选择图片文件",
+		fileTooLargeKb: "文件过大（{size} KB），上限 {max} KB",
 	},
 
 	adminCompliance: {
