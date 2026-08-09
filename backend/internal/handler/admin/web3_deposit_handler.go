@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
@@ -40,7 +41,11 @@ func (h *Web3DepositHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_ADMIN_LIST_FAILED", "failed to list web3 deposits").WithCause(err))
 		return
 	}
-	response.Paginated(c, items, total, page, pageSize)
+	result := make([]dto.AdminWeb3Deposit, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.Web3DepositFromDomainAdmin(item))
+	}
+	response.Paginated(c, result, total, page, pageSize)
 }
 
 func (h *Web3DepositHandler) Get(c *gin.Context) {
@@ -58,7 +63,7 @@ func (h *Web3DepositHandler) Get(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, item)
+	response.Success(c, dto.Web3DepositFromDomainAdmin(item))
 }
 
 func (h *Web3DepositHandler) Stats(c *gin.Context) {
