@@ -2113,7 +2113,7 @@ var (
 		{Name: "to_address", Type: field.TypeString, Size: 42},
 		{Name: "raw_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(78,0)"}},
 		{Name: "token_decimals", Type: field.TypeInt16},
-		{Name: "token_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(38,18)"}},
+		{Name: "token_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(78,6)"}},
 		{Name: "credited_amount", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "status", Type: field.TypeString, Size: 32, Default: "detected"},
 		{Name: "review_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},

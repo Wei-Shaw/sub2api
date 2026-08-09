@@ -57,7 +57,7 @@ func (p *DepositEventPersister) detectedDeposit(match MatchedTransferEvent) (Dep
 	}
 
 	rawAmount := event.RawAmount()
-	amounts, err := ConvertUSDT0Amount(rawAmount)
+	tokenAmount, err := ConvertUSDT0TokenAmount(rawAmount)
 	if err != nil {
 		return Deposit{}, fmt.Errorf("convert detected web3 deposit amount: %w", err)
 	}
@@ -74,7 +74,7 @@ func (p *DepositEventPersister) detectedDeposit(match MatchedTransferEvent) (Dep
 		ToAddress:        normalizeEVMAddress(event.To),
 		RawAmount:        rawAmount.String(),
 		TokenDecimals:    p.config.TokenDecimals,
-		TokenAmount:      amounts.TokenAmount.StringFixed(p.config.TokenDecimals),
+		TokenAmount:      tokenAmount.StringFixed(p.config.TokenDecimals),
 		Status:           DepositStatusDetected,
 	}, nil
 }

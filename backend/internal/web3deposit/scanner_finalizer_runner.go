@@ -47,6 +47,10 @@ func (r *ScannerFinalizerRunner) ScanNext(ctx context.Context, leaseToken string
 			web3RuntimeMetrics.orphaned.Add(uint64(finalizerResult.OrphanedCount))
 			slog.Warn("web3_deposit_orphaned", "count", finalizerResult.OrphanedCount, "from_block", finalizerResult.FromBlock, "to_block", finalizerResult.ToBlock)
 		}
+		if finalizerResult.OverflowedCount > 0 {
+			web3RuntimeMetrics.amountOverflows.Add(uint64(finalizerResult.OverflowedCount))
+			slog.Error("web3_deposit_amount_overflow", "count", finalizerResult.OverflowedCount, "from_block", finalizerResult.FromBlock, "to_block", finalizerResult.ToBlock)
+		}
 	}
 	return scannerResult, errors.Join(scannerErr, finalizerErr)
 }

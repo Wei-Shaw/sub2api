@@ -73,3 +73,13 @@ func TestConvertUSDT0AmountDoesNotRetainRawAmount(t *testing.T) {
 	require.Equal(t, "1.234567", amounts.TokenAmount.StringFixed(USDT0Decimals))
 	require.Equal(t, "1.234567", amounts.CreditedAmount.StringFixed(USDT0Decimals))
 }
+
+func TestConvertUSDT0TokenAmountPreservesMaximumUint256(t *testing.T) {
+	t.Parallel()
+
+	maximumUint256 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	tokenAmount, err := ConvertUSDT0TokenAmount(maximumUint256)
+
+	require.NoError(t, err)
+	require.Equal(t, "115792089237316195423570985008687907853269984665640564039457584007913129.639935", tokenAmount.StringFixed(USDT0Decimals))
+}

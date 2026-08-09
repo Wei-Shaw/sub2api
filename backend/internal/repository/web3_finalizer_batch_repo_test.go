@@ -24,6 +24,10 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 	orphanedRecord.TxHash = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 	orphaned, err := depositRepo.Create(ctx, orphanedRecord)
 	require.NoError(t, err)
+	failedRecord := testWeb3DepositRecord(9)
+	failedRecord.TxHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	failed, err := depositRepo.Create(ctx, failedRecord)
+	require.NoError(t, err)
 
 	updated, err := batchRepo.CommitFinalizedBatch(ctx, web3deposit.FinalizerBatch{
 		ScannerKey:       testWeb3ScannerKey,
@@ -33,11 +37,12 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 		Decisions: []web3deposit.FinalizedDepositDecision{
 			{DepositID: ready.ID, Status: web3deposit.DepositStatusReadyToCredit},
 			{DepositID: orphaned.ID, Status: web3deposit.DepositStatusOrphaned, FailureReason: string(web3deposit.CanonicalMismatchBlockHash)},
+			{DepositID: failed.ID, Status: web3deposit.DepositStatusFailed, FailureReason: web3deposit.FailureReasonAmountExceedsPlatformBalance},
 		},
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 2, updated)
+	require.Equal(t, 3, updated)
 	readyStored, err := depositRepo.GetByEvent(ctx, ready.ChainID, ready.TxHash, ready.LogIndex)
 	require.NoError(t, err)
 	require.Equal(t, web3deposit.DepositStatusReadyToCredit, readyStored.Status)
@@ -46,6 +51,11 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 	require.NoError(t, err)
 	require.Equal(t, web3deposit.DepositStatusOrphaned, orphanedStored.Status)
 	require.Equal(t, string(web3deposit.CanonicalMismatchBlockHash), *orphanedStored.FailureReason)
+	failedStored, err := depositRepo.GetByEvent(ctx, failed.ChainID, failed.TxHash, failed.LogIndex)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusFailed, failedStored.Status)
+	require.Equal(t, web3deposit.FailureReasonAmountExceedsPlatformBalance, *failedStored.FailureReason)
+	require.Equal(t, &now, failedStored.FinalizedAt)
 	cursor, err := cursorRepo.GetByKey(ctx, testWeb3ScannerKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(110), cursor.LastFinalizedBlock)

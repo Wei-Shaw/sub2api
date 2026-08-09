@@ -38,3 +38,14 @@ func TestClassifyFinalizedDepositAmountRejectsInvalidAmount(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrFinalizedDepositAmountInvalid)
 }
+
+func TestClassifyFinalizedDepositAmountFailsSafeAbovePlatformRange(t *testing.T) {
+	classification, err := ClassifyFinalizedDepositAmount(
+		"1000000000000.000000",
+		ChainConfig{MinimumDeposit: decimal.NewFromInt(1), AutoCreditLimit: decimal.NewFromInt(10000)},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, DepositStatusFailed, classification.Status)
+	require.Equal(t, FailureReasonAmountExceedsPlatformBalance, classification.FailureReason)
+}

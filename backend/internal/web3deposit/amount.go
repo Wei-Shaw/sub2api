@@ -27,14 +27,10 @@ type DepositAmounts struct {
 // rejects zero, out-of-range uint256 values, and amounts that cannot fit in
 // the platform DECIMAL(20,8) balance range without using floating point.
 func ConvertUSDT0Amount(rawAmount *big.Int) (DepositAmounts, error) {
-	if err := validateUint256(rawAmount); err != nil {
+	tokenAmount, err := ConvertUSDT0TokenAmount(rawAmount)
+	if err != nil {
 		return DepositAmounts{}, err
 	}
-	if rawAmount.Sign() == 0 {
-		return DepositAmounts{}, ErrRawAmountZero
-	}
-
-	tokenAmount := decimal.NewFromBigInt(rawAmount, -USDT0Decimals)
 	if tokenAmount.GreaterThan(maxPlatformBalance) {
 		return DepositAmounts{}, ErrCreditedAmountOverflow
 	}
@@ -42,6 +38,16 @@ func ConvertUSDT0Amount(rawAmount *big.Int) (DepositAmounts, error) {
 		TokenAmount:    tokenAmount,
 		CreditedAmount: tokenAmount,
 	}, nil
+}
+
+func ConvertUSDT0TokenAmount(rawAmount *big.Int) (decimal.Decimal, error) {
+	if err := validateUint256(rawAmount); err != nil {
+		return decimal.Zero, err
+	}
+	if rawAmount.Sign() == 0 {
+		return decimal.Zero, ErrRawAmountZero
+	}
+	return decimal.NewFromBigInt(rawAmount, -USDT0Decimals), nil
 }
 
 func validateUint256(rawAmount *big.Int) error {

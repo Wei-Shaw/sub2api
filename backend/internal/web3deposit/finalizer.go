@@ -23,13 +23,14 @@ type FinalizerOptions struct {
 }
 
 type FinalizerResult struct {
-	FinalizedHead  uint64
-	FromBlock      uint64
-	ToBlock        uint64
-	CandidateCount int
-	FinalizedCount int
-	OrphanedCount  int
-	Advanced       bool
+	FinalizedHead   uint64
+	FromBlock       uint64
+	ToBlock         uint64
+	CandidateCount  int
+	FinalizedCount  int
+	OrphanedCount   int
+	OverflowedCount int
+	Advanced        bool
 }
 
 type Finalizer struct {
@@ -90,6 +91,7 @@ func (f *Finalizer) FinalizeNext(ctx context.Context, leaseToken string, now tim
 
 	decisions := make([]FinalizedDepositDecision, 0, len(candidates))
 	orphanedCount := 0
+	overflowedCount := 0
 	for _, deposit := range candidates {
 		decision, err := f.finalizeDeposit(ctx, deposit)
 		if err != nil {
@@ -97,6 +99,9 @@ func (f *Finalizer) FinalizeNext(ctx context.Context, leaseToken string, now tim
 		}
 		if decision.Status == DepositStatusOrphaned {
 			orphanedCount++
+		}
+		if decision.FailureReason == FailureReasonAmountExceedsPlatformBalance {
+			overflowedCount++
 		}
 		decisions = append(decisions, decision)
 	}
@@ -111,13 +116,14 @@ func (f *Finalizer) FinalizeNext(ctx context.Context, leaseToken string, now tim
 		return FinalizerResult{}, fmt.Errorf("commit web3 finalizer batch: %w", err)
 	}
 	return FinalizerResult{
-		FinalizedHead:  finalizedHead,
-		FromBlock:      fromBlock,
-		ToBlock:        toBlock,
-		CandidateCount: len(candidates),
-		FinalizedCount: updated,
-		OrphanedCount:  orphanedCount,
-		Advanced:       true,
+		FinalizedHead:   finalizedHead,
+		FromBlock:       fromBlock,
+		ToBlock:         toBlock,
+		CandidateCount:  len(candidates),
+		FinalizedCount:  updated,
+		OrphanedCount:   orphanedCount,
+		OverflowedCount: overflowedCount,
+		Advanced:        true,
 	}, nil
 }
 
@@ -148,9 +154,10 @@ func (f *Finalizer) finalizeDeposit(ctx context.Context, deposit Deposit) (Final
 		}
 	}
 	return FinalizedDepositDecision{
-		DepositID:    deposit.ID,
-		Status:       classification.Status,
-		ReviewReason: classification.ReviewReason,
+		DepositID:     deposit.ID,
+		Status:        classification.Status,
+		ReviewReason:  classification.ReviewReason,
+		FailureReason: classification.FailureReason,
 	}, nil
 }
 

@@ -201,6 +201,19 @@ func TestWeb3DepositRepositoryAdminStateTransitionsAreConditional(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, web3deposit.DepositStatusReadyToCredit, retried.Status)
 	require.Nil(t, retried.FailureReason)
+
+	permanentFailure := testWeb3DepositRecord(24)
+	permanentFailure.TxHash = fmt.Sprintf("0x%064x", 24)
+	permanentFailure.Status = web3deposit.DepositStatusFailed
+	overflowReason := web3deposit.FailureReasonAmountExceedsPlatformBalance
+	permanentFailure.FailureReason = &overflowReason
+	permanentFailureID, err := repo.Create(ctx, permanentFailure)
+	require.NoError(t, err)
+	require.ErrorIs(t, repo.RetryFailedDeposit(ctx, permanentFailureID.ID), web3deposit.ErrAdminDepositStateConflict)
+	permanentStored, err := repo.GetAdminDeposit(ctx, permanentFailureID.ID)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusFailed, permanentStored.Status)
+	require.Equal(t, overflowReason, *permanentStored.FailureReason)
 }
 
 func TestWeb3DepositRepositoryRejectsInvalidValues(t *testing.T) {

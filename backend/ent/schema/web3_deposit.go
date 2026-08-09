@@ -86,9 +86,9 @@ func (Web3Deposit) Fields() []ent.Field {
 			Validate(validateWeb3DepositTokenDecimals),
 		field.String("token_amount").
 			Immutable().
-			SchemaType(map[string]string{dialect.Postgres: "numeric(38,18)"}).
+			SchemaType(map[string]string{dialect.Postgres: "numeric(78,6)"}).
 			Validate(func(value string) error {
-				return validateWeb3DepositDecimal(value, 38, 18, "token amount")
+				return validateWeb3DepositDecimal(value, 78, 6, "token amount")
 			}),
 		field.String("credited_amount").
 			Optional().

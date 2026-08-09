@@ -65,7 +65,9 @@ func commitFinalizedBatch(ctx context.Context, client *dbent.Client, batch depos
 			}
 		} else {
 			update.SetFinalizedAt(batch.Now)
-			if decision.ReviewReason != "" {
+			if decision.Status == depositdomain.DepositStatusFailed && decision.FailureReason != "" {
+				update.SetFailureReason(decision.FailureReason)
+			} else if decision.ReviewReason != "" {
 				update.SetReviewReason(decision.ReviewReason)
 			}
 		}
@@ -92,7 +94,8 @@ func isFinalizerTargetStatus(status depositdomain.DepositStatus) bool {
 	case depositdomain.DepositStatusReadyToCredit,
 		depositdomain.DepositStatusBelowMinimum,
 		depositdomain.DepositStatusManualReview,
-		depositdomain.DepositStatusOrphaned:
+		depositdomain.DepositStatusOrphaned,
+		depositdomain.DepositStatusFailed:
 		return true
 	default:
 		return false

@@ -110,6 +110,33 @@ func TestFinalizerMarksCanonicalMismatchOrphaned(t *testing.T) {
 	require.Equal(t, string(CanonicalMismatchBlockHash), batchStore.batch.Decisions[0].FailureReason)
 }
 
+func TestFinalizerFailsSafeWhenAmountExceedsPlatformRange(t *testing.T) {
+	deposit := finalizerTestDeposit(1, "1000000000000.000000")
+	canonical := finalizerCanonicalSource([]Deposit{deposit}, 150)
+	verifier, err := NewCanonicalDepositVerifier(canonical)
+	require.NoError(t, err)
+	batchStore := &finalizerBatchStoreStub{}
+	finalizer, err := NewFinalizer(
+		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 140, LastFinalizedBlock: 100}},
+		canonical,
+		verifier,
+		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		finalizerEligibilityStub{eligible: true},
+		batchStore,
+		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 20, ChainConfig: ChainConfig{
+			MinimumDeposit: decimal.NewFromInt(1), AutoCreditLimit: decimal.NewFromInt(10000),
+		}},
+	)
+	require.NoError(t, err)
+
+	result, err := finalizer.FinalizeNext(context.Background(), "lease-token", time.Now())
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.OverflowedCount)
+	require.Equal(t, DepositStatusFailed, batchStore.batch.Decisions[0].Status)
+	require.Equal(t, FailureReasonAmountExceedsPlatformBalance, batchStore.batch.Decisions[0].FailureReason)
+}
+
 func finalizerTestDeposit(id int64, amount string) Deposit {
 	deposit := canonicalVerifierDeposit()
 	deposit.ID = id

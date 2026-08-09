@@ -43,12 +43,14 @@ func (s DepositStatus) CanTransitionTo(next DepositStatus) bool {
 			next == DepositStatusReadyToCredit ||
 			next == DepositStatusBelowMinimum ||
 			next == DepositStatusManualReview ||
-			next == DepositStatusOrphaned
+			next == DepositStatusOrphaned ||
+			next == DepositStatusFailed
 	case DepositStatusConfirming:
 		return next == DepositStatusReadyToCredit ||
 			next == DepositStatusBelowMinimum ||
 			next == DepositStatusManualReview ||
-			next == DepositStatusOrphaned
+			next == DepositStatusOrphaned ||
+			next == DepositStatusFailed
 	case DepositStatusReadyToCredit:
 		return next == DepositStatusCrediting || next == DepositStatusFailed
 	case DepositStatusCrediting:

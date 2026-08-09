@@ -11,6 +11,7 @@ type RuntimeMetricsSnapshot struct {
 	OrphanedDeposits   uint64 `json:"orphaned_deposits_total"`
 	CreditRetries      uint64 `json:"credit_retries_total"`
 	CreditFailures     uint64 `json:"credit_failures_total"`
+	AmountOverflows    uint64 `json:"amount_overflows_total"`
 }
 
 var web3RuntimeMetrics struct {
@@ -22,8 +23,9 @@ var web3RuntimeMetrics struct {
 	orphaned          atomic.Uint64
 	creditRetries     atomic.Uint64
 	creditFailures    atomic.Uint64
+	amountOverflows   atomic.Uint64
 }
 
 func SnapshotRuntimeMetrics() RuntimeMetricsSnapshot {
-	return RuntimeMetricsSnapshot{RPCHealthy: web3RuntimeMetrics.rpcHealthy.Load(), ScannerLagBlocks: web3RuntimeMetrics.scannerLag.Load(), FinalizerLagBlocks: web3RuntimeMetrics.finalizerLag.Load(), ScannerFailures: web3RuntimeMetrics.scannerFailures.Load(), FinalizerFailures: web3RuntimeMetrics.finalizerFailures.Load(), OrphanedDeposits: web3RuntimeMetrics.orphaned.Load(), CreditRetries: web3RuntimeMetrics.creditRetries.Load(), CreditFailures: web3RuntimeMetrics.creditFailures.Load()}
+	return RuntimeMetricsSnapshot{RPCHealthy: web3RuntimeMetrics.rpcHealthy.Load(), ScannerLagBlocks: web3RuntimeMetrics.scannerLag.Load(), FinalizerLagBlocks: web3RuntimeMetrics.finalizerLag.Load(), ScannerFailures: web3RuntimeMetrics.scannerFailures.Load(), FinalizerFailures: web3RuntimeMetrics.finalizerFailures.Load(), OrphanedDeposits: web3RuntimeMetrics.orphaned.Load(), CreditRetries: web3RuntimeMetrics.creditRetries.Load(), CreditFailures: web3RuntimeMetrics.creditFailures.Load(), AmountOverflows: web3RuntimeMetrics.amountOverflows.Load()}
 }

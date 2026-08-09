@@ -64,9 +64,11 @@ func TestWeb3DepositSchemaValidators(t *testing.T) {
 	require.Error(t, validateWeb3DepositRawAmount("0"))
 	require.Error(t, validateWeb3DepositRawAmount(stringOf('9', 79)))
 
-	require.NoError(t, validateWeb3DepositDecimal("1.000001", 38, 18, "token amount"))
+	require.NoError(t, validateWeb3DepositDecimal("1.000001", 78, 6, "token amount"))
+	require.NoError(t, validateWeb3DepositDecimal("115792089237316195423570985008687907853269984665640564039457584007913129.639935", 78, 6, "token amount"))
 	require.NoError(t, validateWeb3DepositDecimal("999999999999.99999999", 20, 8, "credited amount"))
-	require.Error(t, validateWeb3DepositDecimal("0", 38, 18, "token amount"))
+	require.Error(t, validateWeb3DepositDecimal("0", 78, 6, "token amount"))
+	require.Error(t, validateWeb3DepositDecimal("1.0000001", 78, 6, "token amount"))
 	require.Error(t, validateWeb3DepositDecimal("1000000000000.00000000", 20, 8, "credited amount"))
 
 	require.NoError(t, validateWeb3DepositTokenDecimals(6))

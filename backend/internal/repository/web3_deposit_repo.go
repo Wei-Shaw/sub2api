@@ -286,7 +286,14 @@ func (r *Web3DepositRepository) IgnoreReviewedDeposit(ctx context.Context, depos
 }
 
 func (r *Web3DepositRepository) RetryFailedDeposit(ctx context.Context, depositID int64) error {
-	updated, err := r.client.Web3Deposit.Update().Where(web3deposit.IDEQ(depositID), web3deposit.StatusEQ(string(depositdomain.DepositStatusFailed))).SetStatus(string(depositdomain.DepositStatusReadyToCredit)).ClearFailureReason().SetNextRetryAt(time.Now().UTC()).Save(ctx)
+	updated, err := r.client.Web3Deposit.Update().Where(
+		web3deposit.IDEQ(depositID),
+		web3deposit.StatusEQ(string(depositdomain.DepositStatusFailed)),
+		web3deposit.Or(
+			web3deposit.FailureReasonIsNil(),
+			web3deposit.FailureReasonNEQ(depositdomain.FailureReasonAmountExceedsPlatformBalance),
+		),
+	).SetStatus(string(depositdomain.DepositStatusReadyToCredit)).ClearFailureReason().SetNextRetryAt(time.Now().UTC()).Save(ctx)
 	if err != nil {
 		return fmt.Errorf("retry failed web3 deposit: %w", err)
 	}

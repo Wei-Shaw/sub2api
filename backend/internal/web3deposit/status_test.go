@@ -26,12 +26,14 @@ func TestDepositStatusCanTransitionTo(t *testing.T) {
 			DepositStatusBelowMinimum:  {},
 			DepositStatusManualReview:  {},
 			DepositStatusOrphaned:      {},
+			DepositStatusFailed:        {},
 		},
 		DepositStatusConfirming: {
 			DepositStatusReadyToCredit: {},
 			DepositStatusBelowMinimum:  {},
 			DepositStatusManualReview:  {},
 			DepositStatusOrphaned:      {},
+			DepositStatusFailed:        {},
 		},
 		DepositStatusReadyToCredit: {
 			DepositStatusCrediting: {},

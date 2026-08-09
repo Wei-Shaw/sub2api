@@ -135,6 +135,27 @@ func TestWeb3ScannerBatchRepositoryRetriesIdempotently(t *testing.T) {
 	require.Len(t, stored, 1)
 }
 
+func TestWeb3ScannerBatchRepositoryPersistsMaximumUint256AndAdvancesCursor(t *testing.T) {
+	client := newWeb3ScannerBatchTestClient(t)
+	cursorRepo := NewWeb3ScannerCursorRepository(client)
+	batchRepo := NewWeb3ScannerBatchRepository(client)
+	ctx := context.Background()
+	now := time.Date(2026, time.August, 8, 10, 0, 0, 0, time.UTC)
+	initializeScannerBatchCursor(t, cursorRepo, ctx, now)
+	maximumUint256 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	batch := testWeb3ScannerBatch(t, now, testWeb3ScannerBatchBigAmountMatch(t, 7, maximumUint256))
+
+	deposits, err := batchRepo.CommitDetectedBatch(ctx, batch)
+	require.NoError(t, err)
+	require.Len(t, deposits, 1)
+	require.Equal(t, maximumUint256.String(), deposits[0].RawAmount)
+	require.Equal(t, "115792089237316195423570985008687907853269984665640564039457584007913129.639935", deposits[0].TokenAmount)
+
+	cursor, err := cursorRepo.GetByKey(ctx, testWeb3ScannerKey)
+	require.NoError(t, err)
+	require.Equal(t, uint64(110), cursor.LastScannedBlock)
+}
+
 func newWeb3ScannerBatchTestClient(t *testing.T) *dbent.Client {
 	t.Helper()
 
@@ -183,6 +204,10 @@ func testWeb3ScannerBatch(t *testing.T, now time.Time, matches ...web3deposit.Ma
 }
 
 func testWeb3ScannerBatchMatch(t *testing.T, logIndex uint64, rawAmount int64) web3deposit.MatchedTransferEvent {
+	return testWeb3ScannerBatchBigAmountMatch(t, logIndex, big.NewInt(rawAmount))
+}
+
+func testWeb3ScannerBatchBigAmountMatch(t *testing.T, logIndex uint64, rawAmount *big.Int) web3deposit.MatchedTransferEvent {
 	t.Helper()
 	event, err := web3deposit.NewTransferEvent(
 		web3deposit.DepositEventID{
@@ -194,7 +219,7 @@ func testWeb3ScannerBatchMatch(t *testing.T, logIndex uint64, rawAmount int64) w
 		common.BigToHash(big.NewInt(105)),
 		common.HexToAddress("0x1111111111111111111111111111111111111111"),
 		common.HexToAddress("0x2222222222222222222222222222222222222222"),
-		big.NewInt(rawAmount),
+		rawAmount,
 	)
 	require.NoError(t, err)
 	return web3deposit.MatchedTransferEvent{Event: event, DepositAddressID: 9, UserID: 42}
