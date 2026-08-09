@@ -182,6 +182,37 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesAgnesVideoPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+
+	for _, path := range []string{
+		"/v1/videos",
+		"/videos",
+		"/v1/videos/generations",
+		"/videos/generations",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"agnes-video-v2.0","prompt":"a cat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Agnes video handler", path)
+		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+
+	for _, path := range []string{
+		"/v1/videos/request-123?model=agnes-video-v2.0",
+		"/videos/request-123?model=agnes-video-v2.0",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Agnes video status handler", path)
+		require.NotContains(t, w.Body.String(), "not supported for this platform")
+	}
+}
+
 func TestGatewayRoutesCompositeVideoLookupsUseGrokHandler(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 
