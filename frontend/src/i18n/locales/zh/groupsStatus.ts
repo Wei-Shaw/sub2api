@@ -10,7 +10,6 @@ export default {
     loadFailed: '分组状态加载失败，请稍后重试。',
     empty: '当前没有公开分组',
     noResults: '没有符合当前筛选条件的分组',
-    publicOnly: '这里只展示对所有用户公开的分组，不会显示专属授权分组。',
     filters: {
       title: '筛选分组',
       resultSummary: '当前显示 {shown} / {total} 个分组',

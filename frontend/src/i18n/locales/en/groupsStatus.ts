@@ -10,7 +10,6 @@ export default {
     loadFailed: 'Group status could not be loaded. Please try again shortly.',
     empty: 'There are no public groups',
     noResults: 'No groups match the current filters',
-    publicOnly: 'Only groups open to every user are shown. Exclusively assigned groups never appear here.',
     filters: {
       title: 'Filter groups',
       resultSummary: 'Showing {shown} of {total} groups',

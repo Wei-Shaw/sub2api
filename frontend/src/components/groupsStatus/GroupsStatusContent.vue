@@ -17,11 +17,6 @@
       </div>
     </header>
 
-    <p class="flex items-start gap-2 rounded-lg border border-primary-100 bg-primary-50/40 px-3 py-2.5 text-xs leading-5 text-gray-600 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-300">
-      <Icon name="infoCircle" size="xs" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary-500" />
-      <span>{{ t('groupsStatus.publicOnly') }}</span>
-    </p>
-
     <div
       v-if="loading"
       data-testid="groups-status-loading"
