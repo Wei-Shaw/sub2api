@@ -82,7 +82,12 @@ REDACTED
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
+		SetNillableSearchPricePer1k(groupIn.SearchPricePer1k).
+		SetNillableAudioRealtimePricePerMin(groupIn.AudioRealtimePricePerMin).
+		SetNillableAudioTtsPricePerMillionChars(groupIn.AudioTTSPricePerMillionChars).
+		SetNillableAudioSttPricePerHour(groupIn.AudioSTTPricePerHour).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -254,6 +259,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -326,6 +332,26 @@ REDACTED
 		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
 REDACTED else {
 		builder = builder.ClearWebSearchPricePerCall()
+REDACTED
+	if groupIn.SearchPricePer1k != nil {
+		builder = builder.SetSearchPricePer1k(*groupIn.SearchPricePer1k)
+REDACTED else {
+		builder = builder.ClearSearchPricePer1k()
+REDACTED
+	if groupIn.AudioRealtimePricePerMin != nil {
+		builder = builder.SetAudioRealtimePricePerMin(*groupIn.AudioRealtimePricePerMin)
+REDACTED else {
+		builder = builder.ClearAudioRealtimePricePerMin()
+REDACTED
+	if groupIn.AudioTTSPricePerMillionChars != nil {
+		builder = builder.SetAudioTtsPricePerMillionChars(*groupIn.AudioTTSPricePerMillionChars)
+REDACTED else {
+		builder = builder.ClearAudioTtsPricePerMillionChars()
+REDACTED
+	if groupIn.AudioSTTPricePerHour != nil {
+		builder = builder.SetAudioSttPricePerHour(*groupIn.AudioSTTPricePerHour)
+REDACTED else {
+		builder = builder.ClearAudioSttPricePerHour()
 REDACTED
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置

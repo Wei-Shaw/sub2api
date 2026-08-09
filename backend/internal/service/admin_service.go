@@ -238,10 +238,18 @@ type CreateGroupInput struct {
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64
+	// VideoModelPrices 可选按模型族×分辨率覆盖视频每秒单价。
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；nil/负数按默认价 0.01 处理
 	WebSearchPricePerCall *float64
-	ClaudeCodeOnly        bool   // 仅允许 Claude Code 客户端
-	FallbackGroupID       *int64 // 降级分组 ID
+	// 搜索工具单价 per 1k
+	SearchPricePer1k *float64
+	// Grok Voice 显式定价（分组级）
+	AudioRealtimePricePerMin     *float64
+	AudioTTSPricePerMillionChars *float64
+	AudioSTTPricePerHour         *float64
+	ClaudeCodeOnly               bool   // 仅允许 Claude Code 客户端
+	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
@@ -303,10 +311,18 @@ type UpdateGroupInput struct {
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64
+	// VideoModelPrices 可选按模型族×分辨率覆盖；nil 表示不修改，空 map 表示清除。
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示不修改，负数表示清除回默认价 0.01
 	WebSearchPricePerCall *float64
-	ClaudeCodeOnly        *bool  // 仅允许 Claude Code 客户端
-	FallbackGroupID       *int64 // 降级分组 ID
+	// 搜索工具单价；nil 不修改，负数清除
+	SearchPricePer1k *float64
+	// Grok Voice 显式定价；nil 表示不修改，负数表示清除
+	AudioRealtimePricePerMin     *float64
+	AudioTTSPricePerMillionChars *float64
+	AudioSTTPricePerHour         *float64
+	ClaudeCodeOnly               *bool  // 仅允许 Claude Code 客户端
+	FallbackGroupID              *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）

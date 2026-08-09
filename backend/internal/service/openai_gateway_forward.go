@@ -939,6 +939,7 @@ REDACTED
 		var firstTokenMs *int
 		responseID := ""
 		imageCount := 0
+		searchCount := 0
 		var imageOutputSizes []string
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
@@ -950,6 +951,7 @@ REDACTED
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			searchCount = streamResult.searchCount
 	REDACTED else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -959,6 +961,7 @@ REDACTED
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			searchCount = nonStreamResult.searchCount
 	REDACTED
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -996,6 +999,12 @@ REDACTED
 			forwardResult.ImageInputSize = imageInputSize
 			forwardResult.ImageOutputSizes = imageOutputSizes
 			forwardResult.BillingModel = imageBillingModel
+	REDACTED
+		// Grok-native web_search / x_search / tool_search tool invocations (per-1k pricing).
+		// Token cost still applies separately when usage is present; search is additive only
+		// when search_price_per_1k is configured (nil price → $0 from CalculateSearchCost).
+		if searchCount > 0 && account != nil && account.IsGrok() {
+			forwardResult.SearchCount = searchCount
 	REDACTED
 		return forwardResult, nil
 REDACTED

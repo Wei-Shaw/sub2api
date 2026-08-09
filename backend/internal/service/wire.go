@@ -10,10 +10,20 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
+
+func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, cfg *config.Config, redisClient *redis.Client) *GrokOAuthService {
+	svc := NewGrokOAuthService(proxyRepo, oauthClient, cfg)
+	// wire.go is depguard-exempt for redis; construct the Redis session store here.
+	if redisClient != nil {
+		svc = svc.WithSessionStore(xai.NewRedisSessionStore(redisClient))
+REDACTED
+	return svc
+REDACTED
 
 // BuildInfo contains build information
 type BuildInfo struct {
@@ -219,6 +229,7 @@ func ProvideAccountTestService(
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	openAIGatewayService *OpenAIGatewayService,
+	settingService *SettingService,
 ) *AccountTestService {
 	service := NewAccountTestService(
 		accountRepo,
@@ -231,6 +242,7 @@ func ProvideAccountTestService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	service.SetSettingService(settingService)
 	return service
 REDACTED
 
@@ -241,8 +253,11 @@ func ProvideGrokQuotaService(
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	usageLogRepo UsageLogRepository,
+	settingService *SettingService,
 ) *GrokQuotaService {
-	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, cfg, usageLogRepo)
+	service := NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, cfg, usageLogRepo)
+	service.SetSettingService(settingService)
+	return service
 REDACTED
 
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
@@ -762,7 +777,7 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
-	NewGrokOAuthService,
+	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,

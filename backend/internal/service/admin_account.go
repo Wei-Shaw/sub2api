@@ -394,63 +394,7 @@ REDACTED
 	return normalized, nil
 REDACTED
 
-// ValidateGrokMediaEligibilityExtra validates the optional media-routing
-// override. null removes the override and returns the account to automatic
-// provider-observation based routing.
-func ValidateGrokMediaEligibilityExtra(platform string, extra map[string]any) error {
-	if platform != PlatformGrok || extra == nil {
-		return nil
-REDACTED
-	raw, exists := extra[GrokMediaEligibleExtraKey]
-	if !exists || raw == nil {
-		return nil
-REDACTED
-	if _, ok := raw.(bool); !ok {
-		return infraerrors.BadRequest(
-			"GROK_MEDIA_ELIGIBILITY_INVALID",
-			"grok_media_eligible must be a boolean or null",
-		)
-REDACTED
-	return nil
-REDACTED
-
-func normalizeGrokMediaEligibilityExtra(platform string, extra map[string]any) (map[string]any, error) {
-	if platform != PlatformGrok {
-		return extra, nil
-REDACTED
-	if err := ValidateGrokMediaEligibilityExtra(platform, extra); err != nil {
-		return nil, err
-REDACTED
-	normalized := maps.Clone(extra)
-	if normalized != nil && normalized[GrokMediaEligibleExtraKey] == nil {
-		delete(normalized, GrokMediaEligibleExtraKey)
-REDACTED
-	return normalized, nil
-REDACTED
-
-func normalizeGrokMediaEligibilityUpdateExtra(account *Account, input *UpdateAccountInput, normalized map[string]any) (map[string]any, error) {
-	if account == nil || account.Platform != PlatformGrok {
-		return normalized, nil
-REDACTED
-	if err := ValidateGrokMediaEligibilityExtra(account.Platform, input.Extra); err != nil {
-		return nil, err
-REDACTED
-	normalized = maps.Clone(normalized)
-	if normalized == nil {
-		normalized = make(map[string]any)
-REDACTED
-	raw, provided := input.Extra[GrokMediaEligibleExtraKey]
-	if provided {
-		if raw == nil {
-			delete(normalized, GrokMediaEligibleExtraKey)
-	REDACTED
-		return normalized, nil
-REDACTED
-	if current, ok := account.Extra[GrokMediaEligibleExtraKey].(bool); ok {
-		normalized[GrokMediaEligibleExtraKey] = current
-REDACTED
-	return normalized, nil
-REDACTED
+// Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
@@ -551,6 +495,8 @@ REDACTED
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 REDACTED
+	// Never persist ephemeral SSO/password secrets after OAuth conversion.
+	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
@@ -661,6 +607,8 @@ REDACTED else if len(input.Credentials) > 0 {
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
 	REDACTED
+		// Strip SSO/password residue that must never sit next to OAuth tokens.
+		account.Credentials = SanitizeStoredCredentials(account.Platform, account.Credentials)
 REDACTED
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({REDACTED)”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{REDACTED，此时也必须落库。
@@ -1070,6 +1018,11 @@ REDACTED
 	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
+REDACTED
+	// Bulk may mix platforms; always drop ephemeral SSO/password keys (cookie
+	// only when platform is known Grok — empty platform still strips password/*).
+	if input.Credentials != nil {
+		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
 REDACTED
 
 	// Prepare bulk updates for columns and JSONB fields.

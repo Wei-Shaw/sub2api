@@ -402,7 +402,12 @@ export default {
         title: '网关调度设置',
         description: '控制 API Key 的调度行为',
         allowUngroupedKey: '允许未分组 Key 调度',
-        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。',
+        accountSchedulingThresholdsTitle: '平台账号自动停调阈值',
+        accountSchedulingThresholdsDescription: '当账号当前原生用量窗口（OpenAI Codex/Anthropic 会话，或 Grok 请求/Token 利用率）达到该百分比时，Sub2API 会临时将其移出调度，直到窗口重置。填 100 表示禁用。',
+        accountSchedulingThresholdsGlobalHint: '系统级默认值，作用于该平台全部账号。可在账号编辑页对单个账号覆盖。',
+        accountSchedulingThresholdsDisabledHint: '100 表示禁用该平台自动停调；1–99 表示达到该利用率后暂停调度。',
+        accountSchedulingThresholdsRangeHint: '整数 1–100（百分比）。仅 OpenAI / Anthropic / Grok。'
       REDACTED,
       upstreamBillingProbe: {
         title: '上游倍率自动探测',
@@ -429,6 +434,17 @@ export default {
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',
+        grokDefaultTextModel: '默认 Grok 文本模型',
+        grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
+        grokCrossClientMap: '映射其他客户端模型到 Grok',
+        grokCrossClientMapHint: '默认关闭。开启后，GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型。',
+        grokDefaultBaseURLMode: '默认 Grok 上游',
+        grokDefaultBaseURLModeHint: '仅用于 Grok 账号未配置显式 base URL 的文本请求；媒体和语音仍使用官方 API 主机。',
+        grokBaseURLModeCLI: 'CLI 聊天代理',
+        grokBaseURLModeAPI: '公共 API',
+        grokBaseURLModeUSEast1: '区域 API（us-east-1）',
+        grokBaseURLModeUSWest2: '区域 API（us-west-2）',
+        grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
         fingerprintUnification: '指纹统一化',
         fingerprintUnificationHint: '统一共享同一 OAuth 账号的用户的 X-Stainless-* 请求头。关闭后透传客户端原始请求头。',
         metadataPassthrough: 'Metadata 透传',

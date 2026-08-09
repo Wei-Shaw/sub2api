@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 // InitializeDefaultSettings 初始化默认设置
@@ -186,6 +187,11 @@ REDACTED
 		// Channel monitor defaults (enabled, 60s)
 		SettingKeyChannelMonitorEnabled:                "true",
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
+
+		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
+		SettingKeyGrokDefaultTextModel:           "grok-4.5",
+		SettingKeyGrokCrossClientModelMapEnabled: "true",
+		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
@@ -785,6 +791,16 @@ REDACTED
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
 	)
 
+	// Grok default mapping policy
+	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
+	if result.GrokDefaultTextModel == "" {
+		result.GrokDefaultTextModel = "grok-4.5"
+REDACTED
+	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
+	// Operators can set false to disable silent cross-client rewrite.
+	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
+	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
+
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 
@@ -929,8 +945,22 @@ REDACTED
 			result.DefaultPlatformQuotas = parsed
 	REDACTED
 REDACTED
+	result.AccountSchedulingThresholds = defaultAccountSchedulingThresholds()
+	if raw := strings.TrimSpace(settings[SettingKeyAccountSchedulingThresholds]); raw != "" {
+		if thresholds, err := parseAccountSchedulingThresholdsSetting(raw); err != nil {
+			slog.Warn("[Setting] parseSettings: unmarshal account_scheduling_thresholds failed", "error", err)
+	REDACTED else {
+			result.AccountSchedulingThresholds = thresholds
+	REDACTED
+REDACTED
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
+
+	// Publish Grok default model_mapping options for accounts with empty mapping.
+	xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{
+		DefaultText:          result.GrokDefaultTextModel,
+		EnableCrossClientMap: result.GrokCrossClientModelMapEnabled,
+REDACTED)
 
 	return result
 REDACTED

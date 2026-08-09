@@ -1,0 +1,85 @@
+package service
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestCountGrokNativeSearchCallsFromJSONBytes(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 0, countGrokNativeSearchCallsFromJSONBytes(nil))
+	require.Equal(t, 0, countGrokNativeSearchCallsFromJSONBytes([]byte(`{"output":[]REDACTED`)))
+	body := []byte(`{"output":[
+		{"type":"web_search_call","id":"ws1","status":"completed"REDACTED,
+		{"type":"x_search_call","id":"xs1"REDACTED,
+		{"type":"function_call","name":"tool_search","call_id":"ts1"REDACTED,
+		{"type":"function_call","name":"lookup","call_id":"other"REDACTED
+	]REDACTED`)
+	require.Equal(t, 3, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED
+
+func TestCountGrokNativeSearchCallsFromJSONBytes_PrefersNestedResponse(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"output":[{"type":"web_search_call","id":"duplicate"REDACTED],"response":{"output":[{"type":"web_search_call","id":"duplicate"REDACTED,{"type":"x_search_call","id":"xs1"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED
+
+func TestCountGrokNativeSearchCallsFromJSONBytes_FallsBackWhenNestedOutputNull(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"output":[{"type":"web_search_call","id":"ws1"REDACTED],"response":{"output":nullREDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsFromJSONBytes(body))
+REDACTED
+
+func TestCountGrokNativeSearchCallsFromSSEBodyDedups(t *testing.T) {
+	t.Parallel()
+	sse := stringsJoin(
+		`data: {"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws1","call_id":"c1"REDACTEDREDACTED`,
+		`data: {"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws1","call_id":"c1"REDACTEDREDACTED`,
+		`data: {"type":"response.completed","response":{"output":[{"type":"web_search_call","id":"ws1","call_id":"c1"REDACTED,{"type":"x_search_call","id":"xs1","call_id":"c2"REDACTED]REDACTEDREDACTED`,
+	)
+	require.Equal(t, 2, countGrokNativeSearchCallsFromSSEBody(sse))
+REDACTED
+
+func TestCountGrokNativeSearchCallsInSSEDataDedup_LiveStreamPath(t *testing.T) {
+	t.Parallel()
+	// Mirrors the live streaming accumulator: item.done then response.completed
+	// for the same call_id must bill once (regression for ~2× surcharge).
+	seen := make(map[string]struct{REDACTED)
+	done := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws1","call_id":"c1"REDACTEDREDACTED`)
+	completed := []byte(`{"type":"response.completed","response":{"output":[{"type":"web_search_call","id":"ws1","call_id":"c1"REDACTED,{"type":"x_search_call","id":"xs1","call_id":"c2"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(done, seen))
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+	// Raw (no-dedup) path still double-counts the same envelope pair.
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEData(done))
+	require.Equal(t, 2, countGrokNativeSearchCallsInSSEData(completed))
+REDACTED
+
+func TestCountGrokNativeSearchCallsInSSEDataDedup_NoIDStillDedups(t *testing.T) {
+	t.Parallel()
+	// Upstream sometimes omits call_id/id; synthetic keys must still prevent 2×.
+	seen := make(map[string]struct{REDACTED)
+	done := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
+	completed := []byte(`{"type":"response.completed","response":{"output":[{"type":"web_search_call"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(done, seen))
+	require.Equal(t, 0, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+REDACTED
+
+func TestCountGrokNativeSearchCallsInSSEDataDedup_MultipleNoIDCalls(t *testing.T) {
+	t.Parallel()
+	seen := make(map[string]struct{REDACTED)
+	firstDone := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
+	secondDone := []byte(`{"type":"response.output_item.done","item":{"type":"web_search_call"REDACTEDREDACTED`)
+	completed := []byte(`{"type":"response.completed","response":{"output":[{"type":"web_search_call"REDACTED,{"type":"web_search_call"REDACTED]REDACTEDREDACTED`)
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(firstDone, seen))
+	require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(secondDone, seen))
+	require.Equal(t, 0, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
+REDACTED
+
+func stringsJoin(lines ...string) string {
+	out := ""
+	for _, l := range lines {
+		out += l + "\n\n"
+REDACTED
+	return out
+REDACTED

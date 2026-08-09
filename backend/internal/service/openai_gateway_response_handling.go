@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 REDACTED
 
 type openaiNonStreamingResult struct {
@@ -36,6 +37,7 @@ type openaiNonStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	searchCount      int
 REDACTED
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -153,6 +155,16 @@ REDACTED
 	streamInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+REDACTED
+	// Grok: always enforce an upstream-read idle so hung SSE bodies fail over
+	// instead of holding the OAuth slot until the client cancels. Prefer the
+	// global gateway setting when set; otherwise apply a Grok-only default.
+	if account != nil && account.Platform == PlatformGrok {
+		cfgSec := 0
+		if s.cfg != nil {
+			cfgSec = s.cfg.Gateway.StreamDataIntervalTimeout
+	REDACTED
+		streamInterval = resolveGrokStreamIdleTimeout(cfgSec)
 REDACTED
 	// 仅监控上游数据间隔超时，不被下游写入阻塞影响
 	var intervalTicker *time.Ticker
@@ -292,6 +304,10 @@ REDACTED
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{REDACTED)
+	searchCounter := 0
+	// Dedup search tool calls across SSE events (item.done + response.completed
+	// both list the same call_id — counting both would ~2× the surcharge).
+	streamSearchSeen := make(map[string]struct{REDACTED)
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:            usage,
@@ -299,6 +315,7 @@ REDACTED
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			searchCount:      searchCounter,
 	REDACTED
 REDACTED
 	flushPending := func(disconnectMessage string) {
@@ -467,6 +484,7 @@ REDACTED
 				line = "data: " + data
 		REDACTED
 			imageCounter.AddSSEData(dataBytes)
+			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
 
 			// Correct Codex tool calls if needed (apply_patch -> edit, etc.)
 			if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
@@ -691,6 +709,16 @@ REDACTED(scanBuf)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+		REDACTED
+			// Grok: short cool + account failover when no client-visible bytes
+			// were committed yet (pre-commit). After output started we keep the
+			// legacy stream_timeout path so partial SSE is not dual-written.
+			if account != nil && account.Platform == PlatformGrok {
+				s.tempUnscheduleGrok(ctx, account, grokStreamIdleCooldown, "grok stream idle timeout")
+				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
+					_ = resp.Body.Close()
+					return resultWithUsage(), grokStreamIdleFailoverError(account, streamInterval)
+			REDACTED
 		REDACTED
 			sendErrorEvent("stream_timeout")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
@@ -1194,6 +1222,7 @@ REDACTED
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
 REDACTED, nil
 REDACTED
 
@@ -1288,6 +1317,7 @@ REDACTED
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
 REDACTED, nil
 REDACTED
 

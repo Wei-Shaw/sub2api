@@ -152,6 +152,8 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 		"/images/generations",
 		"/images/edits",
 		"/v1/videos/generations",
+		"/v1/videos",
+		"/videos",
 		"/videos/generations",
 		"/v1/videos/edits",
 		"/videos/edits",
@@ -170,8 +172,20 @@ REDACTED
 	for _, path := range []string{
 		"/v1/videos/request-123",
 		"/videos/request-123",
+		"/v1/videos/generations/request-123",
+		"/videos/generations/request-123",
+		"/v1/videos/edits/request-123",
+		"/videos/edits/request-123",
+		"/v1/videos/extensions/request-123",
+		"/videos/extensions/request-123",
 		"/v1/videos/request-123/content",
 		"/videos/request-123/content",
+		"/v1/videos/generations/request-123/content",
+		"/videos/generations/request-123/content",
+		"/v1/videos/edits/request-123/content",
+		"/videos/edits/request-123/content",
+		"/v1/videos/extensions/request-123/content",
+		"/videos/extensions/request-123/content",
 REDACTED {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
@@ -179,6 +193,62 @@ REDACTED {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit Grok video handler", path)
 		require.NotContains(t, w.Body.String(), "not supported for this platform")
+REDACTED
+REDACTED
+
+func TestGatewayRoutesGrokCustomVoiceCRUDPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGrok)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+REDACTED
+	for _, route := range []string{
+		"POST /v1/custom-voices",
+		"GET /v1/custom-voices",
+		"GET /v1/custom-voices/:voice_id",
+		"PATCH /v1/custom-voices/:voice_id",
+		"DELETE /v1/custom-voices/:voice_id",
+		"GET /v1/custom-voices/:voice_id/audio",
+		"POST /custom-voices",
+		"GET /custom-voices",
+		"GET /custom-voices/:voice_id",
+		"PATCH /custom-voices/:voice_id",
+		"DELETE /custom-voices/:voice_id",
+		"GET /custom-voices/:voice_id/audio",
+REDACTED {
+		require.True(t, registered[route], "%s should be registered", route)
+REDACTED
+REDACTED
+
+func TestGrokCustomVoiceEndpointUsesRouteTemplateNotRawPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	var got string
+	capture := func(c *gin.Context) {
+		got = grokCustomVoiceEndpoint(c)
+		c.Status(http.StatusOK)
+REDACTED
+	router.GET("/v1/custom-voices/:voice_id/audio", capture)
+	router.GET("/v1/custom-voices/:voice_id", capture)
+
+	for _, tc := range []struct {
+		path string
+		want string
+REDACTED{
+		{path: "/v1/custom-voices/voice-123", want: "custom-voices/voice-123"REDACTED,
+		{path: "/v1/custom-voices/voice-123/audio", want: "custom-voices/voice-123/audio"REDACTED,
+		// A voice literally named "audio" matches /:voice_id, not /:voice_id/audio.
+		// A raw-path suffix check would turn this profile lookup into an audio download.
+		{path: "/v1/custom-voices/audio", want: "custom-voices/audio"REDACTED,
+		{path: "/v1/custom-voices/audio/audio", want: "custom-voices/audio/audio"REDACTED,
+REDACTED {
+		got = ""
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code, "path=%s", tc.path)
+		require.Equal(t, tc.want, got, "path=%s", tc.path)
 REDACTED
 REDACTED
 
@@ -241,6 +311,8 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 		body   string
 REDACTED{
 		{http.MethodPost, "/v1/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`REDACTED,
+		{http.MethodPost, "/v1/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`REDACTED,
+		{http.MethodPost, "/videos", `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`REDACTED,
 		{http.MethodPost, "/videos/generations", `{"model":"grok-imagine-video-1.5","prompt":"waves"REDACTED`REDACTED,
 		{http.MethodPost, "/v1/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"REDACTEDREDACTED`REDACTED,
 		{http.MethodPost, "/videos/edits", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"REDACTEDREDACTED`REDACTED,
@@ -248,8 +320,20 @@ REDACTED{
 		{http.MethodPost, "/videos/extensions", `{"model":"grok-imagine-video","prompt":"waves","video":{"url":"https://example.com/in.mp4"REDACTEDREDACTED`REDACTED,
 		{http.MethodGet, "/v1/videos/request-123", ""REDACTED,
 		{http.MethodGet, "/videos/request-123", ""REDACTED,
+		{http.MethodGet, "/v1/videos/generations/request-123", ""REDACTED,
+		{http.MethodGet, "/videos/generations/request-123", ""REDACTED,
+		{http.MethodGet, "/v1/videos/edits/request-123", ""REDACTED,
+		{http.MethodGet, "/videos/edits/request-123", ""REDACTED,
+		{http.MethodGet, "/v1/videos/extensions/request-123", ""REDACTED,
+		{http.MethodGet, "/videos/extensions/request-123", ""REDACTED,
 		{http.MethodGet, "/v1/videos/request-123/content", ""REDACTED,
 		{http.MethodGet, "/videos/request-123/content", ""REDACTED,
+		{http.MethodGet, "/v1/videos/generations/request-123/content", ""REDACTED,
+		{http.MethodGet, "/videos/generations/request-123/content", ""REDACTED,
+		{http.MethodGet, "/v1/videos/edits/request-123/content", ""REDACTED,
+		{http.MethodGet, "/videos/edits/request-123/content", ""REDACTED,
+		{http.MethodGet, "/v1/videos/extensions/request-123/content", ""REDACTED,
+		{http.MethodGet, "/videos/extensions/request-123/content", ""REDACTED,
 REDACTED {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")

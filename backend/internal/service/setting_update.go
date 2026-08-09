@@ -415,6 +415,15 @@ REDACTED
 		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
 REDACTED
 
+	// Grok model mapping policy
+	if v := strings.TrimSpace(settings.GrokDefaultTextModel); v != "" {
+		updates[SettingKeyGrokDefaultTextModel] = v
+REDACTED else {
+		updates[SettingKeyGrokDefaultTextModel] = "grok-4.5"
+REDACTED
+	updates[SettingKeyGrokCrossClientModelMapEnabled] = strconv.FormatBool(settings.GrokCrossClientModelMapEnabled)
+	updates[SettingKeyGrokDefaultBaseURLMode] = normalizeGrokDefaultBaseURLMode(settings.GrokDefaultBaseURLMode)
+
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
@@ -511,10 +520,86 @@ REDACTED
 	REDACTED
 		updates[SettingKeyDefaultPlatformQuotas] = string(blob)
 REDACTED
+	if settings.AccountSchedulingThresholds != nil {
+		normalized, err := validateAndNormalizeAccountSchedulingThresholds(settings.AccountSchedulingThresholds)
+		if err != nil {
+			return nil, err
+	REDACTED
+		blob, err := json.Marshal(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("marshal account scheduling thresholds: %w", err)
+	REDACTED
+		updates[SettingKeyAccountSchedulingThresholds] = string(blob)
+REDACTED
 
 	updates[SettingKeyAllowUserViewErrorRequests] = strconv.FormatBool(settings.AllowUserViewErrorRequests)
 
 	return updates, nil
+REDACTED
+
+func defaultAccountSchedulingThresholds() map[string]int {
+	return map[string]int{
+		PlatformOpenAI:    100,
+		PlatformAnthropic: 100,
+		PlatformGrok:      100,
+REDACTED
+REDACTED
+
+func validateAndNormalizeAccountSchedulingThresholds(input map[string]int) (map[string]int, error) {
+	normalized := defaultAccountSchedulingThresholds()
+	for platform, value := range input {
+		allowed := false
+		for _, item := range AllowedSchedulingThresholdPlatforms {
+			if item == platform {
+				allowed = true
+				break
+		REDACTED
+	REDACTED
+		if !allowed {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_SCHEDULING_THRESHOLDS", fmt.Sprintf("unknown platform %q", platform))
+	REDACTED
+		if value < 1 || value > 100 {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_SCHEDULING_THRESHOLDS", "platform scheduling threshold must be between 1 and 100")
+	REDACTED
+		normalized[platform] = value
+REDACTED
+	return normalized, nil
+REDACTED
+
+func parseAccountSchedulingThresholdsSetting(raw string) (map[string]int, error) {
+	thresholds := defaultAccountSchedulingThresholds()
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return thresholds, nil
+REDACTED
+	parsed := map[string]int{REDACTED
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return thresholds, err
+REDACTED
+	for _, platform := range AllowedSchedulingThresholdPlatforms {
+		if value, ok := parsed[platform]; ok {
+			thresholds[platform] = boundedIntOrDefault(value, 1, 100, 100)
+	REDACTED
+REDACTED
+	return thresholds, nil
+REDACTED
+
+func boundedIntOrDefault(value, minValue, maxValue, defaultValue int) int {
+	if value < minValue || value > maxValue {
+		return defaultValue
+REDACTED
+	return value
+REDACTED
+
+func cloneAccountSchedulingThresholds(input map[string]int) map[string]int {
+	if len(input) == 0 {
+		return defaultAccountSchedulingThresholds()
+REDACTED
+	cloned := make(map[string]int, len(input))
+	for key, value := range input {
+		cloned[key] = value
+REDACTED
+	return cloned
 REDACTED
 
 // validateDefaultPlatformQuotaMap 校验 platform quota map 的合法性：
@@ -671,6 +756,20 @@ REDACTED)
 			settings:  cached.settings,
 			expiresAt: 0,
 	REDACTED)
+REDACTED
+	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
+	if settings.AccountSchedulingThresholds != nil {
+		normalizedThresholds, err := validateAndNormalizeAccountSchedulingThresholds(settings.AccountSchedulingThresholds)
+		if err != nil {
+			normalizedThresholds = defaultAccountSchedulingThresholds()
+	REDACTED
+		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{
+			thresholds: cloneAccountSchedulingThresholds(normalizedThresholds),
+			expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
+	REDACTED)
+REDACTED else {
+		// Partial/omitted payload: clear cache so the next hot-path read reloads from DB.
+		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{REDACTED)
 REDACTED
 	if s.cfg != nil {
 		s.cfg.SetForwardedClientIPSettings(settings.APIKeyACLTrustForwardedIP, settings.ForwardedClientIPHeaders)
