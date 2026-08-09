@@ -334,11 +334,18 @@ func (a *Account) GetCredential(key string) string {
 	}
 }
 
+// maxPlausibleUnixSeconds 用于区分秒级与毫秒级 Unix 时间戳。
+// 1e11 秒 ≈ 公元 5138 年，任何真实的秒级时间戳都远小于它；
+// 而当前的毫秒级时间戳约为 1.7e12，必然大于它。
+const maxPlausibleUnixSeconds = int64(1e11)
+
 // GetCredentialAsTime 解析凭证中的时间戳字段，支持多种格式
 // 兼容以下格式：
 //   - RFC3339 字符串: "2025-01-01T00:00:00Z"
 //   - Unix 时间戳字符串: "1735689600"
 //   - Unix 时间戳数字: 1735689600 (float64/int64/json.Number)
+//   - Unix 毫秒时间戳: 1735689600000（如 Claude Code 的 ~/.claude/.credentials.json
+//     里的 expiresAt，导入凭据时可能被原样写入）
 func (a *Account) GetCredentialAsTime(key string) *time.Time {
 	s := a.GetCredential(key)
 	if s == "" {
@@ -350,6 +357,12 @@ func (a *Account) GetCredentialAsTime(key string) *time.Time {
 	}
 	// 尝试 Unix 时间戳（纯数字字符串）
 	if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
+		// 毫秒级时间戳按秒解析会得到公元 5000 年之后的时间，导致
+		// time.Until() 永远大于刷新窗口，token 因此永不刷新。
+		if ts > maxPlausibleUnixSeconds {
+			t := time.UnixMilli(ts)
+			return &t
+		}
 		t := time.Unix(ts, 0)
 		return &t
 	}

@@ -460,6 +460,11 @@ func BuildClaudeAccountCredentials(tokenInfo *TokenInfo) map[string]any {
 	if tokenInfo.RefreshToken != "" {
 		creds["refresh_token"] = tokenInfo.RefreshToken
 	}
+	// 上游未返回 refresh_token_expires_in 时保持字段缺省，
+	// 由 MergeCredentials 保留此前记录的值，避免把已知信息覆盖成空。
+	if tokenInfo.RefreshTokenExpiresAt > 0 {
+		creds["refresh_token_expires_at"] = strconv.FormatInt(tokenInfo.RefreshTokenExpiresAt, 10)
+	}
 	if tokenInfo.Scope != "" {
 		creds["scope"] = tokenInfo.Scope
 	}
