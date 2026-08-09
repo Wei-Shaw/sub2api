@@ -101,6 +101,21 @@ REDACTED
 	require.False(t, missingSettings.CompactHomeEnabled)
 REDACTED
 
+func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing.T) {
+	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
+	require.True(t, missing.HideThroughput)
+	public, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED).GetPublicSettings(context.Background())
+REDACTED
+	require.True(t, public.ChannelMonitorHideThroughput)
+
+	for _, value := range []string{"false", "0", "off", "disabled"REDACTED {
+		runtime := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyChannelMonitorHideThroughput: value,
+REDACTED &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
+		require.False(t, runtime.HideThroughput, "value=%q", value)
+REDACTED
+REDACTED
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

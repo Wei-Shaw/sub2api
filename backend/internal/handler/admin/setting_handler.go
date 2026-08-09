@@ -370,7 +370,9 @@ REDACTED
 		PaymentAlipayMobilePrecreateDeepLink:                   paymentCfg.AlipayMobilePrecreateDeepLink,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
