@@ -245,7 +245,7 @@ REDACTED
 REDACTED
 	return &accountSchedulingThresholdCandidate{
 		window:      window,
-		usedPercent: utilizationAsPercent(usedPercent),
+		usedPercent: schedulingPercentValue(usedPercent),
 		until:       parseSchedulingResetAt(extra[resetAtKey]),
 REDACTED
 REDACTED
