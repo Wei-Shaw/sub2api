@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -62,6 +63,44 @@ func (s *UserRepoSuite) mustCreateUser(u *service.User) *service.User {
 
 	s.Require().NoError(s.repo.Create(s.ctx, u), "create user")
 	return u
+}
+
+func (s *UserRepoSuite) TestCreateWithEmailAliasGuardAndDomainLimitConcurrent() {
+	domain := "race-" + strings.ToLower(strings.ReplaceAll(time.Now().Format("150405.000000000"), ".", "")) + ".example"
+	users := []*service.User{
+		{Email: "first@" + domain, PasswordHash: "hash", Role: service.RoleUser, Status: service.StatusActive},
+		{Email: "second@" + domain, PasswordHash: "hash", Role: service.RoleUser, Status: service.StatusActive},
+	}
+
+	errs := make(chan error, len(users))
+	var wg sync.WaitGroup
+	for _, user := range users {
+		wg.Add(1)
+		go func(user *service.User) {
+			defer wg.Done()
+			errs <- s.repo.CreateWithEmailAliasGuardAndDomainLimit(s.ctx, user, domain)
+		}(user)
+	}
+	wg.Wait()
+	close(errs)
+
+	var success, limited int
+	for err := range errs {
+		switch {
+		case err == nil:
+			success++
+		case errors.Is(err, service.ErrEmailDomainRegistrationLimit):
+			limited++
+		default:
+			s.Require().NoError(err)
+		}
+	}
+	s.Require().Equal(1, success)
+	s.Require().Equal(1, limited)
+
+	count, err := s.repo.CountUsersByEmailDomain(s.ctx, domain)
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
 }
 
 func (s *UserRepoSuite) mustCreateGroup(name string) *service.Group {
