@@ -1595,7 +1595,51 @@ func normalizeGrokRateLimitResetAt(account *Account, resetAt, now time.Time) tim
 	if account != nil && account.RateLimitResetAt != nil && account.RateLimitResetAt.After(resetAt) {
 		resetAt = *account.RateLimitResetAt
 	}
+	// Cap durable/runtime RateLimitResetAt the same way grok_sched_reset_at is
+	// capped. Without this, a malformed or multi-day upstream reset is written
+	// once and then permanently ratcheted by SetRateLimitedIfLater (which never
+	// shortens), pinning free accounts for weeks.
+	if horizon := now.Add(grokRateLimitResetHorizon); resetAt.After(horizon) {
+		resetAt = horizon
+	}
 	return resetAt
+}
+
+// grokRateLimitResetRequiresForce reports that the in-memory stored reset is
+// still later than the normalized (capped) value, so SetRateLimitedIfLater
+// cannot heal it and an absolute SetRateLimited is required.
+func grokRateLimitResetRequiresForce(account *Account, normalizedResetAt time.Time) bool {
+	if account == nil || account.RateLimitResetAt == nil {
+		return false
+	}
+	return account.RateLimitResetAt.After(normalizedResetAt)
+}
+
+// writeGrokRateLimitReset persists a normalized Grok rate-limit reset, forcing
+// an absolute write when the stored value sits beyond the horizon cap.
+func writeGrokRateLimitReset(ctx context.Context, repo AccountRepository, account *Account, resetAt time.Time) error {
+	if repo == nil || account == nil || account.ID <= 0 {
+		return nil
+	}
+	now := time.Now()
+	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, now)
+	if grokRateLimitResetRequiresForce(account, resetAt) {
+		if err := repo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+			return err
+		}
+		// Absolute clamp is authoritative — refresh the in-memory view so the
+		// same request does not re-read the pre-horizon dirty value.
+		account.RateLimitResetAt = cloneTimePtr(&resetAt)
+		if account.RateLimitedAt == nil {
+			limitedAt := now
+			account.RateLimitedAt = &limitedAt
+		}
+		return nil
+	}
+	if extendingRepo, ok := repo.(grokRateLimitExtendingRepository); ok {
+		return extendingRepo.SetRateLimitedIfLater(ctx, account.ID, resetAt)
+	}
+	return repo.SetRateLimited(ctx, account.ID, resetAt)
 }
 
 type grokRateLimitExtendingRepository interface {
@@ -1634,16 +1678,9 @@ func persistGrokRateLimit(ctx context.Context, repo AccountRepository, account *
 	if repo == nil || account == nil || account.ID <= 0 {
 		return
 	}
-	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now())
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
-	var err error
-	if extendingRepo, ok := repo.(grokRateLimitExtendingRepository); ok {
-		err = extendingRepo.SetRateLimitedIfLater(stateCtx, account.ID, resetAt)
-	} else {
-		err = repo.SetRateLimited(stateCtx, account.ID, resetAt)
-	}
-	if err != nil {
+	if err := writeGrokRateLimitReset(stateCtx, repo, account, resetAt); err != nil {
 		slog.Warn("persist_grok_rate_limit_failed", "account_id", account.ID, "reset_at", resetAt.UTC(), "error", err)
 	}
 }
@@ -1772,6 +1809,11 @@ func grokSnapshotUtilization(snapshot *xai.QuotaSnapshot) (float64, *time.Time, 
 // upstream reset header can't park an over-threshold account for days. xAI quota
 // windows do not exceed ~a day.
 const grokMaxSchedulingResetHorizon = 25 * time.Hour
+
+// grokRateLimitResetHorizon bounds accounts.rate_limit_reset_at for Grok the
+// same way. Free rolling windows are ~24h; multi-week values are treated as
+// dirty upstream/header parses and clamped on every write path.
+const grokRateLimitResetHorizon = grokMaxSchedulingResetHorizon
 
 // grokTeamRateLimitModelContextKey carries the upstream model for team cools.
 type grokTeamRateLimitModelContextKey struct{}

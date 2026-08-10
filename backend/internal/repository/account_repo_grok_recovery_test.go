@@ -18,6 +18,7 @@ import (
 
 func TestSetGrokFreeRecoveryPendingPersistsLatchLeaseAndOutboxAtomically(t *testing.T) {
 	resetAt := time.Now().UTC().Add(10 * time.Minute).Truncate(time.Microsecond)
+	horizon := time.Now().UTC().Add(25 * time.Hour).Truncate(time.Microsecond)
 	nextProbeAt := resetAt.Add(-5 * time.Minute).Format(time.RFC3339Nano)
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)
@@ -25,7 +26,7 @@ func TestSetGrokFreeRecoveryPendingPersistsLatchLeaseAndOutboxAtomically(t *test
 	err := repo.SetGrokFreeRecoveryPending(context.Background(), 42, map[string]any{
 		service.GrokFreeRecoveryNextProbeAtExtraKey: nextProbeAt,
 		"grok_quota_snapshot":                       map[string]any{"status_code": 429},
-	}, resetAt)
+	}, resetAt, horizon)
 
 	require.NoError(t, err)
 	require.Len(t, exec.execQueries, 1, "recovery latch, lease, and outbox must share one statement")
@@ -33,15 +34,16 @@ func TestSetGrokFreeRecoveryPendingPersistsLatchLeaseAndOutboxAtomically(t *test
 	require.Contains(t, normalized, "WITH updated AS ( UPDATE accounts AS a")
 	require.Contains(t, normalized, "extra = COALESCE(a.extra, '{}'::jsonb) || $1::jsonb")
 	require.Contains(t, normalized, "rate_limited_at = CASE")
-	require.Contains(t, normalized, "rate_limit_reset_at = CASE")
+	require.Contains(t, normalized, "rate_limit_reset_at = LEAST")
 	require.Contains(t, normalized, "a.rate_limit_reset_at < $2")
 	require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
-	require.Len(t, exec.execArgs[0], 6)
+	require.Len(t, exec.execArgs[0], 7)
 	require.Equal(t, resetAt, exec.execArgs[0][1])
 	require.Equal(t, int64(42), exec.execArgs[0][2])
 	require.Equal(t, service.PlatformGrok, exec.execArgs[0][3])
 	require.Equal(t, service.AccountTypeOAuth, exec.execArgs[0][4])
 	require.Equal(t, service.SchedulerOutboxEventAccountChanged, exec.execArgs[0][5])
+	require.Equal(t, horizon, exec.execArgs[0][6])
 
 	var payload map[string]any
 	payloadJSON, ok := exec.execArgs[0][0].(string)
@@ -62,6 +64,7 @@ func TestSetGrokFreeRecoveryPendingDoesNotSplitWriteOnAtomicFailure(t *testing.T
 		42,
 		map[string]any{service.GrokFreeRecoveryPendingExtraKey: true},
 		time.Now().Add(10*time.Minute),
+		time.Now().Add(25*time.Hour),
 	)
 
 	require.ErrorIs(t, err, wantErr)

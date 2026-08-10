@@ -25,19 +25,31 @@ func persistGrokFreeRecoveryPendingState(
 		pendingUpdates[key] = value
 	}
 	pendingUpdates[GrokFreeRecoveryPendingExtraKey] = true
-	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now())
+	now := time.Now()
+	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, now)
+	horizon := now.Add(grokRateLimitResetHorizon)
 
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 	if atomicRepo, ok := repo.(GrokFreeRecoveryStateRepository); ok {
-		return atomicRepo.SetGrokFreeRecoveryPending(stateCtx, account.ID, pendingUpdates, resetAt)
+		if err := atomicRepo.SetGrokFreeRecoveryPending(stateCtx, account.ID, pendingUpdates, resetAt, horizon); err != nil {
+			return err
+		}
+		// SQL LEAST(..., horizon) may have clamped a dirty multi-week value down
+		// to resetAt (already horizon-capped). Keep memory coherent when we knew
+		// the stored reset was over-long.
+		if grokRateLimitResetRequiresForce(account, resetAt) || account.RateLimitResetAt == nil || account.RateLimitResetAt.Before(resetAt) {
+			account.RateLimitResetAt = cloneTimePtr(&resetAt)
+			if account.RateLimitedAt == nil {
+				limitedAt := now
+				account.RateLimitedAt = &limitedAt
+			}
+		}
+		return nil
 	}
 
 	if err := repo.UpdateExtra(stateCtx, account.ID, pendingUpdates); err != nil {
 		return err
 	}
-	if extendingRepo, ok := repo.(grokRateLimitExtendingRepository); ok {
-		return extendingRepo.SetRateLimitedIfLater(stateCtx, account.ID, resetAt)
-	}
-	return repo.SetRateLimited(stateCtx, account.ID, resetAt)
+	return writeGrokRateLimitReset(stateCtx, repo, account, resetAt)
 }

@@ -161,7 +161,10 @@ type GrokFreeRecoveryRepository interface {
 // GrokFreeRecoveryStateRepository persists the recovery latch and its finite
 // scheduling lease as one durable scheduler-visible mutation.
 type GrokFreeRecoveryStateRepository interface {
-	SetGrokFreeRecoveryPending(ctx context.Context, id int64, updates map[string]any, resetAt time.Time) error
+	// SetGrokFreeRecoveryPending writes the latch + lease. resetAt is the desired
+	// rate-limit lease (already service-normalized); horizon caps any stored
+	// over-long rate_limit_reset_at so dirty multi-week values can heal.
+	SetGrokFreeRecoveryPending(ctx context.Context, id int64, updates map[string]any, resetAt, horizon time.Time) error
 }
 
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.

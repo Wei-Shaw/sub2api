@@ -3346,6 +3346,71 @@ func TestHandleGrokAccountUpstreamError429UsesFallbackReset(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestNormalizeGrokRateLimitResetAtCapsBeyondHorizon(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	account := &Account{ID: 701, Platform: PlatformGrok, Type: AccountTypeOAuth}
+
+	// Far-future upstream reset is clamped to the shared horizon.
+	far := now.Add(20 * 24 * time.Hour)
+	got := normalizeGrokRateLimitResetAt(account, far, now)
+	require.WithinDuration(t, now.Add(grokRateLimitResetHorizon), got, time.Second)
+
+	// Existing multi-week stored reset is also clamped (not re-ratcheted).
+	stored := now.Add(30 * 24 * time.Hour)
+	account.RateLimitResetAt = &stored
+	got = normalizeGrokRateLimitResetAt(account, now.Add(2*time.Minute), now)
+	require.WithinDuration(t, now.Add(grokRateLimitResetHorizon), got, time.Second)
+	require.True(t, grokRateLimitResetRequiresForce(account, got))
+
+	// Within-horizon stored values still win over a shorter candidate.
+	within := now.Add(12 * time.Hour)
+	account.RateLimitResetAt = &within
+	got = normalizeGrokRateLimitResetAt(account, now.Add(2*time.Minute), now)
+	require.WithinDuration(t, within, got, time.Second)
+	require.False(t, grokRateLimitResetRequiresForce(account, got))
+}
+
+func TestPersistGrokRateLimitForceHealsOverHorizonReset(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	dirty := now.Add(22 * 24 * time.Hour)
+	account := paidGrokOAuthRateLimitAccount(702)
+	account.RateLimitResetAt = &dirty
+	limitedAt := now.Add(-time.Minute)
+	account.RateLimitedAt = &limitedAt
+
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{}}
+	persistGrokRateLimit(context.Background(), repo, account, now.Add(5*time.Minute))
+
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.WithinDuration(t, now.Add(grokRateLimitResetHorizon), repo.lastRateLimitResetAt, 2*time.Second)
+	require.NotNil(t, account.RateLimitResetAt)
+	require.WithinDuration(t, now.Add(grokRateLimitResetHorizon), *account.RateLimitResetAt, 2*time.Second)
+	// Must no longer require force after in-memory heal.
+	require.False(t, grokRateLimitResetRequiresForce(account, *account.RateLimitResetAt))
+}
+
+func TestHandleGrokAccountUpstreamError429CapsMultiWeekResetHeader(t *testing.T) {
+	now := time.Now()
+	// Relative-looking large second count (~20 days) expressed as absolute epoch
+	// far beyond the free rolling window.
+	farReset := now.Add(20 * 24 * time.Hour).Truncate(time.Second)
+	headers := http.Header{
+		"X-Ratelimit-Limit-Tokens":     []string{"500000"},
+		"X-Ratelimit-Remaining-Tokens": []string{"0"},
+		"X-Ratelimit-Reset-Tokens":     []string{fmt.Sprintf("%d", farReset.Unix())},
+	}
+	account := paidGrokOAuthRateLimitAccount(703)
+	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{}}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+
+	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusTooManyRequests, headers, nil)
+
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.LessOrEqual(t, repo.lastRateLimitResetAt.Sub(before), grokRateLimitResetHorizon+2*time.Second)
+	require.Greater(t, repo.lastRateLimitResetAt.Sub(before), time.Hour)
+}
+
 func TestGrokRateLimitResetAtForAccountEscalatesRepeated429s(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	retryAfter := 45

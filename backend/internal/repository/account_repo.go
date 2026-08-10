@@ -2206,11 +2206,14 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 // SetGrokFreeRecoveryPending atomically persists the durable recovery latch,
 // quota/probe metadata, the finite scheduling lease, and its scheduler outbox
 // invalidation. A failed outbox insert rolls the complete statement back.
+//
+// rate_limit_reset_at is extended monotonically up to resetAt, then clamped by
+// horizon so a dirty multi-week value can heal on the next free-recovery write.
 func (r *accountRepository) SetGrokFreeRecoveryPending(
 	ctx context.Context,
 	id int64,
 	updates map[string]any,
-	resetAt time.Time,
+	resetAt, horizon time.Time,
 ) error {
 	pendingUpdates := make(map[string]any, len(updates)+1)
 	for key, value := range updates {
@@ -2221,6 +2224,9 @@ func (r *accountRepository) SetGrokFreeRecoveryPending(
 	if err != nil {
 		return err
 	}
+	if horizon.Before(resetAt) {
+		horizon = resetAt
+	}
 
 	result, err := r.sql.ExecContext(ctx, `
 		WITH updated AS (
@@ -2229,13 +2235,17 @@ func (r *accountRepository) SetGrokFreeRecoveryPending(
 				rate_limited_at = CASE
 					WHEN a.rate_limited_at IS NULL
 						OR a.rate_limit_reset_at IS NULL
-						OR a.rate_limit_reset_at < $2 THEN NOW()
+						OR a.rate_limit_reset_at < $2
+						OR a.rate_limit_reset_at > $7 THEN NOW()
 					ELSE a.rate_limited_at
 				END,
-				rate_limit_reset_at = CASE
-					WHEN a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at < $2 THEN $2
-					ELSE a.rate_limit_reset_at
-				END,
+				rate_limit_reset_at = LEAST(
+					CASE
+						WHEN a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at < $2 THEN $2
+						ELSE a.rate_limit_reset_at
+					END,
+					$7
+				),
 				updated_at = NOW()
 			WHERE a.id = $3
 				AND a.deleted_at IS NULL
@@ -2252,6 +2262,7 @@ func (r *accountRepository) SetGrokFreeRecoveryPending(
 		service.PlatformGrok,
 		service.AccountTypeOAuth,
 		service.SchedulerOutboxEventAccountChanged,
+		horizon,
 	)
 	if err != nil {
 		return err

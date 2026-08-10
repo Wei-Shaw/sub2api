@@ -631,13 +631,7 @@ func (s *GrokFreeRecoveryService) probeOne(ctx context.Context, account *Account
 			slog.Warn("grok_free_recovery_schedule_probe_failed", "account_id", account.ID, "error", err)
 			return
 		}
-		var err error
-		if extender, ok := s.accountStore.(grokFreeRecoveryRateLimitExtender); ok {
-			err = extender.SetRateLimitedIfLater(ctx, account.ID, leaseUntil)
-		} else {
-			err = s.accountStore.SetRateLimited(ctx, account.ID, leaseUntil)
-		}
-		if err != nil {
+		if err := rearmGrokFreeRecoveryRateLimit(ctx, s.accountStore, account, leaseUntil); err != nil {
 			s.metrics.failed.Add(1)
 			slog.Warn("grok_free_recovery_rearm_failed", "account_id", account.ID, "error", err)
 			return
@@ -753,15 +747,40 @@ func (s *GrokFreeRecoveryService) recordUnsuccessfulProbe(
 		slog.Warn("grok_free_recovery_backoff_reschedule_failed", "account_id", account.ID, "error", err)
 		return
 	}
-	var err error
-	if extender, ok := s.accountStore.(grokFreeRecoveryRateLimitExtender); ok {
-		err = extender.SetRateLimitedIfLater(ctx, account.ID, leaseUntil)
-	} else {
-		err = s.accountStore.SetRateLimited(ctx, account.ID, leaseUntil)
-	}
-	if err != nil {
+	if err := rearmGrokFreeRecoveryRateLimit(ctx, s.accountStore, account, leaseUntil); err != nil {
 		slog.Warn("grok_free_recovery_backoff_lease_failed", "account_id", account.ID, "error", err)
 	}
+}
+
+// rearmGrokFreeRecoveryRateLimit applies the probe lease with the same horizon
+// clamp used by gateway 429 writes, so free-recovery ticks can heal multi-week
+// dirty rate_limit_reset_at values without waiting for a new user request.
+func rearmGrokFreeRecoveryRateLimit(
+	ctx context.Context,
+	store grokFreeRecoveryAccountStore,
+	account *Account,
+	leaseUntil time.Time,
+) error {
+	if store == nil || account == nil || account.ID <= 0 {
+		return nil
+	}
+	now := time.Now()
+	leaseUntil = normalizeGrokRateLimitResetAt(account, leaseUntil, now)
+	if grokRateLimitResetRequiresForce(account, leaseUntil) {
+		if err := store.SetRateLimited(ctx, account.ID, leaseUntil); err != nil {
+			return err
+		}
+		account.RateLimitResetAt = cloneTimePtr(&leaseUntil)
+		if account.RateLimitedAt == nil {
+			limitedAt := now
+			account.RateLimitedAt = &limitedAt
+		}
+		return nil
+	}
+	if extender, ok := store.(grokFreeRecoveryRateLimitExtender); ok {
+		return extender.SetRateLimitedIfLater(ctx, account.ID, leaseUntil)
+	}
+	return store.SetRateLimited(ctx, account.ID, leaseUntil)
 }
 
 func (s *GrokFreeRecoveryService) recordProbeResult(
