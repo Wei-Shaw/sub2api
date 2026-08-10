@@ -137,7 +137,7 @@ export default {
         gateway: '网关',
         model: '模型',
         responseCode: '200 成功',
-        responseBody: '{ "content": "已就绪" }',
+        responseBody: 'content: 已就绪',
         details: {
           model: '模型',
           modelValue: '按请求选择',

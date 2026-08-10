@@ -137,7 +137,7 @@ export default {
         gateway: 'Gateway',
         model: 'Model',
         responseCode: '200 OK',
-        responseBody: '{ "content": "Ready" }',
+        responseBody: 'content: Ready',
         details: {
           model: 'Model',
           modelValue: 'Selected per request',
