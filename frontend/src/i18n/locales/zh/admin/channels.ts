@@ -143,6 +143,7 @@ export default {
         billingModelSourceChannelMapped: '以渠道映射后的模型计费',
         billingModelSourceRequested: '以请求模型计费',
         billingModelSourceUpstream: '以最终模型计费',
+        billingModelSourceResponse: '按上游响应模型计费',
         billingModelSourceHint: '控制使用哪个模型名称进行定价查找',
         serviceTiers: 'OpenAI 服务档位',
         serviceTiersHint: '控制该渠道是否允许各服务档位，并设置相对 Standard 基准价的计费倍率。',

@@ -182,6 +182,13 @@ type UserRepository interface {
 	DisableTotp(ctx context.Context, userID int64) error
 }
 
+// RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
+// 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
+type RegistrationEmailDomainRepository interface {
+	CountUsersByEmailDomain(ctx context.Context, domain string) (int, error)
+	CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error
+}
+
 // RedeemUserAdjustmentRepository provides the atomic, floor-at-zero updates
 // used by negative-value redeem codes. It is intentionally narrower than
 // UserRepository because normal usage billing is allowed to overdraw.
