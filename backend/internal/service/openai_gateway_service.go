@@ -243,10 +243,6 @@ type OpenAIForwardResult struct {
 	// UpstreamModel is the logical model after configured mapping, before internal
 	// wire-only overrides. Empty when no configured mapping was applied.
 	UpstreamModel string
-	// UpstreamResponseModel is captured from the raw successful upstream
-	// response before any client-facing rewrite or protocol conversion.
-	UpstreamResponseModel         string
-	UpstreamResponseModelConflict bool
 	// UpstreamEndpoint is the actual upstream API path used for this request.
 	// It avoids guessing when one downstream protocol can use multiple upstream endpoints.
 	UpstreamEndpoint string

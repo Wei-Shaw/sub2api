@@ -180,7 +180,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if writeClientMessage == nil {
 		return nil, errors.New("client websocket writer is nil")
 	}
-	responseModelObserver := &upstreamResponseModelObserver{}
 
 	body, err := prepareOpenAIWSHTTPBridgeBody(payload)
 	if err != nil {
@@ -302,20 +301,18 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	resultWithUsage := func() *OpenAIForwardResult {
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
-			RequestID:                     responseID,
-			Usage:                         usage,
-			Model:                         originalModel,
-			UpstreamModel:                 mappedModel,
-			UpstreamResponseModel:         responseModelObserver.Model(),
-			UpstreamResponseModelConflict: responseModelObserver.Conflict(),
-			ServiceTier:                   extractOpenAIServiceTierFromBody(body),
-			ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
-			Stream:                        reqStream,
-			OpenAIWSMode:                  true,
-			UpstreamTerminalEvent:         upstreamTerminalEvent,
-			ResponseHeaders:               cloneHeader(resp.Header),
-			Duration:                      time.Since(turnStart),
-			FirstTokenMs:                  firstTokenMs,
+			RequestID:             responseID,
+			Usage:                 usage,
+			Model:                 originalModel,
+			UpstreamModel:         mappedModel,
+			ServiceTier:           extractOpenAIServiceTierFromBody(body),
+			ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(body, mappedModel, originalModel), body, mappedModel),
+			Stream:                reqStream,
+			OpenAIWSMode:          true,
+			UpstreamTerminalEvent: upstreamTerminalEvent,
+			ResponseHeaders:       cloneHeader(resp.Header),
+			Duration:              time.Since(turnStart),
+			FirstTokenMs:          firstTokenMs,
 		}
 		if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 			result.wsReplayInput = replayInput
@@ -360,7 +357,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			upstreamMessage = normalized
 		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
-		responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 		if responseID == "" && eventResponseID != "" {
 			responseID = eventResponseID
 		}
