@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -72,9 +71,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
 
-	convertedEffort := chatReq.ReasoningEffort
-	reasoningEffort := &convertedEffort
-	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
+	var reasoningEffort *string
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
 	chatBody, err := json.Marshal(chatReq)
@@ -87,9 +84,6 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if account.Platform == PlatformOpenAI {
 		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody); changed {
 			chatBody = policyBody
-			if effectiveEffort := strings.TrimSpace(gjson.GetBytes(chatBody, "reasoning_effort").String()); effectiveEffort != "" {
-				reasoningEffort = &effectiveEffort
-			}
 		}
 		chatBody, err = s.applyOpenAIFastPolicyToBody(ctx, account, upstreamModel, chatBody)
 		if err != nil {
@@ -106,6 +100,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 			return nil, err
 		}
 		reasoningEffort = extractOpenAIReasoningEffortForAccount(account, chatBody, upstreamModel, billingModel, originalModel)
+	} else {
+		convertedEffort := chatReq.ReasoningEffort
+		reasoningEffort = ApplyThinkingEnabledFallback(&convertedEffort, body, billingModel)
 	}
 
 	logger.L().Debug("openai messages: forwarding via raw chat completions",

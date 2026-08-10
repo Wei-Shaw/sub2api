@@ -33,7 +33,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	canonicalImageIntentBody []byte,
 	reqModel string,
 	attemptImageIntentInvalidated bool,
-	reasoningEffort *string,
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
@@ -113,7 +112,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if err != nil {
 		return nil, err
 	}
-	reasoningEffort = extractOpenAIReasoningEffortForAccount(account, body, policyModel, reqModel)
+	reasoningEffort := extractOpenAIReasoningEffortForAccount(account, body, policyModel, reqModel)
+	// 国产模型默认 effort 补充应基于最终上游 model/body，避免记录被策略或映射覆盖前的值。
+	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, policyModel)
 
 	apiKey := getAPIKeyFromContext(c)
 	// 同一 attempt 的最终 model/body 只判定一次，权限检查与后续图片状态设置共用该结果。
