@@ -788,19 +788,7 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	}
 	// Keepalive comments commit the HTTP response as 200, but they are not
 	// semantic model output and therefore must not block a safe retry.
-	written := OpenAICompactKeepaliveAdjustedWrittenSize(c)
-	if written < 0 {
-		return false
-	}
-	value, ok := c.Get(openAIStreamKeepaliveBytesKey)
-	if !ok {
-		return true
-	}
-	keepaliveBytes, _ := value.(int)
-	if keepaliveBytes <= 0 {
-		return true
-	}
-	return written-keepaliveBytes > 0
+	return OpenAICompactKeepaliveAdjustedWrittenSize(c) >= 0
 }
 
 func openAIStreamEventIsPreamble(eventType string) bool {

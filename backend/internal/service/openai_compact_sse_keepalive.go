@@ -151,31 +151,38 @@ func StopOpenAICompactSSEKeepaliveCommitted(c *gin.Context) bool {
 	return committed
 }
 
-// OpenAICompactKeepaliveAdjustedWrittenSize 返回排除 compact 心跳注释字节后
-// 的响应已写字节数；无心跳的请求等价于 c.Writer.Size()。心跳字节不构成语义
-// 响应——handler 以"Forward 前后 Size 是否变化"判定是否已向客户端写出响应
-// （变化则放弃 failover 换号），该判定不得被心跳污染，否则 compact 请求
-// 一旦在上游等待期间发过心跳，上游 429/5xx 就不再换号（#3887 加固审计）。
-// 仅心跳字节时归一化为 -1（gin 的"未写出"哨兵值），与提交前的快照可比。
+// OpenAICompactKeepaliveAdjustedWrittenSize returns the response size after
+// excluding non-semantic compact and Responses-stream keepalive comments.
+// The handler compares this value across Forward attempts, so heartbeat bytes
+// must not turn a replayable failure into a committed semantic response.
+// A response containing only keepalives is normalized to gin's -1 sentinel.
 func OpenAICompactKeepaliveAdjustedWrittenSize(c *gin.Context) int {
 	if c == nil || c.Writer == nil {
 		return -1
 	}
+	streamKeepaliveBytes := 0
+	if value, ok := c.Get(openAIStreamKeepaliveBytesKey); ok {
+		streamKeepaliveBytes, _ = value.(int)
+	}
+	size := c.Writer.Size()
+	compactKeepaliveBytes := 0
 	value, ok := c.Get(openAICompactSSEKeepaliveKey)
-	if !ok {
-		return c.Writer.Size()
+	if ok {
+		if k, valid := value.(*openAICompactSSEKeepalive); valid && k != nil {
+			k.mu.Lock()
+			size = k.writer.Size()
+			compactKeepaliveBytes = k.bytes
+			k.mu.Unlock()
+		}
 	}
-	k, ok := value.(*openAICompactSSEKeepalive)
-	if !ok || k == nil {
-		return c.Writer.Size()
-	}
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	size := k.writer.Size()
 	if size < 0 {
 		return size
 	}
-	if real := size - k.bytes; real > 0 {
+	keepaliveBytes := compactKeepaliveBytes + streamKeepaliveBytes
+	if keepaliveBytes <= 0 {
+		return size
+	}
+	if real := size - keepaliveBytes; real > 0 {
 		return real
 	}
 	return -1

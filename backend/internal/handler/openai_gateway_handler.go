@@ -540,7 +540,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
+		// 用扣除非语义心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
 		// 跨 passthrough 边界的 failover：从 Kiro 等透传账号切到 Bedrock 等非透传账号前，
@@ -591,7 +591,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
-					if failoverErr.SafeToFailoverAfterWrite && c.Writer.Written() {
+					// openAIForwardMayFailover has already proved that any committed
+					// bytes are non-semantic or explicitly replay-safe. Remember the
+					// committed SSE response so exhaustion is returned as an SSE event.
+					if c.Writer.Written() {
 						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
