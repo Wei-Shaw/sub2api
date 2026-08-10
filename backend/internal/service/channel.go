@@ -42,7 +42,7 @@ const (
 	// BillingModelSourceResponse bills by a trusted model declaration observed
 	// in the successful upstream response. It is deliberately distinct from
 	// "upstream", which means the model sent to the provider.
-	BillingModelSourceResponse      = "response_model"
+	BillingModelSourceResponse = "response_model"
 )
 
 // Channel 渠道实体
