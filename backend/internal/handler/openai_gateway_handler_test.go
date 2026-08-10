@@ -1870,6 +1870,67 @@ func (u *openAIHTTPPassthroughSSERateLimitUpstream) calls() []int64 {
 	return append([]int64(nil), u.accountIDs...)
 }
 
+type openAIHTTPOAuthCapacityFailoverUpstream struct {
+	service.HTTPUpstream
+	mu         sync.Mutex
+	accountIDs []int64
+	failedIDs  map[int64]struct{}
+}
+
+func (u *openAIHTTPOAuthCapacityFailoverUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.mu.Unlock()
+
+	if _, failed := u.failedIDs[accountID]; failed {
+		body := strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_capacity"}}`,
+			"",
+			"event: response.output_item.added",
+			`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_capacity","type":"reasoning","summary":[],"status":"in_progress"}}`,
+			"",
+			"event: response.reasoning_summary_part.added",
+			`data: {"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}`,
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Selected model is at capacity. Please try a different model.","type":"invalid_request_error"}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_capacity","status":"failed","error":{"code":"server_is_overloaded","message":"Selected model is at capacity. Please try a different model."}}}`,
+			"",
+		}, "\n")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}
+
+	body := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_ok"}}`,
+		"",
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","delta":"ok"}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_ok","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+func (u *openAIHTTPOAuthCapacityFailoverUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
+}
+
 func (s *openAIWSFailoverHandlerAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	out := make([]service.Account, 0, len(s.accounts))
 	for _, account := range s.accounts {

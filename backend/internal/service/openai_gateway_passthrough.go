@@ -766,6 +766,19 @@ type openaiNonStreamingResultPassthrough struct {
 	imageOutputSizes []string
 }
 
+const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
+
+func recordOpenAIStreamKeepaliveBytes(c *gin.Context, written int) {
+	if c == nil || written <= 0 {
+		return
+	}
+	current := 0
+	if value, ok := c.Get(openAIStreamKeepaliveBytesKey); ok {
+		current, _ = value.(int)
+	}
+	c.Set(openAIStreamKeepaliveBytesKey, current+written)
+}
+
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	if localStarted {
 		return true
@@ -773,10 +786,21 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	// compact keepalive comments commit the HTTP response as 200, but they are
-	// not semantic model output and therefore must not block a safe retry.
-	// Without a compact keepalive this is equivalent to checking Writer.Size().
-	return OpenAICompactKeepaliveAdjustedWrittenSize(c) >= 0
+	// Keepalive comments commit the HTTP response as 200, but they are not
+	// semantic model output and therefore must not block a safe retry.
+	written := OpenAICompactKeepaliveAdjustedWrittenSize(c)
+	if written < 0 {
+		return false
+	}
+	value, ok := c.Get(openAIStreamKeepaliveBytesKey)
+	if !ok {
+		return true
+	}
+	keepaliveBytes, _ := value.(int)
+	if keepaliveBytes <= 0 {
+		return true
+	}
+	return written-keepaliveBytes > 0
 }
 
 func openAIStreamEventIsPreamble(eventType string) bool {
@@ -785,6 +809,90 @@ func openAIStreamEventIsPreamble(eventType string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) bool {
+	if len(payload) == 0 || !gjson.ValidBytes(payload) {
+		return true
+	}
+
+	switch strings.TrimSpace(eventType) {
+	case "response.output_item.added":
+		item := gjson.GetBytes(payload, "item")
+		if !item.Exists() || !item.IsObject() {
+			return true
+		}
+		switch strings.TrimSpace(item.Get("type").String()) {
+		case "reasoning":
+			if item.Get("encrypted_content").String() != "" {
+				return true
+			}
+			summary := item.Get("summary")
+			if !summary.IsArray() {
+				return false
+			}
+			for _, part := range summary.Array() {
+				if strings.TrimSpace(part.Get("type").String()) != "summary_text" {
+					return true
+				}
+				if part.Get("text").String() != "" {
+					return true
+				}
+			}
+			return false
+		case "message":
+			content := item.Get("content")
+			if !content.IsArray() {
+				return false
+			}
+			for _, part := range content.Array() {
+				switch strings.TrimSpace(part.Get("type").String()) {
+				case "output_text":
+					if part.Get("text").String() != "" {
+						return true
+					}
+				case "refusal":
+					if part.Get("refusal").String() != "" {
+						return true
+					}
+				default:
+					return true
+				}
+			}
+			return false
+		case "function_call":
+			return item.Get("arguments").String() != ""
+		case "custom_tool_call":
+			return item.Get("input").String() != ""
+		case "compaction":
+			return item.Get("encrypted_content").String() != ""
+		default:
+			// Built-in tools, images, and future item types may carry
+			// their complete result in the added event. Unknown shapes fail closed.
+			return true
+		}
+	case "response.content_part.added":
+		part := gjson.GetBytes(payload, "part")
+		if !part.Exists() || !part.IsObject() {
+			return true
+		}
+		switch strings.TrimSpace(part.Get("type").String()) {
+		case "output_text":
+			return part.Get("text").String() != ""
+		case "refusal":
+			return part.Get("refusal").String() != ""
+		default:
+			return true
+		}
+	case "response.reasoning_summary_part.added":
+		part := gjson.GetBytes(payload, "part")
+		if !part.Exists() || !part.IsObject() || strings.TrimSpace(part.Get("type").String()) != "summary_text" {
+			return true
+		}
+		return part.Get("text").String() != ""
+	default:
+		return true
 	}
 }
 
@@ -804,6 +912,8 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 		// （content_policy / invalid_request 等）维持原样转发，保留上游错误细节。
 		payload := []byte(trimmed)
 		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
+	case "response.output_item.added", "response.content_part.added", "response.reasoning_summary_part.added":
+		return openAIStreamAddedEventStartsClientOutput([]byte(trimmed), eventType)
 	}
 	return !openAIStreamEventIsPreamble(eventType)
 }
