@@ -16,7 +16,7 @@ describe('site_logo sanitization', () => {
   })
 
   it('HomeView applies sanitizeUrl to siteLogo', () => {
-    expect(homeViewSource).toContain('sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo')
+    expect(homeViewSource).toContain('sanitizeUrl(String(publicSettings.value?.site_logo || appStore.siteLogo')
   })
 
   it('KeyUsageView applies sanitizeUrl to siteLogo', () => {
