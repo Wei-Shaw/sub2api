@@ -114,7 +114,7 @@ func (s *apiKeyRepoStub) ListByUserID(ctx context.Context, userID int64, params 
 	if s.listByUserIDErr != nil {
 		return nil, nil, s.listByUserIDErr
 	}
-	keys := append([]APIKey(nil), s.listByUserIDKeys...)
+	keys := filterAPIKeyStubKeys(userID, s.listByUserIDKeys, filters)
 	return keys, &pagination.PaginationResult{
 		Total:    int64(len(keys)),
 		Page:     params.Page,
@@ -160,6 +160,12 @@ func filterAPIKeyStubKeys(userID int64, keys []APIKey, filters APIKeyListFilters
 					continue
 				}
 			} else if key.GroupID == nil || *key.GroupID != *filters.GroupID {
+				continue
+			}
+		}
+		if filters.HasUsage != nil {
+			hasUsage := key.LastUsedAt != nil
+			if *filters.HasUsage != hasUsage {
 				continue
 			}
 		}
@@ -351,6 +357,39 @@ func TestApiKeyService_Delete_NotFound(t *testing.T) {
 	require.Empty(t, repo.deletedIDs)
 	require.Empty(t, cache.invalidated)
 	require.Empty(t, cache.deleteAuthKeys)
+}
+
+func TestAPIKeyService_List_FiltersByHasUsage(t *testing.T) {
+	usedAt := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	keys := []APIKey{
+		{ID: 1, UserID: 7, Key: "sk-used", Name: "used", Status: StatusActive, LastUsedAt: &usedAt},
+		{ID: 2, UserID: 7, Key: "sk-unused", Name: "unused", Status: StatusActive},
+		{ID: 3, UserID: 7, Key: "sk-used-2", Name: "used-2", Status: StatusDisabled, LastUsedAt: &usedAt},
+	}
+	repo := &apiKeyRepoStub{
+		allowListByUserID: true,
+		listByUserIDKeys:  keys,
+	}
+	svc := &APIKeyService{apiKeyRepo: repo}
+
+	hasUsage := true
+	got, page, err := svc.List(context.Background(), 7, pagination.PaginationParams{Page: 1, PageSize: 20}, APIKeyListFilters{
+		HasUsage: &hasUsage,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 3}, apiKeyTestIDs(got))
+	require.Equal(t, int64(2), page.Total)
+	require.Len(t, repo.listByUserIDFilters, 1)
+	require.NotNil(t, repo.listByUserIDFilters[0].HasUsage)
+	require.True(t, *repo.listByUserIDFilters[0].HasUsage)
+
+	noUsage := false
+	got, page, err = svc.List(context.Background(), 7, pagination.PaginationParams{Page: 1, PageSize: 20}, APIKeyListFilters{
+		HasUsage: &noUsage,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{2}, apiKeyTestIDs(got))
+	require.Equal(t, int64(1), page.Total)
 }
 
 func TestAPIKeyService_List_FillsCurrentConcurrency(t *testing.T) {

@@ -52,6 +52,8 @@ const messages: Record<string, string> = {
   'keys.status.expired': 'Expired',
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
+  'keys.status.has_usage': 'Has Usage',
+  'keys.status.no_usage': 'No Usage',
   'keys.usage': 'Usage',
 }
 
@@ -435,6 +437,49 @@ describe('user KeysView column settings', () => {
         sort_by: 'current_concurrency',
         sort_order: 'asc',
       },
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+  })
+
+  it('supports filtering by has_usage and no_usage status options', async () => {
+    const wrapper = await mountView()
+    const selects = wrapper.findAllComponents({ name: 'Select' })
+    const statusSelect = selects[1]
+
+    expect(statusSelect.props('options')).toEqual(
+      expect.arrayContaining([
+        { value: 'has_usage', label: 'Has Usage' },
+        { value: 'no_usage', label: 'No Usage' },
+      ])
+    )
+
+    listKeys.mockClear()
+    await statusSelect.vm.$emit('update:modelValue', 'has_usage')
+    await flushPromises()
+
+    expect(listKeys).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        status: 'has_usage',
+        sort_by: 'created_at',
+        sort_order: 'desc',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+
+    listKeys.mockClear()
+    await statusSelect.vm.$emit('update:modelValue', 'no_usage')
+    await flushPromises()
+
+    expect(listKeys).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        status: 'no_usage',
+        sort_by: 'created_at',
+        sort_order: 'desc',
+      }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
   })

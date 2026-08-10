@@ -1389,7 +1389,9 @@ const statusFilterOptions = computed(() => [
   { value: 'active', label: t('keys.status.active') },
   { value: 'inactive', label: t('keys.status.inactive') },
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
-  { value: 'expired', label: t('keys.status.expired') }
+  { value: 'expired', label: t('keys.status.expired') },
+  { value: 'has_usage', label: t('keys.status.has_usage') },
+  { value: 'no_usage', label: t('keys.status.no_usage') }
 ])
 
 const onFilterChange = () => {

@@ -137,9 +137,16 @@ func (k *APIKey) EffectiveUsage7d() float64 {
 	return k.Usage7d
 }
 
+// API key list pseudo-status values for usage filtering (not real key statuses).
+const (
+	APIKeyFilterStatusHasUsage = "has_usage"
+	APIKeyFilterStatusNoUsage  = "no_usage"
+)
+
 // APIKeyListFilters holds optional filtering parameters for listing API keys.
 type APIKeyListFilters struct {
-	Search  string
-	Status  string
-	GroupID *int64 // nil=不筛选, 0=无分组, >0=指定分组
+	Search   string
+	Status   string
+	GroupID  *int64 // nil=不筛选, 0=无分组, >0=指定分组
+	HasUsage *bool  // nil=不筛选, true=有用量(last_used_at 非空), false=无用量(last_used_at 为空)
 }
