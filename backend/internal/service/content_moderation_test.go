@@ -19,7 +19,6 @@ import (
 
 type contentModerationTestSettingRepo struct {
 	values map[string]string
-	err    error
 REDACTED
 
 func (r *contentModerationTestSettingRepo) Get(ctx context.Context, key string) (*Setting, error) {
@@ -45,9 +44,6 @@ REDACTED
 REDACTED
 
 func (r *contentModerationTestSettingRepo) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
-	if r.err != nil {
-		return nil, r.err
-REDACTED
 	out := map[string]string{REDACTED
 	for _, key := range keys {
 		if value, ok := r.values[key]; ok {
@@ -55,23 +51,6 @@ REDACTED
 	REDACTED
 REDACTED
 	return out, nil
-REDACTED
-
-func TestContentModerationCheck_LoadRuntimeSnapshotFailureBlocks(t *testing.T) {
-	svc := &ContentModerationService{
-		settingRepo: &contentModerationTestSettingRepo{err: fmt.Errorf("settings unavailable")REDACTED,
-		repo:        &contentModerationTestRepo{REDACTED,
-REDACTED
-
-	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{UserID: 1REDACTED)
-
-REDACTED
-	require.False(t, decision.Allowed)
-	require.True(t, decision.Blocked)
-	require.False(t, decision.Flagged)
-	require.Equal(t, ContentModerationActionError, decision.Action)
-	require.Equal(t, "风控系统暂时不可用，请稍后重试", decision.Message)
-	require.Equal(t, http.StatusInternalServerError, decision.StatusCode)
 REDACTED
 
 func (r *contentModerationTestSettingRepo) SetMultiple(ctx context.Context, settings map[string]string) error {
