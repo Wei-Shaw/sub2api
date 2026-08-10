@@ -45,6 +45,8 @@ type apiKeyRepoStub struct {
 	updateLastUsed         func(ctx context.Context, id int64, usedAt time.Time) error
 	touchedIDs             []int64
 	touchedUsedAts         []time.Time
+	existingKeys           map[string]bool
+	existsByKeyCalls       []string
 }
 
 // 以下方法在本测试中不应被调用，使用 panic 确保测试失败时能快速定位问题
@@ -177,7 +179,8 @@ func (s *apiKeyRepoStub) CountByUserID(ctx context.Context, userID int64) (int64
 }
 
 func (s *apiKeyRepoStub) ExistsByKey(ctx context.Context, key string) (bool, error) {
-	panic("unexpected ExistsByKey call")
+	s.existsByKeyCalls = append(s.existsByKeyCalls, key)
+	return s.existingKeys[key], nil
 }
 
 func (s *apiKeyRepoStub) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
@@ -498,4 +501,47 @@ func TestApiKeyService_Delete_DeleteFails(t *testing.T) {
 	require.Equal(t, []int64{3}, repo.deletedIDs) // 验证 DeleteWithAudit 被调用
 	require.Empty(t, cache.invalidated)           // 验证删除失败时缓存未被清除（新顺序：先删后清）
 	require.Empty(t, cache.deleteAuthKeys)        // 验证删除失败时 auth 缓存未被清除
+}
+
+func TestAPIKeyService_UpdateRotatesCustomKeyAndInvalidatesBothCredentials(t *testing.T) {
+	repo := &apiKeyRepoStub{apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-old-1234567890", Status: StatusActive}}
+	cache := &apiKeyCacheStub{}
+	svc := &APIKeyService{apiKeyRepo: repo, cache: cache}
+	customKey := "sk-new-1234567890"
+
+	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{CustomKey: &customKey})
+
+	require.NoError(t, err)
+	require.Equal(t, customKey, updated.Key)
+	require.Equal(t, []string{customKey}, repo.existsByKeyCalls)
+	require.Len(t, repo.updatedKeys, 1)
+	require.Equal(t, customKey, repo.updatedKeys[0].Key)
+	require.Len(t, cache.deleteAuthKeys, 2)
+}
+
+func TestAPIKeyService_UpdateRejectsDuplicateCustomKey(t *testing.T) {
+	repo := &apiKeyRepoStub{
+		apiKey:       &APIKey{ID: 10, UserID: 7, Key: "sk-old-1234567890", Status: StatusActive},
+		existingKeys: map[string]bool{"sk-existing-1234567890": true},
+	}
+	svc := &APIKeyService{apiKeyRepo: repo}
+	customKey := "sk-existing-1234567890"
+
+	_, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{CustomKey: &customKey})
+
+	require.ErrorIs(t, err, ErrAPIKeyExists)
+	require.Empty(t, repo.updatedKeys)
+}
+
+func TestAPIKeyService_UpdateClearsGroupBinding(t *testing.T) {
+	groupID := int64(2)
+	repo := &apiKeyRepoStub{apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-old-1234567890", GroupID: &groupID, Status: StatusActive}}
+	svc := &APIKeyService{apiKeyRepo: repo}
+
+	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{ClearGroup: true})
+
+	require.NoError(t, err)
+	require.Nil(t, updated.GroupID)
+	require.Len(t, repo.updatedKeys, 1)
+	require.Nil(t, repo.updatedKeys[0].GroupID)
 }
