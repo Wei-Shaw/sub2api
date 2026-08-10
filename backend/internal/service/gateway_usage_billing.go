@@ -765,6 +765,20 @@ REDACTED
 
 	// 计算费用
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	// response_model is an explicit, opt-in billing mode. The response model is
+	// only accepted when it is unambiguous, priced, and cannot increase the
+	// existing charge (an upstream declaration must never be able to raise cost).
+	if input.BillingModelSource == BillingModelSourceResponse {
+		responseModel := strings.TrimSpace(result.UpstreamResponseModel)
+		if responseModel != "" && !result.UpstreamResponseModelConflict &&
+			s.hasResolvableTokenPricing(ctx, responseModel, apiKey) {
+			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, opts)
+			if responseCost != nil && responseCost.TotalCost <= cost.TotalCost+1e-12 {
+				billingModel = responseModel
+				cost = responseCost
+		REDACTED
+	REDACTED
+REDACTED
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()

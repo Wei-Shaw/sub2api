@@ -240,6 +240,23 @@ REDACTED
 		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)REDACTED
 REDACTED
+	// response_model is opt-in and conservative: use an unambiguous priced
+	// response declaration only when it does not increase the baseline charge.
+	if input.BillingModelSource == BillingModelSourceResponse {
+		responseModel := strings.TrimSpace(result.UpstreamResponseModel)
+		if responseModel != "" && !result.UpstreamResponseModelConflict && s.hasResolvableOpenAIResponsePricing(ctx, responseModel, apiKey) {
+			responseModels := usageBillingModelCandidates(responseModel)
+			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
+				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
+				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
+			)
+			if responseErr == nil && responseCost != nil && cost != nil &&
+				responseCost.TotalCost <= cost.TotalCost+1e-12 {
+				billingModels = responseModels
+				cost = responseCost
+		REDACTED
+	REDACTED
+REDACTED
 
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -431,6 +448,21 @@ REDACTED
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 
 	return nil
+REDACTED
+
+func (s *OpenAIGatewayService) hasResolvableOpenAIResponsePricing(ctx context.Context, model string, apiKey *APIKey) bool {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+REDACTED
+	if s.resolveOpenAIChannelPricing(ctx, model, apiKey) != nil {
+		return true
+REDACTED
+	if s.billingService == nil {
+		return false
+REDACTED
+	_, err := s.billingService.GetModelPricing(model)
+	return err == nil
 REDACTED
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
