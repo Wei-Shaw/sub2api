@@ -1902,7 +1902,7 @@ func (u *openAIHTTPOAuthCapacityFailoverUpstream) Do(_ *http.Request, _ string, 
 			`data: {"type":"response.failed","response":{"id":"resp_capacity","status":"failed","error":{"code":"server_is_overloaded","message":"Selected model is at capacity. Please try a different model."}}}`,
 			"",
 		}, "\n")
-		var responseBody io.ReadCloser = io.NopCloser(strings.NewReader(body))
+		responseBody := io.NopCloser(strings.NewReader(body))
 		if firstCall && u.firstFailureDelay > 0 {
 			preamble, failure, found := strings.Cut(body, "event: error")
 			if found {
