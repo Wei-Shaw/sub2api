@@ -2,10 +2,17 @@ export default {
   web3Deposits: {
     runtime: {
       title: 'Runtime',
+      network: 'Network',
       lag: 'Lag: {blocks} blocks',
       scannerLag: 'Scanner lag: {blocks} blocks',
       finalizerLag: 'Finalizer lag: {blocks} blocks',
       heights: 'Head {latest} / scanned {scanned} / finalized {finalized} / finalized cursor {finalizedCursor}',
+      scannerLagLabel: 'Scanner lag',
+      finalizerLagLabel: 'Finalizer lag',
+      latestBlock: 'Latest block',
+      scannedBlock: 'Scanned block',
+      finalizedBlock: 'Chain finalized',
+      finalizedCursor: 'Finalized cursor',
       chainId: 'Chain ID: {id}',
       tokenContract: 'Token contract',
     },

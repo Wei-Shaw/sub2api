@@ -36,7 +36,7 @@ export default {
     transferring: 'Transferring…',
     transferSuccess: 'Web3 balance transferred to your main balance',
     safetyTitle: 'Deposit safety',
-    safetyNetwork: 'Only send the configured USDT0 token on Conflux eSpace. Do not use Conflux Core Space or another network.',
+    safetyNetwork: 'Deposits are supported on every configured network listed above. Before sending, confirm the selected network and its token contract address.',
     safetyContract: 'Verify the token contract above; tokens with a similar name are not accepted.',
     safetyFinality: 'Deposits appear after finalized confirmation. Deposits below 1 USDT0 are not credited automatically.',
     safetyRefund: 'Incorrect-network and incorrect-token deposits are not refunded automatically.',

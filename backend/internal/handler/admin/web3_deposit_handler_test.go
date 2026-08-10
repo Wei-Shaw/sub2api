@@ -107,7 +107,7 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	require.NoError(t, err)
 	handler := &Web3DepositHandler{
 		cfg: &config.Config{Web3Deposit: config.Web3DepositConfig{Networks: map[string]config.Web3DepositNetworkConfig{
-			"network": {ChainID: 71, Assets: map[string]config.Web3DepositAssetConfig{
+			"network": {DisplayName: "Test Network", ChainID: 71, Assets: map[string]config.Web3DepositAssetConfig{
 				"usdt0": {ContractAddress: "0x1111111111111111111111111111111111111111"},
 			}},
 		}}},
@@ -128,6 +128,7 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 		Data struct {
 			Runtimes []struct {
 				NetworkKey           string `json:"network_key"`
+				NetworkName          string `json:"network_name"`
 				AssetKey             string `json:"asset_key"`
 				ChainID              string `json:"chain_id"`
 				TokenContract        string `json:"token_contract"`
@@ -143,6 +144,7 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
 	require.Equal(t, "network", envelope.Data.Runtimes[0].NetworkKey)
+	require.Equal(t, "Test Network", envelope.Data.Runtimes[0].NetworkName)
 	require.Equal(t, "usdt0", envelope.Data.Runtimes[0].AssetKey)
 	require.Equal(t, "71", envelope.Data.Runtimes[0].ChainID)
 	require.Equal(t, "0x1111111111111111111111111111111111111111", envelope.Data.Runtimes[0].TokenContract)

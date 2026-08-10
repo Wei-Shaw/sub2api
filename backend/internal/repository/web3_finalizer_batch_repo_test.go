@@ -28,6 +28,10 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 	failedRecord.TxHash = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	failed, err := depositRepo.Create(ctx, failedRecord)
 	require.NoError(t, err)
+	reviewRecord := testWeb3DepositRecord(10)
+	reviewRecord.TxHash = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	reviewed, err := depositRepo.Create(ctx, reviewRecord)
+	require.NoError(t, err)
 
 	updated, err := batchRepo.CommitFinalizedBatch(ctx, web3deposit.FinalizerBatch{
 		ScannerKey:       testWeb3ScannerKey,
@@ -38,11 +42,12 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 			{DepositID: ready.ID, Status: web3deposit.DepositStatusReadyToCredit},
 			{DepositID: orphaned.ID, Status: web3deposit.DepositStatusOrphaned, FailureReason: string(web3deposit.CanonicalMismatchBlockHash)},
 			{DepositID: failed.ID, Status: web3deposit.DepositStatusFailed, FailureReason: web3deposit.FailureReasonAmountExceedsPlatformBalance},
+			{DepositID: reviewed.ID, Status: web3deposit.DepositStatusManualReview, ReviewReason: web3deposit.ReviewReasonAboveAutoCreditLimit},
 		},
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 3, updated)
+	require.Equal(t, 4, updated)
 	readyStored, err := depositRepo.GetByEvent(ctx, ready.ChainID, ready.TxHash, ready.LogIndex)
 	require.NoError(t, err)
 	require.Equal(t, web3deposit.DepositStatusReadyToCredit, readyStored.Status)
@@ -56,6 +61,11 @@ func TestWeb3FinalizerBatchRepositoryUpdatesDepositsAndCursorTogether(t *testing
 	require.Equal(t, web3deposit.DepositStatusFailed, failedStored.Status)
 	require.Equal(t, web3deposit.FailureReasonAmountExceedsPlatformBalance, *failedStored.FailureReason)
 	require.Equal(t, &now, failedStored.FinalizedAt)
+	reviewedStored, err := depositRepo.GetByEvent(ctx, reviewed.ChainID, reviewed.TxHash, reviewed.LogIndex)
+	require.NoError(t, err)
+	require.Equal(t, web3deposit.DepositStatusManualReview, reviewedStored.Status)
+	require.Equal(t, web3deposit.ReviewReasonAboveAutoCreditLimit, *reviewedStored.ReviewReason)
+	require.Equal(t, &now, reviewedStored.FinalizedAt)
 	cursor, err := cursorRepo.GetByKey(ctx, testWeb3ScannerKey)
 	require.NoError(t, err)
 	require.Equal(t, uint64(110), cursor.LastFinalizedBlock)

@@ -1,5 +1,19 @@
 ## ADDED Requirements
 
+### Requirement: 受支持资产必须满足美元稳定币和单网络单 Token 假设
+当前版本的自动入账模型 SHALL 只适用于经过产品和运维确认的美元稳定币，并 SHALL 按 `1 Token = 1 USD` 计入内部 `usdt` Web3 余额。系统不提供价格预言机、实时汇率或稳定币脱锚处理。每个启用网络的默认且经过验收的配置 SHOULD 只包含一种充值 Token；`assets` 映射结构 MUST NOT 被解释为同一网络多 Token 已获得产品支持。
+
+#### Scenario: 配置受支持的充值资产
+- **WHEN** 运维为一个启用网络配置充值 Token
+- **THEN** 该 Token MUST 是经过确认的美元稳定币
+- **THEN** 该网络 SHOULD 只配置一个充值 Token
+- **THEN** credited amount MUST 使用固定 `1 Token = 1 USD` 规则，不得查询或应用市场汇率
+
+#### Scenario: 请求扩展资产范围
+- **WHEN** 计划配置非美元稳定币、波动资产或同一网络的第二种充值 Token
+- **THEN** 系统 MUST NOT 将其视为普通配置变更
+- **THEN** 上线前 MUST 明确内部资产键、计价、余额聚合或隔离、脱锚处置，并更新 Spec、实现和验收测试
+
 ### Requirement: 充值金额必须按固定 USD 规则精确计算
 系统 SHALL 使用 USDT0 固定 6 位小数把链上 raw uint256 转换为十进制 Token 金额，并 MUST 按 `1 USDT0 = 1 USD balance`、手续费 0 计算 credited amount。整个链路 MUST NOT 把金额转换为 `float64`。
 

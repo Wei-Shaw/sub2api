@@ -2,10 +2,17 @@ export default {
   web3Deposits: {
     runtime: {
       title: '运行状态',
+      network: '网络',
       lag: '落后 {blocks} 个区块',
       scannerLag: '扫描落后 {blocks} 个区块',
       finalizerLag: '最终确认落后 {blocks} 个区块',
       heights: '链头 {latest} / 已扫描 {scanned} / finalized {finalized} / 已确认 {finalizedCursor}',
+      scannerLagLabel: '扫描落后',
+      finalizerLagLabel: '最终确认落后',
+      latestBlock: '最新区块',
+      scannedBlock: '已扫描区块',
+      finalizedBlock: '链上 Finalized',
+      finalizedCursor: '已确认游标',
       chainId: 'Chain ID：{id}',
       tokenContract: '代币合约',
     },

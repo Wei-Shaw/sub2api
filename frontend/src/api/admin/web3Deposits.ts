@@ -7,6 +7,7 @@ export interface AdminWeb3Deposit {
 export interface Web3DepositRuntimeEndpoint { id: string; healthy: boolean; unhealthy_until?: string }
 export interface Web3DepositRuntime {
   network_key: string
+  network_name: string
   asset_key: string
   chain_id: string
   token_contract: string

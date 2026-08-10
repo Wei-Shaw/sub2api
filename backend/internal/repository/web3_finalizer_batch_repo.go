@@ -55,21 +55,32 @@ func commitFinalizedBatch(ctx context.Context, client *dbent.Client, batch depos
 				),
 			).
 			SetStatus(string(decision.Status)).
-			ClearNextRetryAt().
-			ClearReviewReason().
-			ClearFailureReason()
-		if decision.Status == depositdomain.DepositStatusOrphaned {
+			ClearNextRetryAt()
+		switch decision.Status {
+		case depositdomain.DepositStatusManualReview:
+			update.ClearFailureReason().SetFinalizedAt(batch.Now)
+			if decision.ReviewReason != "" {
+				update.SetReviewReason(decision.ReviewReason)
+			} else {
+				update.ClearReviewReason()
+			}
+		case depositdomain.DepositStatusOrphaned:
+			update.ClearReviewReason()
 			update.ClearFinalizedAt()
 			if decision.FailureReason != "" {
 				update.SetFailureReason(decision.FailureReason)
+			} else {
+				update.ClearFailureReason()
 			}
-		} else {
-			update.SetFinalizedAt(batch.Now)
-			if decision.Status == depositdomain.DepositStatusFailed && decision.FailureReason != "" {
+		case depositdomain.DepositStatusFailed:
+			update.ClearReviewReason().SetFinalizedAt(batch.Now)
+			if decision.FailureReason != "" {
 				update.SetFailureReason(decision.FailureReason)
-			} else if decision.ReviewReason != "" {
-				update.SetReviewReason(decision.ReviewReason)
+			} else {
+				update.ClearFailureReason()
 			}
+		default:
+			update.ClearReviewReason().ClearFailureReason().SetFinalizedAt(batch.Now)
 		}
 		count, err := update.Save(ctx)
 		if err != nil {

@@ -4,21 +4,18 @@
       <div class="grid gap-3 sm:grid-cols-3">
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.runtime.title') }}</div>
-          <div class="mt-1 font-semibold">
-            {{ runtimeStateLabel }}
-          </div>
-          <select v-if="runtimes.length" v-model="selectedRuntimeKey" class="input mt-2 w-full text-sm">
-            <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }}</option>
-          </select>
-          <div class="mt-2 grid gap-1 text-xs text-gray-500">
-            <div>{{ t('admin.web3Deposits.runtime.scannerLag', { blocks: selectedRuntime?.scanner_lag_blocks || selectedRuntime?.lag_blocks || '0' }) }}</div>
-            <div>{{ t('admin.web3Deposits.runtime.finalizerLag', { blocks: selectedRuntime?.finalizer_lag_blocks || '0' }) }}</div>
-            <div>{{ t('admin.web3Deposits.runtime.heights', { latest: selectedRuntime?.latest_block || '0', scanned: selectedRuntime?.scanned_block || '0', finalized: selectedRuntime?.finalized_block || '0', finalizedCursor: selectedRuntime?.finalized_cursor_block || '0' }) }}</div>
+          <div class="mt-2 flex items-center gap-3">
+            <label for="web3-runtime-network" class="shrink-0 text-sm font-medium">{{ t('admin.web3Deposits.runtime.network') }}</label>
+            <select id="web3-runtime-network" v-if="runtimes.length" v-model="selectedRuntimeKey" class="input min-w-0 flex-1 text-sm">
+              <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_name || item.network_key }}</option>
+            </select>
           </div>
           <div v-if="selectedRuntime" class="mt-2 text-xs text-gray-500">
             <div>{{ t('admin.web3Deposits.runtime.chainId', { id: selectedRuntime.chain_id || '—' }) }}</div>
-            <div class="mt-1">{{ t('admin.web3Deposits.runtime.tokenContract') }}</div>
-            <code class="mt-1 block break-all">{{ selectedRuntime.token_contract || '—' }}</code>
+            <div class="mt-1 flex items-center gap-1 whitespace-nowrap">
+              <span>{{ t('admin.web3Deposits.runtime.tokenContract') }}</span>
+              <code :title="selectedRuntime.token_contract || undefined">{{ abbreviatedContractAddress(selectedRuntime.token_contract) }}</code>
+            </div>
           </div>
         </div>
         <div class="card p-4">
@@ -28,6 +25,33 @@
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.stats.failed') }}</div>
           <div class="mt-1 text-2xl font-semibold">{{ stats.failed || 0 }}</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.scannerLagLabel') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.scanner_lag_blocks || selectedRuntime?.lag_blocks || '0' }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.finalizerLagLabel') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.finalizer_lag_blocks || '0' }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.latestBlock') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.latest_block || '0' }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.scannedBlock') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.scanned_block || '0' }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.finalizedBlock') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.finalized_block || '0' }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.runtime.finalizedCursor') }}</div>
+          <div class="mt-1 text-xl font-semibold">{{ selectedRuntime?.finalized_cursor_block || '0' }}</div>
         </div>
       </div>
 
@@ -187,14 +211,6 @@ const statusKeys: Record<string, string> = {
   ignored: 'ignored',
 }
 
-const runtimeStateKeys: Record<string, string> = {
-  disabled: 'disabled',
-  standby: 'standby',
-  leader: 'leader',
-  unhealthy: 'unhealthy',
-  stopped: 'stopped',
-}
-
 const reasonKeys: Record<string, string> = {
   amount_above_auto_credit_limit: 'amountAboveAutoCreditLimit',
   amount_exceeds_platform_balance: 'amountExceedsPlatformBalance',
@@ -233,16 +249,15 @@ const showRescan = ref(false)
 const fromBlock = ref('')
 const toBlock = ref('')
 const selectedRuntime = computed(() => runtimes.value.find(item => runtimeKey(item) === selectedRuntimeKey.value) || runtimes.value[0])
-const runtimeStateLabel = computed(() => {
-  const state = selectedRuntime.value?.state || ''
-  const key = runtimeStateKeys[state]
-  return key
-    ? t(`admin.web3Deposits.runtimeStates.${key}`)
-    : t('admin.web3Deposits.runtimeStates.unknown', { value: state || '—' })
-})
 
 function runtimeKey(item: Web3DepositRuntime) {
   return `${item.network_key}:${item.asset_key}`
+}
+
+function abbreviatedContractAddress(value: string) {
+  if (!value) return '—'
+  if (value.length <= 10) return value
+  return `${value.slice(0, 6)}…${value.slice(-4)}`
 }
 
 function statusLabel(value: string) {

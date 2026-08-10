@@ -112,6 +112,7 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	}
 	type runtimeResponse struct {
 		NetworkKey           string             `json:"network_key"`
+		NetworkName          string             `json:"network_name"`
 		AssetKey             string             `json:"asset_key"`
 		ChainID              string             `json:"chain_id"`
 		TokenContract        string             `json:"token_contract"`
@@ -131,9 +132,12 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	items := make([]runtimeResponse, 0)
 	if h.runtimes != nil {
 		for _, key := range h.runtimes.Keys() {
-			item := runtimeResponse{NetworkKey: key.NetworkKey, AssetKey: key.AssetKey, State: string(web3deposit.ScannerRuntimeStateUnhealthy), Endpoints: []endpointResponse{}}
+			item := runtimeResponse{NetworkKey: key.NetworkKey, NetworkName: key.NetworkKey, AssetKey: key.AssetKey, State: string(web3deposit.ScannerRuntimeStateUnhealthy), Endpoints: []endpointResponse{}}
 			if h.cfg != nil {
 				if network, ok := h.cfg.Web3Deposit.Networks[key.NetworkKey]; ok {
+					if network.DisplayName != "" {
+						item.NetworkName = network.DisplayName
+					}
 					item.ChainID = strconv.FormatUint(network.ChainID, 10)
 					if asset, ok := network.Assets[key.AssetKey]; ok {
 						item.TokenContract = asset.ContractAddress

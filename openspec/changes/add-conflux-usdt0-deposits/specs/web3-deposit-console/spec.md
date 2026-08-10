@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: 用户必须能够读取 Web3 充值配置
-系统 SHALL 为已认证用户提供 Web3 充值配置 API，返回功能状态，以及每个可用网络资产的网络标识、chain ID、Token 合约、内部余额资产键、decimals、最低充值、自动入账上限、手续费和最终性说明。不同网络的同名资产 MAY 使用不同 Token 合约，金额字段 MUST 使用 JSON string。
+系统 SHALL 为已认证用户提供 Web3 充值配置 API，返回功能状态，以及每个可用网络资产的网络标识、chain ID、Token 合约、内部余额资产键、decimals、最低充值、自动入账上限、手续费和最终性说明。不同网络的同名 USD 稳定币 MAY 使用不同 Token 合约，金额字段 MUST 使用 JSON string。当前默认且经过验收的配置是每个网络一种充值 Token；API 使用资产数组不表示同一网络多 Token 已获得产品支持。
 
 #### Scenario: 功能启用
 - **WHEN** 用户读取 Web3 充值配置且 runtime 配置有效

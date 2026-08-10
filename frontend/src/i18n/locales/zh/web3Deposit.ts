@@ -36,7 +36,7 @@ export default {
     transferring: '划转中…',
     transferSuccess: 'Web3 余额已划转到主余额',
     safetyTitle: '充值安全提示',
-    safetyNetwork: '仅可通过 Conflux eSpace 转入配置的 USDT0，请勿使用 Conflux Core Space 或其他网络。',
+    safetyNetwork: '支持使用上方可选的所有已配置网络充值；转账前请确认所选网络，并核对该网络对应的代币合约地址。',
     safetyContract: '请核对上方代币合约地址，不接受名称相似的其他代币。',
     safetyFinality: '充值在 finalized 确认后显示；低于 1 USDT0 的充值不会自动入账。',
     safetyRefund: '错误网络或错误代币的充值不会自动退款。',

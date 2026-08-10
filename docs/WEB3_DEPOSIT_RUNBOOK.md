@@ -2,6 +2,8 @@
 
 This runbook covers the Conflux eSpace USDT0 deposit pipeline. It assumes one shared EVM deposit wallet, exact decimal accounting, finalized-only credit eligibility, and independently controlled user entry, scanning, and crediting.
 
+> **Asset-model constraint:** Web3 deposits currently support only product- and operations-approved USD stablecoins, credited at a fixed `1 Token = 1 USD` into the internal `usdt` Web3 balance. There is no price oracle, FX conversion, or depeg handling. The supported and validated topology is multiple configured networks with one deposit token per network. The `assets` map preserves schema extensibility; it does not mean multiple tokens on the same network are supported. A non-USD asset, volatile token, or second token on one network requires a separate design, Spec, implementation, and acceptance test before rollout.
+
 ## Safety invariants
 
 - Never configure a private key or seed phrase in the application.
@@ -10,6 +12,7 @@ This runbook covers the Conflux eSpace USDT0 deposit pipeline. It assumes one sh
 - Never edit `web3_deposits` chain-fact fields such as amount, user, token, transaction hash, log index, block hash, or finalized time.
 - Never update Scanner or Finalizer cursors manually to perform a rescan.
 - Disable user entry before disabling observation or crediting during an incident.
+- Do not configure a non-USD stablecoin or more than one deposit token for an enabled network under the current asset model.
 
 ## Runtime controls
 
