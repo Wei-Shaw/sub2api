@@ -625,7 +625,7 @@ export interface AdminGroup extends Group {
   active_account_count?: number
   rate_limited_account_count?: number
 
-  // OpenAI Messages 调度配置（仅 openai 平台使用）
+  // OpenAI Messages 调度配置（OpenAI/Composite 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig

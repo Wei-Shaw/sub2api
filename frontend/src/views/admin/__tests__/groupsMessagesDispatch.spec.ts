@@ -5,9 +5,19 @@ import {
   messagesDispatchConfigToFormState,
   messagesDispatchFormStateToConfig,
   resetMessagesDispatchFormState,
+  supportsMessagesDispatchPlatform,
 } from "../groupsMessagesDispatch";
 
 describe("groupsMessagesDispatch", () => {
+  it("supports messages dispatch for openai and composite groups", () => {
+    expect(supportsMessagesDispatchPlatform("openai")).toBe(true);
+    expect(supportsMessagesDispatchPlatform("composite")).toBe(true);
+    expect(supportsMessagesDispatchPlatform("anthropic")).toBe(false);
+    expect(supportsMessagesDispatchPlatform("gemini")).toBe(false);
+    expect(supportsMessagesDispatchPlatform("antigravity")).toBe(false);
+    expect(supportsMessagesDispatchPlatform("grok")).toBe(false);
+  });
+
   it("returns the expected default form state", () => {
     expect(createDefaultMessagesDispatchFormState()).toEqual({
       allow_messages_dispatch: false,

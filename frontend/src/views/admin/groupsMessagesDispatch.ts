@@ -1,4 +1,7 @@
-import type { OpenAIMessagesDispatchModelConfig } from "@/types";
+import type {
+  GroupPlatform,
+  OpenAIMessagesDispatchModelConfig,
+} from "@/types";
 
 export interface MessagesDispatchMappingRow {
   claude_model: string;
@@ -11,6 +14,12 @@ export interface MessagesDispatchFormState {
   sonnet_mapped_model: string;
   haiku_mapped_model: string;
   exact_model_mappings: MessagesDispatchMappingRow[];
+}
+
+export function supportsMessagesDispatchPlatform(
+  platform: GroupPlatform,
+): boolean {
+  return platform === "openai" || platform === "composite";
 }
 
 export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {

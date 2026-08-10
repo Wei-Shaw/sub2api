@@ -92,7 +92,7 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// Messages 调度字段支持 openai/composite；AllowLive 仍仅限 openai。
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）

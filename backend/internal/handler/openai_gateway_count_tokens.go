@@ -55,7 +55,8 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
 }
 
-// CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups.
+// CountTokens handles Anthropic-compatible POST /v1/messages/count_tokens for OpenAI groups
+// and Composite groups whose resolved target is OpenAI.
 // It validates billing and routes to an OpenAI token-count bridge without taking concurrency slots
 // or recording usage.
 func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {

@@ -947,6 +947,61 @@ func TestAdminService_UpdateGroup_NormalizesMessagesDispatchModelConfig(t *testi
 	}, repo.updated.MessagesDispatchModelConfig)
 }
 
+func TestAdminService_CreateGroup_PreservesMessagesDispatchFieldsForCompositePlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                  "composite-group",
+		Description:           "multi-provider messages dispatch",
+		Platform:              PlatformComposite,
+		RateMultiplier:        1.0,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.6-sol",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: " gpt-5.3-codex-high ",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.True(t, repo.created.AllowMessagesDispatch)
+	require.Equal(t, "gpt-5.6-sol", repo.created.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{
+		SonnetMappedModel: "gpt-5.3-codex",
+	}, repo.created.MessagesDispatchModelConfig)
+}
+
+func TestAdminService_UpdateGroup_PreservesMessagesDispatchFieldsForCompositePlatform(t *testing.T) {
+	existingGroup := &Group{
+		ID:                    1,
+		Name:                  "existing-composite-group",
+		Platform:              PlatformComposite,
+		Status:                StatusActive,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.6-sol",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: "gpt-5.3-codex",
+		},
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: ptrString("updated description"),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.AllowMessagesDispatch)
+	require.Equal(t, "gpt-5.6-sol", repo.updated.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{
+		SonnetMappedModel: "gpt-5.3-codex",
+	}, repo.updated.MessagesDispatchModelConfig)
+}
+
 func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatform(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}

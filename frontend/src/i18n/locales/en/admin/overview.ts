@@ -1110,7 +1110,7 @@ export default {
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
-        allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
+        allowDispatchHint: 'When enabled, this OpenAI group, or Composite requests resolved to OpenAI, can use the /v1/messages compatibility bridge',
         familyMappingTitle: 'Family Default Mapping',
         familyMappingHint: 'Requests that match the Opus, Sonnet, or Haiku families will prefer the target model configured here.',
         opusModel: 'Opus Target Model',

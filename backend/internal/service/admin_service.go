@@ -258,7 +258,7 @@ type CreateGroupInput struct {
 	MCPXMLInject        *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// Messages 调度字段支持 openai/composite；AllowLive 仍仅限 openai。
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	DefaultMappedModel          string
@@ -331,7 +331,7 @@ type UpdateGroupInput struct {
 	MCPXMLInject        *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// Messages 调度字段支持 openai/composite；AllowLive 仍仅限 openai。
 	AllowMessagesDispatch       *bool
 	AllowLive                   *bool
 	DefaultMappedModel          *string

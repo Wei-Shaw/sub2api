@@ -142,7 +142,7 @@ type CreateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// Messages 调度字段支持 openai/composite；AllowLive 仍仅限 openai。
 	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   bool                                      `json:"allow_live"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
@@ -209,7 +209,7 @@ type UpdateGroupRequest struct {
 	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
-	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	// Messages 调度字段支持 openai/composite；AllowLive 仍仅限 openai。
 	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
 	AllowLive                   *bool                                      `json:"allow_live"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
