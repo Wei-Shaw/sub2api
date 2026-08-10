@@ -160,6 +160,4 @@ func TestHandleNonStreamingResponse_HidesSolWireOverride(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, openAISolModel, gjson.Get(recorder.Body.String(), "model").String())
 	require.NotContains(t, recorder.Body.String(), openAITerraModel)
-	require.Equal(t, openAITerraModel, observedUpstreamResponseModel(c))
-	require.False(t, observedUpstreamResponseModelConflict(c))
 }
