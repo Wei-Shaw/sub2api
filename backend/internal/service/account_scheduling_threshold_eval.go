@@ -245,7 +245,7 @@ func openAIThresholdCandidate(extra map[string]any, window string) *accountSched
 	}
 	return &accountSchedulingThresholdCandidate{
 		window:      window,
-		usedPercent: utilizationAsPercent(usedPercent),
+		usedPercent: schedulingPercentValue(usedPercent),
 		until:       parseSchedulingResetAt(extra[resetAtKey]),
 	}
 }

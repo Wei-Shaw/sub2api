@@ -16,7 +16,9 @@ export type BillingMode =
 export const BILLING_MODEL_SOURCE_REQUESTED = 'requested' as const
 export const BILLING_MODEL_SOURCE_UPSTREAM = 'upstream' as const
 export const BILLING_MODEL_SOURCE_CHANNEL_MAPPED = 'channel_mapped' as const
+export const BILLING_MODEL_SOURCE_RESPONSE = 'response_model' as const
 export type BillingModelSource =
   | typeof BILLING_MODEL_SOURCE_REQUESTED
   | typeof BILLING_MODEL_SOURCE_UPSTREAM
   | typeof BILLING_MODEL_SOURCE_CHANNEL_MAPPED
+  | typeof BILLING_MODEL_SOURCE_RESPONSE
