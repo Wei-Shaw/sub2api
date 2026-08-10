@@ -63,30 +63,150 @@ func TestGatewayHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 	assert.Equal(t, "Upstream request failed", errField["message"])
 }
 
-func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
+func TestOpenAIHandleErrorResponse_ClientRequestErrorsKeepStatusAndHideUpstreamDetails(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		message    string
+	}{
+		{name: "bad_request", statusCode: http.StatusBadRequest, message: "Invalid request to upstream provider"},
+		{name: "payload_too_large", statusCode: http.StatusRequestEntityTooLarge, message: "Request payload is too large"},
+		{name: "unprocessable_entity", statusCode: http.StatusUnprocessableEntity, message: "Request could not be processed by upstream provider"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			svc := &OpenAIGatewayService{}
+			respBody := []byte(`{"error":{"message":"synthetic-sensitive-upstream-detail"},"request_id":"synthetic-request-id"}`)
+			resp := &http.Response{
+				StatusCode: tt.statusCode,
+				Body:       io.NopCloser(bytes.NewReader(respBody)),
+				Header:     http.Header{"X-Request-Id": []string{"synthetic-request-id"}},
+			}
+			account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+			_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+			require.Error(t, err)
+			assert.Equal(t, tt.statusCode, rec.Code)
+			assert.True(t, IsResponseCommitted(c))
+			assert.NotContains(t, rec.Body.String(), "synthetic-sensitive-upstream-detail")
+			assert.NotContains(t, rec.Body.String(), "synthetic-request-id")
+
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			errField, ok := payload["error"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "invalid_request_error", errField["type"])
+			assert.Equal(t, tt.message, errField["message"])
+		})
+	}
+}
+
+func TestOpenAIHandleErrorResponse_ClientRequestErrorsIgnoreCustomCodeMiss(t *testing.T) {
+	for _, statusCode := range []int{
+		http.StatusBadRequest,
+		http.StatusRequestEntityTooLarge,
+		http.StatusUnprocessableEntity,
+	} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			svc := &OpenAIGatewayService{}
+			resp := &http.Response{
+				StatusCode: statusCode,
+				Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"synthetic-sensitive-upstream-detail"}}`))),
+				Header:     http.Header{},
+			}
+			account := &Account{
+				ID:       13,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(http.StatusTooManyRequests)},
+				},
+			}
+
+			_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+			require.Error(t, err)
+			assert.Equal(t, statusCode, rec.Code)
+			assert.NotContains(t, rec.Body.String(), "synthetic-sensitive-upstream-detail")
+		})
+	}
+}
+
+func TestOpenAIHandleErrorResponse_NonClientCustomCodeMissRemainsGatewayError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
 	svc := &OpenAIGatewayService{}
-	respBody := []byte(`{"error":{"message":"Invalid schema for field messages"}}`)
 	resp := &http.Response{
-		StatusCode: http.StatusUnprocessableEntity,
-		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"synthetic-sensitive-upstream-detail"}}`))),
 		Header:     http.Header{},
 	}
-	account := &Account{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account := &Account{
+		ID:       14,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusTooManyRequests)},
+		},
+	}
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)
-	assert.Equal(t, http.StatusBadGateway, rec.Code)
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.True(t, IsResponseCommitted(c))
+	assert.NotContains(t, rec.Body.String(), "synthetic-sensitive-upstream-detail")
+}
 
-	var payload map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
-	errField, ok := payload["error"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "upstream_error", errField["type"])
-	assert.Equal(t, "Upstream request failed", errField["message"])
+func TestOpenAIHandleErrorResponse_NonClientDefaultsRemainWrapped(t *testing.T) {
+	tests := []struct {
+		statusCode int
+		wantStatus int
+		wantType   string
+	}{
+		{statusCode: http.StatusUnauthorized, wantStatus: http.StatusBadGateway, wantType: "upstream_error"},
+		{statusCode: http.StatusPaymentRequired, wantStatus: http.StatusBadGateway, wantType: "upstream_error"},
+		{statusCode: http.StatusForbidden, wantStatus: http.StatusBadGateway, wantType: "upstream_error"},
+		{statusCode: http.StatusTooManyRequests, wantStatus: http.StatusTooManyRequests, wantType: "rate_limit_error"},
+		{statusCode: http.StatusInternalServerError, wantStatus: http.StatusBadGateway, wantType: "upstream_error"},
+	}
+
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.statusCode), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			svc := &OpenAIGatewayService{}
+			resp := &http.Response{
+				StatusCode: tt.statusCode,
+				Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":{"message":"synthetic-upstream-error"}}`))),
+				Header:     http.Header{},
+			}
+			account := &Account{ID: 14, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+			_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+			require.Error(t, err)
+			assert.Equal(t, tt.wantStatus, rec.Code)
+
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+			errField, ok := payload["error"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantType, errField["type"])
+		})
+	}
 }
 
 func TestOpenAIHandleErrorResponse_ContextWindow502KeepsMessageWithoutFailover(t *testing.T) {
