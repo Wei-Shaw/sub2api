@@ -462,7 +462,7 @@ export default {
         grokDefaultTextModel: 'Default Grok text model',
         grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
         grokCrossClientMap: 'Map other clients to Grok',
-        grokCrossClientMapHint: 'Disabled by default. When enabled, GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above.',
+        grokCrossClientMapHint: 'Enabled by default for client compatibility. GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above. Disable this to require Grok model IDs.',
         grokDefaultBaseURLMode: 'Default Grok upstream',
         grokDefaultBaseURLModeHint: 'Used only when a Grok account has no explicit base URL. Media and voice endpoints continue to use their official API hosts.',
         grokBaseURLModeCLI: 'CLI chat proxy',
