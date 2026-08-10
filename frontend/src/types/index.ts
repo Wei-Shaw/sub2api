@@ -204,6 +204,14 @@ export interface LoginAgreementDocument {
   content_md: string
 }
 
+export type HomeStyle =
+  | 'classic'
+  | 'compact'
+  | 'editorial'
+  | 'operations'
+  | 'minimal'
+  | 'catalog'
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -235,6 +243,7 @@ export interface PublicSettings {
   contact_info: string
   doc_url: string
   home_content: string
+  home_style: HomeStyle
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean

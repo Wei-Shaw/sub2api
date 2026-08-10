@@ -111,6 +111,154 @@ export default {
     },
     footer: {
       allRightsReserved: 'All rights reserved.'
+    },
+    styles: {
+      platforms: {
+        claude: { name: 'Claude' },
+        gpt: { name: 'GPT' },
+        gemini: { name: 'Gemini' },
+        antigravity: { name: 'Antigravity' }
+      },
+      editorial: {
+        eyebrow: 'Model routing, simplified',
+        titleLineOne: 'One interface.',
+        titleLineTwo: 'Every great model.',
+        viewExample: 'View request example',
+        trust: {
+          unifiedAuth: 'Unified authentication',
+          sdkCompatible: 'Compatible with common SDKs',
+          usageBilling: 'Usage-based billing'
+        },
+        terminalLabel: 'API request example',
+        request: 'request',
+        command: 'curl -X POST /v1/chat/completions',
+        routeComment: 'Selecting an available route',
+        yourApp: 'Your app',
+        gateway: 'Gateway',
+        model: 'Model',
+        responseCode: '200 OK',
+        responseBody: '{ "content": "Ready" }',
+        details: {
+          model: 'Model',
+          modelValue: 'Selected per request',
+          route: 'Route',
+          routeValue: 'Handled by gateway',
+          interface: 'Interface',
+          interfaceValue: 'API compatible'
+        },
+        capabilitiesLabel: 'Platform capabilities',
+        capabilities: {
+          sdk: {
+            title: 'Keep your SDK',
+            body: 'Change the base URL, not the way your application works.'
+          },
+          routing: {
+            title: 'Unified routing',
+            body: 'Reach configured model routes through one gateway.'
+          },
+          billing: {
+            title: 'Clear usage',
+            body: 'Requests, tokens, and cost records remain available to review.'
+          }
+        },
+        directoryEyebrow: 'Model directory',
+        directoryTitle: 'Switch models from one entry point',
+        directoryDescription: 'Choose a connected platform for work ranging from everyday tasks to complex reasoning.',
+        platformDescriptions: {
+          claude: 'Reasoning, writing, and code',
+          gpt: 'General and multimodal work',
+          gemini: 'Multimodal and long-context work',
+          antigravity: 'Flexible routed workloads'
+        }
+      },
+      operations: {
+        eyebrow: 'Gateway control plane',
+        demoNotice: 'Routing capability demo, not live monitoring',
+        capabilitiesLabel: 'Routing capability overview',
+        workspaceLabel: 'Routing capability demonstration',
+        metrics: {
+          routing: {
+            label: 'Routing mode',
+            value: 'Unified entry',
+            note: 'Selects upstreams by configuration'
+          },
+          providers: {
+            label: 'Platform examples',
+            value: 'Four',
+            note: 'Static capability display'
+          },
+          protocol: {
+            label: 'Protocol',
+            value: 'HTTPS',
+            note: 'Encrypted transport capability'
+          },
+          api: {
+            label: 'API surface',
+            value: '/v1',
+            note: 'Compatible request paths'
+          }
+        },
+        matrixTitle: 'Routing capability matrix',
+        matrixCaption: 'Configuration example / not live',
+        routable: 'Routable',
+        routes: {
+          claude: { name: 'Claude / primary route', mode: 'Policy: priority' },
+          gpt: { name: 'GPT / balanced route', mode: 'Policy: balanced' },
+          gemini: { name: 'Gemini / fast route', mode: 'Policy: low latency' },
+          antigravity: { name: 'Antigravity / flexible route', mode: 'Policy: configured' }
+        },
+        quickAccess: 'Quick access',
+        disclaimer: 'This interface describes configurable routing and protocol capabilities. It does not read live health, latency, or availability data.',
+        footerLabel: 'Routing capabilities'
+      },
+      minimal: {
+        eyebrow: 'Independent model access',
+        established: 'Est. {year}',
+        kicker: 'A quieter way to build with AI.',
+        notes: {
+          endpoint: {
+            title: 'One endpoint',
+            body: 'Use a familiar interface for every supported model.'
+          },
+          choice: {
+            title: 'Your choice',
+            body: 'Move between providers without changing your product.'
+          },
+          usage: {
+            title: 'Measured use',
+            body: 'Review clear usage and billing for every request.'
+          }
+        }
+      },
+      catalog: {
+        eyebrow: 'Model directory',
+        title: 'Choose the right model for the work.',
+        staticNote: 'This is a static platform directory. Actual model access depends on the instance configuration.',
+        familiesTitle: 'Platform directory',
+        providerCount: 'Four platforms',
+        listed: 'Listed',
+        capabilityTags: 'Capability tags',
+        models: {
+          claude: { description: 'Suited to careful reasoning, writing, analysis, and production code.' },
+          gpt: { description: 'Suited to general, multimodal product, and agent tasks.' },
+          gemini: { description: 'Suited to multimodal tasks and broad-context workflows.' },
+          antigravity: { description: 'Suited to model workloads that need flexible routing.' }
+        },
+        tags: {
+          reasoning: 'Reasoning',
+          code: 'Code',
+          longContext: 'Long context',
+          general: 'General',
+          tools: 'Tools',
+          vision: 'Vision',
+          multimodal: 'Multimodal',
+          fast: 'Fast',
+          context: 'Context',
+          routing: 'Routing',
+          flexible: 'Flexible',
+          api: 'API'
+        }
+      }
     }
   },
 

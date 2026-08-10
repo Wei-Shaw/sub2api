@@ -4,6 +4,7 @@ export default {
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
         general: '通用设置',
+        home: '首页设置',
         agreement: '登录条款',
         features: '功能开关',
         security: '安全与认证',
@@ -12,6 +13,21 @@ export default {
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+      },
+      home: {
+        title: '首页设置',
+        description: '配置首页品牌内容并选择访客看到的首页视觉风格。',
+        styleTitle: '首页风格',
+        styleHint: '预览卡片会随屏幕宽度响应排列，选择后保存即可应用。',
+        customContentPriority: '自定义内容优先：当前内容会覆盖所选首页风格。',
+        styles: {
+          classic: { name: '经典', description: '平衡的品牌介绍与清晰行动入口。' },
+          compact: { name: '简洁', description: '紧凑呈现核心站点信息，减少视觉干扰。' },
+          editorial: { name: '编辑部', description: '强调排版层次与内容叙事的杂志式首页。' },
+          operations: { name: '运营中心', description: '以运行状态、关键指标和服务入口为核心。' },
+          minimal: { name: '极简', description: '留白充足，只保留品牌与最重要的行动项。' },
+          catalog: { name: '服务目录', description: '用结构化卡片展示模型、能力与访问入口。' },
+        },
       },
       features: {
         channelMonitor: {
@@ -625,13 +641,13 @@ export default {
         logoReadError: '读取图片文件失败',
         homeContent: '首页内容',
         homeContentPlaceholder:
-          '在此输入首页内容，支持 Markdown & HTML 代码。如果输入的是一个链接，则会使用该链接作为 iframe 的 src 属性。',
+          '在此输入首页内容，支持 Markdown 与 HTML。',
         homeContentHint:
-          '自定义首页内容，支持 Markdown/HTML。如果输入的是链接（以 http:// 或 https:// 开头），则会使用该链接作为 iframe 的 src 属性，这允许你设置任意网页作为首页。设置后首页的状态信息将不再显示。',
+          '设置后将优先展示自定义内容，不再渲染所选的首页风格。',
         homeContentIframeWarning:
           '⚠️ iframe 模式提示：部分网站设置了 X-Frame-Options 或 CSP 安全策略，禁止被嵌入到 iframe 中。如果页面显示空白或报错，请确认目标网站允许被嵌入，或考虑使用 HTML 模式自行构建页面内容。',
         compactHome: '简洁首页',
-        compactHomeHint: '未设置自定义首页内容时，展示简洁的站点信息页面。',
+        compactHomeHint: '兼容开关：开启后选择“简洁”，关闭后选择“经典”。',
         hideCcsImportButton: '隐藏 CCS 导入按钮',
         hideCcsImportButtonHint: '启用后将在 API Keys 页面隐藏"导入 CCS"按钮'
       },

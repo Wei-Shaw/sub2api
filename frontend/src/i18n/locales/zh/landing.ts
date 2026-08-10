@@ -111,6 +111,154 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
+    },
+    styles: {
+      platforms: {
+        claude: { name: 'Claude' },
+        gpt: { name: 'GPT' },
+        gemini: { name: 'Gemini' },
+        antigravity: { name: 'Antigravity' }
+      },
+      editorial: {
+        eyebrow: '模型路由，从此简单',
+        titleLineOne: '一个接口，',
+        titleLineTwo: '调用所有好模型。',
+        viewExample: '查看调用示例',
+        trust: {
+          unifiedAuth: '统一鉴权',
+          sdkCompatible: '兼容常用 SDK',
+          usageBilling: '按实际用量结算'
+        },
+        terminalLabel: 'API 请求示例',
+        request: '请求',
+        command: 'curl -X POST /v1/chat/completions',
+        routeComment: '正在选择可用路由',
+        yourApp: '你的应用',
+        gateway: '网关',
+        model: '模型',
+        responseCode: '200 成功',
+        responseBody: '{ "content": "已就绪" }',
+        details: {
+          model: '模型',
+          modelValue: '按请求选择',
+          route: '路由',
+          routeValue: '由网关处理',
+          interface: '接口',
+          interfaceValue: '兼容 API'
+        },
+        capabilitiesLabel: '平台能力',
+        capabilities: {
+          sdk: {
+            title: '接入不重写',
+            body: '保留现有 SDK 和调用习惯，只需替换 Base URL。'
+          },
+          routing: {
+            title: '统一路由',
+            body: '通过同一网关访问已配置的模型路由。'
+          },
+          billing: {
+            title: '用量清晰',
+            body: '请求、Token 与费用记录可供查询。'
+          }
+        },
+        directoryEyebrow: '模型目录',
+        directoryTitle: '在同一个入口切换模型',
+        directoryDescription: '从日常任务到复杂推理，按场景选择已接入的平台。',
+        platformDescriptions: {
+          claude: '推理、写作与代码',
+          gpt: '通用与多模态任务',
+          gemini: '多模态与长上下文',
+          antigravity: '灵活的路由工作负载'
+        }
+      },
+      operations: {
+        eyebrow: '网关控制平面',
+        demoNotice: '路由能力演示，不是实时监控',
+        capabilitiesLabel: '路由能力概览',
+        workspaceLabel: '路由能力演示区',
+        metrics: {
+          routing: {
+            label: '路由方式',
+            value: '统一入口',
+            note: '按配置选择上游'
+          },
+          providers: {
+            label: '平台示例',
+            value: '4 个',
+            note: '静态能力展示'
+          },
+          protocol: {
+            label: '传输协议',
+            value: 'HTTPS',
+            note: '加密传输能力'
+          },
+          api: {
+            label: 'API 接口',
+            value: '/v1',
+            note: '兼容调用路径'
+          }
+        },
+        matrixTitle: '路由能力矩阵',
+        matrixCaption: '配置示例 / 非实时',
+        routable: '可路由',
+        routes: {
+          claude: { name: 'Claude / 主路由', mode: '策略：优先' },
+          gpt: { name: 'GPT / 均衡路由', mode: '策略：均衡' },
+          gemini: { name: 'Gemini / 快速路由', mode: '策略：低延迟' },
+          antigravity: { name: 'Antigravity / 灵活路由', mode: '策略：按配置' }
+        },
+        quickAccess: '快捷入口',
+        disclaimer: '此界面仅说明可配置的路由与协议能力，不读取实时健康、延迟或可用率数据。',
+        footerLabel: '路由能力'
+      },
+      minimal: {
+        eyebrow: '独立模型入口',
+        established: '始于 {year}',
+        kicker: '用更安静的方式构建 AI 产品。',
+        notes: {
+          endpoint: {
+            title: '一个端点',
+            body: '用熟悉的接口访问已支持的模型。'
+          },
+          choice: {
+            title: '自由选择',
+            body: '切换服务平台，无需改变产品的调用方式。'
+          },
+          usage: {
+            title: '用量可查',
+            body: '清晰查看每次请求的用量与计费。'
+          }
+        }
+      },
+      catalog: {
+        eyebrow: '模型目录',
+        title: '为工作选择合适的模型。',
+        staticNote: '以下为静态平台目录，实际可用模型以实例配置为准。',
+        familiesTitle: '平台目录',
+        providerCount: '4 个平台',
+        listed: '目录展示',
+        capabilityTags: '能力标签',
+        models: {
+          claude: { description: '适用于审慎推理、写作、分析与生产代码。' },
+          gpt: { description: '适用于通用、多模态产品与智能体任务。' },
+          gemini: { description: '适用于多模态任务与广泛的上下文场景。' },
+          antigravity: { description: '适用于需要灵活路由的模型工作负载。' }
+        },
+        tags: {
+          reasoning: '推理',
+          code: '代码',
+          longContext: '长上下文',
+          general: '通用',
+          tools: '工具',
+          vision: '视觉',
+          multimodal: '多模态',
+          fast: '快速',
+          context: '上下文',
+          routing: '路由',
+          flexible: '灵活',
+          api: 'API'
+        }
+      }
     }
   },
 

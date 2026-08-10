@@ -101,6 +101,44 @@ func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T
 	require.False(t, missingSettings.CompactHomeEnabled)
 }
 
+func TestSettingService_GetPublicSettings_NormalizesHomeStyle(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: HomeStyleClassic, raw: HomeStyleClassic, want: HomeStyleClassic},
+		{name: HomeStyleCompact, raw: HomeStyleCompact, want: HomeStyleCompact},
+		{name: HomeStyleEditorial, raw: HomeStyleEditorial, want: HomeStyleEditorial},
+		{name: HomeStyleOperations, raw: HomeStyleOperations, want: HomeStyleOperations},
+		{name: HomeStyleMinimal, raw: HomeStyleMinimal, want: HomeStyleMinimal},
+		{name: HomeStyleCatalog, raw: HomeStyleCatalog, want: HomeStyleCatalog},
+		{name: "trimmed case insensitive", raw: " Operations ", want: HomeStyleOperations},
+		{name: "missing", want: HomeStyleClassic},
+		{name: "invalid", raw: "unknown", want: HomeStyleClassic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+				SettingKeyHomeStyle: tc.raw,
+			}}, &config.Config{})
+
+			settings, err := svc.GetPublicSettings(context.Background())
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.HomeStyle)
+		})
+	}
+}
+
+func TestSettingService_GetPublicSettings_UsesLegacyCompactHomeStyle(t *testing.T) {
+	settings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyCompactHomeEnabled: "true",
+	}}, &config.Config{}).GetPublicSettings(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, HomeStyleCompact, settings.HomeStyle)
+}
+
 func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing.T) {
 	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
 	require.True(t, missing.HideThroughput)

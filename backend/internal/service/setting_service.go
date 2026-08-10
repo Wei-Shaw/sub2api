@@ -16,12 +16,45 @@ import (
 )
 
 const (
+	HomeStyleClassic    = "classic"
+	HomeStyleCompact    = "compact"
+	HomeStyleEditorial  = "editorial"
+	HomeStyleOperations = "operations"
+	HomeStyleMinimal    = "minimal"
+	HomeStyleCatalog    = "catalog"
+
 	GrokDefaultBaseURLModeAPI     = "api"
 	GrokDefaultBaseURLModeUSEast1 = "us-east-1"
 	GrokDefaultBaseURLModeUSWest2 = "us-west-2"
 	GrokDefaultBaseURLModeEUWest1 = "eu-west-1"
 	GrokDefaultBaseURLModeCLI     = "cli"
 )
+
+func normalizeHomeStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case HomeStyleClassic:
+		return HomeStyleClassic
+	case HomeStyleCompact:
+		return HomeStyleCompact
+	case HomeStyleEditorial:
+		return HomeStyleEditorial
+	case HomeStyleOperations:
+		return HomeStyleOperations
+	case HomeStyleMinimal:
+		return HomeStyleMinimal
+	case HomeStyleCatalog:
+		return HomeStyleCatalog
+	default:
+		return HomeStyleClassic
+	}
+}
+
+func resolveHomeStyle(style string, compactHomeEnabled bool) string {
+	if strings.TrimSpace(style) == "" && compactHomeEnabled {
+		return HomeStyleCompact
+	}
+	return normalizeHomeStyle(style)
+}
 
 func normalizeGrokDefaultBaseURLMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {

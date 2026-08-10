@@ -238,6 +238,33 @@ func TestSettingService_UpdateSettings_PersistsCompactHomeEnabled(t *testing.T) 
 	require.Equal(t, "true", repo.updates[SettingKeyCompactHomeEnabled])
 }
 
+func TestSettingService_UpdateSettings_NormalizesHomeStyle(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		style string
+		want  string
+	}{
+		{name: HomeStyleClassic, style: HomeStyleClassic, want: HomeStyleClassic},
+		{name: HomeStyleCompact, style: HomeStyleCompact, want: HomeStyleCompact},
+		{name: HomeStyleEditorial, style: HomeStyleEditorial, want: HomeStyleEditorial},
+		{name: HomeStyleOperations, style: HomeStyleOperations, want: HomeStyleOperations},
+		{name: HomeStyleMinimal, style: HomeStyleMinimal, want: HomeStyleMinimal},
+		{name: HomeStyleCatalog, style: HomeStyleCatalog, want: HomeStyleCatalog},
+		{name: "trimmed case insensitive", style: " Minimal ", want: HomeStyleMinimal},
+		{name: "invalid", style: "unknown", want: HomeStyleClassic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &settingUpdateRepoStub{}
+			svc := NewSettingService(repo, &config.Config{})
+
+			err := svc.UpdateSettings(context.Background(), &SystemSettings{HomeStyle: tc.style})
+
+			require.NoError(t, err)
+			require.Equal(t, tc.want, repo.updates[SettingKeyHomeStyle])
+		})
+	}
+}
+
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	groupReader := &defaultSubGroupReaderStub{

@@ -6172,6 +6172,125 @@
         </div>
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
+        <!-- Tab: Home -->
+        <div v-show="activeTab === 'home'" class="space-y-6" data-testid="home-settings-tab">
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.home.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.home.description") }}
+              </p>
+            </div>
+            <div class="space-y-6 p-6">
+              <fieldset>
+                <legend class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ t("admin.settings.home.styleTitle") }}
+                </legend>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.home.styleHint") }}
+                </p>
+                <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <label
+                    v-for="style in homeStyleOptions"
+                    :key="style"
+                    :class="[
+                      'home-style-card',
+                      form.home_style === style && 'home-style-card-selected',
+                    ]"
+                    :data-testid="`home-style-${style}`"
+                  >
+                    <input
+                      v-model="form.home_style"
+                      class="sr-only"
+                      type="radio"
+                      :value="style"
+                    />
+                    <span
+                      :class="['home-style-preview', `home-style-preview-${style}`]"
+                      aria-hidden="true"
+                    >
+                      <span class="home-style-preview-nav"></span>
+                      <span class="home-style-preview-title"></span>
+                      <span class="home-style-preview-copy"></span>
+                      <span class="home-style-preview-action"></span>
+                    </span>
+                    <span class="flex items-start justify-between gap-3">
+                      <span>
+                        <span class="block text-sm font-semibold text-gray-900 dark:text-white">
+                          {{ t(`admin.settings.home.styles.${style}.name`) }}
+                        </span>
+                        <span class="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">
+                          {{ t(`admin.settings.home.styles.${style}.description`) }}
+                        </span>
+                      </span>
+                      <span class="home-style-radio" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.site.siteName") }}
+                  </label>
+                  <input v-model="form.site_name" type="text" class="input" :placeholder="t('admin.settings.site.siteNamePlaceholder')" />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.siteNameHint") }}</p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.site.siteSubtitle") }}
+                  </label>
+                  <input v-model="form.site_subtitle" type="text" class="input" :placeholder="t('admin.settings.site.siteSubtitlePlaceholder')" />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.siteSubtitleHint") }}</p>
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.site.siteLogo") }}</label>
+                <ImageUpload
+                  v-model="form.site_logo"
+                  mode="image"
+                  :upload-label="t('admin.settings.site.uploadImage')"
+                  :remove-label="t('admin.settings.site.remove')"
+                  :hint="t('admin.settings.site.logoHint')"
+                  :max-size="300 * 1024"
+                />
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.site.docUrl") }}</label>
+                <input v-model="form.doc_url" type="url" class="input font-mono text-sm" :placeholder="t('admin.settings.site.docUrlPlaceholder')" />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.docUrlHint") }}</p>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.settings.site.homeContent") }}</label>
+                <textarea v-model="form.home_content" rows="6" class="input font-mono text-sm" :placeholder="t('admin.settings.site.homeContentPlaceholder')"></textarea>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.homeContentHint") }}</p>
+                <p
+                  v-if="form.home_content.trim()"
+                  class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                  data-testid="home-content-priority-hint"
+                >
+                  {{ t("admin.settings.home.customContentPriority") }}
+                </p>
+              </div>
+
+              <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{ t("admin.settings.site.compactHome") }}</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.compactHomeHint") }}</p>
+                </div>
+                <Toggle v-model="compactHomeEnabled" data-testid="compact-home-toggle" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: Home -->
+
         <!-- Tab: General -->
         <div v-show="activeTab === 'general'" class="space-y-6">
           <!-- Site Settings -->
@@ -6198,45 +6317,8 @@
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.site.backendModeDescription") }}
                   </p>
-	                </div>
-	                <Toggle v-model="form.backend_mode_enabled" />
-	              </div>
-
-	              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div>
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.site.siteName") }}
-                  </label>
-                  <input
-                    v-model="form.site_name"
-                    type="text"
-                    class="input"
-                    :placeholder="t('admin.settings.site.siteNamePlaceholder')"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.site.siteNameHint") }}
-                  </p>
                 </div>
-                <div>
-                  <label
-                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{ t("admin.settings.site.siteSubtitle") }}
-                  </label>
-                  <input
-                    v-model="form.site_subtitle"
-                    type="text"
-                    class="input"
-                    :placeholder="
-                      t('admin.settings.site.siteSubtitlePlaceholder')
-                    "
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.site.siteSubtitleHint") }}
-                  </p>
-                </div>
+                <Toggle v-model="form.backend_mode_enabled" />
               </div>
 
               <!-- API Base URL -->
@@ -6452,76 +6534,6 @@
                 <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.settings.site.contactInfoHint") }}
                 </p>
-              </div>
-
-              <!-- Doc URL -->
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.site.docUrl") }}
-                </label>
-                <input
-                  v-model="form.doc_url"
-                  type="url"
-                  class="input font-mono text-sm"
-                  :placeholder="t('admin.settings.site.docUrlPlaceholder')"
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.site.docUrlHint") }}
-                </p>
-              </div>
-
-              <!-- Site Logo Upload -->
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.site.siteLogo") }}
-                </label>
-                <ImageUpload
-                  v-model="form.site_logo"
-                  mode="image"
-                  :upload-label="t('admin.settings.site.uploadImage')"
-                  :remove-label="t('admin.settings.site.remove')"
-                  :hint="t('admin.settings.site.logoHint')"
-                  :max-size="300 * 1024"
-                />
-              </div>
-
-              <!-- Home Content -->
-              <div>
-                <label
-                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
-                  {{ t("admin.settings.site.homeContent") }}
-                </label>
-                <textarea
-                  v-model="form.home_content"
-                  rows="6"
-                  class="input font-mono text-sm"
-                  :placeholder="t('admin.settings.site.homeContentPlaceholder')"
-                ></textarea>
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.site.homeContentHint") }}
-                </p>
-                <!-- iframe CSP Warning -->
-                <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                  {{ t("admin.settings.site.homeContentIframeWarning") }}
-                </p>
-              </div>
-
-              <!-- Compact Home Page -->
-              <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
-                <div>
-                  <label class="font-medium text-gray-900 dark:text-white">{{
-                    t("admin.settings.site.compactHome")
-                  }}</label>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.site.compactHomeHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.compact_home_enabled" data-testid="compact-home-toggle" />
               </div>
 
               <!-- Hide CCS Import Button -->
@@ -8684,6 +8696,7 @@ import type {
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
+  HomeStyle,
   LoginAgreementDocument,
   NotifyEmailEntry,
   Proxy,
@@ -8754,6 +8767,7 @@ const paymentMethodsHref = computed(() =>
 
 type SettingsTab =
   | "general"
+  | "home"
   | "agreement"
   | "features"
   | "security"
@@ -8765,6 +8779,7 @@ type SettingsTab =
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
+  { key: "home" as SettingsTab, icon: "globe" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
   { key: "features" as SettingsTab, icon: "bolt" as const },
   { key: "security" as SettingsTab, icon: "shield" as const },
@@ -8774,6 +8789,28 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+
+const homeStyleOptions: HomeStyle[] = [
+  "classic",
+  "compact",
+  "editorial",
+  "operations",
+  "minimal",
+  "catalog",
+];
+
+function normalizeHomeStyle(value: unknown): HomeStyle {
+  return homeStyleOptions.includes(value as HomeStyle)
+    ? (value as HomeStyle)
+    : "classic";
+}
+
+const compactHomeEnabled = computed({
+  get: () => form.home_style === "compact",
+  set: (enabled: boolean) => {
+    form.home_style = enabled ? "compact" : "classic";
+  },
+});
 
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -9454,6 +9491,7 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  home_style: "classic",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -10659,6 +10697,11 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.home_style = normalizeHomeStyle(
+      settings.home_style ??
+        (settings.compact_home_enabled ? "compact" : "classic"),
+    );
+    form.compact_home_enabled = form.home_style === "compact";
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
@@ -11079,7 +11122,8 @@ async function saveSettings() {
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,
-      compact_home_enabled: form.compact_home_enabled,
+      home_style: form.home_style,
+      compact_home_enabled: form.home_style === "compact",
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
@@ -12801,6 +12845,103 @@ watch(
 
 .default-sub-delete-btn {
   @apply h-[42px];
+}
+
+.home-style-card {
+  @apply cursor-pointer rounded-xl border border-gray-200 bg-white p-3 transition duration-200 hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md dark:border-dark-600 dark:bg-dark-800;
+}
+
+.home-style-card:focus-within {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 dark:ring-offset-dark-900;
+}
+
+.home-style-card-selected {
+  @apply border-primary-500 bg-primary-50/50 shadow-sm dark:border-primary-400 dark:bg-primary-900/10;
+}
+
+.home-style-radio {
+  @apply mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 border-gray-300 bg-white transition dark:border-dark-500 dark:bg-dark-700;
+}
+
+.home-style-card-selected .home-style-radio {
+  @apply border-[5px] border-primary-600 dark:border-primary-400;
+}
+
+.home-style-preview {
+  @apply relative mb-3 block h-28 overflow-hidden rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-dark-600 dark:bg-dark-900;
+}
+
+.home-style-preview span {
+  @apply absolute block rounded-full;
+}
+
+.home-style-preview-nav {
+  @apply left-3 right-3 top-3 h-2 bg-slate-200 dark:bg-slate-700;
+}
+
+.home-style-preview-title {
+  @apply left-5 top-10 h-3 w-2/3 bg-slate-700 dark:bg-slate-200;
+}
+
+.home-style-preview-copy {
+  @apply left-5 top-16 h-2 w-1/2 bg-slate-300 dark:bg-slate-600;
+}
+
+.home-style-preview-action {
+  @apply bottom-4 left-5 h-3 w-16 bg-primary-500;
+}
+
+.home-style-preview-compact .home-style-preview-title,
+.home-style-preview-compact .home-style-preview-copy,
+.home-style-preview-compact .home-style-preview-action {
+  left: 25%;
+}
+
+.home-style-preview-editorial {
+  background: linear-gradient(135deg, #fff7ed 0 48%, #fef3c7 48%);
+}
+
+.home-style-preview-editorial .home-style-preview-title {
+  @apply h-5 w-1/2 rounded-sm bg-amber-950;
+}
+
+.home-style-preview-operations {
+  @apply bg-slate-900;
+}
+
+.home-style-preview-operations .home-style-preview-nav,
+.home-style-preview-operations .home-style-preview-copy {
+  @apply bg-cyan-400/40;
+}
+
+.home-style-preview-operations .home-style-preview-title {
+  @apply bg-cyan-300;
+}
+
+.home-style-preview-minimal .home-style-preview-nav,
+.home-style-preview-minimal .home-style-preview-copy {
+  @apply hidden;
+}
+
+.home-style-preview-minimal .home-style-preview-title {
+  @apply left-1/4 top-10 w-1/2;
+}
+
+.home-style-preview-minimal .home-style-preview-action {
+  @apply bottom-7 left-[38%] w-1/4;
+}
+
+.home-style-preview-catalog {
+  background:
+    linear-gradient(#cbd5e1, #cbd5e1) 10% 72% / 23% 32% no-repeat,
+    linear-gradient(#94a3b8, #94a3b8) 50% 72% / 23% 32% no-repeat,
+    linear-gradient(#cbd5e1, #cbd5e1) 90% 72% / 23% 32% no-repeat,
+    #f8fafc;
+}
+
+.home-style-preview-catalog .home-style-preview-copy,
+.home-style-preview-catalog .home-style-preview-action {
+  @apply hidden;
 }
 
 /* ============ 系统设置 Tab 导航 ============ */

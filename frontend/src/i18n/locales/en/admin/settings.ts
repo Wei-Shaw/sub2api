@@ -4,6 +4,7 @@ export default {
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
         general: 'General',
+        home: 'Home',
         agreement: 'Agreement',
         features: 'Feature Switches',
         security: 'Security',
@@ -12,6 +13,21 @@ export default {
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+      },
+      home: {
+        title: 'Home Page',
+        description: 'Configure home-page branding and choose the visual style visitors see.',
+        styleTitle: 'Home style',
+        styleHint: 'Preview cards adapt to the available width. Save to apply your selection.',
+        customContentPriority: 'Custom content takes priority and will override the selected home style.',
+        styles: {
+          classic: { name: 'Classic', description: 'Balanced branding, context, and clear calls to action.' },
+          compact: { name: 'Compact', description: 'A restrained presentation focused on essential site details.' },
+          editorial: { name: 'Editorial', description: 'Magazine-inspired typography with a strong content hierarchy.' },
+          operations: { name: 'Operations', description: 'Puts service status, key signals, and access points first.' },
+          minimal: { name: 'Minimal', description: 'Generous space with only the brand and primary action.' },
+          catalog: { name: 'Catalog', description: 'Structured cards introduce models, capabilities, and entry points.' },
+        },
       },
       features: {
         channelMonitor: {
@@ -632,11 +648,11 @@ export default {
         logoTypeError: 'Please select an image file',
         logoReadError: 'Failed to read the image file',
         homeContent: 'Home Page Content',
-        homeContentPlaceholder: 'Enter custom content for the home page. Supports Markdown & HTML. If a URL is entered, it will be displayed as an iframe.',
-        homeContentHint: 'Customize the home page content. Supports Markdown/HTML. If you enter a URL (starting with http:// or https://), it will be used as an iframe src to embed an external page. When set, the default status information will no longer be displayed.',
+        homeContentPlaceholder: 'Enter custom home-page content using Markdown or HTML.',
+        homeContentHint: 'When set, custom content is shown instead of the selected home style.',
         homeContentIframeWarning: '⚠️ iframe mode note: Some websites have X-Frame-Options or CSP security policies that prevent embedding in iframes. If the page appears blank or shows an error, please verify the target website allows embedding, or consider using HTML mode to build your own content.',
         compactHome: 'Compact Home Page',
-        compactHomeHint: 'Show a restrained site identity page when no custom home page content is set.',
+        compactHomeHint: 'Compatibility switch: on selects Compact; off selects Classic.',
         hideCcsImportButton: 'Hide CCS Import Button',
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       },

@@ -55,7 +55,16 @@ function compactDestination(wrapper: ReturnType<typeof mountHome>) {
   return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
 }
 
-describe('HomeView compact mode', () => {
+const styleTestIds = {
+  classic: 'classic-home',
+  compact: 'compact-home',
+  editorial: 'editorial-home',
+  operations: 'operations-home',
+  minimal: 'minimal-home',
+  catalog: 'catalog-home',
+} as const
+
+describe('HomeView style resolver', () => {
   beforeEach(() => {
     authStore.isAuthenticated = false
     authStore.isAdmin = false
@@ -92,12 +101,66 @@ describe('HomeView compact mode', () => {
     expect(wrapper.get('[data-testid="compact-home"]').text()).toContain('Test site')
   })
 
+  it.each(Object.entries(styleTestIds))('renders the explicit %s style', (style, testId) => {
+    const wrapper = mountHome({ home_style: style, compact_home_enabled: style !== 'classic' })
+
+    expect(wrapper.get(`[data-testid="${testId}"]`).exists()).toBe(true)
+  })
+
+  it('labels operations as a routing demo without simulated live health claims', () => {
+    const wrapper = mountHome({ home_style: 'operations' })
+    const operations = wrapper.get('[data-testid="operations-home"]')
+
+    expect(operations.text()).toContain('home.styles.operations.demoNotice')
+    expect(operations.text()).toContain('home.styles.operations.disclaimer')
+    expect(operations.text()).not.toContain('99.99%')
+    expect(operations.text()).not.toContain('ALL SYSTEMS NOMINAL')
+  })
+
+  it('gives shared header icon actions accessible names', () => {
+    const wrapper = mountHome({ home_style: 'editorial', doc_url: 'https://docs.example.com' })
+    const editorial = wrapper.get('[data-testid="editorial-home"]')
+
+    expect(editorial.get('a[aria-label="home.viewDocs"]').attributes('href')).toBe('https://docs.example.com/')
+    expect(editorial.get('button[aria-label="home.switchToDark"]').attributes('type')).toBe('button')
+  })
+
+  it('keeps the catalog to four static platform cards', () => {
+    const wrapper = mountHome({ home_style: 'catalog' })
+    const catalog = wrapper.get('[data-testid="catalog-home"]')
+
+    expect(catalog.findAll('article')).toHaveLength(4)
+    expect(catalog.text()).toContain('home.styles.catalog.staticNote')
+  })
+
+  it('lets an explicit classic style override the legacy compact flag', () => {
+    const wrapper = mountHome({ home_style: 'classic', compact_home_enabled: true })
+
+    expect(wrapper.get('[data-testid="classic-home"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
+  })
+
+  it.each(['unknown', 42, false])('falls back to classic for invalid style %s', (homeStyle) => {
+    const wrapper = mountHome({ home_style: homeStyle, compact_home_enabled: true })
+
+    expect(wrapper.get('[data-testid="classic-home"]').exists()).toBe(true)
+  })
+
   it.each([undefined, false])('selects the default home when compact mode is %s', (enabled) => {
     const settings = enabled === undefined ? {} : { compact_home_enabled: enabled }
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="classic-home"]').exists()).toBe(true)
     expect(wrapper.find('.terminal-container').exists()).toBe(true)
+  })
+
+  it('omits the GitHub link from the default home footer', () => {
+    const wrapper = mountHome({ doc_url: 'https://docs.example.com' })
+    const links = wrapper.findAll('a')
+
+    expect(links.some((link) => link.attributes('href')?.includes('github.com'))).toBe(false)
+    expect(links.some((link) => link.attributes('href') === 'https://docs.example.com/')).toBe(true)
   })
 
   it('links unauthenticated visitors to login', () => {

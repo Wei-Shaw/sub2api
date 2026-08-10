@@ -93,6 +93,18 @@ func TestDiffSettings_DetectsCompactHomeChange(t *testing.T) {
 	require.Contains(t, changed, service.SettingKeyCompactHomeEnabled)
 }
 
+func TestDiffSettings_DetectsHomeStyleChange(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{HomeStyle: service.HomeStyleClassic},
+		&service.SystemSettings{HomeStyle: service.HomeStyleOperations},
+		nil,
+		nil,
+		UpdateSettingsRequest{},
+	)
+
+	require.Contains(t, changed, service.SettingKeyHomeStyle)
+}
+
 func TestEqualNullableFloat(t *testing.T) {
 	five := 5.0
 	five2 := 5.0

@@ -33,6 +33,7 @@ function createPublicSettings(overrides: Partial<PublicSettings> = {}): PublicSe
     contact_info: '',
     doc_url: '',
     home_content: '',
+    home_style: 'classic',
     compact_home_enabled: false,
     hide_ccs_import_button: false,
     payment_enabled: false,
@@ -394,7 +395,7 @@ describe('useAppStore', () => {
     })
 
     it('从 window.__APP_CONFIG__ 初始化', () => {
-      const windowAny = window as any
+      const windowAny = window as typeof window & { __APP_CONFIG__?: PublicSettings }
       windowAny.__APP_CONFIG__ = {
         site_name: 'TestSite',
         site_logo: '/logo.png',
@@ -402,6 +403,7 @@ describe('useAppStore', () => {
         contact_info: 'test@test.com',
         api_base_url: 'https://api.test.com',
         doc_url: 'https://docs.test.com',
+        home_style: 'catalog',
       }
 
       const store = useAppStore()
@@ -411,6 +413,8 @@ describe('useAppStore', () => {
       expect(store.siteName).toBe('TestSite')
       expect(store.siteLogo).toBe('/logo.png')
       expect(store.siteVersion).toBe('1.0.0')
+      expect(store.homeStyle).toBe('catalog')
+      expect(store.cachedPublicSettings?.home_style).toBe('catalog')
       expect(store.publicSettingsLoaded).toBe(true)
     })
 
@@ -420,6 +424,30 @@ describe('useAppStore', () => {
 
       expect(result).toBe(false)
       expect(store.publicSettingsLoaded).toBe(false)
+    })
+
+    it('旧注入配置缺少 home_style 时使用 classic', () => {
+      const windowAny = window as any
+      windowAny.__APP_CONFIG__ = { site_name: 'Legacy Site' }
+      const store = useAppStore()
+
+      expect(store.initFromInjectedConfig()).toBe(true)
+      expect(store.homeStyle).toBe('classic')
+      expect(store.cachedPublicSettings?.home_style).toBe('classic')
+      expect(windowAny.__APP_CONFIG__.home_style).toBe('classic')
+    })
+
+    it('旧注入配置保留简洁首页选择', () => {
+      const windowAny = window as typeof window & { __APP_CONFIG__?: PublicSettings }
+      windowAny.__APP_CONFIG__ = {
+        site_name: 'Legacy Compact Site',
+        compact_home_enabled: true,
+      } as PublicSettings
+      const store = useAppStore()
+
+      expect(store.initFromInjectedConfig()).toBe(true)
+      expect(store.homeStyle).toBe('compact')
+      expect(store.cachedPublicSettings?.home_style).toBe('compact')
     })
 
     it('clearPublicSettingsCache 清除缓存', () => {
@@ -453,6 +481,7 @@ describe('useAppStore', () => {
         contact_info: '',
         doc_url: '',
         home_content: '',
+        home_style: 'operations',
         compact_home_enabled: false,
         hide_ccs_import_button: false,
         purchase_subscription_enabled: false,
@@ -471,6 +500,7 @@ describe('useAppStore', () => {
 
       expect((window as any).__APP_CONFIG__.table_default_page_size).toBe(1000)
       expect((window as any).__APP_CONFIG__.table_page_size_options).toEqual([20, 100, 1000])
+      expect(store.homeStyle).toBe('operations')
       expect(localStorage.getItem('table-page-size')).toBeNull()
       expect(localStorage.getItem('table-page-size-source')).toBeNull()
     })

@@ -382,6 +382,7 @@ const baseSettingsResponse = {
   contact_info: "",
   doc_url: "",
   home_content: "",
+  home_style: "classic",
   compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
@@ -568,6 +569,16 @@ async function openPaymentTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openHomeTab(wrapper: ReturnType<typeof mountView>) {
+  const homeTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.home"));
+
+  expect(homeTabButton).toBeDefined();
+  await homeTabButton?.trigger("click");
+  await flushPromises();
+}
+
 async function openSecurityTab(wrapper: ReturnType<typeof mountView>) {
   const securityTabButton = wrapper
     .findAll("button")
@@ -714,19 +725,37 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
-  it("submits the compact home page toggle", async () => {
+  it("renders the Home tab and loads the current style", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      home_style: "editorial",
+    });
     const wrapper = mountView();
     await flushPromises();
+    await openHomeTab(wrapper);
 
-    const toggle = wrapper.get('[data-testid="compact-home-toggle"]');
-    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.get('[data-testid="home-settings-tab"]').isVisible()).toBe(true);
+    expect(wrapper.findAll('[data-testid^="home-style-"]')).toHaveLength(6);
+    expect(
+      (wrapper.get('[data-testid="home-style-editorial"] input').element as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
 
-    await toggle.setValue(true);
+  it("selects a style and saves home_style with the synchronized compact flag", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openHomeTab(wrapper);
+
+    await wrapper.get('[data-testid="home-style-compact"] input').setValue(true);
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
     expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ compact_home_enabled: true }),
+      expect.objectContaining({
+        home_style: "compact",
+        compact_home_enabled: true,
+      }),
     );
   });
 
