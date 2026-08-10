@@ -70,7 +70,7 @@
         <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input v-model.number="form.initial_expense_usd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
-          <Select v-model="form.initial_expense_category" :options="expenseCategoryOptions" size="sm" />
+          <Select v-model="form.initial_expense_category" :options="expenseCategoryOptions" />
           <input v-model="form.initial_expense_note" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
         </div>
       </div>
