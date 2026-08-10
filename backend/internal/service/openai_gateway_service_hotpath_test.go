@@ -927,6 +927,12 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			wantValue: "xhigh",
 		},
 		{
+			name:    "通用提取器不引入 ultra 元数据",
+			body:    []byte(`{"reasoning":{"effort":" ULTRA "}}`),
+			model:   "gpt-5.6-sol",
+			wantNil: true,
+		},
+		{
 			name:    "minimal 归一化为空",
 			body:    []byte(`{"reasoning":{"effort":"minimal"}}`),
 			model:   "gpt-5-high",
@@ -943,6 +949,12 @@ func TestExtractOpenAIReasoningEffortFromBody(t *testing.T) {
 			name:    "未知后缀不返回",
 			body:    []byte(`{"input":"hi"}`),
 			model:   "gpt-5-unknown",
+			wantNil: true,
+		},
+		{
+			name:    "不从 ultra 模型后缀推导",
+			body:    []byte(`{"input":"hi"}`),
+			model:   "gpt-5-ultra",
 			wantNil: true,
 		},
 	}

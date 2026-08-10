@@ -153,12 +153,12 @@ func newOpenAIWSPassthroughUsageMeta(initialRequestModel string, firstFrame []by
 	return meta
 }
 
-func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte, mappedModel string) {
+func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(account *Account, policyOutput []byte, mappedModel string) {
 	if m == nil {
 		return
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
-	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, mappedModel, m.sessionRequestModel))
+	m.reasoningEffort.Store(extractOpenAIReasoningEffortForAccount(account, policyOutput, mappedModel, m.sessionRequestModel))
 	m.storeTurnModels(m.sessionRequestModel, policyOutput)
 }
 
@@ -181,12 +181,12 @@ func (m *openAIWSPassthroughUsageMeta) requestModelForFrame(payload []byte) stri
 	return m.sessionRequestModel
 }
 
-func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(policyOutput []byte, mappedModel string, requestModelForFrame string) {
+func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(account *Account, policyOutput []byte, mappedModel string, requestModelForFrame string) {
 	if m == nil {
 		return
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
-	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, mappedModel, requestModelForFrame))
+	m.reasoningEffort.Store(extractOpenAIReasoningEffortForAccount(account, policyOutput, mappedModel, requestModelForFrame))
 	m.storeTurnModels(requestModelForFrame, policyOutput)
 }
 
@@ -752,6 +752,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, blocked.Message, blocked)
 	}
 	firstClientMessage = updatedFirst
+	if account.Platform == PlatformOpenAI {
+		var reasoningErr error
+		firstClientMessage, reasoningErr = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, capturedSessionModel, firstClientMessage)
+		if reasoningErr != nil {
+			var unsupportedEffortErr *UnsupportedOpenAIReasoningEffortError
+			if errors.As(reasoningErr, &unsupportedEffortErr) {
+				if eventBytes := buildUnsupportedOpenAIReasoningEffortWSEvent(unsupportedEffortErr); eventBytes != nil {
+					writeCtx, cancelWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+					_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+					cancelWrite()
+				}
+				return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "unsupported reasoning effort", unsupportedEffortErr)
+			}
+			return reasoningErr
+		}
+	}
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter
@@ -766,7 +782,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// 因此使用 atomic.Pointer[string] 在 filter（runClientToUpstream
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
-	usageMeta.initFromFirstFrame(firstClientMessage, capturedSessionModel)
+	usageMeta.initFromFirstFrame(account, firstClientMessage, capturedSessionModel)
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -1019,6 +1035,27 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				payload = s.ReplaceModelInBody(payload, model)
 			}
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
+			if account.Platform == PlatformOpenAI && policyErr == nil && blocked == nil && isResponseCreate {
+				var reasoningErr error
+				out, reasoningErr = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, model, out)
+				if reasoningErr != nil {
+					var unsupportedEffortErr *UnsupportedOpenAIReasoningEffortError
+					if errors.As(reasoningErr, &unsupportedEffortErr) {
+						if eventBytes := buildUnsupportedOpenAIReasoningEffortWSEvent(unsupportedEffortErr); eventBytes != nil {
+							writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+							_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+							cancel()
+						}
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "unsupported reasoning effort", unsupportedEffortErr)
+					}
+					return payload, nil, reasoningErr
+				}
+			}
+			if policyErr == nil && blocked == nil && isResponseCreate && hooks != nil && hooks.BeforeTurn != nil {
+				if err := hooks.BeforeTurn(turnNo); err != nil {
+					return payload, nil, err
+				}
+			}
 			// 多轮 passthrough usage：仅在成功（non-block / non-err）
 			// 的 response.create 帧上更新 usageMeta，使用
 			// filter 处理后的 payload，与首帧 policy-after-extract 语义
@@ -1034,7 +1071,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     覆盖（Store(nil)），因为 OpenAI 上游对该帧实际不传
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
-				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
+				usageMeta.updateFromResponseCreate(account, out, model, requestModelForThisFrame)
 				acceptedTurn = true
 			}
 			return out, blocked, policyErr

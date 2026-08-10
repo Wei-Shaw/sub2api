@@ -76,6 +76,14 @@ func TestExtractOpenAIReasoningEffortModelCandidates(t *testing.T) {
 
 	require.NotNil(t, got)
 	require.Equal(t, "high", *got)
+
+	reqBody = map[string]any{
+		"reasoning": map[string]any{"effort": " ULTRA "},
+	}
+	require.Nil(t, extractOpenAIReasoningEffort(reqBody, "gpt-5.6-sol"))
+	got = extractOpenAIReasoningEffortForAccountMap(&Account{Platform: PlatformOpenAI}, reqBody, "gpt-5.6-sol")
+	require.NotNil(t, got)
+	require.Equal(t, "ultra", *got)
 }
 
 // 回归：OAuth 账号请求后缀式模型（无显式 reasoning 字段）时，上游模型被

@@ -109,6 +109,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, policyErr
 	}
 	body = updatedBody
+	body, err = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, policyModel, body)
+	if err != nil {
+		return nil, err
+	}
+	reasoningEffort = extractOpenAIReasoningEffortForAccount(account, body, policyModel, reqModel)
 
 	apiKey := getAPIKeyFromContext(c)
 	// 同一 attempt 的最终 model/body 只判定一次，权限检查与后续图片状态设置共用该结果。

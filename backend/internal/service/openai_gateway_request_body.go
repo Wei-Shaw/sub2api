@@ -479,7 +479,11 @@ func deriveOpenAIReasoningEffortFromModel(model string) string {
 		return ""
 	}
 
-	return normalizeOpenAIReasoningEffortForModel(parts[len(parts)-1], modelID)
+	suffix := parts[len(parts)-1]
+	if suffix == "ultra" {
+		return ""
+	}
+	return normalizeOpenAIReasoningEffortForModel(suffix, modelID)
 }
 
 // deriveOpenAIReasoningEffortFromModelCandidates 依次对每个候选模型做后缀推导，
@@ -828,6 +832,47 @@ func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string
 		return nil
 	}
 	return &value
+}
+
+// extractOpenAIReasoningEffortForAccount keeps Ultra metadata scoped to an
+// OpenAI account whose final upstream model supports it. The generic extractor
+// intentionally remains provider-neutral so Grok and other compatibility paths
+// retain their previous behavior.
+func extractOpenAIReasoningEffortForAccount(account *Account, body []byte, modelCandidates ...string) *string {
+	upstreamModel := firstNonEmpty(modelCandidates...)
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIUltraReasoningModel(upstreamModel) {
+		for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+			value := gjson.GetBytes(body, path)
+			if value.Exists() && value.Type == gjson.String && NormalizeMaxReasoningEffort(value.String()) == "ultra" {
+				ultra := "ultra"
+				return &ultra
+			}
+		}
+	}
+	return extractOpenAIReasoningEffortFromBody(body, modelCandidates...)
+}
+
+func extractOpenAIReasoningEffortForAccountMap(account *Account, reqBody map[string]any, modelCandidates ...string) *string {
+	upstreamModel := firstNonEmpty(modelCandidates...)
+	if account != nil && account.Platform == PlatformOpenAI && isOpenAIUltraReasoningModel(upstreamModel) {
+		if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+			if effort, ok := reasoning["effort"].(string); ok && NormalizeMaxReasoningEffort(effort) == "ultra" {
+				ultra := "ultra"
+				return &ultra
+			}
+		}
+		if effort, ok := reqBody["reasoning_effort"].(string); ok && NormalizeMaxReasoningEffort(effort) == "ultra" {
+			ultra := "ultra"
+			return &ultra
+		}
+		if outputConfig, ok := reqBody["output_config"].(map[string]any); ok {
+			if effort, ok := outputConfig["effort"].(string); ok && NormalizeMaxReasoningEffort(effort) == "ultra" {
+				ultra := "ultra"
+				return &ultra
+			}
+		}
+	}
+	return extractOpenAIReasoningEffort(reqBody, modelCandidates...)
 }
 
 func extractOpenAIServiceTier(reqBody map[string]any) *string {

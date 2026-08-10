@@ -34,3 +34,15 @@ func TestUsageBillingModelCandidates_BareGPT56IncludesSol(t *testing.T) {
 		usageBillingModelCandidates("openai/gpt-5.6"),
 	)
 }
+
+func TestNormalizeKnownOpenAICodexModelRejectsGPT56UltraSuffix(t *testing.T) {
+	for _, model := range []string{
+		"gpt-5.6-sol-ultra",
+		"gpt-5.6-terra-ultra",
+		"gpt-5.6-luna-ultra",
+		"openai/gpt-5.6-sol-ultra",
+	} {
+		require.Empty(t, normalizeKnownOpenAICodexModel(model), model)
+		require.Equal(t, model, normalizeCodexModel(model), model)
+	}
+}

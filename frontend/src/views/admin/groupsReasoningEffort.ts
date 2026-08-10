@@ -7,6 +7,7 @@ const openAIReasoningEffortValues = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 
 const reasoningEffortValuesForPlatform = (

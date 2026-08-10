@@ -146,6 +146,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var lastUnsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
@@ -190,6 +191,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			} else {
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else if lastUnsupportedEffortErr != nil {
+					h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Code(), lastUnsupportedEffortErr.Error(), streamStarted, false)
 				} else {
 					h.handleStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
 				}
@@ -197,6 +200,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if lastUnsupportedEffortErr != nil {
+				h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Code(), lastUnsupportedEffortErr.Error(), streamStarted, false)
+				return
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -263,6 +270,23 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				var unsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
+				if errors.As(err, &unsupportedEffortErr) {
+					lastUnsupportedEffortErr = unsupportedEffortErr
+					failedAccountIDs[account.ID] = struct{}{}
+					if switchCount >= maxAccountSwitches {
+						h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", unsupportedEffortErr.Code(), unsupportedEffortErr.Error(), streamStarted, false)
+						return
+					}
+					switchCount++
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					reqLog.Debug("openai_chat_completions.reasoning_effort_account_incompatible",
+						zap.Int64("account_id", account.ID),
+						zap.String("reasoning_effort", unsupportedEffortErr.Effort),
+						zap.String("upstream_model", unsupportedEffortErr.UpstreamModel),
+					)
+					continue
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {

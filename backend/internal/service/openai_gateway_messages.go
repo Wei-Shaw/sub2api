@@ -288,6 +288,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", patchErr)
 		}
 	}
+	var serviceTier *string
+	if account.Platform == PlatformOpenAI {
+		serviceTier = extractOpenAIServiceTierFromBody(responsesBody)
+		responsesBody, err = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, upstreamModel, responsesBody)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// 5. Get access token
 	token, _, err := s.getRequestCredential(ctx, c, account)
@@ -472,7 +480,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, handleErr
 	}
 
-	// Propagate ServiceTier and ReasoningEffort to result for billing
+	// Propagate metadata from the final policy-mutated outbound body for billing.
+	if result != nil && account.Platform == PlatformOpenAI {
+		result.ServiceTier = serviceTier
+		result.ReasoningEffort = extractOpenAIReasoningEffortForAccount(account, responsesBody, upstreamModel, billingModel, originalModel)
+	}
 	if handleErr == nil && result != nil {
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
@@ -480,11 +492,11 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if promptCacheKey != "" && anthropicDigestChain != "" {
 			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
 		}
-		if responsesReq.ServiceTier != "" {
+		if account.Platform != PlatformOpenAI && responsesReq.ServiceTier != "" {
 			st := responsesReq.ServiceTier
 			result.ServiceTier = &st
 		}
-		if responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
+		if account.Platform != PlatformOpenAI && responsesReq.Reasoning != nil && responsesReq.Reasoning.Effort != "" {
 			re := responsesReq.Reasoning.Effort
 			result.ReasoningEffort = &re
 		}

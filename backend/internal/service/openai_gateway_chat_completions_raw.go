@@ -68,8 +68,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, fmt.Errorf("missing model in request")
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
-
-	// 1b. Extract service tier from the raw body before any transformation.
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
@@ -105,6 +103,13 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, policyErr
 	}
 	upstreamBody = updatedBody
+	if account.Platform == PlatformOpenAI {
+		upstreamBody, policyErr = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, upstreamModel, upstreamBody)
+		if policyErr != nil {
+			return nil, policyErr
+		}
+		reasoningEffort = extractOpenAIReasoningEffortForAccount(account, upstreamBody, upstreamModel, billingModel, originalModel)
+	}
 
 	// Grok Composer does not accept image_url parts directly, but Grok Build
 	// can describe the images first. Bridge only this exact failure mode.
@@ -148,6 +153,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("normalize Grok chat reasoning effort: %w", err)
 		}
+	}
+	if account.Platform == PlatformOpenAI {
+		serviceTier = extractOpenAIServiceTierFromBody(upstreamBody)
 	}
 
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",

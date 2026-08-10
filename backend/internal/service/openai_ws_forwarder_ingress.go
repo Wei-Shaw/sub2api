@@ -395,6 +395,22 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		if account.Platform == PlatformOpenAI {
+			var reasoningErr error
+			normalized, reasoningErr = normalizeAndValidateOpenAIReasoningEffortForUpstream(account, upstreamModel, normalized)
+			if reasoningErr != nil {
+				var unsupportedEffortErr *UnsupportedOpenAIReasoningEffortError
+				if errors.As(reasoningErr, &unsupportedEffortErr) {
+					if eventBytes := buildUnsupportedOpenAIReasoningEffortWSEvent(unsupportedEffortErr); eventBytes != nil {
+						writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+						_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+						cancel()
+					}
+					return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "unsupported reasoning effort", unsupportedEffortErr)
+				}
+				return openAIWSClientPayload{}, reasoningErr
+			}
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{
@@ -1048,7 +1064,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					UpstreamResponseModel:         responseModelObserver.Model(),
 					UpstreamResponseModelConflict: responseModelObserver.Conflict(),
 					ServiceTier:                   extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortForAccount(account, payload, mappedModel, originalModel), payload, mappedModel),
 					Stream:                        reqStream,
 					OpenAIWSMode:                  true,
 					UpstreamTerminalEvent:         terminalEvent,

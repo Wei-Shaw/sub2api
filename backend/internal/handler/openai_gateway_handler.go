@@ -58,7 +58,11 @@ func newOpenAIWSUnsupportedModelSwitchError(model string) error {
 }
 
 func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
-	return err != nil && !errors.Is(err, errOpenAIWSUnsupportedModelSwitch)
+	if err == nil || errors.Is(err, errOpenAIWSUnsupportedModelSwitch) {
+		return false
+	}
+	var unsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
+	return !errors.As(err, &unsupportedEffortErr)
 }
 
 func openAIWSTurnBillingModel(result *service.OpenAIForwardResult, mapping service.ChannelMappingResult, requestedModel, upstreamModel string) string {
@@ -429,6 +433,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var lastUnsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
 
@@ -493,12 +498,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			if lastFailoverErr != nil {
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+			} else if lastUnsupportedEffortErr != nil {
+				h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Code(), lastUnsupportedEffortErr.Error(), streamStarted, false)
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if lastUnsupportedEffortErr != nil {
+				h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Code(), lastUnsupportedEffortErr.Error(), streamStarted, false)
+				return
+			}
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -578,6 +589,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				var unsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
+				if errors.As(err, &unsupportedEffortErr) {
+					lastUnsupportedEffortErr = unsupportedEffortErr
+					failedAccountIDs[account.ID] = struct{}{}
+					if switchCount >= maxAccountSwitches {
+						h.handleStreamingAwareErrorWithCode(c, http.StatusBadRequest, "invalid_request_error", unsupportedEffortErr.Code(), unsupportedEffortErr.Error(), streamStarted, false)
+						return
+					}
+					switchCount++
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					reqLog.Debug("openai.reasoning_effort_account_incompatible",
+						zap.Int64("account_id", account.ID),
+						zap.String("reasoning_effort", unsupportedEffortErr.Effort),
+						zap.String("upstream_model", unsupportedEffortErr.UpstreamModel),
+					)
+					continue
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {
@@ -1010,6 +1038,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var lastUnsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	effectiveMappedModel := preferredMappedModel
 
@@ -1061,6 +1090,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				if lastFailoverErr != nil {
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
+				} else if lastUnsupportedEffortErr != nil {
+					h.anthropicStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Error(), streamStarted)
 				} else {
 					h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
 				}
@@ -1068,6 +1099,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if lastUnsupportedEffortErr != nil {
+				h.anthropicStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", lastUnsupportedEffortErr.Error(), streamStarted)
+				return
+			}
 			cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, currentRoutingModel, reqModel)
 			if !cls.ModelNotFound {
 				markOpsRoutingCapacityLimited(c)
@@ -1133,6 +1168,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				var unsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
+				if errors.As(err, &unsupportedEffortErr) {
+					lastUnsupportedEffortErr = unsupportedEffortErr
+					failedAccountIDs[account.ID] = struct{}{}
+					if switchCount >= maxAccountSwitches {
+						h.anthropicStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", unsupportedEffortErr.Error(), streamStarted)
+						return
+					}
+					switchCount++
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					reqLog.Debug("openai_messages.reasoning_effort_account_incompatible",
+						zap.Int64("account_id", account.ID),
+						zap.String("reasoning_effort", unsupportedEffortErr.Effort),
+						zap.String("upstream_model", unsupportedEffortErr.UpstreamModel),
+					)
+					continue
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {
@@ -1815,6 +1867,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	var lastFailoverErr *service.UpstreamFailoverError
+	var lastUnsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	handleWSFailover := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
 		if ctx.Err() != nil {
@@ -1897,6 +1950,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			)
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(wsConn, lastFailoverErr)
+			} else if lastUnsupportedEffortErr != nil {
+				writeUnsupportedOpenAIReasoningEffortWSError(ctx, wsConn, lastUnsupportedEffortErr)
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "unsupported reasoning effort")
 			} else {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 			}
@@ -1905,6 +1961,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		if selection == nil || selection.Account == nil {
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(wsConn, lastFailoverErr)
+			} else if lastUnsupportedEffortErr != nil {
+				writeUnsupportedOpenAIReasoningEffortWSError(ctx, wsConn, lastUnsupportedEffortErr)
+				closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "unsupported reasoning effort")
 			} else {
 				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 			}
@@ -1912,6 +1971,34 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 
 		account := selection.Account
+		if account.Platform == service.PlatformOpenAI {
+			validationBody := firstMessage
+			if capped, changed := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, validationBody); changed {
+				validationBody = capped
+			}
+			validationModel := reqModel
+			if mappedModel := strings.TrimSpace(channelMappingWS.MappedModel); mappedModel != "" {
+				validationModel = mappedModel
+			}
+			if err := service.ValidateOpenAIReasoningEffortForAccount(account, validationModel, validationBody); err != nil {
+				var unsupportedEffortErr *service.UnsupportedOpenAIReasoningEffortError
+				if errors.As(err, &unsupportedEffortErr) {
+					lastUnsupportedEffortErr = unsupportedEffortErr
+					failedAccountIDs[account.ID] = struct{}{}
+					if selection.Acquired && selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+					}
+					if switchCount >= maxAccountSwitches {
+						writeUnsupportedOpenAIReasoningEffortWSError(ctx, wsConn, unsupportedEffortErr)
+						closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "unsupported reasoning effort")
+						return
+					}
+					switchCount++
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					continue
+				}
+			}
+		}
 		accountMaxConcurrency := account.Concurrency
 		if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 			accountMaxConcurrency = selection.WaitPlan.MaxConcurrency
@@ -2632,7 +2719,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithCode(
 		// 通用 `event: error` 帧不被识别为终止事件，会导致
 		// "stream closed before response.completed"。
 		if inboundIsResponses(c) {
-			if writeResponsesFailedSSE(c, errType, message) {
+			if writeResponsesFailedSSE(c, errType, message, code) {
 				return
 			}
 		}
@@ -2909,6 +2996,26 @@ func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, deci
 	})
 	if err != nil {
 		payload = []byte(`{"event_id":"evt_content_moderation_blocked","type":"error","error":{"type":"invalid_request_error","code":"content_policy_violation","message":"content moderation blocked this request"}}`)
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, payload)
+}
+
+func writeUnsupportedOpenAIReasoningEffortWSError(ctx context.Context, conn *coderws.Conn, reasoningErr *service.UnsupportedOpenAIReasoningEffortError) {
+	if conn == nil || reasoningErr == nil {
+		return
+	}
+	payload, err := json.Marshal(gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    "invalid_request_error",
+			"code":    reasoningErr.Code(),
+			"message": reasoningErr.Error(),
+		},
+	})
+	if err != nil {
+		return
 	}
 	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()

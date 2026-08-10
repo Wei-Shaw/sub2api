@@ -106,7 +106,7 @@ type Group struct {
 	RPMLimit int
 
 	// MaxReasoningEffort limits the effective OpenAI/Codex reasoning effort.
-	// Empty means unlimited; supported values are minimal/low/medium/high/xhigh/max.
+	// Empty means unlimited; supported values are minimal/low/medium/high/xhigh/max/ultra.
 	MaxReasoningEffort string
 	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping

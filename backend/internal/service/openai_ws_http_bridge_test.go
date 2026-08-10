@@ -466,6 +466,65 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 }
 
+func TestProxyOpenAIWSHTTPBridgeTurnRecordsUltraReasoningMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name:    "reasoning effort",
+			payload: `{"type":"response.create","model":"gpt-5.6-sol","reasoning":{"effort":" ULTRA "},"input":"hi"}`,
+		},
+		{
+			name:    "conflicting secondary field",
+			payload: `{"type":"response.create","model":"gpt-5.6-sol","reasoning":{"effort":"high"},"reasoning_effort":"ultra","input":"hi"}`,
+		},
+		{
+			name:    "output config effort",
+			payload: `{"type":"response.create","model":"gpt-5.6-sol","output_config":{"effort":"ultra"},"input":"hi"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(
+					`data: {"type":"response.completed","response":{"id":"resp_ultra","model":"gpt-5.6-sol","usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n",
+				)),
+			}}
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+				httpUpstream: upstream,
+			}
+			account := &Account{
+				ID:          74,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/responses", nil)
+			payload := []byte(tt.payload)
+
+			result, err := svc.proxyOpenAIWSHTTPBridgeTurn(
+				context.Background(), c, account, "sk-test", payload, len(payload),
+				"gpt-5.6-sol", "", "", "", "", 1,
+				func([]byte) error { return nil },
+			)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, result.ReasoningEffort)
+			require.Equal(t, "ultra", *result.ReasoningEffort)
+		})
+	}
+}
+
 func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -54,6 +54,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 	if normalized == "" {
 		return ""
 	}
+	if isOpenAIGPT56UltraSuffixModel(normalized) {
+		return ""
+	}
 
 	if mapped := getNormalizedCodexModel(normalized); mapped != "" {
 		return mapped
@@ -110,6 +113,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 // （含大小写/路径/后缀变体）或已归一化的基名，两者均能正确识别。
 func isOpenAIGPT56Model(model string) bool {
 	normalized := canonicalizeOpenAIModelAliasSpelling(model)
+	if isOpenAIGPT56UltraSuffixModel(normalized) {
+		return false
+	}
 	if normalized == "gpt-5.6" {
 		return true
 	}
@@ -122,6 +128,15 @@ func isOpenAIGPT56Model(model string) bool {
 		}
 	}
 	return false
+}
+
+func isOpenAIGPT56UltraSuffixModel(model string) bool {
+	switch canonicalizeOpenAIModelAliasSpelling(model) {
+	case "gpt-5.6-sol-ultra", "gpt-5.6-terra-ultra", "gpt-5.6-luna-ultra":
+		return true
+	default:
+		return false
+	}
 }
 
 func appendUsageBillingModelCandidate(candidates []string, seen map[string]struct{}, model string) []string {
