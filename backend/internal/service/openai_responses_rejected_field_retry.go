@@ -15,8 +15,9 @@ import (
 const maxOpenAIResponsesRejectedFieldRetries = 6
 
 var (
-	openAIResponsesRejectedNamespaceParamPattern = regexp.MustCompile(`(?i)^input\[(\d+)\]\.namespace$`)
-	openAIResponsesRejectedMessageParamPattern   = regexp.MustCompile(`(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*["']?(max_output_tokens|input\[\d+\]\.namespace)(?:["']|\b)`)
+	openAIResponsesRejectedNamespaceParamPattern        = regexp.MustCompile(`(?i)^input\[(\d+)\]\.namespace$`)
+	openAIResponsesRejectedReasoningContentParamPattern = regexp.MustCompile(`(?i)^input\[(\d+)\]\.content$`)
+	openAIResponsesRejectedMessageParamPattern          = regexp.MustCompile(`(?i)(?:unknown|unsupported)[ _-]+parameter\s*(?::|=|is)?\s*["']?(max_output_tokens|input\[\d+\]\.namespace)(?:["']|\b)`)
 )
 
 type openAIResponsesRejectedFieldRetryState struct {
@@ -61,12 +62,18 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 	}
 
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
+	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
+	if code == "array_above_max_length" {
+		if index, ok := openAIResponsesRejectedReasoningContentIndex(param); ok {
+			return removeOpenAIResponsesRejectedReasoningContentAtIndex(body, index)
+		}
+		return nil, "", false, nil
+	}
+
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
 	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
 		return nil, "", false, nil
 	}
-
-	param := strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "error.param").String()))
 	if param == "" {
 		param = openAIResponsesRejectedParamFromMessage(message)
 	}
@@ -110,6 +117,37 @@ func openAIResponsesRejectedNamespaceIndex(param string) (int, bool) {
 		return index, true
 	}
 	return 0, false
+}
+
+func openAIResponsesRejectedReasoningContentIndex(param string) (int, bool) {
+	match := openAIResponsesRejectedReasoningContentParamPattern.FindStringSubmatch(strings.TrimSpace(param))
+	if len(match) != 2 {
+		return 0, false
+	}
+	index, err := strconv.Atoi(match[1])
+	if err == nil && index >= 0 {
+		return index, true
+	}
+	return 0, false
+}
+
+func removeOpenAIResponsesRejectedReasoningContentAtIndex(body []byte, index int) ([]byte, string, bool, error) {
+	itemPath := fmt.Sprintf("input.%d", index)
+	itemType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, itemPath+".type").String()))
+	if itemType != "reasoning" {
+		return nil, "", false, nil
+	}
+
+	contentPath := itemPath + ".content"
+	content := gjson.GetBytes(body, contentPath)
+	if !content.Exists() || !content.IsArray() || len(content.Array()) == 0 {
+		return nil, "", false, nil
+	}
+	retryBody, err := sjson.DeleteBytes(body, contentPath)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("delete rejected reasoning content at input[%d]: %w", index, err)
+	}
+	return retryBody, "indexed reasoning content array rejection", true, nil
 }
 
 func removeOpenAIResponsesRejectedNamespaceAtIndex(body []byte, index int) ([]byte, string, bool, error) {
