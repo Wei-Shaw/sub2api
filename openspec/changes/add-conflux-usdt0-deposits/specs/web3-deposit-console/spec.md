@@ -8,24 +8,26 @@
 - **THEN** 响应 MUST 表明网络为 Conflux eSpace、chain ID 为 1030、Token 为固定 USDT0 合约
 - **THEN** 最低充值 MUST 为字符串 `1.000000`
 - **THEN** 自动入账上限 MUST 为字符串 `10000.000000`
+- **THEN** 手续费率 MUST 为字符串 `0`，到账最终性 MUST 为 `finalized`
 
 #### Scenario: 功能关闭或 runtime unhealthy
 - **WHEN** Web3 Deposit 功能关闭或启动预检失败
 - **THEN** 配置 API MUST 返回不可用状态和稳定原因码
 - **THEN** 用户 MUST NOT 能创建新充值地址
 
-### Requirement: 用户地址 API 必须区分查询与创建
-系统 SHALL 提供不产生写操作的地址查询 API 和幂等 get-or-create 地址 API，并 MUST 复用现有 JWT、用户后端模式守卫和面板限流。
+### Requirement: 用户地址 API 必须统一为幂等 get-or-create
+系统 SHALL 提供统一的 POST 地址 API，并 MUST 复用现有 JWT、用户后端模式守卫和面板限流。充值页面初始化时 SHALL 自动调用该接口，不要求用户执行额外的“创建地址”操作。
 
-#### Scenario: GET 查询未分配地址
-- **WHEN** 用户调用 GET address 且尚无地址
-- **THEN** 响应 MUST 返回未分配状态
-- **THEN** 系统 MUST NOT 创建地址或消耗 derivation index
-
-#### Scenario: POST 创建地址
-- **WHEN** 用户调用 POST address 且功能健康
+#### Scenario: 首次进入充值页面
+- **WHEN** 尚无地址的用户进入充值页面且功能健康
+- **THEN** 页面 MUST 自动调用 POST address
 - **THEN** 系统 MUST 幂等创建或返回该用户长期地址
 - **THEN** 响应 MUST NOT 包含 xpub、wallet fingerprint 或 derivation index
+
+#### Scenario: 重复请求地址
+- **WHEN** 已有地址的用户再次进入充值页面或重复调用 POST address
+- **THEN** 系统 MUST 返回原地址
+- **THEN** 系统 MUST NOT 消耗新的 derivation index
 
 ### Requirement: 用户必须只能查看自己的充值记录
 系统 SHALL 提供当前用户的充值列表和详情 API。查询 MUST 按认证 user ID 限定范围，金额使用字符串，并 MUST 隐藏内部租约、RPC 错误栈和钱包派生信息。
@@ -92,17 +94,23 @@
 - **THEN** 系统 MUST NOT 自动退款或移动链上资金
 
 ### Requirement: 补扫操作必须限制区间且不得任意改写游标
-系统 SHALL 允许管理员创建受限区间的补扫任务，但 MUST 拒绝未来区块、超过最大跨度或低于安全下界的请求。补扫 MUST 复用事件唯一键，不得直接把生产游标设置为任意值。
+系统 SHALL 允许管理员创建受限区间的持久化补扫任务，但 MUST 拒绝未来区块、超过最大跨度或低于安全下界的请求。补扫 MUST 复用事件唯一键，不得直接把生产游标设置为任意值。任务 MUST 记录请求人、状态、尝试次数、结果计数、错误和时间戳，并在请求或进程中断后可恢复执行。API 中的起止区块 MUST 使用 JSON string，避免浏览器整数精度损失。
 
 #### Scenario: 创建合法补扫任务
 - **WHEN** 管理员提交位于允许范围内的历史区块区间
 - **THEN** 系统 MUST 创建可审计的补扫任务
+- **THEN** 管理员 MUST 能通过任务列表和详情 API 查询任务状态与结果
 - **THEN** 补扫发现的已有事件 MUST 被幂等去重
 
 #### Scenario: 请求过大或非法区间
 - **WHEN** 区间终点早于起点、位于未来或超过配置最大跨度
 - **THEN** 系统 MUST 拒绝请求并返回稳定错误码
 - **THEN** 主 scanner cursor MUST 保持不变
+
+#### Scenario: 补扫执行被中断
+- **WHEN** 运行中的补扫任务因请求取消、进程退出或租约过期而中断
+- **THEN** 系统 MUST 保留任务及其审计信息
+- **THEN** worker MUST 能重新领取过期任务，且旧执行者 MUST NOT 覆盖新尝试的结果
 
 ### Requirement: 页面必须满足响应式和国际化要求
 用户与管理员 Web3 充值页面 SHALL 使用现有 Vue、组件和 i18n 体系，新增文案 MUST 覆盖项目要求的语言，并 MUST 在桌面和窄屏下保持地址、交易哈希、状态和操作可访问。

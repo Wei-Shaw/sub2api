@@ -30,7 +30,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 				},
 			},
 		},
-	}}, nil, nil, nil, nil)
+	}}, nil, nil, nil)
 	handler.runtime = web3DepositRuntimeReadinessStub{ready: true}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
@@ -79,7 +79,7 @@ func TestWeb3DepositHandlerGetConfigReportsUnhealthyRuntime(t *testing.T) {
 		Networks: map[string]config.Web3DepositNetworkConfig{
 			"conflux_espace_mainnet": {Enabled: true},
 		},
-	}}, nil, nil, nil, nil)
+	}}, nil, nil, nil)
 	handler.runtime = web3DepositRuntimeReadinessStub{ready: false}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
@@ -112,37 +112,6 @@ func (s *web3DepositAddressAllocatorStub) GetOrCreate(_ context.Context, userID 
 	s.userID = userID
 	s.configured = configured
 	return s.address, s.err
-}
-
-func (s *web3DepositAddressAllocatorStub) GetByUserAndWallet(_ context.Context, userID int64, walletID string) (web3deposit.DepositAddress, error) {
-	s.calls++
-	s.userID = userID
-	s.configured.WalletID = walletID
-	return s.address, s.err
-}
-
-func TestWeb3DepositHandlerGetAddressDoesNotAllocate(t *testing.T) {
-	reader := &web3DepositAddressAllocatorStub{err: web3deposit.ErrAddressNotFound}
-	handler := &Web3DepositHandler{
-		cfg: &config.Config{Web3Deposit: config.Web3DepositConfig{
-			Enabled: true, UserEntryEnabled: true,
-			Wallets:  map[string]config.Web3DepositWalletConfig{"evm_wallet": {AccountXPub: "xpub", AccountPath: "m/44'/60'/0'"}},
-			Networks: map[string]config.Web3DepositNetworkConfig{"network": {Enabled: true, WalletID: "evm_wallet"}},
-		}},
-		addressReader: reader,
-	}
-	router := authenticatedWeb3DepositTestRouter(handler)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/payment/web3/address", nil))
-
-	require.Equal(t, http.StatusOK, recorder.Code)
-	var envelope struct {
-		Data web3DepositAddressResponse `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &envelope))
-	require.False(t, envelope.Data.Assigned)
-	require.Empty(t, envelope.Data.Address)
-	require.Equal(t, 1, reader.calls)
 }
 
 func TestWeb3DepositHandlerGetOrCreateAddress(t *testing.T) {
@@ -265,7 +234,6 @@ func authenticatedWeb3DepositTestRouter(handler *Web3DepositHandler) *gin.Engine
 		c.Next()
 	})
 	router.POST("/api/v1/payment/web3/address", handler.GetOrCreateAddress)
-	router.GET("/api/v1/payment/web3/address", handler.GetAddress)
 	router.GET("/api/v1/payment/web3/deposits", handler.ListDeposits)
 	router.GET("/api/v1/payment/web3/deposits/:id", handler.GetDeposit)
 	return router

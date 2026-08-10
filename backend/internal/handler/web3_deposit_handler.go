@@ -19,7 +19,6 @@ import (
 type Web3DepositHandler struct {
 	cfg              *config.Config
 	addressAllocator web3DepositAddressAllocator
-	addressReader    web3deposit.UserDepositAddressReader
 	runtime          web3DepositRuntimeReadiness
 	deposits         web3deposit.UserDepositReader
 }
@@ -41,11 +40,10 @@ type web3DepositAddressResponse struct {
 func NewWeb3DepositHandler(
 	cfg *config.Config,
 	addressAllocator *web3deposit.AddressAllocator,
-	addressReader web3deposit.UserDepositAddressReader,
 	runtime *web3deposit.ScannerRuntimeRegistry,
 	deposits web3deposit.UserDepositReader,
 ) *Web3DepositHandler {
-	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, addressReader: addressReader, runtime: runtime, deposits: deposits}
+	return &Web3DepositHandler{cfg: cfg, addressAllocator: addressAllocator, runtime: runtime, deposits: deposits}
 }
 
 // GetConfig returns the publicly safe Web3 deposit configuration.
@@ -104,36 +102,6 @@ func availableWeb3DepositNetworks(cfg config.Web3DepositConfig, readiness web3De
 	}
 	sort.Strings(networks)
 	return networks
-}
-
-// GetAddress returns the authenticated user's address without allocating one.
-// GET /api/v1/payment/web3/address
-func (h *Web3DepositHandler) GetAddress(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Unauthorized(c, "User not authenticated")
-		return
-	}
-	wallet, _, err := resolveWeb3DepositWallet(h.cfg.Web3Deposit)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	networks := availableWeb3DepositNetworks(h.cfg.Web3Deposit, h.runtime)
-	address, err := h.addressReader.GetByUserAndWallet(c.Request.Context(), subject.UserID, wallet.WalletID)
-	if errors.Is(err, web3deposit.ErrAddressNotFound) {
-		response.Success(c, web3DepositAddressResponse{Assigned: false, Networks: networks})
-		return
-	}
-	if err != nil {
-		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_ADDRESS_QUERY_FAILED", "failed to load web3 deposit address").WithCause(err))
-		return
-	}
-	if address.Status != web3deposit.AddressStatusActive {
-		response.ErrorFrom(c, infraerrors.Conflict("WEB3_DEPOSIT_ADDRESS_DISABLED", "web3 deposit address is disabled"))
-		return
-	}
-	response.Success(c, web3DepositAddressResponse{Assigned: true, Address: address.Address, Networks: networks})
 }
 
 type web3DepositUserResponse struct {

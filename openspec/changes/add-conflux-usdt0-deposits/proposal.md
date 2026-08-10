@@ -64,7 +64,7 @@
 ## Impact
 
 - **后端模块**：新增 `backend/internal/web3deposit/` 垂直模块；少量修改支付路由、Wire 启停、用户余额仓储适配和通知接线。
-- **数据库**：新增 `web3_deposit_addresses`、`web3_deposits`、`web3_scanner_cursors`、`web3_user_balances`、`web3_balance_transfers` 及索引；不把链上记录存入 `payment_orders`。
+- **数据库**：新增 `web3_deposit_wallets`、`web3_deposit_addresses`、`web3_deposits`、`web3_scanner_cursors`、`web3_user_balances`、`web3_balance_transfers`、`web3_rescan_jobs` 及索引；不把链上记录存入 `payment_orders`。
 - **运行配置**：新增启用开关、RPC 端点、账户级 xpub、钱包 ID、起始区块和轮询参数；私钥不属于应用配置。
 - **运行时**：新增后台扫描器和确认/入账 Worker，必须支持多实例领导租约和优雅停止。
 - **前端**：新增用户充值页与管理员 Web3 充值工作台，并补充路由、API、类型、i18n 和导航。

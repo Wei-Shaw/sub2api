@@ -45,7 +45,7 @@
 - [x] 6.2 实现 overlap 重扫、日志排序、地址批量匹配和幂等 upsert。
 - [x] 6.3 只有完整批次成功后推进 cursor。
 - [x] 6.4 实现 scanner restart、leader 切换和重复批次恢复测试。
-- [x] 6.5 实现受限区间补扫任务，禁止直接任意修改生产游标。
+- [x] 6.5 实现持久化、可审计、可恢复的受限区间补扫任务，禁止直接任意修改生产游标。
 
 ## 7. 实现 Finalizer 和状态机
 
@@ -75,7 +75,7 @@
 ## 10. 实现管理 API 和页面
 
 - [x] 10.1 增加充值筛选、详情、runtime 健康和游标延迟 API。
-- [x] 10.2 增加 approve、retry、ignore 和 bounded rescan。
+- [x] 10.2 增加 approve、retry、ignore、bounded rescan 及补扫任务列表/详情。
 - [x] 10.3 管理写操作接入管理员鉴权、step-up 和操作审计。
 - [x] 10.4 增加管理员 Web3 充值工作台，默认突出 manual review 和 failed。
 - [x] 10.5 验证管理员不能修改链上金额、用户、Token、tx hash 或 finalized 事实。
@@ -99,6 +99,6 @@
 
 ## 当前状态备注
 
-- 代码侧已实现并接线：配置默认关闭、HD 地址分配、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账、受限补扫边界、管理审核审计、runtime scanner/finalizer 延迟、Web3 充值默认告警规则、用户地址与充值历史页面。
+- 代码侧已实现并接线：配置默认关闭、HD 地址分配、钱包 fingerprint runtime 健康门禁、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账、持久化可恢复的受限补扫任务、管理审核审计、runtime scanner/finalizer 延迟、包含手续费/最终性说明的公开配置、自动获取地址的用户充值页与充值历史页面。
 - 已执行验证：`go test ./internal/web3deposit/... ./internal/handler/... ./internal/repository/... ./migrations/... -run 'Web3|web3|Deposit' -count=1`；`go test ./internal/handler/... ./internal/server/middleware/... -run 'Web3|web3|Audit' -count=1`；`go test ./internal/web3deposit/... ./internal/handler/admin -run 'Web3|web3|ScannerFinalizer|Audit' -count=1`；`pnpm test:run web3Deposit admin.web3Deposits`；`pnpm typecheck`。
 - 仍需补证或补实现：生产 HD wallet 离线基线、migration 典型查询 `EXPLAIN`、Web3 子余额向主余额的用户入口、真实链小额灰度和全量上线基线。

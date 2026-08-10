@@ -166,9 +166,10 @@ deposit status = credited
 ### 用户端
 
 - 功能关闭时 config 明确 disabled，POST address 不分配。
-- GET address 不产生写操作。
-- POST address 幂等。
+- 页面初始化自动调用 POST address，不需要用户点击创建按钮。
+- POST address 幂等，重复进入页面返回原地址且不消耗新的 derivation index。
 - 金额字段为 JSON string。
+- config 返回字符串手续费和最终性说明。
 - 地址和 Token 合约同时展示。
 - 列表分页稳定，按 `created_at,id` 排序无重复遗漏。
 - 内部 `crediting/ready_to_credit` 不直接暴露。
@@ -179,6 +180,9 @@ deposit status = credited
 - tx hash/address 搜索大小写不敏感。
 - runtime 返回 endpoint ID、健康、leader 和高度，不返回完整 xpub 或带凭据 RPC URL。
 - bounded rescan 拒绝过大区间、未来区块和低于允许下界的请求。
+- bounded rescan 返回持久任务，任务列表和详情可查询状态、计数、错误与时间戳。
+- 补扫任务的 `from_block` 和 `to_block` 使用 JSON string，超出 JavaScript 安全整数时仍保持精确。
+- 运行中断或租约过期后任务可被重新领取，旧尝试不能覆盖新尝试结果。
 
 ## 10. 前端验证
 

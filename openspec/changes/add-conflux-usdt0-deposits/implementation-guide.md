@@ -295,7 +295,7 @@ Wire 创建后由 provider 启动，统一 cleanup 调用 `Stop`。内部 gorout
 
 用户页面：
 
-- 首次进入先 GET address；为空时由明确操作或页面初始化 POST get-or-create。
+- 首次进入页面时自动 POST address；接口以 get-or-create 语义创建或返回长期地址，不展示“创建地址”按钮。
 - 同时展示网络 `Conflux eSpace` 和 Token 合约，不能只显示 `USDT0`。
 - 复制地址、复制 Token 合约分别提供反馈。
 - 二维码只包含地址，不自动构造可能被钱包误解的跨链 URI。

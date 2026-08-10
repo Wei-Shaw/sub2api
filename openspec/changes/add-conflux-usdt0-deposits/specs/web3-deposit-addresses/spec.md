@@ -47,12 +47,12 @@
 - **THEN** 旧 wallet ID 派生的所有历史地址 MUST 继续被扫描
 
 ### Requirement: 用户地址必须懒分配并长期复用
-系统 SHALL 在用户首次请求 Web3 充值地址时懒分配地址。相同用户后续请求 MUST 返回同一地址，MVP MUST NOT 自动轮换活跃地址。
+系统 SHALL 在用户首次进入充值页面并自动请求 Web3 充值地址时懒分配地址。相同用户后续请求 MUST 返回同一地址，MVP MUST NOT 自动轮换活跃地址。
 
-#### Scenario: 查询尚未分配的地址
-- **WHEN** 用户调用只读地址查询且尚未分配地址
-- **THEN** 系统 MUST 返回明确的未分配状态
-- **THEN** 查询 MUST NOT 消耗 derivation index 或创建数据库记录
+#### Scenario: 首次进入充值页面
+- **WHEN** 用户尚未分配地址并进入充值页面
+- **THEN** 页面 MUST 自动调用幂等 POST get-or-create 地址接口
+- **THEN** 系统 MUST 创建并返回一个长期复用的地址
 
 #### Scenario: 重复进入充值页面
 - **WHEN** 已有地址的用户再次进入充值页面或重复调用创建接口

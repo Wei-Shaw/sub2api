@@ -313,7 +313,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	rescanJobRuntime := web3deposit.ProvideRescanJobRuntime(configConfig, web3RescanJobRepository, boundedRescanner)
 	adminWeb3DepositHandler := admin.NewWeb3DepositHandler(web3DepositRepository, web3DepositRepository, scannerRuntime, confluxNetworkRuntime, rescanJobRuntime)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, grokOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, channelHandler, channelMonitorHandler, channelMonitorRequestTemplateHandler, contentModerationHandler, promptAdminHandler, paymentHandler, adminWeb3DepositHandler, affiliateHandler, complianceHandler, auditLogHandler, upstreamBillingProbeService, ollamaCloudUsageService)
-	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, web3DepositAddressRepository, scannerRuntime, web3DepositRepository)
+	web3DepositHandler := handler.NewWeb3DepositHandler(configConfig, addressAllocator, scannerRuntime, web3DepositRepository)
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	modelPlazaHandler := handler.NewModelPlazaHandler(channelService, apiKeyService, settingService)

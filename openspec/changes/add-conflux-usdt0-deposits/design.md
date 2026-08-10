@@ -347,6 +347,8 @@ CREATE TABLE web3_scanner_cursors (
 - 每批区块范围可配置；RPC 返回范围过大错误时递减 batch size。
 - 默认重叠重扫一段最近区块，具体值由配置和生产演练决定。
 
+受限区间补扫使用独立的 `web3_rescan_jobs` 持久任务，不复用或回退生产 scanner cursor。任务记录目标网络/资产、区块范围、请求人、`pending/running/succeeded/failed` 状态、尝试次数、结果计数、错误、租约和执行时间。Worker 使用带尝试次数 fencing 的租约领取和续期；请求取消、进程退出或租约过期后，其他实例可以重新领取，旧执行者不得覆盖新尝试结果。
+
 ### 11. RPC 配置是运维配置，不是普通管理员输入
 
 配置使用“钱包映射 + 网络映射 + 资产映射”的层级结构。Conflux eSpace 和 USDT0 是首期唯一启用目标，但未来新增 EVM 兼容链或 Token 时只增加映射条目，不修改配置 schema：
@@ -471,9 +473,8 @@ type BalanceCreditPostProcessor interface {
 
 | Method | Path | 行为 |
 | --- | --- | --- |
-| GET | `/config` | 返回固定网络、Token、最小金额、自动入账上限、最终性说明和功能状态 |
+| GET | `/config` | 返回固定网络、Token、最小金额、自动入账上限、手续费、最终性说明和功能状态 |
 | POST | `/address` | 幂等创建或返回当前用户充值地址 |
-| GET | `/address` | 获取已分配地址；未分配返回明确空状态，不产生写操作 |
 | GET | `/deposits` | 游标或页码分页返回当前用户充值记录 |
 | GET | `/deposits/:id` | 返回当前用户单条充值详情和确认状态 |
 
@@ -500,6 +501,8 @@ type BalanceCreditPostProcessor interface {
 | POST | `/:id/ignore` | 明确不入账，必须提供原因和二次确认 |
 | GET | `/runtime` | RPC、leader、游标、latest/finalized 高度和延迟 |
 | POST | `/rescan` | 创建受限区间补扫任务，不直接任意改游标 |
+| GET | `/rescan-jobs` | 返回最近补扫任务及状态、结果和错误 |
+| GET | `/rescan-jobs/:jobId` | 返回单个补扫任务详情 |
 
 所有管理写操作复用现有管理员鉴权、step-up 要求和管理操作审计。批准操作不能修改链上金额、用户、Token 或收款地址。
 
