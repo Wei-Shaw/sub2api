@@ -362,6 +362,34 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.text()).not.toContain('-admin.accounts.upstreamBilling.unsupported')
   })
 
+  it('explains when a protected New API pricing page cannot be used', async () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe: {
+              status: 'unsupported',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-14T00:00:00Z',
+              last_error: 'newapi_pricing_auth_required'
+            }
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.querySelector('[data-testid="upstream-billing-probe-error"]')?.textContent).toContain(
+      'admin.accounts.upstreamBilling.newAPIPricingAuthRequired'
+    )
+    wrapper.unmount()
+  })
+
   it('shows the provider, New API group, and recharge formula in the details tooltip', async () => {
     const wrapper = mount(UpstreamBillingRateCell, {
       attachTo: document.body,

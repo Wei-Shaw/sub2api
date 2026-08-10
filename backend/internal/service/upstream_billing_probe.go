@@ -166,9 +166,14 @@ type upstreamBillingProbeHTTPResult struct {
 	Body       []byte
 }
 
+type upstreamBillingProbeRequestOptions struct {
+	authorizationHeader         string
+	applyAccountHeaderOverrides bool
+}
+
 var (
-	errNewAPIPricingDefaultGroupMissing = errors.New("new api pricing response has no default group")
-	errNewAPIPricingGroupMissing        = errors.New("configured new api pricing group is missing")
+	errNewAPIPricingGroupRequired = errors.New("new api pricing requires an explicitly configured group")
+	errNewAPIPricingGroupMissing  = errors.New("configured new api pricing group is missing")
 )
 
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
@@ -664,10 +669,13 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		probeCtx,
 		account,
 		buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing"),
-		apiKey,
 		proxyURL,
 		tlsProfile,
 		upstreamBillingProbeMaxBodyBytes,
+		upstreamBillingProbeRequestOptions{
+			authorizationHeader:         "Bearer " + apiKey,
+			applyAccountHeaderOverrides: true,
+		},
 	)
 	if failureReason != "" && !upstreamBillingCompatibilityFallbackStatus(result) {
 		return s.persistUpstreamBillingRequestFailure(ctx, account, intervalMinutes, now, result, failureReason)
@@ -675,14 +683,27 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 
 	var data map[string]any
 	if upstreamBillingCompatibilityFallbackStatus(result) {
+		newAPIGroup, validGroup := upstreamBillingNewAPIGroup(account)
+		if !validGroup {
+			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "invalid_newapi_group", retryAfter(result.Header, now))
+		}
+		if newAPIGroup == "" {
+			// /api/pricing is a dashboard catalogue, not a relay-key introspection
+			// endpoint. Without an explicitly confirmed group there is no safe value
+			// to read or write back, so do not make the second request at all.
+			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_group_required", retryAfter(result.Header, now))
+		}
 		result, failureReason = s.requestUpstreamBillingProbe(
 			probeCtx,
 			account,
 			buildUpstreamSiteEndpointURL(normalizedBaseURL, "/api/pricing"),
-			apiKey,
 			proxyURL,
 			tlsProfile,
 			upstreamBillingProbeMaxNewAPIBodyBytes,
+			// A relay API key is not a New API dashboard session/PAT. Keep the
+			// compatibility request anonymous and never carry account-specific
+			// headers into the dashboard route.
+			upstreamBillingProbeRequestOptions{},
 		)
 		if upstreamBillingCompatibilityFallbackStatus(result) {
 			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "unsupported", retryAfter(result.Header, now))
@@ -690,18 +711,17 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		if failureReason != "" {
 			return s.persistUpstreamBillingRequestFailure(ctx, account, intervalMinutes, now, result, failureReason)
 		}
+		if newAPIPricingAuthRequired(result) {
+			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_pricing_auth_required", retryAfter(result.Header, now))
+		}
 		if result.StatusCode < 200 || result.StatusCode >= 300 {
 			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "http_error", retryAfter(result.Header, now))
-		}
-		newAPIGroup, validGroup := upstreamBillingNewAPIGroup(account)
-		if !validGroup {
-			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "invalid_newapi_group", retryAfter(result.Header, now))
 		}
 		data, err = parseNewAPIUpstreamBillingResponse(result.Body, newAPIGroup, now)
 		if err != nil {
 			reason := "invalid_response"
 			switch {
-			case errors.Is(err, errNewAPIPricingDefaultGroupMissing):
+			case errors.Is(err, errNewAPIPricingGroupRequired):
 				reason = "newapi_group_required"
 			case errors.Is(err, errNewAPIPricingGroupMissing):
 				reason = "newapi_group_not_found"
@@ -735,7 +755,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	var syncRate *float64
 	previousRate := account.BillingRateMultiplier()
 	if upstreamBillingRateSyncEnabled(account) {
-		if value, valid := upstreamBillingProbeSyncRate(data); valid {
+		if value, valid := upstreamBillingProbeSyncRateForAccount(account, data); valid {
 			syncRate = &value
 			snapshot.SyncedRateMultiplier = &value
 		} else {
@@ -769,14 +789,50 @@ func upstreamBillingCompatibilityFallbackStatus(result *upstreamBillingProbeHTTP
 	return result != nil && (result.StatusCode == http.StatusNotFound || result.StatusCode == http.StatusMethodNotAllowed)
 }
 
+func newAPIPricingAuthRequired(result *upstreamBillingProbeHTTPResult) bool {
+	if result == nil {
+		return false
+	}
+	if result.StatusCode == http.StatusUnauthorized || result.StatusCode == http.StatusForbidden {
+		return true
+	}
+	if result.StatusCode < 200 || result.StatusCode >= 300 {
+		return false
+	}
+
+	var response struct {
+		Success *bool           `json:"success"`
+		Message json.RawMessage `json:"message"`
+		Error   json.RawMessage `json:"error"`
+		Code    json.RawMessage `json:"code"`
+	}
+	if err := json.Unmarshal(result.Body, &response); err != nil || response.Success == nil || *response.Success {
+		return false
+	}
+	authText := strings.ToLower(string(response.Message) + " " + string(response.Error) + " " + string(response.Code))
+	for _, marker := range []string{
+		"unauthorized",
+		"invalid access token",
+		"authentication",
+		"access token",
+		"login required",
+		"not logged in",
+	} {
+		if strings.Contains(authText, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *UpstreamBillingProbeService) requestUpstreamBillingProbe(
 	ctx context.Context,
 	account *Account,
 	endpointURL string,
-	apiKey string,
 	proxyURL string,
 	tlsProfile *tlsfingerprint.Profile,
 	maxBodyBytes int,
+	options upstreamBillingProbeRequestOptions,
 ) (*upstreamBillingProbeHTTPResult, string) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointURL, bytes.NewReader(nil))
 	if err != nil {
@@ -789,8 +845,12 @@ func (s *UpstreamBillingProbeService) requestUpstreamBillingProbe(
 	reqCtx := WithHTTPUpstreamProfile(req.Context(), profile)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	account.ApplyHeaderOverrides(req.Header)
+	if options.authorizationHeader != "" {
+		req.Header.Set("Authorization", options.authorizationHeader)
+	}
+	if options.applyAccountHeaderOverrides {
+		account.ApplyHeaderOverrides(req.Header)
+	}
 
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
@@ -841,7 +901,7 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 	}
 	status := UpstreamBillingProbeStatusFailed
 	delay := nextProbeDelay(intervalMinutes, retryAfterDuration)
-	if reason == "unsupported" {
+	if upstreamBillingProbeReasonIsUnsupported(reason) {
 		status = UpstreamBillingProbeStatusUnsupported
 		delay = unsupportedProbeDelay(intervalMinutes, retryAfterDuration)
 	}
@@ -865,6 +925,10 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 		return nil, err
 	}
 	return snapshot, nil
+}
+
+func upstreamBillingProbeReasonIsUnsupported(reason string) bool {
+	return reason == "unsupported" || reason == "newapi_pricing_auth_required"
 }
 
 func (s *UpstreamBillingProbeService) updateSnapshot(
@@ -970,27 +1034,16 @@ func parseNewAPIUpstreamBillingResponse(body []byte, configuredGroup string, obs
 		return nil, fmt.Errorf("unexpected new api pricing response schema")
 	}
 	group := strings.TrimSpace(configuredGroup)
-	configured := group != ""
-	if !configured {
-		group = "default"
+	if group == "" {
+		return nil, errNewAPIPricingGroupRequired
 	}
-	var ratio float64
-	var ok bool
-	for groupName, rawRatio := range response.GroupRatio {
-		parsedRatio, err := parseStrictNewAPIGroupRatio(rawRatio)
-		if err != nil {
-			return nil, fmt.Errorf("invalid new api group multiplier for %q: %w", groupName, err)
-		}
-		if groupName == group {
-			ratio = parsedRatio
-			ok = true
-		}
-	}
+	rawRatio, ok := response.GroupRatio[group]
 	if !ok {
-		if configured {
-			return nil, errNewAPIPricingGroupMissing
-		}
-		return nil, errNewAPIPricingDefaultGroupMissing
+		return nil, errNewAPIPricingGroupMissing
+	}
+	ratio, err := parseStrictNewAPIGroupRatio(rawRatio)
+	if err != nil {
+		return nil, fmt.Errorf("invalid new api group multiplier for %q: %w", group, err)
 	}
 	if ratio < 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
 		return nil, fmt.Errorf("invalid new api group multiplier")
@@ -1109,6 +1162,22 @@ func upstreamBillingProbeSyncRate(data map[string]any) (float64, bool) {
 		return 0, false
 	}
 	return rounded, true
+}
+
+// New API pricing is a group catalogue, so automatic write-back additionally
+// requires the observed catalogue entry to match the account's explicit group
+// confirmation. The repository CAS separately rejects a concurrent group edit.
+func upstreamBillingProbeSyncRateForAccount(account *Account, data map[string]any) (float64, bool) {
+	provider, _ := data["provider"].(string)
+	object, _ := data["object"].(string)
+	if provider == "newapi" || object == "newapi.group_ratio" {
+		configuredGroup, valid := upstreamBillingNewAPIGroup(account)
+		observedGroup, observed := data["upstream_group"].(string)
+		if !valid || configuredGroup == "" || !observed || observedGroup != configuredGroup {
+			return 0, false
+		}
+	}
+	return upstreamBillingProbeSyncRate(data)
 }
 
 func upstreamBillingPeakMultiplierAt(data map[string]any, now time.Time) (float64, bool) {

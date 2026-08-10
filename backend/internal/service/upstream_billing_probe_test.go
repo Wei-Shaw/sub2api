@@ -419,7 +419,7 @@ func TestUpstreamBillingProbeFallsBackToNewAPIGroupRatio(t *testing.T) {
 		wantGroup       string
 		wantRawRate     float64
 	}{
-		{name: "unconfigured uses default only", wantGroup: "default", wantRawRate: 0.5},
+		{name: "explicit default group matches exactly", configuredGroup: "default", wantGroup: "default", wantRawRate: 0.5},
 		{name: "configured group matches exactly", configuredGroup: "vip", wantGroup: "vip", wantRawRate: 0.4},
 	}
 
@@ -428,14 +428,17 @@ func TestUpstreamBillingProbeFallsBackToNewAPIGroupRatio(t *testing.T) {
 			extra := map[string]any{
 				UpstreamBillingProbeEnabledExtraKey:       true,
 				UpstreamBillingRechargeMultiplierExtraKey: 2.0,
-			}
-			if tt.configuredGroup != "" {
-				extra[UpstreamBillingNewAPIGroupExtraKey] = tt.configuredGroup
+				UpstreamBillingNewAPIGroupExtraKey:        tt.configuredGroup,
 			}
 			account := &Account{
 				ID: 172, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
-				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example/v1"},
-				Extra:       extra,
+				Credentials: map[string]any{
+					"api_key":                    "sk-sensitive",
+					"base_url":                   "https://upstream.example/v1",
+					credKeyHeaderOverrideEnabled: true,
+					credKeyHeaderOverrides:       map[string]any{"x-relay-route": "account-specific"},
+				},
+				Extra: extra,
 			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 			upstream := &httpUpstreamRecorder{responses: []*http.Response{
@@ -451,6 +454,10 @@ func TestUpstreamBillingProbeFallsBackToNewAPIGroupRatio(t *testing.T) {
 			require.Len(t, upstream.requests, 2)
 			require.Equal(t, "https://upstream.example/v1/sub2api/billing", upstream.requests[0].URL.String())
 			require.Equal(t, "https://upstream.example/api/pricing", upstream.requests[1].URL.String())
+			require.Equal(t, "Bearer sk-sensitive", upstream.requests[0].Header.Get("Authorization"))
+			require.Equal(t, []string{"account-specific"}, upstream.requests[0].Header["x-relay-route"])
+			require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+			require.NotContains(t, upstream.requests[1].Header, "x-relay-route")
 			require.Equal(t, "newapi", snapshot.Data["provider"])
 			require.Equal(t, tt.wantGroup, snapshot.Data["upstream_group"])
 			require.Equal(t, tt.wantRawRate, snapshot.Data["raw_resolved_rate_multiplier"])
@@ -466,7 +473,10 @@ func TestUpstreamBillingProbeAllowsNewAPIPricingCatalogLargerThanSub2APIBodyLimi
 	account := &Account{
 		ID: 176, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example"},
-		Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		Extra: map[string]any{
+			UpstreamBillingProbeEnabledExtraKey: true,
+			UpstreamBillingNewAPIGroupExtraKey:  "default",
+		},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
@@ -488,9 +498,10 @@ func TestUpstreamBillingProbeNewAPIDoesNotGuessMissingGroup(t *testing.T) {
 		group      string
 		body       string
 		wantReason string
+		wantCalls  int
 	}{
-		{name: "configured group missing", group: "gold", body: `{"success":true,"group_ratio":{"default":0.5,"vip":0.4}}`, wantReason: "newapi_group_not_found"},
-		{name: "default missing", body: `{"success":true,"group_ratio":{"vip":0.4}}`, wantReason: "newapi_group_required"},
+		{name: "configured group missing", group: "gold", body: `{"success":true,"group_ratio":{"default":0.5,"vip":0.4}}`, wantReason: "newapi_group_not_found", wantCalls: 2},
+		{name: "unconfigured group stops before catalog request", body: `{"success":true,"group_ratio":{"default":0.5}}`, wantReason: "newapi_group_required", wantCalls: 1},
 	}
 
 	for _, tt := range tests {
@@ -516,7 +527,7 @@ func TestUpstreamBillingProbeNewAPIDoesNotGuessMissingGroup(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, UpstreamBillingProbeStatusFailed, snapshot.Status)
 			require.Equal(t, tt.wantReason, snapshot.LastError)
-			require.Len(t, upstream.requests, 2)
+			require.Len(t, upstream.requests, tt.wantCalls)
 		})
 	}
 }
@@ -534,10 +545,64 @@ func TestParseNewAPIUpstreamBillingResponseRejectsNonNumericGroupRatios(t *testi
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := parseNewAPIUpstreamBillingResponse(
 				[]byte(fmt.Sprintf(`{"success":true,"group_ratio":{"default":%s}}`, tt.ratio)),
-				"",
+				"default",
 				time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC),
 			)
 			require.ErrorContains(t, err, "invalid new api group multiplier")
+		})
+	}
+}
+
+func TestParseNewAPIUpstreamBillingResponseIgnoresMalformedUnselectedGroups(t *testing.T) {
+	data, err := parseNewAPIUpstreamBillingResponse(
+		[]byte(`{"success":true,"group_ratio":{"selected":0.5,"broken":"not-a-number"}}`),
+		"selected",
+		time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC),
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 0.5, data["resolved_rate_multiplier"])
+	require.Equal(t, "selected", data["upstream_group"])
+}
+
+func TestUpstreamBillingProbeMarksProtectedNewAPIPricingUnsupported(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{name: "unauthorized status", statusCode: http.StatusUnauthorized, body: `{"success":false,"message":"login required"}`},
+		{name: "forbidden status", statusCode: http.StatusForbidden, body: `{"success":false,"message":"forbidden"}`},
+		{name: "http 200 auth envelope", statusCode: http.StatusOK, body: `{"success":false,"message":"Unauthorized, invalid access token"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				ID: 177, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example"},
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey: true,
+					UpstreamBillingNewAPIGroupExtraKey:  "vip",
+				},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{
+				{StatusCode: http.StatusNotFound, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{}`))},
+				{StatusCode: tt.statusCode, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(tt.body))},
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+			svc.now = func() time.Time { return fixedNow }
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusUnsupported, snapshot.Status)
+			require.Equal(t, "newapi_pricing_auth_required", snapshot.LastError)
+			require.Equal(t, tt.statusCode, snapshot.HTTPStatus)
+			require.Len(t, upstream.requests, 2)
+			require.Empty(t, upstream.requests[1].Header.Get("Authorization"))
+			require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(192*time.Minute)))
+			require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(288*time.Minute)))
 		})
 	}
 }
@@ -685,6 +750,28 @@ func TestUpstreamBillingProbeSyncRateIgnoresEffectiveRate(t *testing.T) {
 	require.Equal(t, 0.6, got)
 
 	_, ok = upstreamBillingProbeSyncRate(map[string]any{"effective_rate_multiplier": 0.9})
+	require.False(t, ok)
+}
+
+func TestUpstreamBillingProbeSyncRateRequiresMatchingConfirmedNewAPIGroup(t *testing.T) {
+	data := map[string]any{
+		"provider":                 "newapi",
+		"object":                   "newapi.group_ratio",
+		"upstream_group":           "vip",
+		"resolved_rate_multiplier": 0.5,
+	}
+	account := &Account{Extra: map[string]any{UpstreamBillingNewAPIGroupExtraKey: "vip"}}
+
+	got, ok := upstreamBillingProbeSyncRateForAccount(account, data)
+	require.True(t, ok)
+	require.Equal(t, 0.5, got)
+
+	account.Extra[UpstreamBillingNewAPIGroupExtraKey] = "other"
+	_, ok = upstreamBillingProbeSyncRateForAccount(account, data)
+	require.False(t, ok)
+
+	delete(account.Extra, UpstreamBillingNewAPIGroupExtraKey)
+	_, ok = upstreamBillingProbeSyncRateForAccount(account, data)
 	require.False(t, ok)
 }
 
@@ -1121,6 +1208,7 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 		Status:      StatusActive,
 		Concurrency: 1,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
+		Extra:       map[string]any{UpstreamBillingNewAPIGroupExtraKey: "default"},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{

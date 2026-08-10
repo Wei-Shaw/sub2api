@@ -58,6 +58,9 @@
           </p>
         </template>
         <p v-else>{{ statusLabel || '-' }}</p>
+        <p v-if="probeErrorLabel" data-testid="upstream-billing-probe-error">
+          {{ probeErrorLabel }}
+        </p>
         <p
           v-if="probeEnabled && globalProbeEnabled !== false && nextProbeAt"
           data-testid="upstream-billing-next-probe"
@@ -240,6 +243,20 @@ const statusLabel = computed(() => {
   if (stale.value) return t('admin.accounts.upstreamBilling.stale')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
   return ''
+})
+const probeErrorLabel = computed(() => {
+  const error = snapshot.value?.last_error
+  if (!error || snapshot.value?.status === 'ok') return ''
+  switch (error) {
+    case 'newapi_pricing_auth_required':
+      return t('admin.accounts.upstreamBilling.newAPIPricingAuthRequired')
+    case 'newapi_group_required':
+      return t('admin.accounts.upstreamBilling.newAPIGroupRequired')
+    case 'newapi_group_not_found':
+      return t('admin.accounts.upstreamBilling.newAPIGroupNotFound')
+    default:
+      return ''
+  }
 })
 const statusClass = computed(() => {
   if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'
