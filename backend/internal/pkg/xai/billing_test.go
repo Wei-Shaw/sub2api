@@ -48,7 +48,11 @@ func TestBuildBillingSummaryWeeklyAndMonthly(t *testing.T) {
 		"config": {
 			"currentPeriod": {"type":"WEEKLY","start":"2026-07-09T03:25:00Z","end":"2026-07-16T03:25:00Z"},
 			"creditUsagePercent": 2.0,
-			"productUsage": [{"product":"Api","usagePercent":2.0}]
+			"productUsage": [{"product":"Api","usagePercent":2.0}],
+			"prepaidBalance": {"val": 12},
+			"onDemandCap": {"val": 100},
+			"onDemandUsed": {"val": 5},
+			"isUnifiedBillingUser": true
 		}
 	}`)
 	monthlyBody := []byte(`{
@@ -72,10 +76,16 @@ func TestBuildBillingSummaryWeeklyAndMonthly(t *testing.T) {
 	require.Equal(t, "weekly", weekly.PeriodType)
 	require.InDelta(t, 2.0, *weekly.UsagePercent, 1e-9)
 	require.Equal(t, "Api", weekly.ProductUsage[0].Product)
+	require.InDelta(t, 12, *weekly.PrepaidBalance, 1e-9)
+	require.InDelta(t, 100, *weekly.OnDemandCap, 1e-9)
+	require.InDelta(t, 5, *weekly.OnDemandUsed, 1e-9)
+	require.True(t, weekly.IsUnifiedBillingUser)
 	require.Equal(t, "SuperGrok", monthly.Plan)
 	require.InDelta(t, 15000, *monthly.MonthlyLimitCents, 1e-9)
 	require.InDelta(t, 78, *monthly.UsedCents, 1e-9)
 	require.InDelta(t, 0.52, *monthly.UsedPercent, 1e-2)
+	require.InDelta(t, 150, *monthly.MonthlyLimit, 1e-9)
+	require.InDelta(t, 0.78, *monthly.MonthlyUsed, 1e-9)
 
 	merged := MergeBillingProbeResult(nil, weekly, monthly, true, true)
 	require.Equal(t, "weekly", merged.PeriodType)
@@ -83,6 +93,10 @@ func TestBuildBillingSummaryWeeklyAndMonthly(t *testing.T) {
 	require.Equal(t, "SuperGrok", merged.Plan)
 	require.InDelta(t, 15000, *merged.MonthlyLimitCents, 1e-9)
 	require.Equal(t, "2026-08-01T00:00:00Z", merged.BillingPeriodEnd)
+	require.InDelta(t, 12, *merged.PrepaidBalance, 1e-9)
+	require.InDelta(t, 100, *merged.OnDemandCap, 1e-9)
+	require.InDelta(t, 150, *merged.MonthlyLimit, 1e-9)
+	require.InDelta(t, 0.78, *merged.MonthlyUsed, 1e-9)
 }
 
 func TestParseCentValueBareNumber(t *testing.T) {
@@ -103,6 +117,27 @@ func TestBuildBillingSummaryMonthlyOnlyKeepsWeeklyUsageEmpty(t *testing.T) {
 	require.Equal(t, "monthly", summary.PeriodType)
 	require.Nil(t, summary.UsagePercent)
 	require.InDelta(t, 50, *summary.UsedPercent, 1e-9)
+}
+
+func TestBuildBillingSummaryWeeklyDoesNotInheritMonthlyPeriodEnd(t *testing.T) {
+	t.Parallel()
+	// Weekly usage without currentPeriod.end must not copy billingPeriodEnd (monthly).
+	payload, err := ParseBillingPayload([]byte(`{
+		"config": {
+			"creditUsagePercent": 95.0,
+			"productUsage": [{"product":"Api","usagePercent":95.0}],
+			"billingPeriodStart": "2026-07-01T00:00:00Z",
+			"billingPeriodEnd": "2026-08-01T00:00:00Z",
+			"monthlyLimit": {"val": 15000},
+			"used": {"val": 1000}
+		}
+	}`))
+	require.NoError(t, err)
+	summary := BuildBillingSummary(payload.Config)
+	require.NotNil(t, summary)
+	require.Equal(t, "weekly", summary.PeriodType)
+	require.Equal(t, "", summary.PeriodEnd)
+	require.Equal(t, "2026-08-01T00:00:00Z", summary.BillingPeriodEnd)
 }
 
 func TestMergeBillingProbeResultRetainsFailedWindow(t *testing.T) {

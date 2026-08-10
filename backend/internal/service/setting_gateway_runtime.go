@@ -72,6 +72,19 @@ const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
 
+// cachedAccountSchedulingThresholds 缓存平台自动停调阈值（进程内缓存，60s TTL）
+type cachedAccountSchedulingThresholds struct {
+	thresholds map[string]int
+	expiresAt  int64 // unix nano
+}
+
+var accountSchedulingThresholdsCache atomic.Value // *cachedAccountSchedulingThresholds
+var accountSchedulingThresholdsSF singleflight.Group
+
+const accountSchedulingThresholdsCacheTTL = 60 * time.Second
+const accountSchedulingThresholdsErrorTTL = 5 * time.Second
+const accountSchedulingThresholdsDBTimeout = 5 * time.Second
+
 // cachedAntigravityUserAgentVersion 缓存 Antigravity UA 版本号（进程内缓存，60s TTL）
 type cachedAntigravityUserAgentVersion struct {
 	version   string

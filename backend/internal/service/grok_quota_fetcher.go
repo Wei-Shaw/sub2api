@@ -36,6 +36,7 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 	activeProbeClearsForbidden := newerSuccessfulGrokActiveProbeClearsBillingForbidden(billing, snapshot)
 	if billing != nil {
 		usage.GrokBilling = billing
+		applyGrokBillingProgressWindows(usage, billing, now)
 		if billing.Plan != "" {
 			usage.SubscriptionTier = billing.Plan
 			usage.SubscriptionTierRaw = billing.Plan
@@ -58,6 +59,14 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 			usage.ErrorCode = "forbidden"
 		case 429:
 			usage.ErrorCode = "rate_limited"
+		}
+		// Official weekly/monthly progress clears the "unknown until headers" state.
+		if usage.ErrorCode == "quota_unknown" && (usage.SevenDay != nil || usage.ThirtyDay != nil) {
+			usage.ErrorCode = ""
+			if strings.Contains(strings.ToLower(usage.Error), "unknown until") ||
+				strings.Contains(strings.ToLower(usage.Error), "no xai quota headers") {
+				usage.Error = ""
+			}
 		}
 	}
 
@@ -122,6 +131,12 @@ func (f *GrokQuotaFetcher) BuildUsageInfo(account *Account) *UsageInfo {
 			}
 		case 429:
 			usage.ErrorCode = "rate_limited"
+		}
+	}
+	if accountGrokNeedsReauth(account) {
+		usage.NeedsReauth = true
+		if usage.ErrorCode == "" {
+			usage.ErrorCode = "spending_limit"
 		}
 	}
 	applyGrokCredentialUsageFallback(usage, account)
@@ -238,5 +253,50 @@ func grokQuotaSnapshotFromExtra(extra map[string]any) (*xai.QuotaSnapshot, error
 			return nil, err
 		}
 		return &out, nil
+	}
+}
+
+// applyGrokBillingProgressWindows fills official weekly (seven_day) and monthly
+// (thirty_day) UsageProgress from a billing probe summary.
+func applyGrokBillingProgressWindows(usage *UsageInfo, billing *xai.BillingSummary, now time.Time) {
+	if usage == nil || billing == nil {
+		return
+	}
+	if billing.UsagePercent != nil {
+		seven := &UsageProgress{Utilization: *billing.UsagePercent}
+		if end, err := parseTime(strings.TrimSpace(billing.PeriodEnd)); err == nil {
+			seven.ResetsAt = &end
+			if sec := int(end.Sub(now).Seconds()); sec > 0 {
+				seven.RemainingSeconds = sec
+			}
+		}
+		if usage.SevenDay != nil {
+			seven.WindowStats = usage.SevenDay.WindowStats
+		}
+		usage.SevenDay = seven
+	}
+	var monthlyUtil *float64
+	if billing.UsedPercent != nil {
+		monthlyUtil = billing.UsedPercent
+	} else if billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0 && billing.UsedCents != nil {
+		v := (*billing.UsedCents / *billing.MonthlyLimitCents) * 100
+		monthlyUtil = &v
+	}
+	if monthlyUtil != nil {
+		thirty := &UsageProgress{Utilization: *monthlyUtil}
+		endRaw := strings.TrimSpace(billing.BillingPeriodEnd)
+		if endRaw == "" && billing.PeriodType == "monthly" {
+			endRaw = strings.TrimSpace(billing.PeriodEnd)
+		}
+		if end, err := parseTime(endRaw); err == nil {
+			thirty.ResetsAt = &end
+			if sec := int(end.Sub(now).Seconds()); sec > 0 {
+				thirty.RemainingSeconds = sec
+			}
+		}
+		if usage.ThirtyDay != nil {
+			thirty.WindowStats = usage.ThirtyDay.WindowStats
+		}
+		usage.ThirtyDay = thirty
 	}
 }
