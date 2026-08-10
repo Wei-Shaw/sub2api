@@ -160,6 +160,15 @@ type newAPIPricingResponse struct {
 	GroupRatio map[string]json.RawMessage `json:"group_ratio"`
 }
 
+type newAPIUserGroupsResponse struct {
+	Success bool                       `json:"success"`
+	Data    map[string]json.RawMessage `json:"data"`
+}
+
+type newAPIUserGroupEntry struct {
+	Ratio json.RawMessage `json:"ratio"`
+}
+
 type upstreamBillingProbeHTTPResult struct {
 	StatusCode int
 	Header     http.Header
@@ -172,8 +181,8 @@ type upstreamBillingProbeRequestOptions struct {
 }
 
 var (
-	errNewAPIPricingGroupRequired = errors.New("new api pricing requires an explicitly configured group")
-	errNewAPIPricingGroupMissing  = errors.New("configured new api pricing group is missing")
+	errNewAPIGroupRequired = errors.New("new api catalogue requires an explicitly configured group")
+	errNewAPIGroupMissing  = errors.New("configured new api catalogue group is missing")
 )
 
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
@@ -688,9 +697,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "invalid_newapi_group", retryAfter(result.Header, now))
 		}
 		if newAPIGroup == "" {
-			// /api/pricing is a dashboard catalogue, not a relay-key introspection
-			// endpoint. Without an explicitly confirmed group there is no safe value
-			// to read or write back, so do not make the second request at all.
+			// New API catalogue routes are not relay-key introspection endpoints.
+			// Without an explicitly confirmed group there is no safe value to read or
+			// write back, so do not make a catalogue request at all.
 			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_group_required", retryAfter(result.Header, now))
 		}
 		result, failureReason = s.requestUpstreamBillingProbe(
@@ -705,25 +714,50 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 			// headers into the dashboard route.
 			upstreamBillingProbeRequestOptions{},
 		)
-		if upstreamBillingCompatibilityFallbackStatus(result) {
-			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "unsupported", retryAfter(result.Header, now))
+		pricingAuthRequired := failureReason == "" && newAPIGroupCatalogueAuthRequired(result)
+		if pricingAuthRequired {
+			result, failureReason = s.requestUpstreamBillingProbe(
+				probeCtx,
+				account,
+				buildUpstreamSiteEndpointURL(normalizedBaseURL, "/api/user/groups"),
+				proxyURL,
+				tlsProfile,
+				upstreamBillingProbeMaxBodyBytes,
+				// /api/user/groups is also only a catalogue source. Keep this request
+				// anonymous for the same reason as /api/pricing.
+				upstreamBillingProbeRequestOptions{},
+			)
+			if upstreamBillingCompatibilityFallbackStatus(result) {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_pricing_auth_required", retryAfter(result.Header, now))
+			}
+			if failureReason != "" {
+				return s.persistUpstreamBillingRequestFailure(ctx, account, intervalMinutes, now, result, failureReason)
+			}
+			if newAPIGroupCatalogueAuthRequired(result) {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_pricing_auth_required", retryAfter(result.Header, now))
+			}
+			if result.StatusCode < 200 || result.StatusCode >= 300 {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "http_error", retryAfter(result.Header, now))
+			}
+			data, err = parseNewAPIUserGroupsResponse(result.Body, newAPIGroup, now)
+		} else {
+			if upstreamBillingCompatibilityFallbackStatus(result) {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "unsupported", retryAfter(result.Header, now))
+			}
+			if failureReason != "" {
+				return s.persistUpstreamBillingRequestFailure(ctx, account, intervalMinutes, now, result, failureReason)
+			}
+			if result.StatusCode < 200 || result.StatusCode >= 300 {
+				return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "http_error", retryAfter(result.Header, now))
+			}
+			data, err = parseNewAPIUpstreamBillingResponse(result.Body, newAPIGroup, now)
 		}
-		if failureReason != "" {
-			return s.persistUpstreamBillingRequestFailure(ctx, account, intervalMinutes, now, result, failureReason)
-		}
-		if newAPIPricingAuthRequired(result) {
-			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "newapi_pricing_auth_required", retryAfter(result.Header, now))
-		}
-		if result.StatusCode < 200 || result.StatusCode >= 300 {
-			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, "http_error", retryAfter(result.Header, now))
-		}
-		data, err = parseNewAPIUpstreamBillingResponse(result.Body, newAPIGroup, now)
 		if err != nil {
 			reason := "invalid_response"
 			switch {
-			case errors.Is(err, errNewAPIPricingGroupRequired):
+			case errors.Is(err, errNewAPIGroupRequired):
 				reason = "newapi_group_required"
-			case errors.Is(err, errNewAPIPricingGroupMissing):
+			case errors.Is(err, errNewAPIGroupMissing):
 				reason = "newapi_group_not_found"
 			}
 			return s.persistProbeFailure(ctx, account, intervalMinutes, now, result.StatusCode, reason, retryAfter(result.Header, now))
@@ -789,7 +823,7 @@ func upstreamBillingCompatibilityFallbackStatus(result *upstreamBillingProbeHTTP
 	return result != nil && (result.StatusCode == http.StatusNotFound || result.StatusCode == http.StatusMethodNotAllowed)
 }
 
-func newAPIPricingAuthRequired(result *upstreamBillingProbeHTTPResult) bool {
+func newAPIGroupCatalogueAuthRequired(result *upstreamBillingProbeHTTPResult) bool {
 	if result == nil {
 		return false
 	}
@@ -1035,12 +1069,39 @@ func parseNewAPIUpstreamBillingResponse(body []byte, configuredGroup string, obs
 	}
 	group := strings.TrimSpace(configuredGroup)
 	if group == "" {
-		return nil, errNewAPIPricingGroupRequired
+		return nil, errNewAPIGroupRequired
 	}
 	rawRatio, ok := response.GroupRatio[group]
 	if !ok {
-		return nil, errNewAPIPricingGroupMissing
+		return nil, errNewAPIGroupMissing
 	}
+	return buildNewAPIUpstreamBillingData(group, rawRatio, observedAt)
+}
+
+func parseNewAPIUserGroupsResponse(body []byte, configuredGroup string, observedAt time.Time) (map[string]any, error) {
+	var response newAPIUserGroupsResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, err
+	}
+	if !response.Success || len(response.Data) == 0 {
+		return nil, fmt.Errorf("unexpected new api user groups response schema")
+	}
+	group := strings.TrimSpace(configuredGroup)
+	if group == "" {
+		return nil, errNewAPIGroupRequired
+	}
+	rawEntry, ok := response.Data[group]
+	if !ok {
+		return nil, errNewAPIGroupMissing
+	}
+	var entry newAPIUserGroupEntry
+	if err := json.Unmarshal(rawEntry, &entry); err != nil {
+		return nil, fmt.Errorf("invalid new api user group entry for %q: %w", group, err)
+	}
+	return buildNewAPIUpstreamBillingData(group, entry.Ratio, observedAt)
+}
+
+func buildNewAPIUpstreamBillingData(group string, rawRatio json.RawMessage, observedAt time.Time) (map[string]any, error) {
 	ratio, err := parseStrictNewAPIGroupRatio(rawRatio)
 	if err != nil {
 		return nil, fmt.Errorf("invalid new api group multiplier for %q: %w", group, err)
@@ -1164,7 +1225,7 @@ func upstreamBillingProbeSyncRate(data map[string]any) (float64, bool) {
 	return rounded, true
 }
 
-// New API pricing is a group catalogue, so automatic write-back additionally
+// New API responses are group catalogues, so automatic write-back additionally
 // requires the observed catalogue entry to match the account's explicit group
 // confirmation. The repository CAS separately rejects a concurrent group edit.
 func upstreamBillingProbeSyncRateForAccount(account *Account, data map[string]any) (float64, bool) {

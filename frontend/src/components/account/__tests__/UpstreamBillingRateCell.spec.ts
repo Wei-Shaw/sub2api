@@ -362,7 +362,7 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.text()).not.toContain('-admin.accounts.upstreamBilling.unsupported')
   })
 
-  it('explains when a protected New API pricing page cannot be used', async () => {
+  it('explains when protected pricing has no usable user-groups fallback', async () => {
     const wrapper = mount(UpstreamBillingRateCell, {
       attachTo: document.body,
       props: {
