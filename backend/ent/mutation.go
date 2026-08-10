@@ -10614,6 +10614,8 @@ type AsyncVideoTaskMutation struct {
 	addrate_multiplier     *float64
 	unit_price_snapshot    *float64
 	addunit_price_snapshot *float64
+	upstream_cost          *float64
+	addupstream_cost       *float64
 	request_payload        *map[string]interface{}
 	result_payload         *map[string]interface{}
 	video_urls             *[]string
@@ -12102,6 +12104,62 @@ func (m *AsyncVideoTaskMutation) ResetUnitPriceSnapshot() {
 	m.addunit_price_snapshot = nil
 }
 
+// SetUpstreamCost sets the "upstream_cost" field.
+func (m *AsyncVideoTaskMutation) SetUpstreamCost(f float64) {
+	m.upstream_cost = &f
+	m.addupstream_cost = nil
+}
+
+// UpstreamCost returns the value of the "upstream_cost" field in the mutation.
+func (m *AsyncVideoTaskMutation) UpstreamCost() (r float64, exists bool) {
+	v := m.upstream_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamCost returns the old "upstream_cost" field's value of the AsyncVideoTask entity.
+// If the AsyncVideoTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AsyncVideoTaskMutation) OldUpstreamCost(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamCost: %w", err)
+	}
+	return oldValue.UpstreamCost, nil
+}
+
+// AddUpstreamCost adds f to the "upstream_cost" field.
+func (m *AsyncVideoTaskMutation) AddUpstreamCost(f float64) {
+	if m.addupstream_cost != nil {
+		*m.addupstream_cost += f
+	} else {
+		m.addupstream_cost = &f
+	}
+}
+
+// AddedUpstreamCost returns the value that was added to the "upstream_cost" field in this mutation.
+func (m *AsyncVideoTaskMutation) AddedUpstreamCost() (r float64, exists bool) {
+	v := m.addupstream_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamCost resets all changes to the "upstream_cost" field.
+func (m *AsyncVideoTaskMutation) ResetUpstreamCost() {
+	m.upstream_cost = nil
+	m.addupstream_cost = nil
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (m *AsyncVideoTaskMutation) SetRequestPayload(value map[string]interface{}) {
 	m.request_payload = &value
@@ -12707,7 +12765,7 @@ func (m *AsyncVideoTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AsyncVideoTaskMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 38)
 	if m.created_at != nil {
 		fields = append(fields, asyncvideotask.FieldCreatedAt)
 	}
@@ -12785,6 +12843,9 @@ func (m *AsyncVideoTaskMutation) Fields() []string {
 	}
 	if m.unit_price_snapshot != nil {
 		fields = append(fields, asyncvideotask.FieldUnitPriceSnapshot)
+	}
+	if m.upstream_cost != nil {
+		fields = append(fields, asyncvideotask.FieldUpstreamCost)
 	}
 	if m.request_payload != nil {
 		fields = append(fields, asyncvideotask.FieldRequestPayload)
@@ -12879,6 +12940,8 @@ func (m *AsyncVideoTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case asyncvideotask.FieldUnitPriceSnapshot:
 		return m.UnitPriceSnapshot()
+	case asyncvideotask.FieldUpstreamCost:
+		return m.UpstreamCost()
 	case asyncvideotask.FieldRequestPayload:
 		return m.RequestPayload()
 	case asyncvideotask.FieldResultPayload:
@@ -12962,6 +13025,8 @@ func (m *AsyncVideoTaskMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldRateMultiplier(ctx)
 	case asyncvideotask.FieldUnitPriceSnapshot:
 		return m.OldUnitPriceSnapshot(ctx)
+	case asyncvideotask.FieldUpstreamCost:
+		return m.OldUpstreamCost(ctx)
 	case asyncvideotask.FieldRequestPayload:
 		return m.OldRequestPayload(ctx)
 	case asyncvideotask.FieldResultPayload:
@@ -13175,6 +13240,13 @@ func (m *AsyncVideoTaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetUnitPriceSnapshot(v)
 		return nil
+	case asyncvideotask.FieldUpstreamCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamCost(v)
+		return nil
 	case asyncvideotask.FieldRequestPayload:
 		v, ok := value.(map[string]interface{})
 		if !ok {
@@ -13299,6 +13371,9 @@ func (m *AsyncVideoTaskMutation) AddedFields() []string {
 	if m.addunit_price_snapshot != nil {
 		fields = append(fields, asyncvideotask.FieldUnitPriceSnapshot)
 	}
+	if m.addupstream_cost != nil {
+		fields = append(fields, asyncvideotask.FieldUpstreamCost)
+	}
 	return fields
 }
 
@@ -13333,6 +13408,8 @@ func (m *AsyncVideoTaskMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedRateMultiplier()
 	case asyncvideotask.FieldUnitPriceSnapshot:
 		return m.AddedUnitPriceSnapshot()
+	case asyncvideotask.FieldUpstreamCost:
+		return m.AddedUpstreamCost()
 	}
 	return nil, false
 }
@@ -13432,6 +13509,13 @@ func (m *AsyncVideoTaskMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddUnitPriceSnapshot(v)
+		return nil
+	case asyncvideotask.FieldUpstreamCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamCost(v)
 		return nil
 	}
 	return fmt.Errorf("unknown AsyncVideoTask numeric field %s", name)
@@ -13684,6 +13768,9 @@ func (m *AsyncVideoTaskMutation) ResetField(name string) error {
 		return nil
 	case asyncvideotask.FieldUnitPriceSnapshot:
 		m.ResetUnitPriceSnapshot()
+		return nil
+	case asyncvideotask.FieldUpstreamCost:
+		m.ResetUpstreamCost()
 		return nil
 	case asyncvideotask.FieldRequestPayload:
 		m.ResetRequestPayload()

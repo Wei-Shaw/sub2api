@@ -158,6 +158,7 @@ export default {
     apiKeys: 'API 密钥',
     batchImage: '批量生图',
     videoModels: '视频模型',
+    materials: '素材库',
     adminVideoPricings: '视频定价',
     usage: '使用记录',
     redeem: '兑换',

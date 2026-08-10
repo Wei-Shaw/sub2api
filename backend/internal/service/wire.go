@@ -848,6 +848,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelService,
 	NewModelPricingResolver,
 	NewCOSImageTransferService,
+	NewUserMaterialService,
 	ProvideAsyncMediaService,
 	ProvideAsyncMediaReconciler,
 	ProvideAsyncMediaConfigService,

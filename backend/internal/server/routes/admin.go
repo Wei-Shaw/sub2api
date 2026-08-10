@@ -828,6 +828,11 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
 	}
+	// 管理员视频任务详情：使用记录里视频行的"详情"入口。
+	// 不做归属校验，管理员可查看任意用户的任务；上游 AdminAuthMiddleware 已保证权限。
+	if h.VideoModel != nil {
+		admin.GET("/video-tasks/by-id/:id", h.VideoModel.GetTaskByIDAdmin)
+	}
 }
 
 func registerUserAttributeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

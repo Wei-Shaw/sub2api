@@ -8,11 +8,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"net/http"
-	"sync"
-	"time"
-
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
@@ -26,9 +21,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+)
 
+import (
 	_ "embed"
-
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 )
 
@@ -388,9 +388,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	companyOperationsMonitor := service.ProvideCompanyOperationsMonitor(organizationService, notificationOutboxWorker, apiKeyService, configConfig)
 	organizationHandler := handler.NewOrganizationHandler(organizationService, authService, companyOperationsMonitor, opsService)
 	videoModelHandler := handler.NewVideoModelHandler(apiKeyService, accountRepository, modelPricingResolver, modelIntroService, asyncVideoService)
+	userMaterialRepository := repository.NewUserMaterialRepository(db)
+	userMaterialService := service.NewUserMaterialService(userMaterialRepository, cosImageTransferService)
+	userMaterialHandler := handler.NewUserMaterialHandler(userMaterialService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, falGatewayHandler, falVideoGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, plazaHandler, modelPlazaHandler, handlerSupportTicketHandler, supportTicketAttachmentHandler, handlerSupportTicketNotificationHandler, supportChatHandler, oidcProviderHandler, asyncImageHandler, batchImageHandler, organizationHandler, videoModelHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, channelMonitorUserHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, falGatewayHandler, falVideoGatewayHandler, handlerSettingHandler, totpHandler, passkeyHandler, handlerPaymentHandler, paymentWebhookHandler, availableChannelHandler, plazaHandler, modelPlazaHandler, handlerSupportTicketHandler, supportTicketAttachmentHandler, handlerSupportTicketNotificationHandler, supportChatHandler, oidcProviderHandler, asyncImageHandler, batchImageHandler, organizationHandler, videoModelHandler, userMaterialHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	optionalJWTAuthMiddleware := middleware.NewOptionalJWTAuthMiddleware(authService, userService, settingService, auditLogService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService, auditLogService)

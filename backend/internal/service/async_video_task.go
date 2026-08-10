@@ -55,6 +55,7 @@ type AsyncVideoTask struct {
 	FinalCost         float64
 	RateMultiplier    float64
 	UnitPriceSnapshot float64 // 提交时的 price_per_second 快照
+	UpstreamCost      float64 // 上游真实成本（如 apiz price/100，美元）；平台不回传时为 0，由 rate_multiplier 估算兜底
 
 	RequestPayload map[string]any // 客户端原始请求
 	ResultPayload  map[string]any // 上游 result 原始响应
@@ -147,7 +148,7 @@ type AsyncVideoTaskRepository interface {
 	GetByInternalRequestID(ctx context.Context, internalRequestID string) (*AsyncVideoTask, error)
 	GetByUpstreamRequestID(ctx context.Context, upstreamRequestID string) (*AsyncVideoTask, error)
 	UpdateUpstreamRef(ctx context.Context, id int64, upstreamRequestID, statusURL, responseURL string) error
-	MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int) (bool, error)
+	MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int, upstreamCost float64) (bool, error)
 	MarkRefunded(ctx context.Context, id int64, status, errorReason string) (bool, error)
 	ListUnfinished(ctx context.Context, limit int) ([]*AsyncVideoTask, error)
 	// ListByUserAndSlug 分页列出某用户在指定模型 slug 下的历史任务。

@@ -65,6 +65,8 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldUnitPriceSnapshot holds the string denoting the unit_price_snapshot field in the database.
 	FieldUnitPriceSnapshot = "unit_price_snapshot"
+	// FieldUpstreamCost holds the string denoting the upstream_cost field in the database.
+	FieldUpstreamCost = "upstream_cost"
 	// FieldRequestPayload holds the string denoting the request_payload field in the database.
 	FieldRequestPayload = "request_payload"
 	// FieldResultPayload holds the string denoting the result_payload field in the database.
@@ -120,6 +122,7 @@ var Columns = []string{
 	FieldFinalCost,
 	FieldRateMultiplier,
 	FieldUnitPriceSnapshot,
+	FieldUpstreamCost,
 	FieldRequestPayload,
 	FieldResultPayload,
 	FieldVideoUrls,
@@ -186,6 +189,8 @@ var (
 	DefaultRateMultiplier float64
 	// DefaultUnitPriceSnapshot holds the default value on creation for the "unit_price_snapshot" field.
 	DefaultUnitPriceSnapshot float64
+	// DefaultUpstreamCost holds the default value on creation for the "upstream_cost" field.
+	DefaultUpstreamCost float64
 	// ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	ErrorReasonValidator func(string) error
 	// ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
@@ -334,6 +339,11 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByUnitPriceSnapshot orders the results by the unit_price_snapshot field.
 func ByUnitPriceSnapshot(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUnitPriceSnapshot, opts...).ToFunc()
+}
+
+// ByUpstreamCost orders the results by the upstream_cost field.
+func ByUpstreamCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamCost, opts...).ToFunc()
 }
 
 // ByErrorReason orders the results by the error_reason field.

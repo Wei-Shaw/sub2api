@@ -65,10 +65,10 @@ export interface FieldSpec {
   rawType: FieldRawType
   /**
    * 仅 rawType==='string' 时有意义。管理员在编辑页声明了 widget 后，
-   * 演练台渲染时优先按这个声明选择 input / textarea，而不再依赖
+   * 演练台渲染时优先按这个声明选择 input / textarea / image，而不再依赖
    * 内容长度等启发式判断。默认 'input'。
    */
-  widget: 'input' | 'textarea'
+  widget: 'input' | 'textarea' | 'image'
   /** 仅 widget==='textarea' 时有意义。默认 3。 */
   textareaRows: number
   /** object 子字段声明列表（仅 rawType==='object' 时非空） */
@@ -259,13 +259,18 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
     // 未声明 widget 的旧数据（支持向后兼容）默认依旧逻辑走 'input'，
     // 演练台仍可根据默认值长度启动 textarea fallback 启发式。
     const rawType: FieldRawType = inferLeafRawType(value)
-    let widget: 'input' | 'textarea' = 'input'
+    let widget: 'input' | 'textarea' | 'image' = 'input'
     let textareaRows = 3
-    if (rawType === 'string' && (spec as Record<string, unknown>).widget === 'textarea') {
-      widget = 'textarea'
-      const rr = Number((spec as Record<string, unknown>).rows)
-      if (Number.isFinite(rr) && rr > 0) {
-        textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
+    if (rawType === 'string') {
+      const w = (spec as Record<string, unknown>).widget
+      if (w === 'textarea') {
+        widget = 'textarea'
+        const rr = Number((spec as Record<string, unknown>).rows)
+        if (Number.isFinite(rr) && rr > 0) {
+          textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
+        }
+      } else if (w === 'image') {
+        widget = 'image'
       }
     }
     return {

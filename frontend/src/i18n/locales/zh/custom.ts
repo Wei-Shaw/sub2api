@@ -1095,7 +1095,7 @@ export default {
     videoDuration: '时长',
     videoDimNotRecorded: '未记录',
     userAgent: 'User-Agent',
-    result: '出图结果',
+    result: '生成结果',
     resultDownload: '下载',
     resultEmpty: '无',
     ipGeo: {

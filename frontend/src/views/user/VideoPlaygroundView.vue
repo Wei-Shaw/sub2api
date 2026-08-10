@@ -731,7 +731,7 @@
                payload Tab 在无 payload 时禁用，避免切到后看到空页。
           -->
           <div
-            v-if="outputSchemaNodes.length > 0 || playground.resultPayload.value || hasDefaultPayloadForPreview"
+            v-if="outputSchemaNodes.length > 0 || playground.resultPayload.value"
             class="mt-4 space-y-3 border-t border-dashed border-gray-200 pt-3 dark:border-gray-800"
           >
             <div class="flex items-center justify-between gap-2">
@@ -788,12 +788,14 @@
               </div>
             </div>
             <div v-else-if="outputTab === 'payload'">
-              <!-- 任务已完成 → 展示上游 result payload；未提交时 → 展示默认请求 payload
-                   （帮助用户在提交前就看到"如果这样填会发什么"）。
-                   两种情况都用同一段 <pre>，格式化好即可。 -->
-              <pre class="max-h-96 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100">{{ payloadForOutputTab }}</pre>
-              <p v-if="!playground.resultPayload.value" class="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
-                {{ t('videoModels.playground.rawPayloadIsDefaultHint') }}
+              <!-- 只展示上游返回的 result payload（"输出参数"）。
+                   未提交/进行中/失败无 payload 时展示等待提示，避免把输入参数误当作输出。 -->
+              <pre
+                v-if="playground.resultPayload.value"
+                class="max-h-96 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100"
+              >{{ payloadForOutputTab }}</pre>
+              <p v-else class="text-[11px] text-gray-500 dark:text-gray-400">
+                {{ t('videoModels.playground.rawPayloadEmpty') }}
               </p>
             </div>
           </div>
@@ -1654,27 +1656,12 @@ const prettyResult = computed(() => {
 })
 
 // ============ 输出区 payload Tab 的显示内容 ============
-// - 任务已完成/失败但有 payload → 展示上游 result_payload（prettyResult）；
-// - 未提交/进行中 → 展示"默认请求 payload"（用当前 form/JSON 或 default_params 拼），
-//   目的是让用户在提交前就能看到"这样填会发出去的 body 长啥样"。
+// 只展示上游返回的 result_payload（真正的"输出参数"）。
+// 未提交 / 进行中 / 失败时返回空串，由模板走 rawPayloadEmpty 空态提示，
+// 避免把 curlBody（输入参数）当作输出误导用户。
 const payloadForOutputTab = computed(() => {
   if (playground.resultPayload.value) return prettyResult.value
-  try {
-    return JSON.stringify(curlBody(), null, 2)
-  } catch {
-    return ''
-  }
-})
-
-// hasDefaultPayloadForPreview：curlBody 一定有内容（至少含 fallback prompt），
-// 所以外层容器条件里作为兜底可用；即使 outputSchema 为空、payload 未到，也允许
-// 用户点开 payload tab 看默认请求体。
-const hasDefaultPayloadForPreview = computed(() => {
-  try {
-    return Object.keys(curlBody()).length > 0
-  } catch {
-    return false
-  }
+  return ''
 })
 
 // ============ 费用估算 & 实扣 ============

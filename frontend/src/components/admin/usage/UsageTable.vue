@@ -181,40 +181,52 @@
         </template>
 
         <template #cell-result="{ row }">
-          <div v-if="resultImageURLs(row).length" class="flex max-w-[180px] flex-wrap items-center gap-1.5">
-            <!-- 视频缩略图：video-poster 无预生成，展示为可点击缩略块 -->
-            <template v-if="isVideoUsage(row)">
-              <a
-                v-for="(url, idx) in resultImageURLs(row)"
-                :key="`v-${idx}`"
-                :href="url"
-                target="_blank"
-                rel="noopener noreferrer"
-                :title="t('usage.resultDownload')"
-                class="relative block h-12 w-12 overflow-hidden rounded border border-gray-200 bg-black transition hover:ring-2 hover:ring-amber-400 dark:border-dark-700"
-              >
-                <video :src="url" muted preload="metadata" class="h-full w-full object-cover" />
-                <span class="absolute inset-0 flex items-center justify-center">
-                  <svg class="h-4 w-4 text-white drop-shadow" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 3.7A1 1 0 004.8 4.5v11a1 1 0 001.5.86l9-5.5a1 1 0 000-1.72l-9-5.5z" /></svg>
-                </span>
-              </a>
-            </template>
-            <template v-else>
-              <a
-                v-for="(url, idx) in resultImageURLs(row)"
-                :key="idx"
-                :href="url"
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                :title="t('usage.resultDownload')"
-                class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
-              >
-                <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
-              </a>
-            </template>
+          <div class="flex flex-wrap items-center gap-2">
+            <div v-if="resultImageURLs(row).length" class="flex max-w-[180px] flex-wrap items-center gap-1.5">
+              <!-- 视频缩略图：video-poster 无预生成，展示为可点击缩略块 -->
+              <template v-if="isVideoUsage(row)">
+                <a
+                  v-for="(url, idx) in resultImageURLs(row)"
+                  :key="`v-${idx}`"
+                  :href="url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="t('usage.resultDownload')"
+                  class="relative block h-12 w-12 overflow-hidden rounded border border-gray-200 bg-black transition hover:ring-2 hover:ring-amber-400 dark:border-dark-700"
+                >
+                  <video :src="url" muted preload="metadata" class="h-full w-full object-cover" />
+                  <span class="absolute inset-0 flex items-center justify-center">
+                    <svg class="h-4 w-4 text-white drop-shadow" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 3.7A1 1 0 004.8 4.5v11a1 1 0 001.5.86l9-5.5a1 1 0 000-1.72l-9-5.5z" /></svg>
+                  </span>
+                </a>
+              </template>
+              <template v-else>
+                <a
+                  v-for="(url, idx) in resultImageURLs(row)"
+                  :key="idx"
+                  :href="url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  :title="t('usage.resultDownload')"
+                  class="block h-12 w-12 overflow-hidden rounded border border-gray-200 transition hover:ring-2 hover:ring-blue-400 dark:border-dark-700"
+                >
+                  <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover" />
+                </a>
+              </template>
+            </div>
+            <span v-else-if="!(isVideoUsage(row) && row.task_id)" class="text-sm text-gray-400 dark:text-gray-500">-</span>
+
+            <!-- 视频类型专属"详情"入口：点击弹窗展示 upstream task_id 等完整信息 -->
+            <button
+              v-if="isVideoUsage(row) && row.task_id"
+              type="button"
+              class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
+              @click="emit('videoDetail', row.task_id as number)"
+            >
+              详情
+            </button>
           </div>
-          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
         <template #cell-cost="{ row }">
@@ -619,6 +631,7 @@ const emit = defineEmits<{
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
+  videoDetail: [taskId: number]
 }>()
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()

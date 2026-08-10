@@ -286,6 +286,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // 用户素材库：图片输入控件 + 独立素材库页共用同一份 API。
+    path: '/materials',
+    name: 'UserMaterials',
+    component: () => import('@/views/user/UserMaterialsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Materials',
+      titleKey: 'materials.title',
+      descriptionKey: 'materials.description'
+    }
+  },
+  {
     // 演练台独立页面。slug 可能含 "/"（如 "bytedance/seedance-2.5/text-to-video"），
     // 因此走 pathMatch 通配；vue-router 会传入 string[]，页面里再 join('/') 恢复。
     path: '/video-models/:slug(.*)+/playground',

@@ -27,9 +27,10 @@ export type SchemaRowType = 'string' | 'number' | 'boolean' | 'object' | 'array'
 /**
  * SchemaWidget：仅对 string 叶子有意义，决定演练页/试一试渲染时用哪种控件。
  * 存储侧：默认 'input' 时不写该字段以保持存储 shape 精简与向后兼容；
- * 'textarea' 时会连同 rows 一起持久化。
+ * 'textarea' 时会连同 rows 一起持久化；
+ * 'image' 时演练台渲染为图片输入控件（URL / 本地上传 / 素材库），存储直接写入图片 URL。
  */
-export type SchemaWidget = 'input' | 'textarea'
+export type SchemaWidget = 'input' | 'textarea' | 'image'
 
 /** textarea 行数默认值（rows 属性缺省时使用）。 */
 export const DEFAULT_TEXTAREA_ROWS = 3
@@ -272,14 +273,17 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
   }
   // widget/rows 仅对 string 叶子有意义；widget='input' 视为默认，不写入以保持
   // 存储 shape 与旧数据一致（避免历史无该字段的行升级后 diff 变噪）。
-  if (row.type === 'string' && row.widget === 'textarea') {
-    out.widget = 'textarea'
-    const r = Number.isFinite(row.textareaRows) ? Math.trunc(row.textareaRows) : DEFAULT_TEXTAREA_ROWS
-    // 行数下限 1、上限 20：既避免负数/0 导致 <textarea rows='0'> 塌陷，
-    // 也避免手滑填 999 生成一个占满整屏的输入区。
-    out.rows = Math.min(20, Math.max(1, r))
-  }
-  return out
+  if (row.type === 'string') {
+    if (row.widget === 'textarea') {
+      out.widget = 'textarea'
+      const r = Number.isFinite(row.textareaRows) ? Math.trunc(row.textareaRows) : DEFAULT_TEXTAREA_ROWS
+      // 行数下限1、上限 20：既避免负数/0 导致 <textarea rows='0'> 塌陷，
+      // 也避免手滑填 999 生成一个占满整屏的输入区。
+      out.rows = Math.min(20, Math.max(1, r))
+    } else if (row.widget === 'image') {
+      out.widget = 'image'
+    }
+  }  return out
 }
 
 /**
@@ -444,15 +448,19 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
               })()
         )
         .join('\n')
-      // widget / rows：只对 string 叶子有意义，且 widget 只接受 'textarea' 显式声明；
+      // widget / rows：只对 string 叶子有意义，且 widget 只接受 'textarea'/'image' 显式声明；
       // 其它一切情形（缺省 / 未知值 / 非 string 类型）都归一为 'input'。
       let widget: SchemaWidget = 'input'
       let textareaRows = DEFAULT_TEXTAREA_ROWS
-      if (type === 'string' && obj.widget === 'textarea') {
-        widget = 'textarea'
-        const rr = Number(obj.rows)
-        if (Number.isFinite(rr) && rr > 0) {
-          textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
+      if (type === 'string') {
+        if (obj.widget === 'textarea') {
+          widget = 'textarea'
+          const rr = Number(obj.rows)
+          if (Number.isFinite(rr) && rr > 0) {
+            textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
+          }
+        } else if (obj.widget === 'image') {
+          widget = 'image'
         }
       }
       return makeSchemaRow({

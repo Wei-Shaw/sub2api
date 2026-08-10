@@ -158,6 +158,7 @@ export default {
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     videoModels: 'Video Models',
+    materials: 'Materials',
     adminVideoPricings: 'Video Pricing',
     usage: 'Usage',
     redeem: 'Redeem',

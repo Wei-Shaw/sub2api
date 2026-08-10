@@ -211,6 +211,11 @@ export interface OrganizationUsageRow {
   duration_ms?: number
   created_at: string
   balance_source?: 'self' | 'allocated' | 'shared' | 'company' | 'subscription'
+  /**
+   * task_id：关联 async_video_tasks.id。仅视频计费行会有值。
+   * 使用记录里视频行点"详情"按钮时用它调 /user/video-models/tasks/by-id/:id。
+   */
+  task_id?: number | null
 }
 
 export interface OrganizationUsageParams {

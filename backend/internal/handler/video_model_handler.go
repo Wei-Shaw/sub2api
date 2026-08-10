@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -427,6 +428,90 @@ func (h *VideoModelHandler) GetTaskByRequestID(c *gin.Context) {
 		return
 	}
 	response.Success(c, toVideoTaskItem(task))
+}
+
+// GetTaskByID GET /user/video-models/tasks/:id
+//
+// 用途：使用记录页视频行"详情"入口——usage_logs.task_id 存的就是 async_video_tasks.id，
+// 前端拿到 task_id 后调本接口拉完整任务信息（upstream_request_id、prompt、result_payload 等）。
+// 权限：与 GetTaskByRequestID 相同——强制 WHERE user_id = subject.UserID，
+// 找不到或非本人任务统一 404，防止通过 id 递增探测存在性。
+func (h *VideoModelHandler) GetTaskByID(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Error(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.videoService == nil {
+		response.Error(c, http.StatusInternalServerError, "video service unavailable")
+		return
+	}
+	idStr := strings.TrimSpace(c.Param("id"))
+	if idStr == "" {
+		response.Error(c, http.StatusBadRequest, "missing 'id'")
+		return
+	}
+	id, parseErr := strconv.ParseInt(idStr, 10, 64)
+	if parseErr != nil || id <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid 'id'")
+		return
+	}
+	task, err := h.videoService.GetTaskByID(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
+		return
+	}
+	if task == nil || task.UserID != subject.UserID {
+		response.Error(c, http.StatusNotFound, "task not found")
+		return
+	}
+	response.Success(c, toVideoTaskItem(task))
+}
+
+// GetTaskByIDAdmin GET /admin/video-tasks/by-id/:id
+//
+// 管理员版按数据库主键查询任意用户的视频任务详情。与用户版 GetTaskByID 相比：
+//   - 不强制 task.user_id 归属校验（管理员可查看所有用户的任务）；
+//   - 上游 AdminAuthMiddleware 已保证只有管理员能进入本接口。
+//
+// 用途：管理员使用记录页视频行"详情"入口。
+func (h *VideoModelHandler) GetTaskByIDAdmin(c *gin.Context) {
+	if h.videoService == nil {
+		response.Error(c, http.StatusInternalServerError, "video service unavailable")
+		return
+	}
+	idStr := strings.TrimSpace(c.Param("id"))
+	if idStr == "" {
+		response.Error(c, http.StatusBadRequest, "missing 'id'")
+		return
+	}
+	id, parseErr := strconv.ParseInt(idStr, 10, 64)
+	if parseErr != nil || id <= 0 {
+		response.Error(c, http.StatusBadRequest, "invalid 'id'")
+		return
+	}
+	task, err := h.videoService.GetTaskByID(c.Request.Context(), id)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "get video task: "+err.Error())
+		return
+	}
+	if task == nil {
+		response.Error(c, http.StatusNotFound, "task not found")
+		return
+	}
+	response.Success(c, toVideoTaskItem(task))
+}
+
+// parseInt64 是 c.Param(":id") 用的最小整数解析器，避免引入 strconv 依赖到本文件其它位置。
+func parseInt64(raw string) (int64, error) {
+	var n int64
+	for _, r := range raw {
+		if r < '0' || r > '9' {
+			return 0, http.ErrBodyReadAfterClose // 任意 non-nil error 即可，上层只用来判失败
+		}
+		n = n*10 + int64(r-'0')
+	}
+	return n, nil
 }
 
 // toVideoTaskItem 将领域模型映射为对外 DTO；nil 指针字段展开为空字符串，避免前端处理 optional。

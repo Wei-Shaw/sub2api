@@ -42,6 +42,11 @@ const (
 var (
 	// ErrCOSConfigCorrupt 表示 COS 配置存储损坏。
 	ErrCOSConfigCorrupt = infraerrors.InternalServer("COS_CONFIG_CORRUPT", "cos image transfer config data is corrupted")
+
+	// ErrCOSNotConfigured 表示 COS 转存尚未启用/配置完整。
+	// 用户素材库、图片输入控件依赖 COS 转存；未配置时应向用户提示"请联系管理员配置存储"，
+	// 而不是静默回退（这些能力就是围绕 COS 建的）。
+	ErrCOSNotConfigured = infraerrors.BadRequest("COS_NOT_CONFIGURED", "cos image transfer is not enabled or not configured")
 )
 
 // COSImageConfig 全局图片转存配置（腾讯云 COS 兼容 S3 协议）。
@@ -677,4 +682,166 @@ func splitScheme(endpoint string) (scheme, host string, ok bool) {
 		return "", "", false
 	}
 	return endpoint[:idx], endpoint[idx+3:], true
+}
+
+// -----------------------------------------------------------------------------
+// 用户素材库专用扩展 API
+//
+// 与 UploadImageBytes / TransferImages 的差别：
+//   1. 允许调用方指定完整对象 key，跳过 cfg.Prefix 的自动拼接，从而支持
+//      "users/{user_id}/materials/YYYY/MM/{uuid}.{ext}" 这类按用户隔离的目录结构；
+//   2. 支持任意 MIME（image/audio/video），不再限定 image/*；
+//   3. 由调用方（UserMaterialService）负责元信息落库，本层只做"字节到桶"的搬运。
+//
+// 这些方法有意与视频 / 图片转存的原有路径解耦，避免污染 async_media / async_video
+// 已有的稳定行为。
+// -----------------------------------------------------------------------------
+
+// UploadBytesWithKey 把内存中的字节以调用方指定的完整 key 上传到 COS。
+//
+// - key 必须是完整对象 key（不再拼 cfg.Prefix）；调用方自行保证唯一性与目录结构。
+// - contentType 允许为空：为空时会自动 http.DetectContentType 嗅探。
+// - 上传成功后返回对外可访问 URL（走 cfg.PublicBaseURL / endpoint 的既有规则）。
+// - COS 未启用或未配置时返回 ("", ErrCOSNotConfigured)，调用方据此提示用户先在后台配好 COS。
+func (s *COSImageTransferService) UploadBytesWithKey(ctx context.Context, key string, data []byte, contentType string) (string, error) {
+	key = strings.TrimLeft(strings.TrimSpace(key), "/")
+	if key == "" {
+		return "", fmt.Errorf("empty cos key")
+	}
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty bytes")
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		return "", ErrCOSNotConfigured
+	}
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
+	ct := strings.TrimSpace(contentType)
+	if ct == "" {
+		ct = http.DetectContentType(data)
+	}
+	// 与 UploadImageBytes 一致：截掉 ";charset=..." 之类的参数，避免 S3 v4 签名不匹配。
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	logger.LegacyPrintf("service.cos_transfer",
+		"[COS] UploadBytesWithKey uploading: key=%s size=%d content-type=%s", key, len(data), ct)
+	if _, err := store.Upload(ctx, key, bytes.NewReader(data), ct); err != nil {
+		logger.LegacyPrintf("service.cos_transfer", "[COS] UploadBytesWithKey failed: %v", err)
+		return "", err
+	}
+	cosURL := s.buildPublicURL(cfg, key)
+	logger.LegacyPrintf("service.cos_transfer", "[COS] UploadBytesWithKey succeeded: %s", cosURL)
+	return cosURL, nil
+}
+
+// DownloadToBytes 拉取 url 对应的字节并返回，附带上游 Content-Type。
+// maxBytes<=0 时按图片限制（cosDownloadMaxBytes）；调用方需要根据素材类型选择合适上限。
+func (s *COSImageTransferService) DownloadToBytes(ctx context.Context, srcURL string, maxBytes int64) ([]byte, string, error) {
+	srcURL = strings.TrimSpace(srcURL)
+	if srcURL == "" {
+		return nil, "", fmt.Errorf("empty source url")
+	}
+	if maxBytes <= 0 {
+		maxBytes = cosDownloadMaxBytes
+	}
+	return s.downloadWithLimit(ctx, srcURL, maxBytes)
+}
+
+// ExtFromURLOrType 供外部（UserMaterialService）复用的扩展名推断。
+// 依次优先：url 路径后缀（图片/视频白名单）→ Content-Type 主类型映射 → 兜底 ".bin"。
+func ExtFromURLOrType(srcURL, contentType string) string {
+	if ext := strings.ToLower(path.Ext(stripQuery(srcURL))); ext != "" {
+		if isImageExt(ext) || isVideoExt(ext) || isAudioExt(ext) {
+			return ext
+		}
+	}
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	switch ct {
+	case "image/png":
+		return ".png"
+	case "image/jpeg", "image/jpg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	case "video/mp4":
+		return ".mp4"
+	case "video/quicktime":
+		return ".mov"
+	case "video/webm":
+		return ".webm"
+	case "video/x-m4v":
+		return ".m4v"
+	case "audio/mpeg", "audio/mp3":
+		return ".mp3"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
+	case "audio/ogg":
+		return ".ogg"
+	case "audio/mp4", "audio/x-m4a":
+		return ".m4a"
+	case "audio/aac":
+		return ".aac"
+	case "audio/flac":
+		return ".flac"
+	}
+	return ".bin"
+}
+
+// KindFromContentType 按 MIME 主类型分流出素材大类：image / audio / video / other。
+// 供 UserMaterialService 决定素材落到哪个 kind 分区，也决定列表页/输入控件的过滤条件。
+func KindFromContentType(contentType string) string {
+	ct := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	switch {
+	case strings.HasPrefix(ct, "image/"):
+		return "image"
+	case strings.HasPrefix(ct, "audio/"):
+		return "audio"
+	case strings.HasPrefix(ct, "video/"):
+		return "video"
+	default:
+		return "other"
+	}
+}
+
+// isAudioExt：素材库需要识别音频扩展名，图片/视频的判定复用已有 isImageExt/isVideoExt。
+func isAudioExt(ext string) bool {
+	switch ext {
+	case ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac":
+		return true
+	default:
+		return false
+	}
+}
+
+// DeleteObject 从 COS 删除单个对象 key（不校验归属，调用方需先做业务侧权限校验）。
+// 用于素材库软删后台清理，或用户主动删除。
+func (s *COSImageTransferService) DeleteObject(ctx context.Context, key string) error {
+	key = strings.TrimLeft(strings.TrimSpace(key), "/")
+	if key == "" {
+		return fmt.Errorf("empty cos key")
+	}
+	cfg, err := s.loadConfig(ctx)
+	if err != nil {
+		return err
+	}
+	if cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
+		return ErrCOSNotConfigured
+	}
+	store, err := s.getOrCreateStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	return store.Delete(ctx, key)
 }

@@ -182,6 +182,7 @@
           default-sort-order="desc"
           @sort="handleSort"
           @ipGeoBatchFailed="handleIpGeoBatchFailed"
+          @videoDetail="openVideoDetail"
         />
 
         <Pagination
@@ -208,6 +209,12 @@
         @ipGeoBatchFailed="handleIpGeoBatchFailed"
       />
     </div>
+
+    <!-- 视频任务详情弹窗（仅使用记录页视频行触发） -->
+    <VideoTaskDetailModal
+      v-model:show="videoDetailVisible"
+      :task-id="videoDetailTaskId"
+    />
   </AppLayout>
 
 </template>
@@ -229,6 +236,7 @@ import EndpointDistributionChart from '@/components/charts/EndpointDistributionC
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
+import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO, getBillingModeLabel } from '@/utils/billingMode'
@@ -591,6 +599,14 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const handleIpGeoBatchFailed = () => {
   appStore.showError(t('usage.ipGeo.batchFailed'))
+}
+
+// 视频任务详情弹窗状态：任一使用记录视频行点击"详情"后触发。
+const videoDetailVisible = ref(false)
+const videoDetailTaskId = ref<number | null>(null)
+const openVideoDetail = (taskId: number) => {
+  videoDetailTaskId.value = taskId
+  videoDetailVisible.value = true
 }
 
 const getRequestTypeExportText = (log: UsageLog): string => {

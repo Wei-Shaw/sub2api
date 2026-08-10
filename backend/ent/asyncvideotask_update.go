@@ -540,6 +540,27 @@ func (_u *AsyncVideoTaskUpdate) AddUnitPriceSnapshot(v float64) *AsyncVideoTaskU
 	return _u
 }
 
+// SetUpstreamCost sets the "upstream_cost" field.
+func (_u *AsyncVideoTaskUpdate) SetUpstreamCost(v float64) *AsyncVideoTaskUpdate {
+	_u.mutation.ResetUpstreamCost()
+	_u.mutation.SetUpstreamCost(v)
+	return _u
+}
+
+// SetNillableUpstreamCost sets the "upstream_cost" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdate) SetNillableUpstreamCost(v *float64) *AsyncVideoTaskUpdate {
+	if v != nil {
+		_u.SetUpstreamCost(*v)
+	}
+	return _u
+}
+
+// AddUpstreamCost adds value to the "upstream_cost" field.
+func (_u *AsyncVideoTaskUpdate) AddUpstreamCost(v float64) *AsyncVideoTaskUpdate {
+	_u.mutation.AddUpstreamCost(v)
+	return _u
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (_u *AsyncVideoTaskUpdate) SetRequestPayload(v map[string]interface{}) *AsyncVideoTaskUpdate {
 	_u.mutation.SetRequestPayload(v)
@@ -1030,6 +1051,12 @@ func (_u *AsyncVideoTaskUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedUnitPriceSnapshot(); ok {
 		_spec.AddField(asyncvideotask.FieldUnitPriceSnapshot, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UpstreamCost(); ok {
+		_spec.SetField(asyncvideotask.FieldUpstreamCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamCost(); ok {
+		_spec.AddField(asyncvideotask.FieldUpstreamCost, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.RequestPayload(); ok {
 		_spec.SetField(asyncvideotask.FieldRequestPayload, field.TypeJSON, value)
@@ -1638,6 +1665,27 @@ func (_u *AsyncVideoTaskUpdateOne) AddUnitPriceSnapshot(v float64) *AsyncVideoTa
 	return _u
 }
 
+// SetUpstreamCost sets the "upstream_cost" field.
+func (_u *AsyncVideoTaskUpdateOne) SetUpstreamCost(v float64) *AsyncVideoTaskUpdateOne {
+	_u.mutation.ResetUpstreamCost()
+	_u.mutation.SetUpstreamCost(v)
+	return _u
+}
+
+// SetNillableUpstreamCost sets the "upstream_cost" field if the given value is not nil.
+func (_u *AsyncVideoTaskUpdateOne) SetNillableUpstreamCost(v *float64) *AsyncVideoTaskUpdateOne {
+	if v != nil {
+		_u.SetUpstreamCost(*v)
+	}
+	return _u
+}
+
+// AddUpstreamCost adds value to the "upstream_cost" field.
+func (_u *AsyncVideoTaskUpdateOne) AddUpstreamCost(v float64) *AsyncVideoTaskUpdateOne {
+	_u.mutation.AddUpstreamCost(v)
+	return _u
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (_u *AsyncVideoTaskUpdateOne) SetRequestPayload(v map[string]interface{}) *AsyncVideoTaskUpdateOne {
 	_u.mutation.SetRequestPayload(v)
@@ -2158,6 +2206,12 @@ func (_u *AsyncVideoTaskUpdateOne) sqlSave(ctx context.Context) (_node *AsyncVid
 	}
 	if value, ok := _u.mutation.AddedUnitPriceSnapshot(); ok {
 		_spec.AddField(asyncvideotask.FieldUnitPriceSnapshot, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UpstreamCost(); ok {
+		_spec.SetField(asyncvideotask.FieldUpstreamCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamCost(); ok {
+		_spec.AddField(asyncvideotask.FieldUpstreamCost, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.RequestPayload(); ok {
 		_spec.SetField(asyncvideotask.FieldRequestPayload, field.TypeJSON, value)

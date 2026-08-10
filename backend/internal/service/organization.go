@@ -481,6 +481,9 @@ type OrganizationUsageRow struct {
 	DurationMS            *int      `json:"duration_ms,omitempty"`
 	CreatedAt             time.Time `json:"created_at"`
 	BalanceSource         string    `json:"balance_source"`
+	// TaskID 关联的 async_video_tasks.id。仅视频计费行（billing_mode='video'）会有值。
+	// 前端据此在使用记录行渲染"详情"按钮，点击弹窗调用视频任务详情接口。
+	TaskID *int64 `json:"task_id,omitempty"`
 }
 
 type OrganizationUsageStats struct {

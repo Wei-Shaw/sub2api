@@ -112,6 +112,24 @@ const videoModelsAPI = {
   getTaskByRequestId(rid: string) {
     return apiClient.get<VideoTaskItem>(`/user/video-models/tasks/by-request/${encodeURIComponent(rid)}`)
   },
+  /**
+   * getTaskById：按 async_video_tasks.id 拉单条任务详情。
+   *
+   * 用途：使用记录页视频行"详情"入口——usage_logs.task_id 存的即为该 id。
+   * 权限：后端强制校验 task.user_id === current user，非本人返回 404。
+   */
+  getTaskById(id: number) {
+    return apiClient.get<VideoTaskItem>(`/user/video-models/tasks/by-id/${id}`)
+  },
+  /**
+   * getTaskByIdAdmin：管理员按 async_video_tasks.id 拉任意用户的任务详情。
+   *
+   * 用途：管理员使用记录页视频行"详情"入口。
+   * 权限：AdminAuthMiddleware 保证；不做归属校验，管理员可查看所有用户任务。
+   */
+  getTaskByIdAdmin(id: number) {
+    return apiClient.get<VideoTaskItem>(`/admin/video-tasks/by-id/${id}`)
+  },
 }
 
 export default videoModelsAPI

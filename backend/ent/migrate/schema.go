@@ -480,6 +480,7 @@ var (
 		{Name: "final_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
 		{Name: "unit_price_snapshot", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "upstream_cost", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
 		{Name: "request_payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "result_payload", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "video_urls", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
@@ -536,7 +537,7 @@ var (
 			{
 				Name:    "asyncvideotask_status_fail_deadline_at",
 				Unique:  false,
-				Columns: []*schema.Column{AsyncVideoTasksColumns[22], AsyncVideoTasksColumns[32]},
+				Columns: []*schema.Column{AsyncVideoTasksColumns[22], AsyncVideoTasksColumns[33]},
 			},
 			{
 				Name:    "asyncvideotask_created_at",

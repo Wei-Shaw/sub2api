@@ -250,6 +250,7 @@ func ProvideHandlers(
 	batchImageHandler *BatchImageHandler,
 	organizationHandler *OrganizationHandler,
 	videoModelHandler *VideoModelHandler,
+	userMaterialHandler *UserMaterialHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -284,6 +285,7 @@ func ProvideHandlers(
 		BatchImage:                batchImageHandler,
 		Organization:              organizationHandler,
 		VideoModel:                videoModelHandler,
+		UserMaterial:              userMaterialHandler,
 	}
 }
 
@@ -319,6 +321,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageHandler,
 	NewOrganizationHandler,
 	NewVideoModelHandler,
+	NewUserMaterialHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

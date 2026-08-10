@@ -70,6 +70,8 @@ type AsyncVideoTask struct {
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// 提交时的 price_per_second 快照
 	UnitPriceSnapshot float64 `json:"unit_price_snapshot,omitempty"`
+	// 上游真实成本快照（如 apiz price/100 USD；未回传时保持 0，由 rate_multiplier 估算兜底）
+	UpstreamCost float64 `json:"upstream_cost,omitempty"`
 	// 客户端提交的 fal 请求 body（原样）
 	RequestPayload map[string]interface{} `json:"request_payload,omitempty"`
 	// fal 上游 result 响应体（原样透传给客户端）
@@ -102,7 +104,7 @@ func (*AsyncVideoTask) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case asyncvideotask.FieldRequestPayload, asyncvideotask.FieldResultPayload, asyncvideotask.FieldVideoUrls, asyncvideotask.FieldCosUrls:
 			values[i] = new([]byte)
-		case asyncvideotask.FieldHeldCost, asyncvideotask.FieldFinalCost, asyncvideotask.FieldRateMultiplier, asyncvideotask.FieldUnitPriceSnapshot:
+		case asyncvideotask.FieldHeldCost, asyncvideotask.FieldFinalCost, asyncvideotask.FieldRateMultiplier, asyncvideotask.FieldUnitPriceSnapshot, asyncvideotask.FieldUpstreamCost:
 			values[i] = new(sql.NullFloat64)
 		case asyncvideotask.FieldID, asyncvideotask.FieldAccountID, asyncvideotask.FieldAPIKeyID, asyncvideotask.FieldUserID, asyncvideotask.FieldOrganizationID, asyncvideotask.FieldPayerUserID, asyncvideotask.FieldAuthzGeneration, asyncvideotask.FieldGroupID, asyncvideotask.FieldChannelID, asyncvideotask.FieldDurationSeconds:
 			values[i] = new(sql.NullInt64)
@@ -299,6 +301,12 @@ func (_m *AsyncVideoTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field unit_price_snapshot", values[i])
 			} else if value.Valid {
 				_m.UnitPriceSnapshot = value.Float64
+			}
+		case asyncvideotask.FieldUpstreamCost:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_cost", values[i])
+			} else if value.Valid {
+				_m.UpstreamCost = value.Float64
 			}
 		case asyncvideotask.FieldRequestPayload:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -520,6 +528,9 @@ func (_m *AsyncVideoTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("unit_price_snapshot=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UnitPriceSnapshot))
+	builder.WriteString(", ")
+	builder.WriteString("upstream_cost=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UpstreamCost))
 	builder.WriteString(", ")
 	builder.WriteString("request_payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RequestPayload))

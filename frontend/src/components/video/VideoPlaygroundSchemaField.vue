@@ -66,6 +66,15 @@
       @input="onLeafChange(($event.target as HTMLInputElement).value)"
     />
 
+    <!-- string 图片控件（widget='image'）：声明为 image 时优先渲染 ImageInputField（URL / 本地上传 / 素材库三合一）。
+         仅当 spec.rawType==='string' && spec.widget==='image' 时生效。 -->
+    <ImageInputField
+      v-else-if="spec.rawType === 'string' && spec.widget === 'image'"
+      :model-value="stringLeafValue"
+      :disabled="disabled"
+      @update:model-value="(v: unknown) => onLeafChange(v == null ? '' : String(v))"
+    />
+
     <!-- string：控件类型由 schema 声明的 spec.widget 决定：
            - widget='textarea' → 多行 <textarea>，行数取 spec.textareaRows（默认 3）
            - widget='input'    → 单行 <input>（但若默认值本身很长或含换行，作为兜底
@@ -160,6 +169,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ImageInputField from '@/components/video/ImageInputField.vue'
 import type { FieldSpec } from '@/components/video/paramSpec'
 
 defineOptions({ name: 'VideoPlaygroundSchemaField' })

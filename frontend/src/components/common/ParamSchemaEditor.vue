@@ -493,11 +493,13 @@ const canEnum = computed(() => node.type === 'string' || node.type === 'number')
  * widgetOptions：string 类型的控件形态候选。
  *   - input    → 单行 <input>
  *   - textarea → 多行 <textarea>（可配 rows）
+ *   - image    → 图片输入控件（演练台中渲染为 URL 输入 + 本地上传 + 素材库选择三合一）
  * 只在 type=string 时生效；其它类型下下拉直接被 v-if 隐藏。
  */
 const widgetOptions: SelectOption[] = [
   { value: 'input', label: 'input' },
   { value: 'textarea', label: 'textarea' },
+  { value: 'image', label: 'image' },
 ]
 
 /**
@@ -589,10 +591,12 @@ function onTypeChange(v: string | number | boolean | null) {
 /**
  * onWidgetChange：string 类型下的控件形态切换。
  * - 切到 textarea：如果之前 textareaRows 未设或非法，补默认 3
+ * - 切到 image：不需要 rows；也不清空已有默认值（可能是一个图片 URL）
  * - 切回 input：不清空 textareaRows（用户下次切回 textarea 可复用），只是不再序列化。
  */
 function onWidgetChange(v: string | number | boolean | null) {
-  const next: 'input' | 'textarea' = v === 'textarea' ? 'textarea' : 'input'
+  const next: 'input' | 'textarea' | 'image' =
+    v === 'textarea' ? 'textarea' : v === 'image' ? 'image' : 'input'
   node.widget = next
   if (next === 'textarea') {
     const r = Number(node.textareaRows)

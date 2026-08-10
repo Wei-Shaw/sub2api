@@ -571,24 +571,28 @@ func init() {
 	asyncvideotaskDescUnitPriceSnapshot := asyncvideotaskFields[23].Descriptor()
 	// asyncvideotask.DefaultUnitPriceSnapshot holds the default value on creation for the unit_price_snapshot field.
 	asyncvideotask.DefaultUnitPriceSnapshot = asyncvideotaskDescUnitPriceSnapshot.Default.(float64)
+	// asyncvideotaskDescUpstreamCost is the schema descriptor for upstream_cost field.
+	asyncvideotaskDescUpstreamCost := asyncvideotaskFields[24].Descriptor()
+	// asyncvideotask.DefaultUpstreamCost holds the default value on creation for the upstream_cost field.
+	asyncvideotask.DefaultUpstreamCost = asyncvideotaskDescUpstreamCost.Default.(float64)
 	// asyncvideotaskDescErrorReason is the schema descriptor for error_reason field.
-	asyncvideotaskDescErrorReason := asyncvideotaskFields[28].Descriptor()
+	asyncvideotaskDescErrorReason := asyncvideotaskFields[29].Descriptor()
 	// asyncvideotask.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	asyncvideotask.ErrorReasonValidator = asyncvideotaskDescErrorReason.Validators[0].(func(string) error)
 	// asyncvideotaskDescClientIP is the schema descriptor for client_ip field.
-	asyncvideotaskDescClientIP := asyncvideotaskFields[31].Descriptor()
+	asyncvideotaskDescClientIP := asyncvideotaskFields[32].Descriptor()
 	// asyncvideotask.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	asyncvideotask.ClientIPValidator = asyncvideotaskDescClientIP.Validators[0].(func(string) error)
 	// asyncvideotaskDescUserAgent is the schema descriptor for user_agent field.
-	asyncvideotaskDescUserAgent := asyncvideotaskFields[32].Descriptor()
+	asyncvideotaskDescUserAgent := asyncvideotaskFields[33].Descriptor()
 	// asyncvideotask.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	asyncvideotask.UserAgentValidator = asyncvideotaskDescUserAgent.Validators[0].(func(string) error)
 	// asyncvideotaskDescInboundEndpoint is the schema descriptor for inbound_endpoint field.
-	asyncvideotaskDescInboundEndpoint := asyncvideotaskFields[33].Descriptor()
+	asyncvideotaskDescInboundEndpoint := asyncvideotaskFields[34].Descriptor()
 	// asyncvideotask.InboundEndpointValidator is a validator for the "inbound_endpoint" field. It is called by the builders before save.
 	asyncvideotask.InboundEndpointValidator = asyncvideotaskDescInboundEndpoint.Validators[0].(func(string) error)
 	// asyncvideotaskDescUpstreamEndpoint is the schema descriptor for upstream_endpoint field.
-	asyncvideotaskDescUpstreamEndpoint := asyncvideotaskFields[34].Descriptor()
+	asyncvideotaskDescUpstreamEndpoint := asyncvideotaskFields[35].Descriptor()
 	// asyncvideotask.UpstreamEndpointValidator is a validator for the "upstream_endpoint" field. It is called by the builders before save.
 	asyncvideotask.UpstreamEndpointValidator = asyncvideotaskDescUpstreamEndpoint.Validators[0].(func(string) error)
 	authidentityMixin := schema.AuthIdentity{}.Mixin()

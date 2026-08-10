@@ -90,6 +90,7 @@ var ProviderSet = wire.NewSet(
 	NewIdempotencyRepository,
 	NewAsyncMediaTaskRepository,
 	NewAsyncVideoTaskRepository, // 视频异步任务仓储（seedance 系列等）
+	NewUserMaterialRepository,   // 用户素材库仓储（图片输入控件 + /user/materials 页）
 	NewUsageCleanupRepository,
 	NewDashboardAggregationRepository,
 	NewSettingRepository,

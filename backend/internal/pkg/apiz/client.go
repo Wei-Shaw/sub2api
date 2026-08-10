@@ -178,19 +178,104 @@ func (r *taskResponse) failureReason() string {
 	)
 }
 
+// adaptSubmitParams 把调用方（fal 兼容协议）传入的 params 转换为 apiz 上游
+// 期望的参数命名与取值。当前处理的差异：
+//   - generate_audio -> audio（bool 值直接搬运）：apiz 侧字段名是 audio；
+//     若调用方已显式传 audio，尊重 audio 并丢弃 generate_audio；
+//   - resolution 大小写：apiz 只接受大写 P（480P / 720P），
+//     而客户端 / 内部通常用小写 p（480p / 720p / 1080p），
+//     这里把末尾的小写 p 统一改成大写 P。非 480/720 也一并处理，
+//     保持向前兼容（apiz 若新增分辨率将来只需在其侧新增校验）。
+//   - duration=auto：apiz 不接受 "auto"，收到会 422；这里替换为 apiz 兜底
+//     秒数（8s），与业务侧“auto 预扣兜底时长”的口径一致。其他字符串数字
+//     （"5" / "10"）与数字类型直接透传。
+//   - aspect_ratio=auto：apiz 不接受 "auto"，这里兜底替换为 "16:9"（视频
+//     业务最常用的横屏比例）。其他显式比例（"1:1" / "9:16" 等）直接透传。
+//
+// 处理原则：拷贝一层新 map，避免污染 handler 里保存到 DB 的原始 payload。
+// body 不是 map[string]any（例如 nil / 结构体）时原样返回。
+func adaptSubmitParams(body any) any {
+	src, ok := body.(map[string]any)
+	if !ok {
+		return body
+	}
+	out := make(map[string]any, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	if v, exists := out["generate_audio"]; exists {
+		if _, hasAudio := out["audio"]; !hasAudio {
+			out["audio"] = v
+		}
+		delete(out, "generate_audio")
+	}
+	if v, exists := out["resolution"]; exists {
+		if s, isStr := v.(string); isStr {
+			out["resolution"] = normalizeApizResolution(s)
+		}
+	}
+	if v, exists := out["duration"]; exists {
+		if s, isStr := v.(string); isStr && strings.EqualFold(strings.TrimSpace(s), "auto") {
+			out["duration"] = apizAutoDurationFallback
+		}
+	}
+	if v, exists := out["aspect_ratio"]; exists {
+		if s, isStr := v.(string); isStr && strings.EqualFold(strings.TrimSpace(s), "auto") {
+			out["aspect_ratio"] = apizAutoAspectRatioFallback
+		}
+	}
+	return out
+}
+
+// apizAutoDurationFallback 是当客户端传 duration="auto" 时，转发给 apiz 上游
+// 的兜底秒数。apiz 不接受 "auto"，收到会返回 422。选 8s 与后端异步视频服务
+// 里 defaultAutoDurationSeconds 的口径保持一致，方便预扣费与实际计费对账。
+const apizAutoDurationFallback = 8
+
+// apizAutoAspectRatioFallback 是当客户端传 aspect_ratio="auto" 时，转发给
+// apiz 上游的兜底比例。apiz 不接受 "auto"，选 16:9（视频业务最常用的横屏
+// 比例）作为默认值，避免 422。
+const apizAutoAspectRatioFallback = "16:9"
+
+// normalizeApizResolution 把 "480p"/"720p" 之类的分辨率字符串规范化为 apiz
+// 上游要求的大写形式（"480P"/"720P"）。规则：去两端空白，若末尾字符是 'p'
+// 就替换为 'P'；其它形式（如已经是大写 P、或非 p 结尾的自定义分辨率）原样返回。
+func normalizeApizResolution(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return s
+	}
+	if last := trimmed[len(trimmed)-1]; last == 'p' {
+		return trimmed[:len(trimmed)-1] + "P"
+	}
+	return trimmed
+}
+
 // SubmitRaw 向 tasks/create 端点提交异步视频任务。
 //
 // body 为客户端原始 payload（prompt / duration / resolution / aspect_ratio /
-// audio / image_url 等），直接透传给上游，不在此处做参数校验。
+// audio / image_url 等）。apiz 上游要求请求体结构与其他 fal-兼容上游不同：
+// 上游模型名放在顶层 model 字段，其余业务参数放在顶层 params 对象里，
+// 即：{ "model": "<upstream_model>", "params": { ...原始 payload... } }。
+// 因此这里把调用方透传下来的 body 包一层，再发给上游。
+//
+// 参数命名差异（apiz vs 其他 fal 兼容上游）：
+//   - generate_audio (bool) → audio (bool)
+//     其他 fal 兼容上游用 generate_audio 控制是否生成音轨；apiz 侧字段名是 audio。
+//     这里做一次名字转换：把入参里的 generate_audio 搬到 audio。
+//     如果调用方同时显式传了 audio，尊重调用方的 audio，仅丢弃 generate_audio，
+//     避免同键冲突。
+//
 // 上游返回 { task_id, status, ... }，映射为 fal.SubmitResponse：
 //   - RequestID = task_id
 //   - Status    = IN_QUEUE
 //   - StatusURL / ResponseURL = {base}/api/v3/tasks/query?task_id={task_id}
-//
-// 注意：model 参数仅用于日志/回退，实际模型以 body 中的字段为准。
 func (c *Client) SubmitRaw(ctx context.Context, model string, body any) (*fal.SubmitResponse, error) {
-	_ = model
-	resp, err := c.doTask(ctx, c.baseURL+pathTasksCreate, body)
+	envelope := map[string]any{
+		"model":  model,
+		"params": adaptSubmitParams(body),
+	}
+	resp, err := c.doTask(ctx, c.baseURL+pathTasksCreate, envelope)
 	if err != nil {
 		return nil, err
 	}
@@ -240,24 +325,53 @@ func (c *Client) Status(ctx context.Context, statusURL string) (*fal.StatusRespo
 
 // ResultRaw 拉取任务最终结果的原始 payload。
 //
-// 上游结果可能形如 { video_url: "..." } 或 { outputs: [...] } / { videos: [...] }，
-// 也可能嵌在 data 里。为兼容 service 层的 fal.ExtractVideoURLs
-// （识别 {video:{url}} / {videos:[{url}]}），这里把抽取到的视频地址
-// 统一映射成 fal 风格结构，并保留原始字段透传给客户端。
+// 为了让下游客户端拿到一致的"通用视频回包"结构（`{"video": {"url": "...", "file_name": "..."}}`，
+// 与 fal 平台一致），apiz 的返回需要做**收敛**：
+//   - 剥掉 apiz 私有字段（params/output/result/data/task_id/updated_at/created_at/
+//     completed_at/channel/model/price 等），避免把无用甚至暴露内部字段的信息透传到客户端；
+//   - 抽取到的 video URL 统一映射成 `video` / `videos` 两个字段，
+//     供 service.ExtractVideoURLs 识别。
+//
+// 另外，apiz 顶层的 `price` 是**本次任务的真实上游成本（分）**，除以 100 即为美元。
+// 通过内部约定字段 _apiz_upstream_cost_usd 附加到返回 map（下划线前缀表示内部），
+// 由 async_video_executor 读取并从 payload 中删除，再写入 task.UpstreamCost。
+// 客户端最终看到的仍是干净的 `{video, videos}`。
 func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]any, error) {
 	resp, err := c.queryTask(ctx, responseURL)
 	if err != nil {
 		return nil, err
 	}
-	out := resp.Raw
-	if out == nil {
-		out = make(map[string]any)
-	}
+
+	// 构造干净的通用回包，而不是继承 apiz 私有字段。
+	out := make(map[string]any, 4)
+
+	// 提取上游侧关键元信息，用来一起塞进 video 对象；这样：
+	//   - executor 的 fal.ExtractVideoURLs 能在 out["video"].url 抽到 url；
+	//   - executor 的 ExtractActualDurationSeconds 能在 out["video"].duration 抽到时长
+	//     （否则 duration="auto" 场景无法按上游实际时长重算 finalCost）。
+	duration, contentType, width, height := collectVideoMeta(resp)
+
 	urls := collectVideoURLs(resp)
 	if len(urls) > 0 {
 		videos := make([]any, 0, len(urls))
 		for _, u := range urls {
-			videos = append(videos, map[string]any{"url": u})
+			entry := map[string]any{
+				"url":       u,
+				"file_name": videoFileNameFromURL(u),
+			}
+			if duration > 0 {
+				entry["duration"] = duration
+			}
+			if contentType != "" {
+				entry["content_type"] = contentType
+			}
+			if width > 0 {
+				entry["width"] = width
+			}
+			if height > 0 {
+				entry["height"] = height
+			}
+			videos = append(videos, entry)
 		}
 		// 第一个作为主 video 对象，全部放入 videos 数组。
 		if first, ok := videos[0].(map[string]any); ok {
@@ -265,7 +379,201 @@ func (c *Client) ResultRaw(ctx context.Context, responseURL string) (map[string]
 		}
 		out["videos"] = videos
 	}
+
+	// 上游真实成本（USD）= apiz price / 100。用内部约定字段传给 executor。
+	// 只在能解析到正数时附带；解析失败或为 0 时不设，避免污染 payload。
+	if cost := parseApizPriceUSD(resp); cost > 0 {
+		out[UpstreamCostFieldKey] = cost
+	}
+
 	return out, nil
+}
+
+// UpstreamCostFieldKey 是 apiz.ResultRaw 附加在返回 map 上的**内部约定字段名**，
+// 用来把上游真实成本（USD）传给 executor。executor 读到后应从 map 中删除，
+// 避免透传给客户端。使用下划线前缀表示"内部字段"，与 fal 平台的公开字段区分。
+const UpstreamCostFieldKey = "_apiz_upstream_cost_usd"
+
+// parseApizPriceUSD 从 apiz taskResponse 顶层或 data 中读取 price 字段（单位：分），
+// 返回美元金额。字段缺失或格式异常时返回 0。
+//
+// 兼容 JSON 中 price 可能被解析为 float64（默认）或 json.Number 的两种情况。
+func parseApizPriceUSD(resp *taskResponse) float64 {
+	if resp == nil {
+		return 0
+	}
+	// 顶层 price 优先，其次 data.price。
+	for _, container := range []map[string]any{resp.Raw, resp.Data} {
+		if container == nil {
+			continue
+		}
+		if v, ok := container["price"]; ok {
+			if cents := toFloat64(v); cents > 0 {
+				return cents / 100.0
+			}
+		}
+	}
+	return 0
+}
+
+// toFloat64 尝试把任意 JSON 数值（float64 / int / int64 / json.Number / string）
+// 转成 float64。无法识别或负数返回 0。
+func toFloat64(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		if n < 0 {
+			return 0
+		}
+		return n
+	case float32:
+		if n < 0 {
+			return 0
+		}
+		return float64(n)
+	case int:
+		if n < 0 {
+			return 0
+		}
+		return float64(n)
+	case int64:
+		if n < 0 {
+			return 0
+		}
+		return float64(n)
+	case json.Number:
+		f, err := n.Float64()
+		if err != nil || f < 0 {
+			return 0
+		}
+		return f
+	case string:
+		// 少数上游会把 price 当字符串返回；宽容处理。
+		s := strings.TrimSpace(n)
+		if s == "" {
+			return 0
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil && f > 0 {
+			return f
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+// collectVideoMeta 从 apiz 响应中提取视频元信息（duration/content_type/width/height）。
+//
+// apiz 的实际结构是把业务字段包在 data 下面，元信息通常出现在 data.output / data.result 里，
+// 典型回包片段：
+//
+//	{ "code":200,
+//	  "data":{ "output":{duration:8, resolution:"720P", width:1248, height:704, content_type:"video/mp4"},
+//	          "result":{...同 output...}, "status":"completed", "task_id":"...", "price":800 } }
+//
+// 但也兼容顶层扁平（老回包）与 data 直接放 duration 之类的形态。候选容器优先级：
+//
+//	data.output → data.result → resp.Data → resp.Raw["output"] → resp.Raw["result"] → resp.Raw
+//
+// 未识别到时返回零值；上层按需忽略缺失字段。
+func collectVideoMeta(resp *taskResponse) (duration int, contentType string, width int, height int) {
+	if resp == nil {
+		return 0, "", 0, 0
+	}
+	// 从多个候选容器里按优先级尝试；找到第一个"看起来是视频元信息"的对象即可。
+	candidates := []map[string]any{
+		mapField(resp.Data, "output"),
+		mapField(resp.Data, "result"),
+		resp.Data,
+		mapField(resp.Raw, "output"),
+		mapField(resp.Raw, "result"),
+		resp.Raw,
+	}
+	for _, c := range candidates {
+		if c == nil {
+			continue
+		}
+		if duration == 0 {
+			duration = firstIntFieldFlex(c, "duration", "duration_seconds", "num_seconds")
+		}
+		if contentType == "" {
+			contentType = firstStringField(c, "content_type", "mime_type")
+		}
+		if width == 0 {
+			width = firstIntFieldFlex(c, "width")
+		}
+		if height == 0 {
+			height = firstIntFieldFlex(c, "height")
+		}
+	}
+	return duration, contentType, width, height
+}
+
+// mapField 从 map 中安全取一个 map[string]any 子字段。
+func mapField(m map[string]any, key string) map[string]any {
+	if m == nil {
+		return nil
+	}
+	if v, ok := m[key].(map[string]any); ok {
+		return v
+	}
+	return nil
+}
+
+// firstIntFieldFlex 与 firstStringField 类似但用于整型字段，兼容 float64 / int / json.Number / string。
+func firstIntFieldFlex(m map[string]any, keys ...string) int {
+	for _, k := range keys {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		switch typed := v.(type) {
+		case float64:
+			if typed > 0 {
+				return int(typed)
+			}
+		case int:
+			if typed > 0 {
+				return typed
+			}
+		case int64:
+			if typed > 0 {
+				return int(typed)
+			}
+		case json.Number:
+			if n, err := typed.Int64(); err == nil && n > 0 {
+				return int(n)
+			}
+		case string:
+			s := strings.TrimSpace(typed)
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+// videoFileNameFromURL 从 URL 中截取最后一段路径作为 file_name（如
+// "https://cdn/xxx/2026/08/10/abc.mp4" -> "abc.mp4"）。无法解析时返回空串。
+func videoFileNameFromURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return ""
+	}
+	p := u.Path
+	if p == "" {
+		return ""
+	}
+	// 去掉尾部斜杠，取最后一段。
+	p = strings.TrimRight(p, "/")
+	if idx := strings.LastIndex(p, "/"); idx >= 0 && idx < len(p)-1 {
+		return p[idx+1:]
+	}
+	return p
 }
 
 // BuildStatusURL 回退拼接 status url（apiz 状态/结果同一端点）。
@@ -379,12 +687,10 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 
 	requestID := newRequestID()
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
-		slog.Debug("apiz_http_request",
-			"request_id", requestID,
-			"method", method,
-			"endpoint", endpoint,
-			"body_bytes", len(rawBody),
-		)
+		// 完整 request body 分块打印，便于线上排障（如 apiz 422 时看真实提交内容）。
+		// 分块长度参照 async_video_executor 里对 upstream error dump 的做法，
+		// 保证单条 log 记录不会撑爆日志系统。
+		logBodyChunks(ctx, "apiz_http_request", requestID, method, endpoint, 0, rawBody)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -399,13 +705,8 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 	}
 
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
-		slog.Debug("apiz_http_response",
-			"request_id", requestID,
-			"method", method,
-			"endpoint", endpoint,
-			"status", resp.StatusCode,
-			"body_bytes", len(raw),
-		)
+		// 完整 response body 分块打印。status 一并附带便于筛选 4xx/5xx。
+		logBodyChunks(ctx, "apiz_http_response", requestID, method, endpoint, resp.StatusCode, raw)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -425,8 +726,20 @@ func isTerminalFailure(status string) bool {
 	return ok
 }
 
-// collectVideoURLs 从响应中抽取视频地址，按video_url → data.video_url →
-// outputs/videos/urls 数组的顺序合并，去重且保持顺序。
+// collectVideoURLs 从 apiz 响应中抽取视频地址。
+//
+// apiz 实际结构把业务字段包在 data 下：video_url 通常在 data.output.video_url
+// 或 data.result.video_url，而非顶层。为保持鲁棒性，这里按以下顺序合并、去重：
+//
+//  1. resp.VideoURL（顶层 video_url，兼容老回包/扁平回包）
+//  2. data.video_url / data.url
+//  3. data.output.video_url / data.output.url
+//  4. data.result.video_url / data.result.url
+//  5. Raw / Data / Raw.output / Raw.result / Data.output / Data.result 里的
+//     outputs / videos / video_urls / urls 数组
+//
+// 抽取失败会导致上层 executor 判定 payload 为空、进入 markFailedAndRefund 分支；
+// 因此必须覆盖 apiz 的真实结构。
 func collectVideoURLs(resp *taskResponse) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 4)
@@ -442,11 +755,24 @@ func collectVideoURLs(resp *taskResponse) []string {
 		out = append(out, v)
 	}
 
+	// 单值字段：顶层 → data → data.output → data.result。
 	appendURL(resp.VideoURL)
 	appendURL(firstStringField(resp.Data, "video_url", "url"))
+	appendURL(firstStringField(mapField(resp.Data, "output"), "video_url", "url"))
+	appendURL(firstStringField(mapField(resp.Data, "result"), "video_url", "url"))
 
+	// 数组字段：在多个候选容器中都试一遍。apiz 目前的实际结构不用数组，
+	// 但保留对 outputs/videos/video_urls/urls 的兼容，避免上游未来一改就抽不到。
 	arrayKeys := []string{"outputs", "videos", "video_urls", "urls"}
-	for _, container := range []map[string]any{resp.Raw, resp.Data} {
+	containers := []map[string]any{
+		resp.Data,
+		mapField(resp.Data, "output"),
+		mapField(resp.Data, "result"),
+		resp.Raw,
+		mapField(resp.Raw, "output"),
+		mapField(resp.Raw, "result"),
+	}
+	for _, container := range containers {
 		if container == nil {
 			continue
 		}
@@ -512,4 +838,56 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return "unknown error"
+}
+
+// apizLogBodyChunkSize 单条 log 里 body_chunk 字段的最大字符数。
+// 大 body（尤其是 apiz 422 时的 detail 数组）拆多条打，避免被日志系统截断。
+const apizLogBodyChunkSize = 4000
+
+// logBodyChunks 以 Debug 级别把 HTTP body 拆多条 slog 记录打印。
+//
+//   - event      : "apiz_http_request" / "apiz_http_response"
+//   - requestID  : 请求跟踪 id，与 apiz_http_request/response 现有字段一致
+//   - method/endpoint : 便于跨条 log 聚合
+//   - status     : 响应侧填 HTTP 状态码；请求侧传 0，函数内自动省略该字段
+//   - body       : 完整字节数组；为空时输出一条 body_bytes=0 的空 body 记录
+//
+// 每条 log 附带 chunk_index / chunk_total 便于串起来重组原始 body。
+func logBodyChunks(ctx context.Context, event, requestID, method, endpoint string, status int, body []byte) {
+	total := len(body)
+	// baseAttrs 组装每条 log 的公共字段。
+	// 使用 []any 而非 struct 是为了走 slog 变参 API，避免额外的分配。
+	baseAttrs := func(chunkIdx, chunkTotal int, chunk string) []any {
+		attrs := []any{
+			"request_id", requestID,
+			"method", method,
+			"endpoint", endpoint,
+		}
+		if status > 0 {
+			attrs = append(attrs, "status", status)
+		}
+		attrs = append(attrs,
+			"body_bytes", total,
+			"chunk_index", chunkIdx,
+			"chunk_total", chunkTotal,
+			"body_chunk", chunk,
+		)
+		return attrs
+	}
+	if total == 0 {
+		slog.Debug(event, baseAttrs(0, 1, "")...)
+		return
+	}
+	// 按字节切分即可；apiz 提交与返回体均为 JSON（ASCII/UTF-8 混合），
+	// 单条 4000 字符切出的边界即便断在多字节字符中间也仅影响日志可读性，
+	// 不影响原始 body 语义（真正入库/入错误路径的 raw body 走 apiErr.Body）。
+	chunks := (total + apizLogBodyChunkSize - 1) / apizLogBodyChunkSize
+	for i := 0; i < chunks; i++ {
+		start := i * apizLogBodyChunkSize
+		end := start + apizLogBodyChunkSize
+		if end > total {
+			end = total
+		}
+		slog.Debug(event, baseAttrs(i, chunks, string(body[start:end]))...)
+	}
 }

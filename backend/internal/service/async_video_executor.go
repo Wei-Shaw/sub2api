@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -288,14 +289,21 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 
 	submitResp, err := client.SubmitRaw(ctx, upstreamModel, in.RequestPayload)
 	if err != nil {
-		// 任务表内部落库仍保留最原始的错误（含上游 body），便于管理员事后排障。
-		s.markFailedAndRefund(ctx, task, in.BillingType, "submit: "+err.Error())
+		// 触发上游 4xx/5xx 时，把完整 status + body 打到日志，便于排查
+		// 为什么 reason 会超长 / 上游到底返回了什么。
+		var apiErrForLog *fal.APIError
+		if errors.As(err, &apiErrForLog) {
+			logUpstreamErrorDump(ctx, "async_video.upstream_submit_error", task, apiErrForLog)
+		}
+		// 落库时精简 reason：apiz 校验失败会把整个 input（含超长 prompt）回吐，
+		// 直接存会撑爆 error_reason 列。这里只保留 type/loc/msg 等定位信息。
+		s.markFailedAndRefund(ctx, task, in.BillingType, "submit: "+compactUpstreamErrorMessage(err))
 		// 对外返回时脱敏：
-		//   - 若是 fal 上游的 4xx/5xx（如 403 "User is locked. Exhausted balance"），
+		//   - 若是上游平台的 4xx/5xx（如 403 "User is locked. Exhausted balance"），
 		//     把上游品牌/余额细节隐藏，只返回统一"上游暂不可用"提示 + request_id；
 		//     handler 会把这类错误映射为 502 Bad Gateway。
-		//   - request_id 是 fal client 侧生成的追踪 id（fal-<hex>），可用于串联
-		//     后端日志（fal_http_request_dump / fal_http_response_dump）。
+		//   - request_id 是客户端侧生成的追踪 id（fal-<hex> / apiz-<hex>），
+		//     可用于串联后端日志中对应的 http_request_dump / http_response_dump。
 		var apiErr *fal.APIError
 		if errors.As(err, &apiErr) {
 			return task, fmt.Errorf("async video: submit: upstream provider temporarily unavailable (request_id=%s)", apiErr.RequestID)
@@ -349,6 +357,12 @@ func (s *AsyncVideoService) WaitForTerminal(ctx context.Context, task *AsyncVide
 // GetTaskByInternalID 按内部请求 ID 查询任务。
 func (s *AsyncVideoService) GetTaskByInternalID(ctx context.Context, internalRequestID string) (*AsyncVideoTask, error) {
 	return s.taskRepo.GetByInternalRequestID(ctx, internalRequestID)
+}
+
+// GetTaskByID 按数据库主键查询任务。用于使用记录页跳转任务详情
+// （usage_logs.task_id 存的正是 async_video_tasks.id）。
+func (s *AsyncVideoService) GetTaskByID(ctx context.Context, id int64) (*AsyncVideoTask, error) {
+	return s.taskRepo.GetByID(ctx, id)
 }
 
 // GetTaskByUpstreamID 按上游 request_id 查询任务。
@@ -433,7 +447,8 @@ func (s *AsyncVideoService) pollOnce(ctx context.Context, task *AsyncVideoTask, 
 	if err != nil {
 		var apiErr *fal.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
-			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("status %d: %s", apiErr.StatusCode, apiErr.Body))
+			logUpstreamErrorDump(ctx, "async_video.upstream_status_error", task, apiErr)
+			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("status %d: %s", apiErr.StatusCode, compactUpstreamBody(apiErr.Body)))
 			return task, true, nil
 		}
 		return task, false, nil
@@ -451,7 +466,8 @@ func (s *AsyncVideoService) pollOnce(ctx context.Context, task *AsyncVideoTask, 
 	if err != nil {
 		var apiErr *fal.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
-			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("result %d: %s", apiErr.StatusCode, apiErr.Body))
+			logUpstreamErrorDump(ctx, "async_video.upstream_result_error", task, apiErr)
+			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("result %d: %s", apiErr.StatusCode, compactUpstreamBody(apiErr.Body)))
 			return task, true, nil
 		}
 		return task, false, nil
@@ -466,11 +482,22 @@ func (s *AsyncVideoService) pollOnce(ctx context.Context, task *AsyncVideoTask, 
 		return task, true, nil
 	}
 
+	// 抽取上游真实成本（仅 apiz 平台回传时非 0），并从 payload 中删除，
+	// 避免把内部约定字段透传给客户。fal / atlascloud 未回传时为 0，
+	// writeCostCenterEvents 会回退到 rate_multiplier 估算。
+	var upstreamCost float64
+	if raw, ok := result[apiz.UpstreamCostFieldKey]; ok {
+		if f, ok := raw.(float64); ok && f > 0 {
+			upstreamCost = f
+		}
+		delete(result, apiz.UpstreamCostFieldKey)
+	}
+
 	// 将上游视频 URL 转存到 COS，并替换 videoURLs / result payload 里的链接。
 	// 转存失败项保留上游原始 URL 兕底。未启用时 no-op。
 	videoURLs, result = s.transferVideosToCOS(ctx, task, videoURLs, result)
 
-	s.markSucceeded(ctx, task, billingType, videoURLs, result)
+	s.markSucceeded(ctx, task, billingType, videoURLs, result, upstreamCost)
 	return task, true, nil
 }
 
@@ -480,7 +507,10 @@ func (s *AsyncVideoService) pollOnce(ctx context.Context, task *AsyncVideoTask, 
 // 且当前 task.DurationSeconds 与之不一致（典型场景是提交时传了 duration="auto"，task.DurationSeconds=0），
 // 则以实际时长为准重算 finalCost = unitPrice × actualDuration × rate，并追扣/退还差额。
 // 若 result 里没有 duration，则保留 heldCost 作为 finalCost（不追扣不退还）。
-func (s *AsyncVideoService) markSucceeded(ctx context.Context, task *AsyncVideoTask, billingType int8, videoURLs []string, resultPayload map[string]any) {
+//
+// upstreamCost 为当前任务在上游产生的真实成本（USD）。apiz 会在 result 中回传（price/100）；
+// fal / atlascloud 不回传时传 0，此时后续 writeCostCenterEvents 会退回到旧的 rate_multiplier 估算。
+func (s *AsyncVideoService) markSucceeded(ctx context.Context, task *AsyncVideoTask, billingType int8, videoURLs []string, resultPayload map[string]any, upstreamCost float64) {
 	finalCost := task.HeldCost
 	settleDuration := task.DurationSeconds
 
@@ -512,7 +542,7 @@ func (s *AsyncVideoService) markSucceeded(ctx context.Context, task *AsyncVideoT
 		}
 	}
 
-	updated, err := s.taskRepo.MarkSucceeded(ctx, task.ID, videoURLs, nil, resultPayload, finalCost, settleDuration)
+	updated, err := s.taskRepo.MarkSucceeded(ctx, task.ID, videoURLs, nil, resultPayload, finalCost, settleDuration, upstreamCost)
 	if err != nil {
 		logger.L().Error("async_video.mark_succeeded_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		return
@@ -525,6 +555,9 @@ func (s *AsyncVideoService) markSucceeded(ctx context.Context, task *AsyncVideoT
 	task.ResultPayload = resultPayload
 	task.FinalCost = finalCost
 	task.DurationSeconds = settleDuration
+	if upstreamCost > 0 {
+		task.UpstreamCost = upstreamCost
+	}
 	s.writeTerminalUsageLog(ctx, task, billingType, finalCost, BillingStatusCharged, videoURLs, nil)
 }
 
@@ -606,7 +639,16 @@ func (s *AsyncVideoService) markFailedAndRefund(ctx context.Context, task *Async
 	}
 	updated, err := s.taskRepo.MarkRefunded(ctx, task.ID, status, reason)
 	if err != nil {
-		logger.L().Error("async_video.mark_refunded_failed", zap.Int64("task_id", task.ID), zap.Error(err))
+		reasonPreview := reason
+		if len(reasonPreview) > 4000 {
+			reasonPreview = reasonPreview[:4000] + "...(truncated)"
+		}
+		logger.L().Error("async_video.mark_refunded_failed",
+			zap.Int64("task_id", task.ID),
+			zap.String("status", status),
+			zap.Int("reason_len", len(reason)),
+			zap.String("reason", reasonPreview),
+			zap.Error(err))
 		return
 	}
 	if !updated {
@@ -717,37 +759,125 @@ func (s *AsyncVideoService) writeTerminalUsageLog(
 
 // writeCostCenterEvents 为已成功结算的视频任务写入成本中心事件。
 //
-// 处理方式与 Gateway/OpenAI 网关的 writeCostCenterUsageEvents 完全对齐：构造一个最小
-// 可用的 UsageLog 后直接复用那个函数，避免重复实现 source 推断 / 幂等 key / 渠道分类等逻辑，
-// 保证后续两边保持一致行为。
+// 视频链路与 token / 图片有两点差异，因此**不再复用** writeCostCenterUsageEvents：
+//  1. 分类：视频用 `video_consumption` / `video_upstream`（token 侧是 `token_consumption` / `upstream_usage`），
+//     便于成本中心报表按业务线拆分。
+//  2. 上游成本：apiz 等平台在结果里回传了本次任务的**真实上游成本**（USD），
+//     应直接使用 task.UpstreamCost；未回传（fal / atlascloud）时回退到
+//     "cost × RateMultiplier"（RateMultiplier 未设默认 1.0）的旧估算口径，
+//     保持行为向下兼容。
+//
+// 幂等：与 writeCostCenterUsageEvents 相同——用 request_id 作为 idempotency_key 前缀，
+// ON CONFLICT DO UPDATE updated_at 即可去重（DB 层保证）。
 func (s *AsyncVideoService) writeCostCenterEvents(ctx context.Context, task *AsyncVideoTask, cost float64) {
 	if s == nil || s.costCenter == nil || task == nil {
 		return
 	}
-	// task 本身没有记账时间；用 FinishedAt（若设置）否则 now()。
+	if task.InternalRequestID == "" || cost <= 0 {
+		return
+	}
+
+	// 记账时间：优先 FinishedAt，其次 now()。
 	occurred := time.Now().UTC()
 	if task.FinishedAt != nil {
 		occurred = task.FinishedAt.UTC()
 	}
-	log := &UsageLog{
-		UserID:         task.UserID,
-		APIKeyID:       task.APIKeyID,
-		AccountID:      amDerefInt64(task.AccountID),
-		RequestID:      task.InternalRequestID,
-		OrganizationID: task.OrganizationID,
-		PayerUserID:    task.PayerUserID,
-		BalanceSource:  task.BalanceSource,
-		Model:          amDerefStr(task.UpstreamModel),
-		RequestedModel: task.RequestedModel,
-		GroupID:        task.GroupID,
-		ChannelID:      task.ChannelID,
-		TotalCost:      cost,
-		ActualCost:     cost,
-		CreatedAt:      occurred,
-		// 视频任务未记录账号上的 rate multiplier，AccountRateMultiplier=nil 时
-		// writeCostCenterUsageEvents 会自动按 1.0 处理 upstream cost，语义一致。
+
+	requestID := task.InternalRequestID
+	userID := task.UserID
+	accountID := amDerefInt64(task.AccountID)
+	model := amDerefStr(task.UpstreamModel)
+	if model == "" {
+		model = task.RequestedModel
 	}
-	writeCostCenterUsageEvents(ctx, s.costCenter, log, false)
+
+	// 消费侧 event（收入）：source 与用户余额来源保持一致；订阅走 subscription_recognition，
+	// 走完全独立的路径（下方触发），此处仅记非订阅现金/赠金消费。
+	source, eventType := resolveAsyncVideoConsumptionSource(task)
+	if source != "subscription" {
+		if _, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{
+			EventType:      eventType,
+			SourceType:     source,
+			SourceID:       &requestID,
+			IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"),
+			AccountID:      &accountID,
+			UserID:         &userID,
+			Category:       "video_consumption",
+			Model:          model,
+			AmountUSD:      cost,
+			OccurredAt:     &occurred,
+			Note:           "video usage finalized",
+		}); err != nil {
+			slog.Warn("cost center video usage income event failed", "request_id", requestID, "error", err)
+		}
+	}
+
+	// 上游侧 event（支出）：优先 task.UpstreamCost（apiz price/100）；未回传则回退估算。
+	upstreamCost := task.UpstreamCost
+	if upstreamCost <= 0 {
+		rate := task.RateMultiplier
+		if rate <= 0 {
+			rate = 1
+		}
+		upstreamCost = cost * rate
+	}
+	if upstreamCost > 0 {
+		if _, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{
+			EventType:      CostEventExpense,
+			SourceType:     "upstream",
+			SourceID:       &requestID,
+			IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"),
+			AccountID:      &accountID,
+			UserID:         &userID,
+			Category:       "video_upstream",
+			Model:          model,
+			AmountUSD:      upstreamCost,
+			OccurredAt:     &occurred,
+			Note:           "video usage upstream cost",
+		}); err != nil {
+			slog.Warn("cost center video upstream event failed", "request_id", requestID, "error", err)
+		}
+	}
+
+	// 订阅识别：用户使用订阅额度时，把标准成本折算成订阅收入识别。
+	// 与 writeCostCenterUsageEvents 里的口径保持一致，走同一 recognizer。
+	if source == "subscription" && task.GroupID != nil {
+		if recognizer, ok := s.costCenter.(interface {
+			RecognizeSubscriptionUsageForUsage(context.Context, int64, *int64, string, int64, float64, time.Time) (*CostCenterEvent, error)
+		}); ok {
+			// 视频没有 token 概念，用金额本身作为 tokens 计数占位（>0 触发识别），
+			// 标准成本用 cost。
+			if _, err := recognizer.RecognizeSubscriptionUsageForUsage(ctx, userID, task.GroupID, requestID, int64(cost*1e6), cost, occurred); err != nil {
+				slog.Warn("cost center video subscription recognition failed", "request_id", requestID, "error", err)
+			}
+		}
+	}
+}
+
+// resolveAsyncVideoConsumptionSource 从 task.BalanceSource 推断成本中心消费事件的
+// source_type 与 event_type，映射规则与 writeCostCenterUsageEvents 保持一致。
+func resolveAsyncVideoConsumptionSource(task *AsyncVideoTask) (source string, eventType string) {
+	source = "paid_balance"
+	eventType = CostEventConsumption
+	if task.BalanceSource == nil {
+		return source, eventType
+	}
+	switch *task.BalanceSource {
+	case BalanceSourceSubscription:
+		return "subscription", eventType
+	case "recharge_bonus":
+		return "recharge_bonus", eventType
+	case "admin_grant":
+		return "admin_grant", eventType
+	case "affiliate_grant":
+		return "affiliate_grant", eventType
+	case BalanceSourceCompany, BalanceSourceAllocated, BalanceSourceLegacyShared:
+		return "admin_grant", eventType
+	case BalanceSourceSelf:
+		return "paid_balance", eventType
+	default:
+		return "unknown", CostEventPromotionalConsumption
+	}
 }
 
 // charge / refund 与 async_media 共享同款语义（付款上下文、组织余额、缓存失效）。
@@ -1002,4 +1132,174 @@ func firstIntField(m map[string]any, keys ...string) int {
 		}
 	}
 	return 0
+}
+
+// compactUpstreamErrorMessage 精简一条上游错误的完整 Error() 串（例如 fal.APIError.Error()
+// 返回的 "upstream error (HTTP 422, request_id=..): {json body}"），把里面 JSON body 中的
+// 超长字段（apiz 的 detail[].input 会把整个请求 payload 回吐，含超长 prompt）剥掉，
+// 只留 type/loc/msg 等定位信息。用于 error_reason 入库前的精简。
+//
+// 处理策略：
+//  1. 找到第一个 '{'，把它之后的部分当作 JSON body 尝试精简；
+//  2. 精简失败 / 非 JSON，退化为固定长度截断（1800 字节），加省略标记；
+//  3. 前缀（{ 之前的部分，如 "submit: upstream error (HTTP 422, request_id=xxx): "）保留。
+func compactUpstreamErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	full := err.Error()
+	idx := strings.Index(full, "{")
+	if idx < 0 {
+		return truncateWithEllipsis(full, 1800)
+	}
+	prefix := full[:idx]
+	body := full[idx:]
+	return prefix + compactUpstreamBody(body)
+}
+
+// compactUpstreamBody 精简上游返回的 JSON body 字符串。
+//
+// 目前主要覆盖 apiz 校验失败场景：
+//
+//	{"detail":[{"type":"missing","loc":["body","model"],"msg":"...","input":{...超长...}}, ...]}
+//
+// 会把每个 detail 项里的 "input" 字段整体删除，并对其它未知超长字段做兜底截断。
+// 非 JSON / 解析失败时退化为纯长度截断（1800 字节），加省略标记。
+func compactUpstreamBody(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	// 只处理 JSON 对象，其它形式（纯文本 / 数组等）走截断兜底。
+	if !strings.HasPrefix(body, "{") {
+		return truncateWithEllipsis(body, 1800)
+	}
+	var parsed map[string]any
+	dec := json.NewDecoder(strings.NewReader(body))
+	dec.UseNumber()
+	if err := dec.Decode(&parsed); err != nil {
+		return truncateWithEllipsis(body, 1800)
+	}
+	stripLongFieldsInPlace(parsed)
+	out, err := json.Marshal(parsed)
+	if err != nil {
+		return truncateWithEllipsis(body, 1800)
+	}
+	// 剥完 input 之后仍可能超长（罕见），再兜底截断。
+	return truncateWithEllipsis(string(out), 1800)
+}
+
+// stripLongFieldsInPlace 递归遍历 map / slice，
+// 把已知的超长字段（当前只有 "input"）就地删除。
+func stripLongFieldsInPlace(v any) {
+	switch typed := v.(type) {
+	case map[string]any:
+		delete(typed, "input")
+		for _, val := range typed {
+			stripLongFieldsInPlace(val)
+		}
+	case []any:
+		for _, item := range typed {
+			stripLongFieldsInPlace(item)
+		}
+	}
+}
+
+// truncateWithEllipsis 若 s 超过 max 字节，截断并追加省略标记。
+func truncateWithEllipsis(s string, max int) string {
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
+}
+
+// logUpstreamErrorDump 把上游 4xx 回包完整落日志，用于排查上游到底返回了什么。
+//
+// 输出内容：
+//   - task_id / requested_model / task_upstream_request_id（若已经拿到过 submit response 的 id）
+//   - http_status / client_request_id（客户端本次调用生成的追踪 id，如 fal-xxx / apiz-xxx）
+//   - request_payload 分块（每块 4000 字符）—— 客户端提交给上游的 body
+//   - response_body 分块（每块 4000 字符）—— 上游返回的 body
+//     chunk_index / chunk_total 便于拼接
+func logUpstreamErrorDump(ctx context.Context, event string, task *AsyncVideoTask, apiErr *fal.APIError) {
+	if apiErr == nil {
+		return
+	}
+	const chunkSize = 4000
+
+	providerReqID := ""
+	if task != nil && task.UpstreamRequestID != nil {
+		providerReqID = *task.UpstreamRequestID
+	}
+	requestedModel := ""
+	var requestPayload map[string]any
+	if task != nil {
+		requestedModel = task.RequestedModel
+		requestPayload = task.RequestPayload
+	}
+	var taskID int64
+	if task != nil {
+		taskID = task.ID
+	}
+
+	// 序列化 request payload（失败降级为 fmt.Sprintf）。
+	var reqBodyStr string
+	if requestPayload != nil {
+		if b, err := json.Marshal(requestPayload); err == nil {
+			reqBodyStr = string(b)
+		} else {
+			reqBodyStr = fmt.Sprintf("<marshal_error: %v> %+v", err, requestPayload)
+		}
+	}
+
+	respBody := apiErr.Body
+
+	baseFields := []zap.Field{
+		zap.Int64("task_id", taskID),
+		zap.String("requested_model", requestedModel),
+		zap.String("task_upstream_request_id", providerReqID),
+		zap.Int("http_status", apiErr.StatusCode),
+		zap.String("client_request_id", apiErr.RequestID),
+		zap.Int("request_body_len", len(reqBodyStr)),
+		zap.Int("response_body_len", len(respBody)),
+	}
+
+	// 请求体分块打印。
+	logBodyChunks(event+".request", reqBodyStr, chunkSize, baseFields)
+	// 响应体分块打印。
+	logBodyChunks(event+".response", respBody, chunkSize, baseFields)
+	_ = ctx
+}
+
+// logBodyChunks 按 chunkSize 把 body 切成多条 warn 日志输出。空 body 也输出一条，
+// 方便通过 chunk_total=0 快速识别。
+func logBodyChunks(event, body string, chunkSize int, baseFields []zap.Field) {
+	if chunkSize <= 0 {
+		chunkSize = 4000
+	}
+	total := (len(body) + chunkSize - 1) / chunkSize
+	if len(body) == 0 {
+		fields := append([]zap.Field{}, baseFields...)
+		fields = append(fields,
+			zap.Int("chunk_index", 0),
+			zap.Int("chunk_total", 0),
+			zap.String("body_chunk", ""),
+		)
+		logger.L().Warn(event, fields...)
+		return
+	}
+	for i := 0; i < total; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(body) {
+			end = len(body)
+		}
+		fields := append([]zap.Field{}, baseFields...)
+		fields = append(fields,
+			zap.Int("chunk_index", i),
+			zap.Int("chunk_total", total),
+			zap.String("body_chunk", body[start:end]),
+		)
+		logger.L().Warn(event, fields...)
+	}
 }

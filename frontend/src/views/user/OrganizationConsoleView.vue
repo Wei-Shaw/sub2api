@@ -525,11 +525,28 @@
               <td v-if="isUsageColumnVisible('model')" class="p-3">{{ row.model }}</td>
               <td v-if="isUsageColumnVisible('endpoint')" class="max-w-xs break-all p-3">{{ row.endpoint || '-' }}</td>
               <td v-if="isUsageColumnVisible('group')" class="p-3"><span v-if="row.group_name" class="inline-flex rounded bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">{{ row.group_name }}</span><span v-else>-</span></td>
-              <td v-if="isUsageColumnVisible('type')" class="p-3"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="usageRequestTypeClass(row.request_type)">{{ usageRequestTypeLabel(row.request_type) }}</span></td>
-              <td v-if="isUsageColumnVisible('billing_type')" class="p-3 whitespace-nowrap">{{ row.billing_type === 1 ? t('admin.usage.billingTypeSubscription') : t('admin.usage.billingTypeBalance') }}</td>
-              <td v-if="isUsageColumnVisible('billing_mode')" class="p-3"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(row.billing_mode)">{{ getBillingModeLabel(row.billing_mode, t) }}</span></td>
+              <td v-if="isUsageColumnVisible('type')" class="p-3 whitespace-nowrap"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="usageRequestTypeClass(row.request_type)">{{ usageRequestTypeLabel(row.request_type) }}</span></td>
+              <td v-if="isUsageColumnVisible('billing_type')" class="p-3 whitespace-nowrap">{{ enterpriseBillingTypeLabel(row) }}</td>
+              <td v-if="isUsageColumnVisible('billing_mode')" class="p-3 whitespace-nowrap"><span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(row.billing_mode)">{{ getBillingModeLabel(row.billing_mode, t) }}</span></td>
               <td v-if="isUsageColumnVisible('tokens')" class="p-3"><UsageTokenBreakdown :input-tokens="row.input_tokens" :output-tokens="row.output_tokens" :cache-creation-tokens="row.cache_creation_tokens || 0" :cache-read-tokens="row.cache_read_tokens || 0" :cache-creation-5m-tokens="row.cache_creation_5m_tokens || 0" :cache-creation-1h-tokens="row.cache_creation_1h_tokens || 0" /></td>
-              <td v-if="isUsageColumnVisible('result')" class="p-3"><div v-if="usageResultURLs(row).length" class="flex max-w-[180px] flex-wrap gap-1.5"><a v-for="(url, index) in usageResultURLs(row)" :key="index" :href="url" target="_blank" rel="noopener noreferrer" class="block h-12 w-12 overflow-hidden rounded border border-gray-200 hover:ring-2 hover:ring-blue-400 dark:border-dark-700"><img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover"></a></div><span v-else>-</span></td>
+              <td v-if="isUsageColumnVisible('result')" class="p-3">
+                <div class="flex flex-col items-start gap-1">
+                  <!-- 图片行：展示缩略图网格。视频行不走这里，避免将视频 URL 当图片渲染导致裂图。 -->
+                  <div v-if="!isVideoUsage(row) && usageResultURLs(row).length" class="flex max-w-[180px] flex-wrap gap-1.5">
+                    <a v-for="(url, index) in usageResultURLs(row)" :key="index" :href="url" target="_blank" rel="noopener noreferrer" class="block h-12 w-12 overflow-hidden rounded border border-gray-200 hover:ring-2 hover:ring-blue-400 dark:border-dark-700">
+                      <img :src="url" loading="lazy" alt="result" class="h-full w-full object-cover">
+                    </a>
+                  </div>
+                  <!-- 视频行专属详情入口：点击弹窗展示完整 task_id / 参数 / 视频预览。 -->
+                  <button
+                    v-if="isVideoUsage(row) && row.task_id"
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
+                    @click="openVideoDetail(row.task_id as number)"
+                  >{{ t('common.detail', '详情') }}</button>
+                  <span v-else-if="!usageResultURLs(row).length && !(isVideoUsage(row) && row.task_id)">-</span>
+                </div>
+              </td>
               <td v-if="isUsageColumnVisible('cost')" class="p-3 font-mono"><div class="font-medium text-green-600 dark:text-green-400">${{ formatUsageCost(row.actual_cost) }}</div><div class="text-[11px] text-gray-400" :title="`${t('usage.rate')}: ${row.rate_multiplier || 1}x`">${{ formatUsageCost(row.total_cost) }}</div></td>
               <td v-if="isUsageColumnVisible('balance_source')" class="p-3 whitespace-nowrap">{{ t(`organization.balanceSource.${row.balance_source || 'self'}`) }}</td>
               <td v-if="isUsageColumnVisible('latency')" class="p-3"><UsageLatencyCell :first-token-ms="row.first_token_ms" :duration-ms="row.duration_ms" /></td>
@@ -712,6 +729,11 @@
       </form>
     </div>
     </div>
+    <!-- 视频任务详情弹窗：使用记录视频行"详情"按钮触发。 -->
+    <VideoTaskDetailModal
+      v-model:show="videoDetailVisible"
+      :task-id="videoDetailTaskId"
+    />
   </AppLayout>
 </template>
 
@@ -741,7 +763,8 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getLocale } from '@/i18n'
-import { getBillingModeBadgeClass, getBillingModeLabel } from '@/utils/billingMode'
+import { getBillingModeBadgeClass, getBillingModeLabel, isVideoUsage } from '@/utils/billingMode'
+import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import type { DashboardStats, EndpointStat, FinanceSummary, GroupStat, IAMMember, ManagedPolicy, ModelStat, OrganizationContext, OrganizationSpendLimitRule, OrganizationSpendUsage, OrganizationSubscription, OrganizationUsageParams, OrganizationUsageRow, OrganizationUsageStats, OrganizationUsageTrendPoint, PaginatedOrganizationUsage, UserBreakdownItem, UserErrorRequest, UserSpendingRankingItem, UserUsageTrendPoint } from '@/types'
 import type { PlazaPlanCard } from '@/api/plaza'
 import { useAuthStore } from '@/stores'
@@ -1137,6 +1160,35 @@ function usageRequestTypeClass(type: OrganizationUsageRow['request_type']): stri
 
 function usageResultURLs(row: OrganizationUsageRow): string[] {
   return row.cos_urls?.length ? row.cos_urls : (row.image_urls || [])
+}
+
+/**
+ * 企业/IAM 使用记录专用的“计费类型”短标签。
+ *
+ * IAM 用户没有钱包余额（self），仅有划拨/共享/套餐/企业余额，
+ * 直接按 balance_source 展示对应中文短名；对 owner、subscription 也兼容。
+ *   allocated    -> 划拨余额
+ *   shared       -> 共享余额
+ *   subscription -> 套餐
+ *   company      -> 企业余额
+ *   self / 其它  -> 个人钱包（owner本人才会出现）
+ */
+function enterpriseBillingTypeLabel(row: OrganizationUsageRow): string {
+  const src = row.balance_source || ''
+  if (src === 'subscription' || row.billing_type === 1) return '套餐'
+  if (src === 'allocated') return '划拨余额'
+  if (src === 'shared') return '共享余额'
+  if (src === 'company') return '企业余额'
+  return '钱包余额'
+}
+
+// 视频任务详情弹窗：企业使用记录视频行点"详情"时触发。
+// 弹窗内部默认走 /user/video-models/tasks/by-id/:id，当前登录用户只能看自己发起的任务（后端强制归属校验）。
+const videoDetailVisible = ref(false)
+const videoDetailTaskId = ref<number | null>(null)
+function openVideoDetail(taskId: number) {
+  videoDetailTaskId.value = taskId
+  videoDetailVisible.value = true
 }
 
 /** 企业余额格式化：不做千分位分组、货币符号仅保留 $（不含 US），空值返回破折号。 */

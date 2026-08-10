@@ -516,6 +516,10 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'kiro') return kiroPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  // apiz 是视频类平台，模型映射需要用户根据自身账号里配置的真实上游 model
+  // 手动填写（例如 fal-ai/bytedance/... -> bytedance-seedance-1-0-pro-t2v），
+  // 没有通用可默认预置的映射，故不展示预设按钮，避免误点导致映射错误。
+  if (platform === 'apiz') return []
   return anthropicPresetMappings
 }
 

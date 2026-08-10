@@ -90,6 +90,7 @@ type Handlers struct {
 	BatchImage                *BatchImageHandler
 	Organization              *OrganizationHandler
 	VideoModel                *VideoModelHandler
+	UserMaterial              *UserMaterialHandler
 }
 
 // BuildInfo contains build-time information

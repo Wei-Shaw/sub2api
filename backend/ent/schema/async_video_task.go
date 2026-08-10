@@ -120,6 +120,10 @@ func (AsyncVideoTask) Fields() []ent.Field {
 			Default(0).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
 			Comment("提交时的 price_per_second 快照"),
+		field.Float("upstream_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
+			Comment("上游真实成本快照（如 apiz price/100 USD；未回传时保持 0，由 rate_multiplier 估算兜底）"),
 
 		// 请求 payload 与结果（原样透传）
 		field.JSON("request_payload", map[string]any{}).

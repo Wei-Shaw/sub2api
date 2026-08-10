@@ -184,6 +184,11 @@ func UnitPriceSnapshot(v float64) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldUnitPriceSnapshot, v))
 }
 
+// UpstreamCost applies equality check predicate on the "upstream_cost" field. It's identical to UpstreamCostEQ.
+func UpstreamCost(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldUpstreamCost, v))
+}
+
 // ErrorReason applies equality check predicate on the "error_reason" field. It's identical to ErrorReasonEQ.
 func ErrorReason(v string) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldEQ(FieldErrorReason, v))
@@ -1662,6 +1667,46 @@ func UnitPriceSnapshotLT(v float64) predicate.AsyncVideoTask {
 // UnitPriceSnapshotLTE applies the LTE predicate on the "unit_price_snapshot" field.
 func UnitPriceSnapshotLTE(v float64) predicate.AsyncVideoTask {
 	return predicate.AsyncVideoTask(sql.FieldLTE(FieldUnitPriceSnapshot, v))
+}
+
+// UpstreamCostEQ applies the EQ predicate on the "upstream_cost" field.
+func UpstreamCostEQ(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldEQ(FieldUpstreamCost, v))
+}
+
+// UpstreamCostNEQ applies the NEQ predicate on the "upstream_cost" field.
+func UpstreamCostNEQ(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNEQ(FieldUpstreamCost, v))
+}
+
+// UpstreamCostIn applies the In predicate on the "upstream_cost" field.
+func UpstreamCostIn(vs ...float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldIn(FieldUpstreamCost, vs...))
+}
+
+// UpstreamCostNotIn applies the NotIn predicate on the "upstream_cost" field.
+func UpstreamCostNotIn(vs ...float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldNotIn(FieldUpstreamCost, vs...))
+}
+
+// UpstreamCostGT applies the GT predicate on the "upstream_cost" field.
+func UpstreamCostGT(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGT(FieldUpstreamCost, v))
+}
+
+// UpstreamCostGTE applies the GTE predicate on the "upstream_cost" field.
+func UpstreamCostGTE(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldGTE(FieldUpstreamCost, v))
+}
+
+// UpstreamCostLT applies the LT predicate on the "upstream_cost" field.
+func UpstreamCostLT(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLT(FieldUpstreamCost, v))
+}
+
+// UpstreamCostLTE applies the LTE predicate on the "upstream_cost" field.
+func UpstreamCostLTE(v float64) predicate.AsyncVideoTask {
+	return predicate.AsyncVideoTask(sql.FieldLTE(FieldUpstreamCost, v))
 }
 
 // RequestPayloadIsNil applies the IsNil predicate on the "request_payload" field.

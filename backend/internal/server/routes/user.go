@@ -79,6 +79,20 @@ func RegisterUserRoutes(
 			user.GET("/video-models/tasks", panelRateLimiter.Heavy(), h.VideoModel.ListTasks)
 			// 演练台任务终态后前端用 internal_request_id 查一次拿实扣费用
 			user.GET("/video-models/tasks/by-request/:rid", panelRateLimiter.Heavy(), h.VideoModel.GetTaskByRequestID)
+			// 使用记录页视频行"详情"入口：按 async_video_tasks.id 查（usage_logs.task_id 即此 id）。
+			// 路径用 by-id/:id 前缀避免与 by-request/:rid 在 gin 路由 trie 上冲突。
+			user.GET("/video-models/tasks/by-id/:id", panelRateLimiter.Heavy(), h.VideoModel.GetTaskByID)
+
+			// 用户素材库（图片输入控件 + 独立素材库页共用）：
+			//   - upload/import-url 走 heavy 限流：文件上传/下载对上游 COS 有一定压力
+			//   - list/delete 走 global 限流即可
+			materials := user.Group("/materials")
+			{
+				materials.GET("", h.UserMaterial.List)
+				materials.POST("/upload", panelRateLimiter.Heavy(), h.UserMaterial.Upload)
+				materials.POST("/import-url", panelRateLimiter.Heavy(), h.UserMaterial.ImportFromURL)
+				materials.DELETE("/:id", h.UserMaterial.Delete)
+			}
 		}
 
 		// API Key管理

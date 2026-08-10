@@ -9,6 +9,7 @@ import support from './support'
 import inbox from './inbox'
 import organization from './organization'
 import videoModels from './videoModels'
+import materials from './materials'
 import { mergeLocaleMessages } from '../merge'
 
 const upstream = {
@@ -20,6 +21,7 @@ const upstream = {
   ...misc,
   ...inbox,
   ...videoModels,
+  ...materials,
 }
 
 export default mergeLocaleMessages(mergeLocaleMessages(mergeLocaleMessages(upstream, custom), support), organization)

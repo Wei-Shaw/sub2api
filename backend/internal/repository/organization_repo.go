@@ -2031,7 +2031,8 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 		       l.image_count,COALESCE(l.image_urls,'[]'::jsonb),COALESCE(l.cos_url,'[]'::jsonb),COALESCE(l.ip_address,''),COALESCE(l.user_agent,''),
 		       COALESCE(l.billing_status,'charged'),l.first_token_ms,l.duration_ms,l.created_at,
 		       CASE WHEN l.balance_source='subscription' OR (l.billing_type=1 AND k.organization_subscription_id IS NOT NULL)
-		            THEN 'subscription' ELSE COALESCE(l.balance_source,'self') END
+		            THEN 'subscription' ELSE COALESCE(l.balance_source,'self') END,
+		       l.task_id
 		FROM usage_logs l JOIN users u ON u.id=l.user_id LEFT JOIN api_keys k ON k.id=l.api_key_id LEFT JOIN groups g ON g.id=l.group_id
 		WHERE %s ORDER BY l.created_at DESC,l.id DESC LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
 	if err != nil {
@@ -2042,11 +2043,16 @@ func (r *organizationRepository) ListUsage(ctx context.Context, userID int64, fi
 	for rows.Next() {
 		var item service.OrganizationUsageRow
 		var imageURLs, cosURLs []byte
-		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.MemberUsername, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.CacheCreationTokens, &item.CacheReadTokens, &item.CacheCreation5mTokens, &item.CacheCreation1hTokens, &item.ActualCost, &item.TotalCost, &item.RateMultiplier, &item.Endpoint, &item.GroupID, &item.GroupName, &item.RequestType, &item.BillingType, &item.BillingMode, &item.ImageCount, &imageURLs, &cosURLs, &item.IPAddress, &item.UserAgent, &item.Status, &item.FirstTokenMS, &item.DurationMS, &item.CreatedAt, &item.BalanceSource); err != nil {
+		var taskID sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.MemberUserID, &item.MemberLogin, &item.MemberUsername, &item.APIKeyName, &item.Model, &item.InputTokens, &item.OutputTokens, &item.CacheCreationTokens, &item.CacheReadTokens, &item.CacheCreation5mTokens, &item.CacheCreation1hTokens, &item.ActualCost, &item.TotalCost, &item.RateMultiplier, &item.Endpoint, &item.GroupID, &item.GroupName, &item.RequestType, &item.BillingType, &item.BillingMode, &item.ImageCount, &imageURLs, &cosURLs, &item.IPAddress, &item.UserAgent, &item.Status, &item.FirstTokenMS, &item.DurationMS, &item.CreatedAt, &item.BalanceSource, &taskID); err != nil {
 			return nil, 0, err
 		}
 		_ = json.Unmarshal(imageURLs, &item.ImageURLs)
 		_ = json.Unmarshal(cosURLs, &item.CosURLs)
+		if taskID.Valid {
+			v := taskID.Int64
+			item.TaskID = &v
+		}
 		out = append(out, item)
 	}
 	return out, total, rows.Err()

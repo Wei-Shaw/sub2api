@@ -132,6 +132,7 @@
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
+            @videoDetail="openVideoDetail"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
@@ -188,6 +189,12 @@
     :hide-actions="true"
     @close="showBalanceHistoryModal = false; balanceHistoryUser = null"
   />
+  <!-- 视频任务详情：使用记录中视频行点击"详情"按钮触发。admin=true 走 /admin/video-tasks/by-id/:id 接口，可查看任意用户任务 -->
+  <VideoTaskDetailModal
+    v-model:show="videoDetailVisible"
+    :task-id="videoDetailTaskId"
+    admin
+  />
 </template>
 
 <script setup lang="ts">
@@ -206,6 +213,7 @@ import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
+import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
 import { clearErrorLogs, listErrorLogs } from '@/api/admin/ops'
@@ -247,6 +255,15 @@ const errorCleanupConfirmVisible = ref(false)
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
+
+// 视频任务详情弹窗：使用记录中视频行点"详情"时触发。
+// admin 模式下不做归属校验，管理员可查看任意用户的视频任务。
+const videoDetailVisible = ref(false)
+const videoDetailTaskId = ref<number | null>(null)
+const openVideoDetail = (taskId: number) => {
+  videoDetailTaskId.value = taskId
+  videoDetailVisible.value = true
+}
 
 const breakdownFilters = computed(() => {
   const f: Record<string, any> = {}

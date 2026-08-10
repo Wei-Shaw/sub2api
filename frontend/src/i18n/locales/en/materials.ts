@@ -1,0 +1,23 @@
+export default {
+  materials: {
+    title: 'Materials',
+    description: 'Your private image/audio/video assets. Reused by the image input control in the playground.',
+    kindImage: 'Images',
+    kindAudio: 'Audio',
+    kindVideo: 'Videos',
+    uploadBtn: 'Upload',
+    importUrlBtn: 'Import from URL',
+    importUrlConfirm: 'Import',
+    importToLibraryBtn: 'Import to library',
+    searchPlaceholder: 'Search by file name',
+    fromLibrary: 'From library',
+    pasteUrl: 'Paste URL',
+    openLink: 'Open',
+    empty: 'No materials yet. Upload an image or import from a URL.',
+    pickerTitle: 'Pick a material',
+    uploadSuccess: 'Uploaded to library',
+    confirmRemove: 'Remove material "{name}"? (Existing tasks that reference this URL will break.)',
+    imageInputEmptyHint: 'Click the buttons above to upload, pick from library, or paste a URL.',
+    pageInfo: 'Page {page} of {total}',
+  },
+}

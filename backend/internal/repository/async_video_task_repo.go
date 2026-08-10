@@ -26,7 +26,7 @@ const asyncVideoTaskColumns = `
 	account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 	facade, requested_model, upstream_model,
 	resolution, duration_seconds, aspect_ratio,
-	status, held_cost, final_cost, rate_multiplier, unit_price_snapshot,
+	status, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
 	request_payload, result_payload, video_urls, cos_urls,
 	error_reason, fail_deadline_at, finished_at,
 	client_ip, user_agent, inbound_endpoint, upstream_endpoint,
@@ -68,7 +68,7 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 			account_id, api_key_id, user_id, organization_id, payer_user_id, balance_source, authz_generation, group_id, channel_id,
 			facade, requested_model, upstream_model,
 			resolution, duration_seconds, aspect_ratio,
-			status, held_cost, final_cost, rate_multiplier, unit_price_snapshot,
+			status, held_cost, final_cost, rate_multiplier, unit_price_snapshot, upstream_cost,
 			request_payload, result_payload, video_urls, cos_urls,
 			error_reason, fail_deadline_at, finished_at,
 			client_ip, user_agent, inbound_endpoint, upstream_endpoint
@@ -77,10 +77,10 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 			$5, $6, $7, $8, $9, $10, $11, $12, $13,
 			$14, $15, $16,
 			$17, $18, $19,
-			$20, $21, $22, $23, $24,
-			$25, $26, $27, $28,
-			$29, $30, $31,
-			$32, $33, $34, $35
+			$20, $21, $22, $23, $24, $25,
+			$26, $27, $28, $29,
+			$30, $31, $32,
+			$33, $34, $35, $36
 		) RETURNING id, created_at, updated_at`
 
 	return scanSingleRow(ctx, r.sql, query, []any{
@@ -88,7 +88,7 @@ func (r *asyncVideoTaskRepository) Create(ctx context.Context, task *service.Asy
 		task.AccountID, task.APIKeyID, task.UserID, task.OrganizationID, task.PayerUserID, task.BalanceSource, task.AuthzGeneration, task.GroupID, task.ChannelID,
 		task.Facade, task.RequestedModel, task.UpstreamModel,
 		task.Resolution, task.DurationSeconds, task.AspectRatio,
-		task.Status, task.HeldCost, task.FinalCost, task.RateMultiplier, task.UnitPriceSnapshot,
+		task.Status, task.HeldCost, task.FinalCost, task.RateMultiplier, task.UnitPriceSnapshot, task.UpstreamCost,
 		requestJSON, resultJSON, videoURLsJSON, cosURLsJSON,
 		task.ErrorReason, task.FailDeadlineAt, task.FinishedAt,
 		task.ClientIP, task.UserAgent, task.InboundEndpoint, task.UpstreamEndpoint,
@@ -127,7 +127,7 @@ func (r *asyncVideoTaskRepository) UpdateUpstreamRef(ctx context.Context, id int
 	return err
 }
 
-func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int) (bool, error) {
+func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, videoURLs, cosURLs []string, resultPayload map[string]any, finalCost float64, durationSeconds int, upstreamCost float64) (bool, error) {
 	videoURLsJSON, err := marshalStringSlice(videoURLs)
 	if err != nil {
 		return false, fmt.Errorf("marshal video_urls: %w", err)
@@ -141,6 +141,8 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 		return false, fmt.Errorf("marshal result_payload: %w", err)
 	}
 	// duration_seconds<=0 时保留原库值（例如上游没返回时长），否则以实际值覆盖。
+	// upstream_cost<=0 时保留原库值（例如 fal/atlascloud 未回传真实成本），
+	// 只有 apiz 这类回传 price 的平台才会 >0 覆盖。
 	query := `
 		UPDATE async_video_tasks
 		SET status = $2,
@@ -149,6 +151,7 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 			result_payload = $5,
 			final_cost = $6,
 			duration_seconds = CASE WHEN $10::int > 0 THEN $10 ELSE duration_seconds END,
+			upstream_cost = CASE WHEN $11::numeric > 0 THEN $11 ELSE upstream_cost END,
 			error_reason = NULL,
 			finished_at = NOW(),
 			updated_at = NOW()
@@ -165,6 +168,7 @@ func (r *asyncVideoTaskRepository) MarkSucceeded(ctx context.Context, id int64, 
 		service.AsyncVideoStatusRefunded,
 		service.AsyncVideoStatusExpired,
 		durationSeconds,
+		upstreamCost,
 	)
 	if err != nil {
 		return false, err
@@ -431,7 +435,7 @@ func scanAsyncVideoTask(rows *sql.Rows) (*service.AsyncVideoTask, error) {
 		&task.AccountID, &task.APIKeyID, &task.UserID, &task.OrganizationID, &task.PayerUserID, &task.BalanceSource, &task.AuthzGeneration, &task.GroupID, &task.ChannelID,
 		&task.Facade, &task.RequestedModel, &task.UpstreamModel,
 		&task.Resolution, &task.DurationSeconds, &task.AspectRatio,
-		&task.Status, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.UnitPriceSnapshot,
+		&task.Status, &task.HeldCost, &task.FinalCost, &task.RateMultiplier, &task.UnitPriceSnapshot, &task.UpstreamCost,
 		&requestJSON, &resultJSON, &videoURLsJSON, &cosURLsJSON,
 		&task.ErrorReason, &task.FailDeadlineAt, &task.FinishedAt,
 		&task.ClientIP, &task.UserAgent, &task.InboundEndpoint, &task.UpstreamEndpoint,

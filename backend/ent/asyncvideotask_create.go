@@ -354,6 +354,20 @@ func (_c *AsyncVideoTaskCreate) SetNillableUnitPriceSnapshot(v *float64) *AsyncV
 	return _c
 }
 
+// SetUpstreamCost sets the "upstream_cost" field.
+func (_c *AsyncVideoTaskCreate) SetUpstreamCost(v float64) *AsyncVideoTaskCreate {
+	_c.mutation.SetUpstreamCost(v)
+	return _c
+}
+
+// SetNillableUpstreamCost sets the "upstream_cost" field if the given value is not nil.
+func (_c *AsyncVideoTaskCreate) SetNillableUpstreamCost(v *float64) *AsyncVideoTaskCreate {
+	if v != nil {
+		_c.SetUpstreamCost(*v)
+	}
+	return _c
+}
+
 // SetRequestPayload sets the "request_payload" field.
 func (_c *AsyncVideoTaskCreate) SetRequestPayload(v map[string]interface{}) *AsyncVideoTaskCreate {
 	_c.mutation.SetRequestPayload(v)
@@ -547,6 +561,10 @@ func (_c *AsyncVideoTaskCreate) defaults() {
 		v := asyncvideotask.DefaultUnitPriceSnapshot
 		_c.mutation.SetUnitPriceSnapshot(v)
 	}
+	if _, ok := _c.mutation.UpstreamCost(); !ok {
+		v := asyncvideotask.DefaultUpstreamCost
+		_c.mutation.SetUpstreamCost(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -644,6 +662,9 @@ func (_c *AsyncVideoTaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.UnitPriceSnapshot(); !ok {
 		return &ValidationError{Name: "unit_price_snapshot", err: errors.New(`ent: missing required field "AsyncVideoTask.unit_price_snapshot"`)}
+	}
+	if _, ok := _c.mutation.UpstreamCost(); !ok {
+		return &ValidationError{Name: "upstream_cost", err: errors.New(`ent: missing required field "AsyncVideoTask.upstream_cost"`)}
 	}
 	if v, ok := _c.mutation.ErrorReason(); ok {
 		if err := asyncvideotask.ErrorReasonValidator(v); err != nil {
@@ -800,6 +821,10 @@ func (_c *AsyncVideoTaskCreate) createSpec() (*AsyncVideoTask, *sqlgraph.CreateS
 	if value, ok := _c.mutation.UnitPriceSnapshot(); ok {
 		_spec.SetField(asyncvideotask.FieldUnitPriceSnapshot, field.TypeFloat64, value)
 		_node.UnitPriceSnapshot = value
+	}
+	if value, ok := _c.mutation.UpstreamCost(); ok {
+		_spec.SetField(asyncvideotask.FieldUpstreamCost, field.TypeFloat64, value)
+		_node.UpstreamCost = value
 	}
 	if value, ok := _c.mutation.RequestPayload(); ok {
 		_spec.SetField(asyncvideotask.FieldRequestPayload, field.TypeJSON, value)
@@ -1350,6 +1375,24 @@ func (u *AsyncVideoTaskUpsert) UpdateUnitPriceSnapshot() *AsyncVideoTaskUpsert {
 // AddUnitPriceSnapshot adds v to the "unit_price_snapshot" field.
 func (u *AsyncVideoTaskUpsert) AddUnitPriceSnapshot(v float64) *AsyncVideoTaskUpsert {
 	u.Add(asyncvideotask.FieldUnitPriceSnapshot, v)
+	return u
+}
+
+// SetUpstreamCost sets the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsert) SetUpstreamCost(v float64) *AsyncVideoTaskUpsert {
+	u.Set(asyncvideotask.FieldUpstreamCost, v)
+	return u
+}
+
+// UpdateUpstreamCost sets the "upstream_cost" field to the value that was provided on create.
+func (u *AsyncVideoTaskUpsert) UpdateUpstreamCost() *AsyncVideoTaskUpsert {
+	u.SetExcluded(asyncvideotask.FieldUpstreamCost)
+	return u
+}
+
+// AddUpstreamCost adds v to the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsert) AddUpstreamCost(v float64) *AsyncVideoTaskUpsert {
+	u.Add(asyncvideotask.FieldUpstreamCost, v)
 	return u
 }
 
@@ -2125,6 +2168,27 @@ func (u *AsyncVideoTaskUpsertOne) AddUnitPriceSnapshot(v float64) *AsyncVideoTas
 func (u *AsyncVideoTaskUpsertOne) UpdateUnitPriceSnapshot() *AsyncVideoTaskUpsertOne {
 	return u.Update(func(s *AsyncVideoTaskUpsert) {
 		s.UpdateUnitPriceSnapshot()
+	})
+}
+
+// SetUpstreamCost sets the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsertOne) SetUpstreamCost(v float64) *AsyncVideoTaskUpsertOne {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.SetUpstreamCost(v)
+	})
+}
+
+// AddUpstreamCost adds v to the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsertOne) AddUpstreamCost(v float64) *AsyncVideoTaskUpsertOne {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.AddUpstreamCost(v)
+	})
+}
+
+// UpdateUpstreamCost sets the "upstream_cost" field to the value that was provided on create.
+func (u *AsyncVideoTaskUpsertOne) UpdateUpstreamCost() *AsyncVideoTaskUpsertOne {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.UpdateUpstreamCost()
 	})
 }
 
@@ -3099,6 +3163,27 @@ func (u *AsyncVideoTaskUpsertBulk) AddUnitPriceSnapshot(v float64) *AsyncVideoTa
 func (u *AsyncVideoTaskUpsertBulk) UpdateUnitPriceSnapshot() *AsyncVideoTaskUpsertBulk {
 	return u.Update(func(s *AsyncVideoTaskUpsert) {
 		s.UpdateUnitPriceSnapshot()
+	})
+}
+
+// SetUpstreamCost sets the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsertBulk) SetUpstreamCost(v float64) *AsyncVideoTaskUpsertBulk {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.SetUpstreamCost(v)
+	})
+}
+
+// AddUpstreamCost adds v to the "upstream_cost" field.
+func (u *AsyncVideoTaskUpsertBulk) AddUpstreamCost(v float64) *AsyncVideoTaskUpsertBulk {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.AddUpstreamCost(v)
+	})
+}
+
+// UpdateUpstreamCost sets the "upstream_cost" field to the value that was provided on create.
+func (u *AsyncVideoTaskUpsertBulk) UpdateUpstreamCost() *AsyncVideoTaskUpsertBulk {
+	return u.Update(func(s *AsyncVideoTaskUpsert) {
+		s.UpdateUpstreamCost()
 	})
 }
 
