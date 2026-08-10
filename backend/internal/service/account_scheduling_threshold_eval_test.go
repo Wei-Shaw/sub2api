@@ -96,7 +96,7 @@ func TestEvaluateAccountSchedulingThreshold_AnthropicIgnoresExpiredFiveHourWindo
 	require.True(t, wantUntil.Equal(*decision.Until))
 }
 
-func TestEvaluateAccountSchedulingThreshold_FractionalPlatformsKeepFractionSemantics(t *testing.T) {
+func TestEvaluateAccountSchedulingThreshold_OpenAIPreservesPercentageSemantics(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
@@ -104,17 +104,32 @@ func TestEvaluateAccountSchedulingThreshold_FractionalPlatformsKeepFractionSeman
 	openAIAccount := &Account{
 		Platform: PlatformOpenAI,
 		Extra: map[string]any{
-			"codex_5h_used_percent": 0.91,
+			"codex_5h_used_percent": 1.0,
 			"codex_5h_reset_at":     openAIUntil.Format(time.RFC3339),
 		},
 	}
 
+	candidate := openAIThresholdCandidate(openAIAccount.Extra, "5h")
+	require.NotNil(t, candidate)
+	require.Equal(t, 1.0, candidate.usedPercent)
+
 	openAIDecision := EvaluateAccountSchedulingThreshold(openAIAccount, map[string]int{
 		PlatformOpenAI: 90,
 	}, now)
+	require.False(t, openAIDecision.ShouldPause)
 
+	openAIAccount.Extra["codex_5h_used_percent"] = 91.0
+	openAIDecision = EvaluateAccountSchedulingThreshold(openAIAccount, map[string]int{
+		PlatformOpenAI: 90,
+	}, now)
 	require.True(t, openAIDecision.ShouldPause)
 	require.Equal(t, 91.0, openAIDecision.UsedPercent)
+}
+
+func TestEvaluateAccountSchedulingThreshold_AnthropicPreservesFractionalUtilizationSemantics(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
 
 	anthropicUntil := now.Add(5 * time.Hour)
 	anthropicAccount := &Account{
