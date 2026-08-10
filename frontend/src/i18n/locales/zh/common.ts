@@ -207,6 +207,25 @@ export default {
     auditLogs: '操作日志',
   },
 
+  authStudio: {
+    secureGateway: '安全鉴权网关',
+    eyebrow: 'AUTHENTICATION / API ACCESS',
+    titleLineOne: '安全进入，',
+    titleLineTwo: '立即开始构建。',
+    description: '通过统一身份入口访问 API 密钥、用量、账单和模型路由。认证流程受加密连接保护，并完整兼容现有安全策略。',
+    terminalChecking: '正在校验身份与访问策略',
+    client: '客户端',
+    gateway: '鉴权网关',
+    workspace: '工作区',
+    signals: {
+      unified: '统一身份入口',
+      protected: '加密会话保护',
+      auditable: '访问记录可查',
+    },
+    accessLabel: 'ACCESS WORKSPACE',
+    footer: '身份与访问控制',
+  },
+
   // Auth
   auth: {
     welcomeBack: '欢迎回来',

@@ -341,6 +341,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.HomeStyle != after.HomeStyle {
 		changed = append(changed, service.SettingKeyHomeStyle)
 	}
+	if before.LoginPageStyle != after.LoginPageStyle {
+		changed = append(changed, service.SettingKeyLoginPageStyle)
+	}
+	if before.RegisterPageStyle != after.RegisterPageStyle {
+		changed = append(changed, service.SettingKeyRegisterPageStyle)
+	}
 	if before.CompactHomeEnabled != after.CompactHomeEnabled {
 		changed = append(changed, "compact_home_enabled")
 	}

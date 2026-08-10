@@ -246,11 +246,9 @@ func TestSettingService_UpdateSettings_NormalizesHomeStyle(t *testing.T) {
 	}{
 		{name: HomeStyleClassic, style: HomeStyleClassic, want: HomeStyleClassic},
 		{name: HomeStyleCompact, style: HomeStyleCompact, want: HomeStyleCompact},
-		{name: HomeStyleEditorial, style: HomeStyleEditorial, want: HomeStyleEditorial},
-		{name: HomeStyleOperations, style: HomeStyleOperations, want: HomeStyleOperations},
-		{name: HomeStyleMinimal, style: HomeStyleMinimal, want: HomeStyleMinimal},
-		{name: HomeStyleCatalog, style: HomeStyleCatalog, want: HomeStyleCatalog},
-		{name: "trimmed case insensitive", style: " Minimal ", want: HomeStyleMinimal},
+		{name: HomeStyleStudio, style: HomeStyleStudio, want: HomeStyleStudio},
+		{name: "trimmed case insensitive", style: " Studio ", want: HomeStyleStudio},
+		{name: "retired style", style: "editorial", want: HomeStyleClassic},
 		{name: "invalid", style: "unknown", want: HomeStyleClassic},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -263,6 +261,20 @@ func TestSettingService_UpdateSettings_NormalizesHomeStyle(t *testing.T) {
 			require.Equal(t, tc.want, repo.updates[SettingKeyHomeStyle])
 		})
 	}
+}
+
+func TestSettingService_UpdateSettings_NormalizesAuthPageStyles(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		LoginPageStyle:    " Studio ",
+		RegisterPageStyle: "unknown",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, AuthPageStyleStudio, repo.updates[SettingKeyLoginPageStyle])
+	require.Equal(t, AuthPageStyleClassic, repo.updates[SettingKeyRegisterPageStyle])
 }
 
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {

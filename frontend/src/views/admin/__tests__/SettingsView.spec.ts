@@ -383,6 +383,8 @@ const baseSettingsResponse = {
   doc_url: "",
   home_content: "",
   home_style: "classic",
+  login_page_style: "classic",
+  register_page_style: "classic",
   compact_home_enabled: false,
   hide_ccs_import_button: false,
   table_default_page_size: 20,
@@ -728,16 +730,16 @@ describe("admin SettingsView payment visible method controls", () => {
   it("renders the Home tab and loads the current style", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
-      home_style: "editorial",
+      home_style: "studio",
     });
     const wrapper = mountView();
     await flushPromises();
     await openHomeTab(wrapper);
 
     expect(wrapper.get('[data-testid="home-settings-tab"]').isVisible()).toBe(true);
-    expect(wrapper.findAll('[data-testid^="home-style-"]')).toHaveLength(6);
+    expect(wrapper.findAll('[data-testid^="home-style-"]')).toHaveLength(3);
     expect(
-      (wrapper.get('[data-testid="home-style-editorial"] input').element as HTMLInputElement)
+      (wrapper.get('[data-testid="home-style-studio"] input').element as HTMLInputElement)
         .checked,
     ).toBe(true);
   });
@@ -755,6 +757,26 @@ describe("admin SettingsView payment visible method controls", () => {
       expect.objectContaining({
         home_style: "compact",
         compact_home_enabled: true,
+      }),
+    );
+  });
+
+  it("selects and saves login and registration page styles independently", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openHomeTab(wrapper);
+
+    expect(wrapper.findAll('[data-testid^="login-page-style-"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-testid^="register-page-style-"]')).toHaveLength(2);
+    await wrapper.get('[data-testid="login-page-style-studio"] input').setValue(true);
+    await wrapper.get('[data-testid="register-page-style-classic"] input').setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        login_page_style: "studio",
+        register_page_style: "classic",
       }),
     );
   });

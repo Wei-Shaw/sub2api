@@ -345,6 +345,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyHomeContent] = settings.HomeContent
 	settings.HomeStyle = normalizeHomeStyle(settings.HomeStyle)
 	updates[SettingKeyHomeStyle] = settings.HomeStyle
+	updates[SettingKeyLoginPageStyle] = normalizeAuthPageStyle(settings.LoginPageStyle)
+	updates[SettingKeyRegisterPageStyle] = normalizeAuthPageStyle(settings.RegisterPageStyle)
 	updates[SettingKeyCompactHomeEnabled] = strconv.FormatBool(settings.CompactHomeEnabled)
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)

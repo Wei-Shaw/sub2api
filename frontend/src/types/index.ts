@@ -207,10 +207,9 @@ export interface LoginAgreementDocument {
 export type HomeStyle =
   | 'classic'
   | 'compact'
-  | 'editorial'
-  | 'operations'
-  | 'minimal'
-  | 'catalog'
+  | 'studio'
+
+export type AuthPageStyle = 'classic' | 'studio'
 
 export interface PublicSettings {
   registration_enabled: boolean
@@ -244,6 +243,8 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   home_style: HomeStyle
+  login_page_style?: AuthPageStyle
+  register_page_style?: AuthPageStyle
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean

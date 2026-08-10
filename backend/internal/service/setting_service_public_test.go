@@ -109,11 +109,9 @@ func TestSettingService_GetPublicSettings_NormalizesHomeStyle(t *testing.T) {
 	}{
 		{name: HomeStyleClassic, raw: HomeStyleClassic, want: HomeStyleClassic},
 		{name: HomeStyleCompact, raw: HomeStyleCompact, want: HomeStyleCompact},
-		{name: HomeStyleEditorial, raw: HomeStyleEditorial, want: HomeStyleEditorial},
-		{name: HomeStyleOperations, raw: HomeStyleOperations, want: HomeStyleOperations},
-		{name: HomeStyleMinimal, raw: HomeStyleMinimal, want: HomeStyleMinimal},
-		{name: HomeStyleCatalog, raw: HomeStyleCatalog, want: HomeStyleCatalog},
-		{name: "trimmed case insensitive", raw: " Operations ", want: HomeStyleOperations},
+		{name: HomeStyleStudio, raw: HomeStyleStudio, want: HomeStyleStudio},
+		{name: "trimmed case insensitive", raw: " Studio ", want: HomeStyleStudio},
+		{name: "retired style", raw: "operations", want: HomeStyleClassic},
 		{name: "missing", want: HomeStyleClassic},
 		{name: "invalid", raw: "unknown", want: HomeStyleClassic},
 	} {
@@ -137,6 +135,17 @@ func TestSettingService_GetPublicSettings_UsesLegacyCompactHomeStyle(t *testing.
 
 	require.NoError(t, err)
 	require.Equal(t, HomeStyleCompact, settings.HomeStyle)
+}
+
+func TestSettingService_GetPublicSettings_NormalizesAuthPageStyles(t *testing.T) {
+	settings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyLoginPageStyle:    " Studio ",
+		SettingKeyRegisterPageStyle: "unknown",
+	}}, &config.Config{}).GetPublicSettings(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, AuthPageStyleStudio, settings.LoginPageStyle)
+	require.Equal(t, AuthPageStyleClassic, settings.RegisterPageStyle)
 }
 
 func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing.T) {

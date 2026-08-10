@@ -145,6 +145,25 @@ describe('Tencent captcha action gate', () => {
     }))
   })
 
+  it('uses the configured Studio login page style', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      tencent_captcha_enabled: false,
+      backend_mode_enabled: false,
+      password_reset_enabled: false,
+      passkey_enabled: false,
+      github_oauth_enabled: false,
+      google_oauth_enabled: false,
+      login_page_style: 'studio'
+    })
+
+    const wrapper = mountLogin()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="studio-login-page"]').exists()).toBe(true)
+  })
+
   it('does not call login when Tencent captcha is closed', async () => {
     verifyActionMock.mockResolvedValue(null)
     const wrapper = mountLogin()

@@ -188,6 +188,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
 		SettingKeyHomeStyle,
+		SettingKeyLoginPageStyle,
+		SettingKeyRegisterPageStyle,
 		SettingKeyCompactHomeEnabled,
 		SettingKeyHideCcsImportButton,
 		SettingKeyPurchaseSubscriptionEnabled,
@@ -328,6 +330,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		DocURL:                              settings[SettingKeyDocURL],
 		HomeContent:                         settings[SettingKeyHomeContent],
 		HomeStyle:                           resolveHomeStyle(settings[SettingKeyHomeStyle], settings[SettingKeyCompactHomeEnabled] == "true"),
+		LoginPageStyle:                      normalizeAuthPageStyle(settings[SettingKeyLoginPageStyle]),
+		RegisterPageStyle:                   normalizeAuthPageStyle(settings[SettingKeyRegisterPageStyle]),
 		CompactHomeEnabled:                  settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:                 settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:         settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
@@ -571,6 +575,8 @@ type PublicSettingsInjectionPayload struct {
 	DocURL                              string                   `json:"doc_url"`
 	HomeContent                         string                   `json:"home_content"`
 	HomeStyle                           string                   `json:"home_style"`
+	LoginPageStyle                      string                   `json:"login_page_style"`
+	RegisterPageStyle                   string                   `json:"register_page_style"`
 	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`
@@ -657,6 +663,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		DocURL:                              settings.DocURL,
 		HomeContent:                         settings.HomeContent,
 		HomeStyle:                           settings.HomeStyle,
+		LoginPageStyle:                      settings.LoginPageStyle,
+		RegisterPageStyle:                   settings.RegisterPageStyle,
 		CompactHomeEnabled:                  settings.CompactHomeEnabled,
 		HideCcsImportButton:                 settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:         settings.PurchaseSubscriptionEnabled,

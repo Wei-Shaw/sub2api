@@ -7,6 +7,7 @@ import { apiClient } from "../client";
 import type {
   CustomEndpoint,
   CustomMenuItem,
+  AuthPageStyle,
   HomeStyle,
   LoginAgreementDocument,
   NotifyEmailEntry,
@@ -475,6 +476,8 @@ export interface SystemSettings {
   doc_url: string;
   home_content: string;
   home_style: HomeStyle;
+  login_page_style: AuthPageStyle;
+  register_page_style: AuthPageStyle;
   compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
@@ -813,6 +816,8 @@ export interface UpdateSettingsRequest {
   doc_url?: string;
   home_content?: string;
   home_style?: HomeStyle;
+  login_page_style?: AuthPageStyle;
+  register_page_style?: AuthPageStyle;
   compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;

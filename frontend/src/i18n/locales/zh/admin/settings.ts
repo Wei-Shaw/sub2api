@@ -23,10 +23,15 @@ export default {
         styles: {
           classic: { name: '经典', description: '平衡的品牌介绍与清晰行动入口。' },
           compact: { name: '简洁', description: '紧凑呈现核心站点信息，减少视觉干扰。' },
-          editorial: { name: '编辑部', description: '强调排版层次与内容叙事的杂志式首页。' },
-          operations: { name: '运营中心', description: '以运行状态、关键指标和服务入口为核心。' },
-          minimal: { name: '极简', description: '留白充足，只保留品牌与最重要的行动项。' },
-          catalog: { name: '服务目录', description: '用结构化卡片展示模型、能力与访问入口。' },
+          studio: { name: '开发者工作室', description: '以路由终端、服务能力和模型切换为核心。' },
+        },
+        authPages: {
+          login: { title: '登录页风格', hint: '选择访客进入登录页时使用的视觉样式。' },
+          register: { title: '注册页风格', hint: '选择新用户进入注册页时使用的视觉样式。' },
+          styles: {
+            classic: { name: '经典', description: '保留原有居中玻璃卡片。' },
+            studio: { name: '开发者工作室', description: '沿用首页网格与鉴权终端。' },
+          },
         },
       },
       features: {

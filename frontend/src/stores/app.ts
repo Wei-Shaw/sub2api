@@ -293,7 +293,9 @@ export const useAppStore = defineStore('app', () => {
   function applySettings(config: PublicSettings): void {
     const normalizedConfig: PublicSettings = {
       ...config,
-      home_style: config.home_style || (config.compact_home_enabled ? 'compact' : 'classic')
+      home_style: config.home_style || (config.compact_home_enabled ? 'compact' : 'classic'),
+      login_page_style: config.login_page_style === 'studio' ? 'studio' : 'classic',
+      register_page_style: config.register_page_style === 'studio' ? 'studio' : 'classic'
     }
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...normalizedConfig }
@@ -353,6 +355,8 @@ export const useAppStore = defineStore('app', () => {
         doc_url: docUrl.value,
         home_content: '',
         home_style: 'classic',
+        login_page_style: 'classic',
+        register_page_style: 'classic',
         compact_home_enabled: false,
         hide_ccs_import_button: false,
         payment_enabled: false,

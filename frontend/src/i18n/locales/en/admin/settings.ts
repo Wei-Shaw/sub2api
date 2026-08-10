@@ -23,10 +23,15 @@ export default {
         styles: {
           classic: { name: 'Classic', description: 'Balanced branding, context, and clear calls to action.' },
           compact: { name: 'Compact', description: 'A restrained presentation focused on essential site details.' },
-          editorial: { name: 'Editorial', description: 'Magazine-inspired typography with a strong content hierarchy.' },
-          operations: { name: 'Operations', description: 'Puts service status, key signals, and access points first.' },
-          minimal: { name: 'Minimal', description: 'Generous space with only the brand and primary action.' },
-          catalog: { name: 'Catalog', description: 'Structured cards introduce models, capabilities, and entry points.' },
+          studio: { name: 'Developer Studio', description: 'Centers the page on routing, capabilities, and model switching.' },
+        },
+        authPages: {
+          login: { title: 'Login page style', hint: 'Choose the visual style visitors see on the login page.' },
+          register: { title: 'Registration page style', hint: 'Choose the visual style new users see while registering.' },
+          styles: {
+            classic: { name: 'Classic', description: 'Keep the original centered glass card.' },
+            studio: { name: 'Developer Studio', description: 'Use the home grid and authentication terminal.' },
+          },
         },
       },
       features: {

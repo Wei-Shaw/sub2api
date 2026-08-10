@@ -207,6 +207,25 @@ export default {
     auditLogs: 'Audit Logs',
   },
 
+  authStudio: {
+    secureGateway: 'Secure authentication gateway',
+    eyebrow: 'AUTHENTICATION / API ACCESS',
+    titleLineOne: 'Secure access.',
+    titleLineTwo: 'Start building.',
+    description: 'Use one identity entry point for API keys, usage, billing, and model routes. Encrypted sessions protect the flow while preserving every existing security policy.',
+    terminalChecking: 'Checking identity and access policy',
+    client: 'Client',
+    gateway: 'Auth gateway',
+    workspace: 'Workspace',
+    signals: {
+      unified: 'Unified identity',
+      protected: 'Encrypted session',
+      auditable: 'Auditable access',
+    },
+    accessLabel: 'ACCESS WORKSPACE',
+    footer: 'Identity and access control',
+  },
+
   // Auth
   auth: {
     welcomeBack: 'Welcome Back',

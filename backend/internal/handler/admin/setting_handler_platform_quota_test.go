@@ -96,13 +96,26 @@ func TestDiffSettings_DetectsCompactHomeChange(t *testing.T) {
 func TestDiffSettings_DetectsHomeStyleChange(t *testing.T) {
 	changed := diffSettings(
 		&service.SystemSettings{HomeStyle: service.HomeStyleClassic},
-		&service.SystemSettings{HomeStyle: service.HomeStyleOperations},
+		&service.SystemSettings{HomeStyle: service.HomeStyleStudio},
 		nil,
 		nil,
 		UpdateSettingsRequest{},
 	)
 
 	require.Contains(t, changed, service.SettingKeyHomeStyle)
+}
+
+func TestDiffSettings_DetectsAuthPageStyleChanges(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{LoginPageStyle: service.AuthPageStyleClassic, RegisterPageStyle: service.AuthPageStyleClassic},
+		&service.SystemSettings{LoginPageStyle: service.AuthPageStyleStudio, RegisterPageStyle: service.AuthPageStyleStudio},
+		nil,
+		nil,
+		UpdateSettingsRequest{},
+	)
+
+	require.Contains(t, changed, service.SettingKeyLoginPageStyle)
+	require.Contains(t, changed, service.SettingKeyRegisterPageStyle)
 }
 
 func TestEqualNullableFloat(t *testing.T) {

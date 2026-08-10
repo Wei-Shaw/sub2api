@@ -161,6 +161,8 @@ type UpdateSettingsRequest struct {
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
 	HomeStyle                   string                `json:"home_style"`
+	LoginPageStyle              string                `json:"login_page_style"`
+	RegisterPageStyle           string                `json:"register_page_style"`
 	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
@@ -1617,6 +1619,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
 		HomeStyle:                              req.HomeStyle,
+		LoginPageStyle:                         req.LoginPageStyle,
+		RegisterPageStyle:                      req.RegisterPageStyle,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
@@ -2228,6 +2232,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
 		HomeStyle:                                              updatedSettings.HomeStyle,
+		LoginPageStyle:                                         updatedSettings.LoginPageStyle,
+		RegisterPageStyle:                                      updatedSettings.RegisterPageStyle,
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,

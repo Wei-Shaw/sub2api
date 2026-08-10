@@ -258,6 +258,57 @@ export default {
           flexible: 'Flexible',
           api: 'API'
         }
+      },
+      studio: {
+        modelsNav: 'Models',
+        featuresNav: 'Capabilities',
+        docsNav: 'Docs',
+        start: 'Get Started',
+        eyebrow: 'ChatGPT · Claude API',
+        heroLineOne: 'One API key.',
+        heroLineTwo: 'Reliable access to leading models.',
+        description: 'Use ChatGPT and Claude through one gateway without managing separate provider accounts. Routes fail over automatically, and billing follows actual usage.',
+        getKey: 'Get API Key',
+        viewDocs: 'View Integration Docs',
+        docsSoon: 'Integration docs are coming soon',
+        terminalLabel: 'API request routing example',
+        request: 'request',
+        switching: 'Switching to the {model} route',
+        routeComment: 'Available {model} route selected',
+        yourApp: 'Your app',
+        gateway: 'Gateway',
+        responseCode: '200 OK',
+        responseBody: 'Ready',
+        details: {
+          model: 'Model',
+          route: 'Route',
+          routeValue: 'Automatic failover',
+          interface: 'Interface',
+          interfaceValue: 'API compatible'
+        },
+        featuresLabel: 'Service capabilities',
+        features: {
+          unified: { title: 'One-key access', body: 'Use one API key for every connected AI model without separate applications.' },
+          reliable: { title: 'Reliable by design', body: 'Smart upstream scheduling, automatic failover, and load balancing reduce errors.' },
+          usage: { title: 'Pay for usage', body: 'Usage-based billing, quota controls, and clear team consumption records.' }
+        },
+        modelsTitle: 'Available Models',
+        modelsSubtitle: 'One account, unified access',
+        available: 'Available',
+        modelPricing: 'View model versions and live pricing',
+        serviceNormal: 'Service operational',
+        terms: 'Terms',
+        privacy: 'Privacy',
+        support: 'Support',
+        termsSoon: 'Terms are coming soon',
+        privacySoon: 'Privacy policy is coming soon',
+        supportSoon: 'Support channels are coming soon',
+        close: 'Close',
+        modalTitle: 'Get Started with {siteName}',
+        modalDescription: 'Create an account and API key to access ChatGPT and Claude from one place.',
+        modalAction: 'Continue to Registration',
+        modalAccountPrompt: 'Already registered?',
+        modalLogin: 'Sign in to the dashboard'
       }
     }
   },

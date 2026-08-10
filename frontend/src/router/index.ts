@@ -39,6 +39,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Home'
     }
   },
+  ...(import.meta.env.DEV ? [{
+    path: '/home/studio-preview',
+    name: 'HomeStudioPreview',
+    component: () => import('@/views/HomeView.vue'),
+    props: { previewStyle: 'studio' },
+    meta: {
+      requiresAuth: false,
+      title: 'Studio Preview'
+    }
+  }] satisfies RouteRecordRaw[] : []),
   {
     path: '/login',
     name: 'Login',
@@ -49,6 +59,13 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'home.login'
     }
   },
+  ...(import.meta.env.DEV ? [{
+    path: '/login/studio-preview',
+    name: 'LoginStudioPreview',
+    component: () => import('@/views/auth/LoginView.vue'),
+    props: { previewStyle: 'studio' },
+    meta: { requiresAuth: false, title: 'Login Studio Preview' }
+  }] satisfies RouteRecordRaw[] : []),
   {
     path: '/register',
     name: 'Register',
@@ -59,6 +76,13 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'auth.createAccount'
     }
   },
+  ...(import.meta.env.DEV ? [{
+    path: '/register/studio-preview',
+    name: 'RegisterStudioPreview',
+    component: () => import('@/views/auth/RegisterView.vue'),
+    props: { previewStyle: 'studio' },
+    meta: { requiresAuth: false, title: 'Register Studio Preview' }
+  }] satisfies RouteRecordRaw[] : []),
   {
     path: '/email-verify',
     name: 'EmailVerify',

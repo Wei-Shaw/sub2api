@@ -34,6 +34,8 @@ function createPublicSettings(overrides: Partial<PublicSettings> = {}): PublicSe
     doc_url: '',
     home_content: '',
     home_style: 'classic',
+    login_page_style: 'classic',
+    register_page_style: 'classic',
     compact_home_enabled: false,
     hide_ccs_import_button: false,
     payment_enabled: false,
@@ -403,7 +405,7 @@ describe('useAppStore', () => {
         contact_info: 'test@test.com',
         api_base_url: 'https://api.test.com',
         doc_url: 'https://docs.test.com',
-        home_style: 'catalog',
+        home_style: 'studio',
       }
 
       const store = useAppStore()
@@ -413,8 +415,8 @@ describe('useAppStore', () => {
       expect(store.siteName).toBe('TestSite')
       expect(store.siteLogo).toBe('/logo.png')
       expect(store.siteVersion).toBe('1.0.0')
-      expect(store.homeStyle).toBe('catalog')
-      expect(store.cachedPublicSettings?.home_style).toBe('catalog')
+      expect(store.homeStyle).toBe('studio')
+      expect(store.cachedPublicSettings?.home_style).toBe('studio')
       expect(store.publicSettingsLoaded).toBe(true)
     })
 
@@ -481,7 +483,7 @@ describe('useAppStore', () => {
         contact_info: '',
         doc_url: '',
         home_content: '',
-        home_style: 'operations',
+        home_style: 'studio',
         compact_home_enabled: false,
         hide_ccs_import_button: false,
         purchase_subscription_enabled: false,
@@ -500,7 +502,7 @@ describe('useAppStore', () => {
 
       expect((window as any).__APP_CONFIG__.table_default_page_size).toBe(1000)
       expect((window as any).__APP_CONFIG__.table_page_size_options).toEqual([20, 100, 1000])
-      expect(store.homeStyle).toBe('operations')
+      expect(store.homeStyle).toBe('studio')
       expect(localStorage.getItem('table-page-size')).toBeNull()
       expect(localStorage.getItem('table-page-size-source')).toBeNull()
     })

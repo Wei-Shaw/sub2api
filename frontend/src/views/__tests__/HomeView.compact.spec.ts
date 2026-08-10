@@ -33,7 +33,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
   }
 })
 
-function mountHome(settings: Record<string, unknown> = {}) {
+function mountHome(settings: Record<string, unknown> = {}, props: Record<string, unknown> = {}) {
   appStore.cachedPublicSettings = {
     site_name: 'Test site',
     site_subtitle: 'Test subtitle',
@@ -41,6 +41,7 @@ function mountHome(settings: Record<string, unknown> = {}) {
   }
 
   return mount(HomeView, {
+    props,
     global: {
       stubs: {
         RouterLink: RouterLinkStub,
@@ -58,10 +59,7 @@ function compactDestination(wrapper: ReturnType<typeof mountHome>) {
 const styleTestIds = {
   classic: 'classic-home',
   compact: 'compact-home',
-  editorial: 'editorial-home',
-  operations: 'operations-home',
-  minimal: 'minimal-home',
-  catalog: 'catalog-home',
+  studio: 'studio-home',
 } as const
 
 describe('HomeView style resolver', () => {
@@ -107,30 +105,34 @@ describe('HomeView style resolver', () => {
     expect(wrapper.get(`[data-testid="${testId}"]`).exists()).toBe(true)
   })
 
-  it('labels operations as a routing demo without simulated live health claims', () => {
-    const wrapper = mountHome({ home_style: 'operations' })
-    const operations = wrapper.get('[data-testid="operations-home"]')
+  it('lets the preview route force the studio style', () => {
+    const wrapper = mountHome({ home_style: 'classic' }, { previewStyle: 'studio' })
 
-    expect(operations.text()).toContain('home.styles.operations.demoNotice')
-    expect(operations.text()).toContain('home.styles.operations.disclaimer')
-    expect(operations.text()).not.toContain('99.99%')
-    expect(operations.text()).not.toContain('ALL SYSTEMS NOMINAL')
+    expect(wrapper.get('[data-testid="studio-home"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="classic-home"]').exists()).toBe(false)
   })
 
-  it('gives shared header icon actions accessible names', () => {
-    const wrapper = mountHome({ home_style: 'editorial', doc_url: 'https://docs.example.com' })
-    const editorial = wrapper.get('[data-testid="editorial-home"]')
+  it('switches the active model in the studio routing example', async () => {
+    const wrapper = mountHome({ home_style: 'studio' })
+    const studio = wrapper.get('[data-testid="studio-home"]')
+    const models = studio.findAll('.studio-model')
 
-    expect(editorial.get('a[aria-label="home.viewDocs"]').attributes('href')).toBe('https://docs.example.com/')
-    expect(editorial.get('button[aria-label="home.switchToDark"]').attributes('type')).toBe('button')
+    expect(models).toHaveLength(2)
+    expect(models[0].attributes('aria-pressed')).toBe('true')
+    await models[1].trigger('click')
+    expect(models[1].attributes('aria-pressed')).toBe('true')
+    expect(studio.text()).toContain('home.styles.studio.switching')
   })
 
-  it('keeps the catalog to four static platform cards', () => {
-    const wrapper = mountHome({ home_style: 'catalog' })
-    const catalog = wrapper.get('[data-testid="catalog-home"]')
+  it('opens the studio registration dialog', async () => {
+    const wrapper = mountHome({ home_style: 'studio' })
+    const studio = wrapper.get('[data-testid="studio-home"]')
 
-    expect(catalog.findAll('article')).toHaveLength(4)
-    expect(catalog.text()).toContain('home.styles.catalog.staticNote')
+    await studio.get('.studio-button-compact').trigger('click')
+    expect(studio.get('[role="dialog"]').exists()).toBe(true)
+    expect(studio.findComponent(RouterLinkStub).props('to')).toBe('/home')
+    expect(studio.findAllComponents(RouterLinkStub).some((link) => link.props('to') === '/register')).toBe(true)
+    expect(studio.findAllComponents(RouterLinkStub).some((link) => link.props('to') === '/login')).toBe(true)
   })
 
   it('lets an explicit classic style override the legacy compact flag', () => {
@@ -140,7 +142,7 @@ describe('HomeView style resolver', () => {
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
   })
 
-  it.each(['unknown', 42, false])('falls back to classic for invalid style %s', (homeStyle) => {
+  it.each(['unknown', 'editorial', 'operations', 'minimal', 'catalog', 42, false])('falls back to classic for invalid style %s', (homeStyle) => {
     const wrapper = mountHome({ home_style: homeStyle, compact_home_enabled: true })
 
     expect(wrapper.get('[data-testid="classic-home"]').exists()).toBe(true)

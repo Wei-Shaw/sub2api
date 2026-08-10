@@ -16,21 +16,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
-import HomeCatalog from '@/components/home/HomeCatalog.vue'
 import HomeClassic from '@/components/home/HomeClassic.vue'
 import HomeCompact from '@/components/home/HomeCompact.vue'
-import HomeEditorial from '@/components/home/HomeEditorial.vue'
-import HomeMinimal from '@/components/home/HomeMinimal.vue'
-import HomeOperations from '@/components/home/HomeOperations.vue'
+import HomeStudio from '@/components/home/HomeStudio.vue'
 import type { HomeStyle, HomeStyleContext } from '@/components/home/types'
+
+const props = defineProps<{ previewStyle?: HomeStyle }>()
 
 const homeComponents = {
   classic: HomeClassic,
   compact: HomeCompact,
-  editorial: HomeEditorial,
-  operations: HomeOperations,
-  minimal: HomeMinimal,
-  catalog: HomeCatalog,
+  studio: HomeStudio,
 } as const
 
 const authStore = useAuthStore()
@@ -49,6 +45,8 @@ const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const isHomeContentUrl = computed(() => /^https?:\/\//.test(homeContent.value.trim()))
 
 const homeStyle = computed<HomeStyle>(() => {
+  if (props.previewStyle) return props.previewStyle
+
   const configuredStyle = publicSettings.value?.home_style
   if (configuredStyle === '' || configuredStyle == null) {
     return publicSettings.value?.compact_home_enabled === true ? 'compact' : 'classic'

@@ -118,6 +118,18 @@ describe('RegisterView invitation layout', () => {
     expect(wrapper.get('#invitation_code').exists()).toBe(true)
   })
 
+  it('uses the configured Studio registration page style', async () => {
+    getPublicSettingsMock.mockResolvedValueOnce({
+      ...publicSettings,
+      register_page_style: 'studio'
+    })
+
+    const wrapper = mountRegister()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="studio-register-page"]').exists()).toBe(true)
+  })
+
   it('submits a non-whitelist email domain so the backend can enforce its registration quota', async () => {
     getPublicSettingsMock.mockResolvedValueOnce({
       ...publicSettings,

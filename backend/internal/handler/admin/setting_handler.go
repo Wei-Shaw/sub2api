@@ -254,6 +254,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
 		HomeStyle:                                              settings.HomeStyle,
+		LoginPageStyle:                                         settings.LoginPageStyle,
+		RegisterPageStyle:                                      settings.RegisterPageStyle,
 		CompactHomeEnabled:                                     settings.CompactHomeEnabled,
 		HideCcsImportButton:                                    settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            settings.PurchaseSubscriptionEnabled,

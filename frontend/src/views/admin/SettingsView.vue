@@ -6231,6 +6231,48 @@
                 </div>
               </fieldset>
 
+              <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <fieldset v-for="page in authPageStyleFields" :key="page.key">
+                  <legend class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t(`admin.settings.home.authPages.${page.key}.title`) }}
+                  </legend>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t(`admin.settings.home.authPages.${page.key}.hint`) }}
+                  </p>
+                  <div class="mt-3 grid grid-cols-2 gap-3">
+                    <label
+                      v-for="style in authPageStyleOptions"
+                      :key="style"
+                      :class="[
+                        'auth-page-style-card',
+                        form[page.field] === style && 'auth-page-style-card-selected',
+                      ]"
+                      :data-testid="`${page.testId}-${style}`"
+                    >
+                      <input v-model="form[page.field]" class="sr-only" type="radio" :value="style" />
+                      <span :class="['auth-page-style-preview', `auth-page-style-preview-${style}`]" aria-hidden="true">
+                        <span class="auth-page-preview-brand"></span>
+                        <span class="auth-page-preview-panel"></span>
+                        <span class="auth-page-preview-title"></span>
+                        <span class="auth-page-preview-input"></span>
+                        <span class="auth-page-preview-button"></span>
+                      </span>
+                      <span class="mt-2 flex items-start justify-between gap-2">
+                        <span>
+                          <span class="block text-xs font-semibold text-gray-900 dark:text-white">
+                            {{ t(`admin.settings.home.authPages.styles.${style}.name`) }}
+                          </span>
+                          <span class="mt-0.5 block text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                            {{ t(`admin.settings.home.authPages.styles.${style}.description`) }}
+                          </span>
+                        </span>
+                        <span class="home-style-radio" aria-hidden="true"></span>
+                      </span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+
               <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -8696,6 +8738,7 @@ import type {
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
+  AuthPageStyle,
   HomeStyle,
   LoginAgreementDocument,
   NotifyEmailEntry,
@@ -8793,11 +8836,15 @@ const settingsTabs = [
 const homeStyleOptions: HomeStyle[] = [
   "classic",
   "compact",
-  "editorial",
-  "operations",
-  "minimal",
-  "catalog",
+  "studio",
 ];
+
+type AuthPageStyleField = "login_page_style" | "register_page_style";
+const authPageStyleOptions: AuthPageStyle[] = ["classic", "studio"];
+const authPageStyleFields = [
+  { key: "login", field: "login_page_style" as AuthPageStyleField, testId: "login-page-style" },
+  { key: "register", field: "register_page_style" as AuthPageStyleField, testId: "register-page-style" },
+] as const;
 
 function normalizeHomeStyle(value: unknown): HomeStyle {
   return homeStyleOptions.includes(value as HomeStyle)
@@ -9492,6 +9539,8 @@ const form = reactive<SettingsForm>({
   doc_url: "",
   home_content: "",
   home_style: "classic",
+  login_page_style: "classic",
+  register_page_style: "classic",
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
@@ -11123,6 +11172,8 @@ async function saveSettings() {
       doc_url: form.doc_url,
       home_content: form.home_content,
       home_style: form.home_style,
+      login_page_style: form.login_page_style,
+      register_page_style: form.register_page_style,
       compact_home_enabled: form.home_style === "compact",
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
@@ -12867,6 +12918,75 @@ watch(
   @apply border-[5px] border-primary-600 dark:border-primary-400;
 }
 
+.auth-page-style-card {
+  @apply cursor-pointer rounded-lg border border-gray-200 bg-white p-2.5 transition hover:border-primary-300 dark:border-dark-600 dark:bg-dark-800;
+}
+
+.auth-page-style-card:focus-within {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 dark:ring-offset-dark-900;
+}
+
+.auth-page-style-card-selected {
+  @apply border-primary-500 bg-primary-50/50 dark:border-primary-400 dark:bg-primary-900/10;
+}
+
+.auth-page-style-card-selected .home-style-radio {
+  @apply border-[5px] border-primary-600 dark:border-primary-400;
+}
+
+.auth-page-style-preview {
+  @apply relative block h-24 overflow-hidden rounded-md border border-gray-200 bg-slate-50 dark:border-dark-600 dark:bg-dark-900;
+}
+
+.auth-page-style-preview span {
+  @apply absolute block;
+}
+
+.auth-page-style-preview-classic .auth-page-preview-brand {
+  @apply left-1/2 top-3 h-3 w-3 -translate-x-1/2 rounded bg-primary-500;
+}
+
+.auth-page-style-preview-classic .auth-page-preview-panel {
+  @apply bottom-2 left-1/2 top-8 w-[58%] -translate-x-1/2 rounded border border-slate-200 bg-white shadow-sm;
+}
+
+.auth-page-style-preview-classic .auth-page-preview-title {
+  @apply left-[34%] top-11 h-1.5 w-[32%] rounded-full bg-slate-600;
+}
+
+.auth-page-style-preview-classic .auth-page-preview-input {
+  @apply left-[31%] top-[3.55rem] h-2 w-[38%] rounded-sm bg-slate-200;
+}
+
+.auth-page-style-preview-classic .auth-page-preview-button {
+  @apply bottom-4 left-[31%] h-2 w-[38%] rounded-sm bg-primary-500;
+}
+
+.auth-page-style-preview-studio {
+  background: linear-gradient(90deg, transparent 0 52%, #f8fafc 52%), linear-gradient(rgb(27 58 96 / 7%) 1px, transparent 1px), linear-gradient(90deg, rgb(27 58 96 / 7%) 1px, transparent 1px), #fff;
+  background-size: auto, 14px 14px, 14px 14px, auto;
+}
+
+.auth-page-style-preview-studio .auth-page-preview-brand {
+  @apply left-2.5 top-2.5 h-2 w-7 rounded-full bg-slate-700;
+}
+
+.auth-page-style-preview-studio .auth-page-preview-panel {
+  @apply bottom-2 right-2 top-2 w-[42%] rounded border border-slate-300 bg-white shadow-sm;
+}
+
+.auth-page-style-preview-studio .auth-page-preview-title {
+  @apply left-3 top-9 h-2 w-[34%] rounded-full bg-emerald-700;
+}
+
+.auth-page-style-preview-studio .auth-page-preview-input {
+  @apply left-3 top-[3.45rem] h-5 w-[38%] rounded-sm bg-slate-900;
+}
+
+.auth-page-style-preview-studio .auth-page-preview-button {
+  @apply bottom-3 right-[5%] h-2 w-[32%] rounded-sm bg-slate-900;
+}
+
 .home-style-preview {
   @apply relative mb-3 block h-28 overflow-hidden rounded-lg border border-gray-200 bg-slate-50 p-3 dark:border-dark-600 dark:bg-dark-900;
 }
@@ -12897,51 +13017,33 @@ watch(
   left: 25%;
 }
 
-.home-style-preview-editorial {
-  background: linear-gradient(135deg, #fff7ed 0 48%, #fef3c7 48%);
-}
-
-.home-style-preview-editorial .home-style-preview-title {
-  @apply h-5 w-1/2 rounded-sm bg-amber-950;
-}
-
-.home-style-preview-operations {
-  @apply bg-slate-900;
-}
-
-.home-style-preview-operations .home-style-preview-nav,
-.home-style-preview-operations .home-style-preview-copy {
-  @apply bg-cyan-400/40;
-}
-
-.home-style-preview-operations .home-style-preview-title {
-  @apply bg-cyan-300;
-}
-
-.home-style-preview-minimal .home-style-preview-nav,
-.home-style-preview-minimal .home-style-preview-copy {
-  @apply hidden;
-}
-
-.home-style-preview-minimal .home-style-preview-title {
-  @apply left-1/4 top-10 w-1/2;
-}
-
-.home-style-preview-minimal .home-style-preview-action {
-  @apply bottom-7 left-[38%] w-1/4;
-}
-
-.home-style-preview-catalog {
+.home-style-preview-studio {
   background:
-    linear-gradient(#cbd5e1, #cbd5e1) 10% 72% / 23% 32% no-repeat,
-    linear-gradient(#94a3b8, #94a3b8) 50% 72% / 23% 32% no-repeat,
-    linear-gradient(#cbd5e1, #cbd5e1) 90% 72% / 23% 32% no-repeat,
-    #f8fafc;
+    linear-gradient(rgb(27 58 96 / 6%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(27 58 96 / 6%) 1px, transparent 1px),
+    #fff;
+  background-size: 16px 16px;
 }
 
-.home-style-preview-catalog .home-style-preview-copy,
-.home-style-preview-catalog .home-style-preview-action {
-  @apply hidden;
+.home-style-preview-studio::after {
+  content: "";
+  @apply absolute bottom-3 right-3 top-9 w-[43%] rounded-md border border-slate-700 bg-slate-900 shadow-sm;
+}
+
+.home-style-preview-studio .home-style-preview-nav {
+  @apply h-1.5 bg-slate-300;
+}
+
+.home-style-preview-studio .home-style-preview-title {
+  @apply left-4 top-10 h-2.5 w-[42%] bg-emerald-700;
+}
+
+.home-style-preview-studio .home-style-preview-copy {
+  @apply left-4 top-[3.65rem] w-[35%] bg-slate-300;
+}
+
+.home-style-preview-studio .home-style-preview-action {
+  @apply bottom-4 left-4 w-12 bg-slate-900;
 }
 
 /* ============ 系统设置 Tab 导航 ============ */

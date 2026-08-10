@@ -16,12 +16,11 @@ import (
 )
 
 const (
-	HomeStyleClassic    = "classic"
-	HomeStyleCompact    = "compact"
-	HomeStyleEditorial  = "editorial"
-	HomeStyleOperations = "operations"
-	HomeStyleMinimal    = "minimal"
-	HomeStyleCatalog    = "catalog"
+	HomeStyleClassic = "classic"
+	HomeStyleCompact = "compact"
+	HomeStyleStudio  = "studio"
+	AuthPageStyleClassic = "classic"
+	AuthPageStyleStudio  = "studio"
 
 	GrokDefaultBaseURLModeAPI     = "api"
 	GrokDefaultBaseURLModeUSEast1 = "us-east-1"
@@ -36,16 +35,19 @@ func normalizeHomeStyle(style string) string {
 		return HomeStyleClassic
 	case HomeStyleCompact:
 		return HomeStyleCompact
-	case HomeStyleEditorial:
-		return HomeStyleEditorial
-	case HomeStyleOperations:
-		return HomeStyleOperations
-	case HomeStyleMinimal:
-		return HomeStyleMinimal
-	case HomeStyleCatalog:
-		return HomeStyleCatalog
+	case HomeStyleStudio:
+		return HomeStyleStudio
 	default:
 		return HomeStyleClassic
+	}
+}
+
+func normalizeAuthPageStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case AuthPageStyleStudio:
+		return AuthPageStyleStudio
+	default:
+		return AuthPageStyleClassic
 	}
 }
 

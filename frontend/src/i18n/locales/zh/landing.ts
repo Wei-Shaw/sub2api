@@ -258,6 +258,57 @@ export default {
           flexible: '灵活',
           api: 'API'
         }
+      },
+      studio: {
+        modelsNav: '模型',
+        featuresNav: '服务能力',
+        docsNav: '文档',
+        start: '开始使用',
+        eyebrow: 'ChatGPT · Claude API',
+        heroLineOne: '一个 API 密钥，',
+        heroLineTwo: '稳定调用主流模型。',
+        description: '无需分别申请和管理多个平台账号。通过统一网关调用 ChatGPT 与 Claude，线路异常自动切换，按实际使用量计费。',
+        getKey: '获取 API 密钥',
+        viewDocs: '查看接入文档',
+        docsSoon: '接入文档即将开放',
+        terminalLabel: 'API 请求路由示例',
+        request: '请求',
+        switching: '正在切换至 {model} 路由',
+        routeComment: '已选择 {model} 可用路由',
+        yourApp: '你的应用',
+        gateway: '网关',
+        responseCode: '200 成功',
+        responseBody: '已就绪',
+        details: {
+          model: '模型',
+          route: '路由',
+          routeValue: '自动故障转移',
+          interface: '接口',
+          interfaceValue: '兼容 API'
+        },
+        featuresLabel: '服务能力',
+        features: {
+          unified: { title: '一键接入', body: '获取一个 API 密钥，即可调用所有已接入的 AI 模型，无需分别申请。' },
+          reliable: { title: '稳定可靠', body: '智能调度多个上游账号，自动切换和负载均衡，告别频繁报错。' },
+          usage: { title: '用多少付多少', body: '按实际使用量计费，支持设置配额上限，团队用量一目了然。' }
+        },
+        modelsTitle: '可用模型',
+        modelsSubtitle: '一个账户统一调用',
+        available: '可用',
+        modelPricing: '查看模型版本与实时价格',
+        serviceNormal: '服务运行正常',
+        terms: '服务条款',
+        privacy: '隐私政策',
+        support: '联系支持',
+        termsSoon: '服务条款即将开放',
+        privacySoon: '隐私政策即将开放',
+        supportSoon: '支持渠道即将开放',
+        close: '关闭',
+        modalTitle: '开始使用 {siteName}',
+        modalDescription: '注册后创建 API 密钥，即可统一调用 ChatGPT 与 Claude。',
+        modalAction: '进入注册流程',
+        modalAccountPrompt: '已有账号？',
+        modalLogin: '登录控制台'
       }
     }
   },

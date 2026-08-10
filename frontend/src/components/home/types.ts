@@ -1,10 +1,7 @@
 export type HomeStyle =
   | 'classic'
   | 'compact'
-  | 'editorial'
-  | 'operations'
-  | 'minimal'
-  | 'catalog'
+  | 'studio'
 
 export interface HomeStyleContext {
   siteName: string

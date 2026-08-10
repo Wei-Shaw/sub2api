@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">Cokey</title>
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="#fff" stroke="#dce3eb"/>
+  <path d="M8 10h5c3 0 5 2 5 5v2c0 3 2 5 5 5h1" fill="none" stroke="#172033" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="8" cy="10" r="2.5" fill="#37b98a"/>
+  <circle cx="24" cy="22" r="2.5" fill="#172033"/>
+</svg>

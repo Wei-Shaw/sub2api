@@ -1,8 +1,8 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <AuthLayout :variant="pageStyle">
+    <div :class="['space-y-6', pageStyle === 'studio' && 'studio-auth-form']" :data-testid="`${pageStyle}-register-page`">
       <!-- Title -->
-      <div class="text-center">
+      <div :class="pageStyle === 'studio' ? 'studio-auth-heading' : 'text-center'">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.createAccount') }}
         </h2>
@@ -27,7 +27,7 @@
       </div>
 
       <!-- Registration Form -->
-      <form v-else @submit.prevent="handleRegister" class="space-y-5">
+      <form v-else @submit.prevent="handleRegister" :class="pageStyle === 'studio' ? 'studio-auth-fields' : 'space-y-5'">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -238,7 +238,7 @@
         <button
           type="submit"
           :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          :class="pageStyle === 'studio' ? 'studio-auth-submit' : 'btn btn-primary w-full'"
         >
           <svg
             v-if="isLoading"
@@ -364,9 +364,10 @@ import {
   loadAffiliateReferralCode,
   resolveAffiliateReferralCode
 } from '@/utils/oauthAffiliate'
-import type { LoginAgreementDocument } from '@/types'
+import type { AuthPageStyle, LoginAgreementDocument } from '@/types'
 
 const { t, locale } = useI18n()
+const props = defineProps<{ previewStyle?: AuthPageStyle }>()
 const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 
 // ==================== Router & Stores ====================
@@ -382,6 +383,10 @@ const isLoading = ref<boolean>(false)
 const settingsLoaded = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
+const configuredPageStyle = ref<AuthPageStyle>(
+  appStore.cachedPublicSettings?.register_page_style === 'studio' ? 'studio' : 'classic'
+)
+const pageStyle = computed<AuthPageStyle>(() => props.previewStyle || configuredPageStyle.value)
 
 // Public settings
 const registrationEnabled = ref<boolean>(true)
@@ -534,6 +539,7 @@ onMounted(async () => {
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
+    configuredPageStyle.value = settings.register_page_style === 'studio' ? 'studio' : 'classic'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
@@ -1063,6 +1069,21 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
 </script>
 
 <style scoped>
+.studio-auth-form { color: #111827; }
+.studio-auth-heading { text-align: left; }
+.studio-auth-heading h2 { font-size: 28px; line-height: 1.2; font-weight: 800; color: #111827; }
+.studio-auth-heading p { margin-top: 8px; color: #6f7a8a; font-size: 13px; }
+.studio-auth-fields { display: grid; gap: 17px; }
+.studio-auth-form :deep(.input-label) { margin-bottom: 7px; color: #3e4a5c; font: 700 10px ui-monospace, Consolas, monospace; text-transform: uppercase; }
+.studio-auth-form :deep(.input) { min-height: 46px; border-color: #d6dde6; border-radius: 5px; background: #fbfcfd; color: #111827; box-shadow: none; }
+.studio-auth-form :deep(.input:focus) { border-color: #829db9; --tw-ring-color: rgb(8 127 103 / 14%); }
+.studio-auth-form :deep(.input-hint) { color: #7d8998; font-size: 11px; }
+.studio-auth-form :deep(.btn-secondary) { min-height: 44px; border-color: #d6dde6; border-radius: 5px; background: #fff; color: #334155; box-shadow: none; }
+.studio-auth-submit { min-height: 48px; width: 100%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #111827; border-radius: 6px; background: #111827; color: #fff; font-size: 13px; font-weight: 750; box-shadow: 0 8px 20px rgb(17 24 39 / 12%); transition: background 150ms ease, transform 150ms ease; }
+.studio-auth-submit:hover:not(:disabled) { background: #253043; transform: translateY(-1px); }
+.studio-auth-submit:disabled { cursor: not-allowed; opacity: .55; }
+.studio-auth-form a { color: #087f67; }
+.studio-auth-form a:hover { color: #065f4e; }
 .fade-enter-active,
 .fade-leave-active {
   transition: all 0.3s ease;

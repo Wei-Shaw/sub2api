@@ -157,6 +157,8 @@ type SystemSettings struct {
 	DocURL                      string
 	HomeContent                 string
 	HomeStyle                   string
+	LoginPageStyle              string
+	RegisterPageStyle           string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
@@ -346,6 +348,8 @@ type PublicSettings struct {
 	DocURL                              string
 	HomeContent                         string
 	HomeStyle                           string
+	LoginPageStyle                      string
+	RegisterPageStyle                   string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
 

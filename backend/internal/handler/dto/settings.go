@@ -156,6 +156,8 @@ type SystemSettings struct {
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
 	HomeStyle                   string           `json:"home_style"`
+	LoginPageStyle              string           `json:"login_page_style"`
+	RegisterPageStyle           string           `json:"register_page_style"`
 	CompactHomeEnabled          bool             `json:"compact_home_enabled"`
 	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
@@ -381,6 +383,8 @@ type PublicSettings struct {
 	DocURL                              string                   `json:"doc_url"`
 	HomeContent                         string                   `json:"home_content"`
 	HomeStyle                           string                   `json:"home_style"`
+	LoginPageStyle                      string                   `json:"login_page_style"`
+	RegisterPageStyle                   string                   `json:"register_page_style"`
 	CompactHomeEnabled                  bool                     `json:"compact_home_enabled"`
 	HideCcsImportButton                 bool                     `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled         bool                     `json:"purchase_subscription_enabled"`
