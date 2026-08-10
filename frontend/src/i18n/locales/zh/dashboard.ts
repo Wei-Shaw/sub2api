@@ -566,6 +566,10 @@ export default {
     },
     table: {
       model: '模型',
+      params: '参数',
+      modal: '模态',
+      maxOutput: '最大输出',
+      context: '上下文',
       input: '输入',
       output: '输出',
       cache: '缓存',
@@ -573,7 +577,6 @@ export default {
       cacheRead: '读取',
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',
-      rate: '折扣倍率',
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',
       perUnitImage: '/ 张',

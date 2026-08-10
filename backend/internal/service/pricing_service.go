@@ -171,6 +171,9 @@ type PricingService struct {
 	lastUpdated  time.Time
 	localHash    string
 
+	// models.dev 官方价数据源（additive 兜底 + 模型元数据，2026-08-08 fork 新增）
+	modelsDev *ModelsDevClient
+
 	// 停止信号
 	stopCh chan struct{}
 	wg     sync.WaitGroup
@@ -183,6 +186,9 @@ func NewPricingService(cfg *config.Config, remoteClient PricingRemoteClient) *Pr
 		remoteClient: remoteClient,
 		pricingData:  make(map[string]*LiteLLMModelPricing),
 		stopCh:       make(chan struct{}),
+	}
+	if cfg.Pricing.ModelsDevURL != "" {
+		s.modelsDev = NewModelsDevClient(cfg.Pricing.ModelsDevURL)
 	}
 	return s
 }
@@ -205,8 +211,45 @@ func (s *PricingService) Initialize() error {
 	// 启动定时更新
 	s.startUpdateScheduler()
 
+	// models.dev 官方价数据源：首次同步 + 30 分钟轮询（fork 新增）
+	if s.modelsDev != nil && s.modelsDev.Enabled() {
+		if err := s.modelsDev.Sync(context.Background()); err != nil {
+			logger.LegacyPrintf("service.pricing", "[Pricing] models.dev initial sync failed: %v", err)
+		} else {
+			logger.LegacyPrintf("service.pricing", "[Pricing] models.dev synced %d models", s.modelsDev.Count())
+		}
+		s.startModelsDevScheduler()
+	}
+
 	logger.LegacyPrintf("service.pricing", "[Pricing] Service initialized with %d models", len(s.pricingData))
 	return nil
+}
+
+// startModelsDevScheduler models.dev 定期轮询（默认 30 分钟，热更新）
+func (s *PricingService) startModelsDevScheduler() {
+	interval := time.Duration(s.cfg.Pricing.ModelsDevSyncIntervalMinutes) * time.Minute
+	if interval < time.Minute {
+		interval = 30 * time.Minute
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := s.modelsDev.Sync(context.Background()); err != nil {
+					logger.LegacyPrintf("service.pricing", "[Pricing] models.dev sync failed: %v", err)
+				} else {
+					logger.LegacyPrintf("service.pricing", "[Pricing] models.dev synced %d models (interval %v)", s.modelsDev.Count(), interval)
+				}
+			case <-s.stopCh:
+				return
+			}
+		}
+	}()
+	logger.LegacyPrintf("service.pricing", "[Pricing] models.dev scheduler started (every %v)", interval)
 }
 
 // Stop 停止价格服务
@@ -691,7 +734,167 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 		return s.matchOpenAIModel(lookupCandidates[0])
 	}
 
+	// 6. models.dev 官方价兜底（fork 新增：只查不写，additive 语义由调用方控制）
+	if s.modelsDev != nil {
+		if m, ok := s.modelsDev.Lookup(lookupCandidates[0]); ok {
+			return ModelsDevModelPricing(m)
+		}
+		// 6.1 分支模型引导（gpt-5.6-terra-openai-compact -> gpt-5.6）
+		if main, ok := resolveBranchToMainModel(branchModelCandidates(lookupCandidates[0]),
+			func(c string) bool {
+				_, ok := s.modelsDev.Lookup(c)
+				return ok
+			}); ok {
+			if m, ok2 := s.modelsDev.Lookup(main); ok2 {
+				return ModelsDevModelPricing(m)
+			}
+		}
+	}
+
 	return nil
+}
+
+// GetModelMetadata 查询模型元数据（context_length / max_output / modalities），供模型广场展示。
+// 数据源：models.dev。精确未命中时走分支模型引导（gpt-5.6-terra-openai-compact ->
+// gpt-5.6-terra，复制原模型参数/模态）。返回零值表示无元数据。
+func (s *PricingService) GetModelMetadata(modelName string) (contextLen int64, maxOutput int64, modalities []string) {
+	if s == nil || s.modelsDev == nil || modelName == "" {
+		return 0, 0, nil
+	}
+	m, ok := s.modelsDev.Lookup(modelName)
+	if !ok {
+		// 分支模型引导：gpt-5.6-terra-openai-compact -> gpt-5.6-terra -> gpt-5.6
+		if main, ok2 := resolveBranchToMainModel(branchModelCandidates(modelName),
+			func(c string) bool {
+				_, ok3 := s.modelsDev.Lookup(c)
+				return ok3
+			}); ok2 {
+			m, ok = s.modelsDev.Lookup(main)
+		}
+	}
+	if !ok {
+		return 0, 0, nil
+	}
+	contextLen = m.Limit.Context
+	maxOutput = m.Limit.Output
+	seen := make(map[string]struct{})
+	for _, mods := range [][]string{m.Modalities.Input, m.Modalities.Output} {
+		for _, mod := range mods {
+			if mod == "" {
+				continue
+			}
+			if _, dup := seen[mod]; dup {
+				continue
+			}
+			seen[mod] = struct{}{}
+			modalities = append(modalities, mod)
+		}
+	}
+	return contextLen, maxOutput, modalities
+}
+
+// branchAliasMap 已知裸名/别名 → 主模型映射（models.dev 未收录裸名的场景，
+// 2026-08-08 GROK 修复补充）。命中后直接作为主模型候选。
+var branchAliasMap = map[string]string{
+	"grok":               "grok-4.5",       // 裸 grok = grok-4.5（xAI 官方 bare ID）
+	"grok-build":         "grok-build-0.1", // models.dev 只收录带版本号条目
+	"grok-build-latest":  "grok-build-0.1",
+	"grok-4.20":          "grok-4-20",      // 点/连字符命名差异（models.dev 用 grok-4-20）
+	"grok-4.20-fast":     "grok-4-20",      // fast 变体引导到基础版
+	"grok-4.20-reasoning": "grok-4-20",
+	"grok-4.20-non-reasoning": "grok-4-20",
+}
+
+// branchModelCandidates 分支模型剥离候选（最长优先，逐级生成）。
+// 分支/非官方模型名（gpt-5.6-terra-openai-compact / gpt-5.2-chat-latest /
+// gpt-5.2-2025-12-11 / grok-4.20-fast）逐级剥离后缀，引导到主模型获取价格。
+// 只做结构剥离，是否有效由调用方用「价格库存在」校验（避免误匹配）。
+func branchModelCandidates(model string) []string {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(s string) {
+		if s == "" || s == lower {
+			return
+		}
+		if _, dup := seen[s]; dup {
+			return
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	// 0. 别名映射预检（grok → grok-4.5、grok-build → grok-build-0.1、点↔连字符）
+	if alias, ok := branchAliasMap[lower]; ok {
+		add(alias)
+	}
+	// 1. 去日期后缀 -2025-12-11
+	if r := regexp.MustCompile(`-\d{4}-\d{2}-\d{2}$`); r.MatchString(lower) {
+		add(r.ReplaceAllString(lower, ""))
+	}
+	// 2. 去 8 位日期后缀 -20251211
+	if r := regexp.MustCompile(`-\d{8}$`); r.MatchString(lower) {
+		add(r.ReplaceAllString(lower, ""))
+	}
+	// 3. 逐段剥离最后一个 - 段（gpt-5.6-terra-openai-compact -> gpt-5.6-terra-openai -> gpt-5.6-terra -> gpt-5.6）
+	cur := lower
+	for {
+		idx := strings.LastIndex(cur, "-")
+		if idx <= 0 {
+			break
+		}
+		cur = cur[:idx]
+		add(cur)
+		// 3.1 点↔连字符版本号变体（grok-4.20 → grok-4-20；models.dev 两种命名并存）
+		if strings.Contains(cur, ".") {
+			add(strings.ReplaceAll(cur, ".", "-"))
+		}
+	}
+	return out
+}
+
+// resolveBranchToMainModel 分支模型引导：在指定价格库中查找主模型。
+// 校验「候选主模型在库中存在」，存在才返回（避免误匹配到不相干模型）。
+func resolveBranchToMainModel(candidates []string, lookup func(string) bool) (string, bool) {
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if lookup(c) {
+			return c, true
+		}
+	}
+	return "", false
+}
+
+// GetOfficialPricingPreferModelsDev 官方价格获取（plaza 展示用，fork 新增）。
+// 回退链（用户 2026-08-08 规范）：
+//   1. models.dev 精确匹配（实时官方价）
+//   2. models.dev 分支模型引导（gpt-5.6-terra-openai-compact -> gpt-5.6）
+//   3. SUB2API 官方（LiteLLM 主文件 + fallback，含现有变体/家族回退与分支引导）
+// models.dev 获取失败（同步失败/无数据）时自然回退到 SUB2API 官方。
+func (s *PricingService) GetOfficialPricingPreferModelsDev(modelName string) *LiteLLMModelPricing {
+	modelLower := strings.ToLower(strings.TrimSpace(modelName))
+	if modelLower == "" {
+		return nil
+	}
+	// 1. models.dev 精确
+	if s.modelsDev != nil {
+		if m, ok := s.modelsDev.Lookup(modelLower); ok {
+			return ModelsDevModelPricing(m)
+		}
+		// 2. models.dev 分支引导
+		if main, ok := resolveBranchToMainModel(branchModelCandidates(modelLower),
+			func(c string) bool {
+				_, ok := s.modelsDev.Lookup(c)
+				return ok
+			}); ok {
+			if m, ok2 := s.modelsDev.Lookup(main); ok2 {
+				return ModelsDevModelPricing(m)
+			}
+		}
+	}
+	// 3. SUB2API 官方（现有链 + 分支引导）
+	return s.GetModelPricing(modelName)
 }
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
@@ -1052,11 +1255,21 @@ func (s *PricingService) GetStatus() map[string]any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return map[string]any{
+	status := map[string]any{
 		"model_count":  len(s.pricingData),
 		"last_updated": s.lastUpdated,
 		"local_hash":   s.localHash[:min(8, len(s.localHash))],
 	}
+	// models.dev 状态（fork 新增）
+	if s.modelsDev != nil && s.modelsDev.Enabled() {
+		syncAt, syncErr := s.modelsDev.LastSync()
+		status["modelsdev_models"] = s.modelsDev.Count()
+		status["modelsdev_last_sync"] = syncAt
+		if syncErr != "" {
+			status["modelsdev_sync_error"] = syncErr
+		}
+	}
+	return status
 }
 
 // ForceUpdate 强制更新

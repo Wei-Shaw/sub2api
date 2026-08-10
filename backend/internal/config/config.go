@@ -655,6 +655,10 @@ type PricingConfig struct {
 	UpdateIntervalHours int `mapstructure:"update_interval_hours"`
 	// 哈希校验间隔（分钟）
 	HashCheckIntervalMinutes int `mapstructure:"hash_check_interval_minutes"`
+	// models.dev 官方价格数据源 URL（空 = 禁用；默认 https://models.dev/api.json）
+	ModelsDevURL string `mapstructure:"modelsdev_url"`
+	// models.dev 同步间隔（分钟，默认 30）
+	ModelsDevSyncIntervalMinutes int `mapstructure:"modelsdev_sync_interval_minutes"`
 }
 
 type ServerConfig struct {
@@ -2198,6 +2202,9 @@ func setDefaults() {
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
+	// models.dev 官方价数据源（fork 新增；需注册默认值，AutomaticEnv 才能覆盖）
+	viper.SetDefault("pricing.modelsdev_url", "")
+	viper.SetDefault("pricing.modelsdev_sync_interval_minutes", 30)
 
 	// Timezone (default to Asia/Shanghai for Chinese users)
 	viper.SetDefault("timezone", "Asia/Shanghai")

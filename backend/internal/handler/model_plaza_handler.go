@@ -50,6 +50,10 @@ type modelPlazaModel struct {
 	Platform        string                     `json:"platform"`
 	Pricing         *userSupportedModelPricing `json:"pricing"`
 	OfficialPricing *modelPlazaOfficialPricing `json:"official_pricing"`
+	// 模型元数据（fork 新增：来源 models.dev，context/最大输出/模态）
+	ContextLength int64    `json:"context_length,omitempty"`
+	MaxOutput     int64    `json:"max_output,omitempty"`
+	Modalities    []string `json:"modalities,omitempty"`
 }
 
 // modelPlazaGroup 广场分组条目（白名单字段）。
@@ -165,6 +169,9 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 			Platform:        m.Platform,
 			Pricing:         toUserPricing(m.Pricing),
 			OfficialPricing: toModelPlazaOfficialPricing(m.OfficialPricing),
+			ContextLength:   m.ContextLength,
+			MaxOutput:       m.MaxOutput,
+			Modalities:      m.Modalities,
 		})
 	}
 	dto := modelPlazaGroup{

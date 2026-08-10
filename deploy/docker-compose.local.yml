@@ -50,6 +50,9 @@ services:
       # =======================================================================
       # Server Configuration
       # =======================================================================
+      # models.dev 官方价数据源（可选：空则禁用）
+      - PRICING_MODELSDEV_URL=${PRICING_MODELSDEV_URL:-}
+      - PRICING_MODELSDEV_SYNC_INTERVAL_MINUTES=${PRICING_MODELSDEV_SYNC_INTERVAL_MINUTES:-30}
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}

@@ -23,6 +23,12 @@ export interface PlazaModel {
   platform: string
   pricing: UserSupportedModelPricing | null
   official_pricing: PlazaOfficialPricing | null
+  /** 上下文长度（tokens，来源 models.dev；0 = 未知） */
+  context_length?: number
+  /** 最大输出（tokens，来源 models.dev；0 = 未知） */
+  max_output?: number
+  /** 模态（来源 models.dev，如 text/image/audio） */
+  modalities?: string[]
 }
 
 export interface ModelPlazaGroup {
