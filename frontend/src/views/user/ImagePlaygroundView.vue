@@ -10,19 +10,46 @@
           </span>
         </div>
 
-        <div class="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-          <button
-            v-for="filter in statusFilters"
-            :key="filter.value"
-            type="button"
-            class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="statusFilter === filter.value
-              ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
-              : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white'"
-            @click="statusFilter = filter.value"
-          >
-            {{ filter.label }}
-          </button>
+        <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+          <div class="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <button
+              v-for="filter in statusFilters"
+              :key="filter.value"
+              type="button"
+              class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="statusFilter === filter.value
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-950'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white'"
+              @click="statusFilter = filter.value"
+            >
+              {{ filter.label }}
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1 rounded-lg border border-gray-200 bg-white p-1 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+            <button
+              type="button"
+              data-test="gallery-refresh"
+              class="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+              :disabled="refreshing || tasks.length === 0"
+              :title="t('common.refresh')"
+              :aria-label="t('common.refresh')"
+              @click="refreshTasks"
+            >
+              <Icon name="refresh" size="xs" :class="refreshing ? 'animate-spin' : ''" />
+            </button>
+            <button
+              type="button"
+              data-test="gallery-delete-all"
+              class="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-400 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+              :disabled="tasks.length === 0 || deletingTasks"
+              :title="deletingTasks ? t('imagePlayground.actions.deleting') : t('imagePlayground.actions.deleteAll')"
+              :aria-label="deletingTasks ? t('imagePlayground.actions.deleting') : t('imagePlayground.actions.deleteAll')"
+              @click="requestDeleteAll"
+            >
+              <Icon name="trash" size="xs" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -111,6 +138,7 @@
             @download="downloadImage"
             @reuse="reuseTask"
             @regenerate="regenerateTask"
+            @delete-image="requestDeleteImage"
           />
         </div>
 
@@ -136,10 +164,10 @@
         ref="composerRef"
         class="sticky bottom-3 z-20 mt-auto overflow-visible rounded-lg border border-gray-300 bg-white/95 shadow-[0_16px_50px_rgba(0,0,0,0.15)] backdrop-blur-xl dark:border-dark-600 dark:bg-dark-900/95"
       >
-        <div class="flex min-h-12 items-center justify-between gap-3 border-b border-gray-200 px-4 py-2.5 dark:border-dark-700">
-          <div class="min-w-0">
-            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('imagePlayground.composer.settings') }}</span>
-            <span v-if="!composerExpanded" class="ml-2 truncate text-xs text-gray-400 dark:text-gray-500">{{ composerStatus }}</span>
+        <div class="flex min-h-10 items-center justify-between gap-3 border-b border-gray-200 px-3 py-1.5 dark:border-dark-700">
+          <div class="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+            <span class="flex-none text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('imagePlayground.composer.settings') }}</span>
+            <span v-if="!composerExpanded" class="min-w-0 break-words text-xs leading-5 text-gray-500 dark:text-gray-400">{{ composerSelectionSummary }}</span>
           </div>
           <button
             type="button"
@@ -154,8 +182,13 @@
           </button>
         </div>
 
-        <div v-show="composerExpanded" data-test="composer-content">
-        <div class="grid grid-cols-2 gap-3 border-b border-gray-200 p-4 dark:border-dark-700 lg:grid-cols-[1.1fr_1.1fr_1.35fr_0.72fr_0.68fr_0.78fr_104px] lg:items-end">
+        <div
+          data-test="composer-content"
+          class="composer-panel grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none"
+          :class="composerExpanded ? 'grid-rows-[1fr] opacity-100' : 'pointer-events-none grid-rows-[0fr] opacity-0'"
+        >
+        <div class="min-h-0 overflow-hidden">
+        <div class="grid grid-cols-2 gap-2 border-b border-gray-200 p-3 dark:border-dark-700 lg:grid-cols-[1.1fr_1.1fr_1.35fr_0.72fr_0.68fr_0.78fr_104px] lg:items-end">
           <label class="col-span-2 min-w-0 sm:col-span-1">
             <span class="composer-label">{{ t('imagePlayground.fields.group') }}</span>
             <Select
@@ -255,17 +288,19 @@
           </div>
         </div>
 
-        <ReferenceImagePicker
-          v-if="selectedModel?.supports_image_input"
-          :files="referenceImages"
-          :max-files="selectedModel.max_input_images || 4"
-          :max-bytes="selectedModel.max_input_image_bytes || 10 * 1024 * 1024"
-          :accepted-types="selectedModel.input_image_formats || ['image/png', 'image/jpeg', 'image/webp']"
-          @update:files="referenceImages = $event"
-          @error="handleReferenceError"
-        />
+        </div>
+        </div>
 
-        <form class="flex items-end gap-3 p-3 sm:p-4" @submit.prevent="handleGenerate">
+        <form data-test="composer-prompt-form" class="flex flex-wrap items-end gap-3 p-3 sm:flex-nowrap" @submit.prevent="handleGenerate">
+          <ReferenceImagePicker
+            v-if="selectedModel?.supports_image_input"
+            :files="referenceImages"
+            :max-files="selectedModel.max_input_images || 4"
+            :max-bytes="selectedModel.max_input_image_bytes || 10 * 1024 * 1024"
+            :accepted-types="selectedModel.input_image_formats || ['image/png', 'image/jpeg', 'image/webp']"
+            @update:files="referenceImages = $event"
+            @error="handleReferenceError"
+          />
           <div class="relative min-w-0 flex-1">
             <textarea
               ref="promptInputRef"
@@ -291,23 +326,7 @@
             <span class="hidden sm:inline">{{ submitting ? t('imagePlayground.actions.submitting') : t('imagePlayground.actions.generate') }}</span>
           </button>
         </form>
-        </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-4 py-2 text-xs text-gray-400 dark:border-dark-800 dark:text-gray-500">
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>{{ composerStatus }}</span>
-          </div>
-          <div class="flex items-center gap-1">
-            <button type="button" class="composer-action" :disabled="refreshing || tasks.length === 0" :title="t('common.refresh')" @click="refreshTasks">
-              <Icon name="refresh" size="xs" :class="refreshing ? 'animate-spin' : ''" />
-              <span>{{ t('common.refresh') }}</span>
-            </button>
-            <button type="button" class="composer-action" :disabled="tasks.length === 0 || deletingTasks" :title="t('imagePlayground.actions.deleteAll')" @click="requestDeleteAll">
-              <Icon name="trash" size="xs" />
-              <span>{{ deletingTasks ? t('imagePlayground.actions.deleting') : t('imagePlayground.actions.deleteAll') }}</span>
-            </button>
-          </div>
-        </div>
       </section>
     </div>
 
@@ -319,6 +338,7 @@
       @close="detailTask = null"
       @download="downloadImage"
       @reuse="reuseTask"
+      @delete-image="requestDeleteImage"
     />
 
     <ConfirmDialog
@@ -329,6 +349,16 @@
       danger
       @confirm="confirmDeleteAll"
       @cancel="showDeleteAllDialog = false"
+    />
+
+    <ConfirmDialog
+      :show="pendingDeleteImage !== null"
+      :title="t('imagePlayground.deleteImage.title')"
+      :message="t('imagePlayground.deleteImage.message')"
+      :confirm-text="t('imagePlayground.deleteImage.confirm')"
+      danger
+      @confirm="confirmDeleteImage"
+      @cancel="pendingDeleteImage = null"
     />
   </AppLayout>
 </template>
@@ -347,6 +377,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorCode } from '@/utils/apiError'
 import {
   downloadImagePlaygroundImage,
+  deleteImagePlaygroundImage,
   deleteImagePlaygroundTask,
   getImagePlaygroundImagePreview,
   getImagePlaygroundOptions,
@@ -386,6 +417,7 @@ const submitting = ref(false)
 const deletingTasks = ref(false)
 const composerExpanded = ref(window.innerWidth >= 1024)
 const showDeleteAllDialog = ref(false)
+const pendingDeleteImage = ref<{ task: ImagePlaygroundTask; imageIndex: number } | null>(null)
 const prompt = ref('')
 const selectedGroupId = ref<number | null>(null)
 const selectedModelId = ref<string | null>(null)
@@ -505,17 +537,17 @@ const canSubmit = computed(() =>
   && !customSizeError.value,
 )
 
-const composerStatus = computed(() => {
-  if (availableGroups.value.length === 0) return t('imagePlayground.unavailable.noGroups')
-  const processing = tasks.value.filter((task) => task.status === 'processing').length
-  if (processing > 0) return t('imagePlayground.composer.processingCount', { count: processing })
-  if (referenceImages.value.length > 0) {
-    return t('imagePlayground.composer.referenceReady', { count: referenceImages.value.length })
-  }
-  if (selectedGroup.value && selectedModel.value) {
-    return `${selectedGroup.value.name} / ${selectedModel.value.id}`
-  }
-  return t('imagePlayground.composer.ready')
+const composerSelectionSummary = computed(() => {
+  const values = [
+    selectedGroup.value?.name,
+    selectedModel.value?.id,
+    effectiveSize.value ? displaySize(effectiveSize.value) : '',
+    selectedQuality.value ? optionLabel(selectedQuality.value) : '',
+    selectedFormat.value?.toUpperCase(),
+    selectedBackground.value ? optionLabel(selectedBackground.value) : '',
+    t('imagePlayground.composer.imageCountSummary', { count: imageCount.value }),
+  ]
+  return values.filter(Boolean).join(' · ')
 })
 
 watch(selectedGroupId, () => {
@@ -740,8 +772,12 @@ function schedulePoll(taskId: string): void {
   pollTimers.set(taskId, timer)
 }
 
-function previewObjectURLKey(taskId: string, imageIndex: number): string {
-  return `${taskId}:${imageIndex}`
+function imageReference(image: ImagePlaygroundTask['images'][number]): string | number {
+  return image.id || image.index
+}
+
+function previewObjectURLKey(taskId: string, imageRef: string | number): string {
+	return `${taskId}:${imageRef}`
 }
 
 function taskWithCachedPreviews(task: ImagePlaygroundTask): ImagePlaygroundTask {
@@ -749,7 +785,7 @@ function taskWithCachedPreviews(task: ImagePlaygroundTask): ImagePlaygroundTask 
     ...task,
     images: task.images.map((image) => ({
       ...image,
-      url: previewObjectURLs.get(previewObjectURLKey(task.id, image.index)) || '',
+		url: previewObjectURLs.get(previewObjectURLKey(task.id, imageReference(image))) || '',
     })),
   }
 }
@@ -757,13 +793,13 @@ function taskWithCachedPreviews(task: ImagePlaygroundTask): ImagePlaygroundTask 
 async function loadTaskPreviews(task: ImagePlaygroundTask, includeAll = false): Promise<void> {
   try {
     const images = await Promise.all(task.images.map(async (image) => {
-      const key = previewObjectURLKey(task.id, image.index)
+		const key = previewObjectURLKey(task.id, imageReference(image))
       let previewURL = previewObjectURLs.get(key)
       if (!previewURL && !includeAll && image.index !== task.images[0]?.index) {
         return { ...image, url: '' }
       }
       if (!previewURL) {
-        const blob = await getImagePlaygroundImagePreview(task.id, image.index)
+		const blob = await getImagePlaygroundImagePreview(task.id, imageReference(image))
         if (!viewActive || !tasks.value.some((item) => item.id === task.id)) {
           return { ...image, url: '' }
         }
@@ -818,8 +854,10 @@ function openTask(task: ImagePlaygroundTask): void {
 }
 
 async function downloadImage(task: ImagePlaygroundTask, imageIndex: number): Promise<void> {
-  try {
-    const blob = await downloadImagePlaygroundImage(task.id, imageIndex)
+	try {
+		const image = task.images.find((item) => item.index === imageIndex)
+		if (!image) return
+		const blob = await downloadImagePlaygroundImage(task.id, imageReference(image))
     const extension = blob.type.includes('jpeg') ? 'jpg' : blob.type.split('/')[1] || 'png'
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -890,6 +928,36 @@ function requestDeleteAll(): void {
   showDeleteAllDialog.value = true
 }
 
+function requestDeleteImage(task: ImagePlaygroundTask, imageIndex: number): void {
+  pendingDeleteImage.value = { task, imageIndex }
+}
+
+async function confirmDeleteImage(): Promise<void> {
+  const pending = pendingDeleteImage.value
+  pendingDeleteImage.value = null
+	if (!pending) return
+	try {
+		const image = pending.task.images.find((item) => item.index === pending.imageIndex)
+		if (!image) return
+		const updated = await deleteImagePlaygroundImage(pending.task.id, imageReference(image))
+    releaseTaskPreviews(pending.task.id)
+    if (!updated) {
+      tasks.value = tasks.value.filter((task) => task.id !== pending.task.id)
+      delete taskMeta.value[pending.task.id]
+      detailTask.value = null
+    } else {
+      const clean = taskWithCachedPreviews(updated)
+      replaceTask(clean)
+      detailTask.value = clean
+      void loadTaskPreviews(updated, true)
+    }
+    persistHistory()
+    appStore.showSuccess(t('imagePlayground.messages.imageDeleted'))
+  } catch (error) {
+    appStore.showError(getErrorMessage(error))
+  }
+}
+
 async function confirmDeleteAll(): Promise<void> {
   showDeleteAllDialog.value = false
   if (deletingTasks.value || tasks.value.length === 0) return
@@ -958,12 +1026,12 @@ onBeforeUnmount(() => {
   @apply mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-400;
 }
 
-.composer-action {
-  @apply inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-gray-200;
-}
-
 .custom-size-input {
   @apply block h-[42px] w-full rounded-md border border-gray-300 bg-white px-3 text-sm tabular-nums text-gray-900 outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-900/10 dark:border-dark-600 dark:bg-dark-800 dark:text-white dark:focus:border-dark-400 dark:focus:ring-white/10;
+}
+
+.composer-panel {
+  contain: layout;
 }
 
 .playground-empty-grid {

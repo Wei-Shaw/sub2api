@@ -231,7 +231,7 @@ func (h *AsyncImageHandler) GetImage(c *gin.Context) {
 	}
 	download, err := h.tasks.Download(c.Request.Context(), service.ImageTaskOwner{
 		UserID: apiKey.UserID, APIKeyID: apiKey.ID,
-	}, c.Param("task_id"), imageIndex)
+	}, c.Param("task_id"), strconv.Itoa(imageIndex))
 	if err != nil {
 		imageTaskError(c, err)
 		return

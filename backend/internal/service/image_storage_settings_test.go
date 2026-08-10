@@ -73,6 +73,8 @@ func (s *recordingStorage) Load(context.Context, string, int64) ([]byte, string,
 	return []byte("image"), "image/png", nil
 }
 
+func (s *recordingStorage) Size(context.Context, string) (int64, error) { return 0, nil }
+
 func (s *recordingStorage) Delete(context.Context, string) error { return nil }
 
 func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {

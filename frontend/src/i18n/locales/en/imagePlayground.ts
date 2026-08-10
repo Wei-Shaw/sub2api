@@ -16,6 +16,7 @@ export default {
     actions: {
       generate: 'Generate', submitting: 'Submitting', preview: 'Preview', download: 'Download image',
       reuse: 'Reuse prompt', regenerate: 'Generate again', deleteAll: 'Delete all', deleting: 'Deleting',
+      deleteImage: 'Delete image',
       createAPIKey: 'Create API key',
       decreaseCount: 'Decrease count', increaseCount: 'Increase count', swapDimensions: 'Swap width and height',
     },
@@ -23,6 +24,11 @@ export default {
       title: 'Delete all images?',
       message: 'This permanently deletes the records and object-storage files for {count} tasks. Deleted images cannot be viewed, downloaded, or recovered. Tasks still generating are kept.',
       confirm: 'Delete all',
+    },
+    deleteImage: {
+      title: 'Delete this image?',
+      message: 'The image file will be permanently removed from object storage and cannot be viewed, downloaded, or recovered.',
+      confirm: 'Delete image',
     },
     retention: {
       current: 'Files retained for {hours} hours',
@@ -35,6 +41,7 @@ export default {
       settings: 'Generation settings', expand: 'Expand settings', collapse: 'Collapse settings', ready: 'Ready to generate',
       processingCount: '{count} tasks generating',
       referenceReady: '{count} reference images selected',
+      imageCountSummary: '{count} images',
     },
     references: {
       title: 'Reference images', add: 'Upload reference images', addShort: 'Add', remove: 'Remove reference image', clear: 'Clear',
@@ -52,7 +59,7 @@ export default {
       filtered: 'No tasks with this status yet',
     },
     detail: { title: 'Image details', prompt: 'Prompt', createdAt: 'Created', expiresAt: 'Available until' },
-    messages: { submitted: 'Task submitted and generating in the background', completed: 'Image generation completed', deleted: 'Deleted {count} image tasks' },
+    messages: { submitted: 'Task submitted and generating in the background', completed: 'Image generation completed', deleted: 'Deleted {count} image tasks', imageDeleted: 'Image deleted' },
     errors: {
       loadFailed: 'Could not load Image Playground',
       generationFailed: 'The provider did not generate an image. Adjust the prompt or settings and try again.',
@@ -88,6 +95,21 @@ export default {
         aspectRatio: 'Aspect ratio cannot exceed {value}:1',
         totalPixels: 'Total pixels must be between {min} and {max} MP',
       },
+    },
+    admin: {
+      title: 'Image generation records',
+      description: 'Review every user image task, object-storage usage, and manually delete a task or individual image.',
+      totalTasks: 'Retained tasks',
+      totalImages: 'Retained images',
+      storageUsed: 'Storage used',
+      taskStorage: 'Task storage',
+      createdAt: 'Created',
+      empty: 'No retained image tasks',
+      noImages: 'No images are available for this task',
+      deleteTask: 'Delete task',
+      deleteTaskTitle: 'Delete this image task?',
+      deleteTaskMessage: 'Every image and record in this task will be permanently deleted and cannot be recovered.',
+      deleted: 'Image record deleted',
     },
   },
 }

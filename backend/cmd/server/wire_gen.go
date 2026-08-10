@@ -301,7 +301,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	imageTaskService := service.ProvideImageTaskService(imageTaskStore, imageStorageSettingService)
 	asyncImageHandler := handler.NewAsyncImageHandler(imageTaskService, openAIGatewayHandler)
 	imagePlaygroundService := service.NewImagePlaygroundService(apiKeyService, gatewayService, imageTaskService, settingService)
-	imagePlaygroundHandler := handler.NewImagePlaygroundHandler(imagePlaygroundService, imageTaskService, asyncImageHandler)
+	imagePlaygroundHandler := handler.NewImagePlaygroundHandler(imagePlaygroundService, imageTaskService, asyncImageHandler, userService)
 	batchImageRepository := repository.NewBatchImageRepository(db)
 	batchImageQueue := repository.NewBatchImageQueue(redisClient, configConfig)
 	batchImageModelPricingResolver := service.ProvideBatchImageModelPricingResolver(modelPricingResolver)

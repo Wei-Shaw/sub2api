@@ -87,6 +87,9 @@ func RegisterAdminRoutes(
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
+		// 图片工作台记录与对象存储管理
+		registerImagePlaygroundAdminRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -119,6 +122,16 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerImagePlaygroundAdminRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	images := admin.Group("/image-playground")
+	{
+		images.GET("/tasks", h.ImagePlayground.AdminListTasks)
+		images.GET("/tasks/:task_id/images/:image_index", h.ImagePlayground.AdminPreview)
+		images.DELETE("/tasks/:task_id", h.ImagePlayground.AdminDeleteTask)
+		images.DELETE("/tasks/:task_id/images/:image_index", h.ImagePlayground.AdminDeleteImage)
 	}
 }
 

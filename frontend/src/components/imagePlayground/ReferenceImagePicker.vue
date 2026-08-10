@@ -1,58 +1,54 @@
 <template>
   <div
-    class="border-b border-gray-100 px-3 py-3 dark:border-dark-800 sm:px-4"
-    :class="dragActive ? 'bg-gray-50 dark:bg-dark-800/70' : ''"
+    data-test="reference-image-picker"
+    class="flex h-[58px] max-w-full flex-none items-center gap-1.5 overflow-x-auto rounded-lg border border-gray-300 bg-white p-1.5 shadow-sm transition-colors dark:border-dark-600 dark:bg-dark-800 sm:max-w-[250px]"
+    :class="dragActive ? 'border-gray-500 bg-gray-50 ring-2 ring-gray-900/10 dark:border-dark-400 dark:bg-dark-700' : ''"
+    :title="t('imagePlayground.references.title')"
     @dragenter.prevent="dragActive = true"
     @dragover.prevent="dragActive = true"
     @dragleave.prevent="handleDragLeave"
     @drop.prevent="handleDrop"
   >
-    <div class="mb-2 flex items-center justify-between gap-3">
-      <div class="flex min-w-0 items-center gap-2">
-        <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('imagePlayground.references.title') }}</span>
-        <span class="text-[11px] tabular-nums text-gray-400 dark:text-gray-500">{{ files.length }}/{{ maxFiles }}</span>
-      </div>
+    <button
+      v-if="files.length < maxFiles"
+      type="button"
+      class="relative flex h-11 w-11 flex-none items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-gray-500 transition-colors hover:border-gray-500 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/20 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:bg-dark-700 dark:hover:text-white"
+      :title="t('imagePlayground.references.add')"
+      @click="inputRef?.click()"
+    >
+      <Icon name="upload" size="sm" />
+      <span class="sr-only">{{ t('imagePlayground.references.add') }}</span>
+      <span class="absolute -right-1 -top-1 rounded-full border border-white bg-gray-700 px-1 text-[9px] leading-4 tabular-nums text-white dark:border-dark-800 dark:bg-gray-200 dark:text-gray-900">
+        {{ files.length }}/{{ maxFiles }}
+      </span>
+    </button>
+
+    <div
+      v-for="preview in previews"
+      :key="preview.key"
+      class="group relative h-11 w-11 flex-none overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-dark-700 dark:bg-dark-900"
+    >
+      <img :src="preview.url" :alt="preview.file.name" class="h-full w-full object-cover" />
       <button
-        v-if="files.length > 0"
         type="button"
-        class="text-xs text-gray-400 transition-colors hover:text-gray-800 dark:text-gray-500 dark:hover:text-gray-200"
-        @click="emit('update:files', [])"
+        class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-black/75 text-white opacity-100 shadow-sm transition hover:bg-black sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        :title="t('imagePlayground.references.remove')"
+        @click="removeFile(preview.index)"
       >
-        {{ t('imagePlayground.references.clear') }}
+        <Icon name="x" size="xs" />
       </button>
     </div>
 
-    <div class="flex min-w-0 gap-2 overflow-x-auto pb-0.5">
-      <button
-        v-if="files.length < maxFiles"
-        type="button"
-        class="flex h-16 w-16 flex-none flex-col items-center justify-center rounded-md border border-dashed border-gray-300 bg-gray-50 text-gray-500 transition-colors hover:border-gray-500 hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-900/20 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:bg-dark-700 dark:hover:text-white"
-        :title="t('imagePlayground.references.add')"
-        @click="inputRef?.click()"
-      >
-        <Icon name="upload" size="sm" />
-        <span class="mt-1 text-[10px] leading-none">{{ t('imagePlayground.references.addShort') }}</span>
-      </button>
-
-      <div
-        v-for="preview in previews"
-        :key="preview.key"
-        class="group relative h-16 w-16 flex-none overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-dark-700 dark:bg-dark-800"
-      >
-        <img :src="preview.url" :alt="preview.file.name" class="h-full w-full object-cover" />
-        <button
-          type="button"
-          class="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-black/70 text-white opacity-100 shadow-sm transition hover:bg-black sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-          :title="t('imagePlayground.references.remove')"
-          @click="removeFile(preview.index)"
-        >
-          <Icon name="x" size="xs" />
-        </button>
-        <span class="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-1 text-[9px] text-white">
-          {{ preview.file.name }}
-        </span>
-      </div>
-    </div>
+    <button
+      v-if="files.length > 0"
+      type="button"
+      class="flex h-8 w-8 flex-none items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+      :title="t('imagePlayground.references.clear')"
+      @click="emit('update:files', [])"
+    >
+      <Icon name="trash" size="xs" />
+      <span class="sr-only">{{ t('imagePlayground.references.clear') }}</span>
+    </button>
 
     <input
       ref="inputRef"

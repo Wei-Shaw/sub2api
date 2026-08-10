@@ -161,6 +161,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     imagePlayground: '图片工作台',
+    imageRecords: '图片记录',
     batchImage: '批量生图',
     usage: '使用记录',
     redeem: '兑换',

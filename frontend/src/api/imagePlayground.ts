@@ -54,7 +54,8 @@ export interface ImagePlaygroundSubmitRequest {
 }
 
 export interface ImagePlaygroundImage {
-  index: number
+	id?: string
+	index: number
   url: string
   download_url: string
 }
@@ -72,8 +73,27 @@ export interface ImagePlaygroundTask {
   error?: unknown
   created_at: number
   completed_at?: number
-  expires_at: number
+  expires_at?: number
   poll_url: string
+}
+
+export interface AdminImagePlaygroundTask {
+  task: ImagePlaygroundTask
+  user_id: number
+  api_key_id: number
+  user_email?: string
+  username?: string
+  storage_bytes: number
+  image_sizes: number[]
+}
+
+export interface AdminImagePlaygroundPage {
+  tasks: AdminImagePlaygroundTask[]
+  page: number
+  page_size: number
+  total: number
+  total_images: number
+  storage_bytes: number
 }
 
 export async function getImagePlaygroundOptions(): Promise<ImagePlaygroundOptions> {
@@ -117,10 +137,10 @@ export async function listImagePlaygroundTasks(): Promise<ImagePlaygroundTask[]>
 
 export async function downloadImagePlaygroundImage(
   taskId: string,
-  imageIndex: number,
+  imageRef: string | number,
 ): Promise<Blob> {
   const response = await apiClient.get<Blob>(
-    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${imageIndex}/download`,
+    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(String(imageRef))}/download`,
     { responseType: 'blob', timeout: 60000 },
   )
   return response.data
@@ -128,10 +148,10 @@ export async function downloadImagePlaygroundImage(
 
 export async function getImagePlaygroundImagePreview(
   taskId: string,
-  imageIndex: number,
+  imageRef: string | number,
 ): Promise<Blob> {
   const response = await apiClient.get<Blob>(
-    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${imageIndex}`,
+    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(String(imageRef))}`,
     { responseType: 'blob', timeout: 60000 },
   )
   return response.data
@@ -139,4 +159,37 @@ export async function getImagePlaygroundImagePreview(
 
 export async function deleteImagePlaygroundTask(taskId: string): Promise<void> {
   await apiClient.delete(`/image-playground/tasks/${encodeURIComponent(taskId)}`)
+}
+
+export async function deleteImagePlaygroundImage(taskId: string, imageRef: string | number): Promise<ImagePlaygroundTask | null> {
+  const response = await apiClient.delete<ImagePlaygroundTask>(
+    `/image-playground/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(String(imageRef))}`,
+  )
+  return response.status === 204 ? null : response.data
+}
+
+export async function listAdminImagePlaygroundTasks(page = 1, pageSize = 24): Promise<AdminImagePlaygroundPage> {
+  const response = await apiClient.get<AdminImagePlaygroundPage>('/admin/image-playground/tasks', {
+    params: { page, page_size: pageSize },
+  })
+  return response.data
+}
+
+export async function getAdminImagePlaygroundPreview(taskId: string, imageRef: string | number): Promise<Blob> {
+  const response = await apiClient.get<Blob>(
+    `/admin/image-playground/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(String(imageRef))}`,
+    { responseType: 'blob', timeout: 60000 },
+  )
+  return response.data
+}
+
+export async function deleteAdminImagePlaygroundTask(taskId: string): Promise<void> {
+  await apiClient.delete(`/admin/image-playground/tasks/${encodeURIComponent(taskId)}`)
+}
+
+export async function deleteAdminImagePlaygroundImage(taskId: string, imageRef: string | number): Promise<ImagePlaygroundTask | null> {
+  const response = await apiClient.delete<ImagePlaygroundTask>(
+    `/admin/image-playground/tasks/${encodeURIComponent(taskId)}/images/${encodeURIComponent(String(imageRef))}`,
+  )
+  return response.status === 204 ? null : response.data
 }

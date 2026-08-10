@@ -19,6 +19,7 @@ import (
 type S3ImageStorage struct {
 	client       *s3.Client
 	getObject    func(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	headObject   func(context.Context, *s3.HeadObjectInput, ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
 	deleteObject func(context.Context, *s3.DeleteObjectInput, ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
 	bucket       string
 }
@@ -41,9 +42,31 @@ func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3
 	return &S3ImageStorage{
 		client:       client,
 		getObject:    client.GetObject,
+		headObject:   client.HeadObject,
 		deleteObject: client.DeleteObject,
 		bucket:       cfg.Bucket,
 	}, nil
+}
+
+func (s *S3ImageStorage) Size(ctx context.Context, key string) (int64, error) {
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	headObject := s.headObject
+	if headObject == nil && s.client != nil {
+		headObject = s.client.HeadObject
+	}
+	if headObject == nil {
+		finish()
+		return 0, fmt.Errorf("S3 HeadObject: client is unavailable")
+	}
+	output, err := headObject(ctx, &s3.HeadObjectInput{Bucket: &s.bucket, Key: &key})
+	finish()
+	if err != nil {
+		return 0, fmt.Errorf("S3 HeadObject: %w", err)
+	}
+	if output == nil || output.ContentLength == nil || *output.ContentLength < 0 {
+		return 0, fmt.Errorf("S3 HeadObject: invalid content length")
+	}
+	return *output.ContentLength, nil
 }
 
 func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data []byte) error {

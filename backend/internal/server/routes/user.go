@@ -111,6 +111,7 @@ func RegisterUserRoutes(
 			imagePlayground.DELETE("/tasks/:task_id", h.ImagePlayground.DeleteTask)
 			imagePlayground.GET("/tasks/:task_id/images/:image_index", h.ImagePlayground.Preview)
 			imagePlayground.GET("/tasks/:task_id/images/:image_index/download", h.ImagePlayground.Download)
+			imagePlayground.DELETE("/tasks/:task_id/images/:image_index", h.ImagePlayground.DeleteImage)
 		}
 
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）

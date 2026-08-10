@@ -1,13 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getOptions, listTasks, submitTask, getTask, getPreview, deleteTask, showSuccess, showError } = vi.hoisted(() => ({
+const { getOptions, listTasks, submitTask, getTask, getPreview, deleteTask, deleteImage, showSuccess, showError } = vi.hoisted(() => ({
   getOptions: vi.fn(),
   listTasks: vi.fn(),
   submitTask: vi.fn(),
   getTask: vi.fn(),
   getPreview: vi.fn(),
   deleteTask: vi.fn(),
+  deleteImage: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
 }))
@@ -19,6 +20,7 @@ vi.mock('@/api/imagePlayground', () => ({
   getImagePlaygroundTask: getTask,
   getImagePlaygroundImagePreview: getPreview,
   deleteImagePlaygroundTask: deleteTask,
+  deleteImagePlaygroundImage: deleteImage,
   downloadImagePlaygroundImage: vi.fn(),
 }))
 
@@ -57,6 +59,7 @@ const options = {
       output_formats: ['png'],
       backgrounds: ['auto'],
       output_compression: true,
+      supports_image_input: true,
     }],
   }],
 }
@@ -70,6 +73,7 @@ describe('ImagePlaygroundView', () => {
     getOptions.mockResolvedValue(options)
     listTasks.mockResolvedValue([])
     deleteTask.mockResolvedValue(undefined)
+    deleteImage.mockResolvedValue(null)
     getPreview.mockResolvedValue(new Blob(['preview'], { type: 'image/png' }))
     submitTask.mockResolvedValue({
       id: 'task-1',
@@ -152,10 +156,16 @@ describe('ImagePlaygroundView', () => {
 
     await toggle.trigger('click')
     expect(toggle.attributes('aria-expanded')).toBe('false')
-    expect(wrapper.get('[data-test="composer-content"]').attributes('style')).toContain('display: none')
+    expect(wrapper.get('[data-test="composer-content"]').classes()).toContain('grid-rows-[0fr]')
+    expect(wrapper.get('[data-test="composer-prompt-form"]').isVisible()).toBe(true)
+    expect(wrapper.get('[data-test="composer-prompt-form"] textarea').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-test="composer-prompt-form"] [data-test="reference-image-picker"]').isVisible()).toBe(true)
+    expect(wrapper.text()).toContain('OpenAI Images')
+    expect(wrapper.text()).toContain('gpt-image-1.5')
+    expect(wrapper.text()).toContain('1024×1024')
 
     await toggle.trigger('click')
-    expect(wrapper.get('[data-test="composer-content"]').attributes('style') || '').not.toContain('display: none')
+    expect(wrapper.get('[data-test="composer-content"]').classes()).toContain('grid-rows-[1fr]')
     wrapper.unmount()
   })
 
@@ -191,9 +201,8 @@ describe('ImagePlaygroundView', () => {
     })
     await flushPromises()
 
-    const deleteButton = wrapper.findAll('button').find(button => button.text().includes('imagePlayground.actions.deleteAll'))
-    expect(deleteButton).toBeDefined()
-    await deleteButton!.trigger('click')
+    const deleteButton = wrapper.get('[data-test="gallery-delete-all"]')
+    await deleteButton.trigger('click')
 
     const dialog = wrapper.findComponent(ConfirmDialog)
     expect(dialog.props('show')).toBe(true)
@@ -204,13 +213,59 @@ describe('ImagePlaygroundView', () => {
     expect(dialog.props('show')).toBe(false)
     expect(localStorage.getItem('image_playground_history_v1')).not.toBeNull()
 
-    await deleteButton!.trigger('click')
+    await deleteButton.trigger('click')
     await dialog.vm.$emit('confirm')
     await flushPromises()
     expect(deleteTask).toHaveBeenCalledWith('task-1')
     expect(dialog.props('show')).toBe(false)
     expect(localStorage.getItem('image_playground_history_v1')).toBeNull()
     expect(wrapper.find('[data-test="task-card"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('confirms and deletes one generated image', async () => {
+    listTasks.mockResolvedValue([{
+      id: 'task-1',
+      object: 'image.playground.task',
+      status: 'completed',
+      group_id: 7,
+      platform: 'openai',
+      model: 'gpt-image-1.5',
+      images: [{ index: 0, url: '', download_url: '/download' }],
+      created_at: 1_700_000_000,
+      expires_at: 1_700_086_400,
+      poll_url: '/api/v1/image-playground/tasks/task-1',
+    }])
+    deleteImage.mockResolvedValue(null)
+    const wrapper = mount(ImagePlaygroundView, {
+      global: {
+        renderStubDefaultSlot: true,
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Select: true,
+          PlaygroundTaskCard: {
+            props: ['task'],
+            emits: ['deleteImage'],
+            template: '<button data-test="delete-image" @click="$emit(\'deleteImage\', task, 0)" />',
+          },
+          PlaygroundDetailDialog: true,
+          RouterLink: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-test="delete-image"]').trigger('click')
+    const dialogs = wrapper.findAllComponents(ConfirmDialog)
+    const dialog = dialogs.find((item) => item.props('show') && item.props('title') === 'imagePlayground.deleteImage.title')
+    expect(dialog).toBeDefined()
+    await dialog!.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(deleteImage).toHaveBeenCalledWith('task-1', 0)
+    expect(wrapper.find('[data-test="delete-image"]').exists()).toBe(false)
+    expect(showSuccess).toHaveBeenCalledWith('imagePlayground.messages.imageDeleted')
     wrapper.unmount()
   })
 

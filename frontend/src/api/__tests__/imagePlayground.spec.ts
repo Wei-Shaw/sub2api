@@ -11,12 +11,17 @@ vi.mock('@/api/client', () => ({
 }))
 
 import {
+  deleteAdminImagePlaygroundImage,
+  deleteAdminImagePlaygroundTask,
+  deleteImagePlaygroundImage,
   downloadImagePlaygroundImage,
   deleteImagePlaygroundTask,
+  getAdminImagePlaygroundPreview,
   getImagePlaygroundImagePreview,
   getImagePlaygroundOptions,
   getImagePlaygroundTask,
   listImagePlaygroundTasks,
+  listAdminImagePlaygroundTasks,
   submitImagePlaygroundTask,
 } from '@/api/imagePlayground'
 
@@ -84,6 +89,29 @@ describe('image playground api', () => {
     del.mockResolvedValueOnce({})
     await expect(deleteImagePlaygroundTask('task/one')).resolves.toBeUndefined()
     expect(del).toHaveBeenCalledWith('/image-playground/tasks/task%2Fone')
+  })
+
+  it('deletes individual images and exposes admin image management endpoints', async () => {
+    const updatedTask = { id: 'task/one', status: 'completed', images: [{ index: 0 }] }
+    const adminPage = { tasks: [], page: 1, page_size: 24, total: 0, total_images: 0, storage_bytes: 0 }
+    const blob = new Blob(['image'], { type: 'image/png' })
+    del.mockResolvedValueOnce({ status: 200, data: updatedTask })
+    get.mockResolvedValueOnce({ data: adminPage })
+    get.mockResolvedValueOnce({ data: blob })
+    del.mockResolvedValueOnce({ status: 204 })
+    del.mockResolvedValueOnce({ status: 204 })
+
+    await expect(deleteImagePlaygroundImage('task/one', 1)).resolves.toBe(updatedTask)
+    await expect(listAdminImagePlaygroundTasks(2, 50)).resolves.toBe(adminPage)
+    await expect(getAdminImagePlaygroundPreview('task/one', 0)).resolves.toBe(blob)
+    await expect(deleteAdminImagePlaygroundImage('task/one', 0)).resolves.toBeNull()
+    await expect(deleteAdminImagePlaygroundTask('task/one')).resolves.toBeUndefined()
+
+    expect(del).toHaveBeenNthCalledWith(1, '/image-playground/tasks/task%2Fone/images/1')
+    expect(get).toHaveBeenNthCalledWith(1, '/admin/image-playground/tasks', { params: { page: 2, page_size: 50 } })
+    expect(get).toHaveBeenNthCalledWith(2, '/admin/image-playground/tasks/task%2Fone/images/0', { responseType: 'blob', timeout: 60000 })
+    expect(del).toHaveBeenNthCalledWith(2, '/admin/image-playground/tasks/task%2Fone/images/0')
+    expect(del).toHaveBeenNthCalledWith(3, '/admin/image-playground/tasks/task%2Fone')
   })
 
   it('submits reference images as multipart form data', async () => {

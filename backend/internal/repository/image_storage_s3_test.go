@@ -69,6 +69,25 @@ func TestS3ImageStorageLoadPropagatesGetFailure(t *testing.T) {
 	require.ErrorContains(t, err, "access denied")
 }
 
+func TestS3ImageStorageSizeUsesConfiguredBucketAndKey(t *testing.T) {
+	var gotBucket, gotKey string
+	storage := &S3ImageStorage{
+		bucket: "image-bucket",
+		headObject: func(_ context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+			gotBucket = valueOrEmpty(input.Bucket)
+			gotKey = valueOrEmpty(input.Key)
+			contentLength := int64(1536)
+			return &s3.HeadObjectOutput{ContentLength: &contentLength}, nil
+		},
+	}
+
+	size, err := storage.Size(context.Background(), "images/imgtask_1-0.png")
+	require.NoError(t, err)
+	require.Equal(t, int64(1536), size)
+	require.Equal(t, "image-bucket", gotBucket)
+	require.Equal(t, "images/imgtask_1-0.png", gotKey)
+}
+
 func TestS3ImageStorageDeleteUsesConfiguredBucketAndKey(t *testing.T) {
 	var gotBucket, gotKey string
 	storage := &S3ImageStorage{

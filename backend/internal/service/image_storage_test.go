@@ -69,6 +69,15 @@ func (f *fakeImageStorage) Load(_ context.Context, key string, _ int64) ([]byte,
 	return nil, "", errors.New("object not found")
 }
 
+func (f *fakeImageStorage) Size(_ context.Context, key string) (int64, error) {
+	for _, image := range f.saved {
+		if image.key == key {
+			return int64(len(image.data)), nil
+		}
+	}
+	return 0, errors.New("object not found")
+}
+
 func TestImageResultUploaderRewritesB64JSON(t *testing.T) {
 	storage := &fakeImageStorage{}
 	uploader := NewImageResultUploader(storage, "images/", 0, nil)

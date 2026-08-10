@@ -51,7 +51,7 @@
         >
           {{ task.images.length }} {{ t('imagePlayground.images') }}
         </div>
-        <ExpiryCountdown v-if="task.expires_at" :expires-at="task.expires_at" :now="now" />
+        <ExpiryCountdown v-if="task.status === 'completed' && task.expires_at" :expires-at="task.expires_at" :now="now" />
       </div>
 
       <div
@@ -112,6 +112,15 @@
           >
             <Icon name="refresh" size="sm" />
           </button>
+          <button
+            v-if="task.status === 'completed' && task.images[0]"
+            type="button"
+            class="task-action task-action-danger"
+            :title="t('imagePlayground.actions.deleteImage')"
+            @click="$emit('deleteImage', task, task.images[0].index)"
+          >
+            <Icon name="trash" size="sm" />
+          </button>
         </div>
       </div>
     </div>
@@ -135,6 +144,7 @@ defineEmits<{
   (event: 'download', task: ImagePlaygroundTask, imageIndex: number): void
   (event: 'reuse', task: ImagePlaygroundTask): void
   (event: 'regenerate', task: ImagePlaygroundTask): void
+  (event: 'deleteImage', task: ImagePlaygroundTask, imageIndex: number): void
 }>()
 
 const { t, locale } = useI18n()
@@ -170,6 +180,10 @@ const errorMessage = computed(() => {
 <style scoped>
 .task-action {
   @apply flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:text-gray-500 dark:hover:bg-dark-700 dark:hover:text-white;
+}
+
+.task-action-danger {
+  @apply hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400;
 }
 
 .playground-shimmer {

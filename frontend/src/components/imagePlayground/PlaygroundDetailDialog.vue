@@ -84,6 +84,10 @@
             <Icon name="copy" size="sm" class="mr-2" />
             {{ t('imagePlayground.actions.reuse') }}
           </button>
+          <button type="button" class="btn btn-danger w-full sm:col-span-2 lg:col-span-1" @click="$emit('deleteImage', task, selectedIndex)">
+            <Icon name="trash" size="sm" class="mr-2" />
+            {{ t('imagePlayground.actions.deleteImage') }}
+          </button>
         </div>
       </aside>
     </div>
@@ -109,14 +113,21 @@ defineEmits<{
   (event: 'close'): void
   (event: 'download', task: ImagePlaygroundTask, imageIndex: number): void
   (event: 'reuse', task: ImagePlaygroundTask): void
+  (event: 'deleteImage', task: ImagePlaygroundTask, imageIndex: number): void
 }>()
 
 const { t, locale } = useI18n()
 const selectedIndex = ref(0)
 
-watch(() => props.task?.id, () => {
-  selectedIndex.value = props.task?.images[0]?.index ?? 0
-})
+watch(
+  () => [props.task?.id, props.task?.images.map((image) => image.index).join(',')],
+  () => {
+    if (!props.task?.images.some((image) => image.index === selectedIndex.value)) {
+      selectedIndex.value = props.task?.images[0]?.index ?? 0
+    }
+  },
+  { immediate: true },
+)
 
 const selectedImage = computed(() => props.task?.images.find((image) => image.index === selectedIndex.value))
 
@@ -132,9 +143,9 @@ const dateFormatter = computed(() => new Intl.DateTimeFormat(locale.value, {
 }))
 
 const formattedTime = computed(() => props.task ? dateFormatter.value.format(toDate(props.task.created_at)) : '')
-const formattedExpiry = computed(() => props.task ? dateFormatter.value.format(toDate(props.task.expires_at)) : '')
+const formattedExpiry = computed(() => props.task?.expires_at ? dateFormatter.value.format(toDate(props.task.expires_at)) : '')
 const expiryCountdownText = computed(() => {
-  if (!props.task) return ''
+  if (!props.task?.expires_at) return ''
   const expiry = toDate(props.task.expires_at).getTime()
   if (expiry <= props.now) return t('imagePlayground.retention.expired')
   const seconds = Math.max(0, Math.ceil((expiry - props.now) / 1000))

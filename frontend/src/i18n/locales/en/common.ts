@@ -161,6 +161,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     imagePlayground: 'Image Playground',
+    imageRecords: 'Image Records',
     batchImage: 'Batch Images',
     usage: 'Usage',
     redeem: 'Redeem',

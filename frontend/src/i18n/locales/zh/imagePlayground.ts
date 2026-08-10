@@ -16,6 +16,7 @@ export default {
     actions: {
       generate: '生成图片', submitting: '正在提交', preview: '预览', download: '下载图片',
       reuse: '复用提示词', regenerate: '重新生成', deleteAll: '删除全部', deleting: '正在删除',
+      deleteImage: '删除此图片',
       createAPIKey: '去创建 API Key',
       decreaseCount: '减少一张', increaseCount: '增加一张', swapDimensions: '交换宽高',
     },
@@ -23,6 +24,11 @@ export default {
       title: '删除全部图片？',
       message: '将永久删除 {count} 个任务的记录和对象存储文件，删除后无法查看、下载或恢复。正在生成的任务不会被删除。',
       confirm: '确认删除',
+    },
+    deleteImage: {
+      title: '删除这张图片？',
+      message: '图片文件将从对象存储永久删除，删除后无法查看、下载或恢复。',
+      confirm: '删除图片',
     },
     retention: {
       current: '文件保留 {hours} 小时',
@@ -35,6 +41,7 @@ export default {
       settings: '生成参数', expand: '展开参数', collapse: '收起参数', ready: '准备生成',
       processingCount: '{count} 个任务正在生成',
       referenceReady: '已选择 {count} 张参考图',
+      imageCountSummary: '{count} 张',
     },
     references: {
       title: '参考图片', add: '上传参考图片', addShort: '添加', remove: '移除参考图片', clear: '清空',
@@ -52,7 +59,7 @@ export default {
       filtered: '这个状态下还没有任务',
     },
     detail: { title: '图片详情', prompt: '提示词', createdAt: '创建时间', expiresAt: '保留至' },
-    messages: { submitted: '任务已提交，图片将在后台生成', completed: '图片生成完成', deleted: '已删除 {count} 个图片任务' },
+    messages: { submitted: '任务已提交，图片将在后台生成', completed: '图片生成完成', deleted: '已删除 {count} 个图片任务', imageDeleted: '图片已删除' },
     errors: {
       loadFailed: '图片工作台加载失败',
       generationFailed: '上游没有成功生成图片，请调整提示词或参数后重试',
@@ -88,6 +95,21 @@ export default {
         aspectRatio: '长短边比例不能超过 {value}:1',
         totalPixels: '总像素需在 {min}–{max} 百万之间',
       },
+    },
+    admin: {
+      title: '图片生成记录',
+      description: '查看所有用户的图片任务、对象存储占用，并手动删除任务或单张图片。',
+      totalTasks: '保留中的任务',
+      totalImages: '保留中的图片',
+      storageUsed: '已占用空间',
+      taskStorage: '任务占用',
+      createdAt: '创建时间',
+      empty: '当前没有保留中的图片任务',
+      noImages: '该任务没有可用图片',
+      deleteTask: '删除整个任务',
+      deleteTaskTitle: '删除整个图片任务？',
+      deleteTaskMessage: '该任务的全部图片和记录都会永久删除，无法恢复。',
+      deleted: '图片记录已删除',
     },
   },
 }

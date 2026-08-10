@@ -60,6 +60,8 @@ func (noopImageStorage) Load(context.Context, string, int64) ([]byte, string, er
 	return []byte("image"), "image/png", nil
 }
 
+func (noopImageStorage) Size(context.Context, string) (int64, error) { return 0, nil }
+
 func (noopImageStorage) Delete(context.Context, string) error { return nil }
 
 // TestAsyncImageEnablesWithoutRestart drives the actual HTTP path for the bug behind
