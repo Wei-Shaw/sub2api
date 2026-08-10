@@ -1117,6 +1117,18 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
+	if strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "error" {
+		return false
+	}
+	if isOpenAIContextWindowError(message, payload) {
+		return false
+	}
+	// Capacity shedding can arrive as an error event before response.failed.
+	// Intercept it before semantic output so the request remains replay-safe.
+	return isOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
+}
+
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
 	if account == nil {
 		return false
