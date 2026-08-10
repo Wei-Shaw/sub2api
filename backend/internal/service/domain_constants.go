@@ -45,6 +45,8 @@ const (
 	PlatformKiro        = domain.PlatformKiro
 	PlatformGrok        = domain.PlatformGrok
 	PlatformFal         = domain.PlatformFal
+	PlatformAtlasCloud  = domain.PlatformAtlasCloud
+	PlatformApiz        = domain.PlatformApiz
 	PlatformComposite   = domain.PlatformComposite
 )
 
@@ -59,6 +61,8 @@ var AllowedQuotaPlatforms = []string{
 	PlatformKiro,
 	PlatformGrok,
 	PlatformFal,
+	PlatformAtlasCloud,
+	PlatformApiz,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

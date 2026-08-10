@@ -37,12 +37,106 @@ func (s *GatewayService) SelectFalAccountInGroup(ctx context.Context, groupID *i
 	}
 }
 
+// selectFalAccountInGroupSingle 视频异步任务的混合分组选号入口。
+// 视频链路统一走 /api/v1/model 门面，分组内可能同时存在 fal / atlascloud / apiz 平台账号；
+// 这里按“哪个平台的账号支持该模型”做混合选号，选中后转发到对应平台的账号，
+// 而不是硬编码只取 fal 平台账号。
 func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, api string) (*Account, error) {
-	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, PlatformFal, api)
+	accounts, err := s.listSchedulableVideoAccounts(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
-	return s.hydrateSelectedAccount(ctx, account)
+	if len(accounts) == 0 {
+		return nil, ErrNoAvailableAccounts
+	}
+
+	ctx = s.withWindowCostPrefetch(ctx, accounts)
+	ctx = s.withRPMPrefetch(ctx, accounts)
+	eligible := func(account *Account) bool {
+		if account == nil {
+			return false
+		}
+		if _, excluded := excludedIDs[account.ID]; excluded {
+			return false
+		}
+		if !s.isAccountSchedulableForSelection(account) {
+			return false
+		}
+		if !s.videoAccountSupportsRequest(ctx, account, requestedModel, api) {
+			return false
+		}
+		return s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
+			s.isAccountSchedulableForQuota(account) &&
+			s.isAccountSchedulableForWindowCost(ctx, account, false) &&
+			s.isAccountSchedulableForRPM(ctx, account, false)
+	}
+
+	if sessionHash != "" && s.cache != nil {
+		if accountID, cacheErr := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); cacheErr == nil && accountID > 0 {
+			for i := range accounts {
+				account := &accounts[i]
+				if account.ID == accountID && eligible(account) {
+					return s.hydrateSelectedAccount(ctx, account)
+				}
+			}
+		}
+	}
+
+	var selected *Account
+	for i := range accounts {
+		account := &accounts[i]
+		if !eligible(account) {
+			continue
+		}
+		if selected == nil || imageAccountPreferred(account, selected) {
+			selected = account
+		}
+	}
+	if selected == nil {
+		return nil, ErrNoAvailableAccounts
+	}
+	if sessionHash != "" && s.cache != nil {
+		if bindErr := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTLForGroup(s.groupFromContext(ctx, derefGroupID(groupID)))); bindErr != nil {
+			logger.LegacyPrintf("service.gateway", "set video session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, bindErr)
+		}
+	}
+	return s.hydrateSelectedAccount(ctx, selected)
+}
+
+// listSchedulableVideoAccounts 合并可参与视频调度的多平台账号（fal + atlascloud + apiz）。
+func (s *GatewayService) listSchedulableVideoAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
+	falAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformFal, false)
+	if err != nil {
+		return nil, fmt.Errorf("query fal accounts failed: %w", err)
+	}
+	atlasAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformAtlasCloud, false)
+	if err != nil {
+		return nil, fmt.Errorf("query atlascloud accounts failed: %w", err)
+	}
+	apizAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformApiz, false)
+	if err != nil {
+		return nil, fmt.Errorf("query apiz accounts failed: %w", err)
+	}
+	merged := make([]Account, 0, len(falAccounts)+len(atlasAccounts)+len(apizAccounts))
+	merged = append(merged, falAccounts...)
+	merged = append(merged, atlasAccounts...)
+	merged = append(merged, apizAccounts...)
+	return merged, nil
+}
+
+// videoAccountSupportsRequest 判断某平台账号是否支持指定视频模型。
+func (s *GatewayService) videoAccountSupportsRequest(ctx context.Context, account *Account, requestedModel, api string) bool {
+	if account == nil {
+		return false
+	}
+	switch account.Platform {
+	case PlatformFal:
+		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)
+	case PlatformAtlasCloud, PlatformApiz:
+		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
+	default:
+		return false
+	}
 }
 
 func (s *GatewayService) SelectImageAccountMixed(

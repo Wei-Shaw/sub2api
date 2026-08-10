@@ -239,7 +239,7 @@ func (h *VideoModelHandler) buildVideoModelItem(ctx context.Context, slug string
 		Family:      family,
 		Variant:     variant,
 		DisplayName: slug,
-		SubmitPath:  "/tasks/v1/" + slug,
+		SubmitPath:  "/api/v1/model/" + slug,
 		StatusPath:  "",
 		ResultPath:  "",
 		CancelPath:  "",

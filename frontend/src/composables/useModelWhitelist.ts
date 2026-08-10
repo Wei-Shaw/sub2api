@@ -160,6 +160,16 @@ const metaModels = [
   'codellama-70b-instruct', 'codellama-34b-instruct', 'codellama-13b-instruct'
 ]
 
+// AtlasCloud 视频模型
+const atlascloudModels = [
+  'bytedance/seedance-2.0/image-to-video'
+]
+
+// apiz 视频模型
+const apizModels = [
+  'clawsea/seedance2.0'
+]
+
 // xAI Grok
 const xaiModels = [
   'grok-4.5',
@@ -266,6 +276,8 @@ const allModelsList: string[] = [
   ...mistralModels,
   ...metaModels,
   ...xaiModels,
+  ...atlascloudModels,
+  ...apizModels,
   ...cohereModels,
   ...yiModels,
   ...moonshotModels,
@@ -473,6 +485,8 @@ export function getModelsByPlatform(platform: string): string[] {
     // fal 的可选模型为动态列表（来自 fal 平台 models 接口），无硬编码清单，
     // 这里返回空，避免回退到 claudeModels 造成"模型限制显示 Claude 模型"的错觉。
     case 'fal': return []
+    case 'atlascloud': return atlascloudModels
+    case 'apiz': return apizModels
     case 'kiro': return kiroModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels

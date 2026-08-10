@@ -1381,7 +1381,7 @@ function tryPeekBody(): Record<string, unknown> | null {
 const curlSnippet = computed(() => {
   // 优先使用系统设置中配置的 API 端点（appStore.apiBaseUrl），
   // 保证示例与用户实际对外暴露的网关地址一致；未配置时回落到当前页面 origin。
-  const url = `${resolvedApiBase.value}/tasks/v1/${slug.value}`
+  const url = `${resolvedApiBase.value}/api/v1/model/${slug.value}`
   // 默认不泄露 API Key。仅当用户主动打开旁边的 "在示例中显示 API Key"
   // toggle，且已选定 key 时，才拼接真实密钥。其他情况一律用 {api-key} 占位符，
   // 避免用户直接复制后致密钥意外泄露（截图、共享代码等场景）。
@@ -1542,11 +1542,11 @@ const integratePrompt = computed(() => {
     lines.push('【要求】')
     lines.push('1. 认证：Authorization: Bearer <API_KEY>，请把 API Key 作为函数入参 / CLI 参数 / 配置项传入，不要硬编码到源码里。')
     lines.push('2. 提交后拿到 request_id，用 GET 轮询：')
-    lines.push(`   - 轮询地址：${base}/tasks/v1/${s}/requests/{request_id}/status`)
+    lines.push(`   - 轮询地址：${base}/api/v1/model/${s}/requests/{request_id}/status`)
     lines.push('   - 建议初始 2s，指数退避到 15s，总超时 10 分钟。')
     lines.push('3. 状态字段可能是 IN_QUEUE / IN_PROGRESS / COMPLETED / FAILED / CANCELED；只有 COMPLETED 才去读产物。')
     lines.push('4. 错误处理：网络错误重试 3 次；HTTP 4xx 直接抛错并把响应体打出来；HTTP 5xx 走退避重试。')
-    lines.push(`5. 结果获取：COMPLETED 后再调一次 GET ${base}/tasks/v1/${s}/requests/{request_id} 拿最终 payload，返回给调用方。`)
+    lines.push(`5. 结果获取：COMPLETED 后再调一次 GET ${base}/api/v1/model/${s}/requests/{request_id} 拿最终 payload，返回给调用方。`)
     lines.push('6. 请把 timeout、baseUrl、apiKey、slug、请求体 都做成函数参数或配置项，不要写死。')
     lines.push('7. 产物必须包含：完整源码 + 依赖安装命令 + 运行方式 + 一个示例 main 函数演示端到端流程。')
     lines.push(`8. 代码风格要符合 ${lang} 的社区最佳实践，包含必要的类型标注/错误分支/日志。`)
@@ -1594,11 +1594,11 @@ const integratePrompt = computed(() => {
   lines.push('[Requirements]')
   lines.push('1. Auth: `Authorization: Bearer <API_KEY>`. Pass the API key in as a function argument / CLI flag / config value — do not hardcode it into the source.')
   lines.push('2. After submit, poll GET:')
-  lines.push(`   - ${base}/tasks/v1/${s}/requests/{request_id}/status`)
+  lines.push(`   - ${base}/api/v1/model/${s}/requests/{request_id}/status`)
   lines.push('   - Start at 2s, exponential backoff up to 15s, hard timeout 10 min.')
   lines.push('3. Possible status values: IN_QUEUE / IN_PROGRESS / COMPLETED / FAILED / CANCELED. Only fetch output on COMPLETED.')
   lines.push('4. Errors: retry network errors 3x; on 4xx surface the response body and stop; on 5xx back-off retry.')
-  lines.push(`5. On COMPLETED, GET ${base}/tasks/v1/${s}/requests/{request_id} to obtain the final payload and return it to the caller.`)
+  lines.push(`5. On COMPLETED, GET ${base}/api/v1/model/${s}/requests/{request_id} to obtain the final payload and return it to the caller.`)
   lines.push('6. baseUrl / apiKey / slug / timeout / request body must be configurable, not hardcoded.')
   lines.push('7. Deliver: full source + install command + how to run + a `main` demo that runs end-to-end.')
   lines.push(`8. Follow the ${lang} community best practice — types, error branches, logging.`)

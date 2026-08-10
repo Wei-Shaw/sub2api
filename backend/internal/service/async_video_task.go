@@ -17,7 +17,7 @@ const (
 
 // 异步视频任务对外门面常量。
 const (
-	AsyncVideoFacadeFal = "fal" // /tasks/v1/*path fal 原生异步门面
+	AsyncVideoFacadeFal = "fal" // /api/v1/model/*path fal 原生异步门面
 )
 
 // AsyncVideoTask 异步视频任务领域模型。

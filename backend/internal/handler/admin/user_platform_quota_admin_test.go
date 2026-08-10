@@ -96,6 +96,8 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	cache := &billingCacheStub{}
 	h := buildTestHandler(repo, cache)
 
+	// 请求体枚举全部 AllowedQuotaPlatforms；新增平台时需同步补充，
+	// 否则 records 数量断言会与 len(service.AllowedQuotaPlatforms) 不符。
 	body := `{"quotas":[
 		{"platform":"anthropic","daily_limit_usd":10.0,"weekly_limit_usd":null,"monthly_limit_usd":100.0},
 		{"platform":"openai","daily_limit_usd":80.0,"weekly_limit_usd":300.0,"monthly_limit_usd":null},
@@ -103,7 +105,9 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		{"platform":"antigravity","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"kiro","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
-		{"platform":"fal","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
+		{"platform":"fal","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"atlascloud","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"apiz","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
 	]}`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)
@@ -117,9 +121,10 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
-	// 缓存失效：请求中 2 个 platform + 软删除的 5 个 platform（gemini, antigravity, grok, fal, kiro）= 7 次
-	if len(cache.deleteCalls) != 7 {
-		t.Errorf("expected 7 cache delete calls, got %d: %+v", len(cache.deleteCalls), cache.deleteCalls)
+	// 缓存失效：请求中 2 个 platform + 软删除的其余 platform
+	// （gemini, antigravity, grok, fal, kiro, atlascloud, apiz）= 全部允许平台数。
+	if len(cache.deleteCalls) != len(service.AllowedQuotaPlatforms) {
+		t.Errorf("expected %d cache delete calls, got %d: %+v", len(service.AllowedQuotaPlatforms), len(cache.deleteCalls), cache.deleteCalls)
 	}
 }
 

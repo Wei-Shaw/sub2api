@@ -171,13 +171,8 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true
         },
-        // Fal 视频门面（异步任务四件套）。演练台直调 /tasks/v1/{model}
-        // 相关端点，必须由 dev proxy 显式转发到后端，否则会被 Vite 视为静态
-        // 资源 404。
-        '/tasks': {
-          target: backendUrl,
-          changeOrigin: true
-        },
+        // 视频门面（异步任务四件套）已并入 /api/v1/model/*，由上面的 '/api'
+        // 代理统一转发，无需单独条目。
         '/setup': {
           target: backendUrl,
           changeOrigin: true

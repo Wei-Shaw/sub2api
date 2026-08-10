@@ -660,6 +660,14 @@ export default {
         baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
         apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
       },
+      atlascloud: {
+        baseUrlHint: '填写 AtlasCloud 平台提供的 API Base URL（不含尾部斜杠，如 https://api.atlascloud.ai）。',
+        apiKeyHint: '填写 AtlasCloud 平台提供的 API Key。'
+      },
+      apiz: {
+        baseUrlHint: '填写 apiz 平台的 API Base URL（不含尾部斜杠），留空则使用默认 https://api.apiz.ai。',
+        apiKeyHint: '填写 apiz 平台提供的 API Key。'
+      },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:

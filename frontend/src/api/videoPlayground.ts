@@ -1,7 +1,7 @@
 /**
  * Video Playground API
  *
- * 独立的 axios 实例，用于演练台直调 fal 视频门面（/tasks/v1/{model}...）。
+ * 独立的 axios 实例，用于演练台直调视频门面（/api/v1/model/{model}...）。
  * 关键约束：
  *   - 不复用主 apiClient：主实例会自动注入 JWT、剥壳 {code,data}、401 跳登录，
  *     这些都不适合"用户拿一把 API Key 走真实调用链"的语义。
@@ -16,7 +16,7 @@ import axios, { AxiosInstance } from 'axios'
 // 独立 axios 实例：baseURL 走同源相对路径，
 // 由 Vite dev proxy 或生产 Caddy 转发到后端。
 const playgroundClient: AxiosInstance = axios.create({
-  baseURL: '/tasks/v1',
+  baseURL: '/api/v1/model',
   timeout: 60_000, // 视频任务提交/取消/查询本身很快；60s 兜底防止 hang 死
   headers: {
     'Content-Type': 'application/json',

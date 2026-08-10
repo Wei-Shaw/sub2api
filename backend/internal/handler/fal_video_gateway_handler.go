@@ -18,18 +18,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// FalVideoGatewayHandler 处理 fal 视频异步平台的对外门面（原生 fal 协议，路径 /tasks/v1/*path）。
+// FalVideoGatewayHandler 处理视频异步平台的对外统一门面（原生 fal 协议，路径 /api/v1/model/*path）。
 //
 // 与 FalGatewayHandler 平行独立：
 //   - 图片走 /fal/*path，走 AsyncMediaService，透传 fal.Response{Images}
-//   - 视频走 /tasks/v1/*path，走 AsyncVideoService，透传 fal 上游 result 原始 JSON
+//   - 视频走 /api/v1/model/*path，走 AsyncVideoService，透传上游 result 原始 JSON
 //
 // 路径形态：
 //
-//	POST /tasks/v1/{slug}                         -> submit
-//	GET  /tasks/v1/{slug}/requests/{id}/status    -> status
-//	GET  /tasks/v1/{slug}/requests/{id}           -> result（透传上游 result payload）
-//	PUT  /tasks/v1/{slug}/requests/{id}/cancel    -> cancel
+//	POST /api/v1/model/{slug}                         -> submit
+//	GET  /api/v1/model/{slug}/requests/{id}/status    -> status
+//	GET  /api/v1/model/{slug}/requests/{id}           -> result（透传上游 result payload）
+//	PUT  /api/v1/model/{slug}/requests/{id}/cancel    -> cancel
 type FalVideoGatewayHandler struct {
 	gatewayService *service.GatewayService
 	accountService *service.AccountService
@@ -58,7 +58,7 @@ func (h *FalVideoGatewayHandler) jsonError(c *gin.Context, status int, errType, 
 	})
 }
 
-// Native 是 /tasks/v1/*path 的统一入口，按 method + suffix 分发。
+// Native 是 /api/v1/model/*path 的统一入口，按 method + suffix 分发。
 func (h *FalVideoGatewayHandler) Native(c *gin.Context) {
 	path := strings.Trim(c.Param("path"), "/")
 	method := c.Request.Method
@@ -123,12 +123,13 @@ func (h *FalVideoGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 		return
 	}
 
-	// 选号：在当前分组内挑一个 fal 平台账号（混合分组也支持）。
+	// 选号：视频链路统一走 /api/v1/model 门面，在当前混合分组内按“该模型属于哪个平台”
+	// 选出对应平台账号（fal / atlascloud / apiz），再转发到该账号。
 	// slug 自带 api 段（如 .../text-to-video），api 传空串。
 	account, err := h.gatewayService.SelectFalAccountInGroup(c.Request.Context(), apiKey.GroupID, "", model, nil, "")
 	if err != nil || account == nil {
-		reqLog.Warn("fal_video.no_available_fal_account", zap.Error(err))
-		h.jsonError(c, http.StatusServiceUnavailable, "api_error", "no available fal account")
+		reqLog.Warn("fal_video.no_available_account", zap.Error(err))
+		h.jsonError(c, http.StatusServiceUnavailable, "api_error", "no available video account")
 		return
 	}
 
@@ -279,9 +280,9 @@ func (h *FalVideoGatewayHandler) videoCallbackBase(c *gin.Context, model, reqID 
 	}
 	model = strings.Trim(model, "/")
 	if model == "" {
-		return scheme + "://" + c.Request.Host + "/tasks/v1/requests/" + reqID
+		return scheme + "://" + c.Request.Host + "/api/v1/model/requests/" + reqID
 	}
-	return scheme + "://" + c.Request.Host + "/tasks/v1/" + model + "/requests/" + reqID
+	return scheme + "://" + c.Request.Host + "/api/v1/model/" + model + "/requests/" + reqID
 }
 
 // ----- helpers -----

@@ -364,13 +364,13 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 //
 // composite 分组允许挂载 fal 账号（异步媒体旁路），并且渠道可以在 fal tab 下
 // 配置 fal 平台的 model_pricing / model_mapping。因此当分组是 composite、
-// 请求还没解析出具体 target_platform 时（例如走 fal 原生 /tasks/v1/... 网关时
+// 请求还没解析出具体 target_platform 时（例如走 fal 原生 /api/v1/model/... 网关时
 // 不会经过文本聊天的 composite 路由，也就不会设置 ForcePlatform），
 // 也要能命中 fal 平台的缓存 key，否则 pricing lookup 会返回 nil。
 // 缓存 key 里带 platform，这里放宽白名单不会跨平台误命中。
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformFal}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformFal, PlatformAtlasCloud, PlatformApiz}
 	}
 	return []string{groupPlatform}
 }

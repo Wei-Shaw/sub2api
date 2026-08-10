@@ -600,6 +600,14 @@ export default {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
         apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
       },
+      atlascloud: {
+        baseUrlHint: 'Enter the API Base URL provided by AtlasCloud (without trailing slash, e.g. https://api.atlascloud.ai).',
+        apiKeyHint: 'Enter the API Key provided by AtlasCloud.'
+      },
+      apiz: {
+        baseUrlHint: 'Enter the apiz API Base URL (without trailing slash). Leave blank to use the default https://api.apiz.ai.',
+        apiKeyHint: 'Enter the API Key provided by apiz.'
+      },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
