@@ -136,6 +136,7 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/WEB3_DEPOSIT_CORE_ARCHITECTURE_CN.md
 !docs/WEB3_DEPOSIT_RUNBOOK.md
 !docs/tokenhive/
 docs/tokenhive/*
