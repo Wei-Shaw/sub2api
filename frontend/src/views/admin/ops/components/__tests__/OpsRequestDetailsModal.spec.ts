@@ -139,4 +139,28 @@ describe('OpsRequestDetailsModal', () => {
     }))
     expect(listUsage).not.toHaveBeenCalled()
   })
+
+  it('requests only SLA failures for platform availability details', async () => {
+    const wrapper = mount(OpsRequestDetailsModal, {
+      props: {
+        modelValue: false,
+        timeRange: '1h',
+        preset: { title: 'Availability', kind: 'error', slaOnly: true }
+      },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /></div>' },
+          Pagination: true
+        }
+      }
+    })
+
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    expect(listRequestDetails).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'error',
+      sla_only: true
+    }))
+  })
 })

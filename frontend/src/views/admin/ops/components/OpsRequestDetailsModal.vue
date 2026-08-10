@@ -20,6 +20,7 @@ export interface OpsRequestDetailsPreset {
   min_duration_ms?: number
   max_duration_ms?: number
   has_ttft?: boolean
+  slaOnly?: boolean
 }
 
 interface Props {
@@ -138,6 +139,7 @@ const fetchData = async () => {
     if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
     if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
     if (typeof props.preset.has_ttft === 'boolean') params.has_ttft = props.preset.has_ttft
+    if (typeof props.preset.slaOnly === 'boolean') params.sla_only = props.preset.slaOnly
 
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
@@ -174,7 +176,8 @@ watch(
     props.preset.kind,
     props.preset.min_duration_ms,
     props.preset.max_duration_ms,
-    props.preset.has_ttft
+    props.preset.has_ttft,
+    props.preset.slaOnly
   ],
   () => {
     if (!props.modelValue) return

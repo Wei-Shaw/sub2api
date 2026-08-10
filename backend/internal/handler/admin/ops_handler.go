@@ -46,9 +46,11 @@ func (h *OpsHandler) GetErrorLogByID(c *gin.Context) {
 }
 
 const (
-	opsListViewErrors   = "errors"
-	opsListViewExcluded = "excluded"
-	opsListViewAll      = "all"
+	opsListViewErrors           = "errors"
+	opsListViewExcluded         = "excluded"
+	opsListViewAll              = "all"
+	opsListViewPlatformFailures = "platform_failures"
+	opsListViewProviderFailures = "provider_failures"
 )
 
 func parseOpsViewParam(c *gin.Context) string {
@@ -63,9 +65,22 @@ func parseOpsViewParam(c *gin.Context) string {
 		return opsListViewExcluded
 	case opsListViewAll:
 		return opsListViewAll
+	case opsListViewPlatformFailures:
+		return opsListViewPlatformFailures
+	case opsListViewProviderFailures:
+		return opsListViewProviderFailures
 	default:
 		return opsListViewErrors
 	}
+}
+
+func applyOpsUpstreamListScope(filter *service.OpsErrorLogFilter) {
+	if filter == nil || filter.View == opsListViewProviderFailures {
+		return
+	}
+	filter.ErrorPhasesAny = []string{"upstream", "account_auth"}
+	filter.IncludeRecoveredUpstream = true
+	filter.Owner = "provider"
 }
 
 func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
@@ -470,10 +485,9 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 	}
 
 	filter.View = parseOpsViewParam(c)
-	filter.ErrorPhasesAny = []string{"upstream", "account_auth"}
-	// Provider-health list includes recovered inference and credential rows.
-	filter.IncludeRecoveredUpstream = true
-	filter.Owner = "provider"
+	// The exact provider-failure card scope is already encoded by final_outcome.
+	// Generic provider-health lists retain their legacy phase and owner filters.
+	applyOpsUpstreamListScope(filter)
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
 
@@ -645,6 +659,14 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 			return
 		}
 		filter.HasTTFT = &parsed
+	}
+	if v := strings.TrimSpace(c.Query("sla_only")); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			response.BadRequest(c, "Invalid sla_only")
+			return
+		}
+		filter.SLAOnly = parsed
 	}
 
 	out, err := h.opsService.ListRequestDetails(c.Request.Context(), filter)

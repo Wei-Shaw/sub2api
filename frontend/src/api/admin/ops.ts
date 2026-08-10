@@ -199,6 +199,8 @@ export interface OpsRequestDetailsParams {
   min_duration_ms?: number
   max_duration_ms?: number
   has_ttft?: boolean
+  // Only include failures that participate in platform availability.
+  sla_only?: boolean
 
   sort?: OpsRequestDetailsSort
 
@@ -1242,7 +1244,7 @@ export async function getOpenAITokenStats(
   return data
 }
 
-export type OpsErrorListView = 'errors' | 'excluded' | 'all'
+export type OpsErrorListView = 'errors' | 'excluded' | 'all' | 'platform_failures' | 'provider_failures'
 
 export type OpsErrorListQueryParams = {
   page?: number

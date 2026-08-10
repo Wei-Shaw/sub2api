@@ -149,6 +149,29 @@ describe('OpsDashboardHeader health score breakdown', () => {
     })
   })
 
+  it('opens platform availability details with the SLA-only scope', async () => {
+    const wrapper = mountHeader(makeOverview())
+    await flushPromises()
+
+    await wrapper.get('[data-testid="platform-availability-details-button"]').trigger('click')
+
+    expect(wrapper.emitted('openRequestDetails')?.at(-1)?.[0]).toEqual({
+      title: 'admin.ops.requestDetails.title',
+      kind: 'error',
+      slaOnly: true
+    })
+  })
+
+  it('opens card-scoped platform and provider failure details', async () => {
+    const wrapper = mountHeader(makeOverview())
+    await flushPromises()
+
+    await wrapper.get('[data-testid="platform-failures-details-button"]').trigger('click')
+    await wrapper.get('[data-testid="provider-failures-details-button"]').trigger('click')
+
+    expect(wrapper.emitted('openErrorDetails')).toEqual([['platform'], ['provider']])
+  })
+
   it('keeps the latest realtime result when filters change during an in-flight request', async () => {
     let resolveInitial!: (value: unknown) => void
     let resolveFiltered!: (value: unknown) => void

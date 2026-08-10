@@ -170,4 +170,17 @@ func TestBuildOpsErrorLogsWhere_ViewSeparatesSLAFromExcludedClientErrors(t *test
 	if strings.Contains(allWhere, "counts_toward_sla") || strings.Contains(allWhere, "alert_family,'')") {
 		t.Fatalf("all view must not add SLA classification filters: %s", allWhere)
 	}
+
+	platformWhere, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{View: "platform_failures"})
+	if !strings.Contains(platformWhere, "e.final_outcome = 'platform_failed'") || !strings.Contains(platformWhere, "counts_toward_sla") || !strings.Contains(platformWhere, "e.is_count_tokens = FALSE") {
+		t.Fatalf("platform failure drill-down must match the platform card scope: %s", platformWhere)
+	}
+	if strings.Contains(platformWhere, "COALESCE(e.status_code, 0) >= 400") {
+		t.Fatalf("platform failure drill-down must retain streaming failures logged after status 200: %s", platformWhere)
+	}
+
+	providerWhere, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{View: "provider_failures"})
+	if !strings.Contains(providerWhere, "e.final_outcome = 'provider_failed'") || !strings.Contains(providerWhere, "counts_toward_sla") || !strings.Contains(providerWhere, "e.is_count_tokens = FALSE") {
+		t.Fatalf("provider failure drill-down must match the provider card scope: %s", providerWhere)
+	}
 }

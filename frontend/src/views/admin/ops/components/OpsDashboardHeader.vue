@@ -38,7 +38,7 @@ interface Emits {
   (e: 'update:customTimeRange', startTime: string, endTime: string): void
   (e: 'refresh'): void
   (e: 'openRequestDetails', preset?: OpsRequestDetailsPreset): void
-  (e: 'openErrorDetails', kind: 'request' | 'upstream'): void
+  (e: 'openErrorDetails', kind: 'request' | 'upstream' | 'platform' | 'provider'): void
   (e: 'openSettings'): void
   (e: 'openAlertRules'): void
   (e: 'enterFullscreen'): void
@@ -220,7 +220,7 @@ function openDetails(preset?: OpsRequestDetailsPreset) {
   emit('openRequestDetails', preset)
 }
 
-function openErrorDetails(kind: 'request' | 'upstream') {
+function openErrorDetails(kind: 'request' | 'upstream' | 'platform' | 'provider') {
   emit('openErrorDetails', kind)
 }
 
@@ -1291,9 +1291,10 @@ function handleToolbarRefresh() {
             </div>
             <button
               v-if="!props.fullscreen"
+              data-testid="platform-availability-details-button"
               class="text-[10px] font-bold text-blue-500 hover:underline"
               type="button"
-              @click="openDetails({ title: t('admin.ops.requestDetails.title'), kind: 'error' })"
+              @click="openDetails({ title: t('admin.ops.requestDetails.title'), kind: 'error', slaOnly: true })"
             >
               {{ t('admin.ops.requestDetails.details') }}
             </button>
@@ -1422,7 +1423,7 @@ function handleToolbarRefresh() {
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.platformFailures') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.errors')" />
             </div>
-            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
+            <button v-if="!props.fullscreen" data-testid="platform-failures-details-button" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('platform')">
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>
@@ -1452,7 +1453,7 @@ function handleToolbarRefresh() {
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.providerFailures') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.upstreamErrors')" />
             </div>
-            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
+            <button v-if="!props.fullscreen" data-testid="provider-failures-details-button" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('provider')">
               {{ t('admin.ops.requestDetails.details') }}
             </button>
           </div>

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import OpsErrorLogTable from './OpsErrorLogTable.vue'
-import { opsAPI, type OpsErrorLog } from '@/api/admin/ops'
+import { opsAPI, type OpsErrorListView, type OpsErrorLog } from '@/api/admin/ops'
 import { buildOpsErrorTimeParams } from '../utils/opsErrorParams'
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
   platform?: string
   groupId?: number | null
   errorType: 'request' | 'upstream'
+  failureScope?: 'platform' | 'provider' | null
 }
 
 const props = defineProps<Props>()
@@ -36,10 +37,12 @@ const q = ref('')
 const statusCode = ref<number | 'other' | null>(null)
 const phase = ref<string>('')
 const errorOwner = ref<string>('')
-const viewMode = ref<'errors' | 'excluded' | 'all'>('errors')
+const viewMode = ref<OpsErrorListView>('errors')
 
 
 const modalTitle = computed(() => {
+  if (props.failureScope === 'platform') return t('admin.ops.platformFailures')
+  if (props.failureScope === 'provider') return t('admin.ops.providerFailures')
   return props.errorType === 'upstream' ? t('admin.ops.errorDetails.upstreamErrors') : t('admin.ops.errorDetails.requestErrors')
 })
 
@@ -63,6 +66,12 @@ const ownerSelectOptions = computed(() => {
 
 
 const viewModeSelectOptions = computed(() => {
+  if (props.failureScope === 'platform') {
+    return [{ value: 'platform_failures', label: t('admin.ops.platformFailures') }]
+  }
+  if (props.failureScope === 'provider') {
+    return [{ value: 'provider_failures', label: t('admin.ops.providerFailures') }]
+  }
   return [
     { value: 'errors', label: t('admin.ops.errorDetails.viewErrors') || 'errors' },
     { value: 'excluded', label: t('admin.ops.errorDetails.viewExcluded') || 'excluded' },
@@ -106,7 +115,7 @@ async function fetchErrorLogs() {
     const params: Record<string, any> = {
       page: page.value,
       page_size: pageSize.value,
-      view: viewMode.value,
+      view: props.failureScope ? `${props.failureScope}_failures` : viewMode.value,
       sort_by: sortBy.value,
       sort_order: sortOrder.value
     }
@@ -144,9 +153,9 @@ async function fetchErrorLogs() {
   function resetFilters() {
     q.value = ''
     statusCode.value = null
-    phase.value = props.errorType === 'upstream' ? 'upstream' : ''
+    phase.value = !props.failureScope && props.errorType === 'upstream' ? 'upstream' : ''
     errorOwner.value = ''
-    viewMode.value = 'errors'
+    viewMode.value = props.failureScope ? `${props.failureScope}_failures` : 'errors'
     page.value = 1
     fetchErrorLogs()
   }
@@ -163,7 +172,7 @@ watch(
 )
 
 watch(
-  () => [props.timeRange, props.customStartTime, props.customEndTime, props.platform, props.groupId] as const,
+  () => [props.timeRange, props.customStartTime, props.customEndTime, props.platform, props.groupId, props.failureScope] as const,
   () => {
     if (!props.show) return
     page.value = 1

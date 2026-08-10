@@ -62,6 +62,7 @@ type OpsRequestDetailFilter struct {
 	MinDurationMs *int
 	MaxDurationMs *int
 	HasTTFT       *bool
+	SLAOnly       bool
 
 	// Sort: created_at_desc (default), duration_desc, ttft_desc, or ttft_asc.
 	Sort string

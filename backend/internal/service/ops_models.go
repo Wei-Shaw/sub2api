@@ -164,6 +164,7 @@ type OpsErrorLogFilter struct {
 	// - errors: show actionable errors (exclude business-limited / 429 / 529)
 	// - excluded: only show excluded errors
 	// - all: show everything
+	// - platform_failures/provider_failures: exact drill-down for dashboard cards
 	View string
 
 	Page     int

@@ -91,6 +91,11 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		where = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	errorScopeCondition := "AND COALESCE(o.status_code, 0) >= 400"
+	if filter != nil && filter.SLAOnly {
+		errorScopeCondition = "AND COALESCE(o.counts_toward_sla, NOT COALESCE(o.is_business_limited, false)) = TRUE AND o.is_count_tokens = FALSE"
+	}
+
 	cte := `
 WITH combined AS (
   SELECT
@@ -140,7 +145,7 @@ WITH combined AS (
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
   WHERE o.created_at >= $1 AND o.created_at < $2
-    AND COALESCE(o.status_code, 0) >= 400
+    ` + errorScopeCondition + `
 )
 `
 

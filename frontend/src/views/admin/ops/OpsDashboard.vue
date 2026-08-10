@@ -161,6 +161,7 @@
           :platform="platform"
           :group-id="groupId"
           :error-type="errorDetailsType"
+          :failure-scope="errorDetailsFailureScope"
           @update:show="showErrorDetails = $event"
           @openErrorDetail="openError"
         />
@@ -425,6 +426,7 @@ const showErrorModal = ref(false)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
+const errorDetailsFailureScope = ref<'platform' | 'provider' | null>(null)
 
 const showRequestDetails = ref(false)
 const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
@@ -512,8 +514,9 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
   showRequestDetails.value = true
 }
 
-function openErrorDetails(kind: 'request' | 'upstream') {
-  errorDetailsType.value = kind
+function openErrorDetails(kind: 'request' | 'upstream' | 'platform' | 'provider') {
+  errorDetailsType.value = kind === 'upstream' || kind === 'provider' ? 'upstream' : 'request'
+  errorDetailsFailureScope.value = kind === 'platform' || kind === 'provider' ? kind : null
   // Ensure only one modal visible at a time.
   showRequestDetails.value = false
   showErrorModal.value = false

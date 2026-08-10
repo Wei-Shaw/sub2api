@@ -47,7 +47,29 @@ func TestParseOpsViewParam(t *testing.T) {
 	c3.Request = httptest.NewRequest(http.MethodGet, "/?view=unknown", nil)
 	require.Equal(t, opsListViewErrors, parseOpsViewParam(c3))
 
+	c4, _ := gin.CreateTestContext(w)
+	c4.Request = httptest.NewRequest(http.MethodGet, "/?view=platform_failures", nil)
+	require.Equal(t, opsListViewPlatformFailures, parseOpsViewParam(c4))
+
+	c5, _ := gin.CreateTestContext(w)
+	c5.Request = httptest.NewRequest(http.MethodGet, "/?view=provider_failures", nil)
+	require.Equal(t, opsListViewProviderFailures, parseOpsViewParam(c5))
+
 	require.Equal(t, "", parseOpsViewParam(nil))
+}
+
+func TestApplyOpsUpstreamListScope(t *testing.T) {
+	providerFailures := &service.OpsErrorLogFilter{View: opsListViewProviderFailures}
+	applyOpsUpstreamListScope(providerFailures)
+	require.Empty(t, providerFailures.ErrorPhasesAny)
+	require.Empty(t, providerFailures.Owner)
+	require.False(t, providerFailures.IncludeRecoveredUpstream)
+
+	genericProviderHealth := &service.OpsErrorLogFilter{View: opsListViewErrors}
+	applyOpsUpstreamListScope(genericProviderHealth)
+	require.Equal(t, []string{"upstream", "account_auth"}, genericProviderHealth.ErrorPhasesAny)
+	require.Equal(t, "provider", genericProviderHealth.Owner)
+	require.True(t, genericProviderHealth.IncludeRecoveredUpstream)
 }
 
 func TestParseOpsDuration(t *testing.T) {

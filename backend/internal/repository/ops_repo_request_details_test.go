@@ -85,3 +85,37 @@ func TestOpsRepositoryListRequestDetailsIncludesTTFTAndSortsBeforePagination(t *
 	require.Equal(t, 2500, *items[0].DurationMs)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestOpsRepositoryListRequestDetailsSLAOnlyExcludesIgnoredErrorsAndKeepsStreamFailures(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	start := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	filter := &service.OpsRequestDetailFilter{
+		StartTime: &start,
+		EndTime:   &end,
+		Kind:      "error",
+		SLAOnly:   true,
+		Page:      1,
+		PageSize:  10,
+	}
+
+	slaScope := `(?s)COALESCE\(o\.counts_toward_sla, NOT COALESCE\(o\.is_business_limited, false\)\) = TRUE AND o\.is_count_tokens = FALSE`
+	mock.ExpectQuery(slaScope+`.*SELECT COUNT\(1\) FROM combined WHERE kind = \$3`).
+		WithArgs(start, end, "error").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery(slaScope+`.*WHERE kind = \$3.*ORDER BY created_at DESC.*LIMIT \$4 OFFSET \$5`).
+		WithArgs(start, end, "error", 10, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"kind", "created_at", "request_id", "platform", "model", "duration_ms", "first_token_ms",
+			"status_code", "error_id", "phase", "severity", "message", "user_id", "api_key_id",
+			"account_id", "group_id", "stream",
+		}))
+
+	items, total, err := repo.ListRequestDetails(context.Background(), filter)
+	require.NoError(t, err)
+	require.Zero(t, total)
+	require.Empty(t, items)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

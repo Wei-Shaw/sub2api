@@ -939,8 +939,10 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	clauses = append(clauses, "1=1")
 
 	phaseFilter := ""
+	view := ""
 	if filter != nil {
 		phaseFilter = strings.TrimSpace(strings.ToLower(filter.Phase))
+		view = strings.ToLower(strings.TrimSpace(filter.View))
 	}
 	// ops_error_logs stores client-visible error requests (status>=400),
 	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
@@ -956,7 +958,7 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	// status 200 (the SSE stream opened successfully before upstream returned response.failed),
 	// but they are always client-visible blocked requests that belong in admin + user error
 	// lists.  Without the exemption the entire streaming-path cyber sink would be invisible.
-	if !opsFilterIncludesRecoveredProviderRows(filter, phaseFilter) {
+	if !opsFilterIncludesRecoveredProviderRows(filter, phaseFilter) && view != "platform_failures" && view != "provider_failures" {
 		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
 	}
 
@@ -1003,10 +1005,6 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	// View filter: errors vs excluded vs all.
 	// Actionable errors include SLA failures and compatibility regressions.
 	// User/business/cancel/security outcomes remain available in excluded/all.
-	view := ""
-	if filter != nil {
-		view = strings.ToLower(strings.TrimSpace(filter.View))
-	}
 	switch view {
 	case "", "errors":
 		clauses = append(clauses, "(COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
@@ -1014,6 +1012,10 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		clauses = append(clauses, "COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = false AND COALESCE(e.alert_family,'') <> 'compatibility'")
 	case "all":
 		// no-op
+	case "platform_failures":
+		clauses = append(clauses, "e.final_outcome = 'platform_failed' AND COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true AND e.is_count_tokens = FALSE")
+	case "provider_failures":
+		clauses = append(clauses, "e.final_outcome = 'provider_failed' AND COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true AND e.is_count_tokens = FALSE")
 	default:
 		// treat unknown as default 'errors'
 		clauses = append(clauses, "(COALESCE(e.counts_toward_sla, NOT COALESCE(e.is_business_limited, false)) = true OR COALESCE(e.alert_family,'') = 'compatibility')")
