@@ -56,6 +56,7 @@ func TestBuildPublicConfigReturnsEnabledEntriesInStableOrder(t *testing.T) {
 	require.Equal(t, "10000.000000", got.Networks[0].Assets[0].AutomaticCreditLimit)
 	require.Equal(t, "0", got.Networks[0].Assets[0].FeeRate)
 	require.Equal(t, "finalized", got.Networks[0].Assets[0].CreditFinality)
+	require.Equal(t, AssetKeyUSDT, got.Networks[0].Assets[0].BalanceAssetKey)
 }
 
 func TestBuildPublicConfigUnavailableReturnsReasonAndNoNetworks(t *testing.T) {

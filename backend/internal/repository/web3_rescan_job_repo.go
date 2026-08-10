@@ -81,13 +81,20 @@ func (r *Web3RescanJobRepository) FailRescanJob(ctx context.Context, job web3dep
 	return rescanJobClaimUpdateResult(res, err)
 }
 
-func (r *Web3RescanJobRepository) ListRescanJobs(ctx context.Context, limit int) ([]web3deposit.RescanJob, error) {
+func (r *Web3RescanJobRepository) ListRescanJobs(ctx context.Context, networkKey, assetKey string, limit int) ([]web3deposit.RescanJob, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,network_key,asset_key,from_block,to_block,status,requested_by,
+	query := `SELECT id,network_key,asset_key,from_block,to_block,status,requested_by,
 	 attempt_count,event_count,matched_count,deposit_count,error_message,lease_expires_at,started_at,completed_at,created_at,updated_at
-	 FROM web3_rescan_jobs ORDER BY id DESC LIMIT $1`, limit)
+	 FROM web3_rescan_jobs`
+	args := []any{limit}
+	if networkKey != "" && assetKey != "" {
+		query += ` WHERE network_key=$2 AND asset_key=$3`
+		args = append(args, networkKey, assetKey)
+	}
+	query += ` ORDER BY id DESC LIMIT $1`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list web3 rescan jobs: %w", err)
 	}

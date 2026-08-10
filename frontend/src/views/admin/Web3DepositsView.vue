@@ -7,14 +7,19 @@
           <div class="mt-1 font-semibold">
             {{ runtimeStateLabel }}
           </div>
+          <select v-if="runtimes.length" v-model="selectedRuntimeKey" class="input mt-2 w-full text-sm">
+            <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }}</option>
+          </select>
           <div class="mt-2 grid gap-1 text-xs text-gray-500">
             <div>{{ t('admin.web3Deposits.runtime.scannerLag', { blocks: selectedRuntime?.scanner_lag_blocks || selectedRuntime?.lag_blocks || '0' }) }}</div>
             <div>{{ t('admin.web3Deposits.runtime.finalizerLag', { blocks: selectedRuntime?.finalizer_lag_blocks || '0' }) }}</div>
             <div>{{ t('admin.web3Deposits.runtime.heights', { latest: selectedRuntime?.latest_block || '0', scanned: selectedRuntime?.scanned_block || '0', finalized: selectedRuntime?.finalized_block || '0', finalizedCursor: selectedRuntime?.finalized_cursor_block || '0' }) }}</div>
           </div>
-          <select v-if="runtimes.length > 1" v-model="selectedRuntimeKey" class="input mt-2 w-full text-sm">
-            <option v-for="item in runtimes" :key="runtimeKey(item)" :value="runtimeKey(item)">{{ item.network_key }} / {{ item.asset_key }}</option>
-          </select>
+          <div v-if="selectedRuntime" class="mt-2 text-xs text-gray-500">
+            <div>{{ t('admin.web3Deposits.runtime.chainId', { id: selectedRuntime.chain_id || '—' }) }}</div>
+            <div class="mt-1">{{ t('admin.web3Deposits.runtime.tokenContract') }}</div>
+            <code class="mt-1 block break-all">{{ selectedRuntime.token_contract || '—' }}</code>
+          </div>
         </div>
         <div class="card p-4">
           <div class="text-sm text-gray-500">{{ t('admin.web3Deposits.stats.manualReview') }}</div>
@@ -40,7 +45,7 @@
             class="input min-w-64 flex-1"
             :placeholder="t('admin.web3Deposits.filters.transactionOrAddress')"
           />
-          <button class="btn btn-primary" @click="load">{{ t('admin.web3Deposits.filters.search') }}</button>
+          <button class="btn btn-primary" @click="search">{{ t('admin.web3Deposits.filters.search') }}</button>
           <button class="btn btn-secondary" @click="showRescan = true">
             {{ t('admin.web3Deposits.filters.boundedRescan') }}
           </button>
@@ -64,7 +69,7 @@
                 #{{ item.id }}
                 <div class="text-xs text-gray-500">{{ t('admin.web3Deposits.user', { id: item.user_id }) }}</div>
               </td>
-              <td class="p-4 text-sm font-semibold">{{ item.token_amount }} USDT0</td>
+              <td class="p-4 text-sm font-semibold">{{ item.token_amount }} {{ selectedRuntime?.asset_key.toUpperCase() || '' }}</td>
               <td class="p-4 text-sm">
                 <span class="rounded-full bg-gray-100 px-2 py-1 dark:bg-dark-700">{{ statusLabel(item.status) }}</span>
                 <div v-if="item.failure_reason || item.review_reason" class="mt-1 max-w-xs text-xs text-red-500">
@@ -95,8 +100,8 @@
         :page="page"
         :total="total"
         :page-size="pageSize"
-        @update:page="nextPage => { page = nextPage; load() }"
-        @update:pageSize="nextPageSize => { pageSize = nextPageSize; page = 1; load() }"
+        @update:page="nextPage => { page = nextPage; loadTargetData() }"
+        @update:pageSize="nextPageSize => { pageSize = nextPageSize; page = 1; loadTargetData() }"
       />
 
       <div class="card overflow-x-auto">
@@ -157,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -258,37 +263,53 @@ function rescanJobStatusLabel(status: Web3RescanJob['status']) {
 
 async function load() {
   try {
-    const params: Record<string, unknown> = {
-      page: page.value,
-      page_size: pageSize.value,
-      status: status.value,
-    }
-    if (keyword.value.startsWith('0x') && keyword.value.length === 66) {
-      params.tx_hash = keyword.value
-    } else if (keyword.value) {
-      params.address = keyword.value
-    }
-    const [list, counts, state] = await Promise.all([
-      web3DepositsAPI.list(params),
-      web3DepositsAPI.stats(),
-      web3DepositsAPI.runtime(),
-    ])
-    items.value = list.data.items
-    total.value = list.data.total
-    stats.value = counts.data
+    const state = await web3DepositsAPI.runtime()
     runtimes.value = state.data.runtimes
     if (!runtimes.value.some(item => runtimeKey(item) === selectedRuntimeKey.value)) {
       selectedRuntimeKey.value = runtimes.value[0] ? runtimeKey(runtimes.value[0]) : ''
     }
+    await Promise.all([loadTargetData(), loadRescanJobs()])
   } catch (error) {
     app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadFailed')))
   }
-  await loadRescanJobs()
+}
+
+function selectedTarget() {
+  const target = selectedRuntime.value
+  return target ? { network_key: target.network_key, asset_key: target.asset_key } : {}
+}
+
+async function loadTargetData() {
+  const params: Record<string, unknown> = {
+    page: page.value,
+    page_size: pageSize.value,
+    status: status.value,
+    ...selectedTarget(),
+  }
+  if (keyword.value.startsWith('0x') && keyword.value.length === 66) {
+    params.tx_hash = keyword.value
+  } else if (keyword.value) {
+    params.address = keyword.value
+  }
+  const [list, counts] = await Promise.all([
+    web3DepositsAPI.list(params),
+    web3DepositsAPI.stats(selectedTarget()),
+  ])
+  items.value = list.data.items
+  total.value = list.data.total
+  stats.value = counts.data
+}
+
+function search() {
+  page.value = 1
+  void loadTargetData().catch(error => {
+    app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadFailed')))
+  })
 }
 
 async function loadRescanJobs() {
   try {
-    rescanJobs.value = (await web3DepositsAPI.listRescanJobs()).data
+    rescanJobs.value = (await web3DepositsAPI.listRescanJobs(20, selectedTarget())).data
   } catch (error) {
     app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadRescanJobsFailed')))
   }
@@ -298,7 +319,7 @@ async function run(action: () => Promise<unknown>) {
   try {
     await stepUp.run(action)
     app.showSuccess(t('admin.web3Deposits.messages.operationCompleted'))
-    await load()
+    await Promise.all([loadTargetData(), loadRescanJobs()])
   } catch (error) {
     if (!isStepUpCancelled(error)) {
       app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.operationFailed')))
@@ -332,6 +353,14 @@ function rescan() {
     showRescan.value = false
   })
 }
+
+watch(selectedRuntimeKey, (value, previous) => {
+  if (!value || !previous || value === previous) return
+  page.value = 1
+  void Promise.all([loadTargetData(), loadRescanJobs()]).catch(error => {
+    app.showError(extractApiErrorMessage(error, t('admin.web3Deposits.messages.loadFailed')))
+  })
+})
 
 onMounted(load)
 </script>

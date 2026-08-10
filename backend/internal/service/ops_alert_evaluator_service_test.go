@@ -346,3 +346,7 @@ func (s *web3DepositStatusCounterStub) CountAdminDepositsByStatus(context.Contex
 	}
 	return s.counts, nil
 }
+
+func (s *web3DepositStatusCounterStub) CountAdminDepositsByStatusForTarget(context.Context, uint64, string) (map[web3deposit.DepositStatus]int64, error) {
+	return s.CountAdminDepositsByStatus(context.Background())
+}

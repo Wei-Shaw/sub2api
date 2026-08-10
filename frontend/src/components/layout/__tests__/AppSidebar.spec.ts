@@ -19,6 +19,13 @@ describe('AppSidebar custom SVG styles', () => {
   })
 })
 
+describe('AppSidebar Web3 navigation icon', () => {
+  it('uses a wallet icon instead of the subscription credit-card icon', () => {
+    expect(componentSource).toContain("{ path: '/web3-deposit', label: t('nav.web3Deposit'), icon: WalletIcon")
+    expect(componentSource).toContain("{ path: '/admin/web3-deposits', label: t('nav.web3Deposits'), icon: WalletIcon")
+  })
+})
+
 describe('AppSidebar scroll position persistence', () => {
   it('binds a template ref to the sidebar nav element', () => {
     expect(componentSource).toContain('ref="sidebarNavRef"')

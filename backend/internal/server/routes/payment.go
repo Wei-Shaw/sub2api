@@ -39,6 +39,8 @@ func RegisterPaymentRoutes(
 		{
 			web3.GET("/config", web3DepositHandler.GetConfig)
 			web3.POST("/address", web3DepositHandler.GetOrCreateAddress)
+			web3.GET("/balances", web3DepositHandler.ListBalances)
+			web3.POST("/transfers", web3DepositHandler.TransferBalance)
 			web3.GET("/deposits", web3DepositHandler.ListDeposits)
 			web3.GET("/deposits/:id", web3DepositHandler.GetDeposit)
 		}

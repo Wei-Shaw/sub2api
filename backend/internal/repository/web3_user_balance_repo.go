@@ -58,6 +58,21 @@ func (r *Web3UserBalanceRepository) GetByUserAndAsset(ctx context.Context, userI
 	return web3UserBalanceFromEnt(entity), nil
 }
 
+func (r *Web3UserBalanceRepository) ListUserBalances(ctx context.Context, userID int64) ([]web3deposit.UserBalance, error) {
+	entities, err := r.client.Web3UserBalance.Query().
+		Where(web3userbalance.UserIDEQ(userID)).
+		Order(dbent.Asc(web3userbalance.FieldAssetKey)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list web3 user balances: %w", err)
+	}
+	balances := make([]web3deposit.UserBalance, 0, len(entities))
+	for _, entity := range entities {
+		balances = append(balances, web3UserBalanceFromEnt(entity))
+	}
+	return balances, nil
+}
+
 func web3UserBalanceFromEnt(entity *dbent.Web3UserBalance) web3deposit.UserBalance {
 	return web3deposit.UserBalance{
 		ID:               entity.ID,

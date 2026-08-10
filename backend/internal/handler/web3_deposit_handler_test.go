@@ -30,7 +30,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 				},
 			},
 		},
-	}}, nil, nil, nil)
+	}}, nil, nil, nil, nil, nil)
 	handler.runtime = web3DepositRuntimeReadinessStub{ready: true}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
@@ -51,6 +51,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 			Assets  []struct {
 				MinimumDeposit       string `json:"minimum_deposit"`
 				AutomaticCreditLimit string `json:"automatic_credit_limit"`
+				BalanceAssetKey      string `json:"balance_asset_key"`
 			} `json:"assets"`
 		} `json:"networks"`
 	}
@@ -61,6 +62,7 @@ func TestWeb3DepositHandlerGetConfig(t *testing.T) {
 	require.Equal(t, "1030", payload.Networks[0].ChainID)
 	require.Equal(t, "1.000000", payload.Networks[0].Assets[0].MinimumDeposit)
 	require.Equal(t, "10000.000000", payload.Networks[0].Assets[0].AutomaticCreditLimit)
+	require.Equal(t, web3deposit.AssetKeyUSDT, payload.Networks[0].Assets[0].BalanceAssetKey)
 }
 
 type web3DepositRuntimeReadinessStub struct {
@@ -79,7 +81,7 @@ func TestWeb3DepositHandlerGetConfigReportsUnhealthyRuntime(t *testing.T) {
 		Networks: map[string]config.Web3DepositNetworkConfig{
 			"conflux_espace_mainnet": {Enabled: true},
 		},
-	}}, nil, nil, nil)
+	}}, nil, nil, nil, nil, nil)
 	handler.runtime = web3DepositRuntimeReadinessStub{ready: false}
 	router := gin.New()
 	router.GET("/api/v1/payment/web3/config", handler.GetConfig)
@@ -234,6 +236,8 @@ func authenticatedWeb3DepositTestRouter(handler *Web3DepositHandler) *gin.Engine
 		c.Next()
 	})
 	router.POST("/api/v1/payment/web3/address", handler.GetOrCreateAddress)
+	router.GET("/api/v1/payment/web3/balances", handler.ListBalances)
+	router.POST("/api/v1/payment/web3/transfers", handler.TransferBalance)
 	router.GET("/api/v1/payment/web3/deposits", handler.ListDeposits)
 	router.GET("/api/v1/payment/web3/deposits/:id", handler.GetDeposit)
 	return router

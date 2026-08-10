@@ -1,6 +1,7 @@
 package web3deposit
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -23,6 +24,10 @@ type UserBalance struct {
 	BalanceVersion   int64
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+type UserBalanceReader interface {
+	ListUserBalances(ctx context.Context, userID int64) ([]UserBalance, error)
 }
 
 type BalanceTransfer struct {

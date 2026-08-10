@@ -6,6 +6,8 @@ export default {
       scannerLag: 'Scanner lag: {blocks} blocks',
       finalizerLag: 'Finalizer lag: {blocks} blocks',
       heights: 'Head {latest} / scanned {scanned} / finalized {finalized} / finalized cursor {finalizedCursor}',
+      chainId: 'Chain ID: {id}',
+      tokenContract: 'Token contract',
     },
     stats: {
       manualReview: 'Manual review',

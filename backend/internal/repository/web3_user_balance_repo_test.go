@@ -63,6 +63,21 @@ func TestWeb3UserBalanceRepositoryGetReturnsNotFound(t *testing.T) {
 	require.True(t, errors.Is(err, web3deposit.ErrBalanceNotFound))
 }
 
+func TestWeb3UserBalanceRepositoryListsOnlyUserBalances(t *testing.T) {
+	repo := NewWeb3UserBalanceRepository(newWeb3BalanceTestClient(t))
+	ctx := context.Background()
+	_, err := repo.CreateOrGet(ctx, 42, web3deposit.AssetKeyUSDT)
+	require.NoError(t, err)
+	_, err = repo.CreateOrGet(ctx, 99, web3deposit.AssetKeyUSDT)
+	require.NoError(t, err)
+
+	balances, err := repo.ListUserBalances(ctx, 42)
+
+	require.NoError(t, err)
+	require.Len(t, balances, 1)
+	require.Equal(t, int64(42), balances[0].UserID)
+}
+
 func TestWeb3UserBalanceRepositoryRejectsInvalidAssetKey(t *testing.T) {
 	repo := NewWeb3UserBalanceRepository(newWeb3BalanceTestClient(t))
 

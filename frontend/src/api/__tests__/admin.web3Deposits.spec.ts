@@ -16,9 +16,14 @@ describe('admin Web3 deposits API', () => {
   })
 
   it('queries deposits with filters', () => {
-    const params = { page: 2, page_size: 20, status: 'manual_review' }
+    const params = { page: 2, page_size: 20, status: 'manual_review', network_key: 'conflux_espace', asset_key: 'usdt0' }
     web3DepositsAPI.list(params)
     expect(get).toHaveBeenCalledWith('/admin/web3-deposits', { params })
+
+    web3DepositsAPI.stats({ network_key: 'conflux_espace', asset_key: 'usdt0' })
+    expect(get).toHaveBeenCalledWith('/admin/web3-deposits/stats', {
+      params: { network_key: 'conflux_espace', asset_key: 'usdt0' },
+    })
   })
 
   it('sends immutable review actions without chain facts', () => {
@@ -39,8 +44,10 @@ describe('admin Web3 deposits API', () => {
       to_block: '120',
     })
 
-    web3DepositsAPI.listRescanJobs(10)
-    expect(get).toHaveBeenCalledWith('/admin/web3-deposits/rescan-jobs', { params: { limit: 10 } })
+    web3DepositsAPI.listRescanJobs(10, { network_key: 'conflux_espace', asset_key: 'usdt0' })
+    expect(get).toHaveBeenCalledWith('/admin/web3-deposits/rescan-jobs', {
+      params: { limit: 10, network_key: 'conflux_espace', asset_key: 'usdt0' },
+    })
 
     web3DepositsAPI.getRescanJob(12)
     expect(get).toHaveBeenCalledWith('/admin/web3-deposits/rescan-jobs/12')

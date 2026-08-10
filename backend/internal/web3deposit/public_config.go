@@ -35,6 +35,7 @@ type PublicNetwork struct {
 
 type PublicAsset struct {
 	Key                  string `json:"key"`
+	BalanceAssetKey      string `json:"balance_asset_key"`
 	DisplayName          string `json:"display_name"`
 	ContractAddress      string `json:"contract_address"`
 	Decimals             int32  `json:"decimals"`
@@ -79,6 +80,7 @@ func BuildPublicConfig(cfg config.Web3DepositConfig, readiness PublicConfigReadi
 			asset := network.Assets[assetKey]
 			assets = append(assets, PublicAsset{
 				Key:                  assetKey,
+				BalanceAssetKey:      AssetKeyUSDT,
 				DisplayName:          strings.ToUpper(assetKey),
 				ContractAddress:      asset.ContractAddress,
 				Decimals:             asset.Decimals,

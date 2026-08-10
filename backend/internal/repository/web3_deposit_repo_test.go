@@ -148,10 +148,16 @@ func TestWeb3DepositRepositoryPaginatesAndScopesUserDeposits(t *testing.T) {
 	other.TxHash = fmt.Sprintf("0x%064x", 4)
 	_, err := repo.Create(ctx, other)
 	require.NoError(t, err)
-
-	page, total, err := repo.ListUserDeposits(ctx, 42, 1, 2)
+	testnet := testWeb3DepositRecord(5)
+	testnet.ChainID = 71
+	testnet.TokenContract = "0x1111111111111111111111111111111111111111"
+	testnet.TxHash = fmt.Sprintf("0x%064x", 5)
+	_, err = repo.Create(ctx, testnet)
 	require.NoError(t, err)
-	require.Equal(t, int64(3), total)
+
+	page, total, err := repo.ListUserDeposits(ctx, 42, web3deposit.UserDepositFilter{Page: 1, PageSize: 2})
+	require.NoError(t, err)
+	require.Equal(t, int64(4), total)
 	require.Len(t, page, 2)
 	require.Greater(t, page[0].ID, page[1].ID)
 
@@ -161,6 +167,15 @@ func TestWeb3DepositRepositoryPaginatesAndScopesUserDeposits(t *testing.T) {
 
 	_, err = repo.GetUserDeposit(ctx, 99, page[0].ID)
 	require.ErrorIs(t, err, web3deposit.ErrDepositNotFound)
+
+	targeted, targetedTotal, err := repo.ListUserDeposits(ctx, 42, web3deposit.UserDepositFilter{
+		ChainID: 71, TokenContract: testnet.TokenContract, Page: 1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), targetedTotal)
+	require.Len(t, targeted, 1)
+	require.Equal(t, uint64(71), targeted[0].ChainID)
+	require.Equal(t, testnet.TokenContract, targeted[0].TokenContract)
 }
 
 func TestWeb3DepositRepositoryAdminStateTransitionsAreConditional(t *testing.T) {

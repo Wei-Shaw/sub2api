@@ -39,7 +39,14 @@ type Deposit struct {
 	UpdatedAt        time.Time
 }
 
+type UserDepositFilter struct {
+	ChainID       uint64
+	TokenContract string
+	Page          int
+	PageSize      int
+}
+
 type UserDepositReader interface {
-	ListUserDeposits(ctx context.Context, userID int64, page, pageSize int) ([]Deposit, int64, error)
+	ListUserDeposits(ctx context.Context, userID int64, filter UserDepositFilter) ([]Deposit, int64, error)
 	GetUserDeposit(ctx context.Context, userID, depositID int64) (Deposit, error)
 }

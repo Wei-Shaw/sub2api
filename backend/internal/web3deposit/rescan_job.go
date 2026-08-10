@@ -54,7 +54,7 @@ type RescanJobStore interface {
 	RenewRescanJob(context.Context, RescanJob, time.Time, time.Duration) error
 	CompleteRescanJob(context.Context, RescanJob, BoundedRescanResult, time.Time) error
 	FailRescanJob(context.Context, RescanJob, error, time.Time) error
-	ListRescanJobs(context.Context, int) ([]RescanJob, error)
+	ListRescanJobs(context.Context, string, string, int) ([]RescanJob, error)
 	GetRescanJob(context.Context, int64) (RescanJob, error)
 }
 
@@ -87,8 +87,8 @@ func (r *RescanJobRuntime) Enqueue(ctx context.Context, networkKey, assetKey str
 	return job, nil
 }
 
-func (r *RescanJobRuntime) List(ctx context.Context, limit int) ([]RescanJob, error) {
-	return r.store.ListRescanJobs(ctx, limit)
+func (r *RescanJobRuntime) List(ctx context.Context, networkKey, assetKey string, limit int) ([]RescanJob, error) {
+	return r.store.ListRescanJobs(ctx, networkKey, assetKey, limit)
 }
 
 func (r *RescanJobRuntime) Get(ctx context.Context, id int64) (RescanJob, error) {

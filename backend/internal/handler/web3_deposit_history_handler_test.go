@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/stretchr/testify/require"
 )
@@ -21,11 +22,31 @@ type web3DepositReaderStub struct {
 	depositID int64
 	page      int
 	pageSize  int
+	filter    web3deposit.UserDepositFilter
 }
 
-func (s *web3DepositReaderStub) ListUserDeposits(_ context.Context, userID int64, page, pageSize int) ([]web3deposit.Deposit, int64, error) {
-	s.userID, s.page, s.pageSize = userID, page, pageSize
+func (s *web3DepositReaderStub) ListUserDeposits(_ context.Context, userID int64, filter web3deposit.UserDepositFilter) ([]web3deposit.Deposit, int64, error) {
+	s.userID, s.page, s.pageSize, s.filter = userID, filter.Page, filter.PageSize, filter
 	return s.items, s.total, s.err
+}
+
+func TestWeb3DepositHandlerFiltersHistoryByConfiguredNetworkAsset(t *testing.T) {
+	reader := &web3DepositReaderStub{}
+	handler := &Web3DepositHandler{
+		cfg: &config.Config{Web3Deposit: config.Web3DepositConfig{Networks: map[string]config.Web3DepositNetworkConfig{
+			"conflux_testnet": {Enabled: true, ChainID: 71, Assets: map[string]config.Web3DepositAssetConfig{
+				"test_usdt0": {ContractAddress: testWeb3TokenContract},
+			}},
+		}}},
+		deposits: reader,
+	}
+	router := authenticatedWeb3DepositTestRouter(handler)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/payment/web3/deposits?network_key=conflux_testnet&asset_key=test_usdt0", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, uint64(71), reader.filter.ChainID)
+	require.Equal(t, testWeb3TokenContract, reader.filter.TokenContract)
 }
 
 func (s *web3DepositReaderStub) GetUserDeposit(_ context.Context, userID, depositID int64) (web3deposit.Deposit, error) {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
@@ -43,7 +44,7 @@ func TestWeb3DepositHandlerUsesAdminJSONContract(t *testing.T) {
 		UpdatedAt:        detectedAt,
 	}
 	reader := &adminDepositReaderStub{deposit: deposit}
-	handler := NewWeb3DepositHandler(reader, nil, nil, nil, nil)
+	handler := NewWeb3DepositHandler(nil, reader, nil, nil, nil, nil)
 	router := gin.New()
 	router.GET("/deposits", handler.List)
 	router.GET("/deposits/:id", handler.Get)
@@ -76,10 +77,40 @@ func TestWeb3DepositHandlerUsesAdminJSONContract(t *testing.T) {
 	})
 }
 
+func TestWeb3DepositHandlerScopesListAndStatsToConfiguredTarget(t *testing.T) {
+	reader := &adminDepositReaderStub{}
+	handler := NewWeb3DepositHandler(&config.Config{Web3Deposit: config.Web3DepositConfig{Networks: map[string]config.Web3DepositNetworkConfig{
+		"conflux_testnet": {Enabled: true, ChainID: 71, Assets: map[string]config.Web3DepositAssetConfig{
+			"usdt0": {ContractAddress: "0x1111111111111111111111111111111111111111"},
+		}},
+	}}}, reader, nil, nil, nil, nil)
+	router := gin.New()
+	router.GET("/deposits", handler.List)
+	router.GET("/stats", handler.Stats)
+
+	query := "?network_key=conflux_testnet&asset_key=usdt0"
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/deposits"+query, nil))
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, uint64(71), reader.filter.ChainID)
+	require.Equal(t, "0x1111111111111111111111111111111111111111", reader.filter.TokenContract)
+
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/stats"+query, nil))
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, uint64(71), reader.countChainID)
+	require.Equal(t, "0x1111111111111111111111111111111111111111", reader.countTokenContract)
+}
+
 func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	runtime, err := web3deposit.NewScannerRuntime(nil, nil, web3deposit.ScannerRuntimeOptions{Enabled: false})
 	require.NoError(t, err)
 	handler := &Web3DepositHandler{
+		cfg: &config.Config{Web3Deposit: config.Web3DepositConfig{Networks: map[string]config.Web3DepositNetworkConfig{
+			"network": {ChainID: 71, Assets: map[string]config.Web3DepositAssetConfig{
+				"usdt0": {ContractAddress: "0x1111111111111111111111111111111111111111"},
+			}},
+		}}},
 		deposits: &adminDepositReaderStub{},
 		runtimes: scannerRuntimeRegistryStub{
 			keys:    []web3deposit.RuntimeKey{{NetworkKey: "network", AssetKey: "usdt0"}},
@@ -98,6 +129,8 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 			Runtimes []struct {
 				NetworkKey           string `json:"network_key"`
 				AssetKey             string `json:"asset_key"`
+				ChainID              string `json:"chain_id"`
+				TokenContract        string `json:"token_contract"`
 				State                string `json:"state"`
 				LatestBlock          string `json:"latest_block"`
 				ScannedBlock         string `json:"scanned_block"`
@@ -111,6 +144,8 @@ func TestWeb3DepositHandlerRuntimeReturnsPerAssetEntries(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &envelope))
 	require.Equal(t, "network", envelope.Data.Runtimes[0].NetworkKey)
 	require.Equal(t, "usdt0", envelope.Data.Runtimes[0].AssetKey)
+	require.Equal(t, "71", envelope.Data.Runtimes[0].ChainID)
+	require.Equal(t, "0x1111111111111111111111111111111111111111", envelope.Data.Runtimes[0].TokenContract)
 	require.Equal(t, "disabled", envelope.Data.Runtimes[0].State)
 	require.Equal(t, "0", envelope.Data.Runtimes[0].LatestBlock)
 	require.Equal(t, "0", envelope.Data.Runtimes[0].ScannedBlock)
@@ -147,6 +182,28 @@ func TestWeb3DepositHandlerRescanTargetsNetworkAndAsset(t *testing.T) {
 	require.Equal(t, web3deposit.RescanJobStatusPending, envelope.Data.Status)
 	require.Equal(t, "100", envelope.Data.FromBlock)
 	require.Equal(t, "120", envelope.Data.ToBlock)
+}
+
+func TestWeb3DepositHandlerFiltersRescanJobsByNetworkAndAsset(t *testing.T) {
+	rescanner := &adminRescannerStub{}
+	handler := &Web3DepositHandler{
+		cfg: &config.Config{Web3Deposit: config.Web3DepositConfig{Networks: map[string]config.Web3DepositNetworkConfig{
+			"network": {Enabled: true, Assets: map[string]config.Web3DepositAssetConfig{
+				"usdt0": {ContractAddress: "0x1111111111111111111111111111111111111111"},
+			}},
+		}}},
+		rescanJobs: rescanner,
+	}
+	router := gin.New()
+	router.GET("/rescan-jobs", handler.ListRescanJobs)
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/rescan-jobs?network_key=network&asset_key=usdt0&limit=12", nil))
+
+	require.Equal(t, http.StatusOK, response.Code)
+	require.Equal(t, "network", rescanner.listNetworkKey)
+	require.Equal(t, "usdt0", rescanner.listAssetKey)
+	require.Equal(t, 12, rescanner.listLimit)
 }
 
 func TestWeb3DepositHandlerReadsPersistentRescanJobs(t *testing.T) {
@@ -254,7 +311,10 @@ func assertAdminWeb3DepositJSON(t *testing.T, item map[string]any) {
 }
 
 type adminDepositReaderStub struct {
-	deposit web3deposit.Deposit
+	deposit            web3deposit.Deposit
+	filter             web3deposit.AdminDepositFilter
+	countChainID       uint64
+	countTokenContract string
 }
 
 type scannerRuntimeRegistryStub struct {
@@ -269,13 +329,16 @@ func (s scannerRuntimeRegistryStub) Runtime(string, string) (*web3deposit.Scanne
 }
 
 type adminRescannerStub struct {
-	networkKey  string
-	assetKey    string
-	fromBlock   uint64
-	toBlock     uint64
-	requestedBy int64
-	jobs        []web3deposit.RescanJob
-	enqueueErr  error
+	networkKey     string
+	assetKey       string
+	fromBlock      uint64
+	toBlock        uint64
+	requestedBy    int64
+	jobs           []web3deposit.RescanJob
+	enqueueErr     error
+	listNetworkKey string
+	listAssetKey   string
+	listLimit      int
 }
 
 type adminDepositOperatorStub struct{}
@@ -325,7 +388,8 @@ func (s *adminRescannerStub) Enqueue(_ context.Context, networkKey, assetKey str
 	return web3deposit.RescanJob{ID: 9, NetworkKey: networkKey, AssetKey: assetKey, FromBlock: fromBlock, ToBlock: toBlock, Status: web3deposit.RescanJobStatusPending}, nil
 }
 
-func (s *adminRescannerStub) List(context.Context, int) ([]web3deposit.RescanJob, error) {
+func (s *adminRescannerStub) List(_ context.Context, networkKey, assetKey string, limit int) ([]web3deposit.RescanJob, error) {
+	s.listNetworkKey, s.listAssetKey, s.listLimit = networkKey, assetKey, limit
 	return s.jobs, nil
 }
 
@@ -338,7 +402,8 @@ func (s *adminRescannerStub) Get(_ context.Context, id int64) (web3deposit.Resca
 	return web3deposit.RescanJob{}, web3deposit.ErrRescanJobNotFound
 }
 
-func (s *adminDepositReaderStub) ListAdminDeposits(context.Context, web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {
+func (s *adminDepositReaderStub) ListAdminDeposits(_ context.Context, filter web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {
+	s.filter = filter
 	return []web3deposit.Deposit{s.deposit}, 1, nil
 }
 
@@ -347,5 +412,10 @@ func (s *adminDepositReaderStub) GetAdminDeposit(context.Context, int64) (web3de
 }
 
 func (s *adminDepositReaderStub) CountAdminDepositsByStatus(context.Context) (map[web3deposit.DepositStatus]int64, error) {
+	return nil, nil
+}
+
+func (s *adminDepositReaderStub) CountAdminDepositsByStatusForTarget(_ context.Context, chainID uint64, tokenContract string) (map[web3deposit.DepositStatus]int64, error) {
+	s.countChainID, s.countTokenContract = chainID, tokenContract
 	return nil, nil
 }

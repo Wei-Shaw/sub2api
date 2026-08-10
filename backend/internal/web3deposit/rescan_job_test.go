@@ -155,7 +155,7 @@ func (s *rescanJobStoreStub) FailRescanJob(_ context.Context, job RescanJob, fai
 	return nil
 }
 
-func (s *rescanJobStoreStub) ListRescanJobs(context.Context, int) ([]RescanJob, error) {
+func (s *rescanJobStoreStub) ListRescanJobs(context.Context, string, string, int) ([]RescanJob, error) {
 	return nil, nil
 }
 

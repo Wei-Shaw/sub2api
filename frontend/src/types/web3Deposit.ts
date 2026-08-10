@@ -1,5 +1,6 @@
 export interface Web3DepositAssetConfig {
   key: string
+  balance_asset_key: string
   display_name: string
   contract_address: string
   decimals: number
@@ -7,6 +8,25 @@ export interface Web3DepositAssetConfig {
   automatic_credit_limit: string
   fee_rate: string
   credit_finality: string
+}
+
+export interface Web3UserBalance {
+  asset_key: string
+  available_amount: string
+  total_deposited: string
+  total_transferred: string
+  updated_at: string
+}
+
+export interface Web3BalanceTransfer {
+  id: number
+  asset_key: string
+  amount: string
+  web3_balance_before: string
+  web3_balance_after: string
+  user_balance_before: string
+  user_balance_after: string
+  already_done: boolean
 }
 
 export interface Web3DepositNetworkConfig {

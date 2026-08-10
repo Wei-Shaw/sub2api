@@ -7,6 +7,8 @@ import (
 )
 
 type AdminDepositFilter struct {
+	ChainID       uint64
+	TokenContract string
 	Status        DepositStatus
 	UserID        int64
 	Address       string
@@ -21,6 +23,7 @@ type AdminDepositReader interface {
 	ListAdminDeposits(ctx context.Context, filter AdminDepositFilter) ([]Deposit, int64, error)
 	GetAdminDeposit(ctx context.Context, depositID int64) (Deposit, error)
 	CountAdminDepositsByStatus(ctx context.Context) (map[DepositStatus]int64, error)
+	CountAdminDepositsByStatusForTarget(ctx context.Context, chainID uint64, tokenContract string) (map[DepositStatus]int64, error)
 }
 
 type AdminDepositOperator interface {

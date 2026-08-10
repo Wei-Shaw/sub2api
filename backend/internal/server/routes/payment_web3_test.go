@@ -24,7 +24,7 @@ func TestWeb3DepositConfigRouteUsesPaymentAuthentication(t *testing.T) {
 	RegisterPaymentRoutes(
 		router.Group("/api/v1"),
 		handler.NewPaymentHandler(nil, nil),
-		handler.NewWeb3DepositHandler(&config.Config{}, nil, nil, nil),
+		handler.NewWeb3DepositHandler(&config.Config{}, nil, nil, nil, nil, nil),
 		handler.NewPaymentWebhookHandler(nil, nil),
 		admin.NewPaymentHandler(nil, nil),
 		jwtAuth,
@@ -49,4 +49,16 @@ func TestWeb3DepositConfigRouteUsesPaymentAuthentication(t *testing.T) {
 	request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/web3/address", nil)
 	router.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
+
+	for _, target := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/payment/web3/balances"},
+		{method: http.MethodPost, path: "/api/v1/payment/web3/transfers"},
+	} {
+		recorder = httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(target.method, target.path, nil))
+		require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	}
 }

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -34,20 +33,36 @@ func NewWeb3DepositRepository(client *dbent.Client) *Web3DepositRepository {
 }
 
 func (r *Web3DepositRepository) Create(ctx context.Context, deposit depositdomain.Deposit) (depositdomain.Deposit, error) {
-	chainID, err := web3DepositUint64ToInt64(deposit.ChainID, "chain ID")
+	create, err := r.newWeb3DepositCreate(deposit)
 	if err != nil {
 		return depositdomain.Deposit{}, err
+	}
+
+	entity, err := create.Save(ctx)
+	if isWeb3DepositEventUniqueConstraint(err) {
+		return depositdomain.Deposit{}, depositdomain.ErrDepositAlreadyExists
+	}
+	if err != nil {
+		return depositdomain.Deposit{}, fmt.Errorf("create web3 deposit: %w", err)
+	}
+	return web3DepositFromEnt(entity), nil
+}
+
+func (r *Web3DepositRepository) newWeb3DepositCreate(deposit depositdomain.Deposit) (*dbent.Web3DepositCreate, error) {
+	chainID, err := web3DepositUint64ToInt64(deposit.ChainID, "chain ID")
+	if err != nil {
+		return nil, err
 	}
 	logIndex, err := web3DepositUint64ToInt64(deposit.LogIndex, "log index")
 	if err != nil {
-		return depositdomain.Deposit{}, err
+		return nil, err
 	}
 	blockNumber, err := web3DepositUint64ToInt64(deposit.BlockNumber, "block number")
 	if err != nil {
-		return depositdomain.Deposit{}, err
+		return nil, err
 	}
 	if deposit.TokenDecimals < 0 || deposit.TokenDecimals > 255 {
-		return depositdomain.Deposit{}, fmt.Errorf("web3 deposit token decimals must be between 0 and 255")
+		return nil, fmt.Errorf("web3 deposit token decimals must be between 0 and 255")
 	}
 
 	create := r.client.Web3Deposit.Create().
@@ -89,23 +104,23 @@ func (r *Web3DepositRepository) Create(ctx context.Context, deposit depositdomai
 	if deposit.CreditedAt != nil {
 		create.SetCreditedAt(*deposit.CreditedAt)
 	}
-
-	entity, err := create.Save(ctx)
-	if isWeb3DepositEventUniqueConstraint(err) {
-		return depositdomain.Deposit{}, depositdomain.ErrDepositAlreadyExists
-	}
-	if err != nil {
-		return depositdomain.Deposit{}, fmt.Errorf("create web3 deposit: %w", err)
-	}
-	return web3DepositFromEnt(entity), nil
+	return create, nil
 }
 
 func (r *Web3DepositRepository) UpsertDetected(ctx context.Context, deposit depositdomain.Deposit) (depositdomain.Deposit, error) {
-	created, err := r.Create(ctx, deposit)
-	if err == nil {
-		return created, nil
+	create, err := r.newWeb3DepositCreate(deposit)
+	if err != nil {
+		return depositdomain.Deposit{}, err
 	}
-	if !errors.Is(err, depositdomain.ErrDepositAlreadyExists) {
+	err = create.
+		OnConflictColumns(
+			web3deposit.FieldChainID,
+			web3deposit.FieldTxHash,
+			web3deposit.FieldLogIndex,
+		).
+		DoNothing().
+		Exec(ctx)
+	if err != nil && !isSQLNoRowsError(err) {
 		return depositdomain.Deposit{}, fmt.Errorf("upsert detected web3 deposit: %w", err)
 	}
 
@@ -155,7 +170,8 @@ func (r *Web3DepositRepository) ListByUser(ctx context.Context, userID int64) ([
 	return deposits, nil
 }
 
-func (r *Web3DepositRepository) ListUserDeposits(ctx context.Context, userID int64, page, pageSize int) ([]depositdomain.Deposit, int64, error) {
+func (r *Web3DepositRepository) ListUserDeposits(ctx context.Context, userID int64, filter depositdomain.UserDepositFilter) ([]depositdomain.Deposit, int64, error) {
+	page, pageSize := filter.Page, filter.PageSize
 	if page < 1 {
 		page = 1
 	}
@@ -166,7 +182,9 @@ func (r *Web3DepositRepository) ListUserDeposits(ctx context.Context, userID int
 		pageSize = 100
 	}
 
-	query := r.client.Web3Deposit.Query().Where(web3deposit.UserIDEQ(userID))
+	predicates := []predicate.Web3Deposit{web3deposit.UserIDEQ(userID)}
+	predicates = appendDepositTargetPredicates(predicates, filter.ChainID, filter.TokenContract)
+	query := r.client.Web3Deposit.Query().Where(predicates...)
 	total, err := query.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count web3 deposits by user: %w", err)
@@ -201,7 +219,8 @@ func (r *Web3DepositRepository) GetUserDeposit(ctx context.Context, userID, depo
 }
 
 func (r *Web3DepositRepository) ListAdminDeposits(ctx context.Context, filter depositdomain.AdminDepositFilter) ([]depositdomain.Deposit, int64, error) {
-	predicates := make([]predicate.Web3Deposit, 0, 6)
+	predicates := make([]predicate.Web3Deposit, 0, 8)
+	predicates = appendDepositTargetPredicates(predicates, filter.ChainID, filter.TokenContract)
 	if filter.Status != "" {
 		predicates = append(predicates, web3deposit.StatusEQ(string(filter.Status)))
 	}
@@ -252,7 +271,12 @@ func (r *Web3DepositRepository) GetAdminDeposit(ctx context.Context, depositID i
 }
 
 func (r *Web3DepositRepository) CountAdminDepositsByStatus(ctx context.Context) (map[depositdomain.DepositStatus]int64, error) {
-	entities, err := r.client.Web3Deposit.Query().Select(web3deposit.FieldStatus).All(ctx)
+	return r.CountAdminDepositsByStatusForTarget(ctx, 0, "")
+}
+
+func (r *Web3DepositRepository) CountAdminDepositsByStatusForTarget(ctx context.Context, chainID uint64, tokenContract string) (map[depositdomain.DepositStatus]int64, error) {
+	predicates := appendDepositTargetPredicates(nil, chainID, tokenContract)
+	entities, err := r.client.Web3Deposit.Query().Where(predicates...).Select(web3deposit.FieldStatus).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("count admin web3 deposits by status: %w", err)
 	}
@@ -261,6 +285,16 @@ func (r *Web3DepositRepository) CountAdminDepositsByStatus(ctx context.Context) 
 		counts[depositdomain.DepositStatus(entity.Status)]++
 	}
 	return counts, nil
+}
+
+func appendDepositTargetPredicates(predicates []predicate.Web3Deposit, chainID uint64, tokenContract string) []predicate.Web3Deposit {
+	if chainID > 0 {
+		predicates = append(predicates, web3deposit.ChainIDEQ(int64(chainID)))
+	}
+	if token := strings.ToLower(strings.TrimSpace(tokenContract)); token != "" {
+		predicates = append(predicates, web3deposit.TokenContractEQ(token))
+	}
+	return predicates
 }
 
 func (r *Web3DepositRepository) ApproveReviewedDeposit(ctx context.Context, depositID int64) error {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -16,6 +17,7 @@ import (
 )
 
 type Web3DepositHandler struct {
+	cfg        *config.Config
 	deposits   web3deposit.AdminDepositReader
 	operator   web3deposit.AdminDepositOperator
 	runtimes   web3DepositScannerRuntimeRegistry
@@ -35,12 +37,12 @@ type web3DepositNetworkRuntimeRegistry interface {
 
 type web3DepositRescanJobs interface {
 	Enqueue(ctx context.Context, networkKey, assetKey string, fromBlock, toBlock uint64, requestedBy int64) (web3deposit.RescanJob, error)
-	List(ctx context.Context, limit int) ([]web3deposit.RescanJob, error)
+	List(ctx context.Context, networkKey, assetKey string, limit int) ([]web3deposit.RescanJob, error)
 	Get(ctx context.Context, id int64) (web3deposit.RescanJob, error)
 }
 
-func NewWeb3DepositHandler(deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtimes *web3deposit.ScannerRuntimeRegistry, networks *web3deposit.ConfluxNetworkRuntimeRegistry, rescanJobs *web3deposit.RescanJobRuntime) *Web3DepositHandler {
-	return &Web3DepositHandler{deposits: deposits, operator: operator, runtimes: runtimes, networks: networks, rescanJobs: rescanJobs}
+func NewWeb3DepositHandler(cfg *config.Config, deposits web3deposit.AdminDepositReader, operator web3deposit.AdminDepositOperator, runtimes *web3deposit.ScannerRuntimeRegistry, networks *web3deposit.ConfluxNetworkRuntimeRegistry, rescanJobs *web3deposit.RescanJobRuntime) *Web3DepositHandler {
+	return &Web3DepositHandler{cfg: cfg, deposits: deposits, operator: operator, runtimes: runtimes, networks: networks, rescanJobs: rescanJobs}
 }
 
 func (h *Web3DepositHandler) List(c *gin.Context) {
@@ -48,7 +50,12 @@ func (h *Web3DepositHandler) List(c *gin.Context) {
 	if pageSize > 100 {
 		pageSize = 100
 	}
-	filter := web3deposit.AdminDepositFilter{Page: page, PageSize: pageSize, Status: web3deposit.DepositStatus(strings.TrimSpace(c.Query("status"))), Address: c.Query("address"), TxHash: c.Query("tx_hash")}
+	filter, ok := h.adminDepositFilter(c)
+	if !ok {
+		return
+	}
+	filter.Page, filter.PageSize = page, pageSize
+	filter.Status, filter.Address, filter.TxHash = web3deposit.DepositStatus(strings.TrimSpace(c.Query("status"))), c.Query("address"), c.Query("tx_hash")
 	if raw := c.Query("user_id"); raw != "" {
 		filter.UserID, _ = strconv.ParseInt(raw, 10, 64)
 	}
@@ -85,7 +92,11 @@ func (h *Web3DepositHandler) Get(c *gin.Context) {
 }
 
 func (h *Web3DepositHandler) Stats(c *gin.Context) {
-	counts, err := h.deposits.CountAdminDepositsByStatus(c.Request.Context())
+	filter, ok := h.adminDepositFilter(c)
+	if !ok {
+		return
+	}
+	counts, err := h.deposits.CountAdminDepositsByStatusForTarget(c.Request.Context(), filter.ChainID, filter.TokenContract)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -102,6 +113,8 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	type runtimeResponse struct {
 		NetworkKey           string             `json:"network_key"`
 		AssetKey             string             `json:"asset_key"`
+		ChainID              string             `json:"chain_id"`
+		TokenContract        string             `json:"token_contract"`
 		State                string             `json:"state"`
 		Leader               bool               `json:"leader"`
 		LastError            string             `json:"last_error"`
@@ -119,6 +132,14 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	if h.runtimes != nil {
 		for _, key := range h.runtimes.Keys() {
 			item := runtimeResponse{NetworkKey: key.NetworkKey, AssetKey: key.AssetKey, State: string(web3deposit.ScannerRuntimeStateUnhealthy), Endpoints: []endpointResponse{}}
+			if h.cfg != nil {
+				if network, ok := h.cfg.Web3Deposit.Networks[key.NetworkKey]; ok {
+					item.ChainID = strconv.FormatUint(network.ChainID, 10)
+					if asset, ok := network.Assets[key.AssetKey]; ok {
+						item.TokenContract = asset.ContractAddress
+					}
+				}
+			}
 			if runtime, ok := h.runtimes.Runtime(key.NetworkKey, key.AssetKey); ok && runtime != nil {
 				status := runtime.Status()
 				scannerLag := uint64(0)
@@ -157,6 +178,46 @@ func (h *Web3DepositHandler) Runtime(c *gin.Context) {
 	}
 	counts, _ := h.deposits.CountAdminDepositsByStatus(c.Request.Context())
 	response.Success(c, gin.H{"runtimes": items, "metrics": web3deposit.SnapshotRuntimeMetrics(), "status_counts": counts})
+}
+
+func (h *Web3DepositHandler) adminDepositFilter(c *gin.Context) (web3deposit.AdminDepositFilter, bool) {
+	if strings.TrimSpace(c.Query("network_key")) == "" && strings.TrimSpace(c.Query("asset_key")) == "" {
+		return web3deposit.AdminDepositFilter{}, true
+	}
+	if h.cfg == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit configuration is unavailable"))
+		return web3deposit.AdminDepositFilter{}, false
+	}
+	target, err := resolveAdminWeb3DepositTarget(h.cfg.Web3Deposit, c.Query("network_key"), c.Query("asset_key"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return web3deposit.AdminDepositFilter{}, false
+	}
+	return web3deposit.AdminDepositFilter{ChainID: target.ChainID, TokenContract: target.TokenContract}, true
+}
+
+type adminWeb3DepositTarget struct {
+	ChainID       uint64
+	TokenContract string
+}
+
+func resolveAdminWeb3DepositTarget(cfg config.Web3DepositConfig, rawNetworkKey, rawAssetKey string) (adminWeb3DepositTarget, error) {
+	networkKey, assetKey := strings.TrimSpace(rawNetworkKey), strings.TrimSpace(rawAssetKey)
+	if networkKey == "" && assetKey == "" {
+		return adminWeb3DepositTarget{}, nil
+	}
+	if networkKey == "" || assetKey == "" {
+		return adminWeb3DepositTarget{}, infraerrors.BadRequest("WEB3_DEPOSIT_TARGET_INVALID", "network_key and asset_key must be provided together")
+	}
+	network, ok := cfg.Networks[networkKey]
+	if !ok || !network.Enabled {
+		return adminWeb3DepositTarget{}, infraerrors.BadRequest("WEB3_DEPOSIT_TARGET_INVALID", "web3 deposit target is invalid")
+	}
+	asset, ok := network.Assets[assetKey]
+	if !ok {
+		return adminWeb3DepositTarget{}, infraerrors.BadRequest("WEB3_DEPOSIT_TARGET_INVALID", "web3 deposit target is invalid")
+	}
+	return adminWeb3DepositTarget{ChainID: network.ChainID, TokenContract: strings.ToLower(asset.ContractAddress)}, nil
 }
 
 func (h *Web3DepositHandler) Approve(c *gin.Context) {
@@ -296,7 +357,18 @@ func (h *Web3DepositHandler) ListRescanJobs(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	jobs, err := h.rescanJobs.List(c.Request.Context(), limit)
+	networkKey, assetKey := strings.TrimSpace(c.Query("network_key")), strings.TrimSpace(c.Query("asset_key"))
+	if networkKey != "" || assetKey != "" {
+		if h.cfg == nil {
+			response.ErrorFrom(c, infraerrors.ServiceUnavailable("WEB3_DEPOSIT_UNAVAILABLE", "web3 deposit configuration is unavailable"))
+			return
+		}
+		if _, err := resolveAdminWeb3DepositTarget(h.cfg.Web3Deposit, networkKey, assetKey); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+	jobs, err := h.rescanJobs.List(c.Request.Context(), networkKey, assetKey, limit)
 	if err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("WEB3_DEPOSIT_RESCAN_JOB_LIST_FAILED", "failed to list web3 deposit rescan jobs").WithCause(err))
 		return

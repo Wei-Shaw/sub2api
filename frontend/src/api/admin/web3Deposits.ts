@@ -8,6 +8,8 @@ export interface Web3DepositRuntimeEndpoint { id: string; healthy: boolean; unhe
 export interface Web3DepositRuntime {
   network_key: string
   asset_key: string
+  chain_id: string
+  token_contract: string
   state: string
   leader: boolean
   last_error: string
@@ -43,13 +45,13 @@ export interface Web3RescanJob {
 const web3DepositsAPI = {
   list(params?: Record<string, unknown>) { return apiClient.get<BasePaginationResponse<AdminWeb3Deposit>>('/admin/web3-deposits', { params }) },
   get(id: number) { return apiClient.get<AdminWeb3Deposit>(`/admin/web3-deposits/${id}`) },
-  stats() { return apiClient.get<Record<string, number>>('/admin/web3-deposits/stats') },
+  stats(params?: { network_key?: string; asset_key?: string }) { return apiClient.get<Record<string, number>>('/admin/web3-deposits/stats', { params }) },
   runtime() { return apiClient.get<Web3DepositRuntimeResponse>('/admin/web3-deposits/runtime') },
   approve(id: number) { return apiClient.post(`/admin/web3-deposits/${id}/approve`) },
   ignore(id: number, reason: string) { return apiClient.post(`/admin/web3-deposits/${id}/ignore`, { reason }) },
   retry(id: number) { return apiClient.post(`/admin/web3-deposits/${id}/retry`) },
   rescan(networkKey: string, assetKey: string, fromBlock: string, toBlock: string) { return apiClient.post<Web3RescanJob>('/admin/web3-deposits/rescan', { network_key: networkKey, asset_key: assetKey, from_block: fromBlock, to_block: toBlock }) },
-  listRescanJobs(limit = 20) { return apiClient.get<Web3RescanJob[]>('/admin/web3-deposits/rescan-jobs', { params: { limit } }) },
+  listRescanJobs(limit = 20, target?: { network_key?: string; asset_key?: string }) { return apiClient.get<Web3RescanJob[]>('/admin/web3-deposits/rescan-jobs', { params: { limit, ...target } }) },
   getRescanJob(id: number) { return apiClient.get<Web3RescanJob>(`/admin/web3-deposits/rescan-jobs/${id}`) },
 }
 export default web3DepositsAPI

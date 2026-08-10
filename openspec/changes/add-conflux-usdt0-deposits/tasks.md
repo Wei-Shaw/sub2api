@@ -60,7 +60,7 @@
 - [x] 8.1 新增 exact-decimal `CreditWeb3Deposit` 仓储事务，把 finalized 充值计入 `web3_user_balances`。
 - [x] 8.2 新增 Web3 余额向 `users.balance` 的原子划转事务并写入 `web3_balance_transfers`。
 - [x] 8.3 实现 credit lease 或条件 claim，支持多 Worker 和崩溃恢复。
-- [ ] 8.4 提交后失效余额缓存并发送充值成功通知。
+- [x] 8.4 提交后失效余额缓存并发送充值成功通知。
 - [x] 8.5 覆盖 100 路重复履约、划转幂等键冲突、事务中断和通知失败测试。
 - [x] 8.6 确认 Web3 充值不创建 PaymentOrder、RedeemCode 或 affiliate rebate。
 
@@ -71,6 +71,7 @@
 - [x] 9.3 增加用户充值页面、地址二维码、复制能力、风险提示和历史记录。
 - [x] 9.4 增加 loading、empty、disabled、confirming、credited、under review 和 error 状态。
 - [x] 9.5 增加中文、英文和现有项目要求的 i18n 文案。
+- [x] 9.6 增加 Web3 子余额读取、展示和幂等划转到主余额的用户入口。
 
 ## 10. 实现管理 API 和页面
 
@@ -99,6 +100,6 @@
 
 ## 当前状态备注
 
-- 代码侧已实现并接线：配置默认关闭、HD 地址分配、钱包 fingerprint runtime 健康门禁、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账、持久化可恢复的受限补扫任务、管理审核审计、runtime scanner/finalizer 延迟、包含手续费/最终性说明的公开配置、自动获取地址的用户充值页与充值历史页面。
+- 代码侧已实现并接线：配置默认关闭、HD 地址分配、钱包 fingerprint runtime 健康门禁、Conflux eSpace USDT0 RPC 验证、scanner/finalizer、Web3 子账户入账与用户幂等划转、持久化可恢复的受限补扫任务、管理审核审计、runtime scanner/finalizer 延迟、包含手续费/最终性说明的公开配置、自动获取地址的用户充值页与充值历史页面。
 - 已执行验证：`go test ./internal/web3deposit/... ./internal/handler/... ./internal/repository/... ./migrations/... -run 'Web3|web3|Deposit' -count=1`；`go test ./internal/handler/... ./internal/server/middleware/... -run 'Web3|web3|Audit' -count=1`；`go test ./internal/web3deposit/... ./internal/handler/admin -run 'Web3|web3|ScannerFinalizer|Audit' -count=1`；`pnpm test:run web3Deposit admin.web3Deposits`；`pnpm typecheck`。
-- 仍需补证或补实现：生产 HD wallet 离线基线、migration 典型查询 `EXPLAIN`、Web3 子余额向主余额的用户入口、真实链小额灰度和全量上线基线。
+- 仍需补证或补实现：生产 HD wallet 离线基线、migration 典型查询 `EXPLAIN`、真实链小额灰度和全量上线基线。

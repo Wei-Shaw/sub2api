@@ -172,6 +172,9 @@ func (r *Web3AccountingRepository) TransferToMainBalance(ctx context.Context, re
 	if existing, found, err := findBalanceTransfer(ctx, tx, request.IdempotencyKey); err != nil {
 		return web3deposit.TransferToMainBalanceResult{}, err
 	} else if found {
+		if existing.UserID != request.UserID {
+			return web3deposit.TransferToMainBalanceResult{}, web3deposit.ErrTransferAlreadyExists
+		}
 		if err := tx.Commit(); err != nil {
 			return web3deposit.TransferToMainBalanceResult{}, fmt.Errorf("commit idempotent web3 balance transfer: %w", err)
 		}
@@ -194,6 +197,9 @@ func (r *Web3AccountingRepository) TransferToMainBalance(ctx context.Context, re
 	if existing, found, err := findBalanceTransfer(ctx, tx, request.IdempotencyKey); err != nil {
 		return web3deposit.TransferToMainBalanceResult{}, err
 	} else if found {
+		if existing.UserID != request.UserID {
+			return web3deposit.TransferToMainBalanceResult{}, web3deposit.ErrTransferAlreadyExists
+		}
 		if err := tx.Commit(); err != nil {
 			return web3deposit.TransferToMainBalanceResult{}, err
 		}

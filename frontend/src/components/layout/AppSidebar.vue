@@ -418,6 +418,21 @@ const CreditCardIcon = {
     )
 }
 
+const WalletIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M20 7V5a2 2 0 00-2-2H5a3 3 0 000 6h15a1 1 0 011 1v8a2 2 0 01-2 2H5a3 3 0 01-3-3V6m14 7h2'
+        })
+      ]
+    )
+}
+
 const RechargeSubscriptionIcon = {
   render: () =>
     h(
@@ -711,7 +726,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/web3-deposit', label: t('nav.web3Deposit'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagWeb3Deposit },
+    { path: '/web3-deposit', label: t('nav.web3Deposit'), icon: WalletIcon, hideInSimpleMode: true, featureFlag: flagWeb3Deposit },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
@@ -772,7 +787,7 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/admin/web3-deposits', label: t('nav.web3Deposits'), icon: CreditCardIcon, hideInSimpleMode: true },
+    { path: '/admin/web3-deposits', label: t('nav.web3Deposits'), icon: WalletIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
