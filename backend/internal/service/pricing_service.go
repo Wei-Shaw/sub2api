@@ -652,6 +652,33 @@ REDACTED
 	modelLower := strings.ToLower(strings.TrimSpace(modelName))
 	lookupCandidates := s.buildModelLookupCandidates(modelLower)
 
+	// 1~3. 确定性识别（精确名 / 已知拼写变体 / 去掉日期版本后缀）
+	if pricing := s.lookupIdentifiedModelPricingLocked(lookupCandidates); pricing != nil {
+		return pricing
+REDACTED
+
+	// 4. 基于模型系列匹配（Claude）
+	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
+		return pricing
+REDACTED
+
+	// 5. OpenAI 模型回退策略
+	if strings.HasPrefix(lookupCandidates[0], "gpt-") {
+		return s.matchOpenAIModel(lookupCandidates[0])
+REDACTED
+
+	return nil
+REDACTED
+
+// lookupIdentifiedModelPricingLocked 只做"确定性识别"的三步查找：精确键、已知拼写
+// 变体、去掉日期/版本后缀后的同名条目。它刻意不包含 matchByModelFamily /
+// matchOpenAIModel 这类按子串猜系列的兜底——那些兜底会给任意名字都返回一个价格。
+// 调用方必须持有 s.mu 读锁。
+func (s *PricingService) lookupIdentifiedModelPricingLocked(lookupCandidates []string) *LiteLLMModelPricing {
+	if len(lookupCandidates) == 0 {
+		return nil
+REDACTED
+
 	// 1. 精确匹配
 	for _, candidate := range lookupCandidates {
 		if candidate == "" {
@@ -681,17 +708,24 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 4. 基于模型系列匹配（Claude）
-	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
-		return pricing
-REDACTED
-
-	// 5. OpenAI 模型回退策略
-	if strings.HasPrefix(lookupCandidates[0], "gpt-") {
-		return s.matchOpenAIModel(lookupCandidates[0])
-REDACTED
-
 	return nil
+REDACTED
+
+// GetIdentifiedModelPricing 在价格表中确定性地识别模型，识别不到时返回 nil。
+// 与 GetModelPricing 的区别：不会退化成按 "opus"/"haiku" 之类子串猜出的系列兜底价。
+// 用于必须区分"这是价格表里已知的模型"和"这只是名字里带某个关键词"的场景。
+func (s *PricingService) GetIdentifiedModelPricing(modelName string) *LiteLLMModelPricing {
+	if s == nil {
+		return nil
+REDACTED
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	modelLower := strings.ToLower(strings.TrimSpace(modelName))
+	if modelLower == "" {
+		return nil
+REDACTED
+	return s.lookupIdentifiedModelPricingLocked(s.buildModelLookupCandidates(modelLower))
 REDACTED
 
 func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {

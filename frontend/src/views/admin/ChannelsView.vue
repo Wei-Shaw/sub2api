@@ -226,6 +226,9 @@
               <p class="mt-1 text-xs text-gray-400">
                 {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') REDACTEDREDACTED
               </p>
+              <p v-if="form.billing_model_source === 'response_model'" class="mt-1 text-xs text-amber-500">
+                {{ t('admin.channels.form.billingModelSourceResponseWarning', 'Pricing follows the model declared by the upstream response. It can only lower the charge, never raise it — only enable this for upstreams you trust.') REDACTEDREDACTED
+              </p>
             </div>
 
             <!-- Platform Management -->

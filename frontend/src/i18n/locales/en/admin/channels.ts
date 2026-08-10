@@ -144,6 +144,8 @@ export default {
         billingModelSourceRequested: 'Bill by requested model',
         billingModelSourceUpstream: 'Bill by final upstream model',
         billingModelSourceResponse: 'Bill by upstream response model',
+        billingModelSourceResponseWarning:
+          'Pricing follows the model declared by the upstream response. It can only lower the charge, never raise it — only enable this for upstreams you trust.',
         billingModelSourceHint: 'Controls which model name is used for pricing lookup',
         selectedCount: '{countREDACTED selected',
         searchGroups: 'Search groups...',

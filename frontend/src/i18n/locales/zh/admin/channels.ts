@@ -144,6 +144,7 @@ export default {
         billingModelSourceRequested: '以请求模型计费',
         billingModelSourceUpstream: '以最终模型计费',
         billingModelSourceResponse: '按上游响应模型计费',
+        billingModelSourceResponseWarning: '计费基准以上游响应自报的模型为准。该模式只会降低费用、不会抬高，但请仅对可信的上游启用。',
         billingModelSourceHint: '控制使用哪个模型名称进行定价查找',
         selectedCount: '已选 {countREDACTED 个',
         searchGroups: '搜索分组...',

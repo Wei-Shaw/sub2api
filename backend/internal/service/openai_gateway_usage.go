@@ -240,21 +240,27 @@ REDACTED
 		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)REDACTED
 REDACTED
-	// response_model is opt-in and conservative: use an unambiguous priced
-	// response declaration only when it does not increase the baseline charge.
-	if input.BillingModelSource == BillingModelSourceResponse {
-		responseModel := strings.TrimSpace(result.UpstreamResponseModel)
-		if responseModel != "" && !result.UpstreamResponseModelConflict && s.hasResolvableOpenAIResponsePricing(ctx, responseModel, apiKey) {
-			responseModels := usageBillingModelCandidates(responseModel)
-			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
-				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
-				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
-			)
-			if responseErr == nil && responseCost != nil && cost != nil &&
-				responseCost.TotalCost <= cost.TotalCost+1e-12 {
-				billingModels = responseModels
-				cost = responseCost
-		REDACTED
+	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
+	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedOpenAIResponsePricing，
+	// 且重算成本不得高于基线——上游声明永远不能抬高用户费用。任一条件不满足都静默
+	// 回落基线，即开启本模式前的既有行为。
+	if responseModel := responseModelBillingDeclaration(
+		input.BillingModelSource,
+		result.UpstreamResponseModel,
+		result.UpstreamResponseModelConflict,
+		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0,
+	); responseModel != "" && s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey) {
+		responseModels := usageBillingModelCandidates(responseModel)
+		responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
+			ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
+			videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
+		)
+		if responseErr == nil && responseCost != nil && cost != nil &&
+			responseCost.TotalCost <= cost.TotalCost+responseModelBillingCostEpsilon {
+			logResponseModelBillingApplied("service.openai_gateway", account, result.RequestID,
+				firstUsageBillingModel(billingModels), responseModel, cost, responseCost)
+			billingModels = responseModels
+			cost = responseCost
 	REDACTED
 REDACTED
 
@@ -450,7 +456,11 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *OpenAIGatewayService) hasResolvableOpenAIResponsePricing(ctx context.Context, model string, apiKey *APIKey) bool {
+// hasIdentifiedOpenAIResponsePricing 判断上游自报的响应模型是否可以作为计费基准。
+// 只接受管理员为该模型显式配置的渠道定价，或价格表中能被确定性识别的条目；
+// 刻意不接受按子串猜出来的系列兜底价，否则上游随便编一个含 "haiku" 的名字就能把
+// 计费拉到最便宜的系列价上。详见 responseModelBillingDeclaration。
+func (s *OpenAIGatewayService) hasIdentifiedOpenAIResponsePricing(ctx context.Context, model string, apiKey *APIKey) bool {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return false
@@ -458,11 +468,7 @@ REDACTED
 	if s.resolveOpenAIChannelPricing(ctx, model, apiKey) != nil {
 		return true
 REDACTED
-	if s.billingService == nil {
-		return false
-REDACTED
-	_, err := s.billingService.GetModelPricing(model)
-	return err == nil
+	return s.billingService.HasIdentifiedTokenPricing(model)
 REDACTED
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
