@@ -1063,7 +1063,11 @@ const platformFilterOptions = computed(() => [
   { value: 'openai', label: 'OpenAI' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'antigravity', label: 'Antigravity' },
-  { value: 'kiro', label: 'Kiro' }
+  { value: 'kiro', label: 'Kiro' },
+  { value: 'grok', label: 'Grok' },
+  { value: 'fal', label: 'fal' },
+  { value: 'atlascloud', label: 'AtlasCloud' },
+  { value: 'apiz', label: 'apiz' }
 ])
 
 // Group options for assign (only subscription type groups)

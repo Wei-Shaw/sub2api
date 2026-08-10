@@ -47,7 +47,7 @@
                 {{
                   t(
                     'admin.accounts.fal.videoModelsEnabledHint',
-                    '开启后，该账号 model_mapping 中"两段及以上"的 fal endpoint（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会被聚合展示到用户菜单"视频模型"页，并允许调度到视频门面 /tasks/v1/{model}。关闭则该账号仅提供图片等非视频能力。'
+                    '开启后，该账号 model_mapping 中"两段及以上"的 fal endpoint（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会被聚合展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭则该账号仅提供图片等非视频能力。'
                   )
                 }}
               </span>
@@ -1880,7 +1880,7 @@
       </div>
 
       <div
-        v-if="account?.type === 'apikey'"
+        v-if="supportsUpstreamBillingProbe(account?.platform, account?.type)"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div>
@@ -2952,6 +2952,7 @@ import {
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { isKiroRelayAccount } from '@/utils/kiroAccount'
+import { supportsUpstreamBillingProbe } from '@/utils/upstreamBillingProbe'
 import { VERTEX_LOCATION_SELECT_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -4501,7 +4502,10 @@ const handleSubmit = async () => {
       updatePayload.load_factor = 0
     }
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
-    if (props.account.type === 'apikey') {
+    //仅受支持的文本平台 apikey 账号可开启上游倍率探测；媒体平台
+    // （fal / atlascloud / apiz）不实现 /v1/sub2api/billing，不提交该字段，
+    // 否则后端会以 UPSTREAM_BILLING_PROBE_ACCOUNT_INVALID 拒绝整个更新。
+    if (supportsUpstreamBillingProbe(props.account.platform, props.account.type)) {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
       updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
       if (upstreamBillingRateSyncEnabled.value) {

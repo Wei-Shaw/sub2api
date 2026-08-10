@@ -1052,6 +1052,41 @@ func (a *Account) FalSyncBaseURL() string {
 	return domain.FalSyncBaseURL
 }
 
+// AtlasCloudAPIKey 返回 atlascloud 账号的上游凭证。
+// 优先读取 credential "api_key"，回退 "atlascloud_key"。
+// 上游鉴权方式为 Authorization: Bearer {api_key}。
+func (a *Account) AtlasCloudAPIKey() string {
+	if key := strings.TrimSpace(a.GetCredential("api_key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(a.GetCredential("atlascloud_key"))
+}
+
+// AtlasCloudBaseURL 返回 atlascloud 上游 base URL。
+// 无默认值，由账户 credential "base_url" 手动填写（去除尾部斜杠）。
+func (a *Account) AtlasCloudBaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(a.GetCredential("base_url")), "/")
+}
+
+// ApizAPIKey 返回 apiz 账号的上游凭证。
+// 优先读取 credential "api_key"，回退 "apiz_key"。
+// 上游鉴权方式为 Authorization: Bearer {api_key}。
+func (a *Account) ApizAPIKey() string {
+	if key := strings.TrimSpace(a.GetCredential("api_key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(a.GetCredential("apiz_key"))
+}
+
+// ApizBaseURL 返回 apiz 上游 base URL（默认 https://api.apiz.ai）。
+// 支持通过账户 credential "base_url" 覆盖（去除尾部斜杠）。
+func (a *Account) ApizBaseURL() string {
+	if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return domain.ApizBaseURL
+}
+
 // GetGeminiBaseURL 返回 Gemini 兼容端点的 base URL。
 // Antigravity 平台的 APIKey 账号自动拼接 /antigravity。
 func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {

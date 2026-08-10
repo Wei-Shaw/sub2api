@@ -301,7 +301,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
 	NewFalGatewayHandler,
-	NewFalVideoGatewayHandler, // 视频门面（/tasks/v1/*path）
+	NewFalVideoGatewayHandler, // 视频门面（/api/v1/model/*path）
 	NewTotpHandler,
 	NewPasskeyHandler,
 	ProvideSettingHandler,

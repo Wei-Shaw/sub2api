@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apiz"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/atlascloud"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
@@ -817,11 +819,44 @@ func (s *AsyncVideoService) refund(ctx context.Context, billingType int8, billin
 	}
 }
 
-// newClient 基于账号凭证与代理构建 fal 客户端。
-func (s *AsyncVideoService) newClient(account *Account) (*fal.Client, error) {
+// videoUpstreamClient 抽象异步视频上游的提交/轮询/取消能力，
+// 使执行内核（提交、轮询、结算、退费、COS 转存）与具体平台解耦。
+//
+// *fal.Client、*atlascloud.Client 与 *apiz.Client 均满足该接口。返回类型统一复用
+// fal 包的 SubmitResponse/StatusResponse/APIError，因此 SubmitAsync /
+// pollOnce 中的 errors.As(err, &fal.APIError) 分支对各平台一致适用。
+type videoUpstreamClient interface {
+	SubmitRaw(ctx context.Context, model string, body any) (*fal.SubmitResponse, error)
+	Status(ctx context.Context, statusURL string) (*fal.StatusResponse, error)
+	ResultRaw(ctx context.Context, responseURL string) (map[string]any, error)
+	BuildStatusURL(model, requestID string) string
+	BuildResponseURL(model, requestID string) string
+	BuildCancelURL(model, requestID string) string
+	Cancel(ctx context.Context, cancelURL string) error
+}
+
+// newClient 基于账号平台与凭证构建对应的上游客户端。
+//
+// fal 账号走 fal queue/sync 协议；atlascloud / apiz 账号走各自的
+// generate*/prediction 异步协议（均适配为 videoUpstreamClient）。
+func (s *AsyncVideoService) newClient(account *Account) (videoUpstreamClient, error) {
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
+	}
+	if account.Platform == PlatformAtlasCloud {
+		return atlascloud.NewClient(atlascloud.Config{
+			APIKey:   account.AtlasCloudAPIKey(),
+			BaseURL:  account.AtlasCloudBaseURL(),
+			ProxyURL: proxyURL,
+		})
+	}
+	if account.Platform == PlatformApiz {
+		return apiz.NewClient(apiz.Config{
+			APIKey:   account.ApizAPIKey(),
+			BaseURL:  account.ApizBaseURL(),
+			ProxyURL: proxyURL,
+		})
 	}
 	return fal.NewClient(fal.Config{
 		APIKey:       account.FalAPIKey(),

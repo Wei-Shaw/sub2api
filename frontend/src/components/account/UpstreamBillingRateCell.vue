@@ -89,6 +89,7 @@ import { useI18n } from 'vue-i18n'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatMultiplier } from '@/utils/formatters'
+import { supportsUpstreamBillingProbe } from '@/utils/upstreamBillingProbe'
 import type { Account, UpstreamBillingProbeSnapshot } from '@/types'
 
 const props = withDefaults(defineProps<{
@@ -106,8 +107,9 @@ defineEmits<{
 
 const { t } = useI18n()
 const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000
-// 探测资格已放宽到全部 API-key 平台（上游是 sub2api 即可应答）。
-const eligible = computed(() => props.account.type === 'apikey')
+// 探测资格与后端 IsUpstreamBillingProbeIdentity 对齐：受支持文本平台的 apikey 账号。
+// 媒体平台（fal / atlascloud / apiz）不实现 /v1/sub2api/billing，不显示该列内容。
+const eligible = computed(() => supportsUpstreamBillingProbe(props.account.platform, props.account.type))
 const snapshot = computed<UpstreamBillingProbeSnapshot | undefined>(() => props.account.extra?.upstream_billing_probe)
 const data = computed(() => snapshot.value?.data)
 const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled === true)

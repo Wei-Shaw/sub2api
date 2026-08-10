@@ -27,6 +27,8 @@ const (
 	PlatformKiro        = "kiro"
 	PlatformGrok        = "grok"
 	PlatformFal         = "fal"
+	PlatformAtlasCloud  = "atlascloud"
+	PlatformApiz        = "apiz"
 	PlatformComposite   = "composite"
 )
 
@@ -212,6 +214,45 @@ const FalQueueBaseURL = "https://queue.fal.run"
 // FalSyncBaseURL 是 fal 同步协议默认 base URL。
 const FalSyncBaseURL = "https://fal.run"
 
+// AtlasCloud 上游REST 端点路径（相对 base_url）。
+//
+// atlascloud 采用异步轮询协议：
+//
+//	-提交视频：POST {base_url}/api/v1/model/generateVideo -> { id, status, ... }
+//	- 提交图片：POST {base_url}/api/v1/model/generateImage -> { id, status, ... }
+//	- 上传媒体：POST {base_url}/api/v1/model/uploadMedia
+//	- 轮询结果：GET  {base_url}/api/v1/model/prediction/{id} -> { status, outputs:[...] }
+//
+// 鉴权：Authorization: Bearer {api_key}。base_url 无默认值，由账户凭证手动填写。
+const (
+	AtlasCloudPathGenerateVideo = "/api/v1/model/generateVideo"
+	AtlasCloudPathGenerateImage = "/api/v1/model/generateImage"
+	AtlasCloudPathUploadMedia   = "/api/v1/model/uploadMedia"
+	AtlasCloudPathPrediction    = "/api/v1/model/prediction" // + /{id}
+)
+
+// Apiz 上游 REST 端点路径（相对 base_url）。
+//
+// apiz 采用"创建任务 + 查询任务"的异步协议，两个端点都是 POST：
+//   - 创建任务：POST {base_url}/api/v3/tasks/create -> { task_id, status, ... }
+//   - 查询任务：POST {base_url}/api/v3/tasks/query  body={ task_id } -> { status, video_url|outputs, ... }
+//
+// 鉴权：Authorization: Bearer {api_key}。
+//
+// 创建任务参数（透传客户端 payload）：
+//
+//	prompt(必填,1-5000) / duration(480P:4-30, 720P:4-29, 默认8)
+//	resolution(480P|720P, 默认720P) / aspect_ratio(21:9|16:9|4:3|1:1|3:4|9:16)
+//	audio(bool) / image_url(首帧,带图即图生视频) / end_image_url(尾帧,需同时给image_url)
+//	reference_image_urls(<=30) / reference_video_urls(<=10) / reference_audio_urls(<=10)
+const (
+	ApizPathTasksCreate = "/api/v3/tasks/create"
+	ApizPathTasksQuery  = "/api/v3/tasks/query"
+)
+
+// ApizBaseURL 是 apiz 平台默认 base URL，可由账户 credential "base_url" 覆盖。
+const ApizBaseURL = "https://api.apiz.ai"
+
 // ============================================================
 // 视频模型识别
 // ============================================================
@@ -224,7 +265,7 @@ const FalSyncBaseURL = "https://fal.run"
 // "bytedance/seedance-2.5/text-to-video"、
 // "bytedance/seedance-2.0/mini/image-to-video"）。
 //
-// 该判定用于视频门面 /tasks/v1/{model} 的白名单，避免被当作任意
+// 该判定用于视频门面 /api/v1/model/{model} 的白名单，避免被当作任意
 // fal endpoint 的透传通道；账号是否真正提供该模型另由分组内 fal
 // 账号的 model_mapping 与"支持视频模型"开关决定。
 func IsVideoModelName(model string) bool {
@@ -245,7 +286,7 @@ func IsVideoModelName(model string) bool {
 // 语义：只有当账号的 Extra[FalVideoModelsEnabledExtraKey] == true 时，
 // 该账号的 model_mapping 中两段及以上的 endpoint 才会作为视频模型暴露给用户菜单
 // /user/video-models。开关关闭（缺省 false）时该账号仅提供图片/其它 fal 能力，
-// 视频门面 /tasks/v1/{model} 不会调度到此账号。
+// 视频门面 /api/v1/model/{model} 不会调度到此账号。
 const FalVideoModelsEnabledExtraKey = "fal_video_models_enabled"
 
 // IsFalVideoModelsEnabled 从账号 Extra 中读出"支持视频模型"开关。

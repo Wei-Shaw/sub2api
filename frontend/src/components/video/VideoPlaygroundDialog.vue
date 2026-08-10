@@ -680,7 +680,7 @@ function tryPeekBody(): Record<string, unknown> | null {
 }
 
 const curlSnippet = computed(() => {
-  const url = buildGatewayUrl(`/tasks/v1/${props.slug}`)
+  const url = buildGatewayUrl(`/api/v1/model/${props.slug}`)
   const keyPart = selectedKey.value ? selectedKey.value.key : '<YOUR_API_KEY>'
   const body = JSON.stringify(curlBody(), null, 2)
   const indented = body
