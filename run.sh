@@ -8,7 +8,7 @@ info "启动 Sub2API 服务..."
 docker compose -f deploy/docker-compose.yml up -d
 
 echo ""
-success "服务已启动，访问地址：http://localhost:8080"
+echo "服务已启动，访问地址：http://localhost:8080"
 echo ""
-info "查看日志：  docker compose -f deploy/docker-compose.yml logs -f sub2api"
-info "停止服务：  ./stop.sh"
+echo "查看日志：  docker compose -f deploy/docker-compose.yml logs -f sub2api"
+echo "停止服务：  ./stop.sh"
