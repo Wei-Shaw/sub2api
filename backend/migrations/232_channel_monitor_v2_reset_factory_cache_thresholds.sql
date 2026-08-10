@@ -1,5 +1,6 @@
 -- Keep factory cache scoring tolerant. Migration 203 briefly wrote 0.85/0.60;
 -- reset only that exact factory pair, preserving operator-customized values.
+-- sub2api-managed-update: reviewed-compatible
 UPDATE channel_monitor_v2_config
 SET health_thresholds = health_thresholds
     || jsonb_build_object(

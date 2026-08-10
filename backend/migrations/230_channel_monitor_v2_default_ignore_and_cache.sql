@@ -6,6 +6,7 @@
 -- Only apply when the row still looks like factory empty ignore list and/or
 -- zero cache thresholds (operator customizations are left alone).
 
+-- sub2api-managed-update: reviewed-compatible
 UPDATE channel_monitor_v2_config
 SET ignored_error_categories = ARRAY[
     'authentication',
@@ -20,6 +21,7 @@ SET ignored_error_categories = ARRAY[
 WHERE id = 1
   AND COALESCE(cardinality(ignored_error_categories), 0) = 0;
 
+-- sub2api-managed-update: reviewed-compatible
 UPDATE channel_monitor_v2_config
 SET health_thresholds = health_thresholds
     || jsonb_build_object(

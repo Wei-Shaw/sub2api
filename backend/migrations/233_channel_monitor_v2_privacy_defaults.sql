@@ -2,6 +2,7 @@
 -- mutating those already-applied migration files (which are checksum-locked).
 -- The setting was factory-created as false by migration 204. Existing
 -- installations need the same privacy-preserving default as new installs.
+-- sub2api-managed-update: reviewed-compatible
 UPDATE settings
 SET value = 'true', updated_at = NOW()
 WHERE key = 'channel_monitor_hide_throughput'

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,6 +110,34 @@ func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigr
 		require.Truef(t, ok, "missing compatibility rule for %s", name)
 		require.NotEmpty(t, rule.fileChecksum)
 		require.NotEmpty(t, rule.acceptedDBChecksum)
+	}
+}
+
+func TestEditedPreReleaseMigrationCompatibilityRulesMatchCurrentFiles(t *testing.T) {
+	for _, name := range []string{
+		"217_group_video_model_prices.sql",
+		"220_clear_non_grok_video_generation_config.sql",
+		"221_channel_monitor_v2.sql",
+		"223_channel_monitor_v2_ignored_error_categories.sql",
+		"224_channel_monitor_v2_seed_popular_models.sql",
+		"225_channel_monitor_v2_health_thresholds.sql",
+		"226_channel_monitor_v2_fixed_rollups.sql",
+		"227_channel_monitor_v2_rollup_permissions.sql",
+		"228_channel_monitor_v2_refresh_5m.sql",
+		"229_channel_monitor_v2_full_table_permissions.sql",
+		"230_channel_monitor_v2_default_ignore_and_cache.sql",
+		"232_channel_monitor_v2_reset_factory_cache_thresholds.sql",
+		"233_channel_monitor_v2_privacy_defaults.sql",
+	} {
+		t.Run(name, func(t *testing.T) {
+			content, err := migrations.FS.ReadFile(name)
+			require.NoError(t, err)
+			sum := sha256.Sum256([]byte(strings.TrimSpace(string(content))))
+
+			rule, ok := migrationChecksumCompatibilityRules[name]
+			require.True(t, ok)
+			require.Equal(t, hex.EncodeToString(sum[:]), rule.fileChecksum)
+		})
 	}
 }
 

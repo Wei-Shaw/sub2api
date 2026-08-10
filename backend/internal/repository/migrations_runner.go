@@ -110,9 +110,24 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"222_channel_monitor_mode.sql": newMigrationChecksumCompatibilityRule("13f3792f3e3e53ee96e26415c884cf8062c77172824b54fcc9a8c0c2b1f185ec", "4c74fe33ef2274cc72e1bb49671e651274532c034b29f5b2982c2a4c88d101a6"),
 	// 220 originally cleared video prices for all non-grok platforms (including composite);
 	// composite is now preserved because it may route to Grok accounts.
-	"220_clear_non_grok_video_generation_config.sql": newMigrationChecksumCompatibilityRule("85e320b9ec64f2d3fcd8cf705b2b4e76a7b49f7a57140c14bff97f32691c818b", "3da48c8fdffe6390325f43d08b8e353e0a365df43d44a78dbbe655d0deb18402"),
+	"220_clear_non_grok_video_generation_config.sql": newMigrationChecksumCompatibilityRule("edd57e223520cc16314c99224b4d2b8c6df89986ef36d26d7ac5ef5d8880fbc4", "cf4dbfa75ac27d93a30a6a14439fe7dccfc911c043358363d5ec47946aa0e28b", "85e320b9ec64f2d3fcd8cf705b2b4e76a7b49f7a57140c14bff97f32691c818b", "3da48c8fdffe6390325f43d08b8e353e0a365df43d44a78dbbe655d0deb18402"),
 	"219_group_search_price_per_1k.sql":              newMigrationChecksumCompatibilityRule("e86786ebcc3b14206fd2d321380a4e50e80cdadbfcf4962c639255e6a14008db", "df6ffd71b97e30ec2c8fe7b95e15783042dea58c553e32701ee7c42a5619af80"),
 	"218_group_audio_voice_pricing.sql":              newMigrationChecksumCompatibilityRule("40ee9f3a2af0e0a5e99dabc878fd0fe98be1011f26bcfcefcac7197f7081f0e7", "c2a5e5b4ffd6968ad1c10593289fbc11192cdea19fec3ed9bce3a84eff9a8351"),
+	// These migrations entered main through the unreleased upstream 0.1.173 sync.
+	// Accept the exact pre-release main checksums so staging databases can move
+	// onto the reviewed managed-update forms without replaying applied files.
+	"217_group_video_model_prices.sql":                          newMigrationChecksumCompatibilityRule("ba787acdaa1f159f507fb350a6bf9ec049f4ae0b712f1ac0c3185b52b55f47e5", "e335f1b68ed1349661fab51bf4669619b7b116df31c1fb974c844b1c8a2f84d3"),
+	"221_channel_monitor_v2.sql":                                newMigrationChecksumCompatibilityRule("ff96dd72c51bf7423a0eacc9a628b4cff761f9fcaca254c30adbc26d679d37e2", "efe5668b284b3e0e7a27a6ebb138fb03aeeeb3593117232733b1f4cc13c9e2c1"),
+	"223_channel_monitor_v2_ignored_error_categories.sql":       newMigrationChecksumCompatibilityRule("3f8311f3171c9bcec28c3c355633f25bccfaea252fc3899ceabcb4f0b5fd67d0", "75520645fc43e15b8d48bb28ce49c0e1633414db4267cba99ed1e4b2b334b7c4"),
+	"224_channel_monitor_v2_seed_popular_models.sql":            newMigrationChecksumCompatibilityRule("2b721c2c226ac9f58dc183a197aaf9b5b326c4d9dbbae1b0306bba1d0f1f37c2", "23d0489c1b421bc6d7c91bbfcb7006eb49a0d107f1e5ee441cc6502f8b280cbb"),
+	"225_channel_monitor_v2_health_thresholds.sql":              newMigrationChecksumCompatibilityRule("e553b02861dfc79c6cfe6d14304a14a8e9ada31f819a493f695c8a0fb6e0c77d", "3e996b6f92520e657905964c9e9fc7f2a370e00ebcf1d43c9ad5df0412fb4e71"),
+	"226_channel_monitor_v2_fixed_rollups.sql":                  newMigrationChecksumCompatibilityRule("0b3d26347f1958e711977ed43ad63768f3589da2cd57f3e5ab73bf474965ff56", "6b11bb6342c385b3ecb27ab42d2ddf3d7eeda0d36d0dd804c66b33fb6310c7b5"),
+	"227_channel_monitor_v2_rollup_permissions.sql":             newMigrationChecksumCompatibilityRule("e68b93fb47970f93c96fdf9dae57ca2f4f72110962874da29273271d32551e0e", "86d16854b17a096c8e1dbd7e4897b30aabcd74adaee1390d7e7c5b0c4cea8e84"),
+	"228_channel_monitor_v2_refresh_5m.sql":                     newMigrationChecksumCompatibilityRule("0e1c8d60c2a3a38f962b298fb3aa8ae766e3e53c9495718eaf50b471a4619955", "d5f3cf24c2ee94eb872cc9fa6508929886bcf779f5b0d7ba71ef450c58699601"),
+	"229_channel_monitor_v2_full_table_permissions.sql":         newMigrationChecksumCompatibilityRule("8923614e88d9a0f5d7c5205656dc60b8005676ffd35a36312175ee2d1c39f61c", "7d944e39abd71fee4845dac933536f3f891fcfd7fb926e1187b4e8a49b6edc3e"),
+	"230_channel_monitor_v2_default_ignore_and_cache.sql":       newMigrationChecksumCompatibilityRule("a4628398e6e7c91968276c8f5a0e89633a8036c0b7448f6eb4360b54d841bea4", "ae54ca5d660438136f559cf2b65dae15399281de195a19159d03ec596de4bb98"),
+	"232_channel_monitor_v2_reset_factory_cache_thresholds.sql": newMigrationChecksumCompatibilityRule("054c8893439eec8105c97ba455ae9f8ee6ca6969cb63db821244ab6119d28ed1", "9cc91f869c03ba5cc46696575959cbd1b74ba0e9ad380bcbc3a422259eddff80"),
+	"233_channel_monitor_v2_privacy_defaults.sql":               newMigrationChecksumCompatibilityRule("e298db503aa75dd2782e994723489c4489b63a5655e0f98af1f848e373630068", "e2bdbcafac7f07aa9eebc804dde013e3eef506a6b3a323d8548b01b8796905cd"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

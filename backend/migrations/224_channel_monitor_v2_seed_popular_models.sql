@@ -8,6 +8,7 @@
 -- Only rewrite rows whose platforms still look like the empty-models factory
 -- default (every platform has models: []). Custom operator configs are left alone.
 
+-- sub2api-managed-update: reviewed-compatible
 UPDATE channel_monitor_v2_config
 SET
     platforms = $platforms$

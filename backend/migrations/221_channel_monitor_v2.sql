@@ -1,7 +1,7 @@
 -- Passive channel monitor V2. This migration creates empty rollup tables only;
 -- backfill is intentionally handled by a bounded background worker.
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_config (
+CREATE TABLE channel_monitor_v2_config (
     id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     version INTEGER NOT NULL DEFAULT 1,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS channel_monitor_v2_config (
 INSERT INTO channel_monitor_v2_config (id) VALUES (1)
 ON CONFLICT (id) DO NOTHING;
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_metrics_1m (
+CREATE TABLE channel_monitor_v2_metrics_1m (
     bucket_start TIMESTAMPTZ NOT NULL,
     platform TEXT NOT NULL,
     group_id BIGINT NOT NULL DEFAULT 0,
@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_metrics_group_time
 CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_metrics_model_time
     ON channel_monitor_v2_metrics_1m (model, bucket_start DESC);
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_user_metrics_1m (
+CREATE TABLE channel_monitor_v2_user_metrics_1m (
     bucket_start TIMESTAMPTZ NOT NULL,
     platform TEXT NOT NULL,
     group_id BIGINT NOT NULL DEFAULT 0,
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_user_metrics_user_time
 CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_user_metrics_time
     ON channel_monitor_v2_user_metrics_1m (bucket_start DESC);
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_error_metrics_1m (
+CREATE TABLE channel_monitor_v2_error_metrics_1m (
     bucket_start TIMESTAMPTZ NOT NULL,
     platform TEXT NOT NULL,
     group_id BIGINT NOT NULL DEFAULT 0,
@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_errors_time
 CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_errors_category_time
     ON channel_monitor_v2_error_metrics_1m (error_category, bucket_start DESC);
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_latency_histograms_1m (
+CREATE TABLE channel_monitor_v2_latency_histograms_1m (
     bucket_start TIMESTAMPTZ NOT NULL,
     platform TEXT NOT NULL,
     group_id BIGINT NOT NULL DEFAULT 0,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS channel_monitor_v2_latency_histograms_1m (
 CREATE INDEX IF NOT EXISTS idx_channel_monitor_v2_histograms_time
     ON channel_monitor_v2_latency_histograms_1m (bucket_start DESC, metric);
 
-CREATE TABLE IF NOT EXISTS channel_monitor_v2_watermarks (
+CREATE TABLE channel_monitor_v2_watermarks (
     id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     usage_coverage_start TIMESTAMPTZ,
     error_coverage_start TIMESTAMPTZ,
@@ -112,8 +112,3 @@ CREATE TABLE IF NOT EXISTS channel_monitor_v2_watermarks (
 
 INSERT INTO channel_monitor_v2_watermarks (id) VALUES (1)
 ON CONFLICT (id) DO NOTHING;
-
-COMMENT ON TABLE channel_monitor_v2_metrics_1m IS
-    'One-minute passive channel health facts derived from real user requests; never from active probes.';
-COMMENT ON COLUMN channel_monitor_v2_error_metrics_1m.taxonomy_version IS
-    'Version of the ordered error classification rules used for this aggregate.';
