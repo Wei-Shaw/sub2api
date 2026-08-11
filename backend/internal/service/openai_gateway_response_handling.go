@@ -103,6 +103,7 @@ REDACTED
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 REDACTED
 	var firstTokenMs *int
+	firstOutputProgressObserved := false
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
 	var firstOutputStage *openAIFirstOutputStage
 	if guardFirstOutput {
@@ -114,19 +115,19 @@ REDACTED
 	REDACTED()
 REDACTED
 	writePendingString := func(value string) (int, error) {
-		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
+		if firstOutputStage != nil && !firstOutputProgressObserved && !firstOutputStage.closed {
 			return firstOutputStage.WriteString(value)
 	REDACTED
 		return bufferedWriter.WriteString(value)
 REDACTED
 	pendingBytes := func() int64 {
-		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
+		if firstOutputStage != nil && !firstOutputProgressObserved && !firstOutputStage.closed {
 			return firstOutputStage.Buffered()
 	REDACTED
 		return int64(bufferedWriter.Buffered())
 REDACTED
 	flushBuffered := func() error {
-		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
+		if firstOutputStage != nil && !firstOutputProgressObserved && !firstOutputStage.closed {
 			if err := firstOutputStage.CommitTo(w); err != nil {
 				return err
 		REDACTED
@@ -235,9 +236,10 @@ REDACTED
 	var streamEarlyErr error
 	eventInProgress := false
 	eventStartsClientOutput := false
+	eventStartsVisibleOutput := false
 	eventShouldFlush := false
 	handlePendingWriteError := func(err error) {
-		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
+		if firstOutputStage != nil && !firstOutputProgressObserved && !firstOutputStage.closed {
 			message := "OpenAI first-output staging failed"
 			if errors.Is(err, errOpenAIFirstOutputStageLimit) {
 				message = "OpenAI first-output staging limit exceeded"
@@ -253,11 +255,12 @@ REDACTED
 		logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 REDACTED
 	completeGuardedEvent := func(queueDrained bool) {
-		completedSemanticEvent := eventStartsClientOutput
+		completedProgressEvent := eventStartsClientOutput
+		completedVisibleEvent := eventStartsVisibleOutput
 		shouldFlush := eventShouldFlush || (queueDrained && clientOutputStarted)
 		eventInProgress = false
 		if !clientDisconnected {
-			if completedSemanticEvent {
+			if completedProgressEvent {
 				applyAttemptResponseHeaders()
 		REDACTED
 			if shouldFlush {
@@ -270,13 +273,17 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
-		if completedSemanticEvent && firstTokenMs == nil {
+		if completedProgressEvent && !firstOutputProgressObserved {
 			firstOutputScanGuard.Store(false)
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
+			firstOutputProgressObserved = true
 			stopFirstOutputTimer()
 	REDACTED
+		if completedVisibleEvent && firstTokenMs == nil {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+	REDACTED
 		eventStartsClientOutput = false
+		eventStartsVisibleOutput = false
 		eventShouldFlush = false
 REDACTED
 	sendErrorEvent := func(reason string) {
@@ -365,7 +372,7 @@ REDACTED
 		if scanErr == nil {
 			return nil, nil, false
 	REDACTED
-		if errors.Is(scanErr, errOpenAIFirstOutputScannerLimit) && firstTokenMs == nil {
+		if errors.Is(scanErr, errOpenAIFirstOutputScannerLimit) && !firstOutputProgressObserved {
 			logger.LegacyPrintf("service.openai_gateway", "SSE token exceeded guarded first-output limit: account=%d limit=%d error=%v", account.ID, openAIFirstOutputStageMaxBytes+openAIFirstOutputScannerFramingAllowance, scanErr)
 			failoverErr := s.newOpenAIStreamFailoverError(
 				c, account, false, upstreamRequestID, nil,
@@ -374,7 +381,7 @@ REDACTED
 			failoverErr.SafeToFailoverAfterWrite = true
 			return resultWithUsage(), failoverErr, true
 	REDACTED
-		if errors.Is(scanErr, bufio.ErrTooLong) && guardFirstOutput && firstTokenMs == nil {
+		if errors.Is(scanErr, bufio.ErrTooLong) && guardFirstOutput && !firstOutputProgressObserved {
 			logger.LegacyPrintf("service.openai_gateway", "SSE line too long before first output: account=%d max_size=%d error=%v", account.ID, maxLineSize, scanErr)
 			failoverErr := s.newOpenAIStreamFailoverError(
 				c, account, false, upstreamRequestID, nil,
@@ -540,8 +547,10 @@ REDACTED
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 		REDACTED
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
+			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
 			if guardFirstOutput {
 				eventStartsClientOutput = eventStartsClientOutput || startsClientOutput
+				eventStartsVisibleOutput = eventStartsVisibleOutput || startsVisibleOutput
 		REDACTED
 			if startsClientOutput && !openAIStreamEventTypeIsTerminal(eventType) {
 				responsesSemanticOutputSeen = true
@@ -562,7 +571,7 @@ REDACTED
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
 				shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
-				if firstTokenMs == nil && startsClientOutput {
+				if firstTokenMs == nil && startsVisibleOutput {
 					// 保证首个 token 事件尽快出站，避免影响 TTFT。
 					shouldFlush = true
 			REDACTED
@@ -577,7 +586,7 @@ REDACTED
 		REDACTED
 
 			// Record first token time
-			if !guardFirstOutput && firstTokenMs == nil && startsClientOutput {
+			if !guardFirstOutput && firstTokenMs == nil && startsVisibleOutput {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 				stopFirstOutputTimer()
@@ -740,7 +749,7 @@ REDACTED(scanBuf)
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-firstOutputCh:
-			if firstTokenMs != nil {
+			if firstOutputProgressObserved {
 				stopFirstOutputTimer()
 				continue
 		REDACTED
