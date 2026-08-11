@@ -53,23 +53,41 @@
         </template>
 
         <template #cell-model="{ row REDACTED">
-          <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5 text-xs">
-            <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
-                 class="break-all"
-                 :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-                 :style="i > 0 ? `padding-left: ${i * 0.75REDACTEDrem` : ''">
-              <span v-if="i > 0" class="mr-0.5">↳</span>{{ step REDACTEDREDACTED
+          <div class="space-y-0.5 text-xs">
+            <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">
+              <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
+                   class="break-all"
+                   :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+                   :style="i > 0 ? `padding-left: ${i * 0.75REDACTEDrem` : ''">
+                <span v-if="i > 0" class="mr-0.5">↳</span>{{ step REDACTEDREDACTED
+              </div>
+            </div>
+            <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5">
+              <div class="break-all font-medium text-gray-900 dark:text-white">
+                {{ row.model REDACTEDREDACTED
+              </div>
+              <div class="break-all text-gray-500 dark:text-gray-400">
+                <span class="mr-0.5">↳</span>{{ row.upstream_model REDACTEDREDACTED
+              </div>
+            </div>
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model REDACTEDREDACTED</span>
+            <div
+              v-if="row.upstream_model_mismatch === true && row.upstream_response_model"
+              class="break-all pl-3 text-[11px]"
+              :class="isLikelyModelVariant(row) ? 'text-amber-600 dark:text-amber-400' : 'text-orange-600 dark:text-orange-400'"
+              :title="modelAuditTitle(row)"
+            >
+              <span class="mr-1">↳ {{ t('usage.upstreamResponseModel') REDACTEDREDACTED:</span>{{ row.upstream_response_model REDACTEDREDACTED
+              <span
+                class="ml-1 inline-flex rounded px-1 py-px text-[10px] font-medium ring-1 ring-inset"
+                :class="isLikelyModelVariant(row)
+                  ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30'
+                  : 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/30'"
+              >
+                {{ isLikelyModelVariant(row) ? t('usage.modelVariant') : t('usage.modelMismatch') REDACTEDREDACTED
+              </span>
             </div>
           </div>
-          <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5 text-xs">
-            <div class="break-all font-medium text-gray-900 dark:text-white">
-              {{ row.model REDACTEDREDACTED
-            </div>
-            <div class="break-all text-gray-500 dark:text-gray-400">
-              <span class="mr-0.5">↳</span>{{ row.upstream_model REDACTEDREDACTED
-            </div>
-          </div>
-          <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model REDACTEDREDACTED</span>
         </template>
 
         <template #cell-reasoning_effort="{ row REDACTED">
@@ -218,6 +236,24 @@
 
         <template #cell-created_at="{ value REDACTED">
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) REDACTEDREDACTED</span>
+        </template>
+
+        <template #cell-request_id="{ row REDACTED">
+          <div v-if="row.request_id" class="flex max-w-[160px] items-center gap-1.5">
+            <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" :title="row.request_id">
+              {{ row.request_id REDACTEDREDACTED
+            </span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+              :class="copiedRequestId === row.request_id ? 'text-green-500 hover:text-green-500' : ''"
+              :title="copiedRequestId === row.request_id ? t('keys.copied') : t('keys.copyToClipboard')"
+              @click="copyRequestId(row.request_id)"
+            >
+              <Icon :name="copiedRequestId === row.request_id ? 'check' : 'copy'" size="sm" class="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
         <template #cell-user_agent="{ row REDACTED">
@@ -463,6 +499,7 @@
 <script setup lang="ts">
 import { computed, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import { useAppStore REDACTED from '@/stores/app'
 import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
 import { formatCacheTokens, formatMultiplier REDACTED from '@/utils/formatters'
 import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
@@ -542,11 +579,34 @@ const emit = defineEmits<{
   ipGeoBatchFailed: []
 REDACTED>()
 const { t REDACTED = useI18n()
+const appStore = useAppStore()
+const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+const sentUpstreamModel = (row: AdminUsageLog): string => row.upstream_model?.trim() || row.model?.trim() || ''
+
+const normalizeModelVariant = (model: string): string => model
+  .trim()
+  .toLowerCase()
+  .replace(/-latest$/, '')
+  .replace(/-\d{4REDACTED-\d{2REDACTED-\d{2REDACTED$/, '')
+  .replace(/-\d{8REDACTED$/, '')
+
+const isLikelyModelVariant = (row: AdminUsageLog): boolean => {
+  const sent = sentUpstreamModel(row)
+  const response = row.upstream_response_model?.trim() || ''
+  return sent !== '' && response !== '' && normalizeModelVariant(sent) === normalizeModelVariant(response)
+REDACTED
+
+const modelAuditTitle = (row: AdminUsageLog): string => [
+  `${t('usage.requestedModel')REDACTED: ${row.model || '-'REDACTED`,
+  `${t('usage.sentUpstreamModel')REDACTED: ${sentUpstreamModel(row) || '-'REDACTED`,
+  `${t('usage.upstreamResponseModel')REDACTED: ${row.upstream_response_model || '-'REDACTED`,
+].join('\n')
 
 const currentPageIps = computed(() =>
   Array.from(new Set(props.data.map((row) => row.ip_address).filter((ip): ip is string => Boolean(ip))))
@@ -567,6 +627,19 @@ const handleBatchFetchIpGeo = async () => {
     if (!ok) emit('ipGeoBatchFailed')
   REDACTED finally {
     ipGeoBatchLoading.value = false
+  REDACTED
+REDACTED
+
+const copyRequestId = async (requestId: string) => {
+  try {
+    await navigator.clipboard.writeText(requestId)
+    copiedRequestId.value = requestId
+    appStore.showSuccess(t('admin.usage.requestIdCopied'))
+    window.setTimeout(() => {
+      if (copiedRequestId.value === requestId) copiedRequestId.value = null
+    REDACTED, 2000)
+  REDACTED catch {
+    appStore.showError(t('common.copyFailed'))
   REDACTED
 REDACTED
 

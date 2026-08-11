@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -67,20 +70,28 @@ func redactedGrokBaseURLValidator(validator xai.BaseURLValidator) xai.BaseURLVal
 REDACTED
 REDACTED
 
-func buildGrokResponsesURL(account *Account, cfg *config.Config) (string, error) {
+func buildGrokResponsesURL(account *Account, cfg *config.Config, settings ...*SettingService) (string, error) {
 	validator, err := grokBaseURLValidator(account, cfg)
 	if err != nil {
 		return "", err
 REDACTED
-	return xai.BuildResponsesURLWithValidator(account.GetGrokBaseURL(), validator)
+	baseURL := account.GetGrokBaseURL()
+	if len(settings) > 0 && settings[0] != nil {
+		baseURL = settings[0].ResolveGrokBaseURL(context.Background(), account)
+REDACTED
+	return xai.BuildResponsesURLWithValidator(baseURL, validator)
 REDACTED
 
-func buildGrokChatCompletionsURL(account *Account, cfg *config.Config) (string, error) {
+func buildGrokChatCompletionsURL(account *Account, cfg *config.Config, settings ...*SettingService) (string, error) {
 	validator, err := grokBaseURLValidator(account, cfg)
 	if err != nil {
 		return "", err
 REDACTED
-	return xai.BuildChatCompletionsURLWithValidator(account.GetGrokBaseURL(), validator)
+	baseURL := account.GetGrokBaseURL()
+	if len(settings) > 0 && settings[0] != nil {
+		baseURL = settings[0].ResolveGrokBaseURL(context.Background(), account)
+REDACTED
+	return xai.BuildChatCompletionsURLWithValidator(baseURL, validator)
 REDACTED
 
 // buildGrokBillingURL 解析 billing 探测端点：跟随账号的转发 base_url，
@@ -90,7 +101,14 @@ func buildGrokBillingURL(account *Account, cfg *config.Config, weekly bool) (str
 	if err != nil {
 		return "", err
 REDACTED
-	return xai.BuildBillingURLWithValidator(account.GetGrokBaseURL(), weekly, validator)
+	baseURL := account.GetGrokBaseURL()
+	// Official public/regional API hosts do not expose Grok Build billing.
+	// Keep custom relays on their configured host because they may proxy the CLI
+	// billing path alongside inference.
+	if xai.IsOfficialBaseURL(baseURL) && !isGrokCLIProxyBaseURL(baseURL) {
+		baseURL = xai.DefaultCLIBaseURL
+REDACTED
+	return xai.BuildBillingURLWithValidator(baseURL, weekly, validator)
 REDACTED
 
 func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaEndpoint, requestID string) (string, error) {
@@ -121,4 +139,43 @@ REDACTED
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", endpoint)
 REDACTED
+REDACTED
+
+// buildGrokVoiceURL returns the official xAI Voice API endpoint.
+// Voice HTTP (/tts, /stt, /custom-voices) and WS (/realtime) are only exposed
+// by api.x.ai — the CLI chat proxy does not implement them. When the account
+// base_url points at the CLI proxy (or is empty), fall back to DefaultBaseURL.
+func buildGrokVoiceURL(account *Account, cfg *config.Config, endpoint string) (string, error) {
+	validator, err := grokBaseURLValidator(account, cfg)
+	if err != nil {
+		return "", err
+REDACTED
+	base := ""
+	if account != nil {
+		base = account.GetGrokMediaBaseURL()
+REDACTED
+	if strings.TrimSpace(base) == "" || isGrokCLIProxyBaseURL(base) {
+		base = xai.DefaultBaseURL
+REDACTED
+	validated, err := validator(base)
+	if err != nil {
+		return "", err
+REDACTED
+	ep := strings.Trim(strings.TrimSpace(endpoint), "/")
+	if ep == "" {
+		return "", fmt.Errorf("voice endpoint is required")
+REDACTED
+	parts := strings.Split(ep, "/")
+	encoded := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" || part == "." || part == ".." {
+			return "", fmt.Errorf("invalid voice endpoint path")
+	REDACTED
+		encoded = append(encoded, url.PathEscape(part))
+REDACTED
+	return strings.TrimRight(validated, "/") + "/" + strings.Join(encoded, "/"), nil
+REDACTED
+
+func isGrokCLIProxyBaseURL(raw string) bool {
+	return isGrokCLIProxyTarget(raw)
 REDACTED

@@ -596,6 +596,35 @@ REDACTED
 		"count_tokens 路径必须含 token-counting beta")
 REDACTED
 
+func TestBuildCountTokensRequest_OAuthMimic_DropsInjectedMaxTokens(t *testing.T) {
+	// OAuth mimicry injects max_tokens=128000 for normal messages requests. It is
+	// invalid for Anthropic's count_tokens endpoint and must be stripped on wire.
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+	account := &Account{ID: 413, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
+REDACTED"access_token": "oauth-tok"REDACTED,
+		Status:      StatusActive, Schedulable: true,
+REDACTED
+	normalized, _ := normalizeClaudeOAuthRequestBody(
+		[]byte(`{"model":"claude-sonnet-4-5","messages":[]REDACTED`),
+		"claude-sonnet-4-5", claudeOAuthNormalizeOptions{REDACTED,
+	)
+	require.Equal(t, int64(128000), gjson.GetBytes(normalized, "max_tokens").Int(),
+		"precondition: OAuth mimicry injects the Claude Code default")
+
+	svc := &GatewayService{cfg: &config.Config{REDACTEDREDACTED
+	req, _, err := svc.buildCountTokensRequest(
+		context.Background(), c, account, normalized,
+		"oauth-tok", "oauth", "claude-sonnet-4-5", true,
+	)
+REDACTED
+	require.False(t, gjson.GetBytes(readUpstreamBodyForTest(t, req), "max_tokens").Exists(),
+		"count_tokens wire body must not contain max_tokens")
+REDACTED
+
 func TestBuildCountTokensRequest_APIKeyHaiku_StripsContextManagementEndToEnd(t *testing.T) {
 	// API-key + haiku + 客户端 header 不带 context-management beta → final beta 不含 → strip
 	gin.SetMode(gin.TestMode)

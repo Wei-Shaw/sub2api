@@ -199,6 +199,109 @@ REDACTED
 	require.Empty(t, redeemRepo.updateCalls)
 REDACTED
 
+func TestRegisterOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		&redeemCodeRepoStub{REDACTED,
+		&refreshTokenCacheStub{REDACTED,
+		map[string]string{
+			SettingKeyRegistrationEnabled:                 "true",
+			SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+			SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+	REDACTED,
+		&emailCacheStub{data: &VerificationCodeData{
+			Code:      "246810",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+REDACTED
+		nil,
+	)
+
+	_, _, err := authService.RegisterOAuthEmailAccount(
+		context.Background(),
+		"second@custom.example",
+		"secret-123",
+		"246810",
+		"",
+		"oidc",
+	)
+
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+REDACTED
+
+func TestRegisterVerifiedOAuthEmailAccount_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		&refreshTokenCacheStub{REDACTED,
+		map[string]string{
+			SettingKeyRegistrationEnabled:                 "true",
+			SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+			SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+	REDACTED,
+		&emailCacheStub{REDACTED,
+		nil,
+	)
+
+	_, _, err := authService.RegisterVerifiedOAuthEmailAccount(
+		context.Background(),
+		"second@custom.example",
+		"secret-123",
+		"",
+		"oidc",
+	)
+
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+REDACTED
+
+func TestSendPendingOAuthVerifyCode_NonWhitelistDomainLimit(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 1REDACTEDREDACTED
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		nil,
+		map[string]string{
+			SettingKeyRegistrationEnabled:                 "true",
+			SettingKeyRegistrationEmailSuffixWhitelist:    `["@example.com"]`,
+			SettingKeyRegistrationEmailDomainQuotaEnabled: "true",
+	REDACTED,
+		&emailCacheStub{REDACTED,
+		nil,
+	)
+
+	_, err := authService.SendPendingOAuthVerifyCode(context.Background(), "second@custom.example")
+	require.ErrorIs(t, err, ErrEmailDomainRegistrationLimit)
+REDACTED
+
+// 域名限量注册开关默认关闭：白名单外域名在 pending OAuth 发码阶段即被严格拒绝。
+func TestSendPendingOAuthVerifyCode_NonWhitelistDomainRejectedWhenQuotaDisabled(t *testing.T) {
+	userRepo := &userRepoStub{domainCounts: map[string]int{"custom.example": 0REDACTEDREDACTED
+	authService := newOAuthEmailFlowAuthService(
+		userRepo,
+		nil,
+		nil,
+		map[string]string{
+			SettingKeyRegistrationEnabled:              "true",
+			SettingKeyRegistrationEmailSuffixWhitelist: `["@example.com"]`,
+	REDACTED,
+		&emailCacheStub{REDACTED,
+		nil,
+	)
+
+	_, err := authService.SendPendingOAuthVerifyCode(context.Background(), "first@custom.example")
+	require.ErrorIs(t, err, ErrEmailSuffixNotAllowed)
+REDACTED
+
+func TestSendPendingOAuthVerifyCode_NilServiceReturnsUnavailable(t *testing.T) {
+	var authService *AuthService
+
+	_, err := authService.SendPendingOAuthVerifyCode(context.Background(), "fresh@example.com")
+
+	require.ErrorIs(t, err, ErrServiceUnavailable)
+REDACTED
+
 func TestRegisterOAuthEmailAccountSetsNormalizedSignupSourceOnCreatedUser(t *testing.T) {
 	userRepo := &userRepoStub{nextID: 42REDACTED
 	emailCache := &emailCacheStub{

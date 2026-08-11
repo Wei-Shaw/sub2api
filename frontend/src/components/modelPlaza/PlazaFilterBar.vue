@@ -1,81 +1,87 @@
 <template>
   <div class="space-y-3">
     <!-- 一级:平台 -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="w-10 shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
+    <div class="flex items-start gap-2">
+      <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.platformLabel') REDACTEDREDACTED
       </span>
-      <button
-        v-for="p in ['all', ...platforms]"
-        :key="`platform-${pREDACTED`"
-        type="button"
-        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
-        :class="p === 'all' ? chipClass(platform === 'all') : platform === p ? 'chip-tinted-active' : 'chip-tinted'"
-        :style="p === 'all' ? undefined : { '--chip-accent': platformAccentColor(p) REDACTED"
-        :disabled="p !== 'all' && !platformEnabled(p)"
-        @click="$emit('update:platform', p)"
-      >
-        <PlatformIcon v-if="p !== 'all'" :platform="p as GroupPlatform" size="xs" />
-        {{ p === 'all' ? t('modelPlaza.filters.all') : p REDACTEDREDACTED
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          v-for="p in ['all', ...platforms]"
+          :key="`platform-${pREDACTED`"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :class="p === 'all' ? chipClass(platform === 'all') : platform === p ? 'chip-tinted-active' : 'chip-tinted'"
+          :style="p === 'all' ? undefined : { '--chip-accent': platformAccentColor(p) REDACTED"
+          :disabled="p !== 'all' && !platformEnabled(p)"
+          @click="$emit('update:platform', p)"
+        >
+          <PlatformIcon v-if="p !== 'all'" :platform="p as GroupPlatform" size="xs" />
+          {{ p === 'all' ? t('modelPlaza.filters.all') : p REDACTEDREDACTED
+        </button>
+      </div>
     </div>
 
     <!-- 二级:分组(按所属平台着色,当前组合下无结果的置灰) -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="w-10 shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
+    <div class="flex items-start gap-2">
+      <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.groupLabel') REDACTEDREDACTED
       </span>
-      <button
-        type="button"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-        :class="chipClass(groupId === 'all')"
-        @click="$emit('update:groupId', 'all')"
-      >
-        {{ t('modelPlaza.filters.all') REDACTEDREDACTED
-      </button>
-      <button
-        v-for="g in groups"
-        :key="`group-${g.idREDACTED`"
-        type="button"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
-        :class="groupId === g.id ? 'chip-tinted-active' : 'chip-tinted'"
-        :style="{ '--chip-accent': platformAccentColor(g.platform) REDACTED"
-        :disabled="!groupEnabled(g)"
-        @click="$emit('update:groupId', g.id)"
-      >
-        {{ g.name REDACTEDREDACTED
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :class="chipClass(groupId === 'all')"
+          @click="$emit('update:groupId', 'all')"
+        >
+          {{ t('modelPlaza.filters.all') REDACTEDREDACTED
+        </button>
+        <button
+          v-for="g in groups"
+          :key="`group-${g.idREDACTED`"
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :class="groupId === g.id ? 'chip-tinted-active' : 'chip-tinted'"
+          :style="{ '--chip-accent': platformAccentColor(g.platform) REDACTED"
+          :disabled="!groupEnabled(g)"
+          @click="$emit('update:groupId', g.id)"
+        >
+          {{ g.name REDACTEDREDACTED
+        </button>
+      </div>
     </div>
 
     <!-- 三级:倍率(当前组合下不存在的置灰) -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="w-10 shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
+    <div class="flex items-start gap-2">
+      <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.rateLabel') REDACTEDREDACTED
       </span>
-      <button
-        type="button"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-        :class="chipClass(rate === 'all')"
-        @click="$emit('update:rate', 'all')"
-      >
-        {{ t('modelPlaza.filters.all') REDACTEDREDACTED
-      </button>
-      <button
-        v-for="r in rates"
-        :key="`rate-${rREDACTED`"
-        type="button"
-        class="rounded-lg px-3 py-1.5 font-mono text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
-        :class="chipClass(rate === r)"
-        :disabled="!rateEnabled(r)"
-        @click="$emit('update:rate', r)"
-      >
-        {{ r REDACTEDREDACTEDx
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-medium transition"
+          :class="chipClass(rate === 'all')"
+          @click="$emit('update:rate', 'all')"
+        >
+          {{ t('modelPlaza.filters.all') REDACTEDREDACTED
+        </button>
+        <button
+          v-for="r in rates"
+          :key="`rate-${rREDACTED`"
+          type="button"
+          class="rounded-lg px-3 py-1.5 font-mono text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+          :class="chipClass(rate === r)"
+          :disabled="!rateEnabled(r)"
+          @click="$emit('update:rate', r)"
+        >
+          {{ r REDACTEDREDACTEDx
+        </button>
+      </div>
     </div>
 
     <!-- 四级:模型名搜索(纯前端过滤) -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="w-10 shrink-0 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
+    <div class="flex flex-wrap items-start gap-2">
+      <span class="w-10 shrink-0 pt-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.filters.modelLabel') REDACTEDREDACTED
       </span>
       <div class="relative w-full sm:w-72">

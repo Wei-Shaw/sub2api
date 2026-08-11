@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func ensureCompositeTargetPlatform(c *gin.Context, apiKey *service.APIKey, model string) {
@@ -54,4 +57,43 @@ REDACTED
 		return ""
 REDACTED
 	return apiKey.Group.Platform
+REDACTED
+
+func openAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey) (string, []service.ReasoningEffortMapping, bool) {
+	if apiKey == nil || apiKey.Group == nil {
+		return "", nil, false
+REDACTED
+	if apiKey.Group.Platform != service.PlatformOpenAI && apiKey.Group.Platform != service.PlatformComposite {
+		return "", nil, false
+REDACTED
+	if effectiveAPIKeyPlatform(c, apiKey) != service.PlatformOpenAI {
+		return "", nil, false
+REDACTED
+	return apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings, true
+REDACTED
+
+func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool) {
+	maxEffort, mappings, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
+	if !ok {
+		return body, false
+REDACTED
+	return service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings)
+REDACTED
+
+func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *service.APIKey, body []byte) {
+	if c == nil || c.Request == nil {
+		return
+REDACTED
+	// The Messages bridge synthesizes a default OpenAI effort when
+	// output_config.effort is omitted. Bind the group policy only for an
+	// explicit client value so the ceiling does not alter that default.
+	effort := gjson.GetBytes(body, "output_config.effort")
+	if !effort.Exists() || effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
+		return
+REDACTED
+	maxEffort, mappings, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
+	if !ok {
+		return
+REDACTED
+	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings))
 REDACTED

@@ -29,6 +29,12 @@ type fakeImageStorage struct {
 	err   error
 REDACTED
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+REDACTED
+
 func (f *fakeImageStorage) Save(_ context.Context, key, contentType string, data []byte) (string, error) {
 	if f.err != nil {
 		return "", f.err
@@ -89,6 +95,89 @@ REDACTED
 REDACTED
 	require.NoError(t, json.Unmarshal(out, &parsed))
 	require.JSONEq(t, `"https://cdn.test/images/imgtask_xyz-0.png"`, string(parsed.Data[0]["url"]))
+REDACTED
+
+func TestImageResultUploaderRewritesImageDataURLWithoutHTTP(t *testing.T) {
+	httpCalls := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		httpCalls++
+		return nil, errors.New("HTTP must not be called for data URLs")
+REDACTED)REDACTED
+	storage := &fakeImageStorage{REDACTED
+	uploader := NewImageResultUploader(storage, "images/", 0, client)
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	result := json.RawMessage(`{"data":[{"url":"DATA:image/jpeg;name=photo.jpg;BaSe64,` + b64 + `","revised_prompt":"kept"REDACTED]REDACTED`)
+
+	out, err := uploader.Rewrite(context.Background(), "imgtask_data", result)
+REDACTED
+	require.Zero(t, httpCalls)
+	require.Len(t, storage.saved, 1)
+	require.Equal(t, pngBytes, storage.saved[0].data)
+	require.Equal(t, "image/png", storage.saved[0].contentType, "detected bytes take precedence over a conflicting declaration")
+	require.Equal(t, "images/imgtask_data-0.png", storage.saved[0].key)
+
+	var parsed struct {
+		Data []map[string]json.RawMessage `json:"data"`
+REDACTED
+	require.NoError(t, json.Unmarshal(out, &parsed))
+	require.JSONEq(t, `"https://cdn.test/images/imgtask_data-0.png"`, string(parsed.Data[0]["url"]))
+	require.JSONEq(t, `"kept"`, string(parsed.Data[0]["revised_prompt"]))
+REDACTED
+
+func TestImageResultUploaderDataURLValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr string
+REDACTED{
+		{name: "missing comma", url: "data:image/png;base64", wantErr: "missing comma"REDACTED,
+		{name: "non image", url: "data:text/plain;base64,aGVsbG8=", wantErr: "is not an image"REDACTED,
+		{name: "non base64", url: "data:image/png,raw", wantErr: "not base64"REDACTED,
+		{name: "invalid base64", url: "data:image/png;base64,%%%", wantErr: "base64 payload"REDACTED,
+		{name: "invalid media type", url: "data:image/png;bad parameter;base64,aGVsbG8=", wantErr: "invalid media type"REDACTED,
+		{name: "parameter after base64", url: "data:image/png;base64;name=photo.png,aGVsbG8=", wantErr: "base64 marker must be the final header token"REDACTED,
+		{name: "duplicate base64 marker", url: "data:image/png;base64;base64,aGVsbG8=", wantErr: "duplicate base64 marker"REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			httpCalls := 0
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				httpCalls++
+				return nil, errors.New("HTTP must not be called for data URLs")
+		REDACTED)REDACTED
+			uploader := NewImageResultUploader(&fakeImageStorage{REDACTED, "images/", 0, client)
+			result, err := json.Marshal(map[string]any{"data": []map[string]string{{"url": tt.urlREDACTEDREDACTEDREDACTED)
+		REDACTED
+
+			_, err = uploader.Rewrite(context.Background(), "imgtask_bad", result)
+			require.ErrorContains(t, err, tt.wantErr)
+			require.Zero(t, httpCalls)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestImageResultUploaderRejectsOversizedImageDataURL(t *testing.T) {
+	storage := &fakeImageStorage{REDACTED
+	uploader := NewImageResultUploader(storage, "images/", 3, nil)
+	payload := base64.StdEncoding.EncodeToString([]byte("four"))
+	result := json.RawMessage(`{"data":[{"url":"data:image/png;base64,` + payload + `"REDACTED]REDACTED`)
+
+	_, err := uploader.Rewrite(context.Background(), "imgtask_large", result)
+	require.ErrorContains(t, err, "decoded image data URL exceeds 3 bytes")
+	require.Empty(t, storage.saved)
+REDACTED
+
+func TestImageResultUploaderB64JSONTakesPrecedenceOverDataURL(t *testing.T) {
+	storage := &fakeImageStorage{REDACTED
+	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	b64 := base64.StdEncoding.EncodeToString(pngBytes)
+	result := json.RawMessage(`{"data":[{"b64_json":"` + b64 + `","url":"data:text/plain,not-an-image"REDACTED]REDACTED`)
+
+	_, err := uploader.Rewrite(context.Background(), "imgtask_precedence", result)
+REDACTED
+	require.Len(t, storage.saved, 1)
+	require.Equal(t, pngBytes, storage.saved[0].data)
 REDACTED
 
 func TestImageResultUploaderPropagatesStorageError(t *testing.T) {

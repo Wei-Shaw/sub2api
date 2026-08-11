@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
@@ -414,7 +415,8 @@ REDACTED
 
 	// 2) only auth is replaced; inbound auth/cookie are not forwarded
 	require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("Authorization"))
-	require.Equal(t, "codex_cli_rs/0.1.0", upstream.lastReq.Header.Get("User-Agent"))
+	// 强制统一出口：客户端自报的 codex_cli_rs/0.1.0 不会到达上游。
+	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.Empty(t, upstream.lastReq.Header.Get("Cookie"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Api-Key"))
 	require.Empty(t, upstream.lastReq.Header.Get("X-Goog-Api-Key"))
@@ -433,7 +435,77 @@ REDACTED
 	require.NotContains(t, body, "\"name\":\"edit\"")
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_NamespaceRequestAndStreamResponse(t *testing.T) {
+// 「自动透传（仅替换认证）」的默认行为必须真的只替换认证：namespace 声明、
+// namespace 形态的 tool_choice、历史调用项上的 namespace 都原样转发，只清掉
+// 非调用项上的残留 namespace（Codex 协议里只有调用项会带该字段）。
+func TestOpenAIGatewayService_OAuthPassthrough_PreservesNamespaceRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.144.1")
+
+	originalBody := []byte(`{
+		"model":"gpt-5.5",
+		"stream":true,
+		"instructions":"local-test-instructions",
+		"tools":[
+			{"type":"function","name":"plain","description":"keep","parameters":{"type":"object"REDACTEDREDACTED,
+			{"type":"namespace","name":"collaboration","tools":[{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object"REDACTEDREDACTED]REDACTED
+		],
+		"tool_choice":{"type":"function","name":"spawn_agent","namespace":"collaboration"REDACTED,
+		"input":[
+			{"type":"function_call","call_id":"call_old","name":"spawn_agent","namespace":"collaboration","arguments":"{REDACTED"REDACTED,
+			{"type":"message","role":"user","namespace":"residual","content":[{"type":"input_text","text":"keep","namespace":"nested"REDACTED]REDACTED
+		]
+REDACTED`)
+
+	upstreamSSE := strings.Join([]string{
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"spawn_agent","namespace":"collaboration","arguments":"{REDACTED"REDACTEDREDACTED`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":2,"output_tokens":1,"total_tokens":3REDACTEDREDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_preserve"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
+REDACTEDREDACTED
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID: 125, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.NotNil(t, result)
+
+	require.Len(t, gjson.GetBytes(upstream.lastBody, "tools").Array(), 2)
+	require.Equal(t, "namespace", gjson.GetBytes(upstream.lastBody, "tools.1.type").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tools.1.name").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "tools.1.tools.0.name").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "tool_choice.namespace").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "tool_choice.name").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.lastBody, "input.0.namespace").String())
+	require.Equal(t, "spawn_agent", gjson.GetBytes(upstream.lastBody, "input.0.name").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.1.namespace").Exists())
+	require.Equal(t, "nested", gjson.GetBytes(upstream.lastBody, "input.1.content.0.namespace").String())
+	require.NotContains(t, string(upstream.lastBody), "collaboration__spawn_agent")
+
+	// 未摊平即无需回程还原，上游事件原样下发。
+	downstream := rec.Body.String()
+	require.Contains(t, downstream, `"name":"spawn_agent"`)
+	require.Contains(t, downstream, `"namespace":"collaboration"`)
+REDACTED
+
+// 兼容开关打开时的旧行为：摊平请求、回程还原。默认路径见
+// TestOpenAIGatewayService_OAuthPassthrough_PreservesNamespaceRequest。
+func TestOpenAIGatewayService_OAuthPassthrough_FlattenEnabledNamespaceRequestAndStreamResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -475,7 +547,11 @@ REDACTEDREDACTED
 	account := &Account{
 		ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
-		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+		Extra: map[string]any{
+			"openai_passthrough":                  true,
+			"openai_responses_flatten_namespaces": true,
+	REDACTED,
+		Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
 	result, err := svc.Forward(context.Background(), c, account, originalBody)
@@ -501,7 +577,9 @@ REDACTED
 	require.Contains(t, downstream, `"namespace":"collaboration"`)
 REDACTED
 
-func TestOpenAIGatewayService_NativeOAuth_NamespaceRequestAndStreamResponse(t *testing.T) {
+// 兼容开关打开时的旧行为；默认保留路径见
+// TestOpenAIGatewayService_OAuthPreservesCodexNamespaceTools。
+func TestOpenAIGatewayService_NativeOAuth_FlattenEnabledNamespaceRequestAndStreamResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -529,6 +607,7 @@ REDACTEDREDACTED
 	account := &Account{
 		ID: 124, Name: "native", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:       map[string]any{"openai_responses_flatten_namespaces": trueREDACTED,
 		Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
@@ -596,7 +675,8 @@ REDACTED
 	require.Contains(t, rec.Body.String(), `"namespace":"collaboration"`)
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_NamespaceCollisionReturnsBadRequest(t *testing.T) {
+// 摊平名冲突只在兼容开关打开时才可能发生：默认保留 namespace，不存在平名冲突。
+func TestOpenAIGatewayService_OAuthPassthrough_FlattenEnabledNamespaceCollisionReturnsBadRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -614,7 +694,11 @@ REDACTED`)
 	account := &Account{
 		ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
 REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
-		Extra:       map[string]any{"openai_passthrough": trueREDACTED, Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+		Extra: map[string]any{
+			"openai_passthrough":                  true,
+			"openai_responses_flatten_namespaces": true,
+	REDACTED,
+		Status: StatusActive, Schedulable: true, RateMultiplier: f64p(1),
 REDACTED
 
 	result, err := svc.Forward(context.Background(), c, account, body)
@@ -727,57 +811,53 @@ REDACTED
 	require.NoError(t, upstream.lastReq.Context().Err())
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedBeforeUpstream(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsGetsDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logSink, restore := captureStructuredLog(t)
-	defer restore()
 
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
-	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown")
-	c.Request.Header.Set("Content-Type", "application/json")
-	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
+	for _, stream := range []bool{false, trueREDACTED {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			path := "/v1/responses"
+			responseBody := strings.Join([]string{
+				`data: {"type":"response.completed","response":{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+				"", "data: [DONE]", "",
+		REDACTED, "\n")
+			responseContentType := "text/event-stream"
+			if !stream {
+				path = "/v1/responses/compact"
+				responseBody = `{"id":"resp_1","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`
+				responseContentType = "application/json"
+		REDACTED
+			c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(nil))
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0")
 
-	// Codex 模型且缺少 instructions，应在本地直接 403 拒绝，不触达上游。
-	originalBody := []byte(`{"model":"gpt-5.1-codex-max","stream":false,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+			originalBody := []byte(fmt.Sprintf(`{"model":"gpt-5.1-codex-max","stream":%t,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`, stream))
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{responseContentTypeREDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
+				Body:       io.NopCloser(strings.NewReader(responseBody)),
+		REDACTEDREDACTED
+			svc := &OpenAIGatewayService{cfg: &config.Config{REDACTED, httpUpstream: upstreamREDACTED
+			account := &Account{
+				ID: 123, Name: "acc", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+		REDACTED"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+				Extra:       map[string]any{"openai_passthrough": true, "openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeOffREDACTED,
+				Status:      StatusActive, Schedulable: true, RateMultiplier: f64p(1),
+		REDACTED
 
-	upstream := &httpUpstreamRecorder{
-		resp: &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
-			Body:       io.NopCloser(strings.NewReader(`{"output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`)),
-	REDACTED,
+			result, err := svc.Forward(context.Background(), c, account, originalBody)
+		REDACTED
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			if stream {
+				require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+		REDACTED else {
+				require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
+		REDACTED
+			require.Equal(t, strings.TrimSpace(defaultCodexSynthInstructions("gpt-5.1-codex-max")), strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
+	REDACTED)
 REDACTED
-
-	svc := &OpenAIGatewayService{
-		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
-		httpUpstream: upstream,
-REDACTED
-
-	account := &Account{
-		ID:             123,
-		Name:           "acc",
-		Platform:       PlatformOpenAI,
-		Type:           AccountTypeOAuth,
-		Concurrency:    1,
-		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
-		Extra:          map[string]any{"openai_passthrough": trueREDACTED,
-		Status:         StatusActive,
-		Schedulable:    true,
-		RateMultiplier: f64p(1),
-REDACTED
-
-	result, err := svc.Forward(context.Background(), c, account, originalBody)
-REDACTED
-	require.Nil(t, result)
-	require.Equal(t, http.StatusForbidden, rec.Code)
-	require.Contains(t, rec.Body.String(), "requires a non-empty instructions field")
-	require.Nil(t, upstream.lastReq)
-
-	require.True(t, logSink.ContainsMessage("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions"))
-	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown"))
-	require.True(t, logSink.ContainsFieldValue("reject_reason", "instructions_missing"))
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_DisabledUsesLegacyTransform(t *testing.T) {
@@ -910,9 +990,10 @@ REDACTED
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
 REDACTED
 	require.NotNil(t, upstream.lastReq)
-	// 浏览器型复合 UA 被替换为默认 Codex UA（codex-tui 形态），originator 随最终 UA 配套（issue #3901）。
+	// 浏览器型复合 UA 被替换为默认 Codex TUI UA，
+	// originator 随最终 UA 配套（issue #3901）。
 	require.Equal(t, DefaultOpenAICodexUserAgent, upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, "codex-tui", upstream.lastReq.Header.Get("originator"))
+	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
 	require.NotEqual(t, "opencode", upstream.lastReq.Header.Get("originator"))
 REDACTED
 
@@ -1768,13 +1849,13 @@ REDACTED
 	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 REDACTED
 
-// 回归（issue #3901）：codex-tui 等官方 UA 在透传模式下必须逐字保留，且 originator
-// 由最终 UA 推导配套——历史实现会把 codex-tui UA 强改为 codex_cli_rs，而 originator
-// 保留客户端原值，造成 originator/UA 首段错配被上游 404。
-func TestOpenAIGatewayService_OAuthPassthrough_CodexTuiIdentityPreservedAndPaired(t *testing.T) {
+// 透传模式的 OAuth 与非透传一致：官方客户端身份同样被强制统一为网关规范身份，
+// originator 与 UA 首段天然配套，不会出现历史上 originator/UA 错配被上游 404 的形态
+// （issue #3901）。
+func TestOpenAIGatewayService_OAuthPassthrough_OfficialIdentityUnified(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	const tuiUA = "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)"
+	const tuiUA = "codex_vscode/0.140.2 (Mac OS X 14.0; arm64) vscode (codex_vscode; 0.140.2)"
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -1813,8 +1894,53 @@ REDACTED
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
 REDACTED
 	require.NotNil(t, upstream.lastReq)
-	require.Equal(t, tuiUA, upstream.lastReq.Header.Get("User-Agent"))
-	require.Equal(t, "codex-tui", upstream.lastReq.Header.Get("originator"))
+	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
+	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("version"))
+REDACTED
+
+// 透传模式下真实 TUI 客户端的身份同样被统一：被优先降载的身份不会带到上游。
+func TestOpenAIGatewayService_OAuthPassthrough_CodexTuiIdentityUnified(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex-tui/0.140.2 (Mac OS X 14.0; arm64) iTerm (codex-tui; 0.140.2)")
+	c.Request.Header.Set("originator", "codex-tui")
+
+	inputBody := []byte(`{"model":"gpt-5.2","stream":false,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+REDACTEDREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_passthrough": trueREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	_, err := svc.Forward(context.Background(), c, account, inputBody)
+REDACTED
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
+	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("version"))
 REDACTED
 
 func TestOpenAIGatewayService_CodexCLIOnly_RejectsNonCodexClient(t *testing.T) {

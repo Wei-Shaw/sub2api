@@ -141,6 +141,7 @@ REDACTED
 		SessionWindowStatus:     "active",
 REDACTED
 	source.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+	source.Extra[UpstreamBillingRateSyncEnabledExtraKey] = true
 	source.Extra[UpstreamBillingProbeExtraKey] = map[string]any{"status": "ok"REDACTED
 	require.NoError(t, repo.Create(ctx, source))
 
@@ -162,6 +163,7 @@ REDACTED
 		"quota_limit":    float64(1000),
 		"codex_cli_only": true,
 REDACTED, duplicate.Extra)
+	require.NotContains(t, duplicate.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotNil(t, duplicate.ExpiresAt)
 	require.True(t, source.ExpiresAt.Equal(*duplicate.ExpiresAt))
 	require.Equal(t, source.Notes, duplicate.Notes)

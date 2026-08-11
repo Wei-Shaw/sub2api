@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -997,7 +998,7 @@ REDACTED
 REDACTED
 	require.NotNil(t, firstResult)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"REDACTED,{"role":"assistant","content":"ok"REDACTED,{"role":"user","content":"second"REDACTED],"stream":falseREDACTED`)
 	secondRec := httptest.NewRecorder()
@@ -1011,7 +1012,7 @@ REDACTED
 	require.Equal(t, "turn_state_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 REDACTED
@@ -1020,27 +1021,16 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
+	const vscodeUA = "codex_vscode/9.9.9 (Mac OS X 14.0; arm64) vscode (codex_vscode; 9.9.9)"
+	// messages 桥接路径同样强制统一出站身份：三类客户端身份都收敛到规范身份。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantUserAgent  string
-		wantOriginator string
+		name       string
+		userAgent  string
+		originator string
 REDACTED{
-		{
-			name:           "官方UA逐字保留并重新配对",
-			userAgent:      tuiUA,
-			originator:     "opencode",
-			wantUserAgent:  tuiUA,
-			wantOriginator: "codex-tui",
-	REDACTED,
-		{
-			name:           "第三方UA回退为默认Codex身份",
-			userAgent:      "third-party-client/1.0.0",
-			originator:     "opencode",
-			wantUserAgent:  codexCLIUserAgent,
-			wantOriginator: "codex_cli_rs",
-	REDACTED,
+		{name: "官方vscode身份", userAgent: vscodeUA, originator: "opencode"REDACTED,
+		{name: "TUI身份", userAgent: tuiUA, originator: "opencode"REDACTED,
+		{name: "第三方UA", userAgent: "third-party-client/1.0.0", originator: "opencode"REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -1073,7 +1063,7 @@ REDACTED
 			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
 		REDACTED
 			require.NotNil(t, result)
-			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, tt.wantUserAgent, tt.wantOriginator)
+			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, codexCLIUserAgent, openai.CodexDefaultOriginator)
 	REDACTED)
 REDACTED
 REDACTED
@@ -1116,7 +1106,7 @@ REDACTED
 	firstSessionID := upstream.requests[0].Header.Get("session_id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"REDACTED,{"role":"assistant","content":"ok"REDACTED,{"role":"user","content":"second"REDACTED],"stream":falseREDACTED`)
@@ -1131,7 +1121,7 @@ REDACTED
 	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
 	require.Equal(t, "turn_state_digest_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 REDACTED
@@ -1286,7 +1276,7 @@ REDACTED
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions")
 	require.True(t, instructions.Exists())
 	require.Empty(t, instructions.String())
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 REDACTED
 
 func TestForwardAsAnthropic_OAuthAddsClaudeCodeTodoGuardForCompatModel(t *testing.T) {

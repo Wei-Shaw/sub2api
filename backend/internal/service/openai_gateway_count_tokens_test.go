@@ -124,6 +124,11 @@ REDACTED{
 			body:       `{"error":{"type":"invalid_request_error","code":"missing_scope","message":"Missing scopes: api.responses.write"REDACTEDREDACTED`,
 	REDACTED,
 		{
+			name:       "403_html_proxy_page",
+			statusCode: http.StatusForbidden,
+			body:       "<!doctype html><html><body>Forbidden</body></html>",
+	REDACTED,
+		{
 			name:       "404_input_tokens_unsupported",
 			statusCode: http.StatusNotFound,
 			body:       `{"error":{"type":"invalid_request_error","message":"The /v1/responses/input_tokens endpoint was not found"REDACTEDREDACTED`,
@@ -306,6 +311,10 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("OPENAI_API_KEY not set")
 REDACTED
+	// Invalid/expired keys in local env must not fail the unit suite.
+	if strings.HasPrefix(apiKey, "sk-") && len(apiKey) < 20 {
+		t.Skip("OPENAI_API_KEY looks incomplete")
+REDACTED
 
 	client := &http.Client{Timeout: 30 * time.SecondREDACTED
 	cases := []struct {
@@ -340,6 +349,12 @@ REDACTED
 		REDACTED
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
+			if err != nil {
+				// Live-API comparison only; invalid/expired local keys should skip, not fail CI.
+				if strings.Contains(err.Error(), "status=401") || strings.Contains(err.Error(), "invalid_api_key") {
+					t.Skipf("OPENAI_API_KEY rejected by OpenAI: %v", err)
+			REDACTED
+			REDACTED
 		REDACTED
 
 			diff := estimated - actual

@@ -86,19 +86,13 @@ REDACTED
 REDACTED
 
 func ParseQwen3Guard(content string, enabledScanners []string) (*NormalizedResult, error) {
-	lines := make([]string, 0, 2)
-	for _, line := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			lines = append(lines, line)
-	REDACTED
-REDACTED
-	if len(lines) != 2 {
-		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Retryable: falseREDACTED
-REDACTED
 	var safety string
 	var categoryLine string
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+	REDACTED
 		lower := strings.ToLower(line)
 		switch {
 		case strings.HasPrefix(lower, "safety:"):
@@ -112,7 +106,7 @@ REDACTED
 		REDACTED
 			categoryLine = strings.TrimSpace(line[len("categories:"):])
 		default:
-			return nil, &GuardError{Code: ErrorCodeInvalidResponseREDACTED
+			// Auxiliary Guard fields, such as Refusal, do not affect audit decisions.
 	REDACTED
 REDACTED
 	switch strings.ToLower(safety) {

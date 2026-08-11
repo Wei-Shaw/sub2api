@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
+import type { OAuthLoginStart REDACTED from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode REDACTED from '@/utils/oauthAffiliate'
 
 const props = withDefaults(defineProps<{
@@ -46,6 +47,9 @@ const props = withDefaults(defineProps<{
 REDACTED>(), {
   showDivider: true
 REDACTED)
+const emit = defineEmits<{
+  start: [request: OAuthLoginStart]
+REDACTED>()
 
 const route = useRoute()
 const { t REDACTED = useI18n()
@@ -53,9 +57,6 @@ const { t REDACTED = useI18n()
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
-  const startURL = `${normalizedREDACTED/auth/oauth/dingtalk/start?redirect=${encodeURIComponent(redirectTo)REDACTED`
-  window.location.href = startURL
+  emit('start', { provider: 'dingtalk', params: { redirect: redirectTo REDACTED REDACTED)
 REDACTED
 </script>

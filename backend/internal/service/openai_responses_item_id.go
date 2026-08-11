@@ -17,6 +17,9 @@ REDACTED
 	if itemType == "message" {
 		return !strings.HasPrefix(id, "msg")
 REDACTED
+	if itemType == "reasoning" {
+		return !strings.HasPrefix(id, "rs")
+REDACTED
 	if isCodexToolCallInputType(itemType) {
 		return !strings.HasPrefix(id, "fc")
 REDACTED

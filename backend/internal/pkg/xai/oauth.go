@@ -1,33 +1,40 @@
 package xai
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/redissession"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	OAuthIssuer         = "https://auth.x.ai"
-	DiscoveryURL        = OAuthIssuer + "/.well-known/openid-configuration"
-	DefaultAuthorizeURL = OAuthIssuer + "/oauth2/authorize"
-	DefaultTokenURL     = OAuthIssuer + "/oauth2/token"
-	DefaultBaseURL      = "https://api.x.ai/v1"
-	DefaultCLIBaseURL   = "https://cli-chat-proxy.grok.com/v1"
-	DefaultClientID     = "b1a00492-073a-47ea-816f-4c329264a828"
-	DefaultScope        = "openid profile email offline_access grok-cli:access api:access"
-	DefaultRedirectURI  = "http://127.0.0.1:56121/callback"
-	SessionTTL          = 30 * time.Minute
+	OAuthIssuer           = "https://auth.x.ai"
+	DiscoveryURL          = OAuthIssuer + "/.well-known/openid-configuration"
+	DefaultAuthorizeURL   = OAuthIssuer + "/oauth2/authorize"
+	DefaultTokenURL       = OAuthIssuer + "/oauth2/token"
+	DefaultBaseURL        = "https://api.x.ai/v1"
+	DefaultCLIBaseURL     = "https://cli-chat-proxy.grok.com/v1"
+	DefaultUSEast1BaseURL = "https://us-east-1.api.x.ai/v1"
+	DefaultUSWest2BaseURL = "https://us-west-2.api.x.ai/v1"
+	DefaultEUWest1BaseURL = "https://eu-west-1.api.x.ai/v1"
+	DefaultClientID       = "b1a00492-073a-47ea-816f-4c329264a828"
+	DefaultScope          = "openid profile email offline_access grok-cli:access api:access"
+	DefaultRedirectURI    = "http://127.0.0.1:56121/callback"
+	SessionTTL            = 30 * time.Minute
 
 	EnvAuthorizeURL               = "XAI_OAUTH_AUTHORIZE_URL"
 	EnvTokenURL                   = "XAI_OAUTH_TOKEN_URL"
@@ -56,32 +63,110 @@ type OAuthSession struct {
 	ProxyURL      string    `json:"proxy_url,omitempty"`
 	RedirectURI   string    `json:"redirect_uri"`
 	CreatedAt     time.Time `json:"created_at"`
+
+	mu       sync.Mutex
+	consumed bool
 REDACTED
 
-// SessionStore manages xAI OAuth sessions in memory.
+func (s *OAuthSession) TryConsume() bool {
+	if s == nil {
+		return false
+REDACTED
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.consumed {
+		return false
+REDACTED
+	s.consumed = true
+	return true
+REDACTED
+
+// SessionStore manages xAI OAuth sessions with an optional Redis backend.
 type SessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]*OAuthSession
-	stopOnce sync.Once
-	stopCh   chan struct{REDACTED
+	mu        sync.RWMutex
+	sessions  map[string]*OAuthSession
+	localOnly map[string]struct{REDACTED
+	stopOnce  sync.Once
+	stopCh    chan struct{REDACTED
+	remote    *redissession.Store
+REDACTED
+
+type oauthSessionDTO struct {
+	State         string    `json:"state"`
+	CodeVerifier  string    `json:"code_verifier"`
+	CodeChallenge string    `json:"code_challenge"`
+	ClientID      string    `json:"client_id,omitempty"`
+	Scope         string    `json:"scope,omitempty"`
+	ProxyURL      string    `json:"proxy_url,omitempty"`
+	RedirectURI   string    `json:"redirect_uri"`
+	CreatedAt     time.Time `json:"created_at"`
 REDACTED
 
 func NewSessionStore() *SessionStore {
 	store := &SessionStore{
-		sessions: make(map[string]*OAuthSession),
-		stopCh:   make(chan struct{REDACTED),
+		sessions:  make(map[string]*OAuthSession),
+		localOnly: make(map[string]struct{REDACTED),
+		stopCh:    make(chan struct{REDACTED),
 REDACTED
 	go store.cleanup()
 	return store
 REDACTED
 
+func NewRedisSessionStore(rdb *redis.Client) *SessionStore {
+	store := NewSessionStore()
+	if rdb != nil {
+		store.remote = redissession.New(rdb, "oauth:session:xai", SessionTTL)
+REDACTED
+	return store
+REDACTED
+
 func (s *SessionStore) Set(sessionID string, session *OAuthSession) {
+	if session == nil {
+		return
+REDACTED
+	var remoteErr error
+	if s != nil && s.remote != nil {
+		remoteErr = s.remote.Set(context.Background(), sessionID, oauthSessionDTO{
+			State: session.State, CodeVerifier: session.CodeVerifier, CodeChallenge: session.CodeChallenge,
+			ClientID: session.ClientID, Scope: session.Scope, ProxyURL: session.ProxyURL,
+			RedirectURI: session.RedirectURI, CreatedAt: session.CreatedAt,
+	REDACTED)
+REDACTED
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sessionID] = session
+	if remoteErr != nil {
+		s.localOnly[sessionID] = struct{REDACTED{REDACTED
+		slog.Warn("xai oauth session Redis write failed; using process-local fallback", "error", remoteErr)
+REDACTED else {
+		delete(s.localOnly, sessionID)
+REDACTED
 REDACTED
 
 func (s *SessionStore) Get(sessionID string) (*OAuthSession, bool) {
+	if s.isLocalOnly(sessionID) {
+		return s.getMemory(sessionID)
+REDACTED
+	if s != nil && s.remote != nil {
+		var dto oauthSessionDTO
+		ok, err := s.remote.Get(context.Background(), sessionID, &dto)
+		if err != nil || !ok || time.Since(dto.CreatedAt) > SessionTTL {
+			return nil, false
+	REDACTED
+		session := &OAuthSession{
+			State: dto.State, CodeVerifier: dto.CodeVerifier, CodeChallenge: dto.CodeChallenge,
+			ClientID: dto.ClientID, Scope: dto.Scope, ProxyURL: dto.ProxyURL,
+			RedirectURI: dto.RedirectURI, CreatedAt: dto.CreatedAt,
+	REDACTED
+		s.mu.Lock()
+		s.sessions[sessionID] = session
+		s.mu.Unlock()
+		return session, true
+REDACTED
+	return s.getMemory(sessionID)
+REDACTED
+
+func (s *SessionStore) getMemory(sessionID string) (*OAuthSession, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	session, ok := s.sessions[sessionID]
@@ -95,9 +180,39 @@ REDACTED
 REDACTED
 
 func (s *SessionStore) Delete(sessionID string) {
+	if s != nil && s.remote != nil {
+		_ = s.remote.Delete(context.Background(), sessionID)
+REDACTED
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, sessionID)
+	delete(s.localOnly, sessionID)
+REDACTED
+
+func (s *SessionStore) TryConsumeSession(sessionID string) bool {
+	if s == nil {
+		return false
+REDACTED
+	if s.isLocalOnly(sessionID) {
+		return s.tryConsumeMemory(sessionID)
+REDACTED
+	if s.remote != nil {
+		ok, err := s.remote.TryConsume(context.Background(), sessionID)
+		return err == nil && ok
+REDACTED
+	return s.tryConsumeMemory(sessionID)
+REDACTED
+
+func (s *SessionStore) isLocalOnly(sessionID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.localOnly[sessionID]
+	return ok
+REDACTED
+
+func (s *SessionStore) tryConsumeMemory(sessionID string) bool {
+	session, ok := s.getMemory(sessionID)
+	return ok && session.TryConsume()
 REDACTED
 
 func (s *SessionStore) Stop() {
@@ -118,6 +233,7 @@ func (s *SessionStore) cleanup() {
 			for id, session := range s.sessions {
 				if time.Since(session.CreatedAt) > SessionTTL {
 					delete(s.sessions, id)
+					delete(s.localOnly, id)
 			REDACTED
 		REDACTED
 			s.mu.Unlock()
@@ -610,6 +726,11 @@ REDACTED
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
 		return "", fmt.Errorf("request id is required")
+REDACTED
+	// requestID 由客户端提供并拼进上游 URL 的 path。PathEscape 之外再要求它不是
+	// 纯点片段、不含控制字符，保证它只能是一个普通的路径片段。
+	if requestID == "." || requestID == ".." || strings.ContainsAny(requestID, "\x00\r\n") {
+		return "", fmt.Errorf("invalid request id")
 REDACTED
 	return validatedBaseURL + "/videos/" + url.PathEscape(requestID), nil
 REDACTED

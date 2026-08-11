@@ -69,10 +69,14 @@ REDACTED
 REDACTED
 
 	if g.Platform == PlatformGrok {
-		if claudeMessagesDispatchFamily(requestedModel) != "" {
-			return xai.DefaultModelMapping()["grok"]
+		if claudeMessagesDispatchFamily(requestedModel) == "" {
+			return ""
 	REDACTED
-		return ""
+		opts := xai.RuntimeModelMappingOptions()
+		if !opts.EnableCrossClientMap {
+			return ""
+	REDACTED
+		return xai.ModelMappingWithOptions(opts)["claude-*"]
 REDACTED
 
 	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)

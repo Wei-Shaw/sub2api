@@ -119,7 +119,7 @@ REDACTED
 				return &clone, nil
 		REDACTED,
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil REDACTED,
-			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
+			activateWindow: func(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error { return nil REDACTED,
 			resetDaily: func(ctx context.Context, id int64, start time.Time) error {
 				sub.DailyWindowStart = &start
 				sub.DailyUsageUSD = 0
@@ -252,7 +252,7 @@ REDACTED)
 				return &clone, nil
 		REDACTED,
 			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil REDACTED,
-			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
+			activateWindow: func(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error { return nil REDACTED,
 			resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
 			resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
 			resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil REDACTED,
@@ -1631,7 +1631,7 @@ type stubUserSubscriptionRepo struct {
 	getByID        func(ctx context.Context, id int64) (*service.UserSubscription, error)
 	getActive      func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
 	updateStatus   func(ctx context.Context, subscriptionID int64, status string) error
-	activateWindow func(ctx context.Context, id int64, start time.Time) error
+	activateWindow func(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error
 	resetDaily     func(ctx context.Context, id int64, start time.Time) error
 	resetWeekly    func(ctx context.Context, id int64, start time.Time) error
 	resetMonthly   func(ctx context.Context, id int64, start time.Time) error
@@ -1681,6 +1681,10 @@ func (r *stubUserSubscriptionRepo) GetByID(ctx context.Context, id int64) (*serv
 		return r.getByID(ctx, id)
 REDACTED
 	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUserSubscriptionRepo) GetByIDForUpdate(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return r.GetByID(ctx, id)
 REDACTED
 
 func (r *stubUserSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
@@ -1749,14 +1753,14 @@ func (r *stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscription
 	return errors.New("not implemented")
 REDACTED
 
-func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error {
 	if r.activateWindow != nil {
-		return r.activateWindow(ctx, id, start)
+		return r.activateWindow(ctx, id, dailyStart, periodicStart)
 REDACTED
 	return errors.New("not implemented")
 REDACTED
 
-func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time) error {
 	return errors.New("not implemented")
 REDACTED
 

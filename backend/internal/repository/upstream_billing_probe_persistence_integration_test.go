@@ -30,7 +30,7 @@ REDACTED
 	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, stale, &service.UpstreamBillingProbeSnapshot{
 		Status:        service.UpstreamBillingProbeStatusOK,
 		LastAttemptAt: time.Now().UTC(),
-REDACTED))
+REDACTED, nil))
 
 	stale.Name = "ordinary-edit"
 	require.NoError(t, repo.Update(ctx, stale))
@@ -44,6 +44,115 @@ REDACTED
 	disabled, err := repo.GetByID(ctx, account.ID)
 REDACTED
 	require.NotContains(t, disabled.Extra, service.UpstreamBillingProbeExtraKey)
+REDACTED
+
+func TestAdminAccountEditPreservesRateSynchronizedAfterLoad(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	initialRate := 0.1
+	account := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name:           "probe-rate-concurrent-edit",
+		Platform:       service.PlatformOpenAI,
+		Type:           service.AccountTypeAPIKey,
+		RateMultiplier: &initialRate,
+		Credentials:    map[string]any{"api_key": "sk-test"REDACTED,
+		Extra: map[string]any{
+			service.UpstreamBillingProbeEnabledExtraKey:    true,
+			service.UpstreamBillingRateSyncEnabledExtraKey: true,
+	REDACTED,
+REDACTED)
+
+	staleAdminEdit, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	probeAccount, err := repo.GetByID(ctx, account.ID)
+REDACTED
+
+	synchronizedRate := 0.2
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, probeAccount, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &synchronizedRate))
+
+	staleAdminEdit.Name = "name-only-edit"
+	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, staleAdminEdit, nil, nil, nil))
+
+	got, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	require.Equal(t, "name-only-edit", got.Name)
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, synchronizedRate, *got.RateMultiplier)
+REDACTED
+
+func TestProbeSnapshotSyncsRateOnlyForSuccessfulEnabledAccount(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	initialRate := 0.25
+	account := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name:           "probe-rate-sync",
+		Platform:       service.PlatformGemini,
+		Type:           service.AccountTypeAPIKey,
+		RateMultiplier: &initialRate,
+		Credentials:    map[string]any{"api_key": "sk-test"REDACTED,
+		Extra: map[string]any{
+			service.UpstreamBillingProbeEnabledExtraKey:    true,
+			service.UpstreamBillingRateSyncEnabledExtraKey: true,
+	REDACTED,
+REDACTED)
+
+	loaded, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	syncedRate := 0.065
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, loaded, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &syncedRate))
+
+	got, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, syncedRate, *got.RateMultiplier)
+
+	failedRate := 0.9
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, got, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusFailed,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &failedRate))
+	got, err = repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, syncedRate, *got.RateMultiplier)
+
+	require.NoError(t, repo.UpdateExtra(ctx, account.ID, map[string]any{
+		service.UpstreamBillingRateSyncEnabledExtraKey: false,
+REDACTED))
+	manual, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	manualProbeRate := 0.4
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, manual, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &manualProbeRate))
+	got, err = repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, syncedRate, *got.RateMultiplier)
+
+	require.NoError(t, repo.UpdateExtra(ctx, account.ID, map[string]any{
+		service.UpstreamBillingProbeEnabledExtraKey:    false,
+		service.UpstreamBillingRateSyncEnabledExtraKey: false,
+REDACTED))
+	disabled, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NoError(t, repo.UpdateUpstreamBillingProbeSnapshot(ctx, disabled, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &manualProbeRate))
+	got, err = repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, syncedRate, *got.RateMultiplier)
 REDACTED
 
 func TestAccountUpdatePreservesConcurrentProbeEnableFlag(t *testing.T) {
@@ -166,7 +275,7 @@ REDACTED
 			err = repo.UpdateUpstreamBillingProbeSnapshot(ctx, inFlight, &service.UpstreamBillingProbeSnapshot{
 				Status:        service.UpstreamBillingProbeStatusOK,
 				LastAttemptAt: time.Now().UTC(),
-		REDACTED)
+		REDACTED, nil)
 			if tt.wantConflict {
 				require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
 		REDACTED else {
@@ -181,6 +290,46 @@ REDACTED
 		REDACTED
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestProbeSnapshotCASProtectsManualRateAfterSyncDisabled(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	initialRate := 0.25
+	account := mustCreateAccount(t, tx.Client(), &service.Account{
+		Name:           "probe-sync-cas",
+		Platform:       service.PlatformAnthropic,
+		Type:           service.AccountTypeAPIKey,
+		RateMultiplier: &initialRate,
+		Credentials:    map[string]any{"api_key": "sk-test"REDACTED,
+		Extra: map[string]any{
+			service.UpstreamBillingProbeEnabledExtraKey:    true,
+			service.UpstreamBillingRateSyncEnabledExtraKey: true,
+	REDACTED,
+REDACTED)
+
+	inFlight, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	manual, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	manualRate := 0.8
+	syncDisabled := false
+	require.NoError(t, repo.UpdateWithAccountBillingSettings(ctx, manual, nil, &syncDisabled, &manualRate))
+
+	probedRate := 0.1
+	err = repo.UpdateUpstreamBillingProbeSnapshot(ctx, inFlight, &service.UpstreamBillingProbeSnapshot{
+		Status:        service.UpstreamBillingProbeStatusOK,
+		LastAttemptAt: time.Now().UTC(),
+REDACTED, &probedRate)
+	require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
+
+	got, err := repo.GetByID(ctx, account.ID)
+REDACTED
+	require.NotNil(t, got.RateMultiplier)
+	require.Equal(t, manualRate, *got.RateMultiplier)
+	require.Equal(t, false, got.Extra[service.UpstreamBillingRateSyncEnabledExtraKey])
+	require.NotContains(t, got.Extra, service.UpstreamBillingProbeExtraKey)
 REDACTED
 
 func boolPtr(value bool) *bool {
@@ -249,7 +398,7 @@ REDACTED
 			err = accountRepo.UpdateUpstreamBillingProbeSnapshot(ctx, inFlight, &service.UpstreamBillingProbeSnapshot{
 				Status:        service.UpstreamBillingProbeStatusOK,
 				LastAttemptAt: time.Now().UTC(),
-		REDACTED)
+		REDACTED, nil)
 			require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
 
 			rows, err := tx.QueryContext(ctx, `

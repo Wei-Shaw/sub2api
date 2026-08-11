@@ -1,0 +1,19 @@
+{
+  "id": "chatcmpl-sanitized",
+  "object": "chat.completion",
+  "model": "reasoning-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "final answer",
+        "reasoning": "fallback reasoning",
+        "reasoning_details": [
+          {"type": "reasoning.text", "text": "fallback reasoning"REDACTED
+        ]
+      REDACTED,
+      "finish_reason": "stop"
+    REDACTED
+  ]
+REDACTED

@@ -50,13 +50,14 @@ type GrokQuotaResetResult struct {
 REDACTED
 
 type GrokQuotaService struct {
-	accountRepo   AccountRepository
-	proxyRepo     ProxyRepository
-	tokenProvider *GrokTokenProvider
-	httpUpstream  HTTPUpstream
-	usageLogRepo  UsageLogRepository
-	cfg           *config.Config
-	probeFlight   singleflight.Group
+	accountRepo    AccountRepository
+	proxyRepo      ProxyRepository
+	tokenProvider  *GrokTokenProvider
+	httpUpstream   HTTPUpstream
+	usageLogRepo   UsageLogRepository
+	settingService *SettingService
+	cfg            *config.Config
+	probeFlight    singleflight.Group
 REDACTED
 
 func NewGrokQuotaService(
@@ -81,11 +82,20 @@ REDACTED
 REDACTED
 REDACTED
 
+func (s *GrokQuotaService) SetSettingService(settingService *SettingService) {
+	if s != nil {
+		s.settingService = settingService
+REDACTED
+REDACTED
+
 // QueryQuota combines xAI billing data with an active quota-header probe for
 // Free accounts, whose billing response does not include usage_percent.
 func (s *GrokQuotaService) QueryQuota(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
 	billingResult, billingErr := s.ProbeBilling(ctx, accountID)
 	if billingErr == nil && billingResult != nil && grokBillingHasAuthoritativeQuota(billingResult.Billing) {
+		if acc, err := s.accountRepo.GetByID(ctx, accountID); err == nil {
+			s.scheduleGrokObservedModelsSync(acc)
+	REDACTED
 		return billingResult, nil
 REDACTED
 
@@ -110,6 +120,9 @@ REDACTED
 		probeResult.LocalUsage7d = billingResult.LocalUsage7d
 		probeResult.LocalUsageMonthly = billingResult.LocalUsageMonthly
 		probeResult.Persisted = probeResult.Persisted || billingResult.Persisted
+REDACTED
+	if acc, err := s.accountRepo.GetByID(ctx, accountID); err == nil {
+		s.scheduleGrokObservedModelsSync(acc)
 REDACTED
 	return probeResult, nil
 REDACTED
@@ -141,7 +154,7 @@ REDACTED
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_PROBE_BODY_ERROR", "failed to build probe body: %v", err)
 REDACTED
-	targetURL, err := buildGrokResponsesURL(account, s.cfg)
+	targetURL, err := buildGrokResponsesURL(account, s.cfg, s.settingService)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "GROK_QUOTA_BASE_URL_INVALID", "invalid Grok base_url: %v", err)
 REDACTED
@@ -172,9 +185,21 @@ REDACTED
 	if limited {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, time.Now())
 REDACTED
-	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-		grokQuotaSnapshotExtraKey: snapshot,
-REDACTED)
+	// A failed probe must not erase a previously observed snapshot.  401/403 and
+	// transport/server errors commonly carry no quota headers; only successful
+	// responses, or 429 responses with useful rate-limit headers, are safe to
+	// persist.  A successful 200 with no headers is still persisted as an
+	// explicit "no headers" observation so the UI can distinguish it from never
+	// probed.
+	persistErr := error(nil)
+	persisted := false
+	shouldPersist := resp.StatusCode < 400 || resp.StatusCode == http.StatusTooManyRequests
+	if shouldPersist && (snapshot.HeadersObserved || resp.StatusCode == http.StatusOK) {
+		persistErr = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			grokQuotaSnapshotExtraKey: snapshot,
+	REDACTED)
+		persisted = persistErr == nil
+REDACTED
 	if limited {
 		persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 REDACTED else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
@@ -189,7 +214,7 @@ REDACTED
 		HeadersObserved: snapshot.HeadersObserved,
 		ResetSupported:  false,
 		FetchedAt:       time.Now().Unix(),
-		Persisted:       persistErr == nil,
+		Persisted:       persisted,
 REDACTED
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return result, nil

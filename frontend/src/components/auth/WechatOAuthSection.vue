@@ -31,7 +31,7 @@
 import { computed, onMounted REDACTED from 'vue'
 import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
-import { resolveWeChatOAuthStart REDACTED from '@/api/auth'
+import { resolveWeChatOAuthStart, type OAuthLoginStart REDACTED from '@/api/auth'
 import { useAppStore REDACTED from '@/stores'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode REDACTED from '@/utils/oauthAffiliate'
 
@@ -42,6 +42,9 @@ const props = withDefaults(defineProps<{
 REDACTED>(), {
   showDivider: true,
 REDACTED)
+const emit = defineEmits<{
+  start: [request: OAuthLoginStart]
+REDACTED>()
 
 const appStore = useAppStore()
 const route = useRoute()
@@ -87,10 +90,10 @@ function startLogin(): void {
   REDACTED
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
-  const normalized = apiBase.replace(/\/$/, '')
   const mode = resolvedStart.value.mode
-  const startURL = `${normalizedREDACTED/auth/oauth/wechat/start?mode=${modeREDACTED&redirect=${encodeURIComponent(redirectTo)REDACTED`
-  window.location.href = startURL
+  emit('start', {
+    provider: 'wechat',
+    params: { mode, redirect: redirectTo REDACTED
+  REDACTED)
 REDACTED
 </script>

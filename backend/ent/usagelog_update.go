@@ -142,6 +142,46 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 REDACTED
 
+// SetUpstreamResponseModel sets the "upstream_response_model" field.
+func (_u *UsageLogUpdate) SetUpstreamResponseModel(v string) *UsageLogUpdate {
+	_u.mutation.SetUpstreamResponseModel(v)
+	return _u
+REDACTED
+
+// SetNillableUpstreamResponseModel sets the "upstream_response_model" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamResponseModel(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamResponseModel(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
+func (_u *UsageLogUpdate) ClearUpstreamResponseModel() *UsageLogUpdate {
+	_u.mutation.ClearUpstreamResponseModel()
+	return _u
+REDACTED
+
+// SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdate) SetUpstreamModelMismatch(v bool) *UsageLogUpdate {
+	_u.mutation.SetUpstreamModelMismatch(v)
+	return _u
+REDACTED
+
+// SetNillableUpstreamModelMismatch sets the "upstream_model_mismatch" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamModelMismatch(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamModelMismatch(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUpstreamModelMismatch clears the value of the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdate) ClearUpstreamModelMismatch() *UsageLogUpdate {
+	_u.mutation.ClearUpstreamModelMismatch()
+	return _u
+REDACTED
+
 // SetChannelID sets the "channel_id" field.
 func (_u *UsageLogUpdate) SetChannelID(v int64) *UsageLogUpdate {
 	_u.mutation.ResetChannelID()
@@ -1016,6 +1056,11 @@ REDACTED
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.UpstreamResponseModel(); ok {
+		if err := usagelog.UpstreamResponseModelValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)REDACTED
@@ -1107,6 +1152,18 @@ REDACTED
 REDACTED
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.UpstreamResponseModel(); ok {
+		_spec.SetField(usagelog.FieldUpstreamResponseModel, field.TypeString, value)
+REDACTED
+	if _u.mutation.UpstreamResponseModelCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
+		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
+REDACTED
+	if _u.mutation.UpstreamModelMismatchCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamModelMismatch, field.TypeBool)
 REDACTED
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
@@ -1596,6 +1653,46 @@ REDACTED
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamModel()
+	return _u
+REDACTED
+
+// SetUpstreamResponseModel sets the "upstream_response_model" field.
+func (_u *UsageLogUpdateOne) SetUpstreamResponseModel(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUpstreamResponseModel(v)
+	return _u
+REDACTED
+
+// SetNillableUpstreamResponseModel sets the "upstream_response_model" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamResponseModel(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamResponseModel(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
+func (_u *UsageLogUpdateOne) ClearUpstreamResponseModel() *UsageLogUpdateOne {
+	_u.mutation.ClearUpstreamResponseModel()
+	return _u
+REDACTED
+
+// SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdateOne) SetUpstreamModelMismatch(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetUpstreamModelMismatch(v)
+	return _u
+REDACTED
+
+// SetNillableUpstreamModelMismatch sets the "upstream_model_mismatch" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamModelMismatch(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamModelMismatch(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearUpstreamModelMismatch clears the value of the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdateOne) ClearUpstreamModelMismatch() *UsageLogUpdateOne {
+	_u.mutation.ClearUpstreamModelMismatch()
 	return _u
 REDACTED
 
@@ -2486,6 +2583,11 @@ REDACTED
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _u.mutation.UpstreamResponseModel(); ok {
+		if err := usagelog.UpstreamResponseModelValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)REDACTED
@@ -2594,6 +2696,18 @@ REDACTED
 REDACTED
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.UpstreamResponseModel(); ok {
+		_spec.SetField(usagelog.FieldUpstreamResponseModel, field.TypeString, value)
+REDACTED
+	if _u.mutation.UpstreamResponseModelCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
+		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
+REDACTED
+	if _u.mutation.UpstreamModelMismatchCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamModelMismatch, field.TypeBool)
 REDACTED
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)

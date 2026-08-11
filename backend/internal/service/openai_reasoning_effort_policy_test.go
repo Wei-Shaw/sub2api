@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,15 +29,17 @@ REDACTED
 
 func TestNormalizeReasoningEffortMappings(t *testing.T) {
 	t.Run("canonicalizes fixed OpenAI values", func(t *testing.T) {
-		got, err := NormalizeReasoningEffortMappings(PlatformOpenAI, []ReasoningEffortMapping{
-			{From: " MAX ", To: " x-high "REDACTED,
-			{From: "minimal", To: "high"REDACTED,
-	REDACTED)
+		for _, platform := range []string{PlatformOpenAI, PlatformCompositeREDACTED {
+			got, err := NormalizeReasoningEffortMappings(platform, []ReasoningEffortMapping{
+				{From: " MAX ", To: " x-high "REDACTED,
+				{From: "minimal", To: "high"REDACTED,
+		REDACTED)
+		REDACTED
+			require.Equal(t, []ReasoningEffortMapping{
+				{From: "max", To: "xhigh"REDACTED,
+				{From: "minimal", To: "high"REDACTED,
+		REDACTED, got)
 	REDACTED
-		require.Equal(t, []ReasoningEffortMapping{
-			{From: "max", To: "xhigh"REDACTED,
-			{From: "minimal", To: "high"REDACTED,
-	REDACTED, got)
 REDACTED)
 
 	t.Run("rejects empty values", func(t *testing.T) {
@@ -55,7 +58,7 @@ REDACTED)
 	t.Run("rejects mappings for non OpenAI platforms", func(t *testing.T) {
 		for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrokREDACTED {
 			_, err := NormalizeReasoningEffortMappings(platform, []ReasoningEffortMapping{{From: "low", To: "high"REDACTEDREDACTED)
-			require.ErrorContains(t, err, "only supported for platform \"openai\"")
+			require.ErrorContains(t, err, "only supported for platforms \"openai\" and \"composite\"")
 	REDACTED
 
 		_, err := NormalizeReasoningEffortMappings(PlatformOpenAI, []ReasoningEffortMapping{{From: "none", To: "low"REDACTEDREDACTED)
@@ -70,14 +73,32 @@ func TestNormalizeMaxReasoningEffortForPlatform(t *testing.T) {
 	value, err := normalizeMaxReasoningEffortForPlatform(PlatformOpenAI, "max")
 REDACTED
 	require.Equal(t, "max", value)
+	value, err = normalizeMaxReasoningEffortForPlatform(PlatformComposite, "max")
+REDACTED
+	require.Equal(t, "max", value)
 
 	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrokREDACTED {
 		_, err = normalizeMaxReasoningEffortForPlatform(platform, "low")
-		require.ErrorContains(t, err, "only supported for platform \"openai\"")
+		require.ErrorContains(t, err, "only supported for platforms \"openai\" and \"composite\"")
 REDACTED
 
 	_, err = normalizeMaxReasoningEffortForPlatform(PlatformOpenAI, "none")
 	require.ErrorContains(t, err, "not supported")
+REDACTED
+
+func TestOpenAIReasoningEffortPolicyContext(t *testing.T) {
+	body := []byte(`{"reasoning":{"effort":"max"REDACTEDREDACTED`)
+
+	unbound, changed := ApplyOpenAIReasoningEffortPolicyFromContext(context.Background(), body)
+	require.False(t, changed)
+	require.Equal(t, body, unbound)
+
+	mappings := []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED
+	ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "medium", mappings)
+	mappings[0].To = "low"
+	got, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+	require.True(t, changed)
+	require.Equal(t, "medium", gjson.GetBytes(got, "reasoning.effort").String())
 REDACTED
 
 func TestApplyOpenAIReasoningEffortPolicy(t *testing.T) {

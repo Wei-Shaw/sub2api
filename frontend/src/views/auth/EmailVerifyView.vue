@@ -67,18 +67,50 @@
         </div>
 
         <!-- Turnstile Widget for Resend -->
-        <div v-if="turnstileEnabled && turnstileSiteKey && showResendTurnstile">
+        <div v-if="actionCaptchaEnabled || (turnstileEnabled && showResendTurnstile)">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
+            :turnstile-enabled="turnstileEnabled"
+            :turnstile-site-key="turnstileSiteKey"
+            :tencent-enabled="tencentCaptchaEnabled"
+            :tencent-app-id="tencentCaptchaAppId"
+            :tencent-region="tencentCaptchaRegion"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
             @verify="onTurnstileVerify"
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
         </div>
 
+        <div v-if="pendingOAuthCreateCaptchaEnabled" class="space-y-2">
+          <TurnstileWidget
+            ref="createAccountTurnstileRef"
+            :site-key="turnstileSiteKey"
+            :turnstile-enabled="turnstileEnabled"
+            :turnstile-site-key="turnstileSiteKey"
+            :tencent-enabled="tencentCaptchaEnabled"
+            :tencent-app-id="tencentCaptchaAppId"
+            :tencent-region="tencentCaptchaRegion"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
+            @verify="onCreateAccountTurnstileVerify"
+            @expire="onCreateAccountTurnstileExpire"
+            @error="onCreateAccountTurnstileError"
+          />
+        </div>
+
         <!-- Submit Button -->
-        <button type="submit" :disabled="isLoading || !verifyCode" class="btn btn-primary w-full">
+        <button
+          type="submit"
+          :disabled="isLoading || !verifyCode || (pendingOAuthCreateTurnstileRequired && !createAccountTurnstileToken)"
+          class="btn btn-primary w-full"
+        >
           <svg
             v-if="isLoading"
             class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
@@ -123,7 +155,7 @@
             class="text-sm text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           >
             <span v-if="isSendingCode">{{ t('auth.sendingCode') REDACTEDREDACTED</span>
-            <span v-else-if="turnstileEnabled && !showResendTurnstile">
+            <span v-else-if="captchaEnabled && !showResendTurnstile">
               {{ t('auth.clickToResend') REDACTEDREDACTED
             </span>
             <span v-else>{{ t('auth.resendCode') REDACTEDREDACTED</span>
@@ -151,7 +183,7 @@ import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
-import TurnstileWidget from '@/components/TurnstileWidget.vue'
+import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import {
   persistOAuthTokenContext,
@@ -163,6 +195,7 @@ import {
 REDACTED from '@/api/auth'
 import { apiClient REDACTED from '@/api/client'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
+import { extractApiErrorCode REDACTED from '@/utils/apiError'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -213,6 +246,7 @@ REDACTED
 const email = ref<string>('')
 const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
+const initialTencentCaptchaRandstr = ref<string>('')
 const promoCode = ref<string>('')
 const invitationCode = ref<string>('')
 const affCode = ref<string>('')
@@ -229,13 +263,42 @@ const hasRegisterData = ref<boolean>(false)
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
+const tencentCaptchaEnabled = ref<boolean>(false)
+const tencentCaptchaAppId = ref<string>('')
+const tencentCaptchaRegion = ref<string>('cn')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('Sub2API')
 const registrationEmailSuffixWhitelist = ref<string[]>([])
+// 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
+const emailDomainQuotaEnabled = ref<boolean>(false)
 
 // Turnstile for resend
 const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const createAccountTurnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
 const resendTurnstileToken = ref<string>('')
+const resendTencentCaptchaRandstr = ref<string>('')
+const createAccountTurnstileToken = ref<string>('')
+const createAccountTencentCaptchaRandstr = ref<string>('')
 const showResendTurnstile = ref<boolean>(false)
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：重发验证码、创建账号时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
+const captchaEnabled = computed(
+  () =>
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
+)
 
 const errors = ref({
   code: '',
@@ -244,6 +307,12 @@ REDACTED)
 
 const validationToastMessage = computed(
   () => errors.value.code || errors.value.turnstile || ''
+)
+const pendingOAuthCreateTurnstileRequired = computed(
+  () => isPendingOAuthFlow() && turnstileEnabled.value
+)
+const pendingOAuthCreateCaptchaEnabled = computed(
+  () => isPendingOAuthFlow() && captchaEnabled.value
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -264,7 +333,9 @@ onMounted(async () => {
       const registerData = JSON.parse(registerDataStr)
       email.value = registerData.email || ''
       password.value = registerData.password || ''
-      initialTurnstileToken.value = registerData.turnstile_token || ''
+      initialTurnstileToken.value =
+        registerData.tencent_captcha_ticket || registerData.turnstile_token || ''
+      initialTencentCaptchaRandstr.value = registerData.tencent_captcha_randstr || ''
       promoCode.value = registerData.promo_code || ''
       invitationCode.value = registerData.invitation_code || ''
       affCode.value = registerData.aff_code || loadAffiliateReferralCode()
@@ -294,10 +365,18 @@ onMounted(async () => {
     const settings = await getPublicSettings()
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
   REDACTED catch (error) {
     console.error('Failed to load public settings:', error)
   REDACTED
@@ -338,27 +417,79 @@ REDACTED
 
 // ==================== Turnstile Handlers ====================
 
-function onTurnstileVerify(token: string): void {
+function onTurnstileVerify(token: string, randstr = ''): void {
   resendTurnstileToken.value = token
+  resendTencentCaptchaRandstr.value = randstr
   errors.value.turnstile = ''
 REDACTED
 
 function onTurnstileExpire(): void {
   resendTurnstileToken.value = ''
+  resendTencentCaptchaRandstr.value = ''
   errors.value.turnstile = t('auth.turnstileExpired')
 REDACTED
 
 function onTurnstileError(): void {
   resendTurnstileToken.value = ''
+  resendTencentCaptchaRandstr.value = ''
   errors.value.turnstile = t('auth.turnstileFailed')
+REDACTED
+
+function onCreateAccountTurnstileVerify(token: string, randstr = ''): void {
+  createAccountTurnstileToken.value = token
+  createAccountTencentCaptchaRandstr.value = randstr
+  errors.value.turnstile = ''
+REDACTED
+
+function onCreateAccountTurnstileExpire(): void {
+  createAccountTurnstileToken.value = ''
+  createAccountTencentCaptchaRandstr.value = ''
+  errors.value.turnstile = t('auth.turnstileExpired')
+REDACTED
+
+function onCreateAccountTurnstileError(): void {
+  createAccountTurnstileToken.value = ''
+  createAccountTencentCaptchaRandstr.value = ''
+  errors.value.turnstile = t('auth.turnstileFailed')
+REDACTED
+
+function resetCreateAccountTurnstile(): void {
+  createAccountTurnstileToken.value = ''
+  createAccountTencentCaptchaRandstr.value = ''
+  createAccountTurnstileRef.value?.reset()
+REDACTED
+
+async function acquireResendActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
+
+  const proof = await turnstileRef.value?.verifyAction()
+  if (!proof) return false
+
+  resendTurnstileToken.value = proof.token
+  resendTencentCaptchaRandstr.value = proof.randstr
+  return true
+REDACTED
+
+async function acquireCreateAccountActionProof(): Promise<boolean> {
+  if (!isPendingOAuthFlow() || !actionCaptchaEnabled.value) return true
+
+  const proof = await createAccountTurnstileRef.value?.verifyAction()
+  if (!proof) return false
+
+  createAccountTurnstileToken.value = proof.token
+  createAccountTencentCaptchaRandstr.value = proof.randstr
+  return true
 REDACTED
 
 function isPendingOAuthFlow(): boolean {
   return Boolean(pendingProvider.value.trim())
 REDACTED
 
+// 域名限量注册开启时交由后端按额度判定；pending OAuth / 换绑流程沿用后端策略，前端不预检。
 function shouldBypassRegistrationEmailPolicy(): boolean {
-  return isPendingOAuthFlow() || Boolean(pendingAuthToken.value.trim())
+  return (
+    emailDomainQuotaEnabled.value || isPendingOAuthFlow() || Boolean(pendingAuthToken.value.trim())
+  )
 REDACTED
 
 function resolvePendingOAuthCallbackRoute(provider: string): string {
@@ -398,6 +529,8 @@ REDACTED
 async function sendCode(): Promise<void> {
   isSendingCode.value = true
   errorMessage.value = ''
+  let requestSucceeded = false
+  let captchaProofUsed = false
 
   try {
     if (!shouldBypassRegistrationEmailPolicy() && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
@@ -410,11 +543,24 @@ async function sendCode(): Promise<void> {
       email: email.value,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
-      turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value
+          ? resendTurnstileToken.value || initialTurnstileToken.value || undefined
+          : undefined,
+      tencent_captcha_ticket: tencentCaptchaEnabled.value
+        ? resendTurnstileToken.value || initialTurnstileToken.value || undefined
+        : undefined,
+      tencent_captcha_randstr: tencentCaptchaEnabled.value
+        ? resendTencentCaptchaRandstr.value || initialTencentCaptchaRandstr.value || undefined
+        : undefined
     REDACTED as Parameters<typeof sendVerifyCode>[0]
+    captchaProofUsed = Boolean(
+      requestPayload.turnstile_token || requestPayload.tencent_captcha_ticket
+    )
     const response = isPendingOAuthFlow()
       ? await sendPendingOAuthVerifyCode(requestPayload)
       : await sendVerifyCode(requestPayload)
+    requestSucceeded = true
 
     const pendingSendCodeSession = isPendingOAuthFlow()
       ? getPendingOAuthSendCodeSessionResponse(response as PendingOAuthSendVerifyCodeResponse)
@@ -434,33 +580,57 @@ async function sendCode(): Promise<void> {
     codeSent.value = true
     startCountdown(response.countdown)
 
-    // Reset turnstile state（token 已使用，清除以避免重复使用）
-    initialTurnstileToken.value = ''
     showResendTurnstile.value = false
-    resendTurnstileToken.value = ''
   REDACTED catch (error: unknown) {
-    errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.sendCodeFailed')
-    REDACTED)
+    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.sendCodeFailed'))
 
     appStore.showError(errorMessage.value)
   REDACTED finally {
+    if (captchaProofUsed) {
+      clearStoredCaptchaProof()
+      initialTurnstileToken.value = ''
+      initialTencentCaptchaRandstr.value = ''
+      resendTurnstileToken.value = ''
+      resendTencentCaptchaRandstr.value = ''
+      turnstileRef.value?.reset()
+      if (!requestSucceeded && turnstileEnabled.value) {
+        showResendTurnstile.value = true
+      REDACTED
+    REDACTED
     isSendingCode.value = false
+  REDACTED
+REDACTED
+
+function clearStoredCaptchaProof(): void {
+  const registerDataStr = sessionStorage.getItem('register_data')
+  if (!registerDataStr) return
+
+  try {
+    const registerData = JSON.parse(registerDataStr) as Record<string, unknown>
+    delete registerData.turnstile_token
+    delete registerData.tencent_captcha_ticket
+    delete registerData.tencent_captcha_randstr
+    sessionStorage.setItem('register_data', JSON.stringify(registerData))
+  REDACTED catch {
+    // Invalid registration state is handled by the existing onMounted parser.
   REDACTED
 REDACTED
 
 // ==================== Handlers ====================
 
 async function handleResendCode(): Promise<void> {
-  // If turnstile is enabled and we haven't shown it yet, show it
+  // Turnstile stays staged; Tencent is acquired from this action.
   if (turnstileEnabled.value && !showResendTurnstile.value) {
     showResendTurnstile.value = true
     return
   REDACTED
 
-  // If turnstile is enabled but no token yet, wait
   if (turnstileEnabled.value && !resendTurnstileToken.value) {
     errors.value.turnstile = t('auth.completeVerification')
+    return
+  REDACTED
+
+  if (!(await acquireResendActionProof())) {
     return
   REDACTED
 
@@ -490,20 +660,34 @@ async function handleVerify(): Promise<void> {
     return
   REDACTED
 
+  if (!shouldBypassRegistrationEmailPolicy() && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
+    errorMessage.value = buildEmailSuffixNotAllowedMessage()
+    appStore.showError(errorMessage.value)
+    return
+  REDACTED
+
+  if (!(await acquireCreateAccountActionProof())) {
+    return
+  REDACTED
+
   isLoading.value = true
 
   try {
-    if (!shouldBypassRegistrationEmailPolicy() && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
-      errorMessage.value = buildEmailSuffixNotAllowedMessage()
-      appStore.showError(errorMessage.value)
-      return
-    REDACTED
-
     if (isPendingOAuthFlow()) {
       const payload: Record<string, unknown> = {
         email: email.value,
         password: password.value,
         verify_code: verifyCode.value.trim(),
+        ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) &&
+        createAccountTurnstileToken.value
+          ? { turnstile_token: createAccountTurnstileToken.value REDACTED
+          : {REDACTED),
+        ...(tencentCaptchaEnabled.value && createAccountTurnstileToken.value
+          ? {
+              tencent_captcha_ticket: createAccountTurnstileToken.value,
+              tencent_captcha_randstr: createAccountTencentCaptchaRandstr.value
+          REDACTED
+          : {REDACTED),
         ...oauthAffiliatePayload(affCode.value || loadAffiliateReferralCode()),
       REDACTED
       if (invitationCode.value) {
@@ -539,7 +723,12 @@ async function handleVerify(): Promise<void> {
         email: email.value,
         password: password.value,
         verify_code: verifyCode.value.trim(),
-        turnstile_token: initialTurnstileToken.value || undefined,
+        turnstile_token:
+          turnstileEnabled.value || aliyunCaptchaEnabled.value
+            ? initialTurnstileToken.value || undefined
+            : undefined,
+        tencent_captcha_ticket: tencentCaptchaEnabled.value ? initialTurnstileToken.value || undefined : undefined,
+        tencent_captcha_randstr: tencentCaptchaEnabled.value ? initialTencentCaptchaRandstr.value || undefined : undefined,
         promo_code: promoCode.value || undefined,
         invitation_code: invitationCode.value || undefined,
         ...(affCode.value ? { aff_code: affCode.value REDACTED : {REDACTED)
@@ -556,12 +745,15 @@ async function handleVerify(): Promise<void> {
     // Redirect to dashboard
     await router.push(pendingRedirect.value || '/dashboard')
   REDACTED catch (error: unknown) {
-    errorMessage.value = buildAuthErrorMessage(error, {
-      fallback: t('auth.verifyFailed')
-    REDACTED)
+    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.verifyFailed'))
 
     appStore.showError(errorMessage.value)
   REDACTED finally {
+    initialTurnstileToken.value = ''
+    initialTencentCaptchaRandstr.value = ''
+    if (pendingOAuthCreateCaptchaEnabled.value) {
+      resetCreateAccountTurnstile()
+    REDACTED
     isLoading.value = false
   REDACTED
 REDACTED
@@ -588,6 +780,13 @@ function buildEmailSuffixNotAllowedMessage(): string {
       more: (count) => t('auth.emailSuffixAllowedMore', { count REDACTED)
     REDACTED)
   REDACTED)
+REDACTED
+
+function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
+  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
+    return t('auth.emailDomainRegistrationLimit')
+  REDACTED
+  return buildAuthErrorMessage(error, { fallback REDACTED)
 REDACTED
 </script>
 

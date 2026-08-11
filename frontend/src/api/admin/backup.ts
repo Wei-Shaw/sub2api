@@ -23,6 +23,7 @@ export interface BackupRecord {
   backup_type: string
   file_name: string
   s3_key: string
+  parts?: BackupPart[]
   size_bytes: number
   triggered_by: string
   error_message?: string
@@ -33,6 +34,24 @@ export interface BackupRecord {
   restore_status?: string
   restore_error?: string
   restored_at?: string
+REDACTED
+
+export interface BackupPart {
+  index: number
+  s3_key: string
+  size_bytes: number
+  sha256?: string
+REDACTED
+
+export interface BackupDownloadPart {
+  index: number
+  size_bytes: number
+  url: string
+REDACTED
+
+export interface BackupDownloadResponse {
+  url?: string
+  parts?: BackupDownloadPart[]
 REDACTED
 
 export interface CreateBackupRequest {
@@ -137,8 +156,8 @@ export async function deleteBackup(id: string): Promise<void> {
   await apiClient.delete(`/admin/backups/${idREDACTED`)
 REDACTED
 
-export async function getDownloadURL(id: string): Promise<{ url: string REDACTED> {
-  const { data REDACTED = await apiClient.get<{ url: string REDACTED>(`/admin/backups/${idREDACTED/download-url`)
+export async function getDownloadURL(id: string): Promise<BackupDownloadResponse> {
+  const { data REDACTED = await apiClient.get<BackupDownloadResponse>(`/admin/backups/${idREDACTED/download-url`)
   return data
 REDACTED
 

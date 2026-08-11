@@ -483,6 +483,12 @@ REDACTED
 	return _c
 REDACTED
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (_c *GroupCreate) SetVideoModelPrices(v map[string]map[string]float64) *GroupCreate {
+	_c.mutation.SetVideoModelPrices(v)
+	return _c
+REDACTED
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (_c *GroupCreate) SetWebSearchPricePerCall(v float64) *GroupCreate {
 	_c.mutation.SetWebSearchPricePerCall(v)
@@ -493,6 +499,62 @@ REDACTED
 func (_c *GroupCreate) SetNillableWebSearchPricePerCall(v *float64) *GroupCreate {
 	if v != nil {
 		_c.SetWebSearchPricePerCall(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (_c *GroupCreate) SetSearchPricePer1k(v float64) *GroupCreate {
+	_c.mutation.SetSearchPricePer1k(v)
+	return _c
+REDACTED
+
+// SetNillableSearchPricePer1k sets the "search_price_per_1k" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSearchPricePer1k(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetSearchPricePer1k(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (_c *GroupCreate) SetAudioRealtimePricePerMin(v float64) *GroupCreate {
+	_c.mutation.SetAudioRealtimePricePerMin(v)
+	return _c
+REDACTED
+
+// SetNillableAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioRealtimePricePerMin(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioRealtimePricePerMin(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (_c *GroupCreate) SetAudioTtsPricePerMillionChars(v float64) *GroupCreate {
+	_c.mutation.SetAudioTtsPricePerMillionChars(v)
+	return _c
+REDACTED
+
+// SetNillableAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioTtsPricePerMillionChars(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioTtsPricePerMillionChars(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (_c *GroupCreate) SetAudioSttPricePerHour(v float64) *GroupCreate {
+	_c.mutation.SetAudioSttPricePerHour(v)
+	return _c
+REDACTED
+
+// SetNillableAudioSttPricePerHour sets the "audio_stt_price_per_hour" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioSttPricePerHour(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioSttPricePerHour(*v)
 REDACTED
 	return _c
 REDACTED
@@ -722,6 +784,48 @@ REDACTED
 // SetReasoningEffortMappings sets the "reasoning_effort_mappings" field.
 func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapping) *GroupCreate {
 	_c.mutation.SetReasoningEffortMappings(v)
+	return _c
+REDACTED
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (_c *GroupCreate) SetProfitControlEnabled(v bool) *GroupCreate {
+	_c.mutation.SetProfitControlEnabled(v)
+	return _c
+REDACTED
+
+// SetNillableProfitControlEnabled sets the "profit_control_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitControlEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetProfitControlEnabled(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (_c *GroupCreate) SetProfitMinMargin(v float64) *GroupCreate {
+	_c.mutation.SetProfitMinMargin(v)
+	return _c
+REDACTED
+
+// SetNillableProfitMinMargin sets the "profit_min_margin" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitMinMargin(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitMinMargin(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (_c *GroupCreate) SetProfitSafetyBuffer(v float64) *GroupCreate {
+	_c.mutation.SetProfitSafetyBuffer(v)
+	return _c
+REDACTED
+
+// SetNillableProfitSafetyBuffer sets the "profit_safety_buffer" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableProfitSafetyBuffer(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetProfitSafetyBuffer(*v)
+REDACTED
 	return _c
 REDACTED
 
@@ -998,6 +1102,18 @@ REDACTED
 		v := group.DefaultReasoningEffortMappings
 		_c.mutation.SetReasoningEffortMappings(v)
 REDACTED
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		v := group.DefaultProfitControlEnabled
+		_c.mutation.SetProfitControlEnabled(v)
+REDACTED
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		v := group.DefaultProfitMinMargin
+		_c.mutation.SetProfitMinMargin(v)
+REDACTED
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		v := group.DefaultProfitSafetyBuffer
+		_c.mutation.SetProfitSafetyBuffer(v)
+REDACTED
 	return nil
 REDACTED
 
@@ -1101,6 +1217,26 @@ REDACTED
 	if _, ok := _c.mutation.VideoRateMultiplier(); !ok {
 		return &ValidationError{Name: "video_rate_multiplier", err: errors.New(`ent: missing required field "Group.video_rate_multiplier"`)REDACTED
 REDACTED
+	if v, ok := _c.mutation.SearchPricePer1k(); ok {
+		if err := group.SearchPricePer1kValidator(v); err != nil {
+			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _c.mutation.AudioRealtimePricePerMin(); ok {
+		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
+			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _c.mutation.AudioTtsPricePerMillionChars(); ok {
+		if err := group.AudioTtsPricePerMillionCharsValidator(v); err != nil {
+			return &ValidationError{Name: "audio_tts_price_per_million_chars", err: fmt.Errorf(`ent: validator failed for field "Group.audio_tts_price_per_million_chars": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if v, ok := _c.mutation.AudioSttPricePerHour(); ok {
+		if err := group.AudioSttPricePerHourValidator(v); err != nil {
+			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)REDACTED
 REDACTED
@@ -1155,6 +1291,15 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
+		return &ValidationError{Name: "profit_control_enabled", err: errors.New(`ent: missing required field "Group.profit_control_enabled"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ProfitMinMargin(); !ok {
+		return &ValidationError{Name: "profit_min_margin", err: errors.New(`ent: missing required field "Group.profit_min_margin"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ProfitSafetyBuffer(); !ok {
+		return &ValidationError{Name: "profit_safety_buffer", err: errors.New(`ent: missing required field "Group.profit_safety_buffer"`)REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -1315,9 +1460,29 @@ REDACTED
 		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
 		_node.VideoPrice1080p = &value
 REDACTED
+	if value, ok := _c.mutation.VideoModelPrices(); ok {
+		_spec.SetField(group.FieldVideoModelPrices, field.TypeJSON, value)
+		_node.VideoModelPrices = value
+REDACTED
 	if value, ok := _c.mutation.WebSearchPricePerCall(); ok {
 		_spec.SetField(group.FieldWebSearchPricePerCall, field.TypeFloat64, value)
 		_node.WebSearchPricePerCall = &value
+REDACTED
+	if value, ok := _c.mutation.SearchPricePer1k(); ok {
+		_spec.SetField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+		_node.SearchPricePer1k = &value
+REDACTED
+	if value, ok := _c.mutation.AudioRealtimePricePerMin(); ok {
+		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+		_node.AudioRealtimePricePerMin = &value
+REDACTED
+	if value, ok := _c.mutation.AudioTtsPricePerMillionChars(); ok {
+		_spec.SetField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+		_node.AudioTtsPricePerMillionChars = &value
+REDACTED
+	if value, ok := _c.mutation.AudioSttPricePerHour(); ok {
+		_spec.SetField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+		_node.AudioSttPricePerHour = &value
 REDACTED
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1390,6 +1555,18 @@ REDACTED
 	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
 		_node.ReasoningEffortMappings = value
+REDACTED
+	if value, ok := _c.mutation.ProfitControlEnabled(); ok {
+		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
+		_node.ProfitControlEnabled = value
+REDACTED
+	if value, ok := _c.mutation.ProfitMinMargin(); ok {
+		_spec.SetField(group.FieldProfitMinMargin, field.TypeFloat64, value)
+		_node.ProfitMinMargin = value
+REDACTED
+	if value, ok := _c.mutation.ProfitSafetyBuffer(); ok {
+		_spec.SetField(group.FieldProfitSafetyBuffer, field.TypeFloat64, value)
+		_node.ProfitSafetyBuffer = value
 REDACTED
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -2081,6 +2258,24 @@ func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
 	return u
 REDACTED
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsert) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsert {
+	u.Set(group.FieldVideoModelPrices, v)
+	return u
+REDACTED
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoModelPrices() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoModelPrices)
+	return u
+REDACTED
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsert) ClearVideoModelPrices() *GroupUpsert {
+	u.SetNull(group.FieldVideoModelPrices)
+	return u
+REDACTED
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsert) SetWebSearchPricePerCall(v float64) *GroupUpsert {
 	u.Set(group.FieldWebSearchPricePerCall, v)
@@ -2102,6 +2297,102 @@ REDACTED
 // ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
 func (u *GroupUpsert) ClearWebSearchPricePerCall() *GroupUpsert {
 	u.SetNull(group.FieldWebSearchPricePerCall)
+	return u
+REDACTED
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsert) SetSearchPricePer1k(v float64) *GroupUpsert {
+	u.Set(group.FieldSearchPricePer1k, v)
+	return u
+REDACTED
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSearchPricePer1k() *GroupUpsert {
+	u.SetExcluded(group.FieldSearchPricePer1k)
+	return u
+REDACTED
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsert) AddSearchPricePer1k(v float64) *GroupUpsert {
+	u.Add(group.FieldSearchPricePer1k, v)
+	return u
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsert) ClearSearchPricePer1k() *GroupUpsert {
+	u.SetNull(group.FieldSearchPricePer1k)
+	return u
+REDACTED
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) SetAudioRealtimePricePerMin(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioRealtimePricePerMin, v)
+	return u
+REDACTED
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioRealtimePricePerMin() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioRealtimePricePerMin)
+	return u
+REDACTED
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) AddAudioRealtimePricePerMin(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioRealtimePricePerMin, v)
+	return u
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) ClearAudioRealtimePricePerMin() *GroupUpsert {
+	u.SetNull(group.FieldAudioRealtimePricePerMin)
+	return u
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioTtsPricePerMillionChars, v)
+	return u
+REDACTED
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioTtsPricePerMillionChars() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioTtsPricePerMillionChars)
+	return u
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioTtsPricePerMillionChars, v)
+	return u
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) ClearAudioTtsPricePerMillionChars() *GroupUpsert {
+	u.SetNull(group.FieldAudioTtsPricePerMillionChars)
+	return u
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) SetAudioSttPricePerHour(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioSttPricePerHour, v)
+	return u
+REDACTED
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioSttPricePerHour() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioSttPricePerHour)
+	return u
+REDACTED
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) AddAudioSttPricePerHour(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioSttPricePerHour, v)
+	return u
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) ClearAudioSttPricePerHour() *GroupUpsert {
+	u.SetNull(group.FieldAudioSttPricePerHour)
 	return u
 REDACTED
 
@@ -2360,6 +2651,54 @@ REDACTED
 // UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
+	return u
+REDACTED
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsert) SetProfitControlEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldProfitControlEnabled, v)
+	return u
+REDACTED
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitControlEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitControlEnabled)
+	return u
+REDACTED
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsert) SetProfitMinMargin(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitMinMargin, v)
+	return u
+REDACTED
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitMinMargin() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitMinMargin)
+	return u
+REDACTED
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsert) AddProfitMinMargin(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitMinMargin, v)
+	return u
+REDACTED
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsert) SetProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Set(group.FieldProfitSafetyBuffer, v)
+	return u
+REDACTED
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProfitSafetyBuffer() *GroupUpsert {
+	u.SetExcluded(group.FieldProfitSafetyBuffer)
+	return u
+REDACTED
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsert) AddProfitSafetyBuffer(v float64) *GroupUpsert {
+	u.Add(group.FieldProfitSafetyBuffer, v)
 	return u
 REDACTED
 
@@ -3034,6 +3373,27 @@ func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
 REDACTED)
 REDACTED
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsertOne) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoModelPrices(v)
+REDACTED)
+REDACTED
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoModelPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoModelPrices()
+REDACTED)
+REDACTED
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsertOne) ClearVideoModelPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoModelPrices()
+REDACTED)
+REDACTED
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsertOne) SetWebSearchPricePerCall(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3059,6 +3419,118 @@ REDACTED
 func (u *GroupUpsertOne) ClearWebSearchPricePerCall() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearWebSearchPricePerCall()
+REDACTED)
+REDACTED
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsertOne) SetSearchPricePer1k(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSearchPricePer1k(v)
+REDACTED)
+REDACTED
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsertOne) AddSearchPricePer1k(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSearchPricePer1k(v)
+REDACTED)
+REDACTED
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSearchPricePer1k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSearchPricePer1k()
+REDACTED)
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsertOne) ClearSearchPricePer1k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSearchPricePer1k()
+REDACTED)
+REDACTED
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) SetAudioRealtimePricePerMin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioRealtimePricePerMin(v)
+REDACTED)
+REDACTED
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) AddAudioRealtimePricePerMin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioRealtimePricePerMin(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioRealtimePricePerMin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioRealtimePricePerMin()
+REDACTED)
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) ClearAudioRealtimePricePerMin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioRealtimePricePerMin()
+REDACTED)
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioTtsPricePerMillionChars(v)
+REDACTED)
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioTtsPricePerMillionChars(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioTtsPricePerMillionChars() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioTtsPricePerMillionChars()
+REDACTED)
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) ClearAudioTtsPricePerMillionChars() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioTtsPricePerMillionChars()
+REDACTED)
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) SetAudioSttPricePerHour(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioSttPricePerHour(v)
+REDACTED)
+REDACTED
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) AddAudioSttPricePerHour(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioSttPricePerHour(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioSttPricePerHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioSttPricePerHour()
+REDACTED)
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) ClearAudioSttPricePerHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioSttPricePerHour()
 REDACTED)
 REDACTED
 
@@ -3360,6 +3832,62 @@ REDACTED
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+REDACTED)
+REDACTED
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertOne) SetProfitControlEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitControlEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+REDACTED)
+REDACTED
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertOne) SetProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+REDACTED)
+REDACTED
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertOne) AddProfitMinMargin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitMinMargin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+REDACTED)
+REDACTED
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) SetProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+REDACTED)
+REDACTED
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertOne) AddProfitSafetyBuffer(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProfitSafetyBuffer() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 REDACTED)
 REDACTED
 
@@ -4200,6 +4728,27 @@ func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
 REDACTED)
 REDACTED
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsertBulk) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoModelPrices(v)
+REDACTED)
+REDACTED
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoModelPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoModelPrices()
+REDACTED)
+REDACTED
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsertBulk) ClearVideoModelPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoModelPrices()
+REDACTED)
+REDACTED
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsertBulk) SetWebSearchPricePerCall(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4225,6 +4774,118 @@ REDACTED
 func (u *GroupUpsertBulk) ClearWebSearchPricePerCall() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearWebSearchPricePerCall()
+REDACTED)
+REDACTED
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) SetSearchPricePer1k(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSearchPricePer1k(v)
+REDACTED)
+REDACTED
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) AddSearchPricePer1k(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSearchPricePer1k(v)
+REDACTED)
+REDACTED
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSearchPricePer1k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSearchPricePer1k()
+REDACTED)
+REDACTED
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) ClearSearchPricePer1k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSearchPricePer1k()
+REDACTED)
+REDACTED
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) SetAudioRealtimePricePerMin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioRealtimePricePerMin(v)
+REDACTED)
+REDACTED
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) AddAudioRealtimePricePerMin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioRealtimePricePerMin(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioRealtimePricePerMin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioRealtimePricePerMin()
+REDACTED)
+REDACTED
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) ClearAudioRealtimePricePerMin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioRealtimePricePerMin()
+REDACTED)
+REDACTED
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioTtsPricePerMillionChars(v)
+REDACTED)
+REDACTED
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioTtsPricePerMillionChars(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioTtsPricePerMillionChars() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioTtsPricePerMillionChars()
+REDACTED)
+REDACTED
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) ClearAudioTtsPricePerMillionChars() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioTtsPricePerMillionChars()
+REDACTED)
+REDACTED
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) SetAudioSttPricePerHour(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioSttPricePerHour(v)
+REDACTED)
+REDACTED
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) AddAudioSttPricePerHour(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioSttPricePerHour(v)
+REDACTED)
+REDACTED
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioSttPricePerHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioSttPricePerHour()
+REDACTED)
+REDACTED
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) ClearAudioSttPricePerHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioSttPricePerHour()
 REDACTED)
 REDACTED
 
@@ -4526,6 +5187,62 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+REDACTED)
+REDACTED
+
+// SetProfitControlEnabled sets the "profit_control_enabled" field.
+func (u *GroupUpsertBulk) SetProfitControlEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitControlEnabled(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitControlEnabled sets the "profit_control_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitControlEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitControlEnabled()
+REDACTED)
+REDACTED
+
+// SetProfitMinMargin sets the "profit_min_margin" field.
+func (u *GroupUpsertBulk) SetProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitMinMargin(v)
+REDACTED)
+REDACTED
+
+// AddProfitMinMargin adds v to the "profit_min_margin" field.
+func (u *GroupUpsertBulk) AddProfitMinMargin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitMinMargin(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitMinMargin sets the "profit_min_margin" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitMinMargin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitMinMargin()
+REDACTED)
+REDACTED
+
+// SetProfitSafetyBuffer sets the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) SetProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProfitSafetyBuffer(v)
+REDACTED)
+REDACTED
+
+// AddProfitSafetyBuffer adds v to the "profit_safety_buffer" field.
+func (u *GroupUpsertBulk) AddProfitSafetyBuffer(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddProfitSafetyBuffer(v)
+REDACTED)
+REDACTED
+
+// UpdateProfitSafetyBuffer sets the "profit_safety_buffer" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProfitSafetyBuffer() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProfitSafetyBuffer()
 REDACTED)
 REDACTED
 

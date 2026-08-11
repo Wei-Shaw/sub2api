@@ -42,8 +42,9 @@ RUN addgroup -g 1000 sub2api && \
 
 WORKDIR /app
 
-# Copy pre-built binary from GoReleaser
+# Copy the pre-built binary and runtime fallback resources from GoReleaser
 COPY sub2api /app/sub2api
+COPY --chown=sub2api:sub2api backend/resources /app/resources
 
 # Create data directory
 RUN mkdir -p /app/data && chown -R sub2api:sub2api /app

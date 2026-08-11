@@ -14,6 +14,17 @@ const { listTemplates REDACTED = vi.hoisted(() => ({
   listTemplates: vi.fn(),
 REDACTED))
 
+
+vi.mock('@/utils/featureFlags', () => ({
+  isChannelMonitorV1Mode: () => true,
+  isChannelMonitorV2Mode: () => false,
+  getChannelMonitorMode: () => 'v1' as const,
+REDACTED))
+
+vi.mock('@/features/channel-monitor-v2/MonitorSettingsPanel.vue', () => ({
+  default: { name: 'MonitorSettingsPanel', template: '<div data-testid="v2-settings" />' REDACTED,
+REDACTED))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     channelMonitor: {

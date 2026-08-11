@@ -77,6 +77,46 @@ func TestCompositeTargetPlatformResolvedAllowsConcreteGroupWithoutResolution(t *
 	require.True(t, compositeTargetPlatformResolved(c, apiKey, "llama-4-maverick"))
 REDACTED
 
+func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	group := &service.Group{
+		Platform:           service.PlatformComposite,
+		MaxReasoningEffort: "medium",
+		ReasoningEffortMappings: []service.ReasoningEffortMapping{
+			{From: "max", To: "xhigh"REDACTED,
+	REDACTED,
+REDACTED
+	apiKey := &service.APIKey{Group: groupREDACTED
+	body := []byte(`{"reasoning":{"effort":"max"REDACTEDREDACTED`)
+
+	openAICtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	openAICtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	openAICtx.Request = openAICtx.Request.WithContext(service.WithResolvedTargetPlatform(openAICtx.Request.Context(), service.PlatformOpenAI))
+	got, changed := applyOpenAIReasoningEffortPolicyForRequest(openAICtx, apiKey, body)
+	require.True(t, changed)
+	require.JSONEq(t, `{"reasoning":{"effort":"medium"REDACTEDREDACTED`, string(got))
+
+	bindOpenAIReasoningEffortPolicyForMessagesRequest(openAICtx, apiKey, []byte(`{"output_config":{"effort":"max"REDACTEDREDACTED`))
+	bound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(openAICtx.Request.Context(), body)
+	require.True(t, changed)
+	require.JSONEq(t, `{"reasoning":{"effort":"medium"REDACTEDREDACTED`, string(bound))
+
+	omittedCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	omittedCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
+	omittedCtx.Request = omittedCtx.Request.WithContext(service.WithResolvedTargetPlatform(omittedCtx.Request.Context(), service.PlatformOpenAI))
+	bindOpenAIReasoningEffortPolicyForMessagesRequest(omittedCtx, apiKey, []byte(`{"model":"gpt-5"REDACTED`))
+	omitted, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(omittedCtx.Request.Context(), body)
+	require.False(t, changed)
+	require.Equal(t, body, omitted)
+
+	grokCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	grokCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+	grokCtx.Request = grokCtx.Request.WithContext(service.WithResolvedTargetPlatform(grokCtx.Request.Context(), service.PlatformGrok))
+	got, changed = applyOpenAIReasoningEffortPolicyForRequest(grokCtx, apiKey, body)
+	require.False(t, changed)
+	require.Equal(t, body, got)
+REDACTED
+
 func TestClientRequestedModelUsesCompositePublicModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())

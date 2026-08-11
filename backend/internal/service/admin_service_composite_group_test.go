@@ -41,14 +41,20 @@ REDACTED
 	svc := &adminServiceImpl{groupRepo: groupRepoREDACTED
 
 	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
-		Name:                     "Composite",
-		Platform:                 PlatformComposite,
-		RateMultiplier:           1,
+		Name:               "Composite",
+		Platform:           PlatformComposite,
+		RateMultiplier:     1,
+		MaxReasoningEffort: "medium",
+		ReasoningEffortMappings: []ReasoningEffortMapping{
+			{From: "max", To: "xhigh"REDACTED,
+	REDACTED,
 		CopyAccountsFromGroupIDs: []int64{10, 20, 10REDACTED,
 REDACTED)
 
 REDACTED
 	require.Equal(t, PlatformComposite, groupRepo.created.Platform)
+	require.Equal(t, "medium", groupRepo.created.MaxReasoningEffort)
+	require.Equal(t, []ReasoningEffortMapping{{From: "max", To: "xhigh"REDACTEDREDACTED, groupRepo.created.ReasoningEffortMappings)
 	require.Equal(t, int64(99), group.ID)
 	require.Equal(t, int64(2), group.AccountCount)
 	require.ElementsMatch(t, []int64{10, 20REDACTED, copiedFrom)
@@ -82,13 +88,19 @@ func TestAdminService_UpdateCompositeGroupCopiesAccountsFromConcreteGroups(t *te
 	REDACTED,
 REDACTED
 	svc := &adminServiceImpl{groupRepo: groupRepoREDACTED
+	maxReasoningEffort := "low"
+	reasoningEffortMappings := []ReasoningEffortMapping{{From: "max", To: "high"REDACTEDREDACTED
 
 	group, err := svc.UpdateGroup(context.Background(), 99, &UpdateGroupInput{
+		MaxReasoningEffort:       &maxReasoningEffort,
+		ReasoningEffortMappings:  &reasoningEffortMappings,
 		CopyAccountsFromGroupIDs: []int64{10, 20REDACTED,
 REDACTED)
 
 REDACTED
 	require.Equal(t, PlatformComposite, group.Platform)
+	require.Equal(t, "low", group.MaxReasoningEffort)
+	require.Equal(t, reasoningEffortMappings, group.ReasoningEffortMappings)
 	require.Equal(t, int64(99), clearedGroupID)
 	require.ElementsMatch(t, []int64{10, 20REDACTED, copiedFrom)
 	require.Equal(t, int64(99), boundGroupID)

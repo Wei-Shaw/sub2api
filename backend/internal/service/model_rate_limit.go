@@ -120,6 +120,23 @@ REDACTED
 	return ok && enabled
 REDACTED
 
+// WithOpenAIImagesEndpoint 标记请求从 /v1/images/* 专用生图端点入站。
+func WithOpenAIImagesEndpoint(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	return context.WithValue(ctx, ctxkey.OpenAIImagesEndpoint, true)
+REDACTED
+
+// OpenAIImagesEndpointFromContext 报告请求是否来自 /v1/images/*。
+func OpenAIImagesEndpointFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+REDACTED
+	enabled, ok := ctx.Value(ctxkey.OpenAIImagesEndpoint).(bool)
+	return ok && enabled
+REDACTED
+
 func resolveFinalAntigravityModelKey(ctx context.Context, account *Account, requestedModel string) string {
 	modelKey := mapAntigravityModel(account, requestedModel)
 	if modelKey == "" {

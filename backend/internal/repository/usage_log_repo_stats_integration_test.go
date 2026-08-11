@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,66 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	client := tx.Client()
+	repo := newUsageLogRepositoryWithSQL(client, tx)
+
+	user := mustCreateUser(t, client, &service.User{Email: "model-audit@test.com"REDACTED)
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-model-audit", Name: "model-audit"REDACTED)
+	account := mustCreateAccount(t, client, &service.Account{Name: "model-audit-account"REDACTED)
+	now := time.Now().UTC()
+	responseModel := "gpt-5.4"
+	for _, mismatch := range []bool{true, falseREDACTED {
+		mismatchValue := mismatch
+		_, err := repo.Create(ctx, &service.UsageLog{
+			UserID: user.ID, APIKeyID: apiKey.ID, AccountID: account.ID,
+			Model: "gpt-5.5", InputTokens: 1, OutputTokens: 1,
+			UpstreamResponseModel: &responseModel, UpstreamModelMismatch: &mismatchValue,
+			CreatedAt: now,
+	REDACTED)
+	REDACTED
+REDACTED
+
+	start := now.Add(-time.Hour)
+	end := now.Add(time.Hour)
+	trueValue := true
+	stats, err := repo.GetStatsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID: user.ID, StartTime: &start, EndTime: &end, UpstreamModelMismatch: &trueValue,
+REDACTED)
+REDACTED
+	require.Equal(t, int64(1), stats.TotalRequests)
+
+	trend, err := repo.GetUsageTrendWithUsageFilters(ctx, start, end, "hour", usagestats.UsageLogFilters{
+		UserID: user.ID, UpstreamModelMismatch: &trueValue,
+REDACTED)
+REDACTED
+	require.Len(t, trend, 1)
+	require.Equal(t, int64(1), trend[0].Requests)
+
+	_, err = tx.ExecContext(ctx, "SET LOCAL enable_seqscan = off")
+REDACTED
+	rows, err := tx.QueryContext(ctx, `
+EXPLAIN (COSTS OFF)
+SELECT id
+FROM usage_logs
+WHERE upstream_model_mismatch IS TRUE
+ORDER BY created_at DESC, id DESC
+LIMIT 100
+`)
+REDACTED
+	defer func() { require.NoError(t, rows.Close()) REDACTED()
+	var planLines []string
+	for rows.Next() {
+		var line string
+		require.NoError(t, rows.Scan(&line))
+		planLines = append(planLines, line)
+REDACTED
+	require.NoError(t, rows.Err())
+	require.Contains(t, strings.Join(planLines, "\n"), usageLogsUpstreamModelMismatchIndex)
+REDACTED
 
 func TestUsageLog_GetStatsWithFilters_AggregatesAndEndpoints(t *testing.T) {
 	ctx := context.Background()
