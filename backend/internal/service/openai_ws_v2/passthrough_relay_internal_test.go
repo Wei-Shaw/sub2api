@@ -246,7 +246,7 @@ func TestHelperFunctionsCoverage(t *testing.T) {
 
 	require.True(t, isTokenEvent("response.output_text.delta"))
 	require.True(t, isTokenEvent("response.output_audio.delta"))
-	require.True(t, isTokenEvent("response.completed"))
+	require.False(t, isTokenEvent("response.completed"))
 	require.False(t, isTokenEvent(""))
 	require.False(t, isTokenEvent("response.created"))
 
@@ -408,7 +408,70 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	require.False(t, isTokenEvent("response.output_item.added"))
 	require.True(t, isTokenEvent("response.output_audio.delta"))
 	require.True(t, isTokenEvent("response.output"))
-	require.True(t, isTokenEvent("response.done"))
+	require.False(t, isTokenEvent("response.done"))
+}
+
+func TestObserveUpstreamMessage_TerminalEventDoesNotSetFirstToken(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	startAt := time.Unix(0, 0)
+	now := startAt
+	nowFn := func() time.Time {
+		now = now.Add(5 * time.Millisecond)
+		return now
+	}
+
+	observed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_terminal","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+
+	require.True(t, observed.terminal)
+	require.Nil(t, state.firstTokenMs)
+	require.Nil(t, observed.firstToken)
+}
+
+func TestObserveUpstreamMessage_DeltaSetsFirstTokenBeforeTerminalEvent(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{}
+	startAt := time.Unix(0, 0)
+	now := startAt
+	nowFn := func() time.Time {
+		now = now.Add(5 * time.Millisecond)
+		return now
+	}
+
+	observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.created","response":{"id":"resp_delta"}}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.output_text.delta","response_id":"resp_delta","delta":"hello"}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	observed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.completed","response":{"id":"resp_delta","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+
+	require.NotNil(t, state.firstTokenMs)
+	require.Equal(t, 10, *state.firstTokenMs)
+	require.NotNil(t, observed.firstToken)
+	require.Equal(t, 5, *observed.firstToken)
 }
 
 func TestShouldParseUsageTerminalEvents(t *testing.T) {

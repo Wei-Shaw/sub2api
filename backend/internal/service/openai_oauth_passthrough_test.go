@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -67,11 +68,29 @@ func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID 
 	u.lastReq = req
 	u.lastProxyURL = proxyURL
 	if req != nil && req.Body != nil {
-		b, _ := io.ReadAll(req.Body)
-		u.lastBody = b
-		u.bodies = append(u.bodies, append([]byte(nil), b...))
+		rawBody, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		body := rawBody
+		if strings.EqualFold(strings.TrimSpace(req.Header.Get("content-encoding")), "zstd") {
+			decoder, err := zstd.NewReader(nil)
+			if err != nil {
+				return nil, fmt.Errorf("create test zstd decoder: %w", err)
+			}
+			body, err = decoder.DecodeAll(rawBody, nil)
+			decoder.Close()
+			if err != nil {
+				return nil, fmt.Errorf("decode test zstd request body: %w", err)
+			}
+		}
+
+		// The recorder exposes the semantic body after transport decoding while
+		// retaining the raw request (including Content-Encoding) for header tests.
+		u.lastBody = body
+		u.bodies = append(u.bodies, append([]byte(nil), body...))
 		_ = req.Body.Close()
-		req.Body = io.NopCloser(bytes.NewReader(b))
+		req.Body = io.NopCloser(bytes.NewReader(rawBody))
 	}
 	u.requests = append(u.requests, req)
 	if u.err != nil {
