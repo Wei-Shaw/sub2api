@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+)
 
 const subscriptionDayDuration = 24 * time.Hour
 
@@ -75,13 +79,8 @@ func (s *UserSubscription) NeedsDailyReset() bool {
 }
 
 func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
-	if s.DailyWindowStart == nil {
-		return false
-	}
-	if s.HasOneTimeDailyQuota() {
-		return false
-	}
-	return !now.Before(s.DailyWindowStart.Add(24 * time.Hour))
+	_, ok := s.automaticDailyWindowStartAt(now)
+	return ok
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
@@ -107,8 +106,26 @@ func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
 }
 
 func (s *UserSubscription) canAutomaticallyResetDailyAt(now time.Time) bool {
-	_, ok := s.automaticWindowStartAt(s.DailyWindowStart, 24*time.Hour, now)
-	return !s.HasOneTimeDailyQuota() && ok
+	_, ok := s.automaticDailyWindowStartAt(now)
+	return ok
+}
+
+// automaticDailyWindowStartAt 计算日窗口按“配置时区日历日”对齐后的当前窗口起点。
+// 日额度固定在每天 0 点刷新（与周/月的期限对齐滚动窗口语义不同），因此只要持久化
+// 的窗口起点落在更早的日历日，就允许推进到今天 0 点。手动重置、激活等写入的任何
+// 非 0 点锚点都会在下一个 0 点被拉回日历日边界，不会永久漂移刷新时刻。
+func (s *UserSubscription) automaticDailyWindowStartAt(now time.Time) (time.Time, bool) {
+	if s.DailyWindowStart == nil {
+		return time.Time{}, false
+	}
+	if s.HasOneTimeDailyQuota() {
+		return time.Time{}, false
+	}
+	today := timezone.StartOfDay(now)
+	if !today.After(timezone.StartOfDay(*s.DailyWindowStart)) {
+		return time.Time{}, false
+	}
+	return today, true
 }
 
 func (s *UserSubscription) canAutomaticallyResetWeeklyAt(now time.Time) bool {
@@ -121,6 +138,9 @@ func (s *UserSubscription) canAutomaticallyResetMonthlyAt(now time.Time) bool {
 	return ok
 }
 
+// automaticWindowStartAt 计算周/月窗口（期限对齐滚动窗口）的当前窗口起点。
+// 窗口从锚点按整数个 period 步进，且不越过订阅到期时间，避免最后一个不完整
+// 周期重复发放额度（issue #5051）。日窗口不走此函数，见 automaticDailyWindowStartAt。
 func (s *UserSubscription) automaticWindowStartAt(previous *time.Time, period time.Duration, now time.Time) (time.Time, bool) {
 	if previous == nil {
 		return time.Time{}, false
@@ -155,7 +175,8 @@ func (s *UserSubscription) DailyResetTime() *time.Time {
 		t := s.ExpiresAt
 		return &t
 	}
-	t := s.DailyWindowStart.Add(24 * time.Hour)
+	// 日窗口按日历日对齐：下次刷新固定在窗口起点所在日的次日 0 点。
+	t := timezone.StartOfDay(*s.DailyWindowStart).AddDate(0, 0, 1)
 	return &t
 }
 

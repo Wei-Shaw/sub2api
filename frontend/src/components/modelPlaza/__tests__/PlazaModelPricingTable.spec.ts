@@ -383,4 +383,25 @@ describe('PlazaModelPricingTable', () => {
     // 旧 bug:image_output_price × 0.1 = 0.000003 被当按次价
     expect(text).not.toContain('$0.000003')
   })
+
+  it('Composite 分组中相同模型名按具体平台分别展示徽章', () => {
+    const anthropic = tokenModel({ name: 'shared-model', platform: 'anthropic' })
+    const openai = tokenModel({ name: 'shared-model', platform: 'openai' })
+    const wrapper = mount(PlazaModelPricingTable, {
+      props: {
+        models: [anthropic, openai],
+        platform: 'composite',
+        rateMultiplier: 1
+      }
+    })
+
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.find('td').text())).toEqual([
+      'shared-modelAnthropic',
+      'shared-modelOpenAI'
+    ])
+    expect(wrapper.text()).toContain('Anthropic')
+    expect(wrapper.text()).toContain('OpenAI')
+  })
 })
