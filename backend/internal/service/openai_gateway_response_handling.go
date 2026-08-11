@@ -981,15 +981,15 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 REDACTED
 	// 部分 OpenAI 兼容上游（例如 Cline API）会将标准响应包在 data 字段中：
 	// {"data":{"choices": [...], "usage": {...REDACTEDREDACTED, "success":trueREDACTED。
-	// 按优先级尝试原生 OpenAI Responses、兼容层 data 包装和 Responses 包装，
+	// 按优先级先保留原有路径，再尝试兼容层 data 包装，
 	// 避免同步请求能正常返回但用量被静默记录为 0。
 	candidates := []struct {
 		usagePath      string
 		imageUsagePath string
 REDACTED{
 		{usagePath: "usage", imageUsagePath: "tool_usage.image_gen"REDACTED,
-		{usagePath: "data.usage", imageUsagePath: "data.tool_usage.image_gen"REDACTED,
 		{usagePath: "response.usage", imageUsagePath: "response.tool_usage.image_gen"REDACTED,
+		{usagePath: "data.usage", imageUsagePath: "data.tool_usage.image_gen"REDACTED,
 		{usagePath: "data.response.usage", imageUsagePath: "data.response.tool_usage.image_gen"REDACTED,
 REDACTED
 	for _, candidate := range candidates {
