@@ -1386,7 +1386,7 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowUsage() {
 	s.InDelta(0.8, stats[1].UserCost, 0.000001)
 
 	s.Equal(int64(1), stats[2].SuccessCalls)
-	s.Equal(int64(2), stats[2].FailureCalls)
+	s.Equal(int64(3), stats[2].FailureCalls) // overlapping range includes the error exactly at its start boundary
 	s.Equal(int64(70), stats[2].TotalTokens)
 }
 
