@@ -143,6 +143,7 @@ export default {
         billingModelSourceChannelMapped: 'Bill by channel-mapped model',
         billingModelSourceRequested: 'Bill by requested model',
         billingModelSourceUpstream: 'Bill by final upstream model',
+        billingModelSourceResponse: 'Bill by upstream response model',
         billingModelSourceHint: 'Controls which model name is used for pricing lookup',
         selectedCount: '{count} selected',
         searchGroups: 'Search groups...',
