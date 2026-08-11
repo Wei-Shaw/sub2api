@@ -10,6 +10,7 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
+      <AuthMethodTabs active="email" context="login" />
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
@@ -219,6 +220,7 @@ import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
+import AuthMethodTabs from '@/components/auth/AuthMethodTabs.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'

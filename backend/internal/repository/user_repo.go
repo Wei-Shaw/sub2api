@@ -429,13 +429,15 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	exec := r.client
+	deleteCtx := ctx
 	if err == nil {
 		defer func() { _ = tx.Rollback() }()
 		exec = tx.Client()
+		deleteCtx = dbent.NewTxContext(ctx, tx)
 	}
 	// err == dbent.ErrTxStarted 时复用当前事务（exec = r.client）。
 
-	if err := r.deleteUser(ctx, exec, id); err != nil {
+	if err := r.deleteUser(deleteCtx, exec, id); err != nil {
 		return err
 	}
 
@@ -472,6 +474,21 @@ func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id 
 			Exec(ctx); err != nil {
 			return translatePersistenceError(err, service.ErrUserNotFound, nil)
 		}
+	}
+
+	sqlExec := sqlExecutorFromEntClient(exec)
+	if sqlExec == nil {
+		sqlExec = txAwareSQLExecutor(ctx, r.sql, exec)
+	}
+	if sqlExec == nil {
+		return fmt.Errorf("soft delete web3 identity: sql executor is not configured")
+	}
+	if _, err := sqlExec.ExecContext(ctx, `
+		UPDATE web3_identities
+		SET deleted_at = NOW()
+		WHERE user_id = $1 AND deleted_at IS NULL
+	`, id); err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 
 	affected, err := exec.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)

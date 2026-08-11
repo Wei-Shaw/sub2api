@@ -1295,6 +1295,41 @@ func TestValidateServerFrontendURL(t *testing.T) {
 	}
 }
 
+func TestValidateWeb3BrowserCookieSameSite(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Web3Auth.BrowserCookieSameSite != "lax" {
+		t.Fatalf("default browser_cookie_same_site = %q, want lax", cfg.Web3Auth.BrowserCookieSameSite)
+	}
+
+	cfg.Web3Auth.BrowserCookieSameSite = "none"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() none error: %v", err)
+	}
+
+	cfg.Web3Auth.BrowserCookieSameSite = "strict"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() should reject unsupported browser_cookie_same_site")
+	}
+}
+
+func TestLoadWeb3BrowserCookieSameSiteFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("WEB3_AUTH_BROWSER_COOKIE_SAME_SITE", "none")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Web3Auth.BrowserCookieSameSite != "none" {
+		t.Fatalf("browser_cookie_same_site = %q, want none", cfg.Web3Auth.BrowserCookieSameSite)
+	}
+}
+
 func TestValidateFrontendRedirectURL(t *testing.T) {
 	if err := ValidateFrontendRedirectURL("/auth/callback"); err != nil {
 		t.Fatalf("ValidateFrontendRedirectURL relative error: %v", err)

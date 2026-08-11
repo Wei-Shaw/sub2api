@@ -12,9 +12,13 @@ func UserFromServiceShallow(u *service.User) *User {
 	if u == nil {
 		return nil
 	}
+	email := u.Email
+	if service.IsWeb3SyntheticEmail(email) {
+		email = ""
+	}
 	return &User{
 		ID:                         u.ID,
-		Email:                      u.Email,
+		Email:                      email,
 		Username:                   u.Username,
 		Role:                       u.Role,
 		Balance:                    u.Balance,
@@ -57,6 +61,24 @@ func UserFromService(u *service.User) *User {
 	return out
 }
 
+// restoreAdminEmail re-fills the synthetic Web3 email that UserFromServiceShallow
+// blanks for user-facing responses. Admin responses keep it so operators can still
+// identify and search Web3 accounts.
+func restoreAdminEmail(out *User, src *service.User) {
+	if out == nil || src == nil {
+		return
+	}
+	out.Email = src.Email
+}
+
+// userFromServiceShallowAdmin is the admin-side counterpart of
+// UserFromServiceShallow: identical, except the synthetic Web3 email is kept.
+func userFromServiceShallowAdmin(u *service.User) *User {
+	out := UserFromServiceShallow(u)
+	restoreAdminEmail(out, u)
+	return out
+}
+
 // UserFromServiceAdmin converts a service User to DTO for admin users.
 // It includes notes - user-facing endpoints must not use this.
 func UserFromServiceAdmin(u *service.User) *AdminUser {
@@ -67,6 +89,7 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	restoreAdminEmail(base, u)
 	return &AdminUser{
 		User:       *base,
 		Notes:      u.Notes,
@@ -120,6 +143,17 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		t := k.Window7dStart.Add(service.RateLimitWindow7d)
 		out.Reset7dAt = &t
 	}
+	return out
+}
+
+// APIKeyFromServiceAdmin converts a service API key for admin responses.
+// Nested Web3 users keep their synthetic email so operators can identify them.
+func APIKeyFromServiceAdmin(k *service.APIKey) *APIKey {
+	out := APIKeyFromService(k)
+	if out == nil {
+		return nil
+	}
+	restoreAdminEmail(out.User, k.User)
 	return out
 }
 
@@ -573,8 +607,10 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 	if rc == nil {
 		return nil
 	}
+	base := redeemCodeFromServiceBase(rc)
+	restoreAdminEmail(base.User, rc.User)
 	return &AdminRedeemCode{
-		RedeemCode: redeemCodeFromServiceBase(rc),
+		RedeemCode: base,
 		Notes:      rc.Notes,
 	}
 }
@@ -702,6 +738,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	}
 	usageLog := usageLogFromServiceUser(l)
 	usageLog.UpstreamEndpoint = l.UpstreamEndpoint
+	restoreAdminEmail(usageLog.User, l.User)
 	return &AdminUsageLog{
 		UsageLog:              usageLog,
 		UpstreamModel:         l.UpstreamModel,
@@ -780,12 +817,14 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 	if sub == nil {
 		return nil
 	}
+	base := userSubscriptionFromServiceBase(sub)
+	restoreAdminEmail(base.User, sub.User)
 	return &AdminUserSubscription{
-		UserSubscription: userSubscriptionFromServiceBase(sub),
+		UserSubscription: base,
 		AssignedBy:       sub.AssignedBy,
 		AssignedAt:       sub.AssignedAt,
 		Notes:            sub.Notes,
-		AssignedByUser:   UserFromServiceShallow(sub.AssignedByUser),
+		AssignedByUser:   userFromServiceShallowAdmin(sub.AssignedByUser),
 	}
 }
 
@@ -852,6 +891,9 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	}
 }
 
+// PromoCodeUsageFromService converts a service PromoCodeUsage to DTO.
+// Only admin endpoints expose promo code usage, so the nested user keeps its
+// synthetic Web3 email.
 func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 	if u == nil {
 		return nil
@@ -862,6 +904,6 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UserID:      u.UserID,
 		BonusAmount: u.BonusAmount,
 		UsedAt:      u.UsedAt,
-		User:        UserFromServiceShallow(u.User),
+		User:        userFromServiceShallowAdmin(u.User),
 	}
 }

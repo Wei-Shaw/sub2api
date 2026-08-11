@@ -23,6 +23,11 @@ const (
 	RunModeSimple   = "simple"
 )
 
+const (
+	Web3BrowserCookieSameSiteLax  = "lax"
+	Web3BrowserCookieSameSiteNone = "none"
+)
+
 // 使用量记录队列溢出策略
 const (
 	UsageRecordOverflowPolicyDrop   = "drop"
@@ -74,6 +79,7 @@ type Config struct {
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
+	Web3Auth                Web3AuthConfig                `mapstructure:"web3_auth"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
@@ -695,6 +701,10 @@ type WebAuthnConfig struct {
 	RPDisplayName string   `mapstructure:"rp_display_name"`
 	RPID          string   `mapstructure:"rp_id"`
 	RPOrigins     []string `mapstructure:"rp_origins"`
+}
+
+type Web3AuthConfig struct {
+	BrowserCookieSameSite string `mapstructure:"browser_cookie_same_site"`
 }
 
 const MaxForwardedClientIPHeaders = 16
@@ -1865,6 +1875,7 @@ func setDefaults() {
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
+	viper.SetDefault("web3_auth.browser_cookie_same_site", Web3BrowserCookieSameSiteLax)
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
 	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
@@ -2485,6 +2496,15 @@ func setEnvReachableDefaults() {
 }
 
 func (c *Config) Validate() error {
+	c.Web3Auth.BrowserCookieSameSite = strings.ToLower(strings.TrimSpace(c.Web3Auth.BrowserCookieSameSite))
+	if c.Web3Auth.BrowserCookieSameSite == "" {
+		c.Web3Auth.BrowserCookieSameSite = Web3BrowserCookieSameSiteLax
+	}
+	switch c.Web3Auth.BrowserCookieSameSite {
+	case Web3BrowserCookieSameSiteLax, Web3BrowserCookieSameSiteNone:
+	default:
+		return fmt.Errorf("web3_auth.browser_cookie_same_site must be one of: lax/none")
+	}
 	forwardedClientIPHeaders, err := NormalizeForwardedClientIPHeaders(c.Security.ForwardedClientIPHeaders)
 	if err != nil {
 		return fmt.Errorf("security.forwarded_client_ip_headers: %w", err)

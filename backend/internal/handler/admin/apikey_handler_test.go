@@ -63,7 +63,10 @@ func TestAdminAPIKeyHandler_UpdateGroup_KeyNotFound(t *testing.T) {
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_BindGroup(t *testing.T) {
-	router := setupAPIKeyHandler(newStubAdminService())
+	const email = "web3-52908400098527886e0f7030069857d2e4169ee7@web3-connect.invalid"
+	svc := newStubAdminService()
+	svc.apiKeys[0].User = &service.User{ID: 1, Email: email}
+	router := setupAPIKeyHandler(svc)
 	body := `{"group_id": 2}`
 
 	rec := httptest.NewRecorder()
@@ -84,6 +87,9 @@ func TestAdminAPIKeyHandler_UpdateGroup_BindGroup(t *testing.T) {
 		APIKey struct {
 			ID      int64  `json:"id"`
 			GroupID *int64 `json:"group_id"`
+			User    *struct {
+				Email string `json:"email"`
+			} `json:"user"`
 		} `json:"api_key"`
 		AutoGrantedGroupAccess bool `json:"auto_granted_group_access"`
 	}
@@ -91,6 +97,8 @@ func TestAdminAPIKeyHandler_UpdateGroup_BindGroup(t *testing.T) {
 	require.Equal(t, int64(10), data.APIKey.ID)
 	require.NotNil(t, data.APIKey.GroupID)
 	require.Equal(t, int64(2), *data.APIKey.GroupID)
+	require.NotNil(t, data.APIKey.User)
+	require.Equal(t, email, data.APIKey.User.Email)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_Unbind(t *testing.T) {

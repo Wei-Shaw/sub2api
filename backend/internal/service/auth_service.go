@@ -1185,7 +1185,8 @@ func isReservedEmail(email string) bool {
 	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain) ||
 		strings.HasSuffix(normalized, WeChatConnectSyntheticEmailDomain) ||
-		strings.HasSuffix(normalized, DingTalkConnectSyntheticEmailDomain)
+		strings.HasSuffix(normalized, DingTalkConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, Web3SyntheticEmailDomain)
 }
 
 // GenerateToken 生成JWT access token

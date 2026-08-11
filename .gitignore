@@ -136,6 +136,9 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/tokenhive/
+docs/tokenhive/*
+!docs/tokenhive/WEB3_AUTH_DESIGN_CN.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

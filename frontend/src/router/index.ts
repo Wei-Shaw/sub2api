@@ -50,6 +50,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/login/web3',
+    name: 'Web3Login',
+    component: () => import('@/views/auth/Web3LoginView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Web3 Login',
+      titleKey: 'auth.web3.loginTitle'
+    }
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),
@@ -57,6 +67,16 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: false,
       title: 'Register',
       titleKey: 'auth.createAccount'
+    }
+  },
+  {
+    path: '/register/web3',
+    name: 'Web3Register',
+    component: () => import('@/views/auth/Web3RegisterView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Web3 Register',
+      titleKey: 'auth.web3.registerTitle'
     }
   },
   {
@@ -806,7 +826,7 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path.startsWith('/login') || to.path.startsWith('/register'))) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {
