@@ -1308,6 +1308,88 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowStats() {
 	s.Require().Equal(int64(70), stats.Tokens) // (10+20) + (15+25)
 }
 
+func (s *UsageLogRepoSuite) TestGetAccountWindowUsage() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "windowusage@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-windowusage", Name: "k"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-windowusage"})
+
+	base := time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
+	middle := base.Add(time.Hour)
+	end := middle.Add(time.Hour)
+	accountRate := 2.0
+	createLog := func(at time.Time, inputTokens, outputTokens int, totalCost, actualCost, accountStatsCost float64) {
+		log := &service.UsageLog{
+			UserID:                user.ID,
+			APIKeyID:              apiKey.ID,
+			AccountID:             account.ID,
+			RequestID:             uuid.NewString(),
+			Model:                 "claude-3",
+			InputTokens:           inputTokens,
+			OutputTokens:          outputTokens,
+			TotalCost:             totalCost,
+			ActualCost:            actualCost,
+			AccountRateMultiplier: &accountRate,
+			CreatedAt:             at,
+		}
+		_, err := s.repo.Create(s.ctx, log)
+		s.Require().NoError(err)
+		_, err = s.repo.sql.ExecContext(s.ctx,
+			"UPDATE usage_logs SET account_stats_cost = $1 WHERE id = $2",
+			accountStatsCost,
+			log.ID,
+		)
+		s.Require().NoError(err)
+	}
+
+	createLog(base, 10, 20, 0.5, 0.7, 0.4)   // included only by previous
+	createLog(middle, 30, 40, 0.6, 0.8, 0.5) // excluded by previous, included by current
+	createLog(end, 50, 60, 0.7, 0.9, 0.6)    // excluded by current
+
+	_, err := s.repo.sql.ExecContext(s.ctx, `
+		INSERT INTO ops_error_logs (
+			request_id, account_id, error_phase, error_type, status_code,
+			stream, is_count_tokens, error_message, created_at
+		)
+		VALUES
+			($1, $8, 'upstream', 'upstream_error', 500, false, false, 'final upstream error', $9),
+			($2, $8, 'request', 'cyber_policy', 200, true, false, 'content blocked', $10),
+			($3, $8, 'upstream', 'upstream_error', 200, false, false, 'Recovered upstream error 429', $10),
+			($4, $8, 'upstream', 'upstream_error', 500, false, false, 'end boundary error', $11),
+			($5, $8, 'upstream', 'upstream_error', 200, true, false, 'final stream failed', $10),
+			($6, $8, 'upstream', 'upstream_error', 200, true, false, 'Recovered upstream error 502', $10),
+			($7, $8, 'request', 'invalid_request_error', 400, false, true, 'count tokens probe failed', $10)
+	`, uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString(),
+		uuid.NewString(), account.ID, base.Add(30*time.Minute), middle.Add(30*time.Minute), end)
+	s.Require().NoError(err)
+
+	queries := []service.AccountWindowUsageQuery{
+		{WindowKey: service.AccountWindowKeyFiveHour, Period: service.AccountWindowPeriodPrevious, StartTime: base, EndTime: middle},
+		{WindowKey: service.AccountWindowKeyFiveHour, Period: service.AccountWindowPeriodCurrent, StartTime: middle, EndTime: end},
+		{WindowKey: service.AccountWindowKeySevenDay, Period: service.AccountWindowPeriodCurrent, StartTime: base.Add(30 * time.Minute), EndTime: end},
+	}
+	stats, err := s.repo.GetAccountWindowUsage(s.ctx, account.ID, queries)
+	s.Require().NoError(err)
+	s.Require().Len(stats, 3)
+
+	s.Equal(int64(1), stats[0].SuccessCalls)
+	s.Equal(int64(1), stats[0].FailureCalls)
+	s.Equal(int64(30), stats[0].TotalTokens)
+	s.InDelta(0.8, stats[0].AccountCost, 0.000001)
+	s.InDelta(0.5, stats[0].StandardCost, 0.000001)
+	s.InDelta(0.7, stats[0].UserCost, 0.000001)
+
+	s.Equal(int64(1), stats[1].SuccessCalls)
+	s.Equal(int64(2), stats[1].FailureCalls) // cyber/SSE 200 are client-visible; recovered and count_tokens rows are excluded
+	s.Equal(int64(70), stats[1].TotalTokens)
+	s.InDelta(1.0, stats[1].AccountCost, 0.000001)
+	s.InDelta(0.6, stats[1].StandardCost, 0.000001)
+	s.InDelta(0.8, stats[1].UserCost, 0.000001)
+
+	s.Equal(int64(1), stats[2].SuccessCalls)
+	s.Equal(int64(2), stats[2].FailureCalls)
+	s.Equal(int64(70), stats[2].TotalTokens)
+}
+
 // --- GetUserUsageTrendByUserID ---
 
 func (s *UsageLogRepoSuite) TestGetUserUsageTrendByUserID() {

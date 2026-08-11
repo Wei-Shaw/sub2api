@@ -20,7 +20,7 @@
           <div>
             <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
             <div class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.last30DaysUsage') }}
+              {{ t('admin.accounts.stats.accountOverview') }}
             </div>
           </div>
         </div>
@@ -36,8 +36,42 @@
         </span>
       </div>
 
-      <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-12">
+      <AccountQuotaWindowSection
+        :windows="quotaWindows"
+        :loading="windowLoading"
+        :error="windowError"
+        @retry="loadWindowUsageForCurrentAccount"
+      />
+
+      <div class="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-5 dark:border-dark-600">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.accounts.stats.historyTitle') }}
+          </h3>
+          <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.last30DaysUsage') }}
+          </p>
+        </div>
+      </div>
+
+      <div
+        v-if="statsError"
+        class="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/20 dark:text-red-300"
+        data-testid="account-stats-error"
+      >
+        <span>{{ t('admin.accounts.stats.loadFailed') }}</span>
+        <button
+          type="button"
+          class="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium hover:bg-red-100 dark:hover:bg-red-900/30"
+          @click="loadStatsForCurrentAccount"
+        >
+          <Icon name="refresh" size="xs" />
+          {{ t('common.retry') }}
+        </button>
+      </div>
+
+      <!-- Historical statistics load independently from quota windows. -->
+      <div v-if="statsLoading" class="flex items-center justify-center py-12">
         <LoadingSpinner />
       </div>
 
@@ -426,7 +460,7 @@
 
       <!-- No Data State -->
       <div
-        v-else-if="!loading"
+        v-else-if="!statsLoading && !statsError"
         class="flex flex-col items-center justify-center py-12 text-gray-500 dark:text-gray-400"
       >
         <Icon name="chartBar" size="xl" class="mb-4 h-12 w-12" />
@@ -466,9 +500,17 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import AccountQuotaWindowSection from './AccountQuotaWindowSection.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
-import type { Account, AccountUsageStatsResponse } from '@/types'
+import {
+  applyAccountWindowUsageResponse,
+  buildAccountQuotaWindows,
+  buildAccountWindowUsageTargets,
+  isAccountUsageSnapshotFresh
+} from '@/features/account-window-usage/accountWindowUsage'
+import type { AccountQuotaWindowModel } from '@/features/account-window-usage/accountWindowUsage'
+import type { Account, AccountUsageInfo, AccountUsageStatsResponse } from '@/types'
 
 ChartJS.register(
   CategoryScale,
@@ -486,14 +528,27 @@ const { t } = useI18n()
 const props = defineProps<{
   show: boolean
   account: Account | null
+  usageInfo?: AccountUsageInfo | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const loading = ref(false)
+const statsLoading = ref(false)
+const statsError = ref<string | null>(null)
 const stats = ref<AccountUsageStatsResponse | null>(null)
+const windowLoading = ref(false)
+const windowError = ref<string | null>(null)
+const quotaWindows = ref<AccountQuotaWindowModel[]>([])
+
+let contextGeneration = 0
+let statsRequestSequence = 0
+let windowRequestSequence = 0
+let watchedShow: boolean | undefined
+let watchedAccountID: number | undefined
+let watchedAccount: Account | null | undefined
+let watchedUsageInfo: AccountUsageInfo | null | undefined
 
 // Dark mode detection
 const isDarkMode = computed(() => {
@@ -642,33 +697,116 @@ const lineChartOptions = computed(() => ({
   }
 }))
 
-// Load stats when modal opens
+// Account identity and visibility form one request context. Individual request
+// sequences additionally prevent a slower retry from overwriting a newer one.
 watch(
-  () => props.show,
-  async (newVal) => {
-    if (newVal && props.account) {
-      await loadStats()
-    } else {
-      stats.value = null
+  [() => props.show, () => props.account?.id, () => props.account, () => props.usageInfo],
+  ([show, accountID, account, usageInfo]) => {
+    const contextChanged = show !== watchedShow || accountID !== watchedAccountID
+    const windowInputsChanged = account !== watchedAccount || usageInfo !== watchedUsageInfo
+    watchedShow = show
+    watchedAccountID = accountID
+    watchedAccount = account
+    watchedUsageInfo = usageInfo
+
+    if (!contextChanged) {
+      if (show && accountID && windowInputsChanged) {
+        void loadWindowUsage(accountID, contextGeneration)
+      }
+      return
     }
-  }
+
+    const generation = ++contextGeneration
+    statsRequestSequence++
+    windowRequestSequence++
+    stats.value = null
+    statsError.value = null
+    statsLoading.value = false
+    quotaWindows.value = []
+    windowError.value = null
+    windowLoading.value = false
+
+    if (show && accountID) {
+      void loadStats(accountID, generation)
+      void loadWindowUsage(accountID, generation)
+    }
+  },
+  { immediate: true }
 )
 
-const loadStats = async () => {
-  if (!props.account) return
+function isActiveContext(accountID: number, generation: number) {
+  return props.show && props.account?.id === accountID && contextGeneration === generation
+}
 
-  loading.value = true
+async function loadStats(accountID: number, generation: number) {
+  const requestSequence = ++statsRequestSequence
+  statsLoading.value = true
+  statsError.value = null
   try {
-    stats.value = await adminAPI.accounts.getStats(props.account.id, 30)
+    const result = await adminAPI.accounts.getStats(accountID, 30)
+    if (!isActiveContext(accountID, generation) || requestSequence !== statsRequestSequence) return
+    stats.value = result
   } catch (error) {
     console.error('Failed to load account stats:', error)
-    stats.value = null
+    if (!isActiveContext(accountID, generation) || requestSequence !== statsRequestSequence) return
+    statsError.value = 'load_failed'
   } finally {
-    loading.value = false
+    if (isActiveContext(accountID, generation) && requestSequence === statsRequestSequence) {
+      statsLoading.value = false
+    }
   }
 }
 
+async function loadWindowUsage(accountID: number, generation: number) {
+  const account = props.account
+  if (!account || account.id !== accountID) return
+
+  const requestSequence = ++windowRequestSequence
+  windowLoading.value = true
+  windowError.value = null
+  let usage = props.usageInfo ?? null
+
+  if (usage && !isAccountUsageSnapshotFresh(usage)) {
+    quotaWindows.value = buildAccountQuotaWindows(account, usage)
+  }
+
+  try {
+    if (!usage || !isAccountUsageSnapshotFresh(usage)) {
+      usage = await adminAPI.accounts.getUsage(accountID)
+    }
+    if (!isActiveContext(accountID, generation) || requestSequence !== windowRequestSequence) return
+
+    const windows = buildAccountQuotaWindows(account, usage)
+    quotaWindows.value = windows
+    const targets = buildAccountWindowUsageTargets(windows)
+    if (targets.length === 0) return
+
+    const response = await adminAPI.accounts.getWindowUsage(accountID, { windows: targets })
+    if (!isActiveContext(accountID, generation) || requestSequence !== windowRequestSequence) return
+    quotaWindows.value = applyAccountWindowUsageResponse(windows, response)
+  } catch (error) {
+    console.error('Failed to load account quota-window usage:', error)
+    if (!isActiveContext(accountID, generation) || requestSequence !== windowRequestSequence) return
+    windowError.value = 'load_failed'
+  } finally {
+    if (isActiveContext(accountID, generation) && requestSequence === windowRequestSequence) {
+      windowLoading.value = false
+    }
+  }
+}
+
+const loadStatsForCurrentAccount = () => {
+  if (!props.show || !props.account) return
+  void loadStats(props.account.id, contextGeneration)
+}
+
+const loadWindowUsageForCurrentAccount = () => {
+  if (!props.show || !props.account) return
+  void loadWindowUsage(props.account.id, contextGeneration)
+}
+
 const handleClose = () => {
+  contextGeneration++
   emit('close')
 }
 

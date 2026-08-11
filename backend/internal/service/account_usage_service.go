@@ -147,10 +147,11 @@ type WindowStats struct {
 
 // UsageProgress 使用量进度
 type UsageProgress struct {
-	Utilization      float64      `json:"utilization"`            // 使用率百分比 (0-100+，100表示100%)
-	ResetsAt         *time.Time   `json:"resets_at"`              // 重置时间
-	RemainingSeconds int          `json:"remaining_seconds"`      // 距重置剩余秒数
-	WindowStats      *WindowStats `json:"window_stats,omitempty"` // 窗口期统计（从窗口开始到当前的使用量）
+	Utilization      float64      `json:"utilization"`              // 使用率百分比 (0-100+，100表示100%)
+	ResetsAt         *time.Time   `json:"resets_at"`                // 重置时间
+	RemainingSeconds int          `json:"remaining_seconds"`        // 距重置剩余秒数
+	WindowMinutes    int          `json:"window_minutes,omitempty"` // 上游声明的实际窗口长度（分钟）
+	WindowStats      *WindowStats `json:"window_stats,omitempty"`   // 窗口期统计（从窗口开始到当前的使用量）
 	UsedRequests     int64        `json:"used_requests,omitempty"`
 	LimitRequests    int64        `json:"limit_requests,omitempty"`
 }
@@ -1477,6 +1478,7 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 		usedPercentKey string
 		resetAfterKey  string
 		resetAtKey     string
+		windowMinsKey  string
 	)
 
 	switch window {
@@ -1484,10 +1486,12 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 		usedPercentKey = "codex_5h_used_percent"
 		resetAfterKey = "codex_5h_reset_after_seconds"
 		resetAtKey = "codex_5h_reset_at"
+		windowMinsKey = "codex_5h_window_minutes"
 	case "7d":
 		usedPercentKey = "codex_7d_used_percent"
 		resetAfterKey = "codex_7d_reset_after_seconds"
 		resetAtKey = "codex_7d_reset_at"
+		windowMinsKey = "codex_7d_window_minutes"
 	default:
 		return nil
 	}
@@ -1497,7 +1501,10 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 		return nil
 	}
 
-	progress := &UsageProgress{Utilization: parseExtraFloat64(usedRaw)}
+	progress := &UsageProgress{
+		Utilization:   parseExtraFloat64(usedRaw),
+		WindowMinutes: max(parseExtraInt(extra[windowMinsKey]), 0),
+	}
 	if resetAtRaw, ok := extra[resetAtKey]; ok {
 		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
 			progress.ResetsAt = &resetAt

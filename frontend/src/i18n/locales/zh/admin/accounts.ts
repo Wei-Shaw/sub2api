@@ -1438,7 +1438,51 @@ export default {
       viewStats: '查看统计',
       usageStatistics: '使用统计',
       last30DaysUsage: '近30天使用统计（日均基于实际使用天数）',
+      quotaWindows: {
+        title: '标准额度窗口',
+        localScope: '请求、Token、费用和成功率均按本地已记录的最终请求结果统计。',
+        loadFailed: '额度窗口用量加载失败。',
+        noSupportedWindows: '该账号暂无边界可靠的固定额度窗口。',
+        used: '已用',
+        resetsAt: '重置于 {time}',
+        resetUnknown: '暂无重置时间',
+        window: {
+          five_hour: '5 小时限额',
+          seven_day: '7 天限额',
+          thirty_day: '30 天 / 月度限额'
+        },
+        column: {
+          previous: '上个窗口用量',
+          current: '当前窗口已用',
+          forecast: '当前窗口预测'
+        },
+        metric: {
+          requests: '请求数',
+          tokens: 'Token',
+          cost: '账号成本',
+          successRate: '成功率'
+        },
+        boundaryStatus: {
+          ready: '窗口可统计',
+          missing_boundary: 'Provider 返回的信息不足，无法可靠还原此窗口。',
+          expired_boundary: '记录的重置边界已过期，请刷新 Provider 用量后重试。',
+          stale_snapshot: 'Provider 额度快照已过期，请刷新后再统计此窗口。',
+          inconsistent_boundary: 'Provider 与本地窗口边界不一致，本窗口不进行推算。'
+        },
+        successRateStatus: {
+          available: '可用',
+          no_data: '暂无数据',
+          monitoring_disabled: '监控未开启',
+          retention_limited: '超出保留期'
+        },
+        forecastByQuota: '根据 Provider 已用比例推算。',
+        forecastByPrevious: '额度比例不可用，采用上个窗口实际值。',
+        forecastUnavailable: '暂无足够的可靠数据进行预测。'
+      },
       stats: {
+        accountOverview: '额度窗口与近期用量',
+        historyTitle: '近 30 天统计',
+        loadFailed: '历史使用统计加载失败。',
         totalCost: '30天总费用',
         accumulatedCost: '累计成本',
         standardCost: '标准计费',

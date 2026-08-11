@@ -454,7 +454,12 @@
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
-    <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
+    <AccountStatsModal
+      :show="showStats"
+      :account="statsAcc"
+      :usage-info="statsUsageInfo"
+      @close="closeStatsModal"
+    />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @duplicate="handleDuplicateAccount" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
@@ -710,6 +715,12 @@ const usageBatchLoadingByAccountId = ref<Record<string, boolean>>({})
 const usageBatchRequestTokenByAccountId = ref<Record<string, number>>({})
 const usageBatchCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_BATCH_CACHE_TTL = 5 * 60 * 1000
+const statsUsageInfo = computed<AccountUsageInfo | null>(() => {
+  if (!statsAcc.value) return null
+  const cached = usageBatchCache.get(statsAcc.value.id)
+  if (!cached || Date.now() - cached.ts >= USAGE_BATCH_CACHE_TTL) return null
+  return cached.data
+})
 const pendingUsageBatchIds = new Set<number>()
 let usageBatchFlushTimer: ReturnType<typeof setTimeout> | null = null
 let queuedUsageBatchForce = false
@@ -754,6 +765,7 @@ const setUsageBatchState = (accountID: number, usage: AccountUsageInfo | null, e
 }
 
 const handleAccountUsageLoaded = (accountID: number, usage: AccountUsageInfo) => {
+  usageBatchCache.set(accountID, { data: usage, ts: Date.now() })
   if (usageBatchByAccountId.value[String(accountID)] === usage) return
   setUsageBatchState(accountID, usage, null)
 }

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -333,6 +334,137 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		return nil, err
 	}
 	return stats, nil
+}
+
+// GetAccountWindowUsage aggregates several independent ranges for one account
+// in a single database round trip. Both joins use [start_time, end_time), which
+// keeps adjacent current/previous windows from sharing a boundary row.
+func (r *usageLogRepository) GetAccountWindowUsage(
+	ctx context.Context,
+	accountID int64,
+	queries []service.AccountWindowUsageQuery,
+) ([]service.AccountWindowUsageAggregate, error) {
+	if len(queries) == 0 {
+		return []service.AccountWindowUsageAggregate{}, nil
+	}
+
+	type sqlTarget struct {
+		TargetIndex int       `json:"target_index"`
+		WindowKey   string    `json:"window_key"`
+		Period      string    `json:"period"`
+		StartTime   time.Time `json:"start_time"`
+		EndTime     time.Time `json:"end_time"`
+	}
+	targets := make([]sqlTarget, 0, len(queries))
+	for i, query := range queries {
+		targets = append(targets, sqlTarget{
+			TargetIndex: i,
+			WindowKey:   query.WindowKey,
+			Period:      query.Period,
+			StartTime:   query.StartTime.UTC(),
+			EndTime:     query.EndTime.UTC(),
+		})
+	}
+	payload, err := json.Marshal(targets)
+	if err != nil {
+		return nil, fmt.Errorf("marshal account window usage targets: %w", err)
+	}
+
+	// The ops logger writes terminal SSE failures with wire status 200 and uses
+	// stable "Recovered ..." prefixes only for upstream attempts hidden by a
+	// later success. This keeps client-visible stream failures in the rate while
+	// excluding recovered attempts and count_tokens probes.
+	const query = `
+		WITH targets AS (
+			SELECT target_index, window_key, period, start_time, end_time
+			FROM jsonb_to_recordset($2::jsonb) AS target(
+				target_index integer,
+				window_key text,
+				period text,
+				start_time timestamptz,
+				end_time timestamptz
+			)
+		), usage_aggregates AS (
+			SELECT
+				t.target_index,
+				COUNT(ul.id) AS success_calls,
+				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS total_tokens,
+				COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) AS account_cost,
+				COALESCE(SUM(ul.total_cost), 0) AS standard_cost,
+				COALESCE(SUM(ul.actual_cost), 0) AS user_cost
+			FROM targets t
+			LEFT JOIN usage_logs ul
+				ON ul.account_id = $1
+				AND ul.created_at >= t.start_time
+				AND ul.created_at < t.end_time
+			GROUP BY t.target_index
+		), failure_aggregates AS (
+			SELECT
+				t.target_index,
+				COUNT(error_log.id) AS failure_calls
+			FROM targets t
+			LEFT JOIN ops_error_logs error_log
+				ON error_log.account_id = $1
+				AND error_log.created_at >= t.start_time
+				AND error_log.created_at < t.end_time
+				AND COALESCE(error_log.is_count_tokens, false) = false
+				AND (
+					COALESCE(error_log.status_code, 0) >= 400
+					OR error_log.error_type = 'cyber_policy'
+					OR (
+						COALESCE(error_log.stream, false) = true
+						AND COALESCE(error_log.status_code, 0) < 400
+						AND COALESCE(error_log.error_message, '') NOT LIKE 'Recovered upstream error%'
+						AND COALESCE(error_log.error_message, '') NOT LIKE 'Recovered account authentication failure%'
+					)
+				)
+			GROUP BY t.target_index
+		)
+		SELECT
+			t.window_key,
+			t.period,
+			t.start_time,
+			t.end_time,
+			COALESCE(u.success_calls, 0),
+			COALESCE(f.failure_calls, 0),
+			COALESCE(u.total_tokens, 0),
+			COALESCE(u.account_cost, 0),
+			COALESCE(u.standard_cost, 0),
+			COALESCE(u.user_cost, 0)
+		FROM targets t
+		LEFT JOIN usage_aggregates u USING (target_index)
+		LEFT JOIN failure_aggregates f USING (target_index)
+		ORDER BY t.target_index`
+
+	rows, err := r.sql.QueryContext(ctx, query, accountID, payload)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make([]service.AccountWindowUsageAggregate, 0, len(queries))
+	for rows.Next() {
+		var aggregate service.AccountWindowUsageAggregate
+		if err := rows.Scan(
+			&aggregate.WindowKey,
+			&aggregate.Period,
+			&aggregate.StartTime,
+			&aggregate.EndTime,
+			&aggregate.SuccessCalls,
+			&aggregate.FailureCalls,
+			&aggregate.TotalTokens,
+			&aggregate.AccountCost,
+			&aggregate.StandardCost,
+			&aggregate.UserCost,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, aggregate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetAccountWindowStatsBatch 批量获取同一窗口起点下多个账号的统计数据。
