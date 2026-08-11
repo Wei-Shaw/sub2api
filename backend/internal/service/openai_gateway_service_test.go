@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -2008,12 +2007,14 @@ func TestResponsesDoneOutputItemsMergeMatchesTerminalIdentityBeforeIndex(t *test
 	output := gjson.Parse(`[{"id":"call-function","type":"function_call","status":"in_progress"},{"id":"call-search","type":"tool_search_call","status":"in_progress"}]`)
 	merged, ok := items.MergeTerminalOutput(output, nil)
 	require.True(t, ok)
+	// 位置按 identity 重排：terminal 中 call-function 在 0，call-search 在 1
 	require.Equal(t, "call-function", gjson.GetBytes(merged, "0.id").String())
 	require.Equal(t, "function_call", gjson.GetBytes(merged, "0.type").String())
-	require.Equal(t, "completed", gjson.GetBytes(merged, "0.status").String())
+	// terminal 已有字段权威，保留 in_progress
+	require.Equal(t, "in_progress", gjson.GetBytes(merged, "0.status").String())
 	require.Equal(t, "call-search", gjson.GetBytes(merged, "1.id").String())
 	require.Equal(t, "tool_search_call", gjson.GetBytes(merged, "1.type").String())
-	require.Equal(t, "completed", gjson.GetBytes(merged, "1.status").String())
+	require.Equal(t, "in_progress", gjson.GetBytes(merged, "1.status").String())
 }
 
 func TestResponsesDoneOutputItemsMergeRetainsDeltaFallback(t *testing.T) {
@@ -2038,10 +2039,10 @@ func TestResponsesDoneOutputItemsRejectsMalformedIndicesAndAssignsMissing(t *tes
 	items.ProcessEvent([]byte(`{"item":{"id":"missing-1"}}`), "response.output_item.done")
 
 	require.Empty(t, items.byIndex)
-	require.Equal(t, []json.RawMessage{
-		json.RawMessage(`{"id":"missing-0"}`),
-		json.RawMessage(`{"id":"missing-1"}`),
-	}, items.withoutIndex)
+	require.Equal(t, []string{"missing-0", "missing-1"}, []string{
+		items.withoutIndex[0].identity[len("id:"):],
+		items.withoutIndex[1].identity[len("id:"):],
+	})
 }
 
 func TestResponsesDoneOutputItemsRejectsHugeIndexWithoutGrowingOutput(t *testing.T) {
@@ -2076,6 +2077,17 @@ func TestResponsesDoneOutputItemsMissingIndexAlreadyInTerminalOutput(t *testing.
 	require.Equal(t, "completed", gjson.GetBytes(merged, "0.status").String())
 }
 
+func TestResponsesDoneOutputItemsTerminalFieldsWinWhileDoneOnlyFieldsAreAdded(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"msg-1","type":"message","status":"completed","encrypted_content":"opaque"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(gjson.Parse(`[{"id":"msg-1","type":"message","status":"in_progress","content":[{"type":"output_text","text":"terminal"}]}]`), nil)
+	require.True(t, ok)
+	require.Equal(t, "in_progress", gjson.GetBytes(merged, "0.status").String())
+	require.Equal(t, "terminal", gjson.GetBytes(merged, "0.content.0.text").String())
+	require.Equal(t, "opaque", gjson.GetBytes(merged, "0.encrypted_content").String())
+}
+
 func TestResponsesDoneOutputItemsDuplicateIdentityAtDifferentIndices(t *testing.T) {
 	items := newResponsesDoneOutputItems()
 	items.ProcessEvent([]byte(`{"output_index":0,"item":{"id":"fc-1","type":"function_call","arguments":"old"}}`), "response.output_item.done")
@@ -2085,6 +2097,15 @@ func TestResponsesDoneOutputItemsDuplicateIdentityAtDifferentIndices(t *testing.
 	require.True(t, ok)
 	require.Len(t, gjson.ParseBytes(merged).Array(), 1)
 	require.Equal(t, "final", gjson.GetBytes(merged, "0.arguments").String())
+}
+
+func TestResponsesDoneOutputItemsCachesIdentityAndMaintainsLookupIndex(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"output_index":3,"item":{"id":"fc-1","type":"function_call"}}`), "response.output_item.done")
+
+	entry := items.byIndex[3]
+	require.Equal(t, "id:fc-1", entry.identity)
+	require.Same(t, entry, items.byIdentity["id:fc-1"])
 }
 
 func TestResponsesDoneOutputItemsRetainsMultipleSameTypeFallbackItems(t *testing.T) {

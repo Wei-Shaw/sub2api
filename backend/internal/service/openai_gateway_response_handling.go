@@ -1464,10 +1464,19 @@ func normalizeCompletedImageGenerationStatus(data []byte) ([]byte, bool) {
 }
 
 type responsesDoneOutputItems struct {
-	byIndex      map[int]json.RawMessage
-	withoutIndex []json.RawMessage
+	byIndex      map[int]*responsesDoneOutputItem
+	withoutIndex []*responsesDoneOutputItem
+	byIdentity   map[string]*responsesDoneOutputItem
 	totalBytes   int
 	overflowed   bool
+}
+
+type responsesDoneOutputItem struct {
+	raw                  json.RawMessage
+	identity             string
+	outputIndex          int
+	withoutIndexPosition int
+	hasOutputIndex       bool
 }
 
 const (
@@ -1477,7 +1486,10 @@ const (
 )
 
 func newResponsesDoneOutputItems() *responsesDoneOutputItems {
-	return &responsesDoneOutputItems{byIndex: make(map[int]json.RawMessage)}
+	return &responsesDoneOutputItems{
+		byIndex:    make(map[int]*responsesDoneOutputItem),
+		byIdentity: make(map[string]*responsesDoneOutputItem),
+	}
 }
 
 func (items *responsesDoneOutputItems) ProcessEvent(data []byte, eventType string) {
@@ -1491,18 +1503,24 @@ func (items *responsesDoneOutputItems) ProcessEvent(data []byte, eventType strin
 	if items.overflowed {
 		return
 	}
-	raw := json.RawMessage(item.Raw)
+	entry := &responsesDoneOutputItem{
+		raw:      json.RawMessage(item.Raw),
+		identity: responsesOutputItemIdentityResult(item),
+	}
+	raw := entry.raw
 	if len(raw) > maxResponsesDoneOutputBytes {
 		items.discardOnOverflow()
 		return
 	}
 	indexResult := gjson.GetBytes(data, "output_index")
 	if !indexResult.Exists() {
-		items.removeIdentity(responsesOutputItemIdentity(raw))
+		items.removeIdentity(entry.identity)
 		if !items.reserve(raw, 0) {
 			return
 		}
-		items.withoutIndex = append(items.withoutIndex, raw)
+		entry.withoutIndexPosition = len(items.withoutIndex)
+		items.withoutIndex = append(items.withoutIndex, entry)
+		items.indexIdentity(entry)
 		items.totalBytes += len(raw)
 		return
 	}
@@ -1510,15 +1528,17 @@ func (items *responsesDoneOutputItems) ProcessEvent(data []byte, eventType strin
 	if !ok {
 		return
 	}
-	items.removeIdentity(responsesOutputItemIdentity(raw))
-	previous := items.byIndex[index]
-	if !items.reserve(raw, len(previous)) {
+	items.removeIdentity(entry.identity)
+	if previous := items.byIndex[index]; previous != nil {
+		items.remove(previous)
+	}
+	if !items.reserve(raw, 0) {
 		return
 	}
-	if previous, ok := items.byIndex[index]; ok {
-		items.totalBytes -= len(previous)
-	}
-	items.byIndex[index] = raw
+	entry.outputIndex = index
+	entry.hasOutputIndex = true
+	items.byIndex[index] = entry
+	items.indexIdentity(entry)
 	items.totalBytes += len(raw)
 }
 
@@ -1532,8 +1552,9 @@ func (items *responsesDoneOutputItems) reserve(item json.RawMessage, replacedByt
 }
 
 func (items *responsesDoneOutputItems) discardOnOverflow() {
-	items.byIndex = make(map[int]json.RawMessage)
+	items.byIndex = make(map[int]*responsesDoneOutputItem)
 	items.withoutIndex = nil
+	items.byIdentity = make(map[string]*responsesDoneOutputItem)
 	items.totalBytes = 0
 	items.overflowed = true
 }
@@ -1542,18 +1563,38 @@ func (items *responsesDoneOutputItems) removeIdentity(identity string) {
 	if identity == "" {
 		return
 	}
-	for index, item := range items.byIndex {
-		if responsesOutputItemIdentity(item) == identity {
-			items.totalBytes -= len(item)
-			delete(items.byIndex, index)
+	if entry := items.byIdentity[identity]; entry != nil {
+		items.remove(entry)
+	}
+}
+
+func (items *responsesDoneOutputItems) indexIdentity(entry *responsesDoneOutputItem) {
+	if entry.identity != "" {
+		items.byIdentity[entry.identity] = entry
+	}
+}
+
+func (items *responsesDoneOutputItems) remove(entry *responsesDoneOutputItem) {
+	if entry.identity != "" && items.byIdentity[entry.identity] == entry {
+		delete(items.byIdentity, entry.identity)
+	}
+	if entry.hasOutputIndex {
+		if items.byIndex[entry.outputIndex] == entry {
+			delete(items.byIndex, entry.outputIndex)
+		}
+	} else {
+		position := entry.withoutIndexPosition
+		last := len(items.withoutIndex) - 1
+		if position >= 0 && position <= last && items.withoutIndex[position] == entry {
+			if position != last {
+				moved := items.withoutIndex[last]
+				items.withoutIndex[position] = moved
+				moved.withoutIndexPosition = position
+			}
+			items.withoutIndex = items.withoutIndex[:last]
 		}
 	}
-	for index := len(items.withoutIndex) - 1; index >= 0; index-- {
-		if responsesOutputItemIdentity(items.withoutIndex[index]) == identity {
-			items.totalBytes -= len(items.withoutIndex[index])
-			items.withoutIndex = append(items.withoutIndex[:index], items.withoutIndex[index+1:]...)
-		}
-	}
+	items.totalBytes -= len(entry.raw)
 }
 
 func validResponsesOutputIndex(result gjson.Result) (int, bool) {
@@ -1576,10 +1617,15 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 		return nil, false
 	}
 	positioned := make(map[int]json.RawMessage)
+	terminalByIdentity := make(map[string]int)
 	var fallbackItems []json.RawMessage
 	if output.Exists() && output.IsArray() {
 		for index, terminalItem := range output.Array() {
-			positioned[index] = json.RawMessage(terminalItem.Raw)
+			raw := json.RawMessage(terminalItem.Raw)
+			positioned[index] = raw
+			if identity := responsesOutputItemIdentityResult(terminalItem); identity != "" {
+				terminalByIdentity[identity] = index
+			}
 		}
 	}
 	if len(fallback) > 0 {
@@ -1595,21 +1641,20 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 	}
 	sort.Ints(doneIndices)
 	for _, index := range doneIndices {
-		doneItem := items.byIndex[index]
+		doneItem := items.byIndex[index].raw
 		targetIndex := index
-		if identity := responsesOutputItemIdentity(doneItem); identity != "" {
-			for terminalIndex, terminalItem := range positioned {
-				if responsesOutputItemIdentity(terminalItem) == identity {
-					targetIndex = terminalIndex
-					break
-				}
+		if identity := items.byIndex[index].identity; identity != "" {
+			if terminalIndex, found := terminalByIdentity[identity]; found {
+				targetIndex = terminalIndex
+				doneItem = mergeMissingResponsesOutputItemFields(positioned[terminalIndex], doneItem)
 			}
 		}
 		positioned[targetIndex] = doneItem
 	}
 
+	doneIdentities := items.byIdentity
 	for _, fallbackItem := range fallbackItems {
-		if responsesFallbackRepresentedByDoneItem(fallbackItem, items) {
+		if responsesFallbackRepresentedByDoneItem(fallbackItem, items, doneIdentities) {
 			continue
 		}
 		index := 0
@@ -1632,20 +1677,38 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 		merged = appendResponsesOutputItem(merged, positioned[index])
 	}
 	for _, doneItem := range items.withoutIndex {
-		merged = appendResponsesOutputItem(merged, doneItem)
+		merged = appendResponsesOutputItem(merged, doneItem.raw)
 	}
 	encoded, err := json.Marshal(merged)
 	return encoded, err == nil
 }
 
-func responsesFallbackRepresentedByDoneItem(fallback json.RawMessage, items *responsesDoneOutputItems) bool {
+func mergeMissingResponsesOutputItemFields(terminal, done json.RawMessage) json.RawMessage {
+	var terminalFields map[string]json.RawMessage
+	var doneFields map[string]json.RawMessage
+	if json.Unmarshal(terminal, &terminalFields) != nil || json.Unmarshal(done, &doneFields) != nil {
+		return terminal
+	}
+	for field, value := range doneFields {
+		if _, exists := terminalFields[field]; !exists {
+			terminalFields[field] = value
+		}
+	}
+	merged, err := json.Marshal(terminalFields)
+	if err != nil {
+		return terminal
+	}
+	return merged
+}
+
+func responsesFallbackRepresentedByDoneItem(fallback json.RawMessage, items *responsesDoneOutputItems, _ map[string]*responsesDoneOutputItem) bool {
 	for _, done := range items.byIndex {
-		if responsesSyntheticItemsEquivalent(fallback, done) {
+		if responsesSyntheticItemsEquivalent(fallback, done.raw) {
 			return true
 		}
 	}
 	for _, done := range items.withoutIndex {
-		if responsesSyntheticItemsEquivalent(fallback, done) {
+		if responsesSyntheticItemsEquivalent(fallback, done.raw) {
 			return true
 		}
 	}
@@ -1686,6 +1749,10 @@ func responsesItemText(item gjson.Result, path string) string {
 
 func responsesOutputItemIdentity(item json.RawMessage) string {
 	parsed := gjson.ParseBytes(item)
+	return responsesOutputItemIdentityResult(parsed)
+}
+
+func responsesOutputItemIdentityResult(parsed gjson.Result) string {
 	if id := strings.TrimSpace(parsed.Get("id").String()); id != "" {
 		return "id:" + id
 	}
