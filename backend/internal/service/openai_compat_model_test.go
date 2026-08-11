@@ -1021,34 +1021,15 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
 	const vscodeUA = "codex_vscode/9.9.9 (Mac OS X 14.0; arm64) vscode (codex_vscode; 9.9.9)"
+	// messages 桥接路径同样强制统一出站身份：三类客户端身份都收敛到规范身份。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantUserAgent  string
-		wantOriginator string
+		name       string
+		userAgent  string
+		originator string
 	}{
-		{
-			name:           "官方UA逐字保留并重新配对",
-			userAgent:      vscodeUA,
-			originator:     "opencode",
-			wantUserAgent:  vscodeUA,
-			wantOriginator: "codex_vscode",
-		},
-		{
-			name:           "降载身份改写为CLI身份并保留终端指纹",
-			userAgent:      tuiUA,
-			originator:     "opencode",
-			wantUserAgent:  "codex_cli_rs/9.9.9 (Mac OS X 14.0; arm64) iTerm",
-			wantOriginator: "codex_cli_rs",
-		},
-		{
-			name:           "第三方UA回退为默认Codex身份",
-			userAgent:      "third-party-client/1.0.0",
-			originator:     "opencode",
-			wantUserAgent:  codexCLIUserAgent,
-			wantOriginator: "codex_cli_rs",
-		},
+		{name: "官方vscode身份", userAgent: vscodeUA, originator: "opencode"},
+		{name: "TUI身份", userAgent: tuiUA, originator: "opencode"},
+		{name: "第三方UA", userAgent: "third-party-client/1.0.0", originator: "opencode"},
 	}
 
 	for _, tt := range tests {
@@ -1081,7 +1062,7 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
 			require.NoError(t, err)
 			require.NotNil(t, result)
-			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, tt.wantUserAgent, tt.wantOriginator)
+			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, codexCLIUserAgent, "codex_cli_rs")
 		})
 	}
 }
