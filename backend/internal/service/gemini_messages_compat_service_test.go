@@ -429,17 +429,24 @@ func TestCleanToolSchema_ConvertsNestedIntegerExclusiveMinimum(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	cleaned := cleanToolSchema(schema).(map[string]any)
-	properties := cleaned["properties"].(map[string]any)
-	items := properties["counts"].(map[string]any)["items"].(map[string]any)
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	counts, ok := properties["counts"].(map[string]any)
+	require.True(t, ok)
+	items, ok := counts["items"].(map[string]any)
+	require.True(t, ok)
 	require.NotContains(t, items, "exclusiveMinimum")
 	require.Equal(t, float64(1), items["minimum"])
 
-	strict := properties["strict"].(map[string]any)
+	strict, ok := properties["strict"].(map[string]any)
+	require.True(t, ok)
 	require.NotContains(t, strict, "exclusiveMinimum")
 	require.Equal(t, 5, strict["minimum"])
 
-	weak := properties["weak"].(map[string]any)
+	weak, ok := properties["weak"].(map[string]any)
+	require.True(t, ok)
 	require.NotContains(t, weak, "exclusiveMinimum")
 	require.Equal(t, 3, weak["minimum"])
 REDACTED
@@ -456,7 +463,8 @@ func TestCleanToolSchema_DropsAmbiguousExclusiveMinimumWithoutConversion(t *test
 	REDACTED,
 REDACTED {
 		t.Run(name, func(t *testing.T) {
-			cleaned := cleanToolSchema(schema).(map[string]any)
+			cleaned, ok := cleanToolSchema(schema).(map[string]any)
+			require.True(t, ok)
 			require.NotContains(t, cleaned, "exclusiveMinimum")
 			require.NotContains(t, cleaned, "minimum")
 	REDACTED)
