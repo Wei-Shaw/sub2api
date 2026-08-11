@@ -137,7 +137,9 @@ func TestOpenAIModelEffortSuffixPreservesCatalogAndAccountAliases(t *testing.T) 
 			require.NoError(t, err)
 			wantModel := tt.model
 			if tt.mapping != nil {
-				wantModel = tt.mapping[tt.model].(string)
+				mappedModel, ok := tt.mapping[tt.model].(string)
+				require.True(t, ok)
+				wantModel = mappedModel
 			}
 			require.Equal(t, wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning_effort").Exists())
