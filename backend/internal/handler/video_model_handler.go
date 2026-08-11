@@ -82,7 +82,7 @@ type videoModelIntroDTO struct {
 	Description   string                    `json:"description"`
 	DescriptionEn string                    `json:"description_en"`
 	CoverURL      string                    `json:"cover_url"`
-	DefaultParams map[string]interface{}    `json:"default_params"`
+	DefaultParams map[string]any            `json:"default_params"`
 	OutputFields  []service.OutputFieldSpec `json:"output_fields"`
 	ResultField   string                    `json:"result_field"`
 	ResultType    string                    `json:"result_type"`
@@ -337,23 +337,23 @@ func (h *VideoModelHandler) resolveVideoPricing(ctx context.Context, slug string
 // 保持字段扁平（避免嵌套 map[string]any）以便前端稳定绑定；request_payload /
 // result_payload 原样透传，以便"重放"按钮把 request_payload 塞回演练表单。
 type videoTaskItem struct {
-	ID                int64                  `json:"id"`
-	InternalRequestID string                 `json:"internal_request_id"`
-	UpstreamRequestID string                 `json:"upstream_request_id"`
-	RequestedModel    string                 `json:"requested_model"`
-	Status            string                 `json:"status"`
-	Resolution        string                 `json:"resolution"`
-	DurationSeconds   int                    `json:"duration_seconds"`
-	AspectRatio       string                 `json:"aspect_ratio"`
-	FinalCost         float64                `json:"final_cost"`
-	HeldCost          float64                `json:"held_cost"`
-	ErrorReason       string                 `json:"error_reason"`
-	VideoURLs         []string               `json:"video_urls"`
-	CosURLs           []string               `json:"cos_urls"`
-	RequestPayload    map[string]interface{} `json:"request_payload"`
-	ResultPayload     map[string]interface{} `json:"result_payload"`
-	CreatedAt         string                 `json:"created_at"`
-	FinishedAt        string                 `json:"finished_at,omitempty"`
+	ID                int64          `json:"id"`
+	InternalRequestID string         `json:"internal_request_id"`
+	UpstreamRequestID string         `json:"upstream_request_id"`
+	RequestedModel    string         `json:"requested_model"`
+	Status            string         `json:"status"`
+	Resolution        string         `json:"resolution"`
+	DurationSeconds   int            `json:"duration_seconds"`
+	AspectRatio       string         `json:"aspect_ratio"`
+	FinalCost         float64        `json:"final_cost"`
+	HeldCost          float64        `json:"held_cost"`
+	ErrorReason       string         `json:"error_reason"`
+	VideoURLs         []string       `json:"video_urls"`
+	CosURLs           []string       `json:"cos_urls"`
+	RequestPayload    map[string]any `json:"request_payload"`
+	ResultPayload     map[string]any `json:"result_payload"`
+	CreatedAt         string         `json:"created_at"`
+	FinishedAt        string         `json:"finished_at,omitempty"`
 }
 
 // ListTasks GET /user/video-models/tasks 返回当前用户在指定 slug 下的历史任务。
@@ -506,18 +506,6 @@ func (h *VideoModelHandler) GetTaskByIDAdmin(c *gin.Context) {
 		return
 	}
 	response.Success(c, toVideoTaskItem(task))
-}
-
-// parseInt64 是 c.Param(":id") 用的最小整数解析器，避免引入 strconv 依赖到本文件其它位置。
-func parseInt64(raw string) (int64, error) {
-	var n int64
-	for _, r := range raw {
-		if r < '0' || r > '9' {
-			return 0, http.ErrBodyReadAfterClose // 任意 non-nil error 即可，上层只用来判失败
-		}
-		n = n*10 + int64(r-'0')
-	}
-	return n, nil
 }
 
 // toVideoTaskItem 将领域模型映射为对外 DTO；nil 指针字段展开为空字符串，避免前端处理 optional。

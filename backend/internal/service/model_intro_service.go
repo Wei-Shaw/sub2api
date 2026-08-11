@@ -56,24 +56,24 @@ func NewModelIntroService(db *sql.DB) *ModelIntroService {
 //
 // 为了支持"嵌套 schema"（object 展开子字段列表 / array 展开元素 schema）：
 //   - Properties：Type=="object" 时使用，键为子字段名，值为一份递归 schema。
-//     采用 map[string]interface{} 表达而非再声明一个递归 Go 结构，避免后端
+//     采用 map[string]any 表达而非再声明一个递归 Go 结构，避免后端
 //     写死每一层字段；前端已用同一套 rowToSchema/schemaToRow 递归序列化。
 //   - Items：Type=="array" 时使用，值为一份递归 schema（数组同构）。同样
-//     采用 interface{} 承载任意 shape。
+//     采用 any 承载任意 shape。
 //
 // 存储层无需迁移：jsonb 天然支持任意嵌套；旧记录没有这两个键，读出时为
 // nil，前端反解时按"空容器"处理，不会破坏历史数据。
 type OutputFieldSpec struct {
-	Key         string                 `json:"key"`
-	Label       string                 `json:"label,omitempty"`
-	Type        string                 `json:"type"`
-	Description string                 `json:"description"`
-	Default     string                 `json:"default,omitempty"`
-	Required    bool                   `json:"required,omitempty"`
-	Enum        bool                   `json:"enum,omitempty"`
-	Options     []interface{}          `json:"options,omitempty"`
-	Properties  map[string]interface{} `json:"properties,omitempty"`
-	Items       interface{}            `json:"items,omitempty"`
+	Key         string         `json:"key"`
+	Label       string         `json:"label,omitempty"`
+	Type        string         `json:"type"`
+	Description string         `json:"description"`
+	Default     string         `json:"default,omitempty"`
+	Required    bool           `json:"required,omitempty"`
+	Enum        bool           `json:"enum,omitempty"`
+	Options     []any          `json:"options,omitempty"`
+	Properties  map[string]any `json:"properties,omitempty"`
+	Items       any            `json:"items,omitempty"`
 }
 
 // ModelIntro 是 service 层返回的模型介绍实体。
@@ -94,16 +94,16 @@ type ModelIntro struct {
 	// DescriptionEn 英文文案。前端按当前 locale 挑选：
 	// 中文界面优先展示 Description，缺失回落到 DescriptionEn；
 	// 英文界面优先展示 DescriptionEn，缺失回落到 Description。
-	DescriptionEn string                 `json:"description_en"`
-	CoverURL      string                 `json:"cover_url"`
-	DefaultParams map[string]interface{} `json:"default_params"`
-	SortOrder     int                    `json:"sort_order"`
-	Enabled       bool                   `json:"enabled"`
-	OutputFields  []OutputFieldSpec      `json:"output_fields"`
-	ResultField   string                 `json:"result_field"`
-	ResultType    string                 `json:"result_type"`
-	CreatedAt     time.Time              `json:"created_at"`
-	UpdatedAt     time.Time              `json:"updated_at"`
+	DescriptionEn string            `json:"description_en"`
+	CoverURL      string            `json:"cover_url"`
+	DefaultParams map[string]any    `json:"default_params"`
+	SortOrder     int               `json:"sort_order"`
+	Enabled       bool              `json:"enabled"`
+	OutputFields  []OutputFieldSpec `json:"output_fields"`
+	ResultField   string            `json:"result_field"`
+	ResultType    string            `json:"result_type"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 // UpsertModelIntroInput 是 Create / Update 共享的输入。model_key 为空时 Create
@@ -115,7 +115,7 @@ type UpsertModelIntroInput struct {
 	// DescriptionEn 英文文案；允许为空（前端展示时按 locale 兜底）。
 	DescriptionEn string
 	CoverURL      string
-	DefaultParams map[string]interface{}
+	DefaultParams map[string]any
 	SortOrder     int
 	Enabled       bool
 	OutputFields  []OutputFieldSpec
@@ -155,7 +155,7 @@ func (s *ModelIntroService) List(
 	}
 
 	whereSQL := ""
-	args := []interface{}{}
+	args := []any{}
 	kw := strings.TrimSpace(keyword)
 	if kw != "" {
 		whereSQL = " WHERE model_key ILIKE $1 OR title ILIKE $1"
@@ -180,7 +180,7 @@ func (s *ModelIntroService) List(
 	if err != nil {
 		return nil, 0, fmt.Errorf("list model_intros: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]*ModelIntro, 0, pageSize)
 	for rows.Next() {
@@ -213,7 +213,7 @@ func (s *ModelIntroService) Get(ctx context.Context, modelKey string) (*ModelInt
 	if err != nil {
 		return nil, fmt.Errorf("get model_intro %s: %w", key, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return nil, nil
 	}
@@ -357,12 +357,12 @@ func scanModelIntroRow(rows *sql.Rows) (*ModelIntro, error) {
 		return nil, fmt.Errorf("scan model_intros row: %w", err)
 	}
 	if len(paramsRaw) == 0 {
-		item.DefaultParams = map[string]interface{}{}
+		item.DefaultParams = map[string]any{}
 	} else {
-		params := map[string]interface{}{}
+		params := map[string]any{}
 		if err := json.Unmarshal(paramsRaw, &params); err != nil {
 			// 兜底：读出错时给个空对象，避免整条查询挂掉。
-			item.DefaultParams = map[string]interface{}{}
+			item.DefaultParams = map[string]any{}
 		} else {
 			item.DefaultParams = params
 		}
@@ -408,7 +408,7 @@ func validateModelIntroInput(in *UpsertModelIntroInput, requireKey bool) error {
 	}
 	// description 无长度上限（PG text 型）；这里也不裁剪。
 	if in.DefaultParams == nil {
-		in.DefaultParams = map[string]interface{}{}
+		in.DefaultParams = map[string]any{}
 	}
 	if in.OutputFields == nil {
 		in.OutputFields = []OutputFieldSpec{}
@@ -479,13 +479,13 @@ func normalizeResultRef(in *UpsertModelIntroInput) error {
 func collectOutputFieldPaths(fields []OutputFieldSpec) []string {
 	out := make([]string, 0, len(fields))
 	// walkSchema 处理"某个子层 schema"，raw 直接是从 Properties / Items
-	// 反解出来的 interface{}；因为顶层是强类型 OutputFieldSpec，所以分两个入口。
-	var walkSchema func(raw interface{}, prefix string)
-	walkSchema = func(raw interface{}, prefix string) {
+	// 反解出来的 any；因为顶层是强类型 OutputFieldSpec，所以分两个入口。
+	var walkSchema func(raw any, prefix string)
+	walkSchema = func(raw any, prefix string) {
 		if prefix != "" {
 			out = append(out, prefix)
 		}
-		m, ok := raw.(map[string]interface{})
+		m, ok := raw.(map[string]any)
 		if !ok {
 			return
 		}
@@ -493,8 +493,8 @@ func collectOutputFieldPaths(fields []OutputFieldSpec) []string {
 		typ = strings.ToLower(strings.TrimSpace(typ))
 		switch typ {
 		case "object":
-			// Properties 反解出来是 map[string]interface{}；每个 value 又是嵌套 schema。
-			props, _ := m["properties"].(map[string]interface{})
+			// Properties 反解出来是 map[string]any；每个 value 又是嵌套 schema。
+			props, _ := m["properties"].(map[string]any)
 			for childKey, childSchema := range props {
 				ck := strings.TrimSpace(childKey)
 				if ck == "" {
@@ -584,7 +584,7 @@ func normalizeOutputFields(fields []OutputFieldSpec) error {
 		switch f.Type {
 		case "object":
 			if f.Properties == nil {
-				f.Properties = map[string]interface{}{}
+				f.Properties = map[string]any{}
 			}
 			f.Items = nil
 		case "array":
@@ -613,9 +613,9 @@ func marshalOutputFields(fields []OutputFieldSpec) ([]byte, error) {
 }
 
 // marshalDefaultParams 把 map 编码成 JSON 字节串写入 jsonb 列。
-func marshalDefaultParams(m map[string]interface{}) ([]byte, error) {
+func marshalDefaultParams(m map[string]any) ([]byte, error) {
 	if m == nil {
-		m = map[string]interface{}{}
+		m = map[string]any{}
 	}
 	b, err := json.Marshal(m)
 	if err != nil {

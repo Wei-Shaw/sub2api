@@ -28,7 +28,7 @@ func TestCreateEventPersistsIdempotentSettledEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewCostCenterRepository(db)
 	occurred := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	key := "expense-plan:11:2026-01-02"
@@ -49,7 +49,7 @@ func TestReverseEventAppendsCompensatingEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	repo := NewCostCenterRepository(db)
 	occurred := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	eventColumns := []string{"id", "event_type", "status", "source_type", "source_id", "account_id", "user_id", "plan_id", "platform", "group_id", "model", "category", "amount_usd", "original_amount", "original_currency", "fx_rate", "occurred_at", "note", "metadata", "operator_id", "reversal_of", "created_at"}

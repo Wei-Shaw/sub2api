@@ -58,7 +58,7 @@ func (r *costCenterRepository) ListEvents(ctx context.Context, f service.CostCen
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]service.CostCenterEvent, 0)
 	for rows.Next() {
 		e, err := scanCostEvent(rows)
@@ -154,7 +154,7 @@ func (r *costCenterRepository) MaterializeExpensePlans(ctx context.Context, at t
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count := 0
 	for rows.Next() {
 		var id int64

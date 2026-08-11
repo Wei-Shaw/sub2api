@@ -57,7 +57,7 @@ type adminModelIntroDTO struct {
 	// 前端展示时按当前 locale 选择，缺失时回落到另一语种。
 	DescriptionEn string                    `json:"description_en"`
 	CoverURL      string                    `json:"cover_url"`
-	DefaultParams map[string]interface{}    `json:"default_params"`
+	DefaultParams map[string]any            `json:"default_params"`
 	SortOrder     int                       `json:"sort_order"`
 	Enabled       bool                      `json:"enabled"`
 	OutputFields  []service.OutputFieldSpec `json:"output_fields"`
@@ -73,7 +73,7 @@ func toAdminModelIntroDTO(m *service.ModelIntro) *adminModelIntroDTO {
 	}
 	params := m.DefaultParams
 	if params == nil {
-		params = map[string]interface{}{}
+		params = map[string]any{}
 	}
 	fields := m.OutputFields
 	if fields == nil {
@@ -105,7 +105,7 @@ type upsertModelIntroRequest struct {
 	// DescriptionEn 英文模型介绍；允许缺失（为空字符串）。
 	DescriptionEn string                    `json:"description_en"`
 	CoverURL      string                    `json:"cover_url"`
-	DefaultParams map[string]interface{}    `json:"default_params"`
+	DefaultParams map[string]any            `json:"default_params"`
 	SortOrder     int                       `json:"sort_order"`
 	Enabled       bool                      `json:"enabled"`
 	OutputFields  []service.OutputFieldSpec `json:"output_fields"`
