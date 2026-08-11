@@ -138,6 +138,8 @@ docs/*
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
+!docs/architecture/
+!docs/architecture/**
 .serena/
 .codex/
 frontend/coverage/
