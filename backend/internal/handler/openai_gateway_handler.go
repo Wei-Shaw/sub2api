@@ -307,19 +307,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
-	if normalizedBody, changed, normalizeErr := service.NormalizeOpenAIModelEffortSuffix(body, true); normalizeErr != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize model reasoning effort")
-		return
-	} else if changed {
-		body = normalizedBody
-		normalizedSessionHashBody, _, sessionHashNormalizeErr := service.NormalizeOpenAIModelEffortSuffix(sessionHashBody, true)
-		if sessionHashNormalizeErr != nil {
-			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize model reasoning effort")
-			return
-		}
-		sessionHashBody = normalizedSessionHashBody
-	}
-	reqModel := gjson.GetBytes(body, "model").String()
+	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformAllowed(c, apiKey, reqModel, service.PlatformOpenAI, service.PlatformGrok) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
@@ -1705,13 +1693,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
-	}
-	if normalized, changed, normalizeErr := service.NormalizeOpenAIModelEffortSuffix(firstMessage, true); normalizeErr != nil {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid model reasoning effort")
-		return
-	} else if changed {
-		firstMessage = normalized
-		reqModel = strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	ctx = c.Request.Context()

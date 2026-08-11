@@ -4,91 +4,69 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
-func TestNormalizeOpenAIModelEffortSuffix(t *testing.T) {
-	for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"} {
-		t.Run(effort, func(t *testing.T) {
-			got, changed, err := NormalizeOpenAIModelEffortSuffix([]byte(`{"model":"gpt-5.4-`+effort+`","messages":[]}`), false)
-			require.NoError(t, err)
-			require.True(t, changed)
-			require.Equal(t, "gpt-5.4", gjson.GetBytes(got, "model").String())
-			require.Equal(t, effort, gjson.GetBytes(got, "reasoning_effort").String())
-		})
-	}
-}
-
-func TestNormalizeOpenAIModelEffortSuffixSupportsArbitraryAliases(t *testing.T) {
-	for _, tc := range []struct {
-		model  string
-		base   string
-		effort string
+func TestExtractOpenAIReasoningEffortFromModelSuffixPreservesModelID(t *testing.T) {
+	tests := []struct {
+		name  string
+		body  []byte
+		model string
+		want  string
 	}{
-		{model: "my-alias-low", base: "my-alias", effort: "low"},
-		{model: "gpt-5.6-sol-max", base: "gpt-5.6-sol", effort: "max"},
-		{model: "claude-sonnet-4-5-minimal", base: "claude-sonnet-4-5", effort: "minimal"},
-	} {
-		got, changed, err := NormalizeOpenAIModelEffortSuffix([]byte(`{"model":"`+tc.model+`"}`), true)
-		require.NoError(t, err)
-		require.True(t, changed)
-		require.Equal(t, tc.base, gjson.GetBytes(got, "model").String())
-		require.Equal(t, tc.effort, gjson.GetBytes(got, "reasoning.effort").String())
+		{
+			name:  "Chat Completions real codex max model",
+			body:  []byte(`{"model":"gpt-5.1-codex-max","messages":[]}`),
+			model: "gpt-5.1-codex-max",
+			want:  "xhigh",
+		},
+		{
+			name:  "Responses real gemini high model",
+			body:  []byte(`{"model":"gemini-3.6-flash-high","input":"hello"}`),
+			model: "gemini-3.6-flash-high",
+			want:  "high",
+		},
 	}
-}
 
-func TestNormalizeOpenAIModelEffortSuffixPreservesUnsupportedSuffix(t *testing.T) {
-	const model = "my-alias-ultra"
-	got, changed, err := NormalizeOpenAIModelEffortSuffix([]byte(`{"model":"`+model+`"}`), true)
-	require.NoError(t, err)
-	require.False(t, changed)
-	require.Equal(t, model, gjson.GetBytes(got, "model").String())
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := append([]byte(nil), tt.body...)
 
-func TestNormalizeOpenAIModelEffortSuffixResponsesAndExplicitPrecedence(t *testing.T) {
-	got, changed, err := NormalizeOpenAIModelEffortSuffix([]byte(`{"model":"gpt-5.4-high","input":"hello"}`), true)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "gpt-5.4", gjson.GetBytes(got, "model").String())
-	require.Equal(t, "high", gjson.GetBytes(got, "reasoning.effort").String())
+			got := extractOpenAIReasoningEffortFromBody(tt.body, tt.model)
 
-	got, changed, err = NormalizeOpenAIModelEffortSuffix([]byte(`{"model":"my-alias-high","reasoning":{"effort":"low"}}`), true)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "my-alias", gjson.GetBytes(got, "model").String())
-	require.Equal(t, "low", gjson.GetBytes(got, "reasoning.effort").String())
-}
-
-func TestNormalizeOpenAIModelEffortSuffixIgnoresInvalidExplicitEffort(t *testing.T) {
-	for _, explicit := range []string{"null", `""`, `"   "`, "123", `{"level":"low"}`} {
-		t.Run(explicit, func(t *testing.T) {
-			body := []byte(`{"model":"gpt-5.4-high","reasoning_effort":` + explicit + `}`)
-			got, changed, err := NormalizeOpenAIModelEffortSuffix(body, false)
-			require.NoError(t, err)
-			require.True(t, changed)
-			require.Equal(t, "gpt-5.4", gjson.GetBytes(got, "model").String())
-			require.Equal(t, "high", gjson.GetBytes(got, "reasoning_effort").String())
+			require.NotNil(t, got)
+			require.Equal(t, tt.want, *got)
+			require.Equal(t, before, tt.body, "effort derivation must not rewrite the request model")
 		})
 	}
 }
 
-func TestNormalizeOpenAIModelEffortSuffixResponsesCanonicalizesEffort(t *testing.T) {
-	got, changed, err := NormalizeOpenAIModelEffortSuffix(
-		[]byte(`{"model":"gpt-5.4-high","reasoning_effort":"low"}`),
-		true,
-	)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.Equal(t, "gpt-5.4", gjson.GetBytes(got, "model").String())
-	require.Equal(t, "high", gjson.GetBytes(got, "reasoning.effort").String())
+func TestExtractOpenAIReasoningEffortExplicitValueTakesPrecedenceOverModelSuffix(t *testing.T) {
+	tests := []struct {
+		name string
+		body []byte
+		want string
+	}{
+		{
+			name: "Chat Completions flat effort",
+			body: []byte(`{"model":"gemini-3.6-flash-high","reasoning_effort":"low","messages":[]}`),
+			want: "low",
+		},
+		{
+			name: "Responses nested effort",
+			body: []byte(`{"model":"gpt-5.1-codex-max","reasoning":{"effort":"medium"},"input":"hello"}`),
+			want: "medium",
+		},
+	}
 
-	for _, explicit := range []string{"null", `""`, `"   "`, "123", `{"level":"low"}`} {
-		t.Run(explicit, func(t *testing.T) {
-			body := []byte(`{"model":"gpt-5.4-high","reasoning":{"effort":` + explicit + `},"reasoning_effort":"low"}`)
-			got, changed, err := NormalizeOpenAIModelEffortSuffix(body, true)
-			require.NoError(t, err)
-			require.True(t, changed)
-			require.Equal(t, "high", gjson.GetBytes(got, "reasoning.effort").String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := append([]byte(nil), tt.body...)
+
+			got := extractOpenAIReasoningEffortFromBody(tt.body, "gpt-5.1-codex-max")
+
+			require.NotNil(t, got)
+			require.Equal(t, tt.want, *got)
+			require.Equal(t, before, tt.body, "explicit effort extraction must not rewrite the request model")
 		})
 	}
 }

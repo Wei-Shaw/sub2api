@@ -74,13 +74,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
-	if normalizedBody, changed, normalizeErr := service.NormalizeOpenAIModelEffortSuffix(body, true); normalizeErr != nil {
-		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize model reasoning effort")
-		return
-	} else if changed {
-		body = normalizedBody
-	}
-	reqModel := gjson.GetBytes(body, "model").String()
+	reqModel := modelResult.String()
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	if !compositeTargetPlatformResolved(c, apiKey, reqModel) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")

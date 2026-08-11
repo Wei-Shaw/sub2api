@@ -475,7 +475,7 @@ func TestWSResponseCreate_IngressFiltersServiceTierBeforeUpstream(t *testing.T) 
 	defer func() { _ = clientConn.CloseNow() }()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"my-alias-minimal","stream":false,"service_tier":"fast"}`)))
+	require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.5","stream":false,"service_tier":"fast"}`)))
 	cancelWrite()
 
 	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
@@ -498,8 +498,7 @@ func TestWSResponseCreate_IngressFiltersServiceTierBeforeUpstream(t *testing.T) 
 	_, hasServiceTier := upstream["service_tier"]
 	require.False(t, hasServiceTier, "上游收到的 response.create 不应包含 service_tier 字段（已被 fast policy filter 删除）")
 	require.Equal(t, "response.create", upstream["type"])
-	require.Equal(t, "my-alias", upstream["model"])
-	require.Equal(t, "minimal", gjson.Get(requestToJSONString(upstream), "reasoning.effort").String())
+	require.Equal(t, "gpt-5.5", upstream["model"])
 }
 
 // TestWSResponseCreate_IngressBlockSendsErrorEventAndSkipsUpstream is the
