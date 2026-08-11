@@ -143,6 +143,7 @@ export default {
         billingModelSourceChannelMapped: '以渠道映射后的模型计费',
         billingModelSourceRequested: '以请求模型计费',
         billingModelSourceUpstream: '以最终模型计费',
+        billingModelSourceResponse: '按上游响应模型计费',
         billingModelSourceHint: '控制使用哪个模型名称进行定价查找',
         selectedCount: '已选 {count} 个',
         searchGroups: '搜索分组...',

@@ -318,6 +318,12 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
+              :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
+              :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
+              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              @account-updated="handleAccountUpdated"
+              @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -342,8 +348,17 @@
             </div>
           </template>
           <template #cell-rate_multiplier="{ row }">
-            <span class="text-sm font-mono text-gray-700 dark:text-gray-300">
-              {{ (row.rate_multiplier ?? 1).toFixed(2) }}x
+            <span class="inline-flex items-center gap-1 text-sm font-mono text-gray-700 dark:text-gray-300">
+              <span>{{ formatMultiplier(row.rate_multiplier ?? 1) }}x</span>
+              <span
+                v-if="row.extra?.upstream_billing_rate_sync_enabled === true"
+                class="inline-flex cursor-help text-emerald-600 dark:text-emerald-400"
+                :aria-label="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
+                :title="t('admin.accounts.upstreamBilling.syncedRateTooltip')"
+                data-testid="account-rate-sync-indicator"
+              >
+                <Icon name="sync" size="xs" />
+              </span>
             </span>
           </template>
           <template #header-upstream_billing_rate="{ column }">
@@ -516,7 +531,8 @@ import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import { formatMultiplier } from '@/utils/formatters'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -681,6 +697,24 @@ const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
 
+const desktopViewportQuery = '(min-width: 768px)'
+const isDesktopViewport = ref(
+  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+)
+let desktopViewportMediaQuery: MediaQueryList | null = null
+let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
+
+const usageBatchByAccountId = ref<Record<string, AccountUsageInfo | null>>({})
+const usageBatchErrorByAccountId = ref<Record<string, string | null>>({})
+const usageBatchLoadingByAccountId = ref<Record<string, boolean>>({})
+const usageBatchRequestTokenByAccountId = ref<Record<string, number>>({})
+const usageBatchCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const USAGE_BATCH_CACHE_TTL = 5 * 60 * 1000
+const pendingUsageBatchIds = new Set<number>()
+let usageBatchFlushTimer: ReturnType<typeof setTimeout> | null = null
+let queuedUsageBatchForce = false
+let usageBatchRequestToken = 0
+
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
   tokens: 0,
@@ -688,6 +722,138 @@ const buildDefaultTodayStats = (): WindowStats => ({
   standard_cost: 0,
   user_cost: 0
 })
+
+const accountSupportsBatchUsage = (account: Account) => {
+  if (account.platform === 'anthropic') {
+    return account.type === 'oauth' || account.type === 'setup-token'
+  }
+  if (account.platform === 'gemini') return true
+  if (account.platform === 'antigravity') return account.type === 'oauth'
+  if (account.platform === 'openai') return account.type === 'oauth'
+  if (account.platform === 'grok') return account.type === 'oauth'
+  return false
+}
+
+const setUsageBatchLoading = (accountID: number, loadingState: boolean) => {
+  usageBatchLoadingByAccountId.value = {
+    ...usageBatchLoadingByAccountId.value,
+    [String(accountID)]: loadingState
+  }
+}
+
+const setUsageBatchState = (accountID: number, usage: AccountUsageInfo | null, error: string | null) => {
+  const key = String(accountID)
+  usageBatchByAccountId.value = {
+    ...usageBatchByAccountId.value,
+    [key]: usage
+  }
+  usageBatchErrorByAccountId.value = {
+    ...usageBatchErrorByAccountId.value,
+    [key]: error
+  }
+}
+
+const handleAccountUsageLoaded = (accountID: number, usage: AccountUsageInfo) => {
+  if (usageBatchByAccountId.value[String(accountID)] === usage) return
+  setUsageBatchState(accountID, usage, null)
+}
+
+const flushQueuedUsageBatch = async () => {
+  usageBatchFlushTimer = null
+  const accountIDs = Array.from(pendingUsageBatchIds)
+  const force = queuedUsageBatchForce
+  pendingUsageBatchIds.clear()
+  queuedUsageBatchForce = false
+
+  if (accountIDs.length === 0) return
+
+  const requestTokensByAccount = accountIDs.reduce<Record<string, number>>((acc, accountID) => {
+    acc[String(accountID)] = usageBatchRequestTokenByAccountId.value[String(accountID)] ?? 0
+    return acc
+  }, {})
+
+  try {
+    const result = await adminAPI.accounts.getBatchUsage(accountIDs, force)
+
+    const usageMap = result.usage ?? {}
+    const errorMap = result.errors ?? {}
+    const now = Date.now()
+    const nextUsage = { ...usageBatchByAccountId.value }
+    const nextErrors = { ...usageBatchErrorByAccountId.value }
+    const nextLoading = { ...usageBatchLoadingByAccountId.value }
+
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      if ((usageBatchRequestTokenByAccountId.value[key] ?? 0) !== requestTokensByAccount[key]) {
+        continue
+      }
+      const usage = usageMap[key] ?? null
+      nextUsage[key] = usage
+      nextErrors[key] = errorMap[key] ?? null
+      nextLoading[key] = false
+      if (usage) {
+        usageBatchCache.set(accountID, { data: usage, ts: now })
+      } else {
+        usageBatchCache.delete(accountID)
+      }
+    }
+
+    usageBatchByAccountId.value = nextUsage
+    usageBatchErrorByAccountId.value = nextErrors
+    usageBatchLoadingByAccountId.value = nextLoading
+  } catch (error) {
+    const nextErrors = { ...usageBatchErrorByAccountId.value }
+    const nextLoading = { ...usageBatchLoadingByAccountId.value }
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      if ((usageBatchRequestTokenByAccountId.value[key] ?? 0) !== requestTokensByAccount[key]) {
+        continue
+      }
+      nextErrors[key] = 'Failed'
+      nextLoading[key] = false
+    }
+    usageBatchErrorByAccountId.value = nextErrors
+    usageBatchLoadingByAccountId.value = nextLoading
+    console.error('Failed to load account usage batch:', error)
+  }
+}
+
+const queueBatchedUsage = (account: Account, options?: { force?: boolean }) => {
+  if (!isDesktopViewport.value) return
+  if (!accountSupportsBatchUsage(account)) return
+
+  const force = options?.force === true
+  const cacheKey = account.id
+  const key = String(cacheKey)
+
+  if (force) {
+    usageBatchCache.delete(cacheKey)
+  } else {
+    const cached = usageBatchCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < USAGE_BATCH_CACHE_TTL) {
+      setUsageBatchState(cacheKey, cached.data, null)
+      setUsageBatchLoading(cacheKey, false)
+      return
+    }
+  }
+
+  usageBatchErrorByAccountId.value = {
+    ...usageBatchErrorByAccountId.value,
+    [key]: null
+  }
+  usageBatchRequestTokenByAccountId.value = {
+    ...usageBatchRequestTokenByAccountId.value,
+    [key]: ++usageBatchRequestToken
+  }
+  setUsageBatchLoading(cacheKey, true)
+  pendingUsageBatchIds.add(cacheKey)
+  queuedUsageBatchForce = queuedUsageBatchForce || force
+
+  if (usageBatchFlushTimer !== null) return
+  usageBatchFlushTimer = setTimeout(() => {
+    void flushQueuedUsageBatch()
+  }, 0)
+}
 
 const refreshTodayStatsBatch = async () => {
   // Why this checks both columns:
@@ -1071,6 +1237,22 @@ watch(loading, (isLoading, wasLoading) => {
       console.error('Failed to refresh account today stats after table load:', error)
     })
   }
+})
+
+watch(accounts, (rows) => {
+  const visibleIDs = new Set(rows.map((row) => String(row.id)))
+  usageBatchByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchErrorByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchErrorByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchLoadingByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchLoadingByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  usageBatchRequestTokenByAccountId.value = Object.fromEntries(
+    Object.entries(usageBatchRequestTokenByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
 })
 
 watch(upstreamBillingNow, () => {
@@ -1591,7 +1773,7 @@ const handleBulkProbeUpstreamBilling = async () => {
         patched = true
       }
     })
-    if (patched) await refreshUpstreamBillingSortedList(true)
+    if (patched) await refreshAccountsAfterUpstreamBillingProbe()
     const failed = results.filter(result => result.error).length
     if (failed > 0) {
       appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', { success: results.length - failed, failed }))
@@ -1890,6 +2072,13 @@ const patchUpstreamBillingSnapshot = (accountID: number, snapshot: UpstreamBilli
     extra: { ...account.extra, upstream_billing_probe: snapshot }
   })
 }
+const refreshAccountsAfterUpstreamBillingProbe = async () => {
+  try {
+    await load()
+  } catch (error) {
+    console.error('Failed to refresh accounts after upstream billing probe:', error)
+  }
+}
 const handleProbeUpstreamBilling = async (account: Account) => {
   if (probingUpstreamBilling.has(account.id)) return
   probingUpstreamBilling.add(account.id)
@@ -1897,7 +2086,7 @@ const handleProbeUpstreamBilling = async (account: Account) => {
     const result = await adminAPI.accounts.probeUpstreamBilling(account.id)
     if (result.snapshot) {
       patchUpstreamBillingSnapshot(account.id, result.snapshot)
-      await refreshUpstreamBillingSortedList(true)
+      await refreshAccountsAfterUpstreamBillingProbe()
     }
   } catch (error) {
     console.error('Failed to probe upstream billing:', error)
@@ -2165,6 +2354,19 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    isDesktopViewport.value = desktopViewportMediaQuery.matches
+    desktopViewportListener = (event: MediaQueryListEvent) => {
+      isDesktopViewport.value = event.matches
+    }
+    if (typeof desktopViewportMediaQuery.addEventListener === 'function') {
+      desktopViewportMediaQuery.addEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.addListener(desktopViewportListener)
+    }
+  }
+
   load()
   loadUpstreamBillingProbeGlobalState()
   try {
@@ -2187,9 +2389,23 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (usageBatchFlushTimer !== null) {
+    clearTimeout(usageBatchFlushTimer)
+    usageBatchFlushTimer = null
+  }
+  pendingUsageBatchIds.clear()
   window.removeEventListener('scroll', handleScroll, true)
   window.removeEventListener('resize', handleViewportResize)
   document.removeEventListener('click', handleClickOutside)
+  if (desktopViewportMediaQuery && desktopViewportListener) {
+    if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
+      desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.removeListener(desktopViewportListener)
+    }
+  }
+  desktopViewportListener = null
+  desktopViewportMediaQuery = null
 })
 </script>
 

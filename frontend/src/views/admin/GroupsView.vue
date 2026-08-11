@@ -610,7 +610,7 @@
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
-          v-if="createForm.platform === 'openai'"
+          v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
           ref="createReasoningEffortPolicyRef"
           id-prefix="create-group-reasoning"
           :platform="createForm.platform"
@@ -1087,6 +1087,45 @@
               />
             </div>
           </div>
+          <div
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
+            data-testid="create-grok-video-model-prices"
+          >
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+            </p>
+            <div class="mt-3 space-y-3">
+              <div
+                v-for="family in videoModelPriceFamilyRows(createForm.video_model_prices)"
+                :key="family.key"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+              >
+                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                  {{ family.label }}
+                </div>
+                <label
+                  v-for="resolution in grokVideoPriceResolutions"
+                  :key="resolution.key"
+                  class="block"
+                >
+                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                    {{ resolution.label }} ($/s)
+                  </span>
+                  <input
+                    v-model.number="createForm.video_model_prices[family.key][resolution.key]"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    :data-testid="`create-grok-video-price-${family.key}-${resolution.key}`"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t(videoPricingI18nKey("modeHint")) }}
           </p>
@@ -1147,6 +1186,56 @@
                 class="input"
                 placeholder="1"
                 :title="t('admin.groups.peakRate.multiplierHint')"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 分组利润控制（五个平台 token 请求） -->
+        <div v-if="isProfitControlPlatform(createForm.platform)" class="border-t pt-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="createForm.profit_control_enabled"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>{{ t("admin.groups.profitControl.enable") }}</span>
+          </label>
+          <p class="mb-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{
+              createForm.profit_control_enabled
+                ? t("admin.groups.profitControl.enabledHint")
+                : t("admin.groups.profitControl.disabledHint")
+            }}
+          </p>
+          <div
+            v-if="createForm.profit_control_enabled"
+            class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.profitControl.minMargin") }}</label>
+              <input
+                v-model.number="createForm.profit_min_margin_percent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="99.99"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.profitControl.minMarginHint')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.profitControl.safetyBuffer") }}</label>
+              <input
+                v-model.number="createForm.profit_safety_buffer_percent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="99.99"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.profitControl.safetyBufferHint')"
               />
             </div>
           </div>
@@ -1394,6 +1483,69 @@
           </div>
         </div>
 
+
+        <!-- Grok Voice 显式定价（仅 grok 平台） -->
+        <div
+          v-if="createForm.platform === 'grok'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.explicitPricing.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.explicitPricing.description") }}
+          </p>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.explicitPricing.searchPricePer1k") }}</label>
+              <input
+                v-model.number="createForm.search_price_per_1k"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.explicitPricing.pricePlaceholder')"
+                data-testid="create-search-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioRealtimePerMin") }}</label>
+              <input
+                v-model.number="createForm.audio_realtime_price_per_min"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="create-audio-realtime-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioTtsPerMillionChars") }}</label>
+              <input
+                v-model.number="createForm.audio_tts_price_per_million_chars"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="create-audio-tts-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioSttPerHour") }}</label>
+              <input
+                v-model.number="createForm.audio_stt_price_per_hour"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="create-audio-stt-price"
+              />
+            </div>
+          </div>
+        </div>
         <!-- OpenAI Live 开关（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2163,7 +2315,7 @@
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
-          v-if="editForm.platform === 'openai'"
+          v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
           ref="editReasoningEffortPolicyRef"
           id-prefix="edit-group-reasoning"
           :platform="editForm.platform"
@@ -2642,6 +2794,45 @@
               />
             </div>
           </div>
+          <div
+            class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700"
+            data-testid="edit-grok-video-model-prices"
+          >
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.videoPricing.modelOverridesTitle") }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.videoPricing.modelOverridesDescription") }}
+            </p>
+            <div class="mt-3 space-y-3">
+              <div
+                v-for="family in videoModelPriceFamilyRows(editForm.video_model_prices)"
+                :key="family.key"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,7rem))] sm:items-end"
+              >
+                <div class="min-w-0 pb-1 font-mono text-xs text-gray-700 dark:text-gray-300">
+                  {{ family.label }}
+                </div>
+                <label
+                  v-for="resolution in grokVideoPriceResolutions"
+                  :key="resolution.key"
+                  class="block"
+                >
+                  <span class="mb-1 block text-xs text-gray-500 dark:text-gray-400">
+                    {{ resolution.label }} ($/s)
+                  </span>
+                  <input
+                    v-model.number="editForm.video_model_prices[family.key][resolution.key]"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    class="input"
+                    :data-testid="`edit-grok-video-price-${family.key}-${resolution.key}`"
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
           <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t(videoPricingI18nKey("modeHint")) }}
           </p>
@@ -2702,6 +2893,56 @@
                 class="input"
                 placeholder="1"
                 :title="t('admin.groups.peakRate.multiplierHint')"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 分组利润控制（五个平台 token 请求） -->
+        <div v-if="isProfitControlPlatform(editForm.platform)" class="border-t pt-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="editForm.profit_control_enabled"
+              type="checkbox"
+              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>{{ t("admin.groups.profitControl.enable") }}</span>
+          </label>
+          <p class="mb-3 mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{
+              editForm.profit_control_enabled
+                ? t("admin.groups.profitControl.enabledHint")
+                : t("admin.groups.profitControl.disabledHint")
+            }}
+          </p>
+          <div
+            v-if="editForm.profit_control_enabled"
+            class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            <div>
+              <label class="input-label">{{ t("admin.groups.profitControl.minMargin") }}</label>
+              <input
+                v-model.number="editForm.profit_min_margin_percent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="99.99"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.profitControl.minMarginHint')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.profitControl.safetyBuffer") }}</label>
+              <input
+                v-model.number="editForm.profit_safety_buffer_percent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="99.99"
+                class="input"
+                placeholder="0"
+                :title="t('admin.groups.profitControl.safetyBufferHint')"
               />
             </div>
           </div>
@@ -2945,6 +3186,69 @@
           </div>
         </div>
 
+
+        <!-- Grok Voice 显式定价（仅 grok 平台） -->
+        <div
+          v-if="editForm.platform === 'grok'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {{ t("admin.groups.explicitPricing.title") }}
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t("admin.groups.explicitPricing.description") }}
+          </p>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div>
+              <label class="input-label">{{ t("admin.groups.explicitPricing.searchPricePer1k") }}</label>
+              <input
+                v-model.number="editForm.search_price_per_1k"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.explicitPricing.pricePlaceholder')"
+                data-testid="edit-search-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioRealtimePerMin") }}</label>
+              <input
+                v-model.number="editForm.audio_realtime_price_per_min"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="edit-audio-realtime-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioTtsPerMillionChars") }}</label>
+              <input
+                v-model.number="editForm.audio_tts_price_per_million_chars"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="edit-audio-tts-price"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t("admin.groups.voicePricing.audioSttPerHour") }}</label>
+              <input
+                v-model.number="editForm.audio_stt_price_per_hour"
+                type="number"
+                step="0.000001"
+                min="0"
+                class="input"
+                :placeholder="t('admin.groups.voicePricing.pricePlaceholder')"
+                data-testid="edit-audio-stt-price"
+              />
+            </div>
+          </div>
+        </div>
         <!-- OpenAI Live 开关（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -4096,9 +4400,17 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  isProfitControlPlatform,
+  profitPercentToDecimal,
+  profitDecimalToPercent,
+  validateProfitControlFormState,
+  type ProfitControlFormState,
+} from "./groupsProfitControl";
+import {
   normalizeReasoningEffortForPlatform,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
+  supportsReasoningEffortPolicyPlatform,
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
 import {
@@ -4111,6 +4423,12 @@ import {
   supportsVideoPricingPlatform,
   videoPricingI18nKey,
 } from "./groupsImagePricing";
+import {
+  createVideoModelPricesForm,
+  grokVideoPriceResolutions,
+  serializeVideoModelPrices,
+  videoModelPriceFamilyRows,
+} from "./groupsVideoModelPricing";
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -4611,13 +4929,22 @@ const createForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  video_model_prices: createVideoModelPricesForm(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
+  search_price_per_1k: null as number | null,
+  audio_realtime_price_per_min: null as number | null,
+  audio_tts_price_per_million_chars: null as number | null,
+  audio_stt_price_per_hour: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
+  profit_control_enabled: false,
+  profit_min_margin_percent: 0,
+  profit_safety_buffer_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -4961,13 +5288,22 @@ const editForm = reactive({
   video_price_480p: null as number | null,
   video_price_720p: null as number | null,
   video_price_1080p: null as number | null,
+  video_model_prices: createVideoModelPricesForm(),
   // Codex 网页搜索按次计费（仅 openai 平台使用）；null = 使用默认价 0.01
   web_search_price_per_call: null as number | null,
+  search_price_per_1k: null as number | null,
+  audio_realtime_price_per_min: null as number | null,
+  audio_tts_price_per_million_chars: null as number | null,
+  audio_stt_price_per_hour: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
+  profit_control_enabled: false,
+  profit_min_margin_percent: 0,
+  profit_safety_buffer_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -5407,11 +5743,19 @@ const closeCreateModal = () => {
   createForm.video_price_480p = null;
   createForm.video_price_720p = null;
   createForm.video_price_1080p = null;
+  createForm.video_model_prices = createVideoModelPricesForm();
   createForm.web_search_price_per_call = null;
+  createForm.search_price_per_1k = null;
+  createForm.audio_realtime_price_per_min = null;
+  createForm.audio_tts_price_per_million_chars = null;
+  createForm.audio_stt_price_per_hour = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
   createForm.peak_rate_multiplier = 1.0;
+  createForm.profit_control_enabled = false;
+  createForm.profit_min_margin_percent = 0;
+  createForm.profit_safety_buffer_percent = 0;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -5459,23 +5803,46 @@ const normalizeRateMultiplier = (
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1;
 };
 
+// 利润控制表单辅助（换算与校验逻辑见 groupsProfitControl.ts，便于单测）。
+const percentToDecimal = profitPercentToDecimal;
+const decimalToPercent = profitDecimalToPercent;
+
+const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
+  const errorKey = validateProfitControlFormState(form);
+  if (errorKey) {
+    appStore.showError(t(`admin.groups.profitControl.${errorKey}`));
+    return false;
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
   }
   if (
-    createForm.platform === "openai" &&
+    supportsReasoningEffortPolicyPlatform(createForm.platform) &&
     createReasoningEffortPolicyRef.value &&
     !createReasoningEffortPolicyRef.value.validate()
   ) {
     return;
   }
+  if (!validateProfitControlForm(createForm)) {
+    return;
+  }
   submitting.value = true;
   try {
+    const {
+      video_model_prices: _createFormVideoModelPrices,
+      ...createGroupForm
+    } = createForm;
+    const videoModelPrices = serializeVideoModelPrices(
+      createForm.video_model_prices,
+    );
     // 构建请求数据，包含模型路由配置
     const requestData = {
-      ...createForm,
+      ...createGroupForm,
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
@@ -5485,6 +5852,9 @@ const handleCreateGroup = async () => {
       monthly_limit_usd: normalizeOptionalLimit(
         createForm.monthly_limit_usd as number | string | null,
       ),
+      ...(Object.keys(videoModelPrices).length > 0
+        ? { video_model_prices: videoModelPrices }
+        : {}),
       model_routing: convertRoutingRulesToApiFormat(
         createModelRoutingRules.value,
       ),
@@ -5506,7 +5876,17 @@ const handleCreateGroup = async () => {
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         createForm.reasoning_effort_mappings,
       ),
+      // 利润控制：界面百分比转小数提交；仅五个 token 平台可启用
+      profit_control_enabled:
+        isProfitControlPlatform(createForm.platform) &&
+        createForm.profit_control_enabled,
+      profit_min_margin: percentToDecimal(createForm.profit_min_margin_percent),
+      profit_safety_buffer: percentToDecimal(
+        createForm.profit_safety_buffer_percent,
+      ),
     };
+    delete (requestData as Record<string, unknown>).profit_min_margin_percent;
+    delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
@@ -5533,6 +5913,18 @@ const handleCreateGroup = async () => {
     requestData.video_price_480p = emptyToNull(requestData.video_price_480p);
     requestData.video_price_720p = emptyToNull(requestData.video_price_720p);
     requestData.video_price_1080p = emptyToNull(requestData.video_price_1080p);
+    requestData.search_price_per_1k = emptyToNull(
+      requestData.search_price_per_1k,
+    );
+    requestData.audio_realtime_price_per_min = emptyToNull(
+      requestData.audio_realtime_price_per_min,
+    );
+    requestData.audio_tts_price_per_million_chars = emptyToNull(
+      requestData.audio_tts_price_per_million_chars,
+    );
+    requestData.audio_stt_price_per_hour = emptyToNull(
+      requestData.audio_stt_price_per_hour,
+    );
     requestData.web_search_price_per_call = emptyToNull(
       requestData.web_search_price_per_call,
     );
@@ -5589,11 +5981,25 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.video_price_480p = group.video_price_480p;
   editForm.video_price_720p = group.video_price_720p;
   editForm.video_price_1080p = group.video_price_1080p;
+  editForm.video_model_prices = createVideoModelPricesForm(
+    group.video_model_prices,
+  );
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
+  editForm.search_price_per_1k = group.search_price_per_1k ?? null;
+  editForm.audio_realtime_price_per_min = group.audio_realtime_price_per_min ?? null;
+  editForm.audio_tts_price_per_million_chars = group.audio_tts_price_per_million_chars ?? null;
+  editForm.audio_stt_price_per_hour = group.audio_stt_price_per_hour ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
   editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
+  editForm.profit_control_enabled = group.profit_control_enabled ?? false;
+  editForm.profit_min_margin_percent = decimalToPercent(
+    group.profit_min_margin ?? 0,
+  );
+  editForm.profit_safety_buffer_percent = decimalToPercent(
+    group.profit_safety_buffer ?? 0,
+  );
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -5654,12 +6060,20 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.profit_control_enabled = false;
+  editForm.profit_min_margin_percent = 0;
+  editForm.profit_safety_buffer_percent = 0;
   editForm.video_rate_independent = false;
   editForm.video_rate_multiplier = 1;
   editForm.video_price_480p = null;
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
+  editForm.video_model_prices = createVideoModelPricesForm();
   editForm.web_search_price_per_call = null;
+  editForm.search_price_per_1k = null;
+  editForm.audio_realtime_price_per_min = null;
+  editForm.audio_tts_price_per_million_chars = null;
+  editForm.audio_stt_price_per_hour = null;
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
   resetModelsListState(editModelsListState);
@@ -5672,10 +6086,13 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (
-    editForm.platform === "openai" &&
+    supportsReasoningEffortPolicyPlatform(editForm.platform) &&
     editReasoningEffortPolicyRef.value &&
     !editReasoningEffortPolicyRef.value.validate()
   ) {
+    return;
+  }
+  if (!validateProfitControlForm(editForm)) {
     return;
   }
 
@@ -5692,6 +6109,9 @@ const handleUpdateGroup = async () => {
       ),
       monthly_limit_usd: normalizeOptionalLimit(
         editForm.monthly_limit_usd as number | string | null,
+      ),
+      video_model_prices: serializeVideoModelPrices(
+        editForm.video_model_prices,
       ),
       fallback_group_id:
         editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
@@ -5720,7 +6140,17 @@ const handleUpdateGroup = async () => {
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         editForm.reasoning_effort_mappings,
       ),
+      // 利润控制：界面百分比转小数提交；仅五个 token 平台可启用
+      profit_control_enabled:
+        isProfitControlPlatform(editForm.platform) &&
+        editForm.profit_control_enabled,
+      profit_min_margin: percentToDecimal(editForm.profit_min_margin_percent),
+      profit_safety_buffer: percentToDecimal(
+        editForm.profit_safety_buffer_percent,
+      ),
     };
+    delete (payload as Record<string, unknown>).profit_min_margin_percent;
+    delete (payload as Record<string, unknown>).profit_safety_buffer_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
@@ -5749,6 +6179,18 @@ const handleUpdateGroup = async () => {
     payload.video_price_480p = emptyPriceToClear(payload.video_price_480p);
     payload.video_price_720p = emptyPriceToClear(payload.video_price_720p);
     payload.video_price_1080p = emptyPriceToClear(payload.video_price_1080p);
+    payload.search_price_per_1k = emptyPriceToClear(
+      payload.search_price_per_1k,
+    );
+    payload.audio_realtime_price_per_min = emptyPriceToClear(
+      payload.audio_realtime_price_per_min,
+    );
+    payload.audio_tts_price_per_million_chars = emptyPriceToClear(
+      payload.audio_tts_price_per_million_chars,
+    );
+    payload.audio_stt_price_per_hour = emptyPriceToClear(
+      payload.audio_stt_price_per_hour,
+    );
     payload.web_search_price_per_call = emptyPriceToClear(
       payload.web_search_price_per_call,
     );
@@ -6068,6 +6510,11 @@ watch(
       resetMessagesDispatchFormState(createForm);
       createForm.allow_live = false;
     }
+    if (!isProfitControlPlatform(newVal)) {
+      createForm.profit_control_enabled = false;
+      createForm.profit_min_margin_percent = 0;
+      createForm.profit_safety_buffer_percent = 0;
+    }
     createForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,
       createForm.max_reasoning_effort,
@@ -6110,6 +6557,11 @@ watch(
     if (newVal !== "openai") {
       resetMessagesDispatchFormState(editForm);
       editForm.allow_live = false;
+    }
+    if (!isProfitControlPlatform(newVal)) {
+      editForm.profit_control_enabled = false;
+      editForm.profit_min_margin_percent = 0;
+      editForm.profit_safety_buffer_percent = 0;
     }
     editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,
