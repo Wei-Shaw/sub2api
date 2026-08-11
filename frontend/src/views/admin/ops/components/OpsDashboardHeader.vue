@@ -10,6 +10,7 @@ import { opsAPI, type OpsDashboardOverview, type OpsMetricThresholds, type OpsRe
 import type { OpsRequestDetailsPreset REDACTED from './OpsRequestDetailsModal.vue'
 import { useAdminSettingsStore REDACTED from '@/stores'
 import { formatNumber REDACTED from '@/utils/format'
+import { formatMemorySizeMB REDACTED from '../utils/opsFormatters'
 
 type RealtimeWindow = '1min' | '5min' | '30min' | '1h'
 
@@ -1462,7 +1463,7 @@ REDACTED
             {{
               systemMetrics?.memory_used_mb == null || systemMetrics?.memory_total_mb == null
                 ? '-'
-                : `${formatNumber(systemMetrics.memory_used_mb)REDACTED / ${formatNumber(systemMetrics.memory_total_mb)REDACTED MB`
+                : `${formatMemorySizeMB(systemMetrics.memory_used_mb)REDACTED / ${formatMemorySizeMB(systemMetrics.memory_total_mb)REDACTED`
             REDACTEDREDACTED
           </div>
         </div>
