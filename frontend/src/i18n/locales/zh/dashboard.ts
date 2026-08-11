@@ -573,6 +573,7 @@ export default {
       cacheRead: '读取',
       paidPrice: '实付价格(折后)',
       officialPrice: '官方价格',
+      referencePrice: '参考价格',
       rate: '折扣倍率',
       unitPerMillion: '$ / 1M token',
       perUnitRequest: '/ 次',

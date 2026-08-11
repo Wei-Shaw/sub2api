@@ -82,6 +82,14 @@
                 {{ billingModeLabel(m) }}
               </span>
             </div>
+            <div
+              v-if="m.official_pricing?.reference_model"
+              class="mt-1 text-[11px] leading-4 text-gray-400 dark:text-dark-500"
+            >
+              {{ t('modelPlaza.table.referencePrice') }}:
+              <span class="font-mono">{{ m.official_pricing.reference_model }}</span>
+              <span v-if="m.official_pricing.reference_note" class="block">{{ m.official_pricing.reference_note }}</span>
+            </div>
           </td>
 
           <!-- token 计费:输入 / 输出(阶梯内联)/ 缓存(写/读) -->
@@ -161,10 +169,26 @@
           <td
             class="border-l border-gray-100 px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:border-dark-700/60 dark:text-dark-400"
           >
-            {{ official(m.official_pricing?.input_price) }}
+            <div>{{ official(m.official_pricing?.input_price) }}</div>
+            <div
+              v-for="tier in officialPricingTiers(m)"
+              :key="`input-${tier.min_input_tokens}`"
+              class="mt-0.5 whitespace-nowrap"
+            >
+              <span class="mr-1 font-sans text-gray-400 dark:text-dark-500">{{ officialTierLabel(tier.min_input_tokens) }}</span>
+              {{ official(tier.input_price) }}
+            </div>
           </td>
           <td class="px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:text-dark-400">
-            {{ official(m.official_pricing?.output_price) }}
+            <div>{{ official(m.official_pricing?.output_price) }}</div>
+            <div
+              v-for="tier in officialPricingTiers(m)"
+              :key="`output-${tier.min_input_tokens}`"
+              class="mt-0.5 whitespace-nowrap"
+            >
+              <span class="mr-1 font-sans text-gray-400 dark:text-dark-500">{{ officialTierLabel(tier.min_input_tokens) }}</span>
+              {{ official(tier.output_price) }}
+            </div>
           </td>
           <td class="px-3 py-2.5 align-middle">
             <div
@@ -182,6 +206,19 @@
               <div>
                 <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
                 {{ official(m.official_pricing.cache_read_price) }}
+              </div>
+              <div
+                v-for="tier in officialCacheTiers(m)"
+                :key="`cache-${tier.min_input_tokens}`"
+                class="pt-0.5"
+              >
+                <span class="mr-1 font-sans text-gray-400 dark:text-dark-500">{{ officialTierLabel(tier.min_input_tokens) }}</span>
+                <template v-if="tier.cache_write_price != null">
+                  <span class="font-sans">{{ t('modelPlaza.table.cacheWrite') }}</span> {{ official(tier.cache_write_price) }}
+                </template>
+                <template v-if="tier.cache_read_price != null">
+                  <span class="font-sans">{{ t('modelPlaza.table.cacheRead') }}</span> {{ official(tier.cache_read_price) }}
+                </template>
               </div>
             </div>
             <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -218,7 +255,7 @@ import {
   BILLING_MODE_IMAGE,
   type BillingMode
 } from '@/constants/channel'
-import type { PlazaModel } from '@/api/modelPlaza'
+import type { PlazaModel, PlazaOfficialPricingTier } from '@/api/modelPlaza'
 import type { UserPricingInterval } from '@/api/channels'
 
 const props = defineProps<{
@@ -314,12 +351,32 @@ function perUnitSuffix(m: PlazaModel): string {
     : t('modelPlaza.table.perUnitRequest')
 }
 
+
+function officialPricingTiers(m: PlazaModel): PlazaOfficialPricingTier[] {
+  return m.official_pricing?.tiers ?? []
+}
+
+function officialCacheTiers(m: PlazaModel): PlazaOfficialPricingTier[] {
+  return officialPricingTiers(m).filter(
+    (tier) => tier.cache_write_price != null || tier.cache_read_price != null
+  )
+}
+
+function officialTierLabel(minInputTokens: number): string {
+  return `>${formatTokenCount(minInputTokens)}`
+}
+
 function hasCachePricing(m: PlazaModel): boolean {
   return m.pricing?.cache_write_price != null || m.pricing?.cache_read_price != null
 }
 
 function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boolean {
-  return o.cache_write_price != null || o.cache_read_price != null || o.cache_write_1h_price != null
+  return (
+    o.cache_write_price != null ||
+    o.cache_read_price != null ||
+    o.cache_write_1h_price != null ||
+    (o.tiers ?? []).some((tier) => tier.cache_write_price != null || tier.cache_read_price != null)
+  )
 }
 
 /** token 模式的阶梯定价(内联进输入/输出列)。 */

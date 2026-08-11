@@ -719,3 +719,32 @@ func TestListModelNamesByProvider_EmptyCatalog(t *testing.T) {
 	require.NotNil(t, got)
 	require.Empty(t, got)
 }
+
+func TestPricingService_ParseOfficialDisplayMetadata(t *testing.T) {
+	svc := &PricingService{}
+	data, err := svc.parsePricingData([]byte(`{
+		"qwen3.7-plus": {
+			"input_cost_per_token": 0.0000004,
+			"output_cost_per_token": 0.0000016,
+			"input_cost_per_token_above_256k_tokens": 0.0000012,
+			"output_cost_per_token_above_256k_tokens": 0.0000048,
+			"cache_read_input_token_cost_above_256k_tokens": 0.00000012,
+			"cache_creation_input_token_cost_above_256k_tokens": 0.0000015,
+			"pricing_reference_model": "canonical-model",
+			"pricing_reference_note": "Published reference price"
+		}
+	}`))
+	require.NoError(t, err)
+
+	pricing := data["qwen3.7-plus"]
+	require.NotNil(t, pricing)
+	require.Equal(t, "canonical-model", pricing.PricingReferenceModel)
+	require.Equal(t, "Published reference price", pricing.PricingReferenceNote)
+	require.Equal(t, []LiteLLMOfficialPricingTier{{
+		MinInputTokens:              256000,
+		InputCostPerToken:           0.0000012,
+		OutputCostPerToken:          0.0000048,
+		CacheReadInputTokenCost:     0.00000012,
+		CacheCreationInputTokenCost: 0.0000015,
+	}}, pricing.OfficialPricingTiers)
+}

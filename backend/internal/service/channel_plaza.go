@@ -9,12 +9,23 @@ import (
 
 // PlazaOfficialPricing 模型广场展示用的 LiteLLM 官方参考价（USD per token）。
 // 字段为 nil 表示官方数据中该项缺失（0 视为未配置）。
+type PlazaOfficialPricingTier struct {
+	MinInputTokens  int
+	InputPrice      *float64
+	OutputPrice     *float64
+	CacheWritePrice *float64
+	CacheReadPrice  *float64
+}
+
 type PlazaOfficialPricing struct {
 	InputPrice        *float64
 	OutputPrice       *float64
 	CacheWritePrice   *float64 // 5m 缓存写入（= LiteLLM cache_creation）
 	CacheWrite1hPrice *float64 // 1h 缓存写入（LiteLLM cache_creation_above_1hr）
 	CacheReadPrice    *float64
+	Tiers             []PlazaOfficialPricingTier
+	ReferenceModel    string
+	ReferenceNote     string
 }
 
 // PlazaModel 模型广场中单个模型条目：渠道定价 + 官方参考价。
@@ -245,9 +256,24 @@ func (s *ChannelService) lookupOfficialPricing(modelName string, memo map[string
 			CacheWritePrice:   nonZeroPtr(lp.CacheCreationInputTokenCost),
 			CacheWrite1hPrice: nonZeroPtr(lp.CacheCreationInputTokenCostAbove1hr),
 			CacheReadPrice:    nonZeroPtr(lp.CacheReadInputTokenCost),
+			ReferenceModel:    lp.PricingReferenceModel,
+			ReferenceNote:     lp.PricingReferenceNote,
+		}
+		if len(lp.OfficialPricingTiers) > 0 {
+			result.Tiers = make([]PlazaOfficialPricingTier, 0, len(lp.OfficialPricingTiers))
+			for _, tier := range lp.OfficialPricingTiers {
+				result.Tiers = append(result.Tiers, PlazaOfficialPricingTier{
+					MinInputTokens:  tier.MinInputTokens,
+					InputPrice:      nonZeroPtr(tier.InputCostPerToken),
+					OutputPrice:     nonZeroPtr(tier.OutputCostPerToken),
+					CacheWritePrice: nonZeroPtr(tier.CacheCreationInputTokenCost),
+					CacheReadPrice:  nonZeroPtr(tier.CacheReadInputTokenCost),
+				})
+			}
 		}
 		if result.InputPrice == nil && result.OutputPrice == nil &&
-			result.CacheWritePrice == nil && result.CacheWrite1hPrice == nil && result.CacheReadPrice == nil {
+			result.CacheWritePrice == nil && result.CacheWrite1hPrice == nil && result.CacheReadPrice == nil &&
+			len(result.Tiers) == 0 && result.ReferenceModel == "" && result.ReferenceNote == "" {
 			result = nil
 		}
 	}

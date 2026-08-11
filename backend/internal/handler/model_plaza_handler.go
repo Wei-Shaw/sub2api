@@ -35,13 +35,24 @@ func NewModelPlazaHandler(
 	}
 }
 
+type modelPlazaOfficialPricingTier struct {
+	MinInputTokens  int      `json:"min_input_tokens"`
+	InputPrice      *float64 `json:"input_price"`
+	OutputPrice     *float64 `json:"output_price"`
+	CacheWritePrice *float64 `json:"cache_write_price"`
+	CacheReadPrice  *float64 `json:"cache_read_price"`
+}
+
 // modelPlazaOfficialPricing LiteLLM 官方参考价（USD per token）。
 type modelPlazaOfficialPricing struct {
-	InputPrice        *float64 `json:"input_price"`
-	OutputPrice       *float64 `json:"output_price"`
-	CacheWritePrice   *float64 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64 `json:"cache_write_1h_price,omitempty"`
-	CacheReadPrice    *float64 `json:"cache_read_price"`
+	InputPrice        *float64                        `json:"input_price"`
+	OutputPrice       *float64                        `json:"output_price"`
+	CacheWritePrice   *float64                        `json:"cache_write_price"`
+	CacheWrite1hPrice *float64                        `json:"cache_write_1h_price,omitempty"`
+	CacheReadPrice    *float64                        `json:"cache_read_price"`
+	Tiers             []modelPlazaOfficialPricingTier `json:"tiers,omitempty"`
+	ReferenceModel    string                          `json:"reference_model,omitempty"`
+	ReferenceNote     string                          `json:"reference_note,omitempty"`
 }
 
 // modelPlazaModel 广场模型条目：渠道定价（白名单形态）+ 官方参考价。
@@ -194,11 +205,26 @@ func toModelPlazaOfficialPricing(p *service.PlazaOfficialPricing) *modelPlazaOff
 	if p == nil {
 		return nil
 	}
-	return &modelPlazaOfficialPricing{
+	dto := &modelPlazaOfficialPricing{
 		InputPrice:        p.InputPrice,
 		OutputPrice:       p.OutputPrice,
 		CacheWritePrice:   p.CacheWritePrice,
 		CacheWrite1hPrice: p.CacheWrite1hPrice,
 		CacheReadPrice:    p.CacheReadPrice,
+		ReferenceModel:    p.ReferenceModel,
+		ReferenceNote:     p.ReferenceNote,
 	}
+	if len(p.Tiers) > 0 {
+		dto.Tiers = make([]modelPlazaOfficialPricingTier, 0, len(p.Tiers))
+		for _, tier := range p.Tiers {
+			dto.Tiers = append(dto.Tiers, modelPlazaOfficialPricingTier{
+				MinInputTokens:  tier.MinInputTokens,
+				InputPrice:      tier.InputPrice,
+				OutputPrice:     tier.OutputPrice,
+				CacheWritePrice: tier.CacheWritePrice,
+				CacheReadPrice:  tier.CacheReadPrice,
+			})
+		}
+	}
+	return dto
 }

@@ -125,3 +125,23 @@ func TestToModelPlazaOfficialPricing_NilPassthrough(t *testing.T) {
 }
 
 func testPtr(v float64) *float64 { return &v }
+func TestToModelPlazaOfficialPricing_IncludesTiersAndReferenceMetadata(t *testing.T) {
+	input := 2e-6
+	output := 6e-6
+	dto := toModelPlazaOfficialPricing(&service.PlazaOfficialPricing{
+		Tiers: []service.PlazaOfficialPricingTier{{
+			MinInputTokens: 256000,
+			InputPrice:     &input,
+			OutputPrice:    &output,
+		}},
+		ReferenceModel: "canonical-model",
+		ReferenceNote:  "Published reference price",
+	})
+
+	require.NotNil(t, dto)
+	require.Equal(t, "canonical-model", dto.ReferenceModel)
+	require.Equal(t, "Published reference price", dto.ReferenceNote)
+	require.Len(t, dto.Tiers, 1)
+	require.Equal(t, 256000, dto.Tiers[0].MinInputTokens)
+	require.Equal(t, &input, dto.Tiers[0].InputPrice)
+}

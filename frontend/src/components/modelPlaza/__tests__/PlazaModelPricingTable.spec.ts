@@ -405,3 +405,37 @@ describe('PlazaModelPricingTable', () => {
     expect(wrapper.text()).toContain('OpenAI')
   })
 })
+
+describe('official pricing metadata', () => {
+  it('renders long-context tiers and explicit reference metadata', () => {
+    const model = tokenModel({
+      name: 'kimi-for-coding-highspeed',
+      official_pricing: {
+        input_price: 0.95e-6,
+        output_price: 4e-6,
+        cache_write_price: null,
+        cache_read_price: 0.19e-6,
+        reference_model: 'kimi-k2.7-code',
+        reference_note: 'No separate public HighSpeed per-token price is published.',
+        tiers: [
+          {
+            min_input_tokens: 256000,
+            input_price: 2e-6,
+            output_price: 6e-6,
+            cache_write_price: 2.5e-6,
+            cache_read_price: 0.2e-6
+          }
+        ]
+      }
+    })
+
+    const text = mountTable([model], 1).text()
+    expect(text).toContain('kimi-k2.7-code')
+    expect(text).toContain('No separate public HighSpeed per-token price is published.')
+    expect(text).toContain('>256K')
+    expect(text).toContain('$2.00')
+    expect(text).toContain('$6.00')
+    expect(text).toContain('$2.50')
+    expect(text).toContain('$0.20')
+  })
+})
