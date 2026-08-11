@@ -238,6 +238,24 @@
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) REDACTEDREDACTED</span>
         </template>
 
+        <template #cell-request_id="{ row REDACTED">
+          <div v-if="row.request_id" class="flex max-w-[160px] items-center gap-1.5">
+            <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" :title="row.request_id">
+              {{ row.request_id REDACTEDREDACTED
+            </span>
+            <button
+              type="button"
+              class="shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+              :class="copiedRequestId === row.request_id ? 'text-green-500 hover:text-green-500' : ''"
+              :title="copiedRequestId === row.request_id ? t('keys.copied') : t('keys.copyToClipboard')"
+              @click="copyRequestId(row.request_id)"
+            >
+              <Icon :name="copiedRequestId === row.request_id ? 'check' : 'copy'" size="sm" class="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-user_agent="{ row REDACTED">
           <span v-if="row.user_agent" class="text-sm text-gray-600 dark:text-gray-400 block max-w-[320px] truncate" :title="row.user_agent">{{ formatUserAgent(row.user_agent) REDACTEDREDACTED</span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -481,6 +499,7 @@
 <script setup lang="ts">
 import { computed, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import { useAppStore REDACTED from '@/stores/app'
 import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
 import { formatCacheTokens, formatMultiplier REDACTED from '@/utils/formatters'
 import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
@@ -560,6 +579,8 @@ const emit = defineEmits<{
   ipGeoBatchFailed: []
 REDACTED>()
 const { t REDACTED = useI18n()
+const appStore = useAppStore()
+const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
@@ -606,6 +627,19 @@ const handleBatchFetchIpGeo = async () => {
     if (!ok) emit('ipGeoBatchFailed')
   REDACTED finally {
     ipGeoBatchLoading.value = false
+  REDACTED
+REDACTED
+
+const copyRequestId = async (requestId: string) => {
+  try {
+    await navigator.clipboard.writeText(requestId)
+    copiedRequestId.value = requestId
+    appStore.showSuccess(t('admin.usage.requestIdCopied'))
+    window.setTimeout(() => {
+      if (copiedRequestId.value === requestId) copiedRequestId.value = null
+    REDACTED, 2000)
+  REDACTED catch {
+    appStore.showError(t('common.copyFailed'))
   REDACTED
 REDACTED
 

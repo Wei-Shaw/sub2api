@@ -4,7 +4,13 @@ const ipGeoMocks = vi.hoisted(() => ({
   fetchBatch: vi.fn(),
 REDACTED))
 
+const appStoreMocks = vi.hoisted(() => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+REDACTED))
+
 vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks REDACTED))
 
 import { describe, expect, it, vi, beforeEach REDACTED from 'vitest'
 import { mount REDACTED from '@vue/test-utils'
@@ -51,6 +57,10 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.requestIdCopied': 'Request ID copied',
+	'keys.copied': 'Copied',
+	'keys.copyToClipboard': 'Copy to clipboard',
+	'common.copyFailed': 'Copy failed',
 	'usage.requestedModel': 'Requested',
 	'usage.sentUpstreamModel': 'Sent upstream',
 	'usage.upstreamResponseModel': 'Upstream response',
@@ -77,6 +87,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-request_id" :row="row" />
       </div>
     </div>
   `,
@@ -407,6 +418,40 @@ REDACTED)
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  REDACTED)
+REDACTED)
+
+describe('admin UsageTable request ID column', () => {
+  beforeEach(() => {
+    appStoreMocks.showSuccess.mockReset()
+    appStoreMocks.showError.mockReset()
+  REDACTED)
+
+  it('renders and copies the request ID', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { clipboard: { writeText REDACTED REDACTED)
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, request_id: 'req-admin-visible-id' REDACTED],
+        loading: false,
+        columns: [{ key: 'request_id', label: 'Request ID' REDACTED],
+      REDACTED,
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text()).toContain('req-admin-visible-id')
+    await wrapper.get('button[title="Copy to clipboard"]').trigger('click')
+
+    expect(writeText).toHaveBeenCalledWith('req-admin-visible-id')
+    expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Request ID copied')
   REDACTED)
 REDACTED)
 
