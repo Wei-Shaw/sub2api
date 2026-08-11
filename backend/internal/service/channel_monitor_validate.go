@@ -52,15 +52,15 @@ func validateJitter(jitterSec, intervalSec int) error {
 	return nil
 }
 
-// validateEndpoint 校验 endpoint：
+// validateMonitorEndpoint 校验 endpoint：
 //   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
-//   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
-//     导致 joinURL 拼出 /v1/v1/chat/completions
+//   - 默认必须为 origin；Anthropic/Gemini 额外允许固定的 /antigravity 路由前缀
+//   - 禁止其它 path/query/fragment，防止 joinURL 拼出重复或非预期路径
 //   - hostname 不能是 localhost/metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
 // 错误信息不暴露具体 IP / hostname，避免泄露内网拓扑。
-func validateEndpoint(ep string) error {
+func validateMonitorEndpoint(provider, ep string) error {
 	ep = strings.TrimSpace(ep)
 	if ep == "" {
 		return ErrChannelMonitorInvalidEndpoint
@@ -75,7 +75,7 @@ func validateEndpoint(ep string) error {
 	if u.Host == "" {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Path != "" && u.Path != "/" {
+	if !isAllowedMonitorEndpointPath(provider, u.Path) {
 		return ErrChannelMonitorEndpointPath
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
@@ -95,8 +95,19 @@ func validateEndpoint(ep string) error {
 	return nil
 }
 
-// normalizeEndpoint 去除前后空白与末尾 `/`，保证存储统一为 origin。
-// validateEndpoint 已确保格式合法（仅 origin），这里只做最终归一化。
+func isAllowedMonitorEndpointPath(provider, path string) bool {
+	if path == "" || path == "/" {
+		return true
+	}
+	// The explicit /antigravity route forces the Antigravity platform and does not
+	// depend on an account's mixed_scheduling flag. That flag only affects whether
+	// Antigravity accounts join unprefixed Anthropic/Gemini group scheduling.
+	supportsAntigravityRoute := provider == MonitorProviderAnthropic || provider == MonitorProviderGemini
+	return supportsAntigravityRoute && (path == "/antigravity" || path == "/antigravity/")
+}
+
+// normalizeEndpoint 去除前后空白与末尾 `/`，保证 origin 与固定路由前缀的存储格式统一。
+// validateMonitorEndpoint 已确保格式合法，这里只做最终归一化。
 func normalizeEndpoint(ep string) string {
 	ep = strings.TrimSpace(ep)
 	ep = strings.TrimRight(ep, "/")

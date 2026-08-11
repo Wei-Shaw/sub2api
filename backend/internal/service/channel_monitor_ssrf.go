@@ -7,7 +7,7 @@ import (
 )
 
 // SSRF 防护 helper：
-//   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
+//   - validateMonitorEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
 //   - safeDialContext 在 socket 层再次校验真实 IP，防止 DNS rebinding
 //
 // 已知 cloud metadata hostname 拒绝列表（小写比较）。
@@ -110,7 +110,7 @@ func isPrivateOrLoopbackHost(ctx context.Context, hostname string) (bool, error)
 }
 
 // safeDialContext 在真实 dial 前再次校验目标 IP，防止 DNS rebinding。
-// 解析 hostname 后逐个 IP 尝试连接，命中私网即拒绝（即便 validateEndpoint 时返回的是公网 IP）。
+// 解析 hostname 后逐个 IP 尝试连接，命中私网即拒绝（即便 validateMonitorEndpoint 时返回的是公网 IP）。
 func safeDialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {

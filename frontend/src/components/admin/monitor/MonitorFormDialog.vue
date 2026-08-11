@@ -50,31 +50,52 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span></label>
-        <div class="flex gap-2">
-          <input v-model="form.endpoint" data-testid="monitor-endpoint" type="text" required class="input flex-1" :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')" />
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <div class="flex min-w-0 flex-1">
+            <input
+              v-model="form.endpoint"
+              data-testid="monitor-endpoint"
+              type="text"
+              required
+              class="input min-w-0 flex-1"
+              :class="useAntigravityRoute ? 'rounded-r-none border-r-0' : ''"
+              :placeholder="t('admin.channelMonitor.form.endpointPlaceholder')"
+            />
+            <span
+              v-if="useAntigravityRoute"
+              data-testid="monitor-antigravity-route"
+              class="inline-flex shrink-0 items-center rounded-r-lg border border-l-0 border-gray-300 bg-gray-100 px-3 font-mono text-sm text-gray-700 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200"
+            >/antigravity</span>
+          </div>
           <button type="button" @click="useCurrentDomain" class="btn btn-secondary whitespace-nowrap">
             {{ t('admin.channelMonitor.form.useCurrentDomain') }}
           </button>
         </div>
+        <p v-if="useAntigravityRoute" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.channelMonitor.form.antigravityRouteHint') }}
+        </p>
       </div>
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="!editing" class="text-red-500"> *</span>
+          {{ t('admin.channelMonitor.form.apiKey') }}<span v-if="apiKeyRequired" class="text-red-500"> *</span>
         </label>
         <div class="flex gap-2">
           <input
             v-model="form.api_key"
             type="password"
-            :required="!editing"
+            :required="apiKeyRequired"
             class="input flex-1"
-            :placeholder="editing ? t('admin.channelMonitor.form.apiKeyEditPlaceholder') : t('admin.channelMonitor.form.apiKeyPlaceholder')"
+            :placeholder="apiKeyRequired ? t('admin.channelMonitor.form.apiKeyPlaceholder') : t('admin.channelMonitor.form.apiKeyEditPlaceholder')"
           />
           <button type="button" @click="openMyKeyPicker" class="btn btn-secondary whitespace-nowrap">
             {{ t('admin.channelMonitor.form.useMyKey') }}
           </button>
         </div>
         <p v-if="editing && editing.api_key_masked" class="mt-1 text-xs text-gray-400">{{ editing.api_key_masked }}</p>
+        <p v-if="editing && providerChangedSinceLoad" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.channelMonitor.form.apiKeyProviderChangeHint') }}
+        </p>
       </div>
 
       <div>
@@ -189,6 +210,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { composeMonitorEndpoint, splitMonitorEndpoint } from '@/utils/channelMonitorRoute'
 import { adminAPI } from '@/api/admin'
 import { keysAPI } from '@/api/keys'
 import { userGroupsAPI } from '@/api/groups'
@@ -254,6 +276,8 @@ const showKeyPicker = ref(false)
 const myKeysLoading = ref(false)
 const myActiveKeys = ref<ApiKey[]>([])
 const userGroupRates = ref<Record<number, number>>({})
+const useAntigravityRoute = ref(false)
+const providerChangedSinceLoad = ref(false)
 
 interface MonitorForm {
   name: string
@@ -291,6 +315,10 @@ const form = reactive<MonitorForm>({
   body_override_mode: 'off',
   body_override: null,
 })
+
+const apiKeyRequired = computed<boolean>(() =>
+  !editing.value || providerChangedSinceLoad.value,
+)
 
 // jitter 上限与后端校验一致：interval - jitter 不得低于最小检测间隔 15 秒。
 const maxJitterSeconds = computed<number>(() => Math.max(0, (form.interval_seconds || 0) - 15))
@@ -412,6 +440,10 @@ function selectProvider(provider: Provider) {
   const clearGrokModel =
     previousProvider === PROVIDER_GROK && form.primary_model === DEFAULT_GROK_MODEL
   form.provider = provider
+  if (editing.value) providerChangedSinceLoad.value = true
+  // Provider changes clear the selected key, so route provenance must be cleared too.
+  // Picking an Antigravity key for the new protocol will enable it again.
+  useAntigravityRoute.value = false
   if (provider === PROVIDER_GROK) {
     if (!form.endpoint.trim()) form.endpoint = DEFAULT_GROK_ENDPOINT
     if (!form.primary_model.trim()) form.primary_model = DEFAULT_GROK_MODEL
@@ -448,6 +480,8 @@ function resetForm() {
   form.provider = PROVIDER_ANTHROPIC
   form.api_mode = API_MODE_CHAT_COMPLETIONS
   form.endpoint = ''
+  useAntigravityRoute.value = false
+  providerChangedSinceLoad.value = false
   form.api_key = ''
   form.primary_model = ''
   form.extra_models = []
@@ -467,7 +501,12 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.name = m.name
   form.provider = m.provider
   form.api_mode = normalizeAPIMode(m.api_mode)
-  form.endpoint = m.endpoint
+  const endpoint = splitMonitorEndpoint(m.endpoint)
+  form.endpoint = endpoint.origin
+  useAntigravityRoute.value =
+    (m.provider === PROVIDER_GEMINI || m.provider === PROVIDER_ANTHROPIC) &&
+    endpoint.useAntigravityRoute
+  providerChangedSinceLoad.value = false
   form.api_key = ''
   form.primary_model = m.primary_model
   form.extra_models = [...(m.extra_models || [])]
@@ -525,6 +564,14 @@ async function openMyKeyPicker() {
 
 function pickMyKey(k: ApiKey) {
   form.api_key = k.key
+  const selectedAntigravityRoute =
+    (form.provider === PROVIDER_GEMINI || form.provider === PROVIDER_ANTHROPIC) &&
+    k.group?.platform === 'antigravity'
+  if (selectedAntigravityRoute) {
+    const endpoint = splitMonitorEndpoint(form.endpoint)
+    if (endpoint.useAntigravityRoute) form.endpoint = endpoint.origin
+  }
+  useAntigravityRoute.value = selectedAntigravityRoute
   showKeyPicker.value = false
 }
 
@@ -533,7 +580,7 @@ function buildPayload(): CreateParams {
     name: form.name.trim(),
     provider: form.provider,
     api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
-    endpoint: form.endpoint.trim(),
+    endpoint: composeMonitorEndpoint(form.endpoint, useAntigravityRoute.value),
     api_key: form.api_key.trim(),
     primary_model: form.primary_model.trim(),
     extra_models: form.extra_models,
@@ -556,6 +603,10 @@ async function handleSubmit() {
   }
   if (!form.primary_model.trim()) {
     appStore.showError(t('admin.channelMonitor.primaryModelRequired'))
+    return
+  }
+  if (apiKeyRequired.value && !form.api_key.trim()) {
+    appStore.showError(t('admin.channelMonitor.form.apiKeyProviderChangeRequired'))
     return
   }
 

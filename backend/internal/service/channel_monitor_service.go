@@ -356,7 +356,7 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateJitter(p.JitterSeconds, p.IntervalSeconds); err != nil {
 		return err
 	}
-	if err := validateEndpoint(p.Endpoint); err != nil {
+	if err := validateMonitorEndpoint(p.Provider, p.Endpoint); err != nil {
 		return err
 	}
 	if strings.TrimSpace(p.APIKey) == "" {
@@ -682,21 +682,32 @@ func (s *ChannelMonitorService) decryptInPlace(m *ChannelMonitor) {
 // 行数稍超过 30：这是逐字段平铺的 dispatcher，每个 if 都是 1-3 行的"非 nil 则覆盖"模式，
 // 拆分反而会增加跳转噪音、影响可读性，故保留为单函数。
 func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) error {
+	targetProvider := existing.Provider
+	if p.Provider != nil {
+		targetProvider = *p.Provider
+		if err := validateProvider(targetProvider); err != nil {
+			return err
+		}
+	}
+	targetEndpoint := existing.Endpoint
+	if p.Endpoint != nil {
+		targetEndpoint = *p.Endpoint
+	}
+	if p.Endpoint != nil || (p.Provider != nil && strings.TrimSpace(targetEndpoint) != "") {
+		if err := validateMonitorEndpoint(targetProvider, targetEndpoint); err != nil {
+			return err
+		}
+	}
+
 	providerChanged := false
 	if p.Name != nil {
 		existing.Name = strings.TrimSpace(*p.Name)
 	}
 	if p.Provider != nil {
-		if err := validateProvider(*p.Provider); err != nil {
-			return err
-		}
 		providerChanged = existing.Provider != *p.Provider
 		existing.Provider = *p.Provider
 	}
 	if p.Endpoint != nil {
-		if err := validateEndpoint(*p.Endpoint); err != nil {
-			return err
-		}
 		existing.Endpoint = normalizeEndpoint(*p.Endpoint)
 	}
 	if p.PrimaryModel != nil {
