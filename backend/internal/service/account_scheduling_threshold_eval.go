@@ -53,7 +53,7 @@ REDACTED
 	var winner *accountSchedulingThresholdCandidate
 	switch decision.Platform {
 	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account), threshold, now)
+		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
 	case PlatformAnthropic:
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
@@ -149,7 +149,7 @@ REDACTED
 	return value, ok
 REDACTED
 
-func openAIThresholdCandidates(account *Account) []*accountSchedulingThresholdCandidate {
+func openAIThresholdCandidates(account *Account, now time.Time) []*accountSchedulingThresholdCandidate {
 	if account == nil {
 		return nil
 REDACTED
@@ -157,8 +157,8 @@ REDACTED
 		return nil
 REDACTED
 	return []*accountSchedulingThresholdCandidate{
-		openAIThresholdCandidate(account.Extra, "5h"),
-		openAIThresholdCandidate(account.Extra, "7d"),
+		openAIThresholdCandidate(account.Extra, "5h", now),
+		openAIThresholdCandidate(account.Extra, "7d", now),
 REDACTED
 REDACTED
 
@@ -219,7 +219,7 @@ REDACTED
 	return ""
 REDACTED
 
-func openAIThresholdCandidate(extra map[string]any, window string) *accountSchedulingThresholdCandidate {
+func openAIThresholdCandidate(extra map[string]any, window string, now time.Time) *accountSchedulingThresholdCandidate {
 	if len(extra) == 0 {
 		return nil
 REDACTED
@@ -241,6 +241,9 @@ REDACTED
 
 	usedPercent, ok := extra[usedPercentKey]
 	if !ok {
+		return nil
+REDACTED
+	if openAIQuotaWindowReset(extra, window, now) || openAICodexSnapshotStaleForPause(extra, now) {
 		return nil
 REDACTED
 	return &accountSchedulingThresholdCandidate{
