@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
 )
 
 // response.incomplete（生成超时/截断）应被识别为可重试的 502 上游错误，触发 failover。
@@ -17,7 +16,9 @@ func TestExtractImagesUpstreamError_IncompleteIsRetryable(t *testing.T) {
 	body := "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n" +
 		"data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_1\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"REDACTEDREDACTEDREDACTED\n\n"
 	got := extractOpenAIImagesUpstreamError([]byte(body))
-	require.NotNil(t, got)
+	if got == nil {
+		t.Fatal("incomplete event should produce an upstream error, got nil")
+REDACTED
 	if got.StatusCode != http.StatusBadGateway {
 		t.Fatalf("incomplete(max_output_tokens) should be 502 retryable, got %d", got.StatusCode)
 REDACTED
@@ -36,7 +37,9 @@ REDACTED
 func TestExtractImagesUpstreamError_IncompleteContentFilterNotRetryable(t *testing.T) {
 	body := "data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"r\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"REDACTEDREDACTEDREDACTED\n\n"
 	got := extractOpenAIImagesUpstreamError([]byte(body))
-	require.NotNil(t, got)
+	if got == nil {
+		t.Fatal("content_filter incomplete should produce error")
+REDACTED
 	if got.StatusCode != http.StatusBadRequest {
 		t.Fatalf("content_filter should be 400 (non-retryable), got %d", got.StatusCode)
 REDACTED

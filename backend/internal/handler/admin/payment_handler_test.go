@@ -8,7 +8,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
@@ -33,7 +32,9 @@ func TestSanitizeAdminPaymentOrderForResponseAddsCurrency(t *testing.T) {
 REDACTED
 
 	got := sanitizeAdminPaymentOrderForResponse(order)
-	require.NotNil(t, got)
+	if got == nil {
+		t.Fatal("expected sanitized order")
+REDACTED
 	if got.Currency != "USD" {
 		t.Fatalf("expected currency USD, got %q", got.Currency)
 REDACTED
