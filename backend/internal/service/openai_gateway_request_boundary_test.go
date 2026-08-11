@@ -29,39 +29,36 @@ func TestNormalizeOpenAIResponsesRequestBoundaryParallelToolCalls(t *testing.T) 
 	}
 }
 
-func TestNormalizeOpenAIResponsesRequestBoundaryStatelessReplay(t *testing.T) {
+func TestNormalizeOpenAIResponsesRequestBoundaryPreservesUnrelatedBytes(t *testing.T) {
+	body := []byte(`{ "model" : "gpt-5", "parallel_tool_calls" : true, "input" : [{"type":"reasoning","id":"rs_1"}] }`)
+	want := []byte(`{ "model" : "gpt-5", "input" : [{"type":"reasoning","id":"rs_1"}] }`)
+
+	normalized, changed, err := normalizeOpenAIResponsesRequestBoundary(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, want, normalized)
+}
+
+func TestNormalizeOpenAIResponsesRequestBoundaryDoesNotSanitizeStatelessReplayForAnyAccount(t *testing.T) {
 	body := []byte(`{
 		"store":false,
 		"tools":[{"type":"function","name":"lookup"}],
 		"parallel_tool_calls":true,
 		"input":[
-			{"type":"reasoning","id":"rs_keep","encrypted_content":"cipher","summary":null,"opaque":{"kept":true}},
-			{"type":"reasoning","id":"rs_drop_missing","summary":[]},
-			{"type":"reasoning","id":"rs_drop_empty","encrypted_content":""},
-			{"type":"item_reference","id":"rs_reference"},
-			{"type":"message","id":"msg_1","role":"user","content":"hello"},
-			{"type":"function_call","id":"rs_function","call_id":"call_1","name":"lookup","arguments":"{}"},
-			{"type":"function_call_output","id":"out_1","call_id":"call_1","output":"ok"},
-			{"type":"reasoning","id":"reasoning_ordinary","summary":null},
-			{"type":"item_reference","id":"call_1"}
+			{"type":"reasoning","id":"rs_encrypted","encrypted_content":"cipher","summary":null},
+			{"type":"reasoning","id":"rs_plain","summary":[]},
+			{"type":"item_reference","id":"rs_reference"}
 		]
 	}`)
 
-	normalized, changed, err := normalizeOpenAIResponsesRequestBoundary(body)
-	require.NoError(t, err)
-	require.True(t, changed)
-	require.True(t, gjson.GetBytes(normalized, "parallel_tool_calls").Bool())
-	require.Len(t, gjson.GetBytes(normalized, "input").Array(), 6)
-	require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
-	require.Equal(t, "cipher", gjson.GetBytes(normalized, "input.0.encrypted_content").String())
-	require.True(t, gjson.GetBytes(normalized, "input.0.summary").IsArray())
-	require.True(t, gjson.GetBytes(normalized, "input.0.opaque.kept").Bool())
-	require.Equal(t, "msg_1", gjson.GetBytes(normalized, "input.1.id").String())
-	require.Equal(t, "rs_function", gjson.GetBytes(normalized, "input.2.id").String())
-	require.Equal(t, "function_call_output", gjson.GetBytes(normalized, "input.3.type").String())
-	require.Equal(t, "reasoning_ordinary", gjson.GetBytes(normalized, "input.4.id").String())
-	require.True(t, gjson.GetBytes(normalized, "input.4.summary").Exists())
-	require.Equal(t, "call_1", gjson.GetBytes(normalized, "input.5.id").String())
+	for _, accountKind := range []string{"OpenAI OAuth", "OpenAI API key", "Grok", "non-target account"} {
+		t.Run(accountKind, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesRequestBoundary(body)
+			require.NoError(t, err)
+			require.False(t, changed)
+			require.Equal(t, body, normalized)
+		})
+	}
 }
 
 func TestNormalizeOpenAIResponsesRequestBoundaryDoesNotSanitizeStoredRequests(t *testing.T) {

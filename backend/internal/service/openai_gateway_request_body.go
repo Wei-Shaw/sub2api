@@ -296,91 +296,15 @@ func normalizeOpenAIResponsesRequestBoundary(body []byte) ([]byte, bool, error) 
 	tools := gjson.GetBytes(body, "tools")
 	parallelToolCalls := gjson.GetBytes(body, "parallel_tool_calls")
 	removeParallelToolCalls := parallelToolCalls.Exists() && (!tools.Exists() || !tools.IsArray() || len(tools.Array()) == 0)
-	store := gjson.GetBytes(body, "store")
-	sanitizeStatelessInput := store.Exists() && store.Type == gjson.False
-	if !removeParallelToolCalls && !sanitizeStatelessInput {
+	if !removeParallelToolCalls {
 		return body, false, nil
 	}
 
-	var decoded map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
-		return body, false, fmt.Errorf("decode responses request boundary body: %w", err)
-	}
-
-	changed := false
-	if removeParallelToolCalls {
-		if _, ok := decoded["parallel_tool_calls"]; ok {
-			delete(decoded, "parallel_tool_calls")
-			changed = true
-		}
-	}
-	if sanitizeStatelessInput && sanitizeOpenAIStatelessReplayInput(decoded) {
-		changed = true
-	}
-	if !changed {
-		return body, false, nil
-	}
-
-	normalized, err := marshalOpenAIUpstreamJSON(decoded)
+	normalized, err := sjson.DeleteBytes(body, "parallel_tool_calls")
 	if err != nil {
-		return body, false, fmt.Errorf("serialize responses request boundary body: %w", err)
+		return body, false, fmt.Errorf("remove parallel_tool_calls from responses request body: %w", err)
 	}
 	return normalized, true, nil
-}
-
-func sanitizeOpenAIStatelessReplayInput(reqBody map[string]any) bool {
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return false
-	}
-
-	filtered := make([]any, 0, len(input))
-	changed := false
-	for _, item := range input {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			filtered = append(filtered, item)
-			continue
-		}
-		itemType, _ := itemMap["type"].(string)
-		id, _ := itemMap["id"].(string)
-		if !strings.HasPrefix(id, "rs_") {
-			filtered = append(filtered, item)
-			continue
-		}
-
-		switch itemType {
-		case "item_reference":
-			changed = true
-			continue
-		case "reasoning":
-			encryptedContent, ok := itemMap["encrypted_content"].(string)
-			if !ok || encryptedContent == "" {
-				changed = true
-				continue
-			}
-			next := make(map[string]any, len(itemMap))
-			for key, value := range itemMap {
-				if key != "id" {
-					next[key] = value
-				}
-			}
-			if summary, exists := next["summary"]; !exists || summary == nil {
-				next["summary"] = []any{}
-			}
-			filtered = append(filtered, next)
-			changed = true
-			continue
-		default:
-			filtered = append(filtered, item)
-		}
-	}
-	if changed {
-		reqBody["input"] = filtered
-	}
-	return changed
 }
 
 func isOpenAIResponsesCompactPath(c *gin.Context) bool {
