@@ -4,7 +4,14 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import type {
+  AdminUser,
+  UpdateUserRequest,
+  PaginatedResponse,
+  ApiKey,
+  AdminGroup,
+  CreateApiKeyRequest,
+} from '@/types'
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -227,6 +234,40 @@ export async function getUserApiKeys(id: number): Promise<PaginatedResponse<ApiK
 }
 
 /**
+ * Create an API key on behalf of a user (admin).
+ * The plaintext key is only returned once in the response.
+ * @param id - Target user ID
+ * @param payload - API key creation payload
+ * @returns The created API key (includes plaintext `key`)
+ */
+export async function createUserApiKey(
+  id: number,
+  payload: CreateApiKeyRequest,
+  idempotencyKey?: string
+): Promise<ApiKey> {
+  // Include the target user id in the idempotency key so a reused key across
+  // different users can never replay another user's created key.
+  const key =
+    idempotencyKey ??
+    `admin-user-apikey-create-${id}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`
+  const { data } = await apiClient.post<ApiKey>(`/admin/users/${id}/api-keys`, payload, {
+    headers: { 'Idempotency-Key': key },
+  })
+  return data
+}
+
+/**
+ * Get the groups a target user is actually allowed to bind an API key to.
+ * Mirrors the server-side binding rules so the admin create form only offers
+ * groups that will not be rejected by APIKeyService.Create.
+ * @param id - Target user ID
+ */
+export async function getUserAvailableGroups(id: number): Promise<AdminGroup[]> {
+  const { data } = await apiClient.get<AdminGroup[]>(`/admin/users/${id}/available-groups`)
+  return data
+}
+
+/**
  * Get user's usage statistics
  * @param id - User ID
  * @param period - Time period
@@ -410,6 +451,8 @@ export const usersAPI = {
   batchUpdateLimits,
   toggleStatus,
   getUserApiKeys,
+  createUserApiKey,
+  getUserAvailableGroups,
   getUserUsageStats,
   getUserBalanceHistory,
   replaceGroup,

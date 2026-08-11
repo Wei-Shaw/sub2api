@@ -19,9 +19,61 @@ import (
 func setupAPIKeyHandler(adminSvc service.AdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	h := NewAdminAPIKeyHandler(adminSvc)
+	h := NewAdminAPIKeyHandler(adminSvc, nil)
 	router.PUT("/api/v1/admin/api-keys/:id", h.UpdateGroup)
 	return router
+}
+
+// setupCreateForUserHandler registers only the CreateForUser route. apiKeyService
+// is nil, so tests must exercise paths that fail BEFORE apiKeyService.Create is
+// reached (invalid :id, non-active target user, GetUser error).
+func setupCreateForUserHandler(adminSvc service.AdminService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := NewAdminAPIKeyHandler(adminSvc, nil)
+	router.POST("/api/v1/admin/users/:id/api-keys", h.CreateForUser)
+	return router
+}
+
+func TestAdminAPIKeyHandler_CreateForUser_InvalidID(t *testing.T) {
+	router := setupCreateForUserHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/abc/api-keys", bytes.NewBufferString(`{"name":"k"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid user ID")
+}
+
+func TestAdminAPIKeyHandler_CreateForUser_InactiveTargetUser(t *testing.T) {
+	stub := newStubAdminService()
+	// Target user id 42 exists but is disabled.
+	stub.users = append(stub.users, service.User{ID: 42, Email: "banned@example.com", Status: service.StatusDisabled})
+	router := setupCreateForUserHandler(stub)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/42/api-keys", bytes.NewBufferString(`{"name":"k"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "not active")
+}
+
+func TestAdminAPIKeyHandler_CreateForUser_GetUserError(t *testing.T) {
+	stub := newStubAdminService()
+	stub.getUserErr = service.ErrUserNotFound
+	router := setupCreateForUserHandler(stub)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/999/api-keys", bytes.NewBufferString(`{"name":"k"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	// ErrUserNotFound maps to 404
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestAdminAPIKeyHandler_UpdateGroup_InvalidID(t *testing.T) {

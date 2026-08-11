@@ -26,6 +26,7 @@ import (
 var (
 	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
 	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrGroupDisabled        = infraerrors.Forbidden("GROUP_DISABLED", "group is disabled")
 	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
 	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
 	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
@@ -487,6 +488,13 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		group, err := s.groupRepo.GetByID(ctx, *req.GroupID)
 		if err != nil {
 			return nil, fmt.Errorf("get group: %w", err)
+		}
+
+		// 禁止把新 key 绑定到已禁用的分组：否则 key 建成后运行时鉴权会以
+		// GROUP_DISABLED 拒绝，等于产出一个不可用的凭证。自助与管理员代建
+		// 两条路径都经过此处，统一在共享逻辑里拦截。
+		if !group.IsActive() {
+			return nil, ErrGroupDisabled
 		}
 
 		// 检查用户是否可以绑定该分组
