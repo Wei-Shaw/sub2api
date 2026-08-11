@@ -619,6 +619,17 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.FeishuConnectAllowedTenantKeys = strings.TrimSpace(feishuBase.AllowedTenantKeys)
 	}
+	if v, ok := settings[SettingKeyFeishuConnectBypassRegistration]; ok && strings.TrimSpace(v) != "" {
+		result.FeishuConnectBypassRegistration = strings.EqualFold(strings.TrimSpace(v), "true")
+	} else {
+		result.FeishuConnectBypassRegistration = feishuBase.BypassRegistration
+	}
+	result.FeishuConnectBypassRegistration = feishuRegistrationBypassAllowed(
+		result.FeishuConnectEnabled,
+		result.FeishuConnectBypassRegistration,
+		result.FeishuConnectRestrictTenant,
+		result.FeishuConnectAllowedTenantKeys,
+	)
 
 	// Generic OIDC 设置：
 	// - 兼容 config.yaml/env

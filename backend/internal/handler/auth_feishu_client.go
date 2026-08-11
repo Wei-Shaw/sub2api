@@ -18,7 +18,7 @@ type feishuClientConfig struct {
 	UserInfoURL string
 }
 
-// FeishuClient 封装飞书 OAuth2 的两次上游调用：v2 token 交换 + v1 user_info。
+// FeishuClient 封装飞书 OAuth2 的两次上游调用：v3 token 交换 + v1 user_info。
 // 相比钉钉，飞书用户信息一次即可拿全（union_id/open_id/name/email/tenant_key），
 // 无需 app_access_token 与多步链，因此 client 无需缓存任何令牌。
 type FeishuClient struct {
@@ -59,7 +59,7 @@ func parseFeishuErr(raw []byte, status int) error {
 	return &FeishuAPIError{Code: v.Code, Message: msg, HTTP: status}
 }
 
-// FeishuUserTokenResp 是 v2 token 端点的成功响应子集。
+// FeishuUserTokenResp 是 v3 token 端点的成功响应子集。
 type FeishuUserTokenResp struct {
 	AccessToken  string
 	RefreshToken string
@@ -68,7 +68,7 @@ type FeishuUserTokenResp struct {
 }
 
 // ExchangeCodeForUserToken 用授权码换取 user_access_token。
-// 飞书 v2 端点要求 application/json body（这也是无法直接复用通用 OIDC form 提交的原因）。
+// 飞书 v3 端点要求 application/json body（这也是无法直接复用通用 OIDC form 提交的原因）。
 func (c *FeishuClient) ExchangeCodeForUserToken(ctx context.Context, code, redirectURI string) (*FeishuUserTokenResp, error) {
 	body := map[string]string{
 		"grant_type":    "authorization_code",

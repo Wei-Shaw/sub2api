@@ -194,6 +194,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DingTalkConnectSyncDept != after.DingTalkConnectSyncDept {
 		changed = append(changed, "dingtalk_connect_sync_dept")
 	}
+	if before.FeishuConnectBypassRegistration != after.FeishuConnectBypassRegistration {
+		changed = append(changed, "feishu_connect_bypass_registration")
+	}
 	if before.DingTalkConnectSyncCorpEmailAttrKey != after.DingTalkConnectSyncCorpEmailAttrKey {
 		changed = append(changed, "dingtalk_connect_sync_corp_email_attr_key")
 	}

@@ -140,6 +140,7 @@
             :user="user"
             :linuxdo-enabled="linuxdoEnabled"
             :dingtalk-enabled="dingtalkEnabled"
+            :feishu-enabled="feishuEnabled"
             :oidc-enabled="oidcEnabled"
             :oidc-provider-name="oidcProviderName"
             :wechat-enabled="wechatEnabled"
@@ -192,6 +193,7 @@ const props = withDefaults(defineProps<{
   user: User | null
   linuxdoEnabled?: boolean
   dingtalkEnabled?: boolean
+  feishuEnabled?: boolean
   oidcEnabled?: boolean
   oidcProviderName?: string
   wechatEnabled?: boolean
@@ -200,6 +202,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   linuxdoEnabled: false,
   dingtalkEnabled: false,
+  feishuEnabled: false,
   oidcEnabled: false,
   oidcProviderName: 'OIDC',
   wechatEnabled: false,
@@ -282,6 +285,8 @@ function normalizeProvider(value: string): UserAuthProvider | null {
   if (
     normalized === 'email' ||
     normalized === 'linuxdo' ||
+    normalized === 'dingtalk' ||
+    normalized === 'feishu' ||
     normalized === 'wechat' ||
     normalized === 'github' ||
     normalized === 'google'

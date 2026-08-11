@@ -361,6 +361,7 @@ const ImageUploadStub = defineComponent({
 
 const baseSettingsResponse = {
   registration_enabled: true,
+  feishu_connect_bypass_registration: false,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
@@ -1629,6 +1630,58 @@ describe("admin SettingsView wechat connect controls", () => {
     expect(link.attributes("href")).toBe("https://github.com/settings/developers");
     expect(link.attributes("target")).toBe("_blank");
     expect(link.attributes("rel")).toContain("noopener");
+  });
+
+  it("only submits Feishu registration bypass with a tenant restriction", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      feishu_connect_enabled: true,
+      feishu_connect_app_id: "test-app-id",
+      feishu_connect_app_secret_configured: true,
+      feishu_connect_redirect_url:
+        "https://admin.example.com/api/v1/auth/oauth/feishu/callback",
+      feishu_connect_restrict_tenant: false,
+      feishu_connect_allowed_tenant_keys: "tenant-one",
+      feishu_connect_bypass_registration: false,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    expect(
+      wrapper.find('[data-testid="feishu-connect-bypass-registration"]').exists(),
+    ).toBe(false);
+
+    await wrapper
+      .get('[data-testid="feishu-connect-restrict-tenant"]')
+      .setValue(true);
+    const bypass = wrapper.get(
+      '[data-testid="feishu-connect-bypass-registration"]',
+    );
+    await bypass.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        feishu_connect_restrict_tenant: true,
+        feishu_connect_bypass_registration: true,
+      }),
+    );
+
+    await wrapper
+      .get('[data-testid="feishu-connect-restrict-tenant"]')
+      .setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        feishu_connect_restrict_tenant: false,
+        feishu_connect_bypass_registration: false,
+      }),
+    );
   });
 
   it("saves WeChat Connect fields using the backend contract and clears the secret after save", async () => {

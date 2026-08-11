@@ -517,6 +517,67 @@ func TestGetProfileIdentitySummaries_DoesNotTreatCompatBackfilledEmailIdentityAs
 	require.Empty(t, repo.unboundProviders)
 }
 
+func TestGetProfileIdentitySummaries_ProtectsFeishuWhenItIsTheOnlyUsableLoginMethod(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           17,
+			Email:        "feishu-only@example.com",
+			SignupSource: "feishu",
+		},
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "feishu-only@example.com",
+				Metadata: map[string]any{
+					"source": "user_repo_create",
+				},
+			},
+			{
+				ProviderType:    "feishu",
+				ProviderKey:     "feishu",
+				ProviderSubject: "feishu-subject-17",
+				Metadata: map[string]any{
+					"username": "feishu-user",
+				},
+			},
+		},
+	}
+	svc := NewUserService(repo, nil, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 17, repo.getByIDUser)
+
+	require.NoError(t, err)
+	require.True(t, summaries.Feishu.Bound)
+	require.Equal(t, "feishu-user", summaries.Feishu.DisplayName)
+	require.False(t, summaries.Feishu.CanUnbind)
+
+	_, err = svc.UnbindUserAuthProvider(context.Background(), 17, "feishu")
+	require.ErrorIs(t, err, ErrIdentityUnbindLastMethod)
+	require.Empty(t, repo.unboundProviders)
+}
+
+func TestGetProfileIdentitySummaries_AllowsUnbindWhenFeishuRemains(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           18,
+			Email:        "oauth-only@example.com",
+			SignupSource: "dingtalk",
+		},
+		identities: []UserAuthIdentityRecord{
+			{ProviderType: "dingtalk", ProviderKey: "dingtalk", ProviderSubject: "dingtalk-subject-18"},
+			{ProviderType: "feishu", ProviderKey: "feishu", ProviderSubject: "feishu-subject-18"},
+		},
+	}
+	svc := NewUserService(repo, nil, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 18, repo.getByIDUser)
+
+	require.NoError(t, err)
+	require.True(t, summaries.DingTalk.CanUnbind)
+	require.True(t, summaries.Feishu.CanUnbind)
+}
+
 func TestUnbindUserAuthProviderRemovesProviderAndReturnsUpdatedProfile(t *testing.T) {
 	repo := &mockUserRepo{
 		getByIDUser: &User{
@@ -569,6 +630,7 @@ func TestGetProfileIdentitySummaries_HidesBindActionWhenProviderExplicitlyDisabl
 	settingRepo := &mockUserSettingRepo{
 		values: map[string]string{
 			SettingKeyLinuxDoConnectEnabled: "false",
+			SettingKeyFeishuConnectEnabled:  "false",
 		},
 	}
 	svc := NewUserService(repo, settingRepo, nil, nil)
@@ -579,6 +641,8 @@ func TestGetProfileIdentitySummaries_HidesBindActionWhenProviderExplicitlyDisabl
 	require.False(t, summaries.LinuxDo.Bound)
 	require.False(t, summaries.LinuxDo.CanBind)
 	require.Empty(t, summaries.LinuxDo.BindStartPath)
+	require.False(t, summaries.Feishu.CanBind)
+	require.Empty(t, summaries.Feishu.BindStartPath)
 }
 
 func TestGetProfileIdentitySummaries_UsesBindStartRoute(t *testing.T) {
@@ -614,6 +678,11 @@ func TestGetProfileIdentitySummaries_UsesBindStartRoute(t *testing.T) {
 		t,
 		"/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile",
 		summaries.WeChat.BindStartPath,
+	)
+	require.Equal(
+		t,
+		"/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile",
+		summaries.Feishu.BindStartPath,
 	)
 }
 

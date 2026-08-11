@@ -218,6 +218,7 @@ const props = withDefaults(
     user: User | null
     linuxdoEnabled?: boolean
     dingtalkEnabled?: boolean
+    feishuEnabled?: boolean
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
@@ -229,6 +230,7 @@ const props = withDefaults(
   {
     linuxdoEnabled: false,
     dingtalkEnabled: false,
+    feishuEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
@@ -411,6 +413,9 @@ function isProviderEnabledForBinding(provider: BindableProvider): boolean {
   if (provider === 'dingtalk') {
     return props.dingtalkEnabled
   }
+  if (provider === 'feishu') {
+    return props.feishuEnabled
+  }
   if (provider === 'oidc') {
     return props.oidcEnabled
   }
@@ -449,6 +454,17 @@ const providerItems = computed(() => [
     details: getBindingDetails('dingtalk'),
   },
   {
+    provider: 'feishu' as const,
+    label: t('profile.authBindings.providers.feishu'),
+    bound: getBindingStatus('feishu'),
+    canBind:
+      !getBindingStatus('feishu') &&
+      isProviderEnabledForBinding('feishu') &&
+      (getBindingDetails('feishu')?.can_bind ?? true),
+    canUnbind: Boolean(getBindingStatus('feishu') && getBindingDetails('feishu')?.can_unbind),
+    details: getBindingDetails('feishu'),
+  },
+  {
     provider: 'oidc' as const,
     label: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName }),
     bound: getBindingStatus('oidc'),
@@ -479,6 +495,9 @@ function providerInitial(provider: UserAuthProvider): string {
   if (provider === 'dingtalk') {
     return 'D'
   }
+  if (provider === 'feishu') {
+    return 'F'
+  }
   if (provider === 'wechat') {
     return 'W'
   }
@@ -494,6 +513,9 @@ function providerIconClass(provider: UserAuthProvider): string {
   }
   if (provider === 'dingtalk') {
     return 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
+  }
+  if (provider === 'feishu') {
+    return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300'
   }
   if (provider === 'wechat') {
     return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'

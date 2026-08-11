@@ -65,6 +65,7 @@ describe('ProfileView', () => {
       balance_low_notify_enabled: false,
       balance_low_notify_threshold: 0,
       linuxdo_oauth_enabled: true,
+      feishu_oauth_enabled: true,
       wechat_oauth_enabled: true,
       wechat_oauth_open_enabled: true,
       wechat_oauth_mp_enabled: false,
@@ -79,7 +80,10 @@ describe('ProfileView', () => {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
           StatCard: { template: '<div class="stat-card" />' },
-          ProfileInfoCard: { template: '<div data-testid="profile-info-card" />' },
+          ProfileInfoCard: {
+            props: ['feishuEnabled'],
+            template: '<div data-testid="profile-info-card" :data-feishu-enabled="String(feishuEnabled)" />'
+          },
           ProfileBalanceNotifyCard: { template: '<div data-testid="profile-balance-notify-card" />' },
           ProfilePasswordForm: { template: '<div data-testid="profile-password-form" />' },
           ProfileTotpCard: { template: '<div data-testid="profile-totp-card" />' },
@@ -95,5 +99,6 @@ describe('ProfileView', () => {
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-info-card')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-password-form')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-totp-card')
+    expect(wrapper.get('[data-testid="profile-info-card"]').attributes('data-feishu-enabled')).toBe('true')
   })
 })

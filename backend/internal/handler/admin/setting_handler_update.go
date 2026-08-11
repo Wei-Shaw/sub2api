@@ -100,12 +100,13 @@ type UpdateSettingsRequest struct {
 	DingTalkConnectSyncDeptAttrName        string `json:"dingtalk_connect_sync_dept_attr_name"`
 
 	// Feishu Connect OAuth 登录
-	FeishuConnectEnabled           bool   `json:"feishu_connect_enabled"`
-	FeishuConnectAppID             string `json:"feishu_connect_app_id"`
-	FeishuConnectAppSecret         string `json:"feishu_connect_app_secret"`
-	FeishuConnectRedirectURL       string `json:"feishu_connect_redirect_url"`
-	FeishuConnectRestrictTenant    bool   `json:"feishu_connect_restrict_tenant"`
-	FeishuConnectAllowedTenantKeys string `json:"feishu_connect_allowed_tenant_keys"`
+	FeishuConnectEnabled            bool   `json:"feishu_connect_enabled"`
+	FeishuConnectAppID              string `json:"feishu_connect_app_id"`
+	FeishuConnectAppSecret          string `json:"feishu_connect_app_secret"`
+	FeishuConnectRedirectURL        string `json:"feishu_connect_redirect_url"`
+	FeishuConnectRestrictTenant     bool   `json:"feishu_connect_restrict_tenant"`
+	FeishuConnectAllowedTenantKeys  string `json:"feishu_connect_allowed_tenant_keys"`
+	FeishuConnectBypassRegistration bool   `json:"feishu_connect_bypass_registration"`
 
 	// WeChat Connect OAuth 登录
 	WeChatConnectEnabled             bool   `json:"wechat_connect_enabled"`
@@ -951,6 +952,23 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	// 飞书设置支持部分字段 PUT。新 bypass 开关依赖 provider、tenant 限制和白名单，
+	// 因此校验前先用存量值补齐未提交的依赖字段。
+	if _, sent := sentFields["feishu_connect_enabled"]; !sent {
+		req.FeishuConnectEnabled = previousSettings.FeishuConnectEnabled
+	}
+	if _, sent := sentFields["feishu_connect_app_id"]; !sent {
+		req.FeishuConnectAppID = previousSettings.FeishuConnectAppID
+	}
+	if _, sent := sentFields["feishu_connect_redirect_url"]; !sent {
+		req.FeishuConnectRedirectURL = previousSettings.FeishuConnectRedirectURL
+	}
+	if _, sent := sentFields["feishu_connect_restrict_tenant"]; !sent {
+		req.FeishuConnectRestrictTenant = previousSettings.FeishuConnectRestrictTenant
+	}
+	if _, sent := sentFields["feishu_connect_allowed_tenant_keys"]; !sent {
+		req.FeishuConnectAllowedTenantKeys = previousSettings.FeishuConnectAllowedTenantKeys
+	}
 	req.FeishuConnectAllowedTenantKeys = strings.TrimSpace(req.FeishuConnectAllowedTenantKeys)
 	if req.FeishuConnectEnabled {
 		req.FeishuConnectAppID = strings.TrimSpace(req.FeishuConnectAppID)
@@ -982,6 +1000,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			response.BadRequest(c, "Feishu allowed tenant keys are required when tenant restriction is enabled")
 			return
 		}
+	}
+	if !req.FeishuConnectEnabled || !req.FeishuConnectRestrictTenant || len(service.FeishuAllowedTenantKeySet(req.FeishuConnectAllowedTenantKeys)) == 0 {
+		req.FeishuConnectBypassRegistration = false
 	}
 
 	if req.WeChatConnectEnabled {
@@ -1607,6 +1628,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FeishuConnectRedirectURL:               req.FeishuConnectRedirectURL,
 		FeishuConnectRestrictTenant:            req.FeishuConnectRestrictTenant,
 		FeishuConnectAllowedTenantKeys:         req.FeishuConnectAllowedTenantKeys,
+		FeishuConnectBypassRegistration:        req.FeishuConnectBypassRegistration,
 		WeChatConnectEnabled:                   req.WeChatConnectEnabled,
 		WeChatConnectAppID:                     req.WeChatConnectAppID,
 		WeChatConnectAppSecret:                 req.WeChatConnectAppSecret,
@@ -2223,6 +2245,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		FeishuConnectRedirectURL:                               updatedSettings.FeishuConnectRedirectURL,
 		FeishuConnectRestrictTenant:                            updatedSettings.FeishuConnectRestrictTenant,
 		FeishuConnectAllowedTenantKeys:                         updatedSettings.FeishuConnectAllowedTenantKeys,
+		FeishuConnectBypassRegistration:                        updatedSettings.FeishuConnectBypassRegistration,
 		WeChatConnectEnabled:                                   updatedSettings.WeChatConnectEnabled,
 		WeChatConnectAppID:                                     updatedSettings.WeChatConnectAppID,
 		WeChatConnectAppSecretConfigured:                       updatedSettings.WeChatConnectAppSecretConfigured,

@@ -538,6 +538,7 @@ export interface SystemSettings {
   feishu_connect_redirect_url: string;
   feishu_connect_restrict_tenant: boolean;
   feishu_connect_allowed_tenant_keys: string;
+  feishu_connect_bypass_registration: boolean;
 
   // WeChat Connect OAuth settings
   wechat_connect_enabled: boolean;
@@ -877,6 +878,7 @@ export interface UpdateSettingsRequest {
   feishu_connect_redirect_url?: string;
   feishu_connect_restrict_tenant?: boolean;
   feishu_connect_allowed_tenant_keys?: string;
+  feishu_connect_bypass_registration?: boolean;
   wechat_connect_enabled?: boolean;
   wechat_connect_app_id?: string;
   wechat_connect_app_secret?: string;

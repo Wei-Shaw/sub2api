@@ -3460,7 +3460,10 @@
                         {{ t("admin.settings.feishu.restrictTenantHint") }}
                       </p>
                     </div>
-                    <Toggle v-model="form.feishu_connect_restrict_tenant" />
+                    <Toggle
+                      v-model="form.feishu_connect_restrict_tenant"
+                      data-testid="feishu-connect-restrict-tenant"
+                    />
                   </div>
 
                   <div v-if="form.feishu_connect_restrict_tenant">
@@ -3478,6 +3481,24 @@
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{ t("admin.settings.feishu.allowedTenantKeysHint") }}
                     </p>
+                  </div>
+
+                  <div
+                    v-if="form.feishu_connect_restrict_tenant"
+                    class="flex items-center justify-between"
+                  >
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">{{
+                        t("admin.settings.feishu.bypassRegistration")
+                      }}</label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.feishu.bypassRegistrationHint") }}
+                      </p>
+                    </div>
+                    <Toggle
+                      v-model="form.feishu_connect_bypass_registration"
+                      data-testid="feishu-connect-bypass-registration"
+                    />
                   </div>
                 </div>
               </div>
@@ -9685,6 +9706,7 @@ const form = reactive<SettingsForm>({
   feishu_connect_redirect_url: "",
   feishu_connect_restrict_tenant: false,
   feishu_connect_allowed_tenant_keys: "",
+  feishu_connect_bypass_registration: false,
   wechat_connect_enabled: false,
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
@@ -11275,6 +11297,9 @@ async function saveSettings() {
       feishu_connect_redirect_url: form.feishu_connect_redirect_url,
       feishu_connect_restrict_tenant: form.feishu_connect_restrict_tenant,
       feishu_connect_allowed_tenant_keys: form.feishu_connect_allowed_tenant_keys,
+      feishu_connect_bypass_registration:
+        form.feishu_connect_restrict_tenant &&
+        form.feishu_connect_bypass_registration,
       wechat_connect_enabled: form.wechat_connect_enabled,
       wechat_connect_app_id:
         form.wechat_connect_open_app_id ||

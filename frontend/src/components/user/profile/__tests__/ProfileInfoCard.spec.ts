@@ -35,6 +35,8 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.user') return 'User'
         if (key === 'profile.authBindings.providers.email') return 'Email'
         if (key === 'profile.authBindings.providers.linuxdo') return 'LinuxDo'
+        if (key === 'profile.authBindings.providers.dingtalk') return 'DingTalk'
+        if (key === 'profile.authBindings.providers.feishu') return 'Feishu'
         if (key === 'profile.authBindings.providers.wechat') return 'WeChat'
         if (key === 'profile.authBindings.providers.oidc') return params?.providerName || 'OIDC'
         if (key === 'profile.authBindings.source.avatar') {
@@ -129,6 +131,25 @@ describe('ProfileInfoCard', () => {
     })
 
     expect(wrapper.text()).toContain('Username synced from ExampleID')
+  })
+
+  it('renders Feishu profile source hints', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          profile_sources: {
+            username: { provider: 'feishu', source: 'feishu' }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('Username synced from Feishu')
   })
 
   it('does not display synthetic oauth-only emails as a real bound email', () => {

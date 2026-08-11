@@ -573,6 +573,7 @@ func (s *SettingService) GetFeishuConnectOAuthConfig(ctx context.Context) (confi
 		SettingKeyFeishuConnectRedirectURL,
 		SettingKeyFeishuConnectRestrictTenant,
 		SettingKeyFeishuConnectAllowedTenantKeys,
+		SettingKeyFeishuConnectBypassRegistration,
 	}
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
@@ -597,6 +598,15 @@ func (s *SettingService) GetFeishuConnectOAuthConfig(ctx context.Context) (confi
 	if v, ok := settings[SettingKeyFeishuConnectAllowedTenantKeys]; ok {
 		effective.AllowedTenantKeys = strings.TrimSpace(v)
 	}
+	if v, ok := settings[SettingKeyFeishuConnectBypassRegistration]; ok && strings.TrimSpace(v) != "" {
+		effective.BypassRegistration = strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	effective.BypassRegistration = feishuRegistrationBypassAllowed(
+		effective.Enabled,
+		effective.BypassRegistration,
+		effective.RestrictTenant,
+		effective.AllowedTenantKeys,
+	)
 
 	if !effective.Enabled {
 		return config.FeishuConnectConfig{}, infraerrors.NotFound("OAUTH_DISABLED", "feishu oauth login is disabled")
@@ -647,6 +657,10 @@ func FeishuAllowedTenantKeySet(raw string) map[string]struct{} {
 		}
 	}
 	return set
+}
+
+func feishuRegistrationBypassAllowed(enabled, bypassRegistration, restrictTenant bool, allowedTenantKeys string) bool {
+	return enabled && bypassRegistration && restrictTenant && len(FeishuAllowedTenantKeySet(allowedTenantKeys)) > 0
 }
 
 // GetDingTalkConnectOAuthConfig 返回用于登录的"最终生效" DingTalk Connect 配置。

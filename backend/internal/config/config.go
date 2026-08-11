@@ -386,7 +386,7 @@ type DingTalkConnectConfig struct {
 }
 
 // FeishuConnectConfig 是飞书（Feishu/Lark）OAuth 登录配置。
-// 飞书使用 OAuth2 授权码流程：authorize（accounts.feishu.cn）→ v2 token（open.feishu.cn，
+// 飞书使用 OAuth2 授权码流程：authorize（accounts.feishu.cn）→ v3 token（accounts.feishu.cn，
 // JSON body）→ user_info（open.feishu.cn，Bearer）。相比钉钉更简单：user_info 一次即可
 // 拿到 union_id / open_id / name / email / tenant_key，无需 app_access_token 与多步链。
 type FeishuConnectConfig struct {
@@ -401,8 +401,9 @@ type FeishuConnectConfig struct {
 	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认 /auth/feishu/callback）
 
 	// 企业限制：仅允许特定飞书企业（tenant_key 白名单）登录。
-	RestrictTenant    bool   `mapstructure:"restrict_tenant"`     // true 时启用 tenant_key 白名单校验
-	AllowedTenantKeys string `mapstructure:"allowed_tenant_keys"` // 允许的 tenant_key，逗号或换行分隔
+	RestrictTenant     bool   `mapstructure:"restrict_tenant"`     // true 时启用 tenant_key 白名单校验
+	AllowedTenantKeys  string `mapstructure:"allowed_tenant_keys"` // 允许的 tenant_key，逗号或换行分隔
+	BypassRegistration bool   `mapstructure:"bypass_registration"` // 仅在受限企业白名单非空时允许绕过全局注册开关
 }
 
 type EmailOAuthProviderConfig struct {
@@ -2087,13 +2088,14 @@ func setDefaults() {
 	viper.SetDefault("feishu_connect.app_id", "")
 	viper.SetDefault("feishu_connect.app_secret", "")
 	viper.SetDefault("feishu_connect.authorize_url", "https://accounts.feishu.cn/open-apis/authen/v1/authorize")
-	viper.SetDefault("feishu_connect.token_url", "https://open.feishu.cn/open-apis/authen/v2/oauth/token")
+	viper.SetDefault("feishu_connect.token_url", "https://accounts.feishu.cn/oauth/v3/token")
 	viper.SetDefault("feishu_connect.userinfo_url", "https://open.feishu.cn/open-apis/authen/v1/user_info")
 	viper.SetDefault("feishu_connect.scopes", "")
 	viper.SetDefault("feishu_connect.redirect_url", "")
 	viper.SetDefault("feishu_connect.frontend_redirect_url", "/auth/feishu/callback")
 	viper.SetDefault("feishu_connect.restrict_tenant", false)
 	viper.SetDefault("feishu_connect.allowed_tenant_keys", "")
+	viper.SetDefault("feishu_connect.bypass_registration", false)
 
 	// Database
 	viper.SetDefault("database.host", "localhost")

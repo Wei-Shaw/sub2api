@@ -340,7 +340,9 @@ export default {
         restrictTenantHint: '开启后仅允许白名单内 tenant_key 的飞书企业登录',
         allowedTenantKeys: '允许的 tenant_key',
         allowedTenantKeysPlaceholder: '每行或以逗号分隔一个 tenant_key',
-        allowedTenantKeysHint: 'tenant_key 是飞书企业的唯一标识，可从 user_info 返回或飞书管理后台获取；开启限制时必须至少填一个'
+        allowedTenantKeysHint: 'tenant_key 是飞书企业的唯一标识，可从 user_info 返回或飞书管理后台获取；开启限制时必须至少填一个',
+        bypassRegistration: '允许企业成员自动注册',
+        bypassRegistrationHint: '全局注册关闭时，仍允许白名单企业的飞书成员首次登录并创建账号'
       },
       oidc: {
         title: 'OIDC 登录',

@@ -204,6 +204,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		FeishuConnectRedirectURL:                               settings.FeishuConnectRedirectURL,
 		FeishuConnectRestrictTenant:                            settings.FeishuConnectRestrictTenant,
 		FeishuConnectAllowedTenantKeys:                         settings.FeishuConnectAllowedTenantKeys,
+		FeishuConnectBypassRegistration:                        settings.FeishuConnectBypassRegistration,
 		WeChatConnectEnabled:                                   settings.WeChatConnectEnabled,
 		WeChatConnectAppID:                                     settings.WeChatConnectAppID,
 		WeChatConnectAppSecretConfigured:                       settings.WeChatConnectAppSecretConfigured,

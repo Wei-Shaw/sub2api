@@ -82,11 +82,16 @@ func TestAuthIdentityFoundationSchemas(t *testing.T) {
 	require.Equal(t, "email", signupSource.DefaultValue)
 	require.Equal(t, 1, signupSource.Validators)
 
-	validator := requireStringFieldValidator(t, User{}.Fields(), "signup_source")
-	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google", "dingtalk"} {
-		require.NoError(t, validator(value))
+	signupSourceValidator := requireStringFieldValidator(t, User{}.Fields(), "signup_source")
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google", "dingtalk", "feishu"} {
+		require.NoError(t, signupSourceValidator(value))
 	}
-	require.Error(t, validator("unknown"))
+	require.Error(t, signupSourceValidator("unknown"))
+
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google", "dingtalk", "feishu"} {
+		require.NoError(t, validateAuthProviderType(value))
+	}
+	require.Error(t, validateAuthProviderType("unknown"))
 }
 
 func requireSchema(t *testing.T, schemas map[string]*load.Schema, name string) *load.Schema {

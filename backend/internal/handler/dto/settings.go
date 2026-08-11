@@ -97,6 +97,15 @@ type SystemSettings struct {
 	DingTalkConnectSyncDisplayNameAttrName string `json:"dingtalk_connect_sync_display_name_attr_name"`
 	DingTalkConnectSyncDeptAttrName        string `json:"dingtalk_connect_sync_dept_attr_name"`
 
+	// Feishu Connect OAuth 登录
+	FeishuConnectEnabled             bool   `json:"feishu_connect_enabled"`
+	FeishuConnectAppID               string `json:"feishu_connect_app_id"`
+	FeishuConnectAppSecretConfigured bool   `json:"feishu_connect_app_secret_configured"`
+	FeishuConnectRedirectURL         string `json:"feishu_connect_redirect_url"`
+	FeishuConnectRestrictTenant      bool   `json:"feishu_connect_restrict_tenant"`
+	FeishuConnectAllowedTenantKeys   string `json:"feishu_connect_allowed_tenant_keys"`
+	FeishuConnectBypassRegistration  bool   `json:"feishu_connect_bypass_registration"`
+
 	WeChatConnectEnabled                   bool   `json:"wechat_connect_enabled"`
 	WeChatConnectAppID                     string `json:"wechat_connect_app_id"`
 	WeChatConnectAppSecretConfigured       bool   `json:"wechat_connect_app_secret_configured"`

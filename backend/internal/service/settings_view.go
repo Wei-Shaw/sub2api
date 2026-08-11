@@ -96,6 +96,7 @@ type SystemSettings struct {
 	FeishuConnectRedirectURL         string
 	FeishuConnectRestrictTenant      bool
 	FeishuConnectAllowedTenantKeys   string
+	FeishuConnectBypassRegistration  bool
 
 	// WeChat Connect OAuth 登录
 	WeChatConnectEnabled                   bool

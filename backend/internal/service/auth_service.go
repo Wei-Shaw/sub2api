@@ -666,17 +666,28 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 	return token, user, nil
 }
 
-// canBypassRegistrationDisabledForOAuth 在钉钉企业模式（internal_only）且
-// dingtalk_connect_bypass_registration=true 时，允许跳过全局 registration_enabled 检查。
+// canBypassRegistrationDisabledForOAuth 仅允许受企业边界约束的 OAuth provider
+// 在显式开启 bypass_registration 时跳过全局 registration_enabled 检查。
 func (s *AuthService) canBypassRegistrationDisabledForOAuth(ctx context.Context, signupSource string) bool {
-	if signupSource != "dingtalk" {
+	if s.settingService == nil {
 		return false
 	}
-	cfg, err := s.settingService.GetDingTalkConnectOAuthConfig(ctx)
-	if err != nil || !cfg.Enabled || !cfg.BypassRegistration {
+	switch signupSource {
+	case "dingtalk":
+		cfg, err := s.settingService.GetDingTalkConnectOAuthConfig(ctx)
+		if err != nil || !cfg.Enabled || !cfg.BypassRegistration {
+			return false
+		}
+		return cfg.CorpRestrictionPolicy == "internal_only"
+	case "feishu":
+		cfg, err := s.settingService.GetFeishuConnectOAuthConfig(ctx)
+		if err != nil {
+			return false
+		}
+		return feishuRegistrationBypassAllowed(cfg.Enabled, cfg.BypassRegistration, cfg.RestrictTenant, cfg.AllowedTenantKeys)
+	default:
 		return false
 	}
-	return cfg.CorpRestrictionPolicy == "internal_only"
 }
 
 // LoginOrRegisterOAuthWithTokenPair 用于第三方 OAuth/SSO 登录，返回完整的 TokenPair。

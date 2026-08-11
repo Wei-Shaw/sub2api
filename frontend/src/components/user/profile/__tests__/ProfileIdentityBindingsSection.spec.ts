@@ -47,6 +47,8 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.status.notBound') return 'Not bound'
         if (key === 'profile.authBindings.providers.email') return 'Email'
         if (key === 'profile.authBindings.providers.linuxdo') return 'LinuxDo'
+        if (key === 'profile.authBindings.providers.dingtalk') return 'DingTalk'
+        if (key === 'profile.authBindings.providers.feishu') return 'Feishu'
         if (key === 'profile.authBindings.providers.wechat') return 'WeChat'
         if (key === 'profile.authBindings.providers.oidc') return params?.providerName || 'OIDC'
         if (key === 'profile.authBindings.bindAction') return `Bind ${params?.providerName || ''}`.trim()
@@ -131,11 +133,13 @@ describe('ProfileIdentityBindingsSection', () => {
           auth_bindings: {
             email: { bound: true },
             linuxdo: { bound: true },
+            feishu: { bound: true, can_unbind: false },
             oidc: { bound: false },
             wechat: false,
           },
         }),
         linuxdoEnabled: true,
+        feishuEnabled: true,
         oidcEnabled: true,
         oidcProviderName: 'ExampleID',
         wechatEnabled: true,
@@ -146,11 +150,35 @@ describe('ProfileIdentityBindingsSection', () => {
 
     expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Bound')
     expect(wrapper.get('[data-testid="profile-binding-linuxdo-status"]').text()).toBe('Bound')
+    expect(wrapper.get('[data-testid="profile-binding-feishu-status"]').text()).toBe('Bound')
+    expect(wrapper.find('[data-testid="profile-binding-feishu-unbind"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="profile-binding-oidc-status"]').text()).toBe('Not bound')
     expect(wrapper.get('[data-testid="profile-binding-oidc-action"]').text()).toBe(
       'Bind ExampleID'
     )
     expect(wrapper.get('[data-testid="profile-binding-wechat-action"]').text()).toBe('Bind WeChat')
+  })
+
+  it('starts the Feishu bind flow for the current profile page', async () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      },
+      props: {
+        user: createUser({
+          auth_bindings: {
+            feishu: { bound: false, can_bind: true },
+          },
+        }),
+        feishuEnabled: true,
+      },
+    })
+
+    await wrapper.get('[data-testid="profile-binding-feishu-action"]').trigger('click')
+
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/feishu/bind/start?')
+    expect(locationState.current.href).toContain('intent=bind_current_user')
+    expect(locationState.current.href).toContain('redirect=%2Fprofile')
   })
 
   it('starts the WeChat bind flow for the current profile page', async () => {

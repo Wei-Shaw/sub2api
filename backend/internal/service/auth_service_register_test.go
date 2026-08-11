@@ -926,6 +926,28 @@ func minDingTalkURLs() config.DingTalkConnectConfig {
 	}
 }
 
+func newAuthServiceWithFeishuCfg(settings map[string]string, feishuCfg config.FeishuConnectConfig) *AuthService {
+	cfg := &config.Config{
+		JWT:     config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		Default: config.DefaultConfig{UserBalance: 3.5, UserConcurrency: 2},
+		Feishu:  feishuCfg,
+	}
+	settingService := NewSettingService(&settingRepoStub{values: settings}, cfg)
+	return NewAuthService(nil, nil, nil, nil, cfg, settingService, nil, nil, nil, nil, nil, nil, nil)
+}
+
+func minFeishuURLs() config.FeishuConnectConfig {
+	return config.FeishuConnectConfig{
+		AppID:               "test-client",
+		AppSecret:           "test-secret",
+		AuthorizeURL:        "https://example.com/oauth2/auth",
+		TokenURL:            "https://example.com/oauth2/token",
+		UserInfoURL:         "https://example.com/oauth2/userinfo",
+		RedirectURL:         "https://example.com/callback",
+		FrontendRedirectURL: "https://example.com/auth/callback",
+	}
+}
+
 func TestCanBypassRegistrationDisabledForOAuth(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -991,6 +1013,68 @@ func TestCanBypassRegistrationDisabledForOAuth(t *testing.T) {
 			svc := newAuthServiceWithDingTalkCfg(tc.settings, tc.dtCfg)
 			got := svc.canBypassRegistrationDisabledForOAuth(context.Background(), tc.signupSource)
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestCanBypassRegistrationDisabledForOAuthFeishu(t *testing.T) {
+	cases := []struct {
+		name     string
+		settings map[string]string
+		want     bool
+	}{
+		{
+			name: "enabled restricted tenant with non-empty allowlist",
+			settings: map[string]string{
+				SettingKeyFeishuConnectEnabled:            "true",
+				SettingKeyFeishuConnectBypassRegistration: "true",
+				SettingKeyFeishuConnectRestrictTenant:     "true",
+				SettingKeyFeishuConnectAllowedTenantKeys:  "tenant-one",
+			},
+			want: true,
+		},
+		{
+			name: "provider disabled",
+			settings: map[string]string{
+				SettingKeyFeishuConnectEnabled:            "false",
+				SettingKeyFeishuConnectBypassRegistration: "true",
+				SettingKeyFeishuConnectRestrictTenant:     "true",
+				SettingKeyFeishuConnectAllowedTenantKeys:  "tenant-one",
+			},
+		},
+		{
+			name: "bypass disabled",
+			settings: map[string]string{
+				SettingKeyFeishuConnectEnabled:            "true",
+				SettingKeyFeishuConnectBypassRegistration: "false",
+				SettingKeyFeishuConnectRestrictTenant:     "true",
+				SettingKeyFeishuConnectAllowedTenantKeys:  "tenant-one",
+			},
+		},
+		{
+			name: "tenant restriction disabled",
+			settings: map[string]string{
+				SettingKeyFeishuConnectEnabled:            "true",
+				SettingKeyFeishuConnectBypassRegistration: "true",
+				SettingKeyFeishuConnectRestrictTenant:     "false",
+				SettingKeyFeishuConnectAllowedTenantKeys:  "tenant-one",
+			},
+		},
+		{
+			name: "tenant allowlist empty",
+			settings: map[string]string{
+				SettingKeyFeishuConnectEnabled:            "true",
+				SettingKeyFeishuConnectBypassRegistration: "true",
+				SettingKeyFeishuConnectRestrictTenant:     "true",
+				SettingKeyFeishuConnectAllowedTenantKeys:  " , \n ",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newAuthServiceWithFeishuCfg(tc.settings, minFeishuURLs())
+			require.Equal(t, tc.want, svc.canBypassRegistrationDisabledForOAuth(context.Background(), "feishu"))
 		})
 	}
 }

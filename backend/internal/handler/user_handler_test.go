@@ -224,6 +224,14 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 					"suggested_display_name": "OIDC Display",
 				},
 			},
+			{
+				ProviderType:    "feishu",
+				ProviderKey:     "feishu",
+				ProviderSubject: "feishu-user-abc",
+				Metadata: map[string]any{
+					"username": "Feishu Display",
+				},
+			},
 		},
 	}
 	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
@@ -240,7 +248,8 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			Identities struct {
+			FeishuBound bool `json:"feishu_bound"`
+			Identities  struct {
 				Email struct {
 					Bound       bool   `json:"bound"`
 					BoundCount  int    `json:"bound_count"`
@@ -262,6 +271,11 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 					CanBind       bool   `json:"can_bind"`
 					BindStartPath string `json:"bind_start_path"`
 				} `json:"wechat"`
+				Feishu struct {
+					Bound       bool   `json:"bound"`
+					DisplayName string `json:"display_name"`
+					ProviderKey string `json:"provider_key"`
+				} `json:"feishu"`
 			} `json:"identities"`
 		} `json:"data"`
 	}
@@ -280,6 +294,10 @@ func TestUserHandlerGetProfileReturnsIdentitySummaries(t *testing.T) {
 	require.False(t, resp.Data.Identities.WeChat.Bound)
 	require.True(t, resp.Data.Identities.WeChat.CanBind)
 	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/bind/start")
+	require.True(t, resp.Data.FeishuBound)
+	require.True(t, resp.Data.Identities.Feishu.Bound)
+	require.Equal(t, "Feishu Display", resp.Data.Identities.Feishu.DisplayName)
+	require.Equal(t, "feishu", resp.Data.Identities.Feishu.ProviderKey)
 }
 
 func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
@@ -307,6 +325,11 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 					"avatar_url": "https://cdn.example.com/linuxdo.png",
 				},
 			},
+			{
+				ProviderType:    "feishu",
+				ProviderKey:     "feishu",
+				ProviderSubject: "feishu-subject-21",
+			},
 		},
 	}
 	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil, nil, nil)
@@ -330,6 +353,7 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 	require.Equal(t, true, resp.Data["linuxdo_bound"])
 	require.Equal(t, false, resp.Data["oidc_bound"])
 	require.Equal(t, false, resp.Data["wechat_bound"])
+	require.Equal(t, true, resp.Data["feishu_bound"])
 	require.Equal(t, "https://cdn.example.com/linuxdo.png", resp.Data["avatar_url"])
 
 	avatarSource, ok := resp.Data["avatar_source"].(map[string]any)
@@ -343,6 +367,10 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, true, linuxdoBinding["bound"])
 	require.Equal(t, "linuxdo", linuxdoBinding["provider"])
+	feishuBinding, ok := authBindings["feishu"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, feishuBinding["bound"])
+	require.Equal(t, "feishu", feishuBinding["provider"])
 
 	identityBindings, ok := resp.Data["identity_bindings"].(map[string]any)
 	require.True(t, ok)

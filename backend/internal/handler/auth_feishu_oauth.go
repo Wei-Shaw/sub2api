@@ -188,7 +188,7 @@ func (h *AuthHandler) FeishuOAuthCallback(c *gin.Context) {
 
 	redirectURI := strings.TrimSpace(cfg.RedirectURL)
 
-	// Step 1: code 换 user_access_token（飞书 v2，JSON body）
+	// Step 1: code 换 user_access_token（飞书 v3，JSON body）
 	client := h.feishuClient(cfg)
 	userToken, err := client.ExchangeCodeForUserToken(c.Request.Context(), code, redirectURI)
 	if err != nil {

@@ -344,7 +344,9 @@ export default {
         restrictTenantHint: 'When enabled, only Feishu organizations whose tenant_key is in the allowlist may sign in',
         allowedTenantKeys: 'Allowed tenant_key',
         allowedTenantKeysPlaceholder: 'One tenant_key per line or comma-separated',
-        allowedTenantKeysHint: 'tenant_key uniquely identifies a Feishu organization (returned in user_info). At least one is required when restriction is enabled.'
+        allowedTenantKeysHint: 'tenant_key uniquely identifies a Feishu organization (returned in user_info). At least one is required when restriction is enabled.',
+        bypassRegistration: 'Allow organization members to register',
+        bypassRegistrationHint: 'When global registration is disabled, allow members of allowlisted Feishu organizations to create an account on first sign-in.'
       },
       oidc: {
         title: 'OIDC Login',

@@ -276,6 +276,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 	updates[SettingKeyFeishuConnectRestrictTenant] = strconv.FormatBool(settings.FeishuConnectRestrictTenant)
 	updates[SettingKeyFeishuConnectAllowedTenantKeys] = settings.FeishuConnectAllowedTenantKeys
+	updates[SettingKeyFeishuConnectBypassRegistration] = strconv.FormatBool(feishuRegistrationBypassAllowed(
+		settings.FeishuConnectEnabled,
+		settings.FeishuConnectBypassRegistration,
+		settings.FeishuConnectRestrictTenant,
+		settings.FeishuConnectAllowedTenantKeys,
+	))
 
 	// Generic OIDC OAuth 登录
 	updates[SettingKeyOIDCConnectEnabled] = strconv.FormatBool(settings.OIDCConnectEnabled)

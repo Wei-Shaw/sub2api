@@ -244,12 +244,13 @@ const (
 	SettingKeyDingTalkConnectSyncDeptAttrName        = "dingtalk_connect_sync_dept_attr_name"
 
 	// Feishu Connect OAuth 登录设置
-	SettingKeyFeishuConnectEnabled           = "feishu_connect_enabled"
-	SettingKeyFeishuConnectAppID             = "feishu_connect_app_id"
-	SettingKeyFeishuConnectAppSecret         = "feishu_connect_app_secret"
-	SettingKeyFeishuConnectRedirectURL       = "feishu_connect_redirect_url"
-	SettingKeyFeishuConnectRestrictTenant    = "feishu_connect_restrict_tenant"
-	SettingKeyFeishuConnectAllowedTenantKeys = "feishu_connect_allowed_tenant_keys"
+	SettingKeyFeishuConnectEnabled            = "feishu_connect_enabled"
+	SettingKeyFeishuConnectAppID              = "feishu_connect_app_id"
+	SettingKeyFeishuConnectAppSecret          = "feishu_connect_app_secret"
+	SettingKeyFeishuConnectRedirectURL        = "feishu_connect_redirect_url"
+	SettingKeyFeishuConnectRestrictTenant     = "feishu_connect_restrict_tenant"
+	SettingKeyFeishuConnectAllowedTenantKeys  = "feishu_connect_allowed_tenant_keys"
+	SettingKeyFeishuConnectBypassRegistration = "feishu_connect_bypass_registration"
 
 	// WeChat Connect OAuth 登录设置
 	SettingKeyWeChatConnectEnabled             = "wechat_connect_enabled"
