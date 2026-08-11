@@ -61,6 +61,15 @@ const (
 // 可通过 gateway.upstream_response_read_max_bytes 配置项覆盖。
 const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 
+const (
+	// DefaultOpenAIResponsesFirstEventTimeoutSeconds is the default lifecycle
+	// event buffering window for OpenAI Responses SSE streams.
+	DefaultOpenAIResponsesFirstEventTimeoutSeconds = 2
+	// MaxOpenAIResponsesFirstEventTimeoutSeconds bounds the configured buffering
+	// window so a lifecycle-only stream cannot hold a response indefinitely.
+	MaxOpenAIResponsesFirstEventTimeoutSeconds = 600
+)
+
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
 	Log                     LogConfig                     `mapstructure:"log"`
@@ -892,6 +901,10 @@ type GatewayConfig struct {
 	// OpenAIHighEffortFirstOutputTimeoutSeconds: high/xhigh/max 推理的首个语义输出超时（秒）。
 	// 0 表示回退到 OpenAIFirstOutputTimeoutSeconds。
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
+	// OpenAIResponsesFirstEventTimeoutSeconds: Responses SSE 首个事件缓存时长（秒）。
+	// 生命周期事件会在该时长内等待首个语义输出或可重试错误，以支持流中途容量错误触发故障转移。
+	// 0 表示立即释放生命周期事件，默认 2 秒。
+	OpenAIResponsesFirstEventTimeoutSeconds int `mapstructure:"openai_responses_first_event_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
@@ -2262,6 +2275,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.openai_high_effort_first_output_timeout_seconds", 0)
+	viper.SetDefault("gateway.openai_responses_first_event_timeout_seconds", DefaultOpenAIResponsesFirstEventTimeoutSeconds)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
@@ -3172,6 +3186,9 @@ func (c *Config) Validate() error {
 	if c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds < 0 || c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds > 1800 ||
 		(c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds > 0 && c.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds < 30) {
 		return fmt.Errorf("gateway.openai_high_effort_first_output_timeout_seconds must be 0 or between 30-1800 seconds")
+	}
+	if c.Gateway.OpenAIResponsesFirstEventTimeoutSeconds < 0 || c.Gateway.OpenAIResponsesFirstEventTimeoutSeconds > MaxOpenAIResponsesFirstEventTimeoutSeconds {
+		return fmt.Errorf("gateway.openai_responses_first_event_timeout_seconds must be between 0-%d seconds", MaxOpenAIResponsesFirstEventTimeoutSeconds)
 	}
 	if c.Gateway.Live.MaxSessionDurationSeconds <= 0 {
 		c.Gateway.Live.MaxSessionDurationSeconds = 3600

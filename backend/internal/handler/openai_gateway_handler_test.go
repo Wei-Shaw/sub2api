@@ -2224,6 +2224,7 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	cfg.Default.RateMultiplier = 1
 	cfg.Security.URLAllowlist.Enabled = false
 	cfg.Gateway.MaxAccountSwitches = 1
+	cfg.Gateway.OpenAIResponsesFirstEventTimeoutSeconds = 2
 
 	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
 	upstream := &openAIHTTPPassthroughSSERateLimitUpstream{}

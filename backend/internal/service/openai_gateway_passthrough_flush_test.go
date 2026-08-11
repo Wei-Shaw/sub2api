@@ -23,6 +23,7 @@ type passthroughFlushTestWriter struct {
 	successfulWrites int
 	failedWrites     int
 	flushBodyLengths []int
+	flushEvents      chan struct{}
 }
 
 func (w *passthroughFlushTestWriter) Write(data []byte) (int, error) {
@@ -44,6 +45,9 @@ func (w *passthroughFlushTestWriter) WriteString(data string) (int, error) {
 func (w *passthroughFlushTestWriter) Flush() {
 	w.ResponseWriter.Flush()
 	w.flushBodyLengths = append(w.flushBodyLengths, w.recorder.Body.Len())
+	if w.flushEvents != nil {
+		w.flushEvents <- struct{}{}
+	}
 }
 
 type passthroughFlushTestErrorBody struct {
@@ -68,6 +72,16 @@ func runPassthroughFlushTest(
 	failAfterWrites int,
 	setups ...func(*gin.Context),
 ) (*openaiStreamingResultPassthrough, *httptest.ResponseRecorder, *passthroughFlushTestWriter, error) {
+	return runPassthroughFlushTestWithTimeout(t, body, failAfterWrites, 2, setups...)
+}
+
+func runPassthroughFlushTestWithTimeout(
+	t *testing.T,
+	body io.ReadCloser,
+	failAfterWrites int,
+	firstEventTimeoutSeconds int,
+	setups ...func(*gin.Context),
+) (*openaiStreamingResultPassthrough, *httptest.ResponseRecorder, *passthroughFlushTestWriter, error) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
@@ -78,6 +92,7 @@ func runPassthroughFlushTest(
 		ResponseWriter:  c.Writer,
 		recorder:        recorder,
 		failAfterWrites: failAfterWrites,
+		flushEvents:     make(chan struct{}, 16),
 	}
 	c.Writer = writer
 	for _, setup := range setups {
@@ -85,7 +100,10 @@ func runPassthroughFlushTest(
 	}
 
 	svc := &OpenAIGatewayService{cfg: &config.Config{
-		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+		Gateway: config.GatewayConfig{
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: firstEventTimeoutSeconds,
+		},
 	}}
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -145,6 +163,102 @@ func TestOpenAIStreamingPassthroughKeepsPreamblePendingUntilFirstOutputBoundary(
 	}, writer.flushBodyLengths)
 }
 
+func TestOpenAIStreamingPassthroughZeroTimeoutReleasesLifecycleImmediately(t *testing.T) {
+	preamble := "event: response.queued\n" +
+		`data: {"response":{"id":"resp_zero"}}` + "\n\n"
+	terminal := `data: {"type":"response.completed","response":{"id":"resp_zero","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}` + "\n\n"
+	allowTerminal := make(chan struct{})
+	terminalWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{[]byte(preamble), []byte(terminal)},
+		gates:    []<-chan struct{}{nil, allowTerminal},
+		waiting:  []chan struct{}{nil, terminalWaiting},
+	}
+
+	type runResult struct {
+		result   *openaiStreamingResultPassthrough
+		recorder *httptest.ResponseRecorder
+		writer   *passthroughFlushTestWriter
+		err      error
+	}
+	resultCh := make(chan runResult, 1)
+	writerCh := make(chan *passthroughFlushTestWriter, 1)
+	go func() {
+		result, recorder, writer, err := runPassthroughFlushTestWithTimeout(t, reader, -1, 0, func(c *gin.Context) {
+			writerCh <- c.Writer.(*passthroughFlushTestWriter)
+		})
+		resultCh <- runResult{result: result, recorder: recorder, writer: writer, err: err}
+	}()
+	writer := <-writerCh
+
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-terminalWaiting:
+	case <-timer.C:
+		t.Fatal("timed out waiting for terminal event read")
+	}
+	// The zero-second channel override must make the queued lifecycle event visible
+	// while the upstream reader is still blocked before the terminal event.
+	select {
+	case <-writer.flushEvents:
+	case <-timer.C:
+		t.Fatal("timed out waiting for lifecycle flush")
+	}
+	close(allowTerminal)
+	run := <-resultCh
+	require.NoError(t, run.err)
+	require.NotNil(t, run.result)
+	require.Equal(t, preamble+terminal, run.recorder.Body.String())
+	require.Equal(t, []int{len(preamble), len(preamble) + len(terminal)}, run.writer.flushBodyLengths)
+}
+
+func TestOpenAIStreamingPassthroughConfiguredTimeoutFlushesLifecycle(t *testing.T) {
+	preamble := "event: response.queued\n" +
+		`data: {"response":{"id":"resp_timer"}}` + "\n\n"
+	terminal := `data: {"type":"response.completed","response":{"id":"resp_timer","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}` + "\n\n"
+	allowTerminal := make(chan struct{})
+	terminalWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{[]byte(preamble), []byte(terminal)},
+		gates:    []<-chan struct{}{nil, allowTerminal},
+		waiting:  []chan struct{}{nil, terminalWaiting},
+	}
+	type runResult struct {
+		result   *openaiStreamingResultPassthrough
+		recorder *httptest.ResponseRecorder
+		writer   *passthroughFlushTestWriter
+		err      error
+	}
+	resultCh := make(chan runResult, 1)
+	writerCh := make(chan *passthroughFlushTestWriter, 1)
+	go func() {
+		result, recorder, writer, err := runPassthroughFlushTestWithTimeout(t, reader, -1, 1, func(c *gin.Context) {
+			writerCh <- c.Writer.(*passthroughFlushTestWriter)
+		})
+		resultCh <- runResult{result: result, recorder: recorder, writer: writer, err: err}
+	}()
+	writer := <-writerCh
+
+	select {
+	case <-terminalWaiting:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for terminal event read")
+	}
+	select {
+	case <-writer.flushEvents:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for configured lifecycle flush")
+	}
+	require.Equal(t, preamble, writer.recorder.Body.String(), "configured timer should flush the lifecycle event before terminal release")
+	close(allowTerminal)
+	run := <-resultCh
+	require.NoError(t, run.err)
+	require.NotNil(t, run.result)
+	require.Equal(t, preamble+terminal, run.recorder.Body.String())
+	require.Equal(t, []int{len(preamble), len(preamble) + len(terminal)}, run.writer.flushBodyLengths)
+}
+
 func TestOpenAIStreamingPassthroughFlushesTerminalEventAtEOFWithoutBlankLine(t *testing.T) {
 	upstream := "event: response.completed\n" +
 		`data: {"type":"response.completed","response":{"id":"resp_eof","usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}`
@@ -171,6 +285,26 @@ func TestOpenAIStreamingPassthroughFailedBeforeOutputCanStillFailOverWithoutFlus
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
+	require.Empty(t, recorder.Body.String())
+	require.Empty(t, writer.flushBodyLengths)
+}
+
+func TestOpenAIStreamingPassthroughQueuedMetadataBeforeCapacityErrorStillFailsOver(t *testing.T) {
+	upstream := "event: response.created\n" +
+		`data: {"type":"response.created","response":{"id":"resp_capacity"}}` + "\n\n" +
+		"event: response.queued\n" +
+		`data: {"response":{"id":"resp_capacity"}}` + "\n\n" +
+		"event: keepalive\n" +
+		`data: {"sequence_number":2}` + "\n\n" +
+		"event: error\n" +
+		`data: {"error":{"code":"server_is_overloaded","message":"model capacity exhausted"}}` + "\n\n"
+
+	_, recorder, writer, err := runPassthroughFlushTest(t, io.NopCloser(strings.NewReader(upstream)), -1)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
 	require.Empty(t, recorder.Body.String())
 	require.Empty(t, writer.flushBodyLengths)
 }

@@ -288,6 +288,87 @@ func TestOpenAIResponseFlush_PreambleWithoutTerminalRemainsBufferedForFailover(t
 	require.Empty(t, flushes)
 }
 
+func TestOpenAIResponseFlush_ReleasesLifecycleOnSemanticOutput(t *testing.T) {
+	preamble := "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_output\"}}\n\n"
+	output := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ready\"}\n\n"
+	terminal := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_output\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ready\"}]}],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+	allowOutput := make(chan struct{})
+	allowTerminal := make(chan struct{})
+	outputWaiting := make(chan struct{})
+	terminalWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{[]byte(preamble), []byte(output), []byte(terminal)},
+		gates:    []<-chan struct{}{nil, allowOutput, allowTerminal},
+		waiting:  []chan struct{}{nil, outputWaiting, terminalWaiting},
+	}
+	recorder := newOpenAIResponseFlushRecorder()
+	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{})
+
+	waitOpenAIResponseFlushSignal(t, outputWaiting)
+	close(allowOutput)
+	waitOpenAIResponseFlushCount(t, recorder, 1)
+	gotBody, flushes := recorder.snapshot()
+	require.Equal(t, preamble+output, gotBody)
+	require.Equal(t, []string{preamble + output}, flushes)
+
+	close(allowTerminal)
+	require.NoError(t, <-errCh)
+	require.NotNil(t, <-resultCh)
+	gotBody, flushes = recorder.snapshot()
+	require.Equal(t, preamble+output+terminal, gotBody)
+	require.Len(t, flushes, 2)
+}
+
+func TestOpenAIResponseFlush_ReleasesLifecycleEventsAfterInitialWait(t *testing.T) {
+	preamble := "data: {\"type\":\"response.queued\",\"response\":{\"id\":\"resp_wait\"}}\n\n"
+	terminal := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_wait\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+	allowTerminal := make(chan struct{})
+	terminalWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{[]byte(preamble), []byte(terminal)},
+		gates:    []<-chan struct{}{nil, allowTerminal},
+		waiting:  []chan struct{}{nil, terminalWaiting},
+	}
+	recorder := newOpenAIResponseFlushRecorder()
+	resultCh, errCh := runOpenAIResponseFlushTestAsync(recorder, reader, config.GatewayConfig{})
+
+	waitOpenAIResponseFlushSignal(t, terminalWaiting)
+	waitOpenAIResponseFlushCount(t, recorder, 1)
+	gotBody, flushes := recorder.snapshot()
+	require.Equal(t, preamble, gotBody)
+	require.Equal(t, []string{preamble}, flushes)
+
+	close(allowTerminal)
+	require.NoError(t, <-errCh)
+	require.NotNil(t, <-resultCh)
+	gotBody, flushes = recorder.snapshot()
+	require.Equal(t, preamble+terminal, gotBody)
+	require.Len(t, flushes, 2)
+}
+
+func TestOpenAIResponseFlush_ZeroTimeoutReleasesLifecycleImmediately(t *testing.T) {
+	preamble := "data: {\"type\":\"response.queued\",\"response\":{\"id\":\"resp_zero\"}}\n\n"
+	terminal := "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_zero\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n"
+	allowTerminal := make(chan struct{})
+	terminalWaiting := make(chan struct{})
+	reader := &stagedOpenAISSEReadCloser{
+		segments: [][]byte{[]byte(preamble), []byte(terminal)},
+		gates:    []<-chan struct{}{nil, allowTerminal},
+		waiting:  []chan struct{}{nil, terminalWaiting},
+	}
+	recorder := newOpenAIResponseFlushRecorder()
+	resultCh, errCh := runOpenAIResponseFlushTestAsyncWithConfig(recorder, reader, config.GatewayConfig{OpenAIResponsesFirstEventTimeoutSeconds: 0})
+
+	waitOpenAIResponseFlushCount(t, recorder, 1)
+	gotBody, flushes := recorder.snapshot()
+	require.Equal(t, preamble, gotBody)
+	require.Equal(t, []string{preamble}, flushes)
+
+	close(allowTerminal)
+	require.NoError(t, <-errCh)
+	require.NotNil(t, <-resultCh)
+}
+
 func TestOpenAIResponseFlush_CanceledAfterOutputFlushesResidualWithoutErrorEvent(t *testing.T) {
 	body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n"
 	recorder := newOpenAIResponseFlushRecorder()
@@ -471,6 +552,13 @@ func TestOpenAIResponseFlush_ClientDisconnectStillDrainsUsage(t *testing.T) {
 }
 
 func runOpenAIResponseFlushTest(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (*openaiStreamingResult, error) {
+	if gatewayCfg.OpenAIResponsesFirstEventTimeoutSeconds == 0 {
+		gatewayCfg.OpenAIResponsesFirstEventTimeoutSeconds = 2
+	}
+	return runOpenAIResponseFlushTestWithConfig(recorder, body, gatewayCfg)
+}
+
+func runOpenAIResponseFlushTestWithConfig(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (*openaiStreamingResult, error) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -487,14 +575,25 @@ func runOpenAIResponseFlushTest(recorder *openAIResponseFlushRecorder, body io.R
 }
 
 func runOpenAIResponseFlushTestAsync(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (<-chan *openaiStreamingResult, <-chan error) {
+	return runOpenAIResponseFlushTestAsyncWithConfig(recorder, body, normalizedOpenAIResponseFlushGatewayConfig(gatewayCfg))
+}
+
+func runOpenAIResponseFlushTestAsyncWithConfig(recorder *openAIResponseFlushRecorder, body io.ReadCloser, gatewayCfg config.GatewayConfig) (<-chan *openaiStreamingResult, <-chan error) {
 	resultCh := make(chan *openaiStreamingResult, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		result, err := runOpenAIResponseFlushTest(recorder, body, gatewayCfg)
+		result, err := runOpenAIResponseFlushTestWithConfig(recorder, body, gatewayCfg)
 		resultCh <- result
 		errCh <- err
 	}()
 	return resultCh, errCh
+}
+
+func normalizedOpenAIResponseFlushGatewayConfig(gatewayCfg config.GatewayConfig) config.GatewayConfig {
+	if gatewayCfg.OpenAIResponsesFirstEventTimeoutSeconds == 0 {
+		gatewayCfg.OpenAIResponsesFirstEventTimeoutSeconds = 2
+	}
+	return gatewayCfg
 }
 
 func waitOpenAIResponseFlushCount(t *testing.T, recorder *openAIResponseFlushRecorder, want int) {

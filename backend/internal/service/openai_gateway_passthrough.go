@@ -784,7 +784,7 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 
 func openAIStreamEventIsPreamble(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case "response.created", "response.in_progress":
+	case "response.created", "response.in_progress", "response.queued", "keepalive":
 		return true
 	default:
 		return false
@@ -1255,10 +1255,60 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
-	defer putSSEScannerBuf64K(scanBuf)
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
+	initialEventTimeout := s.openAIResponsesInitialEventTimeout(ctx, c)
+	initialEventDelayEnabled := initialEventTimeout > 0
+	var initialEventTimer *time.Timer
+	var initialEventCh <-chan time.Time
+	startInitialEventTimer := func() {
+		if !initialEventDelayEnabled || initialEventTimer != nil {
+			return
+		}
+		initialEventTimer = time.NewTimer(initialEventTimeout)
+		initialEventCh = initialEventTimer.C
+	}
+	stopInitialEventTimer := func() {
+		if initialEventTimer == nil {
+			return
+		}
+		if !initialEventTimer.Stop() {
+			select {
+			case <-initialEventTimer.C:
+			default:
+			}
+		}
+		initialEventTimer = nil
+		initialEventCh = nil
+	}
+	defer stopInitialEventTimer()
+
+	type passthroughScanEvent struct {
+		line string
+		err  error
+	}
+	events := make(chan passthroughScanEvent, openAIDefaultStreamQueueSize)
+	done := make(chan struct{})
+	go func() {
+		defer close(events)
+		defer putSSEScannerBuf64K(scanBuf)
+		for documentScanner.Scan() {
+			select {
+			case events <- passthroughScanEvent{line: documentScanner.Text()}:
+			case <-done:
+				return
+			}
+		}
+		if err := documentScanner.Err(); err != nil {
+			select {
+			case events <- passthroughScanEvent{err: err}:
+			case <-done:
+			}
+		}
+	}()
+	defer close(done)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
+	currentSSEEventType := ""
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
@@ -1269,145 +1319,185 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for documentScanner.Scan() {
-		line := documentScanner.Text()
-		lineStartsClientOutput := false
-		forceFlushFailedEvent := false
-		if data, ok := extractOpenAISSEDataLine(line); ok {
-			dataBytes := []byte(data)
-			trimmedData := strings.TrimSpace(data)
-			rawEventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
-			observer.ObserveOpenAI(dataBytes, rawEventType)
-			if needModelReplace && strings.Contains(data, mappedModel) {
-				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
-				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
-					dataBytes = []byte(replacedData)
-					trimmedData = strings.TrimSpace(replacedData)
-				}
+	var scanErr error
+scanLoop:
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				break scanLoop
 			}
-			if normalizedData, normalized := normalizeOpenAIResponsesFunctionCallArguments(dataBytes); normalized {
-				dataBytes = normalizedData
-				trimmedData = strings.TrimSpace(string(normalizedData))
-				line = "data: " + string(normalizedData)
+			if event.err != nil {
+				scanErr = event.err
+				break scanLoop
 			}
-			if normalizedData, normalized := normalizeCompletedImageGenerationStatus(dataBytes); normalized {
-				dataBytes = normalizedData
-				trimmedData = strings.TrimSpace(string(normalizedData))
-				line = "data: " + string(normalizedData)
+			line := event.line
+			if eventType, ok := extractOpenAISSEEventLine(line); ok {
+				currentSSEEventType = eventType
 			}
-			if trimmedData != "[DONE]" {
-				restoredData, restoreErr := restoreOpenAIResponsesNamespacePayload(c, dataBytes)
-				if restoreErr != nil {
-					return resultWithUsage(), fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
+			lineStartsClientOutput := false
+			forceFlushFailedEvent := false
+			if data, ok := extractOpenAISSEDataLine(line); ok {
+				dataBytes := []byte(data)
+				trimmedData := strings.TrimSpace(data)
+				rawEventType := openAISSEEventType(dataBytes, currentSSEEventType)
+				observer.ObserveOpenAI(dataBytes, rawEventType)
+				if needModelReplace && strings.Contains(data, mappedModel) {
+					line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+					if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
+						dataBytes = []byte(replacedData)
+						trimmedData = strings.TrimSpace(replacedData)
+					}
 				}
-				if !bytes.Equal(restoredData, dataBytes) {
-					dataBytes = restoredData
-					trimmedData = strings.TrimSpace(string(restoredData))
-					line = "data: " + string(restoredData)
+				if normalizedData, normalized := normalizeOpenAIResponsesFunctionCallArguments(dataBytes); normalized {
+					dataBytes = normalizedData
+					trimmedData = strings.TrimSpace(string(normalizedData))
+					line = "data: " + string(normalizedData)
 				}
-			}
-			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
-			if eventType == "response.failed" {
-				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
-				// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
-				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
-				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
-				s.parseSSEUsageBytes(dataBytes, usage)
-				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
-					MarkOpsCyberPolicy(c, CyberPolicyMark{
-						Code:           code,
-						Message:        msg,
-						Body:           truncateString(string(dataBytes), 4096),
-						UpstreamStatus: http.StatusOK,
-						UpstreamInTok:  usage.InputTokens,
-						UpstreamOutTok: usage.OutputTokens,
-					})
+				if normalizedData, normalized := normalizeCompletedImageGenerationStatus(dataBytes); normalized {
+					dataBytes = normalizedData
+					trimmedData = strings.TrimSpace(string(normalizedData))
+					line = "data: " + string(normalizedData)
 				}
-				if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
-					if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {
-						// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
-						// antigravity 先例），否则透传命中的 failed 在监控中不可见。
-						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
-						MarkResponseCommitted(c)
-						c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-						c.JSON(status, gin.H{
-							"error": gin.H{
-								"type":    errType,
-								"message": errMsg,
-							},
+				if trimmedData != "[DONE]" {
+					restoredData, restoreErr := restoreOpenAIResponsesNamespacePayload(c, dataBytes)
+					if restoreErr != nil {
+						return resultWithUsage(), fmt.Errorf("restore OpenAI passthrough namespace response: %w", restoreErr)
+					}
+					if !bytes.Equal(restoredData, dataBytes) {
+						dataBytes = restoredData
+						trimmedData = strings.TrimSpace(string(restoredData))
+						line = "data: " + string(restoredData)
+					}
+				}
+				eventType := openAISSEEventType([]byte(trimmedData), currentSSEEventType)
+				if eventType == "error" && !openAIStreamClientOutputStarted(c, clientOutputStarted) && isOpenAIUpstreamCapacityShedEvent(dataBytes) {
+					failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+					s.parseSSEUsageBytes(dataBytes, usage)
+					return resultWithUsage(),
+						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+				}
+				if eventType == "response.failed" {
+					failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+					// response.failed 自带上游已消耗的 usage（input token 通常已扣）；必须先解析
+					// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
+					// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
+					s.parseSSEUsageBytes(dataBytes, usage)
+					if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
+						MarkOpsCyberPolicy(c, CyberPolicyMark{
+							Code:           code,
+							Message:        msg,
+							Body:           truncateString(string(dataBytes), 4096),
+							UpstreamStatus: http.StatusOK,
+							UpstreamInTok:  usage.InputTokens,
+							UpstreamOutTok: usage.OutputTokens,
 						})
-						return resultWithUsage(), fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
 					}
-					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-						return resultWithUsage(),
-							s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+					if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
+						if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {
+							// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
+							// antigravity 先例），否则透传命中的 failed 在监控中不可见。
+							s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "http_error", dataBytes, failedMessage)
+							MarkResponseCommitted(c)
+							c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+							c.JSON(status, gin.H{
+								"error": gin.H{
+									"type":    errType,
+									"message": errMsg,
+								},
+							})
+							return resultWithUsage(), fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
+						}
+						if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
+							return resultWithUsage(),
+								s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage, resp.Header)
+						}
 					}
+					forceFlushFailedEvent = true
+					sawFailedEvent = true
 				}
-				forceFlushFailedEvent = true
-				sawFailedEvent = true
+				if trimmedData == "[DONE]" {
+					sawDone = true
+				}
+				if openAIStreamEventIsTerminalWithType(trimmedData, eventType) {
+					sawTerminalEvent = true
+				}
+				if responseID == "" {
+					responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
+				}
+				imageCounter.AddSSEData(dataBytes)
+				if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
+					dataBytes,
+					eventType,
+					openAIStreamClientOutputStarted(c, clientOutputStarted),
+				); sanitized {
+					dataBytes = sanitizedData
+					trimmedData = strings.TrimSpace(string(sanitizedData))
+					line = "data: " + string(sanitizedData)
+				}
+				lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+				if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
+					semanticOutputSeen = true
+				}
+				// OpenAI Responses streams that terminate with an empty
+				// response.completed (no output, no usage, no error, nothing sent
+				// to the client) are silent upstream refusals: fail over instead of
+				// recording a successful 0/0 usage turn (issue #5009).
+				if (eventType == "response.completed" || eventType == "response.done") &&
+					!sawFailedEvent && !semanticOutputSeen && !clientOutputStarted &&
+					openAIResponsesCompletedEventIsEmpty(dataBytes, usage) {
+					return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
+				}
+				if firstTokenMs == nil && openAIStreamDataStartsVisibleOutput(trimmedData, eventType) {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
+				s.parseSSEUsageBytes(dataBytes, usage)
 			}
-			if trimmedData == "[DONE]" {
-				sawDone = true
-			}
-			if openAIStreamEventIsTerminal(trimmedData) {
-				sawTerminalEvent = true
-			}
-			if responseID == "" {
-				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
-			}
-			imageCounter.AddSSEData(dataBytes)
-			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
-				dataBytes,
-				eventType,
-				openAIStreamClientOutputStarted(c, clientOutputStarted),
-			); sanitized {
-				dataBytes = sanitizedData
-				trimmedData = strings.TrimSpace(string(sanitizedData))
-				line = "data: " + string(sanitizedData)
-			}
-			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
-				semanticOutputSeen = true
-			}
-			// OpenAI Responses streams that terminate with an empty
-			// response.completed (no output, no usage, no error, nothing sent
-			// to the client) are silent upstream refusals: fail over instead of
-			// recording a successful 0/0 usage turn (issue #5009).
-			if (eventType == "response.completed" || eventType == "response.done") &&
-				!sawFailedEvent && !semanticOutputSeen && !clientOutputStarted &&
-				openAIResponsesCompletedEventIsEmpty(dataBytes, usage) {
-				return resultWithUsage(), newOpenAIResponsesEmptyCompletedFailoverError(c, account, upstreamRequestID)
-			}
-			if firstTokenMs == nil && openAIStreamDataStartsVisibleOutput(trimmedData, eventType) {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
-			s.parseSSEUsageBytes(dataBytes, usage)
-		}
 
-		if !clientDisconnected {
-			if !clientOutputStarted && !lineStartsClientOutput {
-				pendingLines = append(pendingLines, line)
-				continue
-			}
-			if !clientOutputStarted && len(pendingLines) > 0 {
-				if !writePendingLines() {
+			if !clientDisconnected {
+				if !clientOutputStarted && !lineStartsClientOutput && initialEventDelayEnabled {
+					pendingLines = append(pendingLines, line)
+					if line != "" {
+						startInitialEventTimer()
+					}
+					if line == "" {
+						currentSSEEventType = ""
+					}
 					continue
 				}
+				if !clientOutputStarted && len(pendingLines) > 0 {
+					if !writePendingLines() {
+						continue
+					}
+				}
+				if _, err := fmt.Fprintln(w, line); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				} else {
+					clientOutputStarted = true
+					flushPending = true
+					if line == "" {
+						flushPendingOutput()
+					}
+				}
 			}
-			if _, err := fmt.Fprintln(w, line); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-			} else {
+			if line == "" {
+				currentSSEEventType = ""
+			}
+		case <-initialEventCh:
+			stopInitialEventTimer()
+			if clientDisconnected || clientOutputStarted || len(pendingLines) == 0 {
+				continue
+			}
+			if writePendingLines() {
 				clientOutputStarted = true
 				flushPending = true
-				if line == "" {
-					flushPendingOutput()
-				}
+				flushPendingOutput()
 			}
 		}
 	}
-	if err := documentScanner.Err(); err != nil {
+	if err := scanErr; err != nil {
 		if (sawDone || sawTerminalEvent) && !sawFailedEvent {
 			s.clearOpenAIProxyStreamDisconnect(account)
 			return resultWithUsage(), nil
