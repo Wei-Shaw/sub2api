@@ -2200,6 +2200,21 @@ func TestResponsesDoneOutputItemsSparseDoneOnlyOutputHasNoNulls(t *testing.T) {
 	require.NotContains(t, string(merged), "null")
 }
 
+func TestResponsesDoneOutputItemsFinalIdentityDedupKeepsFirstPositionAndLatestItem(t *testing.T) {
+	items := newResponsesDoneOutputItems()
+	items.ProcessEvent([]byte(`{"item":{"id":"shared","type":"message","status":"completed"}}`), "response.output_item.done")
+
+	merged, ok := items.MergeTerminalOutput(
+		gjson.Parse(`[{"id":"shared","type":"message","status":"in_progress"},{"id":"other","type":"reasoning"}]`),
+		nil,
+	)
+	require.True(t, ok)
+	require.Len(t, gjson.ParseBytes(merged).Array(), 2)
+	require.Equal(t, "shared", gjson.GetBytes(merged, "0.id").String())
+	require.Equal(t, "completed", gjson.GetBytes(merged, "0.status").String())
+	require.Equal(t, "other", gjson.GetBytes(merged, "1.id").String())
+}
+
 func TestOpenAIStreamingNormalizesTerminalOutputToEmptyArray(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

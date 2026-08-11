@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1616,16 +1615,23 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 	if (items == nil || !items.HasContent()) && len(fallback) == 0 {
 		return nil, false
 	}
-	positioned := make(map[int]json.RawMessage)
+	type positionedOutputItem struct {
+		raw      json.RawMessage
+		identity string
+	}
+	positioned := make(map[int]positionedOutputItem)
 	terminalByIdentity := make(map[string]int)
+	maxPosition := -1
 	var fallbackItems []json.RawMessage
 	if output.Exists() && output.IsArray() {
 		for index, terminalItem := range output.Array() {
 			raw := json.RawMessage(terminalItem.Raw)
-			positioned[index] = raw
-			if identity := responsesOutputItemIdentityResult(terminalItem); identity != "" {
+			identity := responsesOutputItemIdentityResult(terminalItem)
+			positioned[index] = positionedOutputItem{raw: raw, identity: identity}
+			if identity != "" {
 				terminalByIdentity[identity] = index
 			}
+			maxPosition = index
 		}
 	}
 	if len(fallback) > 0 {
@@ -1635,52 +1641,112 @@ func (items *responsesDoneOutputItems) MergeTerminalOutput(output gjson.Result, 
 		encoded, err := json.Marshal(fallbackItems)
 		return encoded, err == nil
 	}
-	doneIndices := make([]int, 0, len(items.byIndex))
-	for index := range items.byIndex {
-		doneIndices = append(doneIndices, index)
-	}
-	sort.Ints(doneIndices)
-	for _, index := range doneIndices {
-		doneItem := items.byIndex[index].raw
-		targetIndex := index
-		if identity := items.byIndex[index].identity; identity != "" {
-			if terminalIndex, found := terminalByIdentity[identity]; found {
-				targetIndex = terminalIndex
-				doneItem = mergeMissingResponsesOutputItemFields(positioned[terminalIndex], doneItem)
-			}
-		}
-		positioned[targetIndex] = doneItem
-	}
-
-	doneIdentities := items.byIdentity
-	for _, fallbackItem := range fallbackItems {
-		if responsesFallbackRepresentedByDoneItem(fallbackItem, items, doneIdentities) {
+	doneSyntheticKeys := make(map[responsesSyntheticItemKey]struct{}, len(items.byIndex)+len(items.withoutIndex))
+	for index := 0; index <= maxResponsesOutputIndex; index++ {
+		entry := items.byIndex[index]
+		if entry == nil {
 			continue
 		}
-		index := 0
-		for {
-			if _, occupied := positioned[index]; !occupied {
-				positioned[index] = fallbackItem
-				break
+		doneItem := entry.raw
+		targetIndex := index
+		if identity := entry.identity; identity != "" {
+			if terminalIndex, found := terminalByIdentity[identity]; found {
+				targetIndex = terminalIndex
+				doneItem = mergeMissingResponsesOutputItemFields(positioned[terminalIndex].raw, doneItem)
 			}
-			index++
+		}
+		positioned[targetIndex] = positionedOutputItem{raw: doneItem, identity: entry.identity}
+		if targetIndex > maxPosition {
+			maxPosition = targetIndex
+		}
+		if key, ok := responsesSyntheticItemKeyFor(gjson.ParseBytes(entry.raw)); ok {
+			doneSyntheticKeys[key] = struct{}{}
 		}
 	}
 
-	positions := make([]int, 0, len(positioned))
-	for index := range positioned {
-		positions = append(positions, index)
+	for _, entry := range items.withoutIndex {
+		if key, ok := responsesSyntheticItemKeyFor(gjson.ParseBytes(entry.raw)); ok {
+			doneSyntheticKeys[key] = struct{}{}
+		}
 	}
-	sort.Ints(positions)
+	nextFallbackPosition := 0
+	for _, fallbackItem := range fallbackItems {
+		fallbackParsed := gjson.ParseBytes(fallbackItem)
+		if key, ok := responsesSyntheticItemKeyFor(fallbackParsed); ok {
+			if _, represented := doneSyntheticKeys[key]; represented {
+				continue
+			}
+		}
+		for {
+			if _, occupied := positioned[nextFallbackPosition]; !occupied {
+				break
+			}
+			nextFallbackPosition++
+		}
+		positioned[nextFallbackPosition] = positionedOutputItem{
+			raw:      fallbackItem,
+			identity: responsesOutputItemIdentityResult(fallbackParsed),
+		}
+		if nextFallbackPosition > maxPosition {
+			maxPosition = nextFallbackPosition
+		}
+		nextFallbackPosition++
+	}
+
 	merged := make([]json.RawMessage, 0, len(positioned)+len(items.withoutIndex))
-	for _, index := range positions {
-		merged = appendResponsesOutputItem(merged, positioned[index])
+	mergedByIdentity := make(map[string]int, len(positioned)+len(items.withoutIndex))
+	appendItem := func(item positionedOutputItem) {
+		if item.identity != "" {
+			if index, found := mergedByIdentity[item.identity]; found {
+				merged[index] = item.raw
+				return
+			}
+			mergedByIdentity[item.identity] = len(merged)
+		}
+		merged = append(merged, item.raw)
+	}
+	for index := 0; index <= maxPosition; index++ {
+		if item, exists := positioned[index]; exists {
+			appendItem(item)
+		}
 	}
 	for _, doneItem := range items.withoutIndex {
-		merged = appendResponsesOutputItem(merged, doneItem.raw)
+		appendItem(positionedOutputItem{raw: doneItem.raw, identity: doneItem.identity})
 	}
 	encoded, err := json.Marshal(merged)
 	return encoded, err == nil
+}
+
+type responsesSyntheticItemKey struct {
+	itemType  string
+	primary   string
+	secondary string
+}
+
+func responsesSyntheticItemKeyFor(item gjson.Result) (responsesSyntheticItemKey, bool) {
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "message":
+		text := responsesItemText(item, "content")
+		if text == "" {
+			return responsesSyntheticItemKey{}, false
+		}
+		return responsesSyntheticItemKey{itemType: itemType, primary: item.Get("role").String(), secondary: text}, true
+	case "reasoning":
+		text := responsesItemText(item, "summary")
+		if text == "" {
+			return responsesSyntheticItemKey{}, false
+		}
+		return responsesSyntheticItemKey{itemType: itemType, primary: text}, true
+	case "image_generation_call":
+		result := item.Get("result").String()
+		if result == "" {
+			return responsesSyntheticItemKey{}, false
+		}
+		return responsesSyntheticItemKey{itemType: itemType, primary: result, secondary: item.Get("output_format").String()}, true
+	default:
+		return responsesSyntheticItemKey{}, false
+	}
 }
 
 func mergeMissingResponsesOutputItemFields(terminal, done json.RawMessage) json.RawMessage {
@@ -1701,55 +1767,12 @@ func mergeMissingResponsesOutputItemFields(terminal, done json.RawMessage) json.
 	return merged
 }
 
-func responsesFallbackRepresentedByDoneItem(fallback json.RawMessage, items *responsesDoneOutputItems, _ map[string]*responsesDoneOutputItem) bool {
-	for _, done := range items.byIndex {
-		if responsesSyntheticItemsEquivalent(fallback, done.raw) {
-			return true
-		}
-	}
-	for _, done := range items.withoutIndex {
-		if responsesSyntheticItemsEquivalent(fallback, done.raw) {
-			return true
-		}
-	}
-	return false
-}
-
-func responsesSyntheticItemsEquivalent(fallback, done json.RawMessage) bool {
-	fallbackItem := gjson.ParseBytes(fallback)
-	doneItem := gjson.ParseBytes(done)
-	itemType := strings.TrimSpace(fallbackItem.Get("type").String())
-	if itemType == "" || itemType != strings.TrimSpace(doneItem.Get("type").String()) {
-		return false
-	}
-	switch itemType {
-	case "message":
-		fallbackText := responsesItemText(fallbackItem, "content")
-		return fallbackText != "" && fallbackItem.Get("role").String() == doneItem.Get("role").String() &&
-			fallbackText == responsesItemText(doneItem, "content")
-	case "reasoning":
-		fallbackText := responsesItemText(fallbackItem, "summary")
-		return fallbackText != "" && fallbackText == responsesItemText(doneItem, "summary")
-	case "image_generation_call":
-		return fallbackItem.Get("result").String() != "" &&
-			fallbackItem.Get("result").String() == doneItem.Get("result").String() &&
-			fallbackItem.Get("output_format").String() == doneItem.Get("output_format").String()
-	default:
-		return false
-	}
-}
-
 func responsesItemText(item gjson.Result, path string) string {
 	var text strings.Builder
 	for _, part := range item.Get(path).Array() {
 		_, _ = text.WriteString(part.Get("text").String())
 	}
 	return text.String()
-}
-
-func responsesOutputItemIdentity(item json.RawMessage) string {
-	parsed := gjson.ParseBytes(item)
-	return responsesOutputItemIdentityResult(parsed)
 }
 
 func responsesOutputItemIdentityResult(parsed gjson.Result) string {
@@ -1760,19 +1783,6 @@ func responsesOutputItemIdentityResult(parsed gjson.Result) string {
 		return "call_id:" + callID
 	}
 	return ""
-}
-
-func appendResponsesOutputItem(output []json.RawMessage, item json.RawMessage) []json.RawMessage {
-	identity := responsesOutputItemIdentity(item)
-	if identity != "" {
-		for index, candidate := range output {
-			if responsesOutputItemIdentity(candidate) == identity {
-				output[index] = item
-				return output
-			}
-		}
-	}
-	return append(output, item)
 }
 
 func normalizeResponsesStreamingTerminalOutput(data []byte, acc *apicompat.BufferedResponseAccumulator, doneItems *responsesDoneOutputItems, imageOutputs []json.RawMessage) ([]byte, bool) {
