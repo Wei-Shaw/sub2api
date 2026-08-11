@@ -20,7 +20,7 @@ import (
 //  1. 从 JWT 上下文取当前用户 ID → APIKeyService.GetAvailableGroups 拿到用户可访问的 group 集合；
 //  2. 拉取 fal / atlascloud / apiz 三类视频平台账号；
 //  3. 过滤条件：账号状态 = active、GroupIDs 与用户 group 集合有交集、
-//     Extra["fal_video_models_enabled"] == true；
+//     Extra["video_models_enabled"] == true；
 //  4. 从 account.GetModelMapping() 的 value 中提取 fal endpoint，
 //     经 NormalizeFalVideoModelEndpoint（剥掉 "fal-ai/"、要求 ≥2 段）后作为对外模型名；
 //  5. 对每个模型，遍历用户可访问的 group，用 ModelPricingResolver.Resolve 拿视频定价

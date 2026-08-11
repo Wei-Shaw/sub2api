@@ -338,6 +338,7 @@
                 <ParamSchemaEditor
                   :model-value="row"
                   :removable="true"
+                  :allow-array-defaults="true"
                   :can-move-up="idx > 0"
                   :can-move-down="idx < form.params.length - 1"
                   @update:modelValue="onParamRowUpdate(idx, $event)"

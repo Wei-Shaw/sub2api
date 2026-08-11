@@ -608,6 +608,11 @@ export default {
         baseUrlHint: 'Enter the apiz API Base URL (without trailing slash). Leave blank to use the default https://api.apiz.ai.',
         apiKeyHint: 'Enter the API Key provided by apiz.'
       },
+      video: {
+        modelsEnabled: 'Enable video models',
+        modelsEnabledHint:
+          'Expose video model identifiers from this account\'s model_mapping in the Video Models menu and allow /api/v1/model/{model} scheduling. When disabled, this account does not participate in video scheduling.'
+      },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:

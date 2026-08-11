@@ -88,6 +88,7 @@
             :spec="f"
             :model-value="formData[f.key]"
             :disabled="playground.isBusy.value"
+            :media-references="promptMediaReferences"
             @update:model-value="onFieldValueChange(f.key, $event)"
           />
         </section>
@@ -344,6 +345,7 @@ import {
   type FieldSpec,
 } from './paramSpec'
 import VideoPlaygroundSchemaField from './VideoPlaygroundSchemaField.vue'
+import { collectPromptMediaReferences } from './promptMediaReferences'
 import type { OutputFieldSpec } from '@/api/videoModels'
 
 const props = defineProps<{
@@ -513,6 +515,9 @@ function leafToPrettyJson(v: unknown): string {
 // formData：表单双向绑定值。现在值可以是任意 JSON（包括 object / array），
 // 不再强制字符串。读写都通过 VideoPlaygroundSchemaField 的 v-model 自动处理。
 const formData = reactive<Record<string, unknown>>({})
+const promptMediaReferences = computed(() =>
+  collectPromptMediaReferences(fieldSpecs.value, formData)
+)
 
 function initFormDefaults() {
   // 清空旧字段，避免 slug 切换后残留

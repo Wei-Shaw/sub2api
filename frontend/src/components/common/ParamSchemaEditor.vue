@@ -120,7 +120,7 @@
            textarea"是两回事：widget 只影响演练页的最终渲染控件，不影响编辑器里
            这个默认值输入框，故此处恒为单行 input（多行内容也支持粘贴保存）。 -->
       <div
-        v-if="node.type === 'string' || node.type === 'number'"
+        v-if="(node.type === 'string' || node.type === 'number') && !isArrayItem"
         class="flex flex-1 min-w-[10rem] flex-col gap-1"
       >
         <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
@@ -136,7 +136,7 @@
       </div>
       <!-- 控件类型（widget）
            - type=string：input / textarea / image
-           - type=array ：input（逐元素递归渲染）/ imageUrls（整组图片输入）
+           - type=array ：input / ImageUrls / VideoUrls / AudioUrls
            其它类型（number / boolean / object）没有可选控件形态，这一列被隐藏。 -->
       <div v-if="canPickWidget" class="flex w-36 flex-col gap-1">
         <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
@@ -182,10 +182,10 @@
           class="input h-8 text-xs"
           :placeholder="t('admin.modelIntros.fields.maxItemsUnlimited')"
           :title="t('admin.modelIntros.fields.maxItemsHint')"
-          @input="emitChange"
+          @input="onMaxItemsChange"
         />
       </div>
-      <div v-else-if="node.type === 'boolean'" class="flex flex-col gap-1">
+      <div v-else-if="node.type === 'boolean' && !isArrayItem" class="flex flex-col gap-1">
         <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
           {{ t('admin.modelIntros.fields.labelDefault') }}
         </label>
@@ -215,15 +215,15 @@
 
     <!-- ============================================================
          第二行：required + description
-         required 使用项目通用 Toggle 控件（与全站其它开关风格一致），
-         无论顶层 / object 子字段 / array 元素、任何 type 都渲染，
-         确保嵌套 schema 每一层、每种类型都能显式声明"是否必须"和"描述"。
+         required 使用项目通用 Toggle 控件（与全站其它开关风格一致）。
+         array 顶层 items 只定义同构元素类型，不是一个具名请求字段，因此不显示
+         required / advanced / description；对应的多个默认值在父 array 区域内添加。
 
          **顺序说明**：description / required 放在"嵌套展开区之前"，
          紧贴第一行 key/type；否则 object/array 展开的子字段列表会把
          description 挤到很下面，导致用户误以为"复合类型无法填描述"。
     ============================================================ -->
-    <div class="space-y-1.5 pl-1">
+    <div v-if="!isArrayItem" class="space-y-1.5 pl-1">
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div class="flex items-center gap-2">
           <Toggle v-model="node.required" @update:modelValue="emitChange" />
@@ -231,11 +231,7 @@
             {{ t('admin.modelIntros.fields.paramRequired') }}
           </span>
         </div>
-        <!--
-          高级参数：数组元素（isArrayItem=true）本身没有独立的可见性语义，
-          折叠归属于 array 父层字段，这里不重复渲染，避免管理员误用。
-        -->
-        <div v-if="!isArrayItem" class="flex items-center gap-2">
+        <div class="flex items-center gap-2">
           <Toggle v-model="node.advanced" @update:modelValue="emitChange" />
           <span class="text-xs text-gray-600 dark:text-gray-400">
             {{ t('admin.modelIntros.fields.paramAdvanced') }}
@@ -360,6 +356,7 @@
           <ParamSchemaEditor
             :model-value="child"
             :removable="true"
+            :allow-array-defaults="allowArrayDefaults"
             :can-move-up="i > 0"
             :can-move-down="i < node.children.length - 1"
             @update:modelValue="onChildUpdate(i, $event)"
@@ -372,23 +369,37 @@
     </div>
 
     <!-- array 分支：单个 items schema（数组同构，无法排序）
-         widget='imageUrls' 时元素形态被固定为"图片完整 URL 字符串"，
+         媒体 URL 组控件的元素形态被固定为"完整 URL 字符串"，
          再让管理员编辑 items schema 只会带来误配置，因此换成一行说明。 -->
     <div
       v-if="node.type === 'array'"
       class="nested-block nested-block--array mt-2"
     >
-      <div class="mb-2 flex items-center justify-between">
-        <span class="font-mono text-[11px] text-gray-500">[ array items ]</span>
-        <span v-if="node.maxItems > 0" class="font-mono text-[11px] text-gray-400">
-          max {{ node.maxItems }}
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <span class="font-mono text-[11px] text-gray-500">
+          [ array items<template v-if="allowArrayDefaults"> · {{ node.arrayDefaults.length }}</template> ]
         </span>
+        <div class="flex items-center gap-2">
+          <span v-if="node.maxItems > 0" class="font-mono text-[11px] text-gray-400">
+            max {{ node.maxItems }}
+          </span>
+          <button
+            v-if="allowArrayDefaults"
+            type="button"
+            class="btn btn-secondary btn-xs"
+            :disabled="!canAddArrayDefault"
+            @click="addArrayDefault"
+          >
+            <Icon name="plus" size="xs" />
+            {{ t('admin.modelIntros.fields.addArrayItem') }}
+          </button>
+        </div>
       </div>
       <div
-        v-if="node.widget === 'imageUrls'"
+        v-if="mediaUrlWidget"
         class="rounded border border-dashed border-violet-300 bg-violet-50/50 p-2 text-[11px] leading-relaxed text-violet-800 dark:border-violet-800 dark:bg-violet-900/10 dark:text-violet-200"
       >
-        {{ t('admin.modelIntros.fields.imageUrlsItemsFixed') }}
+        {{ t('admin.modelIntros.fields.mediaUrlsItemsFixed', { widget: mediaUrlWidget }) }}
       </div>
       <div v-else class="rounded border border-gray-200 bg-white p-2 dark:border-dark-700 dark:bg-dark-800">
         <ParamSchemaEditor
@@ -397,8 +408,74 @@
           :removable="false"
           :is-array-item="true"
           :array-index="0"
+          :allow-array-defaults="allowArrayDefaults"
           @update:modelValue="onItemsUpdate"
         />
+      </div>
+      <div v-if="allowArrayDefaults" class="mt-2 space-y-2">
+        <p v-if="node.arrayDefaults.length === 0" class="text-[11px] text-gray-400">
+          {{ t('admin.modelIntros.fields.arrayItemsEmpty') }}
+        </p>
+        <VueDraggable
+          v-else
+          v-model="node.arrayDefaults"
+          :animation="200"
+          handle=".array-default-drag-handle"
+          class="space-y-2"
+          @end="emitChange"
+        >
+          <div
+            v-for="(value, index) in node.arrayDefaults"
+            :key="index"
+            class="flex items-start gap-2 rounded border border-violet-200 bg-white p-2 dark:border-violet-900 dark:bg-dark-800"
+          >
+            <div class="mt-1 flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                class="array-default-drag-handle cursor-grab p-1 text-gray-400 hover:text-gray-700 active:cursor-grabbing dark:hover:text-gray-200"
+                :title="t('admin.modelIntros.fields.dragToReorder')"
+              >
+                <Icon name="arrowsUpDown" size="xs" />
+              </button>
+              <div class="flex flex-col">
+                <button
+                  type="button"
+                  class="p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:text-gray-200"
+                  :disabled="index === 0"
+                  :title="t('admin.modelIntros.fields.moveUp')"
+                  @click="moveArrayDefault(index, -1)"
+                >
+                  <Icon name="chevronUp" size="xs" />
+                </button>
+                <button
+                  type="button"
+                  class="p-0.5 text-gray-400 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:text-gray-200"
+                  :disabled="index === node.arrayDefaults.length - 1"
+                  :title="t('admin.modelIntros.fields.moveDown')"
+                  @click="moveArrayDefault(index, 1)"
+                >
+                  <Icon name="chevronDown" size="xs" />
+                </button>
+              </div>
+            </div>
+            <span class="mt-2 w-8 shrink-0 font-mono text-[11px] text-gray-400">[{{ index }}]</span>
+            <SchemaValueEditor
+              v-if="node.items"
+              class="min-w-0 flex-1"
+              :schema="node.items"
+              :model-value="value"
+              @update:model-value="updateArrayDefault(index, $event)"
+            />
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs shrink-0 text-red-500"
+              :title="t('common.remove')"
+              @click="removeArrayDefault(index)"
+            >
+              <Icon name="trash" size="xs" />
+            </button>
+          </div>
+        </VueDraggable>
       </div>
     </div>
 
@@ -450,8 +527,12 @@ import { useI18n } from 'vue-i18n'
 import { VueDraggable } from 'vue-draggable-plus'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import Icon from '@/components/icons/Icon.vue'
+import SchemaValueEditor from './SchemaValueEditor.vue'
 import {
+  defaultValueForSchemaRow,
   makeSchemaRow,
+  normalizeValueForSchemaRow,
   resetRowForType,
   type SchemaRow,
   type SchemaRowType,
@@ -462,6 +543,7 @@ import {
   type TranslationLang,
 } from '@/composables/useDescriptionTranslation'
 import { useAppStore } from '@/stores/app'
+import { normalizeMediaUrlWidget } from '@/utils/mediaUrlWidget'
 
 defineOptions({ name: 'ParamSchemaEditor' })
 
@@ -478,7 +560,7 @@ const props = defineProps<{
   modelValue: SchemaRow
   /** 是否显示"删除"按钮（顶层或 object 子字段为 true；array items 唯一一份为 false） */
   removable?: boolean
-  /** 是否是 array 元素：key 输入被替换为只读 index 显示 */
+  /** 是否是 array 的同构 items schema：隐藏字段级元数据和默认值输入。 */
   isArrayItem?: boolean
   /** array 元素时展示的 index（默认 0） */
   arrayIndex?: number
@@ -495,6 +577,8 @@ const props = defineProps<{
    */
   canMoveUp?: boolean
   canMoveDown?: boolean
+  /** 是否允许为 array 配置请求默认值；输出 schema 关闭此能力。 */
+  allowArrayDefaults?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -506,6 +590,7 @@ const emit = defineEmits<{
 
 // 直接在模板里 v-model 到 node.xxx；node 就是父传入的引用。
 const node = props.modelValue
+if (!Array.isArray(node.arrayDefaults)) node.arrayDefaults = []
 
 // 类型下拉候选：叶子 3 种 + 2 种复合类型。
 const typeOptions: SelectOption[] = [
@@ -521,10 +606,14 @@ const canEnum = computed(() => node.type === 'string' || node.type === 'number')
 /**
  * canPickWidget：哪些类型有"控件形态"可选。
  *   - string：input / textarea / image
- *   - array ：input / imageUrls
+ *   - array ：input / ImageUrls / VideoUrls / AudioUrls
  * number / boolean / object 没有可选形态，整列隐藏。
  */
 const canPickWidget = computed(() => node.type === 'string' || node.type === 'array')
+const mediaUrlWidget = computed(() => normalizeMediaUrlWidget(node.widget))
+const canAddArrayDefault = computed(() =>
+  node.maxItems <= 0 || node.arrayDefaults.length < node.maxItems
+)
 
 /**
  * widgetOptions：按当前类型给出可选控件形态。
@@ -535,14 +624,15 @@ const canPickWidget = computed(() => node.type === 'string' || node.type === 'ar
  *   - image    → 单张图片输入（演练台渲染为 URL / 本地上传 / 素材库三合一）
  * array：
  *   - input     → 默认，逐元素按 items schema 递归渲染
- *   - imageUrls → 整组图片输入：演练台渲染成一个图库式多图区域，值为图片
- *                 完整 URL 的字符串数组（同样支持本地上传 / URL / 素材库）
+ *   - *Urls → 整组媒体输入，值为对应媒体完整 URL 的字符串数组
  */
 const widgetOptions = computed<SelectOption[]>(() => {
   if (node.type === 'array') {
     return [
       { value: 'input', label: 'input' },
-      { value: 'imageUrls', label: 'imageUrls' },
+      { value: 'ImageUrls', label: 'ImageUrls' },
+      { value: 'VideoUrls', label: 'VideoUrls' },
+      { value: 'AudioUrls', label: 'AudioUrls' },
     ]
   }
   return [
@@ -630,11 +720,12 @@ function onTypeChange(v: string | number | boolean | null) {
     node.isEnum = false
     node.optionsText = ''
   }
-  // widget 归位：string 与 array 的候选集互不相通（textarea/image vs imageUrls），
+  // widget 归位：string 与 array 的候选集互不相通，
   // 切换类型后若残留上一个类型的取值，下拉会显示一个非法选项。统一收回 'input'。
   node.widget = 'input'
   // maxItems 只对 array 有意义；切走时清零，避免序列化出无意义的上限。
   if (next !== 'array') node.maxItems = 0
+  if (next !== 'array') node.arrayDefaults = []
   emitChange()
 }
 
@@ -642,22 +733,26 @@ function onTypeChange(v: string | number | boolean | null) {
  * onWidgetChange：控件形态切换。
  * - string / textarea：如果之前 textareaRows 未设或非法，补默认 3
  * - string / image：不需要 rows；也不清空已有默认值（可能是一个图片 URL）
- * - array / imageUrls：把 items 固定为一个 string 元素（值即图片完整 URL）。
+ * - array / 媒体 URL 组：把 items 固定为一个 string 元素（值即媒体完整 URL）。
  *   元素 schema 不再暴露给管理员编辑，这里帮他写好，保证存储 shape 合法。
  * - 切回 input：不清空 textareaRows（下次切回 textarea 可复用），只是不再序列化。
  */
 function onWidgetChange(v: string | number | boolean | null) {
   const raw = v == null ? 'input' : String(v)
   if (node.type === 'array') {
-    node.widget = raw === 'imageUrls' ? 'imageUrls' : 'input'
-    if (node.widget === 'imageUrls') {
-      // 元素恒为"图片 URL 字符串"；items 复用 image 控件声明，便于将来
-      // 有人把 widget 切回 input 时，逐元素编辑也依旧是图片输入。
+    node.widget = normalizeMediaUrlWidget(raw) ?? 'input'
+    if (normalizeMediaUrlWidget(node.widget)) {
+      // 元素恒为 URL 字符串。ImageUrls 继续复用单图控件声明；视频和音频
+      // 暂无单值控件，切回 input 时按普通字符串编辑。
+      const itemWidget: SchemaWidget = node.widget === 'ImageUrls' ? 'image' : 'input'
       if (!node.items || node.items.type !== 'string') {
-        node.items = makeSchemaRow({ key: '', type: 'string', widget: 'image' })
+        node.items = makeSchemaRow({ key: '', type: 'string', widget: itemWidget })
       } else {
-        node.items.widget = 'image'
+        node.items.widget = itemWidget
       }
+      node.arrayDefaults = node.arrayDefaults.map((value) =>
+        normalizeValueForSchemaRow(node.items as SchemaRow, value)
+      )
     }
     emitChange()
     return
@@ -701,6 +796,43 @@ function onChildUpdate(_i: number, _v: SchemaRow) {
 }
 /** array items 更新时同上，只 forward 一次 change 事件。 */
 function onItemsUpdate(_v: SchemaRow) {
+  if (node.items) {
+    node.arrayDefaults = node.arrayDefaults.map((value) =>
+      normalizeValueForSchemaRow(node.items as SchemaRow, value)
+    )
+  }
+  emitChange()
+}
+
+function onMaxItemsChange() {
+  const max = Number(node.maxItems)
+  if (Number.isFinite(max) && max > 0 && node.arrayDefaults.length > Math.trunc(max)) {
+    node.arrayDefaults.splice(Math.trunc(max))
+  }
+  emitChange()
+}
+
+function addArrayDefault() {
+  if (!node.items || !canAddArrayDefault.value) return
+  node.arrayDefaults.push(defaultValueForSchemaRow(node.items))
+  emitChange()
+}
+
+function updateArrayDefault(index: number, value: unknown) {
+  node.arrayDefaults[index] = value
+  emitChange()
+}
+
+function moveArrayDefault(index: number, direction: -1 | 1) {
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= node.arrayDefaults.length) return
+  const [value] = node.arrayDefaults.splice(index, 1)
+  node.arrayDefaults.splice(targetIndex, 0, value)
+  emitChange()
+}
+
+function removeArrayDefault(index: number) {
+  node.arrayDefaults.splice(index, 1)
   emitChange()
 }
 </script>

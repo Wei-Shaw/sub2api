@@ -2,7 +2,7 @@ package admin
 
 // file_handler.go
 //
-// 管理员「文件管理」接口：直接浏览/上传/下载/改名/删除图片转存桶里的对象。
+// 管理员「文件管理」接口：直接浏览/上传/URL 导入/下载/改名/删除图片转存桶里的对象。
 //
 // 全部依赖图片转存（COS / S3 兼容）已启用；未启用时统一返回 COS_NOT_CONFIGURED，
 // 前端据此渲染"请先在系统设置启用图片转存"的引导页，而不是一个空列表。
@@ -94,7 +94,7 @@ func (h *FileHandler) DownloadURL(c *gin.Context) {
 //   - prefix：目标目录前缀（可选，如 "images/2026/"）
 //   - name：覆盖文件名（可选，默认用上传文件的原名）
 //
-// 最终 key = prefix + name。允许覆盖同名对象（管理员显式操作，前端会先确认）。
+// 最终 key = prefix + name。默认拒绝覆盖；overwrite=true 表示管理员已确认覆盖。
 func (h *FileHandler) Upload(c *gin.Context) {
 	// 主动设限，避免超大 body 把内存打满；+1MiB 容纳 multipart 边界等开销。
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.AdminFileUploadMaxBytes()+(1<<20))
@@ -134,7 +134,35 @@ func (h *FileHandler) Upload(c *gin.Context) {
 		prefix += "/"
 	}
 
-	entry, err := h.svc.Upload(c.Request.Context(), prefix+name, data, fileHeader.Header.Get("Content-Type"))
+	overwrite, _ := strconv.ParseBool(c.PostForm("overwrite"))
+	entry, err := h.svc.Upload(
+		c.Request.Context(), prefix+name, data, fileHeader.Header.Get("Content-Type"), overwrite,
+	)
+	if err != nil {
+		respondFileErr(c, err)
+		return
+	}
+	response.Success(c, entry)
+}
+
+type importFileURLRequest struct {
+	URL       string `json:"url" binding:"required"`
+	Prefix    string `json:"prefix"`
+	Name      string `json:"name"`
+	Overwrite bool   `json:"overwrite"`
+}
+
+// ImportFromURL POST /admin/files/import-url
+// 下载外部 URL 后写入当前目录。name 为空时由服务端从 URL 路径推断。
+func (h *FileHandler) ImportFromURL(c *gin.Context) {
+	var req importFileURLRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	entry, err := h.svc.ImportFromURL(
+		c.Request.Context(), req.Prefix, req.Name, req.URL, req.Overwrite,
+	)
 	if err != nil {
 		respondFileErr(c, err)
 		return

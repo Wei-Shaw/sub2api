@@ -394,6 +394,32 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('migrates the legacy video capability key when editing a video account', async () => {
+    const account = buildAccount()
+    account.platform = 'apiz'
+    account.name = 'APIZ Video'
+    account.extra = {
+      fal_video_models_enabled: true,
+      retained_setting: 'keep-me'
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get<HTMLInputElement>('[data-testid="video-models-enabled"]')
+    expect(toggle.element.checked).toBe(true)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra?.video_models_enabled).toBe(true)
+    expect(extra?.retained_setting).toBe('keep-me')
+    expect(extra).not.toHaveProperty('fal_video_models_enabled')
+  })
+
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
     account.extra = {

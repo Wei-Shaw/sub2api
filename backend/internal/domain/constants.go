@@ -283,14 +283,14 @@ func IsVideoModelName(model string) bool {
 
 // VideoModelsEnabledExtraKey 是视频平台账号 Extra 字段中"是否支持视频模型"的开关键。
 //
-// 语义：只有当账号的 Extra[FalVideoModelsEnabledExtraKey] == true 时，
+// 语义：只有当账号的 Extra[VideoModelsEnabledExtraKey] == true 时，
 // 该账号的 model_mapping 中两段及以上的模型才会作为视频模型暴露给用户菜单
 // /user/video-models。开关关闭（缺省 false）时该账号不提供视频能力，
 // 视频门面 /api/v1/model/{model} 不会调度到此账号。
-const VideoModelsEnabledExtraKey = "fal_video_models_enabled"
+const VideoModelsEnabledExtraKey = "video_models_enabled"
 
-// FalVideoModelsEnabledExtraKey 保留旧名称，兼容已有调用和持久化数据。
-const FalVideoModelsEnabledExtraKey = VideoModelsEnabledExtraKey
+// LegacyFalVideoModelsEnabledExtraKey 是旧版持久化键，只用于兼容读取。
+const LegacyFalVideoModelsEnabledExtraKey = "fal_video_models_enabled"
 
 // IsVideoModelsEnabled 从账号 Extra 中读出"支持视频模型"开关。
 //
@@ -304,7 +304,10 @@ func IsVideoModelsEnabled(extra map[string]any) bool {
 	}
 	raw, ok := extra[VideoModelsEnabledExtraKey]
 	if !ok {
-		return false
+		raw, ok = extra[LegacyFalVideoModelsEnabledExtraKey]
+		if !ok {
+			return false
+		}
 	}
 	switch v := raw.(type) {
 	case bool:
@@ -314,11 +317,6 @@ func IsVideoModelsEnabled(extra map[string]any) bool {
 	default:
 		return false
 	}
-}
-
-// IsFalVideoModelsEnabled 保留旧名称以兼容现有调用。
-func IsFalVideoModelsEnabled(extra map[string]any) bool {
-	return IsVideoModelsEnabled(extra)
 }
 
 // VideoModelSlugs 从账号模型映射中提取对外视频模型名。

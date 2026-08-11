@@ -38,16 +38,16 @@
               v-model="videoModelsEnabled"
               type="checkbox"
               class="mt-0.5 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              data-testid="video-models-enabled"
             />
             <span class="flex-1">
               <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">
-                {{ t('admin.accounts.fal.videoModelsEnabled', '支持视频模型') }}
+                {{ t('admin.accounts.video.modelsEnabled') }}
               </span>
               <span class="mt-1 block text-xs text-gray-600 dark:text-gray-400">
                 {{
                   t(
-                    'admin.accounts.fal.videoModelsEnabledHint',
-                    '开启后，该账号 model_mapping 中的两段及以上视频模型标识（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭后该账号不参与视频调度。'
+                    'admin.accounts.video.modelsEnabledHint'
                   )
                 }}
               </span>
@@ -3124,7 +3124,7 @@ const isVideoAccountPlatform = (platform?: string): boolean =>
 // 异步视频平台账号专属："支持视频模型" 开关。
 // 勾选后，账号的 model_mapping 中两段及以上的视频模型
 // 会被 /user/video-models 聚合并对当前用户暴露。缺省 false，与 backend
-// domain.FalVideoModelsEnabledExtraKey 常量对齐。
+// backend domain.VideoModelsEnabledExtraKey 常量对齐。
 const videoModelsEnabled = ref(false)
 const antigravityProjectId = ref('')
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -3655,9 +3655,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const extra = newAccount.extra as Record<string, unknown> | undefined
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
-  // 回填 fal "支持视频模型" 开关；只有 fal 平台的账号才需要，其它平台恒为 false。
+  // 回填视频平台的“支持视频模型”开关；兼容旧版 fal_ 前缀键。
   videoModelsEnabled.value =
-    isVideoAccountPlatform(newAccount.platform) && extra?.fal_video_models_enabled === true
+    isVideoAccountPlatform(newAccount.platform) &&
+    (extra?.video_models_enabled === true ||
+      (extra?.video_models_enabled === undefined && extra?.fal_video_models_enabled === true))
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
   kiroCreditUnitPriceUsd.value = typeof kiroCreditUnitPrice === 'number'
     ? kiroCreditUnitPrice
@@ -4903,7 +4905,7 @@ const handleSubmit = async () => {
     }
 
     // For asynchronous video accounts, handle "支持视频模型" toggle in extra.
-    // 与 backend domain.FalVideoModelsEnabledExtraKey 严格对齐；开关关闭时显式删除 key，
+    // 与 backend domain.VideoModelsEnabledExtraKey 严格对齐；保存时迁移并清理旧键，
     // 避免残留 true 值影响 /user/video-models 聚合结果。
     if (isVideoAccountPlatform(props.account.platform)) {
       const currentExtra =
@@ -4911,10 +4913,11 @@ const handleSubmit = async () => {
         ((props.account.extra as Record<string, unknown>) || {})
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (videoModelsEnabled.value) {
-        newExtra.fal_video_models_enabled = true
+        newExtra.video_models_enabled = true
       } else {
-        delete newExtra.fal_video_models_enabled
+        delete newExtra.video_models_enabled
       }
+      delete newExtra.fal_video_models_enabled
       updatePayload.extra = newExtra
     }
 

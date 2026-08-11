@@ -267,7 +267,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await selectButtonByText(wrapper, buttonText)
     await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} video`)
     await wrapper.get('form#create-account-form input[type="password"]').setValue('video-key')
-    await wrapper.get('[data-testid="fal-video-models-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="video-models-enabled"]').setValue(true)
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
     await flushPromises()
 
@@ -275,7 +275,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
       platform,
       type: 'apikey',
-      extra: { fal_video_models_enabled: true },
+      extra: { video_models_enabled: true },
     })
   })
 

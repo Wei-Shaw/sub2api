@@ -1664,17 +1664,16 @@
               v-model="videoModelsEnabled"
               type="checkbox"
               class="mt-0.5 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-              data-testid="fal-video-models-enabled"
+              data-testid="video-models-enabled"
             />
             <span class="flex-1">
               <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">
-                {{ t('admin.accounts.fal.videoModelsEnabled', '支持视频模型') }}
+                {{ t('admin.accounts.video.modelsEnabled') }}
               </span>
               <span class="mt-1 block text-xs text-gray-600 dark:text-gray-400">
                 {{
                   t(
-                    'admin.accounts.fal.videoModelsEnabledHint',
-                    '开启后，该账号 model_mapping 中的两段及以上视频模型标识（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭后该账号不参与视频调度。'
+                    'admin.accounts.video.modelsEnabledHint'
                   )
                 }}
               </span>
@@ -5624,10 +5623,11 @@ const buildVideoExtra = (base?: Record<string, unknown>): Record<string, unknown
   if (!isVideoAccountPlatform(form.platform)) return base
   const extra: Record<string, unknown> = { ...(base || {}) }
   if (videoModelsEnabled.value) {
-    extra.fal_video_models_enabled = true
+    extra.video_models_enabled = true
   } else {
-    delete extra.fal_video_models_enabled
+    delete extra.video_models_enabled
   }
+  delete extra.fal_video_models_enabled
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 

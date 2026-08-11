@@ -12,6 +12,7 @@ export default {
     searchPlaceholder: 'Search by file name',
     fromLibrary: 'From library',
     openLink: 'Open',
+    previewImage: 'Click to preview',
     empty: 'No materials yet. Upload an image or import from a URL.',
     pickerTitle: 'Pick a material',
     uploadSuccess: 'Uploaded to library',
@@ -27,11 +28,15 @@ export default {
     remainingSlots: '{n} slot(s) left',
     confirmPick: 'Confirm',
     maxSelectReached: 'You can select at most {n} more',
-    // ---- Image group control (array + widget=imageUrls) ----
+    // ---- Media URL group controls ----
     imageUrlsTitle: 'Images',
     imageUrlsEmptyTitle: 'Add images',
-    imageUrlsEmptyHint: 'Drop images here, or pick from the library / paste URLs',
-    addImage: 'Add',
+    videoUrlsTitle: 'Videos',
+    videoUrlsEmptyTitle: 'Add videos',
+    audioUrlsTitle: 'Audio',
+    audioUrlsEmptyTitle: 'Add audio',
+    mediaUrlsEmptyHint: 'Drop files here ({extensions}), or pick from the library / paste URLs',
+    addMedia: 'Add',
     clearAll: 'Clear all',
     // Both source buttons reuse importUrlBtn ('Import from URL'),
     // so separate pasteUrl / pasteUrls entries are no longer needed.
@@ -48,6 +53,9 @@ export default {
     importPartialFailedWithReason: '{n} URL import(s) failed: {msg}',
     maxItemsReached: 'Limit reached ({n})',
     maxItemsSkipped: 'Over the limit — {n} skipped',
+    invalidMediaFiles: '{n} unsupported file(s) skipped. Allowed: {extensions}',
+    invalidMediaUrls: '{n} URL(s) with unsupported extensions skipped. Allowed: {extensions}',
+    mediaKindMismatch: 'The actual media type does not match this control and was skipped.',
     // ---- Backend error codes → friendly messages ----
     // Keys must match the backend `reason` exactly (see service/user_material.go and
     // cos_transfer.go). extractI18nErrorMessage looks them up automatically and falls

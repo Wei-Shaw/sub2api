@@ -20,11 +20,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -183,11 +185,16 @@ func (s *AdminFileService) DownloadURL(ctx context.Context, key string) (string,
 	return store.PresignURL(ctx, key, adminFileDownloadURLExpiry)
 }
 
-// Upload 上传（或覆盖）一个对象。
+// Upload 上传一个对象。默认拒绝覆盖；只有 overwrite=true 才允许替换同名对象。
 //
 // key 为完整对象键；调用方（handler）负责把"当前目录 + 文件名"拼好。
-// 允许覆盖同名对象 —— 管理员的显式操作，前端会先给出确认提示。
-func (s *AdminFileService) Upload(ctx context.Context, key string, data []byte, contentType string) (*AdminFileEntry, error) {
+func (s *AdminFileService) Upload(
+	ctx context.Context,
+	key string,
+	data []byte,
+	contentType string,
+	overwrite bool,
+) (*AdminFileEntry, error) {
 	cfg, err := s.requireConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -201,6 +208,19 @@ func (s *AdminFileService) Upload(ctx context.Context, key string, data []byte, 
 	}
 	if int64(len(data)) > adminFileUploadMaxBytes {
 		return nil, fmt.Errorf("file too large: %d bytes (max %d)", len(data), adminFileUploadMaxBytes)
+	}
+	if !overwrite {
+		store, storeErr := s.cos.getOrCreateStore(ctx, cfg)
+		if storeErr != nil {
+			return nil, storeErr
+		}
+		exists, existsErr := s.objectExists(ctx, store, key)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if exists {
+			return nil, ErrObjectKeyExists
+		}
 	}
 
 	ct := strings.TrimSpace(contentType)
@@ -218,6 +238,109 @@ func (s *AdminFileService) Upload(ctx context.Context, key string, data []byte, 
 		LastModified: time.Now(),
 		PublicURL:    s.cos.buildPublicURL(cfg, key),
 	}, nil
+}
+
+// ImportFromURL 安全下载外部 URL，并把文件写入指定目录。
+// srcURL 属于用户可控输入，必须复用 DownloadUntrustedToBytes 的 SSRF 防护。
+func (s *AdminFileService) ImportFromURL(
+	ctx context.Context,
+	prefix, name, srcURL string,
+	overwrite bool,
+) (*AdminFileEntry, error) {
+	cfg, err := s.requireConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prefix, name, err = normalizeAdminImportTarget(prefix, name)
+	if err != nil {
+		return nil, err
+	}
+	srcURL = strings.TrimSpace(srcURL)
+	parsed, err := url.Parse(srcURL)
+	if err != nil || parsed == nil {
+		return nil, infraerrors.BadRequest("INVALID_URL", "url must start with http(s)://")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if parsed.Hostname() == "" || (scheme != "http" && scheme != "https") {
+		return nil, infraerrors.BadRequest("INVALID_URL", "url must start with http(s)://")
+	}
+	// URL 路径能确定文件名时，下载前先检查冲突，避免拉完大文件才提示覆盖。
+	if name == "" {
+		if inferred := fileNameFromURLPath(parsed.Path); inferred != "" {
+			name = inferred
+		}
+	}
+	if !overwrite && name != "" {
+		store, storeErr := s.cos.getOrCreateStore(ctx, cfg)
+		if storeErr != nil {
+			return nil, storeErr
+		}
+		exists, existsErr := s.objectExists(ctx, store, prefix+name)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if exists {
+			return nil, ErrObjectKeyExists
+		}
+	}
+
+	data, contentType, err := s.cos.DownloadUntrustedToBytes(ctx, srcURL, adminFileUploadMaxBytes)
+	if err != nil {
+		if errors.Is(err, ErrUntrustedURLBlocked) {
+			return nil, infraerrors.BadRequest("URL_BLOCKED", "url points to a disallowed address")
+		}
+		return nil, infraerrors.BadRequest("URL_FETCH_FAILED", "fetch url failed: "+err.Error())
+	}
+	if len(data) == 0 {
+		return nil, infraerrors.BadRequest("EMPTY_REMOTE_FILE", "remote file is empty")
+	}
+
+	if name == "" {
+		name = adminImportFileName(srcURL, contentType)
+	}
+	return s.Upload(ctx, prefix+name, data, contentType, overwrite)
+}
+
+func normalizeAdminImportTarget(prefix, name string) (string, string, error) {
+	prefix = normalizeKeyPrefix(prefix)
+	if prefix != "" {
+		if !isSafeObjectKey(prefix) {
+			return "", "", ErrInvalidObjectKey
+		}
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return prefix, "", nil
+	}
+	name = path.Base(strings.ReplaceAll(name, `\`, "/"))
+	if name == "." || name == "/" {
+		return "", "", ErrInvalidObjectKey
+	}
+	if _, err := sanitizeObjectKey(prefix + name); err != nil {
+		return "", "", err
+	}
+	return prefix, name, nil
+}
+
+func adminImportFileName(srcURL, contentType string) string {
+	parsed, err := url.Parse(srcURL)
+	if err == nil {
+		if name := fileNameFromURLPath(parsed.Path); name != "" {
+			return name
+		}
+	}
+	return "download" + ExtFromURLOrType("", contentType)
+}
+
+func fileNameFromURLPath(urlPath string) string {
+	name := path.Base(strings.TrimSuffix(urlPath, "/"))
+	if name == "" || name == "." || name == "/" {
+		return ""
+	}
+	return name
 }
 
 // Rename 把 srcKey 改名/移动到 dstKey。

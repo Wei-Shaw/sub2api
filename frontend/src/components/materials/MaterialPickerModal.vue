@@ -14,7 +14,7 @@
           {{ t('common.search', 'Search') }}
         </button>
         <label class="btn btn-secondary btn-xs cursor-pointer">
-          <input type="file" :accept="acceptMime" class="hidden" @change="onFilePicked" />
+          <input type="file" :accept="fileAccept" class="hidden" @change="onFilePicked" />
           {{ t('materials.uploadBtn') }}
         </label>
         <button type="button" class="btn btn-secondary btn-xs" @click="showUrlImport = !showUrlImport">
@@ -167,6 +167,11 @@ import userMaterialsAPI, { type UserMaterialItem, type UserMaterialKind } from '
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { formatBytes } from '@/utils/format'
+import {
+  hasAllowedMediaExtension,
+  mediaExtensions,
+  mediaFileAccept,
+} from '@/utils/mediaUrlWidget'
 
 const props = withDefaults(
   defineProps<{
@@ -180,8 +185,10 @@ const props = withDefaults(
      * 0 或省略表示不限制；达到上限后继续点击未选中的卡片会给出提示。
      */
     maxSelect?: number
+    /** 媒体 URL 组开启：上传和 URL 导入必须匹配当前 kind 的后缀。 */
+    restrictMediaExtensions?: boolean
   }>(),
-  { kind: 'image', multiple: false, maxSelect: 0 }
+  { kind: 'image', multiple: false, maxSelect: 0, restrictMediaExtensions: false }
 )
 
 const emit = defineEmits<{
@@ -235,7 +242,10 @@ function clearSelection() {
 
 // accept 属性：image → image/*，其他类型对应展开。用户还是可以选择任意文件，
 // 后端会按 Content-Type 校验并拒绝不匹配的（防止误传变成"通用网盘"）。
-const acceptMime = computedAccept(props.kind)
+const fileAccept = computed(() =>
+  props.restrictMediaExtensions ? mediaFileAccept(props.kind) : computedAccept(props.kind)
+)
+
 function computedAccept(kind: UserMaterialKind): string {
   switch (kind) {
     case 'image':
@@ -345,8 +355,22 @@ async function onFilePicked(ev: Event) {
   const target = ev.target as HTMLInputElement
   const f = target.files?.[0]
   if (!f) return
+  if (props.restrictMediaExtensions && !hasAllowedMediaExtension(f.name, props.kind)) {
+    appStore.showError(
+      t('materials.invalidMediaFiles', {
+        n: 1,
+        extensions: mediaExtensions(props.kind).join(', '),
+      })
+    )
+    target.value = ''
+    return
+  }
   try {
     const resp = await userMaterialsAPI.upload(f)
+    if (props.restrictMediaExtensions && resp.data.kind !== props.kind) {
+      appStore.showError(t('materials.mediaKindMismatch'))
+      return
+    }
     appStore.showSuccess(t('materials.uploadSuccess'))
     if (props.multiple) {
       onSelect(resp.data)
@@ -366,9 +390,22 @@ async function onFilePicked(ev: Event) {
 async function doImportFromUrl() {
   const url = importUrl.value.trim()
   if (!url) return
+  if (props.restrictMediaExtensions && !hasAllowedMediaExtension(url, props.kind)) {
+    appStore.showError(
+      t('materials.invalidMediaUrls', {
+        n: 1,
+        extensions: mediaExtensions(props.kind).join(', '),
+      })
+    )
+    return
+  }
   importing.value = true
   try {
     const resp = await userMaterialsAPI.importFromUrl(url)
+    if (props.restrictMediaExtensions && resp.data.kind !== props.kind) {
+      appStore.showError(t('materials.mediaKindMismatch'))
+      return
+    }
     appStore.showSuccess(t('materials.uploadSuccess'))
     importUrl.value = ''
     if (props.multiple) {

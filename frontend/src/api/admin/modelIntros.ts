@@ -15,7 +15,7 @@ import type { BasePaginationResponse } from '@/types'
  *
  * 存储形式（前后端一致）：
  *   default_params[key] = {
- *     value:       默认值（string | number | boolean | object | null）
+ *     value:       默认值（叶子为标量；array schema 为多个默认元素组成的数组）
  *     required?:   是否必填（仅影响前端表单校验）
  *     description?: 字段描述
  *     enum?:       是否为枚举字段

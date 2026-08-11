@@ -746,7 +746,7 @@ func registerCOSImageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-// registerFileRoutes 注册管理员「文件管理」：直接浏览/上传/下载/改名/删除
+// registerFileRoutes 注册管理员「文件管理」：直接浏览/上传/URL 导入/下载/改名/删除
 // 图片转存桶里的对象。全部依赖图片转存已启用，未启用时接口返回
 // COS_NOT_CONFIGURED，前端渲染引导页。
 //
@@ -762,6 +762,7 @@ func registerFileRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		files.GET("/status", h.Admin.File.GetStatus)
 		files.GET("/download-url", h.Admin.File.DownloadURL)
 		files.POST("/upload", h.Admin.File.Upload)
+		files.POST("/import-url", h.Admin.File.ImportFromURL)
 		files.PUT("/rename", h.Admin.File.Rename)
 		files.DELETE("", h.Admin.File.Delete)
 	}

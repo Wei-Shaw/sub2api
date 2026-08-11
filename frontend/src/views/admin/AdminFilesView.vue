@@ -1,5 +1,6 @@
 <template>
-  <div class="space-y-4">
+  <AppLayout>
+    <div class="space-y-4">
     <!-- 页头 -->
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -9,15 +10,6 @@
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {{ t('admin.files.subtitle') }}
         </p>
-      </div>
-      <div v-if="status?.enabled" class="flex flex-wrap items-center gap-2">
-        <button type="button" class="btn btn-secondary btn-sm" :disabled="loading" @click="reload">
-          {{ t('common.refresh') }}
-        </button>
-        <button type="button" class="btn btn-primary btn-sm" @click="triggerUpload">
-          {{ t('admin.files.upload') }}
-        </button>
-        <input ref="fileInputEl" type="file" multiple class="hidden" @change="onFilesPicked" />
       </div>
     </div>
 
@@ -38,7 +30,7 @@
     </div>
 
     <template v-else-if="status?.enabled">
-      <!-- 桶信息 + 搜索 -->
+      <!-- 桶信息 + 工具栏 -->
       <div class="card space-y-3 p-4">
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
           <span>
@@ -51,43 +43,80 @@
           </span>
         </div>
 
-        <!-- 面包屑：逐层浏览。对象存储没有真目录，这里是按 "/" 聚合的逻辑层级 -->
-        <div class="flex flex-wrap items-center gap-1 text-sm">
-          <button type="button" class="text-primary-600 hover:underline dark:text-primary-400" @click="goPrefix('')">
-            {{ t('admin.files.root') }}
+        <div data-testid="file-toolbar" class="flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-secondary btn-sm h-9" :disabled="loading" @click="reload">
+            {{ t('common.refresh') }}
           </button>
-          <template v-for="(seg, i) in breadcrumbs" :key="seg.prefix">
-            <span class="text-gray-400">/</span>
-            <button
-              v-if="i < breadcrumbs.length - 1"
-              type="button"
-              class="text-primary-600 hover:underline dark:text-primary-400"
-              @click="goPrefix(seg.prefix)"
-            >
-              {{ seg.name }}
-            </button>
-            <span v-else class="font-medium text-gray-900 dark:text-white">{{ seg.name }}</span>
-          </template>
-        </div>
-
-        <!-- 搜索：对象存储只支持前缀匹配，不支持"包含"搜索。
-             因此这里语义是"在当前目录下按名称前缀过滤"，并顺带开启递归平铺，
-             这样能搜到子目录里的文件。 -->
-        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-secondary btn-sm h-9" :disabled="uploading" @click="triggerUpload">
+            {{ t('admin.files.upload') }}
+          </button>
+          <input ref="fileInputEl" type="file" multiple class="hidden" @change="onFilesPicked" />
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm h-9"
+            :disabled="importingUrl"
+            :aria-expanded="showUrlImport"
+            @click="showUrlImport = !showUrlImport"
+          >
+            {{ t('admin.files.importUrl') }}
+          </button>
           <input
             v-model="searchInput"
             type="text"
-            class="input max-w-xs"
+            class="input ml-auto h-9 max-w-xs py-1.5"
             :placeholder="t('admin.files.searchPlaceholder')"
             @keyup.enter="applySearch"
           />
-          <button type="button" class="btn btn-secondary btn-sm" @click="applySearch">
+          <button type="button" class="btn btn-secondary btn-sm h-9" @click="applySearch">
             {{ t('common.search') }}
           </button>
-          <button v-if="search" type="button" class="btn btn-ghost btn-sm" @click="clearSearch">
+          <button v-if="search" type="button" class="btn btn-ghost btn-sm h-9" @click="clearSearch">
             {{ t('common.reset') }}
           </button>
           <span v-if="search" class="text-xs text-gray-500">{{ t('admin.files.searchHint') }}</span>
+        </div>
+
+        <div
+          v-if="showUrlImport"
+          class="flex flex-wrap items-end gap-2 border-t border-gray-200 pt-3 dark:border-dark-700"
+        >
+          <div class="min-w-64 flex-1">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              {{ t('admin.files.importUrlLabel') }}
+            </label>
+            <input
+              v-model="importUrl"
+              type="url"
+              class="input h-9 py-1.5"
+              :disabled="importingUrl"
+              placeholder="https://..."
+              @keyup.enter="submitUrlImport"
+            />
+          </div>
+          <div class="w-56 max-w-full">
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              {{ t('admin.files.importNameLabel') }}
+            </label>
+            <input
+              v-model="importName"
+              type="text"
+              class="input h-9 py-1.5"
+              :disabled="importingUrl"
+              :placeholder="t('admin.files.importNamePlaceholder')"
+              @keyup.enter="submitUrlImport"
+            />
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary btn-sm h-9 shrink-0 self-end"
+            :disabled="importingUrl || !importUrl.trim()"
+            @click="submitUrlImport"
+          >
+            {{ importingUrl ? t('common.loading') : t('admin.files.importConfirm') }}
+          </button>
+          <span class="w-full text-xs text-gray-500">
+            {{ t('admin.files.importCurrentDirectory', { path: currentDirectoryLabel }) }}
+          </span>
         </div>
       </div>
 
@@ -120,44 +149,83 @@
       </div>
 
       <!-- 列表 -->
-      <div class="card overflow-hidden">
+      <div
+        data-testid="file-list"
+        class="card relative overflow-hidden transition-colors"
+        :class="{ 'ring-2 ring-primary-500 ring-offset-2 dark:ring-offset-dark-950': dragActive }"
+        @dragenter.prevent="handleDragEnter"
+        @dragover.prevent="handleDragOver"
+        @dragleave.prevent="handleDragLeave"
+        @drop.prevent="handleDrop"
+      >
+        <!-- 面包屑紧贴目录树。对象存储没有真目录，这里按 "/" 聚合逻辑层级。 -->
+        <div
+          data-testid="directory-breadcrumbs"
+          class="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-4 py-3 text-sm dark:border-dark-700 dark:bg-dark-800"
+        >
+          <button type="button" class="text-primary-600 hover:underline dark:text-primary-400" @click="goPrefix('')">
+            {{ t('admin.files.root') }}
+          </button>
+          <template v-for="(seg, i) in breadcrumbs" :key="seg.prefix">
+            <span class="text-gray-400">/</span>
+            <button
+              v-if="i < breadcrumbs.length - 1"
+              type="button"
+              class="text-primary-600 hover:underline dark:text-primary-400"
+              @click="goPrefix(seg.prefix)"
+            >
+              {{ seg.name }}
+            </button>
+            <span v-else class="font-medium text-gray-900 dark:text-white">{{ seg.name }}</span>
+          </template>
+        </div>
+        <div
+          v-if="dragActive"
+          class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary-50/95 p-6 text-center dark:bg-primary-950/95"
+        >
+          <div class="flex flex-col items-center gap-2 text-primary-700 dark:text-primary-300">
+            <Icon name="upload" size="xl" :stroke-width="2" />
+            <span class="text-sm font-semibold">{{ t('admin.files.dropToUpload') }}</span>
+          </div>
+        </div>
         <div v-if="loading" class="p-8 text-center text-sm text-gray-500">{{ t('common.loading') }}</div>
         <div v-else-if="!entries.length" class="p-8 text-center text-sm text-gray-500">
           {{ t('admin.files.empty') }}
         </div>
-        <table v-else class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-700">
-          <thead class="bg-gray-50 dark:bg-dark-800">
-            <tr>
-              <th class="w-10 px-3 py-2">
-                <input
-                  type="checkbox"
-                  class="rounded"
-                  :checked="allFilesSelected"
-                  :indeterminate="someFilesSelected"
-                  :disabled="!fileEntries.length"
-                  @change="toggleSelectAll"
-                />
-              </th>
-              <th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
-                {{ t('admin.files.colName') }}
-              </th>
-              <th class="w-28 px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400">
-                {{ t('admin.files.colSize') }}
-              </th>
-              <th class="w-44 px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
-                {{ t('admin.files.colModified') }}
-              </th>
-              <th class="w-52 px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400">
-                {{ t('admin.files.colActions') }}
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-            <tr
-              v-for="entry in entries"
-              :key="entry.key"
-              class="hover:bg-gray-50 dark:hover:bg-dark-800/60"
-            >
+        <div v-else class="overflow-x-auto">
+          <table class="w-full min-w-[920px] divide-y divide-gray-200 text-sm dark:divide-dark-700">
+            <thead class="bg-gray-50 dark:bg-dark-800">
+              <tr>
+                <th class="w-10 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    class="rounded"
+                    :checked="allFilesSelected"
+                    :indeterminate="someFilesSelected"
+                    :disabled="!fileEntries.length"
+                    @change="toggleSelectAll"
+                  />
+                </th>
+                <th class="px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.files.colName') }}
+                </th>
+                <th class="w-28 px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.files.colSize') }}
+                </th>
+                <th class="w-44 px-3 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.files.colModified') }}
+                </th>
+                <th class="w-72 whitespace-nowrap px-3 py-2 text-right font-medium text-gray-500 dark:text-gray-400">
+                  {{ t('admin.files.colActions') }}
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr
+                v-for="entry in entries"
+                :key="entry.key"
+                class="hover:bg-gray-50 dark:hover:bg-dark-800/60"
+              >
               <td class="px-3 py-2">
                 <input
                   v-if="!entry.is_dir"
@@ -199,8 +267,8 @@
               <td class="px-3 py-2 text-gray-500 dark:text-gray-400">
                 {{ entry.is_dir ? '-' : formatDateTime(entry.last_modified) }}
               </td>
-              <td class="px-3 py-2">
-                <div v-if="!entry.is_dir" class="flex items-center justify-end gap-1">
+              <td class="whitespace-nowrap px-3 py-2">
+                <div v-if="!entry.is_dir" class="flex flex-nowrap items-center justify-end gap-1">
                   <button type="button" class="btn btn-ghost btn-xs" @click="doDownload(entry)">
                     {{ t('admin.files.download') }}
                   </button>
@@ -219,9 +287,10 @@
                   </button>
                 </div>
               </td>
-            </tr>
-          </tbody>
-        </table>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <!-- 游标分页：对象存储只支持"下一页"，无法跳页也拿不到总数 -->
         <div
@@ -294,7 +363,8 @@
       @confirm="doDelete"
       @cancel="showDeleteConfirm = false"
     />
-  </div>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
@@ -316,10 +386,12 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Icon from '@/components/icons/Icon.vue'
 import adminFilesAPI, { type AdminFileEntry, type AdminFileStatus } from '@/api/admin/files'
-import { extractI18nErrorMessage } from '@/utils/apiError'
+import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import { formatBytes, formatDateTime } from '@/utils/format'
 import { useAppStore } from '@/stores/app'
 
@@ -338,6 +410,10 @@ const nextToken = ref('')
 const prefix = ref('')
 const searchInput = ref('')
 const search = ref('')
+const showUrlImport = ref(false)
+const importUrl = ref('')
+const importName = ref('')
+const importingUrl = ref(false)
 
 const selectedKeys = ref<string[]>([])
 // brokenThumbs：缩略图加载失败的 key 集合（桶为私有读时 public_url 取不到图，
@@ -362,6 +438,8 @@ const uploadIndex = ref(0)
 const uploadTotal = ref(0)
 const uploadName = ref('')
 const uploadPercent = ref(0)
+const dragDepth = ref(0)
+const dragActive = computed(() => dragDepth.value > 0)
 
 const showRename = ref(false)
 const renameTarget = ref<AdminFileEntry | null>(null)
@@ -390,6 +468,7 @@ const breadcrumbs = computed(() => {
     return { name, prefix: acc }
   })
 })
+const currentDirectoryLabel = computed(() => prefix.value || t('admin.files.root'))
 
 const deleteMessage = computed(() => {
   if (deleteTargets.value.length === 1) {
@@ -475,6 +554,33 @@ function clearSearch() {
   void reload()
 }
 
+async function submitUrlImport() {
+  const url = importUrl.value.trim()
+  if (!url || importingUrl.value) return
+  importingUrl.value = true
+  try {
+    const options = { prefix: prefix.value, name: importName.value.trim() }
+    let entry: AdminFileEntry
+    try {
+      entry = await adminFilesAPI.importFromUrl(url, options)
+    } catch (e: unknown) {
+      if (!isObjectKeyConflict(e)) throw e
+      const name = options.name || fileNameFromUrl(url)
+      if (!window.confirm(t('admin.files.overwriteConfirm', { name }))) return
+      entry = await adminFilesAPI.importFromUrl(url, { ...options, overwrite: true })
+    }
+    appStore.showSuccess(t('admin.files.importSuccess', { name: entry.name }))
+    importUrl.value = ''
+    importName.value = ''
+    showUrlImport.value = false
+    await reload()
+  } catch (e: unknown) {
+    appStore.showError(errMsg(e))
+  } finally {
+    importingUrl.value = false
+  }
+}
+
 // ── 选择 ──
 function toggleSelect(key: string) {
   const i = selectedKeys.value.indexOf(key)
@@ -493,6 +599,7 @@ function clearSelection() {
 
 // ── 上传 ──
 function triggerUpload() {
+  if (uploading.value) return
   fileInputEl.value?.click()
 }
 
@@ -504,11 +611,17 @@ async function onFilesPicked(ev: Event) {
   const target = ev.target as HTMLInputElement
   const files = Array.from(target.files ?? [])
   target.value = ''
-  if (!files.length) return
+  await uploadFiles(files)
+}
+
+/** uploadFiles：文件选择器与拖放入口共用同一套串行上传和结果汇总。 */
+async function uploadFiles(files: File[]) {
+  if (!files.length || uploading.value) return
 
   uploading.value = true
   uploadTotal.value = files.length
   let ok = 0
+  let skipped = 0
   let firstError = ''
   try {
     for (let i = 0; i < files.length; i++) {
@@ -516,10 +629,20 @@ async function onFilesPicked(ev: Event) {
       uploadName.value = files[i].name
       uploadPercent.value = 0
       try {
-        await adminFilesAPI.upload(files[i], {
+        const options = {
           prefix: prefix.value,
-          onProgress: (p) => (uploadPercent.value = p),
-        })
+          onProgress: (p: number) => (uploadPercent.value = p),
+        }
+        try {
+          await adminFilesAPI.upload(files[i], options)
+        } catch (e: unknown) {
+          if (!isObjectKeyConflict(e)) throw e
+          if (!window.confirm(t('admin.files.overwriteConfirm', { name: files[i].name }))) {
+            skipped++
+            continue
+          }
+          await adminFilesAPI.upload(files[i], { ...options, overwrite: true })
+        }
         ok++
       } catch (e: unknown) {
         if (!firstError) firstError = errMsg(e)
@@ -532,11 +655,50 @@ async function onFilesPicked(ev: Event) {
   }
 
   if (ok > 0) appStore.showSuccess(t('admin.files.uploadSuccess', { n: ok }))
-  const failed = files.length - ok
+  const failed = files.length - ok - skipped
   if (failed > 0) {
     appStore.showError(t('admin.files.uploadFailed', { n: failed, msg: firstError }))
   }
+  if (skipped > 0) appStore.showError(t('admin.files.overwriteSkipped', { n: skipped }))
   if (ok > 0) await reload()
+}
+
+function isObjectKeyConflict(e: unknown): boolean {
+  return extractApiErrorCode(e) === 'OBJECT_KEY_EXISTS'
+}
+
+function fileNameFromUrl(raw: string): string {
+  try {
+    const name = new URL(raw).pathname.split('/').filter(Boolean).pop()
+    return name || t('admin.files.unknownFileName')
+  } catch {
+    return t('admin.files.unknownFileName')
+  }
+}
+
+function isFileDrag(ev: DragEvent): boolean {
+  return Array.from(ev.dataTransfer?.types ?? []).includes('Files')
+}
+
+function handleDragEnter(ev: DragEvent) {
+  if (uploading.value || !isFileDrag(ev)) return
+  dragDepth.value += 1
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'
+}
+
+function handleDragOver(ev: DragEvent) {
+  if (uploading.value || !isFileDrag(ev)) return
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'
+}
+
+function handleDragLeave() {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+
+async function handleDrop(ev: DragEvent) {
+  dragDepth.value = 0
+  if (uploading.value) return
+  await uploadFiles(Array.from(ev.dataTransfer?.files ?? []))
 }
 
 // ── 下载 / 复制 ──

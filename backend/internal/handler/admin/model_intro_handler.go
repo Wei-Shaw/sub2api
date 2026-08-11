@@ -35,7 +35,7 @@ type ModelIntroHandler struct {
 // NewModelIntroHandler 构造 handler。
 //
 // accountService 用于 ListCandidates 接口：聚合所有视频平台账号中开启
-// "支持视频模型"开关（Extra["fal_video_models_enabled"] == true）的
+// "支持视频模型"开关（Extra["video_models_enabled"] == true）的
 // 上游模型清单，供 admin 端在配置 model_intro 时下拉选择。
 func NewModelIntroHandler(
 	svc *service.ModelIntroService,
@@ -222,7 +222,7 @@ type modelCandidateDTO struct {
 // ListCandidates GET /api/v1/admin/model-intros/candidates
 //
 // 聚合所有视频平台账号（不受 groupID 限制，管理员可看全量）中
-// Extra["fal_video_models_enabled"] == true 的账号，从其
+// Extra["video_models_enabled"] == true 的账号，从其
 // model_mapping 中提取 fal endpoint，经 NormalizeFalVideoModelEndpoint
 // 剥掉 "fal-ai/" 前缀后作为候选 model_key。
 //

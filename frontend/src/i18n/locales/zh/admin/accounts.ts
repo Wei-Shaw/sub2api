@@ -668,6 +668,11 @@ export default {
         baseUrlHint: '填写 apiz 平台的 API Base URL（不含尾部斜杠），留空则使用默认 https://api.apiz.ai。',
         apiKeyHint: '填写 apiz 平台提供的 API Key。'
       },
+      video: {
+        modelsEnabled: '支持视频模型',
+        modelsEnabledHint:
+          '开启后，该账号 model_mapping 中的视频模型标识会展示到“视频模型”菜单，并允许通过 /api/v1/model/{model} 调度。关闭后该账号不参与视频调度。'
+      },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
         apiKeyPassthroughDesc:

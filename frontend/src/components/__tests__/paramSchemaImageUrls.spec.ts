@@ -1,5 +1,5 @@
 /**
- * imageUrls 控件 + array maxItems 的读写往返测试。
+ * 媒体 URL 组控件 + array maxItems 的读写往返测试。
  *
  * 覆盖两条链路：
  *   1) 管理端编辑器：SchemaRow ⇄ 存储 shape（rowsToMap / mapToRows）
@@ -15,13 +15,15 @@ import {
   rowsToMap,
 } from '@/components/common/paramSchemaRow'
 import { extractFieldSpecs } from '@/components/video/paramSpec'
+import { buildDefaultBody, fieldSpecToDefaultValue } from '@/components/video/paramSpec'
+import type { MediaUrlWidget } from '@/utils/mediaUrlWidget'
 
-/** 造一个 imageUrls 图片组字段行（元素为图片 URL 字符串）。 */
-function makeImageUrlsRow(maxItems: number) {
+/** 造一个媒体 URL 组字段行。 */
+function makeMediaUrlsRow(maxItems: number, widget: MediaUrlWidget = 'ImageUrls') {
   return makeSchemaRow({
     key: 'image_urls',
     type: 'array',
-    widget: 'imageUrls',
+    widget,
     maxItems,
     required: true,
     description: '参考图片',
@@ -30,11 +32,32 @@ function makeImageUrlsRow(maxItems: number) {
   })
 }
 
-describe('paramSchemaRow: array imageUrls + maxItems', () => {
+describe('paramSchemaRow: array media URL widgets + maxItems', () => {
+  it('stores and restores multiple array default values', () => {
+    const row = makeMediaUrlsRow(4)
+    row.arrayDefaults = ['https://cdn.example.com/a.png', 'https://cdn.example.com/b.png']
+
+    const stored = rowsToMap([row]).image_urls as Record<string, unknown>
+    expect(stored.value).toEqual(row.arrayDefaults)
+
+    const restored = mapToRows({ image_urls: stored })[0]
+    expect(restored.arrayDefaults).toEqual(row.arrayDefaults)
+  })
+
+  it('omits empty defaults and caps saved defaults at maxItems', () => {
+    const empty = rowsToMap([makeMediaUrlsRow(3)]).image_urls as Record<string, unknown>
+    expect('value' in empty).toBe(false)
+
+    const row = makeMediaUrlsRow(2)
+    row.arrayDefaults = ['a', 'b', 'c']
+    const stored = rowsToMap([row]).image_urls as Record<string, unknown>
+    expect(stored.value).toEqual(['a', 'b'])
+  })
+
   it('serializes widget and maxItems onto the array spec', () => {
-    const map = rowsToMap([makeImageUrlsRow(4)])
+    const map = rowsToMap([makeMediaUrlsRow(4)])
     const spec = map.image_urls as Record<string, unknown>
-    expect(spec.widget).toBe('imageUrls')
+    expect(spec.widget).toBe('ImageUrls')
     expect(spec.maxItems).toBe(4)
     expect(spec.required).toBe(true)
     expect(spec.description).toBe('参考图片')
@@ -44,8 +67,8 @@ describe('paramSchemaRow: array imageUrls + maxItems', () => {
   })
 
   it('omits maxItems when unlimited and omits widget when default', () => {
-    const noMax = rowsToMap([makeImageUrlsRow(0)]).image_urls as Record<string, unknown>
-    expect(noMax.widget).toBe('imageUrls')
+    const noMax = rowsToMap([makeMediaUrlsRow(0)]).image_urls as Record<string, unknown>
+    expect(noMax.widget).toBe('ImageUrls')
     expect('maxItems' in noMax).toBe(false)
 
     const plainArray = rowsToMap([
@@ -60,11 +83,11 @@ describe('paramSchemaRow: array imageUrls + maxItems', () => {
   })
 
   it('round-trips through mapToRows', () => {
-    const rows = mapToRows(rowsToMap([makeImageUrlsRow(6)]))
+    const rows = mapToRows(rowsToMap([makeMediaUrlsRow(6)]))
     expect(rows).toHaveLength(1)
     const row = rows[0]
     expect(row.type).toBe('array')
-    expect(row.widget).toBe('imageUrls')
+    expect(row.widget).toBe('ImageUrls')
     expect(row.maxItems).toBe(6)
     expect(row.required).toBe(true)
     expect(row.items?.type).toBe('string')
@@ -86,18 +109,65 @@ describe('paramSchemaRow: array imageUrls + maxItems', () => {
   it('ignores unknown array widget values', () => {
     expect(mapToRows({ imgs: { items: { value: '' }, widget: 'bogus' } })[0].widget).toBe('input')
   })
+
+  it.each(['ImageUrls', 'VideoUrls', 'AudioUrls'] as const)(
+    'round-trips the canonical %s widget',
+    (widget) => {
+      const stored = rowsToMap([makeMediaUrlsRow(2, widget)]).image_urls as Record<string, unknown>
+      expect(stored.widget).toBe(widget)
+      expect(mapToRows({ media: stored })[0].widget).toBe(widget)
+    }
+  )
+
+  it('reads legacy imageUrls and saves it back as ImageUrls', () => {
+    const row = mapToRows({ imgs: { items: { value: '' }, widget: 'imageUrls' } })[0]
+    expect(row.widget).toBe('ImageUrls')
+    expect((rowsToMap([row]).imgs as Record<string, unknown>).widget).toBe('ImageUrls')
+  })
 })
 
-describe('paramSpec: array imageUrls + maxItems (playground read side)', () => {
+describe('paramSpec: array media URL widgets + maxItems (playground read side)', () => {
+  it('uses the full configured array as playground and curl defaults', () => {
+    const defaults = ['https://cdn.example.com/a.png', 'https://cdn.example.com/b.png']
+    const params = {
+      image_urls: {
+        items: { value: '', widget: 'image' },
+        widget: 'ImageUrls',
+        value: defaults,
+      },
+    }
+    const spec = extractFieldSpecs(params)[0]
+
+    expect(fieldSpecToDefaultValue(spec)).toEqual(defaults)
+    expect(buildDefaultBody(params)).toEqual({ image_urls: defaults })
+
+    const initialized = fieldSpecToDefaultValue(spec) as string[]
+    initialized.push('local mutation')
+    expect(spec.rawDefaultValue).toEqual(defaults)
+  })
+
   it('parses widget and maxItems into FieldSpec', () => {
-    const specs = extractFieldSpecs(rowsToMap([makeImageUrlsRow(3)]))
+    const specs = extractFieldSpecs(rowsToMap([makeMediaUrlsRow(3)]))
     expect(specs).toHaveLength(1)
     const f = specs[0]
     expect(f.key).toBe('image_urls')
     expect(f.rawType).toBe('array')
-    expect(f.widget).toBe('imageUrls')
+    expect(f.widget).toBe('ImageUrls')
     expect(f.maxItems).toBe(3)
     expect(f.required).toBe(true)
+  })
+
+  it.each(['ImageUrls', 'VideoUrls', 'AudioUrls'] as const)(
+    'parses %s into FieldSpec',
+    (widget) => {
+      const specs = extractFieldSpecs({ media: { items: { value: '' }, widget } })
+      expect(specs[0].widget).toBe(widget)
+    }
+  )
+
+  it('normalizes legacy imageUrls in FieldSpec', () => {
+    const specs = extractFieldSpecs({ media: { items: { value: '' }, widget: 'imageUrls' } })
+    expect(specs[0].widget).toBe('ImageUrls')
   })
 
   it('defaults widget/maxItems for legacy arrays without the new keys', () => {

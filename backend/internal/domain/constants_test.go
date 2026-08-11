@@ -5,6 +5,44 @@ import (
 	"testing"
 )
 
+func TestIsVideoModelsEnabledPrefersCanonicalKeyAndReadsLegacyKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  bool
+	}{
+		{
+			name:  "canonical key",
+			extra: map[string]any{VideoModelsEnabledExtraKey: true},
+			want:  true,
+		},
+		{
+			name:  "legacy key",
+			extra: map[string]any{LegacyFalVideoModelsEnabledExtraKey: true},
+			want:  true,
+		},
+		{
+			name: "canonical false overrides legacy true",
+			extra: map[string]any{
+				VideoModelsEnabledExtraKey:          false,
+				LegacyFalVideoModelsEnabledExtraKey: true,
+			},
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsVideoModelsEnabled(test.extra); got != test.want {
+				t.Fatalf("IsVideoModelsEnabled() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDefaultAntigravityModelMapping_ImageCompatibilityAliases(t *testing.T) {
 	t.Parallel()
 

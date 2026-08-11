@@ -12,11 +12,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildSchedulerMetadataAccount_KeepsVideoModelsEnabled(t *testing.T) {
+	for _, key := range []string{
+		domain.VideoModelsEnabledExtraKey,
+		domain.LegacyFalVideoModelsEnabledExtraKey,
+	} {
+		t.Run(key, func(t *testing.T) {
+			account := service.Account{
+				ID:       55,
+				Platform: service.PlatformApiz,
+				Extra: map[string]any{
+					key:                  true,
+					"unused_large_field": "drop-me",
+				},
+			}
+
+			got := buildSchedulerMetadataAccount(account)
+
+			require.True(t, domain.IsVideoModelsEnabled(got.Extra))
+			require.Nil(t, got.Extra["unused_large_field"])
+		})
+	}
+}
 
 func newSchedulerCacheUnit(t *testing.T) *schedulerCache {
 	cache, _ := newSchedulerCacheUnitWithRedis(t)

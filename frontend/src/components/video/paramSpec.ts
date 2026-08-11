@@ -15,7 +15,7 @@
  *   2) 对象字段声明：
  *      { properties: { <k>: <schema>, ... }, required?, description? }
  *   3) 数组字段声明：
- *      { items: <schema>, required?, description? }
+ *      { items: <schema>, value?: [...], required?, description? }
  *   4) 其它任意值（非对象）：视为"无字段声明"，仅作为 curl / 兜底 body。
  *
  * 判定顺序：先看是否含 properties（object） / items（array）；否则按 looksLikeLeafSpec
@@ -23,6 +23,13 @@
  *
  * 注意：本模块只做"读侧"解析，不涉及写入侧的编辑器状态。
  */
+
+import {
+  normalizeMediaUrlWidget,
+  normalizeSingleMediaWidget,
+  type MediaUrlWidget,
+  type SingleMediaWidget,
+} from '@/utils/mediaUrlWidget'
 
 export type FieldRawType = 'string' | 'number' | 'boolean' | 'object' | 'array'
 
@@ -33,7 +40,8 @@ export type FieldRawType = 'string' | 'number' | 'boolean' | 'object' | 'array'
  * 为方便前端表单：
  *   - 叶子节点：defaultValue（字符串化后的默认值） + rawDefaultValue（保留类型）
  *   - object：children 是子字段声明数组（每个 child 自己也是一个 FieldSpec）
- *   - array：items 是"数组元素的 schema"（一个匿名 FieldSpec，其 key=''）
+ *   - array：items 是"数组元素的 schema"（一个匿名 FieldSpec，其 key=''），
+ *            rawDefaultValue 保存完整的默认值数组
  *
  * key 语义：
  *   - 顶层字段：default_params 里的 map key
@@ -67,9 +75,9 @@ export interface FieldSpec {
    * 控件形态声明（管理员在编辑页显式选择），渲染时优先按它决定用哪种控件，
    * 不再依赖内容长度等启发式判断。默认 'input'。
    *   - rawType='string'：'input' | 'textarea' | 'image'
-   *   - rawType='array' ：'input'（逐元素递归渲染）| 'imageUrls'（整组图片输入）
+   *   - rawType='array' ：'input'（逐元素递归渲染）| 媒体 URL 组控件
    */
-  widget: 'input' | 'textarea' | 'image' | 'imageUrls'
+  widget: 'input' | 'textarea' | SingleMediaWidget | MediaUrlWidget
   /** 仅 widget==='textarea' 时有意义。默认 3。 */
   textareaRows: number
   /**
@@ -236,11 +244,12 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
     if (!items) {
       items = makeLeafFromPlain('', itemsRaw)
     }
-    // widget：array 只认 'imageUrls'（整组图片输入）；其它一律 'input'（逐元素递归渲染）。
-    const arrWidget: FieldSpec['widget'] = obj.widget === 'imageUrls' ? 'imageUrls' : 'input'
+    // 兼容旧 imageUrls，读入后统一归一成 canonical 名称。
+    const arrWidget: FieldSpec['widget'] = normalizeMediaUrlWidget(obj.widget) ?? 'input'
     // maxItems：非法 / <=0 归 0（不限制）；上限 100，与编辑器写侧保持一致。
     const rawMax = Number(obj.maxItems)
     const maxItems = Number.isFinite(rawMax) && rawMax > 0 ? Math.min(100, Math.trunc(rawMax)) : 0
+    const rawDefaults = Array.isArray(obj.value) ? obj.value : []
     return {
       key,
       required: obj.required === true,
@@ -249,8 +258,8 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       descriptionEn: typeof obj.description_en === 'string' ? obj.description_en : '',
       isEnum: false,
       options: [],
-      defaultValue: '',
-      rawDefaultValue: undefined,
+      defaultValue: toDisplayString(rawDefaults),
+      rawDefaultValue: rawDefaults,
       rawType: 'array',
       widget: arrWidget,
       textareaRows: 3,
@@ -282,8 +291,8 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
         if (Number.isFinite(rr) && rr > 0) {
           textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
         }
-      } else if (w === 'image') {
-        widget = 'image'
+      } else {
+        widget = normalizeSingleMediaWidget(w) ?? 'input'
       }
     }
     return {
@@ -414,7 +423,7 @@ export function buildDefaultBody(
  * fieldSpecToDefaultValue：从一个 FieldSpec 递归产生默认值。
  *   - object：{ childKey: fieldSpecToDefaultValue(child), ... }；子字段值为
  *     undefined 时跳过（避免生成 undefined 值污染 JSON）。
- *   - array：默认给 []（因为无法臆造元素数量）。
+ *   - array：读取 schema.value 中显式配置的默认值数组；缺省时给 []。
  *   - 叶子：spec.rawDefaultValue（可能为 undefined）。
  */
 export function fieldSpecToDefaultValue(spec: FieldSpec): unknown {
@@ -428,10 +437,19 @@ export function fieldSpecToDefaultValue(spec: FieldSpec): unknown {
     return obj
   }
   if (spec.rawType === 'array') {
-    // 数组默认给空数组；若 items 是 object，也不主动实例化一份，避免用户误以为已提交。
-    return []
+    return cloneJSONValue(Array.isArray(spec.rawDefaultValue) ? spec.rawDefaultValue : [])
   }
   return spec.rawDefaultValue
+}
+
+function cloneJSONValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneJSONValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, cloneJSONValue(child)])
+    )
+  }
+  return value
 }
 
 /**

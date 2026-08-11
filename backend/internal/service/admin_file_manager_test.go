@@ -3,10 +3,41 @@
 package service
 
 import (
+	"context"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type adminFileStoreStub struct {
+	existingKey string
+	uploads     int
+}
+
+func (s *adminFileStoreStub) Upload(_ context.Context, _ string, body io.Reader, _ string) (int64, error) {
+	s.uploads++
+	data, err := io.ReadAll(body)
+	return int64(len(data)), err
+}
+func (s *adminFileStoreStub) Download(context.Context, string) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (s *adminFileStoreStub) Delete(context.Context, string) error { return nil }
+func (s *adminFileStoreStub) PresignURL(context.Context, string, time.Duration) (string, error) {
+	return "", nil
+}
+func (s *adminFileStoreStub) HeadBucket(context.Context) error { return nil }
+func (s *adminFileStoreStub) ListObjects(
+	_ context.Context, prefix, _, _ string, _ int32,
+) (*ObjectPage, error) {
+	entries := []ObjectEntry{}
+	if prefix == s.existingKey {
+		entries = append(entries, ObjectEntry{Key: s.existingKey})
+	}
+	return &ObjectPage{Entries: entries}, nil
+}
 
 // sanitizeObjectKey 是管理端文件管理的第一道门：所有 key 入参都过它。
 // 管理员权限很大，但仍要挡住手误与被诱导构造的畸形 key —— 尤其是 ".."，
@@ -131,7 +162,10 @@ func TestAdminFileServiceRequiresCOS(t *testing.T) {
 		_, err = s.DownloadURL(ctx, "a.png")
 		require.ErrorIs(t, err, ErrCOSNotConfigured)
 
-		_, err = s.Upload(ctx, "a.png", []byte("x"), "image/png")
+		_, err = s.Upload(ctx, "a.png", []byte("x"), "image/png", false)
+		require.ErrorIs(t, err, ErrCOSNotConfigured)
+
+		_, err = s.ImportFromURL(ctx, "images/", "", "https://example.com/a.png", false)
 		require.ErrorIs(t, err, ErrCOSNotConfigured)
 
 		_, err = s.Rename(ctx, "a.png", "b.png")
@@ -147,6 +181,52 @@ func TestAdminFileServiceRequiresCOS(t *testing.T) {
 		var s *AdminFileService
 		require.False(t, s.Enabled(ctx))
 	})
+}
+
+func TestAdminImportFileName(t *testing.T) {
+	require.Equal(t, "photo.jpg", adminImportFileName(
+		"https://cdn.example.com/a/photo.jpg?token=1", "image/jpeg",
+	))
+	require.Equal(t, "video.mp4", adminImportFileName(
+		"https://cdn.example.com/video.mp4#preview", "video/mp4",
+	))
+	require.Equal(t, "download.mp3", adminImportFileName("https://cdn.example.com/", "audio/mpeg"))
+}
+
+func TestNormalizeAdminImportTarget(t *testing.T) {
+	prefix, name, err := normalizeAdminImportTarget("/images/2026", " photo.png ")
+	require.NoError(t, err)
+	require.Equal(t, "images/2026/", prefix)
+	require.Equal(t, "photo.png", name)
+
+	for _, tc := range []struct{ prefix, name string }{
+		{"../private", "photo.png"},
+		{"images/", "."},
+		{"images/", "/"},
+	} {
+		_, _, err := normalizeAdminImportTarget(tc.prefix, tc.name)
+		require.ErrorIs(t, err, ErrInvalidObjectKey)
+	}
+}
+
+func TestAdminFileUploadRequiresExplicitOverwrite(t *testing.T) {
+	store := &adminFileStoreStub{existingKey: "images/photo.png"}
+	repo := newFakeCOSSettingRepo()
+	cos := NewCOSImageTransferService(repo, noopEncryptor{}, func(
+		context.Context, *BackupS3Config,
+	) (BackupObjectStore, error) {
+		return store, nil
+	})
+	enableCOS(t, cos)
+	svc := NewAdminFileService(cos)
+
+	_, err := svc.Upload(t.Context(), "images/photo.png", []byte("new"), "image/png", false)
+	require.ErrorIs(t, err, ErrObjectKeyExists)
+	require.Zero(t, store.uploads)
+
+	_, err = svc.Upload(t.Context(), "images/photo.png", []byte("new"), "image/png", true)
+	require.NoError(t, err)
+	require.Equal(t, 1, store.uploads)
 }
 
 // DeleteMany 要做到"部分失败不影响其余"，并把逐条原因带回给调用方。

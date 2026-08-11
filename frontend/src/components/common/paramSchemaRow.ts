@@ -15,11 +15,16 @@
  *   object：
  *     { properties: { <k>: <schema>, ... }, required?, description? }
  *   array（同构）：
- *     { items: <schema>, required?, description? }
+ *     { items: <schema>, value?: [...], required?, description? }
  *
  * 前端 SchemaRow 是一棵可编辑树，每个节点带 key/type + 各类型专属字段，
  * 复合类型 (object/array) 递归到 children/items。
  */
+
+import {
+  normalizeMediaUrlWidget,
+  type MediaUrlWidget,
+} from '@/utils/mediaUrlWidget'
 
 // SchemaRowType：编辑器支持的类型。
 export type SchemaRowType = 'string' | 'number' | 'boolean' | 'object' | 'array'
@@ -29,13 +34,13 @@ export type SchemaRowType = 'string' | 'number' | 'boolean' | 'object' | 'array'
  *
  * 适用类型分两组，互不混用：
  *   - string 叶子：'input'（默认）| 'textarea'（配 rows）| 'image'（单张图片输入）
- *   - array：'input'（默认，逐元素递归渲染）| 'imageUrls'（整组图片输入，
- *     值为图片完整 URL 的字符串数组，演练台渲染成一个图库式的多图输入区）
+ *   - array：'input'（默认，逐元素递归渲染）| ImageUrls / VideoUrls / AudioUrls
+ *     （整组媒体输入，值为完整 URL 的字符串数组）
  *
  * 存储侧：默认 'input' 时不写该字段，以保持存储 shape 精简与向后兼容；
  * 其余取值会持久化（'textarea' 时连同 rows 一起写）。
  */
-export type SchemaWidget = 'input' | 'textarea' | 'image' | 'imageUrls'
+export type SchemaWidget = 'input' | 'textarea' | 'image' | MediaUrlWidget
 
 /** textarea 行数默认值（rows 属性缺省时使用）。 */
 export const DEFAULT_TEXTAREA_ROWS = 3
@@ -47,12 +52,13 @@ export const DEFAULT_TEXTAREA_ROWS = 3
  *   - string / number：value（文本表达；number 序列化时 Number() 转回）
  *   - boolean：boolValue
  *   - object：children （子字段列表）
- *   - array：items（元素 schema，唯一一份；数组同构）+ maxItems（元素个数上限）
+ *   - array：items（元素 schema，唯一一份；数组同构）+ arrayDefaults（多个默认值）
+ *            + maxItems（元素个数上限）
  *
  * 通用元数据：required / description / isEnum + optionsText（仅叶子）。
  *
  * 渲染元数据：
- *   - widget：string 叶子可选 input/textarea/image；array 可选 input/imageUrls
+ *   - widget：string 叶子可选 input/textarea/image；array 可选媒体 URL 组控件
  *   - textareaRows：仅 widget='textarea' 有意义
  *   - maxItems：仅 array 有意义，限制演练台里最多能填几个元素
  *
@@ -79,7 +85,7 @@ export interface SchemaRow {
   descriptionEn: string
   isEnum: boolean
   optionsText: string
-  /** string 叶子：input/textarea/image；array：input/imageUrls。默认 'input'。 */
+  /** string 叶子：input/textarea/image；array：input/媒体 URL 组控件。默认 'input'。 */
   widget: SchemaWidget
   /** 仅 widget='textarea' 有意义。默认 DEFAULT_TEXTAREA_ROWS。 */
   textareaRows: number
@@ -88,6 +94,8 @@ export interface SchemaRow {
    * 演练台会据此禁用"添加"按钮、并在提交前做一次校验。
    */
   maxItems: number
+  /** 仅 type='array' 有意义：请求参数预填的多个默认元素。空数组不落库。 */
+  arrayDefaults: unknown[]
   children: SchemaRow[]
   items: SchemaRow | null
 }
@@ -116,9 +124,86 @@ export function makeSchemaRow(overrides: Partial<SchemaRow> = {}): SchemaRow {
     widget: overrides.widget ?? 'input',
     textareaRows: overrides.textareaRows ?? DEFAULT_TEXTAREA_ROWS,
     maxItems: overrides.maxItems ?? 0,
+    arrayDefaults: overrides.arrayDefaults ?? [],
     children: overrides.children ?? [],
     items: overrides.items ?? null,
   }
+}
+
+/** 按 schema 生成一份独立的 JSON 默认值，供 array 新增默认元素使用。 */
+export function defaultValueForSchemaRow(row: SchemaRow): unknown {
+  switch (row.type) {
+    case 'object': {
+      const value: Record<string, unknown> = {}
+      for (const child of row.children) {
+        const key = child.key.trim()
+        if (key) value[key] = defaultValueForSchemaRow(child)
+      }
+      return value
+    }
+    case 'array':
+      return cloneJSONValue(row.arrayDefaults)
+    case 'boolean':
+      return row.boolValue
+    case 'number': {
+      const value = Number(row.value)
+      return Number.isFinite(value) ? value : 0
+    }
+    case 'string':
+    default:
+      return row.value
+  }
+}
+
+/** 把已有 JSON 值归一到指定 schema，主要用于 array 元素类型切换后的即时同步。 */
+export function normalizeValueForSchemaRow(row: SchemaRow, value: unknown): unknown {
+  switch (row.type) {
+    case 'object': {
+      const source = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {}
+      const normalized: Record<string, unknown> = {}
+      for (const child of row.children) {
+        const key = child.key.trim()
+        if (!key) continue
+        normalized[key] = key in source
+          ? normalizeValueForSchemaRow(child, source[key])
+          : defaultValueForSchemaRow(child)
+      }
+      return normalized
+    }
+    case 'array': {
+      if (!Array.isArray(value)) return cloneJSONValue(row.arrayDefaults)
+      const values = row.items
+        ? value.map((item) => normalizeValueForSchemaRow(row.items as SchemaRow, item))
+        : [...value]
+      return row.maxItems > 0 ? values.slice(0, Math.trunc(row.maxItems)) : values
+    }
+    case 'boolean':
+      if (typeof value === 'boolean') return value
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase()
+        return normalized === 'true' || normalized === '1' || normalized === 'yes'
+      }
+      return Boolean(value)
+    case 'number': {
+      const normalized = Number(value)
+      return Number.isFinite(normalized) ? normalized : 0
+    }
+    case 'string':
+    default:
+      return value == null ? '' : String(value)
+  }
+}
+
+function cloneJSONValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneJSONValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, cloneJSONValue(child)])
+    )
+  }
+  return value
 }
 
 /**
@@ -260,11 +345,16 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
     // items 缺省时给一个默认 string schema，保证存储 shape 稳定。
     const items = row.items ?? makeSchemaRow({ key: '', type: 'string' })
     out.items = rowToSchema(items)
+    const defaults = row.maxItems > 0
+      ? row.arrayDefaults.slice(0, Math.trunc(row.maxItems))
+      : row.arrayDefaults
+    if (defaults.length > 0) out.value = defaults
     if (row.required) out.required = true
     writeDescription(out, row)
-    // widget='imageUrls'：整组图片输入（值为图片 URL 字符串数组）。
+    // 媒体 URL 组控件：整组输入（值为 URL 字符串数组）。
     // 默认 'input' 不写入，保持存储 shape 与旧数据一致。
-    if (row.widget === 'imageUrls') out.widget = 'imageUrls'
+    const mediaWidget = normalizeMediaUrlWidget(row.widget)
+    if (mediaWidget) out.widget = mediaWidget
     // maxItems：元素个数上限；<=0 视为不限制，不落库。
     const max = Number.isFinite(row.maxItems) ? Math.trunc(row.maxItems) : 0
     if (max > 0) out.maxItems = max
@@ -417,12 +507,14 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
       const items = schemaToRow('', obj.items)
       // 强制 items.key 为空（数组元素无名）。
       items.key = ''
-      // widget：array 仅认 'imageUrls'，其它一切（缺省 / 未知值）归一为 'input'。
-      const arrWidget: SchemaWidget = obj.widget === 'imageUrls' ? 'imageUrls' : 'input'
+      // 兼容旧 imageUrls，读入后统一归一成 canonical 名称。
+      const arrWidget: SchemaWidget = normalizeMediaUrlWidget(obj.widget) ?? 'input'
       // maxItems：非法 / <=0 一律归零（不限制）。上限 100 防手滑填出天量输入框。
       const rawMax = Number(obj.maxItems)
       const maxItems =
         Number.isFinite(rawMax) && rawMax > 0 ? Math.min(100, Math.trunc(rawMax)) : 0
+      const rawDefaults = Array.isArray(obj.value) ? obj.value : []
+      const arrayDefaults = rawDefaults.map((value) => normalizeValueForSchemaRow(items, value))
       return makeSchemaRow({
         key,
         type: 'array',
@@ -432,6 +524,7 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
         descriptionEn: typeof obj.description_en === 'string' ? (obj.description_en as string) : '',
         widget: arrWidget,
         maxItems,
+        arrayDefaults: maxItems > 0 ? arrayDefaults.slice(0, maxItems) : arrayDefaults,
         items,
       })
     }

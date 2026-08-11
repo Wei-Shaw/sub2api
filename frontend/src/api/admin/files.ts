@@ -82,17 +82,23 @@ export async function getDownloadURL(key: string): Promise<{ url: string; key: s
 
 /**
  * upload：上传文件到指定目录。
- * 最终 key = prefix + (name ?? 文件原名)；同名对象会被覆盖。
+ * 最终 key = prefix + (name ?? 文件原名)；默认拒绝覆盖同名对象。
  * 超时放宽到 10 分钟：管理端可能上传几百 MB 的视频。
  */
 export async function upload(
   file: File,
-  options?: { prefix?: string; name?: string; onProgress?: (percent: number) => void }
+  options?: {
+    prefix?: string
+    name?: string
+    overwrite?: boolean
+    onProgress?: (percent: number) => void
+  }
 ): Promise<AdminFileEntry> {
   const form = new FormData()
   form.append('file', file)
   if (options?.prefix) form.append('prefix', options.prefix)
   if (options?.name) form.append('name', options.name)
+  if (options?.overwrite) form.append('overwrite', 'true')
   const { data } = await apiClient.post<AdminFileEntry>('/admin/files/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 600_000,
@@ -101,6 +107,20 @@ export async function upload(
       options.onProgress(Math.round((e.loaded / e.total) * 100))
     },
   })
+  return data
+}
+
+/** importFromUrl：下载外部 URL，并保存到当前目录。name 为空时由后端从 URL 推断。 */
+export async function importFromUrl(
+  url: string,
+  options?: { prefix?: string; name?: string; overwrite?: boolean }
+): Promise<AdminFileEntry> {
+  const { data } = await apiClient.post<AdminFileEntry>('/admin/files/import-url', {
+    url,
+    prefix: options?.prefix || '',
+    name: options?.name || '',
+    overwrite: options?.overwrite === true,
+  }, { timeout: 600_000 })
   return data
 }
 
@@ -131,6 +151,7 @@ const adminFilesAPI = {
   list,
   getDownloadURL,
   upload,
+  importFromUrl,
   rename,
   remove,
 }

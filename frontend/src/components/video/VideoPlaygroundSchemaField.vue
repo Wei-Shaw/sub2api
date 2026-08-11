@@ -25,6 +25,13 @@
       {{ localizedDescription }}
     </p>
 
+    <p
+      v-if="spec.rawType === 'array' && spec.maxItems > 0"
+      class="array-max-items-hint text-[11px] text-amber-600 dark:text-amber-400"
+    >
+      {{ t('videoModels.playground.arrayMaxItemsHint', { n: spec.maxItems }) }}
+    </p>
+
     <!-- 枚举：改用项目通用 Select（与 API Key 下拉、其它页面下拉视觉一致）
          - options 直接由 spec.options（string[]）映射成 {value,label} 对
          - clearable 让非必填字段可清空；placeholder 使用"未指定"的 i18n 文案
@@ -75,6 +82,15 @@
       @update:model-value="(v: unknown) => onLeafChange(v == null ? '' : String(v))"
     />
 
+    <PromptMediaReferenceInput
+      v-else-if="spec.rawType === 'string' && isPromptField"
+      :model-value="modelValue"
+      :references="mediaReferences"
+      :disabled="disabled"
+      :rows="textareaRowsForRender"
+      @update:model-value="onLeafChange"
+    />
+
     <!-- string：控件类型由 schema 声明的 spec.widget 决定：
            - widget='textarea' → 多行 <textarea>，行数取 spec.textareaRows（默认 3）
            - widget='input'    → 单行 <input>（但若默认值本身很长或含换行，作为兜底
@@ -108,19 +124,20 @@
         :spec="child"
         :model-value="((modelValue as Record<string, unknown>) || {})[child.key]"
         :disabled="disabled"
+        :media-references="mediaReferences"
         @update:model-value="onObjectChildChange(child.key, $event)"
       />
     </div>
 
-    <!-- array 图片组控件（widget='imageUrls'）：把整个图片数组当成一个整体展示
-         —— 一个图库式网格（缩略图 + 拖拽排序 + 计数/清空），三种输入源与单图
-         控件一致（本地上传 / 素材库 / 粘贴 URL），最终值是图片完整 URL 的数组。
+    <!-- array 媒体组控件：把整个 URL 数组当成一个整体展示，支持上传、素材库、
+         粘贴 URL 与拖拽排序。
          注意这一分支不要求 spec.items 存在：元素形态已被 widget 固定为字符串 URL。 -->
     <ImageUrlsField
-      v-else-if="spec.rawType === 'array' && spec.widget === 'imageUrls'"
+      v-else-if="spec.rawType === 'array' && mediaKind"
       :model-value="modelValue"
       :disabled="disabled"
       :max-items="spec.maxItems"
+      :media-kind="mediaKind"
       @update:model-value="(v: string[]) => emit('update:modelValue', v)"
     />
 
@@ -139,6 +156,7 @@
             :spec="({ ...spec.items!, key: `[${i}]` })"
             :model-value="arrayValue[i]"
             :disabled="disabled"
+            :media-references="mediaReferences"
             @update:model-value="onArrayItemChange(i, $event)"
           />
         </div>
@@ -161,7 +179,7 @@
         >
           + {{ t('common.add', 'Add') }}
         </button>
-        <!-- 元素上限：达到后禁用"添加"并说明原因，避免用户以为按钮坏了 -->
+        <!-- 当前数量与上限；完整的“最多 N 个”提示已统一展示在字段说明下方。 -->
         <span v-if="spec.maxItems > 0" class="text-[11px] text-gray-400">
           {{ arrayValue.length }} / {{ spec.maxItems }}
         </span>
@@ -188,9 +206,12 @@ import { useI18n } from 'vue-i18n'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageInputField from '@/components/video/ImageInputField.vue'
-// ImageUrlsField：array + widget='imageUrls' 的整组图片输入控件。
+import PromptMediaReferenceInput from '@/components/video/PromptMediaReferenceInput.vue'
+// ImageUrlsField：array 媒体 URL 组的统一输入控件。
 import ImageUrlsField from '@/components/video/ImageUrlsField.vue'
 import type { FieldSpec } from '@/components/video/paramSpec'
+import type { PromptMediaReference } from '@/components/video/promptMediaReferences'
+import { mediaKindForWidget, normalizeMediaUrlWidget } from '@/utils/mediaUrlWidget'
 
 defineOptions({ name: 'VideoPlaygroundSchemaField' })
 
@@ -202,7 +223,27 @@ const props = defineProps<{
   disabled?: boolean
   /** 兜底展示 label（默认取 spec.key；数组元素时上层会传 `[i]` 覆盖） */
   label?: string
+  /** 当前表单中可通过 @ 引用的媒体；由顶层按 schema 顺序统一编号。 */
+  mediaReferences?: PromptMediaReference[]
 }>()
+
+const mediaReferences = computed(() => props.mediaReferences ?? [])
+const isPromptField = computed(() => props.spec.key.trim().toLowerCase() === 'prompt')
+
+const mediaKind = computed(() => {
+  const widget = normalizeMediaUrlWidget(props.spec.widget)
+  if (widget) return mediaKindForWidget(widget)
+  // 兼容以 items 声明图片控件的 array：这类 schema 表达的是一组图片 URL，
+  // 演练页应直接显示图库，而不是为每个元素重复渲染单图输入框。
+  if (
+    props.spec.rawType === 'array' &&
+    props.spec.items?.rawType === 'string' &&
+    props.spec.items.widget === 'image'
+  ) {
+    return 'image'
+  }
+  return null
+})
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: unknown): void

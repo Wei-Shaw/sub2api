@@ -343,6 +343,7 @@
               :spec="f"
               :model-value="formData[f.key]"
               :disabled="playground.isBusy.value"
+              :media-references="promptMediaReferences"
               @update:model-value="onFieldValueChange(f.key, $event)"
             />
 
@@ -376,6 +377,7 @@
                   :spec="f"
                   :model-value="formData[f.key]"
                   :disabled="playground.isBusy.value"
+                  :media-references="promptMediaReferences"
                   @update:model-value="onFieldValueChange(f.key, $event)"
                 />
               </div>
@@ -816,7 +818,7 @@
                四栏内部右上采用 Tab 切换：
                  - schema Tab：递归展示 output_fields 声明的结构 + 当前值
                  - payload Tab：展示 fal 上游原始 result payload JSON（代替之前任务结果内的 <details> 折叠块）
-               payload Tab 在无 payload 时禁用，避免切到后看到空页。
+               payload Tab 在无请求结果时展示 output_fields 中配置的示例默认值。
           -->
           <div
             v-if="outputSchemaNodes.length > 0 || playground.resultPayload.value"
@@ -876,15 +878,19 @@
               </div>
             </div>
             <div v-else-if="outputTab === 'payload'">
-              <!-- 只展示上游返回的 result payload（"输出参数"）。
-                   未提交/进行中/失败无 payload 时展示等待提示，避免把输入参数误当作输出。 -->
-              <pre
-                v-if="playground.resultPayload.value"
-                class="max-h-96 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100"
-              >{{ payloadForOutputTab }}</pre>
-              <p v-else class="text-[11px] text-gray-500 dark:text-gray-400">
-                {{ t('videoModels.playground.rawPayloadEmpty') }}
-              </p>
+              <div class="mb-2 flex justify-end">
+                <span
+                  class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  :class="playground.resultPayload.value
+                    ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'"
+                >
+                  {{ playground.resultPayload.value
+                    ? t('videoModels.playground.outputValueFromPayload')
+                    : t('videoModels.playground.outputValueFromExample') }}
+                </span>
+              </div>
+              <pre class="max-h-96 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-100">{{ payloadForOutputTab }}</pre>
             </div>
           </div>
         </section>
@@ -924,6 +930,8 @@ import {
   pickByPath,
   type FieldSpec,
 } from '@/components/video/paramSpec'
+import { normalizeMediaUrlWidget } from '@/utils/mediaUrlWidget'
+import { collectPromptMediaReferences } from '@/components/video/promptMediaReferences'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -1186,6 +1194,9 @@ async function submitCreateKey() {
 
 // ============ 表单值 ============
 const formData = reactive<Record<string, unknown>>({})
+const promptMediaReferences = computed(() =>
+  collectPromptMediaReferences(fieldSpecs.value, formData)
+)
 
 function initFormDefaults() {
   for (const k of Object.keys(formData)) delete formData[k]
@@ -1303,7 +1314,7 @@ function currentFormBody(): Record<string, unknown> {
     const v = formData[f.key]
     if (v === undefined) continue
     if (typeof v === 'string' && v.trim() === '') continue
-    // 空数组视为"未填"：数组字段（尤其是 imageUrls 图片组）初始化就是 []，
+    // 空数组视为"未填"：媒体 URL 组初始化就是 []，
     // 原样提交会让上游收到一个无意义的空 images 参数，部分平台会直接报错。
     if (Array.isArray(v) && v.length === 0) continue
     body[f.key] = v
@@ -1331,9 +1342,9 @@ function validateFormRequired(): string | null {
           n: arr.length,
         })
       }
-      // 必填的图片组要求至少一张。仅限 imageUrls：通用 array 的 required 历史上
+      // 必填的媒体组要求至少一个 URL。仅限媒体 URL 组：通用 array 的 required 历史上
       // 只作展示徽章用，这里不改变其行为，避免影响既有模型配置。
-      if (f.required && f.widget === 'imageUrls' && arr.length === 0) {
+      if (f.required && normalizeMediaUrlWidget(f.widget) && arr.length === 0) {
         return t('videoModels.playground.requiredMissing', { field: f.key })
       }
       continue
@@ -1854,12 +1865,15 @@ const prettyResult = computed(() => {
 })
 
 // ============ 输出区 payload Tab 的显示内容 ============
-// 只展示上游返回的 result_payload（真正的"输出参数"）。
-// 未提交 / 进行中 / 失败时返回空串，由模板走 rawPayloadEmpty 空态提示，
-// 避免把 curlBody（输入参数）当作输出误导用户。
+// 有请求结果时展示真实 result_payload；尚无结果时展示 output_fields 中配置的
+// 示例默认值。这里不使用 curlBody，避免把输入参数误标成输出 payload。
 const payloadForOutputTab = computed(() => {
   if (playground.resultPayload.value) return prettyResult.value
-  return ''
+  try {
+    return JSON.stringify(buildOutputExamplePayload(outputFields.value), null, 2)
+  } catch {
+    return '{}'
+  }
 })
 
 // ============ 费用估算 & 实扣 ============

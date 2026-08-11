@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -48,6 +50,7 @@ func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, grou
 		return nil, err
 	}
 	if len(accounts) == 0 {
+		s.logVideoSelectionFailure(ctx, groupID, requestedModel, api, excludedIDs, accounts)
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -94,6 +97,7 @@ func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, grou
 		}
 	}
 	if selected == nil {
+		s.logVideoSelectionFailure(ctx, groupID, requestedModel, api, excludedIDs, accounts)
 		return nil, ErrNoAvailableAccounts
 	}
 	if sessionHash != "" && s.cache != nil {
@@ -102,6 +106,176 @@ func (s *GatewayService) selectFalAccountInGroupSingle(ctx context.Context, grou
 		}
 	}
 	return s.hydrateSelectedAccount(ctx, selected)
+}
+
+type videoSelectionDiagnostic struct {
+	AccountID            int64
+	AccountName          string
+	Platform             string
+	Status               string
+	ManualSchedulable    bool
+	GenericSchedulable   bool
+	VideoEnabled         bool
+	MappingSupported     bool
+	ModelSchedulable     bool
+	QuotaOK              bool
+	WindowCostOK         bool
+	RPMOK                bool
+	Excluded             bool
+	SchedulerCandidate   bool
+	MappingKeys          []string
+	OverloadRemaining    time.Duration
+	RateLimitRemaining   time.Duration
+	TempUnschedRemaining time.Duration
+	ModelLimitRemaining  time.Duration
+	TempUnschedReason    string
+}
+
+func (s *GatewayService) buildVideoSelectionDiagnostic(
+	ctx context.Context,
+	account *Account,
+	requestedModel string,
+	api string,
+	excludedIDs map[int64]struct{},
+	schedulerCandidate bool,
+) videoSelectionDiagnostic {
+	diagnostic := videoSelectionDiagnostic{}
+	if account == nil {
+		return diagnostic
+	}
+	now := time.Now()
+	diagnostic.AccountID = account.ID
+	diagnostic.AccountName = account.Name
+	diagnostic.Platform = account.Platform
+	diagnostic.Status = account.Status
+	diagnostic.ManualSchedulable = account.Schedulable
+	diagnostic.GenericSchedulable = account.IsSchedulable()
+	diagnostic.VideoEnabled = domain.IsVideoModelsEnabled(account.Extra)
+	diagnostic.MappingSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, func() string {
+		if account.Platform == PlatformFal {
+			return api
+		}
+		return ""
+	}())
+	diagnostic.ModelSchedulable = s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
+	diagnostic.QuotaOK = s.isAccountSchedulableForQuota(account)
+	diagnostic.WindowCostOK = s.isAccountSchedulableForWindowCost(ctx, account, false)
+	diagnostic.RPMOK = s.isAccountSchedulableForRPM(ctx, account, false)
+	_, diagnostic.Excluded = excludedIDs[account.ID]
+	diagnostic.SchedulerCandidate = schedulerCandidate
+	if account.OverloadUntil != nil && now.Before(*account.OverloadUntil) {
+		diagnostic.OverloadRemaining = time.Until(*account.OverloadUntil).Truncate(time.Second)
+	}
+	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) {
+		diagnostic.RateLimitRemaining = time.Until(*account.RateLimitResetAt).Truncate(time.Second)
+	}
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		diagnostic.TempUnschedRemaining = time.Until(*account.TempUnschedulableUntil).Truncate(time.Second)
+	}
+	diagnostic.ModelLimitRemaining = account.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+	diagnostic.TempUnschedReason = account.TempUnschedulableReason
+	for key := range account.GetModelMapping() {
+		diagnostic.MappingKeys = append(diagnostic.MappingKeys, key)
+	}
+	sort.Strings(diagnostic.MappingKeys)
+	if len(diagnostic.MappingKeys) > 10 {
+		diagnostic.MappingKeys = diagnostic.MappingKeys[:10]
+	}
+	return diagnostic
+}
+
+func (s *GatewayService) logVideoSelectionFailure(
+	ctx context.Context,
+	groupID *int64,
+	requestedModel string,
+	api string,
+	excludedIDs map[int64]struct{},
+	schedulableAccounts []Account,
+) {
+	platformCounts := map[string]int{
+		PlatformFal:        0,
+		PlatformAtlasCloud: 0,
+		PlatformApiz:       0,
+	}
+	for i := range schedulableAccounts {
+		platformCounts[schedulableAccounts[i].Platform]++
+	}
+
+	boundAccounts := make([]Account, 0, len(schedulableAccounts))
+	schedulerCandidateIDs := make(map[int64]struct{}, len(schedulableAccounts))
+	for i := range schedulableAccounts {
+		schedulerCandidateIDs[schedulableAccounts[i].ID] = struct{}{}
+	}
+	queryErrors := make([]string, 0, 3)
+	if s == nil || s.accountRepo == nil {
+		queryErrors = append(queryErrors, "account repository unavailable")
+	}
+	for _, platform := range []string{PlatformFal, PlatformAtlasCloud, PlatformApiz} {
+		if s == nil || s.accountRepo == nil {
+			break
+		}
+		accounts, err := s.accountRepo.ListByPlatform(ctx, platform)
+		if err != nil {
+			queryErrors = append(queryErrors, platform+":"+err.Error())
+			continue
+		}
+		for i := range accounts {
+			if s.isAccountInGroup(&accounts[i], groupID) {
+				boundAccounts = append(boundAccounts, accounts[i])
+			}
+		}
+	}
+
+	logger.LegacyPrintf(
+		"service.gateway",
+		"[VideoSelectionFailure] group_id=%d model=%q api=%q schedulable_candidates=%d fal_candidates=%d atlascloud_candidates=%d apiz_candidates=%d bound_video_accounts=%d query_errors=%q",
+		derefGroupID(groupID),
+		requestedModel,
+		api,
+		len(schedulableAccounts),
+		platformCounts[PlatformFal],
+		platformCounts[PlatformAtlasCloud],
+		platformCounts[PlatformApiz],
+		len(boundAccounts),
+		queryErrors,
+	)
+	logCandidate := func(source string, account *Account, schedulerCandidate bool) {
+		diagnostic := s.buildVideoSelectionDiagnostic(ctx, account, requestedModel, api, excludedIDs, schedulerCandidate)
+		logger.LegacyPrintf(
+			"service.gateway",
+			"[VideoSelectionCandidate] source=%s group_id=%d model=%q account_id=%d account_name=%q platform=%s scheduler_candidate=%t status=%s manual_schedulable=%t generic_schedulable=%t video_enabled=%t mapping_supported=%t model_schedulable=%t quota_ok=%t window_cost_ok=%t rpm_ok=%t excluded=%t overload_remaining=%s rate_limit_remaining=%s temp_unsched_remaining=%s temp_unsched_reason=%q model_limit_remaining=%s mapping_keys=%q",
+			source,
+			derefGroupID(groupID),
+			requestedModel,
+			diagnostic.AccountID,
+			diagnostic.AccountName,
+			diagnostic.Platform,
+			diagnostic.SchedulerCandidate,
+			diagnostic.Status,
+			diagnostic.ManualSchedulable,
+			diagnostic.GenericSchedulable,
+			diagnostic.VideoEnabled,
+			diagnostic.MappingSupported,
+			diagnostic.ModelSchedulable,
+			diagnostic.QuotaOK,
+			diagnostic.WindowCostOK,
+			diagnostic.RPMOK,
+			diagnostic.Excluded,
+			diagnostic.OverloadRemaining,
+			diagnostic.RateLimitRemaining,
+			diagnostic.TempUnschedRemaining,
+			diagnostic.TempUnschedReason,
+			diagnostic.ModelLimitRemaining,
+			diagnostic.MappingKeys,
+		)
+	}
+	for i := range schedulableAccounts {
+		logCandidate("scheduler", &schedulableAccounts[i], true)
+	}
+	for i := range boundAccounts {
+		_, schedulerCandidate := schedulerCandidateIDs[boundAccounts[i].ID]
+		logCandidate("database", &boundAccounts[i], schedulerCandidate)
+	}
 }
 
 // listSchedulableVideoAccounts 合并可参与视频调度的多平台账号（fal + atlascloud + apiz）。

@@ -27,7 +27,7 @@
             clip-rule="evenodd"
           />
         </svg>
-        <span>{{ t('materials.imageUrlsTitle') }}</span>
+        <span>{{ title }}</span>
         <span
           class="rounded-full bg-white px-1.5 py-0.5 font-mono text-[10px] text-gray-500 ring-1 ring-gray-200 dark:bg-dark-900 dark:text-gray-400 dark:ring-dark-700"
         >
@@ -66,20 +66,44 @@
       :disabled="disabled"
       handle=".img-drag"
       draggable=".img-cell"
-      class="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5"
+      class="flex flex-wrap gap-2"
       @end="commitDraggable"
     >
       <div
         v-for="(u, i) in draggableUrls"
         :key="u"
-        class="img-cell group relative aspect-square overflow-hidden rounded-lg bg-white ring-1 ring-gray-200 dark:bg-dark-900 dark:ring-dark-700"
+        class="img-cell group relative h-28 w-28 shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-gray-200 dark:bg-dark-900 dark:ring-dark-700"
       >
-        <!-- 缩略图本体即拖拽把手：整块可抓，符合"拖图排序"的直觉 -->
-        <img
+        <!-- 图片可拖拽排序；单击则在页内打开大图预览。 -->
+        <button
+          v-if="mediaKind === 'image'"
+          type="button"
+          class="img-drag h-full w-full cursor-grab active:cursor-grabbing"
+          :title="t('materials.previewImage')"
+          @click="openImagePreview(i)"
+        >
+          <img
+            :src="u"
+            :alt="`${mediaKind} ${i + 1}`"
+            loading="lazy"
+            class="h-full w-full object-cover"
+            @error="onThumbError(u)"
+          />
+        </button>
+        <video
+          v-else-if="mediaKind === 'video'"
           :src="u"
-          :alt="`image ${i + 1}`"
-          loading="lazy"
-          class="img-drag h-full w-full cursor-grab object-cover active:cursor-grabbing"
+          controls
+          preload="metadata"
+          class="img-drag h-full w-full cursor-grab bg-black object-contain active:cursor-grabbing"
+          @error="onThumbError(u)"
+        />
+        <audio
+          v-else
+          :src="u"
+          controls
+          preload="metadata"
+          class="img-drag h-full w-full cursor-grab px-1 active:cursor-grabbing"
           @error="onThumbError(u)"
         />
         <!-- 加载失败兜底：显示一个"链接图标 + 失效"占位，仍保留 URL 不清空 -->
@@ -100,44 +124,26 @@
           {{ i + 1 }}
         </span>
 
-        <!-- hover 操作层：打开原图 / 删除 -->
-        <div
-          class="pointer-events-none absolute inset-0 flex items-end justify-between gap-1 bg-gradient-to-t from-black/60 via-transparent to-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100"
+        <button
+          v-if="!disabled"
+          type="button"
+          class="image-remove-button absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-red-500/90 text-white shadow hover:bg-red-600"
+          :title="t('common.remove')"
+          @click.stop="removeUrl(u)"
         >
-          <a
-            :href="u"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="pointer-events-auto rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 hover:bg-white"
-            :title="u"
-            @click.stop
-          >
-            {{ t('materials.openLink') }}
-          </a>
-          <button
-            v-if="!disabled"
-            type="button"
-            class="pointer-events-auto rounded bg-red-500/90 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-red-500"
-            :title="t('common.remove')"
-            @click.stop="removeUrl(u)"
-          >
-            ✕
-          </button>
-        </div>
+          <Icon name="x" size="xs" :stroke-width="2.5" />
+        </button>
       </div>
 
-      <!-- 末尾"添加"占位块：与缩略图同尺寸，视觉上排成一整组 -->
       <button
         v-if="canAddMore && !disabled"
         type="button"
-        class="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gray-300 text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-500 dark:border-dark-600"
+        class="add-image-tile flex h-28 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gray-300 text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-500 dark:border-dark-600"
         :disabled="busy"
         @click="openPicker"
       >
-        <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M10 4a1 1 0 011 1v4h4a1 1 0 110 2h-4v4a1 1 0 11-2 0v-4H5a1 1 0 110-2h4V5a1 1 0 011-1z" />
-        </svg>
-        <span class="text-[10px]">{{ t('materials.addImage') }}</span>
+        <Icon name="plus" size="md" />
+        <span class="text-[11px]">{{ t('materials.addMedia') }}</span>
       </button>
     </VueDraggable>
 
@@ -152,12 +158,12 @@
       <svg class="h-7 w-7" viewBox="0 0 20 20" fill="currentColor">
         <path d="M10 3a1 1 0 01.7.29l3 3a1 1 0 01-1.4 1.42L11 6.4V13a1 1 0 11-2 0V6.41L7.7 7.71A1 1 0 016.3 6.3l3-3A1 1 0 0110 3zM4 14a1 1 0 011 1v1h10v-1a1 1 0 112 0v1.5A1.5 1.5 0 0115.5 18h-11A1.5 1.5 0 013 16.5V15a1 1 0 011-1z" />
       </svg>
-      <span class="text-xs font-medium">{{ t('materials.imageUrlsEmptyTitle') }}</span>
-      <span class="text-[11px]">{{ t('materials.imageUrlsEmptyHint') }}</span>
+      <span class="text-xs font-medium">{{ emptyTitle }}</span>
+      <span class="text-[11px]">{{ emptyHint }}</span>
     </button>
 
     <!-- ============ 底部：三种输入源 ============ -->
-    <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
+    <div data-testid="media-group-actions" class="mt-2.5 flex flex-wrap items-center gap-1.5">
       <button
         type="button"
         class="btn btn-secondary btn-xs"
@@ -170,7 +176,7 @@
       <input
         ref="fileInputEl"
         type="file"
-        accept="image/*"
+        :accept="fileAccept"
         multiple
         class="hidden"
         @change="onLocalFilesPicked"
@@ -227,17 +233,66 @@
     <!-- 素材库多选弹窗：maxSelect 传剩余额度，避免用户选超了才被拒 -->
     <MaterialPickerModal
       v-model:show="pickerVisible"
-      kind="image"
+      :kind="mediaKind"
       :multiple="true"
       :max-select="remainingSlots"
+      :restrict-media-extensions="true"
       @picked-multi="onPickedMulti"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="previewIndex !== null && previewUrl"
+        data-testid="image-preview"
+        class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4"
+        role="dialog"
+        aria-modal="true"
+        @click.self="closeImagePreview"
+      >
+        <button
+          type="button"
+          class="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          :title="t('common.cancel')"
+          @click="closeImagePreview"
+        >
+          <Icon name="x" size="md" />
+        </button>
+        <button
+          v-if="draggableUrls.length > 1"
+          type="button"
+          class="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          @click.stop="showPreviousImage"
+        >
+          <Icon name="chevronLeft" size="md" />
+        </button>
+        <img
+          :src="previewUrl"
+          :alt="`image ${previewIndex + 1}`"
+          class="max-h-[90vh] max-w-[90vw] object-contain shadow-2xl"
+          @click.stop
+        />
+        <button
+          v-if="draggableUrls.length > 1"
+          type="button"
+          class="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          @click.stop="showNextImage"
+        >
+          <Icon name="chevronRight" size="md" />
+        </button>
+        <span
+          v-if="draggableUrls.length > 1"
+          class="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1 text-xs text-white"
+        >
+          {{ previewIndex + 1 }} / {{ draggableUrls.length }}
+        </span>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * ImageUrlsField：视频演练台"整组图片输入"控件（array + widget='imageUrls'）。
+ * ImageUrlsField：视频演练台的媒体 URL 组控件。
  *
  * 与单图控件 ImageInputField 的差别：
  *   - 值是 string[]（每个元素是图片完整 URL），而不是单个 string；
@@ -257,9 +312,15 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueDraggable } from 'vue-draggable-plus'
 import MaterialPickerModal from '@/components/materials/MaterialPickerModal.vue'
-import userMaterialsAPI, { type UserMaterialItem } from '@/api/userMaterials'
+import Icon from '@/components/icons/Icon.vue'
+import userMaterialsAPI, { type UserMaterialItem, type UserMaterialKind } from '@/api/userMaterials'
 import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
+import {
+  hasAllowedMediaExtension,
+  mediaExtensions,
+  mediaFileAccept,
+} from '@/utils/mediaUrlWidget'
 
 const props = withDefaults(
   defineProps<{
@@ -268,8 +329,10 @@ const props = withDefaults(
     disabled?: boolean
     /** 元素个数上限；0 表示不限制。 */
     maxItems?: number
+    /** 控件接收的素材类型。 */
+    mediaKind?: UserMaterialKind
   }>(),
-  { disabled: false, maxItems: 0 }
+  { disabled: false, maxItems: 0, mediaKind: 'image' }
 )
 
 const emit = defineEmits<{
@@ -279,11 +342,19 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
+const title = computed(() => t(`materials.${props.mediaKind}UrlsTitle`))
+const emptyTitle = computed(() => t(`materials.${props.mediaKind}UrlsEmptyTitle`))
+const emptyHint = computed(() =>
+  t('materials.mediaUrlsEmptyHint', { extensions: mediaExtensions(props.mediaKind).join(', ') })
+)
+const fileAccept = computed(() => mediaFileAccept(props.mediaKind))
+
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const pickerVisible = ref(false)
 const showUrlInput = ref(false)
 const urlInputValue = ref('')
 const dragOver = ref(false)
+const previewIndex = ref<number | null>(null)
 // busy / busyText：上传或导入进行中；文案带进度（3/8），批量操作时用户能看到推进。
 const busy = ref(false)
 const busyText = ref('')
@@ -301,6 +372,9 @@ const urls = computed<string[]>(() => normalizeUrls(props.modelValue))
  * 外部值变化时同步过来，拖拽结束（@end）时再统一 emit 回去。
  */
 const draggableUrls = ref<string[]>([...urls.value])
+const previewUrl = computed(() =>
+  previewIndex.value === null ? '' : draggableUrls.value[previewIndex.value] ?? ''
+)
 watch(
   urls,
   (v) => {
@@ -382,14 +456,35 @@ function clearAll() {
   commit([])
 }
 
+function openImagePreview(index: number) {
+  previewIndex.value = index
+}
+
+function closeImagePreview() {
+  previewIndex.value = null
+}
+
+function showPreviousImage() {
+  if (previewIndex.value === null || draggableUrls.value.length === 0) return
+  previewIndex.value =
+    (previewIndex.value - 1 + draggableUrls.value.length) % draggableUrls.value.length
+}
+
+function showNextImage() {
+  if (previewIndex.value === null || draggableUrls.value.length === 0) return
+  previewIndex.value = (previewIndex.value + 1) % draggableUrls.value.length
+}
+
 function openPicker() {
   if (props.disabled || !canAddMore.value) return
   pickerVisible.value = true
 }
 
 function onPickedMulti(items: UserMaterialItem[]) {
-  const added = appendUrls(items.map((it) => it.url))
-  reportAdded(added, items.length)
+  const matchingItems = items.filter((it) => it.kind === props.mediaKind)
+  if (matchingItems.length !== items.length) appStore.showError(t('materials.mediaKindMismatch'))
+  const added = appendUrls(matchingItems.map((it) => it.url))
+  reportAdded(added, matchingItems.length)
 }
 
 function triggerLocalUpload() {
@@ -407,11 +502,27 @@ async function onLocalFilesPicked(ev: Event) {
   const target = ev.target as HTMLInputElement
   const files = Array.from(target.files ?? [])
   target.value = ''
+  await uploadLocalFiles(files)
+}
+
+async function uploadLocalFiles(files: File[]) {
   if (files.length === 0) return
 
-  const slots = maxItems.value > 0 ? remainingSlots.value : files.length
-  const picked = files.slice(0, slots)
-  const skipped = files.length - picked.length
+  const allowedFiles = files.filter((file) => hasAllowedMediaExtension(file.name, props.mediaKind))
+  const invalidCount = files.length - allowedFiles.length
+  if (invalidCount > 0) {
+    appStore.showError(
+      t('materials.invalidMediaFiles', {
+        n: invalidCount,
+        extensions: mediaExtensions(props.mediaKind).join(', '),
+      })
+    )
+  }
+  if (allowedFiles.length === 0) return
+
+  const slots = maxItems.value > 0 ? remainingSlots.value : allowedFiles.length
+  const picked = allowedFiles.slice(0, slots)
+  const skipped = allowedFiles.length - picked.length
 
   busy.value = true
   const uploaded: string[] = []
@@ -424,6 +535,11 @@ async function onLocalFilesPicked(ev: Event) {
       busyText.value = t('materials.uploadingProgress', { i: i + 1, n: picked.length })
       try {
         const resp = await userMaterialsAPI.upload(picked[i])
+        if (resp.data.kind !== props.mediaKind) {
+          failed++
+          if (!firstError) firstError = t('materials.mediaKindMismatch')
+          continue
+        }
         uploaded.push(resp.data.url)
       } catch (e: unknown) {
         failed++
@@ -466,9 +582,21 @@ async function doImportUrls() {
     .filter((s) => s.length > 0)
   if (candidates.length === 0) return
 
-  const slots = maxItems.value > 0 ? remainingSlots.value : candidates.length
-  const picked = candidates.slice(0, slots)
-  const skipped = candidates.length - picked.length
+  const allowedCandidates = candidates.filter((url) => hasAllowedMediaExtension(url, props.mediaKind))
+  const invalidCount = candidates.length - allowedCandidates.length
+  if (invalidCount > 0) {
+    appStore.showError(
+      t('materials.invalidMediaUrls', {
+        n: invalidCount,
+        extensions: mediaExtensions(props.mediaKind).join(', '),
+      })
+    )
+  }
+  if (allowedCandidates.length === 0) return
+
+  const slots = maxItems.value > 0 ? remainingSlots.value : allowedCandidates.length
+  const picked = allowedCandidates.slice(0, slots)
+  const skipped = allowedCandidates.length - picked.length
 
   busy.value = true
   const imported: string[] = []
@@ -479,6 +607,11 @@ async function doImportUrls() {
       busyText.value = t('materials.importingProgress', { i: i + 1, n: picked.length })
       try {
         const resp = await userMaterialsAPI.importFromUrl(picked[i])
+        if (resp.data.kind !== props.mediaKind) {
+          failed++
+          if (!firstError) firstError = t('materials.mediaKindMismatch')
+          continue
+        }
         imported.push(resp.data.url)
       } catch (e: unknown) {
         failed++
@@ -521,18 +654,14 @@ function onDragLeave() {
 }
 
 /**
- * onDrop：把拖进来的图片文件当成"本地上传"处理。
- * 只取 type 以 image/ 开头的文件，其它静默忽略（用户可能顺手拖了个 zip）。
+ * onDrop：把拖入文件交给统一的后缀校验和上传流程。
  */
 async function onDrop(ev: DragEvent) {
   dragOver.value = false
   if (props.disabled || !canAddMore.value) return
-  const files = Array.from(ev.dataTransfer?.files ?? []).filter((f) => f.type.startsWith('image/'))
+  const files = Array.from(ev.dataTransfer?.files ?? [])
   if (files.length === 0) return
-  const dt = new DataTransfer()
-  for (const f of files) dt.items.add(f)
-  // 复用 onLocalFilesPicked 的串行上传 + 上限截断 + 汇总提示逻辑。
-  await onLocalFilesPicked({ target: { files: dt.files, value: '' } } as unknown as Event)
+  await uploadLocalFiles(files)
 }
 
 /** reportAdded：素材库多选后的提示；被上限截断时额外说明。 */function reportAdded(added: number, requested: number) {

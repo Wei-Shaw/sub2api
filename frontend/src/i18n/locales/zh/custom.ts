@@ -5276,6 +5276,13 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       noMore: '已全部加载',
       // 操作
       upload: '上传文件',
+      importUrl: '从 URL 导入',
+      importUrlLabel: '文件 URL',
+      importNameLabel: '文件名（可选）',
+      importNamePlaceholder: '默认从 URL 自动识别',
+      importConfirm: '导入',
+      importCurrentDirectory: '将导入到当前目录：{path}',
+      importSuccess: '已导入文件：{name}',
       download: '下载',
       rename: '重命名',
       copyUrl: '复制链接',
@@ -5286,9 +5293,13 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       clearSelection: '取消选择',
       deleteSelected: '删除所选',
       // 上传
+      dropToUpload: '松开以上传到当前目录',
       uploadingProgress: '正在上传 {i}/{n}：{name}',
       uploadSuccess: '已上传 {n} 个文件',
       uploadFailed: '{n} 个文件上传失败：{msg}',
+      overwriteConfirm: '当前目录已存在同名文件「{name}」。确定要覆盖吗？',
+      overwriteSkipped: '已取消覆盖，跳过 {n} 个同名文件',
+      unknownFileName: '该文件',
       // 重命名
       renameTitle: '重命名文件',
       currentKey: '当前对象键',
@@ -5308,6 +5319,10 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         OBJECT_KEY_EXISTS: '目标名称已存在，请换一个名称（为避免覆盖数据，重命名不会覆盖已有文件）。',
         LIST_NOT_SUPPORTED: '当前对象存储实现不支持列举文件。',
         COPY_NOT_SUPPORTED: '当前对象存储实现不支持服务端复制，无法重命名。',
+        INVALID_URL: 'URL 格式不正确，请填写以 http:// 或 https:// 开头的公网地址。',
+        URL_BLOCKED: '该 URL 指向内网、本机或其他受限地址，不能导入。',
+        URL_FETCH_FAILED: '无法下载该 URL，请确认地址可公开访问且未过期。',
+        EMPTY_REMOTE_FILE: '该 URL 返回的文件为空，无法导入。',
       },
     },
     // Model Intros (模型介绍：封面/描述/默认参数)
@@ -5465,8 +5480,11 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         labelMaxItems: '最大个数',
         maxItemsUnlimited: '不限',
         maxItemsHint: '演练台里该数组最多能填几个元素；0 或留空表示不限制。',
-        imageUrlsItemsFixed:
-          '已选择 imageUrls 控件：元素固定为“图片的完整 URL 字符串”，无需再配置元素 schema。演练台会渲染成一个图库式的多图输入区（支持本地上传 / 从素材库选择 / 粘贴 URL、拖拽排序），最终提交的值是图片 URL 数组。',
+        addArrayItem: '添加元素',
+        arrayItemsEmpty: '暂无元素；点击“添加元素”后填写对应的默认值。',
+        arrayDefaultPlaceholder: '填写默认值',
+        mediaUrlsItemsFixed:
+          '已选择 {widget} 控件：元素固定为对应媒体的完整 URL 字符串，无需再配置元素 schema。演练台会渲染成媒体组输入区（支持本地上传 / 从素材库选择 / 粘贴 URL、拖拽排序）。',
         // 排序（拖拽 + 上下箭头）
         dragToReorder: '拖动以重新排序',
         moveUp: '上移',
