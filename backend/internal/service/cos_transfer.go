@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -76,7 +78,13 @@ type COSImageTransferService struct {
 	settingRepo  SettingRepository
 	encryptor    SecretEncryptor
 	storeFactory BackupObjectStoreFactory
-	httpClient   *http.Client
+	// httpClient 用于"可信来源"下载：URL 来自上游 API 的响应（fal/atlascloud/apiz
+	// 返回的临时图片/视频地址），管理员自己配置的上游地址亦属此列。
+	httpClient *http.Client
+	// untrustedClient 用于"用户可控 URL"下载（素材库 import-url）。
+	// 必须走 safeDialContext：在 socket 层逐个校验解析出的真实 IP，
+	// 这样即便攻击者用 DNS rebinding 或 30x 重定向指向内网也会被拒。
+	untrustedClient *http.Client
 
 	mu    sync.Mutex
 	store BackupObjectStore
@@ -90,10 +98,11 @@ func NewCOSImageTransferService(
 	storeFactory BackupObjectStoreFactory,
 ) *COSImageTransferService {
 	return &COSImageTransferService{
-		settingRepo:  settingRepo,
-		encryptor:    encryptor,
-		storeFactory: storeFactory,
-		httpClient:   &http.Client{Timeout: cosDownloadTimeout},
+		settingRepo:     settingRepo,
+		encryptor:       encryptor,
+		storeFactory:    storeFactory,
+		httpClient:      &http.Client{Timeout: cosDownloadTimeout},
+		untrustedClient: newSSRFSafeHTTPClient(cosDownloadTimeout),
 	}
 }
 
@@ -478,12 +487,25 @@ func (s *COSImageTransferService) download(ctx context.Context, srcURL string) (
 
 // downloadWithLimit 通用下载：由调用方指定单次下载的最大字节数上限。
 // 图片路径复用 cosDownloadMaxBytes；视频路径使用 cosVideoDownloadMaxBytes。
+//
+// 走 httpClient（普通 client），仅供"可信来源"使用 —— 即 URL 来自上游 API
+// 响应或管理员配置。用户可控的 URL 必须走 DownloadUntrustedToBytes。
 func (s *COSImageTransferService) downloadWithLimit(ctx context.Context, srcURL string, maxBytes int64) ([]byte, string, error) {
+	return s.doDownload(ctx, s.httpClient, srcURL, maxBytes)
+}
+
+// doDownload 实际执行 GET 并按 maxBytes 截断读取。client 由调用方按信任级别选择。
+func (s *COSImageTransferService) doDownload(
+	ctx context.Context,
+	client *http.Client,
+	srcURL string,
+	maxBytes int64,
+) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := s.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -744,17 +766,72 @@ func (s *COSImageTransferService) UploadBytesWithKey(ctx context.Context, key st
 	return cosURL, nil
 }
 
-// DownloadToBytes 拉取 url 对应的字节并返回，附带上游 Content-Type。
+// ErrUntrustedURLBlocked 表示用户提供的 URL 指向内网/回环/云元数据地址，被 SSRF 策略拒绝。
+// 调用方应把它映射为 4xx（是用户输入问题），而不是 5xx。
+var ErrUntrustedURLBlocked = errors.New("url blocked by security policy")
+
+// DownloadUntrustedToBytes 拉取**用户可控** url 对应的字节并返回，附带上游 Content-Type。
 // maxBytes<=0 时按图片限制（cosDownloadMaxBytes）；调用方需要根据素材类型选择合适上限。
-func (s *COSImageTransferService) DownloadToBytes(ctx context.Context, srcURL string, maxBytes int64) ([]byte, string, error) {
+//
+// 与 downloadWithLimit 的区别：本方法专供"URL 由终端用户提供"的场景（素材库
+// import-url）。这类入口若不加防护就是一个 SSRF 跳板 —— 任何登录用户都能让
+// 服务端去请求内网服务、云元数据端点（169.254.169.254），并把响应体转存到
+// 对象存储后拿到公网可读地址，等于任意内网数据外带。
+//
+// 三层防护：
+//  1. 只允许 http / https，拒绝 file:// gopher:// 等 scheme；
+//  2. 请求前预检 hostname 的所有 A/AAAA 记录，命中私网/回环/link-local 即拒绝
+//     （错误信息明确，便于用户自查）；
+//  3. 走 untrustedClient，其 DialContext 在 socket 层对每个候选 IP 二次校验 ——
+//     这一层才是真正兜住 DNS rebinding 与 30x 重定向到内网的关键。
+func (s *COSImageTransferService) DownloadUntrustedToBytes(
+	ctx context.Context,
+	srcURL string,
+	maxBytes int64,
+) ([]byte, string, error) {
 	srcURL = strings.TrimSpace(srcURL)
 	if srcURL == "" {
 		return nil, "", fmt.Errorf("empty source url")
 	}
+	u, err := url.Parse(srcURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid source url")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+	default:
+		return nil, "", fmt.Errorf("unsupported url scheme %q", u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return nil, "", fmt.Errorf("invalid source url: missing host")
+	}
+	blocked, lookupErr := isPrivateOrLoopbackHost(ctx, host)
+	if lookupErr != nil {
+		return nil, "", fmt.Errorf("resolve %s: %w", host, lookupErr)
+	}
+	if blocked {
+		return nil, "", ErrUntrustedURLBlocked
+	}
+
 	if maxBytes <= 0 {
 		maxBytes = cosDownloadMaxBytes
 	}
-	return s.downloadWithLimit(ctx, srcURL, maxBytes)
+	client := s.untrustedClient
+	if client == nil {
+		// 兜底：若服务由零值结构体构造（测试里可能出现），也不要退化成无防护 client。
+		client = newSSRFSafeHTTPClient(cosDownloadTimeout)
+	}
+	data, ct, err := s.doDownload(ctx, client, srcURL, maxBytes)
+	if err != nil {
+		// dial 层拒绝时错误里带 "blocked by SSRF policy"，归一成同一个哨兵错误，
+		// 让 handler 统一按 4xx 处理，也避免把内网拓扑细节透给用户。
+		if strings.Contains(err.Error(), "blocked by SSRF policy") {
+			return nil, "", ErrUntrustedURLBlocked
+		}
+		return nil, "", err
+	}
+	return data, ct, nil
 }
 
 // ExtFromURLOrType 供外部（UserMaterialService）复用的扩展名推断。

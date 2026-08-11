@@ -64,13 +64,19 @@ export interface FieldSpec {
   /** 参数值的原始类型标签 */
   rawType: FieldRawType
   /**
-   * 仅 rawType==='string' 时有意义。管理员在编辑页声明了 widget 后，
-   * 演练台渲染时优先按这个声明选择 input / textarea / image，而不再依赖
-   * 内容长度等启发式判断。默认 'input'。
+   * 控件形态声明（管理员在编辑页显式选择），渲染时优先按它决定用哪种控件，
+   * 不再依赖内容长度等启发式判断。默认 'input'。
+   *   - rawType='string'：'input' | 'textarea' | 'image'
+   *   - rawType='array' ：'input'（逐元素递归渲染）| 'imageUrls'（整组图片输入）
    */
-  widget: 'input' | 'textarea' | 'image'
+  widget: 'input' | 'textarea' | 'image' | 'imageUrls'
   /** 仅 widget==='textarea' 时有意义。默认 3。 */
   textareaRows: number
+  /**
+   * 仅 rawType==='array' 时有意义：元素个数上限。0 表示不限制。
+   * 演练台据此禁用"添加"按钮，并在提交前做一次校验。
+   */
+  maxItems: number
   /** object 子字段声明列表（仅 rawType==='object' 时非空） */
   children: FieldSpec[]
   /** array 元素的 schema（仅 rawType==='array' 时非 null；数组同构） */
@@ -217,6 +223,7 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       rawType: 'object',
       widget: 'input',
       textareaRows: 3,
+      maxItems: 0,
       children,
       items: null,
     }
@@ -229,6 +236,11 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
     if (!items) {
       items = makeLeafFromPlain('', itemsRaw)
     }
+    // widget：array 只认 'imageUrls'（整组图片输入）；其它一律 'input'（逐元素递归渲染）。
+    const arrWidget: FieldSpec['widget'] = obj.widget === 'imageUrls' ? 'imageUrls' : 'input'
+    // maxItems：非法 / <=0 归 0（不限制）；上限 100，与编辑器写侧保持一致。
+    const rawMax = Number(obj.maxItems)
+    const maxItems = Number.isFinite(rawMax) && rawMax > 0 ? Math.min(100, Math.trunc(rawMax)) : 0
     return {
       key,
       required: obj.required === true,
@@ -240,8 +252,9 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       defaultValue: '',
       rawDefaultValue: undefined,
       rawType: 'array',
-      widget: 'input',
+      widget: arrWidget,
       textareaRows: 3,
+      maxItems,
       children: [],
       items,
     }
@@ -259,7 +272,7 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
     // 未声明 widget 的旧数据（支持向后兼容）默认依旧逻辑走 'input'，
     // 演练台仍可根据默认值长度启动 textarea fallback 启发式。
     const rawType: FieldRawType = inferLeafRawType(value)
-    let widget: 'input' | 'textarea' | 'image' = 'input'
+    let widget: FieldSpec['widget'] = 'input'
     let textareaRows = 3
     if (rawType === 'string') {
       const w = (spec as Record<string, unknown>).widget
@@ -286,6 +299,7 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       rawType,
       widget,
       textareaRows,
+      maxItems: 0,
       children: [],
       items: null,
     }
@@ -313,6 +327,7 @@ function makeLeafFromPlain(key: string, v: unknown): FieldSpec {
     rawType,
     widget: 'input',
     textareaRows: 3,
+    maxItems: 0,
     children: [],
     items: null,
   }

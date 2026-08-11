@@ -25,12 +25,17 @@
 export type SchemaRowType = 'string' | 'number' | 'boolean' | 'object' | 'array'
 
 /**
- * SchemaWidget：仅对 string 叶子有意义，决定演练页/试一试渲染时用哪种控件。
- * 存储侧：默认 'input' 时不写该字段以保持存储 shape 精简与向后兼容；
- * 'textarea' 时会连同 rows 一起持久化；
- * 'image' 时演练台渲染为图片输入控件（URL / 本地上传 / 素材库），存储直接写入图片 URL。
+ * SchemaWidget：控件形态声明，决定演练页/试一试渲染时用哪种控件。
+ *
+ * 适用类型分两组，互不混用：
+ *   - string 叶子：'input'（默认）| 'textarea'（配 rows）| 'image'（单张图片输入）
+ *   - array：'input'（默认，逐元素递归渲染）| 'imageUrls'（整组图片输入，
+ *     值为图片完整 URL 的字符串数组，演练台渲染成一个图库式的多图输入区）
+ *
+ * 存储侧：默认 'input' 时不写该字段，以保持存储 shape 精简与向后兼容；
+ * 其余取值会持久化（'textarea' 时连同 rows 一起写）。
  */
-export type SchemaWidget = 'input' | 'textarea' | 'image'
+export type SchemaWidget = 'input' | 'textarea' | 'image' | 'imageUrls'
 
 /** textarea 行数默认值（rows 属性缺省时使用）。 */
 export const DEFAULT_TEXTAREA_ROWS = 3
@@ -42,12 +47,14 @@ export const DEFAULT_TEXTAREA_ROWS = 3
  *   - string / number：value（文本表达；number 序列化时 Number() 转回）
  *   - boolean：boolValue
  *   - object：children （子字段列表）
- *   - array：items（元素 schema，唯一一份；数组同构）
+ *   - array：items（元素 schema，唯一一份；数组同构）+ maxItems（元素个数上限）
  *
  * 通用元数据：required / description / isEnum + optionsText（仅叶子）。
  *
- * string 专属渲染元数据：widget / textareaRows —— 让管理员显式声明这个字段
- * 在演练台是单行 input 还是多行 textarea，以及 textarea 的行数。
+ * 渲染元数据：
+ *   - widget：string 叶子可选 input/textarea/image；array 可选 input/imageUrls
+ *   - textareaRows：仅 widget='textarea' 有意义
+ *   - maxItems：仅 array 有意义，限制演练台里最多能填几个元素
  *
  * uid 用于 v-for 稳定 key，避免元素乱序时 DOM 复用导致输入失焦。
  */
@@ -72,10 +79,15 @@ export interface SchemaRow {
   descriptionEn: string
   isEnum: boolean
   optionsText: string
-  /** 仅 string 叶子有意义。默认 'input'。 */
+  /** string 叶子：input/textarea/image；array：input/imageUrls。默认 'input'。 */
   widget: SchemaWidget
   /** 仅 widget='textarea' 有意义。默认 DEFAULT_TEXTAREA_ROWS。 */
   textareaRows: number
+  /**
+   * 仅 type='array' 有意义：元素个数上限。0 表示不限制（默认，也不落库）。
+   * 演练台会据此禁用"添加"按钮、并在提交前做一次校验。
+   */
+  maxItems: number
   children: SchemaRow[]
   items: SchemaRow | null
 }
@@ -103,6 +115,7 @@ export function makeSchemaRow(overrides: Partial<SchemaRow> = {}): SchemaRow {
     optionsText: overrides.optionsText ?? '',
     widget: overrides.widget ?? 'input',
     textareaRows: overrides.textareaRows ?? DEFAULT_TEXTAREA_ROWS,
+    maxItems: overrides.maxItems ?? 0,
     children: overrides.children ?? [],
     items: overrides.items ?? null,
   }
@@ -115,6 +128,9 @@ export function makeSchemaRow(overrides: Partial<SchemaRow> = {}): SchemaRow {
  *   - object：确保 children 存在（若已有则保留）；清 enum（object 不支持枚举）
  *   - array：确保 items 存在（默认一个 string 子 schema）；清 enum
  *   - 叶子：仅确保 value / boolValue 存在；不动 enum/options
+ *
+ * widget 的归位不在这里做（调用方 onTypeChange 负责），因为 string 与 array
+ * 各有自己的候选集，需要结合"切换前后的类型"判断。
  */
 export function resetRowForType(row: SchemaRow): void {
   switch (row.type) {
@@ -246,6 +262,12 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
     out.items = rowToSchema(items)
     if (row.required) out.required = true
     writeDescription(out, row)
+    // widget='imageUrls'：整组图片输入（值为图片 URL 字符串数组）。
+    // 默认 'input' 不写入，保持存储 shape 与旧数据一致。
+    if (row.widget === 'imageUrls') out.widget = 'imageUrls'
+    // maxItems：元素个数上限；<=0 视为不限制，不落库。
+    const max = Number.isFinite(row.maxItems) ? Math.trunc(row.maxItems) : 0
+    if (max > 0) out.maxItems = max
     return out
   }
   // 叶子：value + 元数据
@@ -283,7 +305,8 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
     } else if (row.widget === 'image') {
       out.widget = 'image'
     }
-  }  return out
+  }
+  return out
 }
 
 /**
@@ -394,6 +417,12 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
       const items = schemaToRow('', obj.items)
       // 强制 items.key 为空（数组元素无名）。
       items.key = ''
+      // widget：array 仅认 'imageUrls'，其它一切（缺省 / 未知值）归一为 'input'。
+      const arrWidget: SchemaWidget = obj.widget === 'imageUrls' ? 'imageUrls' : 'input'
+      // maxItems：非法 / <=0 一律归零（不限制）。上限 100 防手滑填出天量输入框。
+      const rawMax = Number(obj.maxItems)
+      const maxItems =
+        Number.isFinite(rawMax) && rawMax > 0 ? Math.min(100, Math.trunc(rawMax)) : 0
       return makeSchemaRow({
         key,
         type: 'array',
@@ -401,6 +430,8 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
         advanced: readAdvanced(obj),
         description: typeof obj.description === 'string' ? (obj.description as string) : '',
         descriptionEn: typeof obj.description_en === 'string' ? (obj.description_en as string) : '',
+        widget: arrWidget,
+        maxItems,
         items,
       })
     }

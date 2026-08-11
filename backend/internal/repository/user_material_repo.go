@@ -138,3 +138,21 @@ WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 	}
 	return nil
 }
+
+// UsageByUser 统计该用户未删除素材的条数与总字节数，供服务层做配额校验。
+//
+// 只统计 deleted_at IS NULL 的行：软删后的对象虽然还在 COS 上（等后台清理），
+// 但配额按"用户可见的素材"计，否则用户删了东西却发现还是传不上去，很反直觉。
+// COALESCE 兜住"该用户一条都没有"时 SUM 返回 NULL 的情况。
+func (r *userMaterialRepository) UsageByUser(ctx context.Context, userID int64) (int64, int64, error) {
+	const q = `
+SELECT COUNT(*), COALESCE(SUM(size_bytes), 0)
+FROM user_materials
+WHERE user_id = $1 AND deleted_at IS NULL
+`
+	var count, totalBytes int64
+	if err := r.db.QueryRowContext(ctx, q, userID).Scan(&count, &totalBytes); err != nil {
+		return 0, 0, fmt.Errorf("usage by user user_materials: %w", err)
+	}
+	return count, totalBytes, nil
+}

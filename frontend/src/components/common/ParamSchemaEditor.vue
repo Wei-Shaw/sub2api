@@ -134,10 +134,11 @@
           @input="emitChange"
         />
       </div>
-      <!-- string 专属：控件类型（input / textarea）
-           仅 type=string 时出现；其它类型（number / boolean / object / array）
-           没有"单行/多行"的语义，这一列被 v-if 隐藏。 -->
-      <div v-if="node.type === 'string'" class="flex w-32 flex-col gap-1">
+      <!-- 控件类型（widget）
+           - type=string：input / textarea / image
+           - type=array ：input（逐元素递归渲染）/ imageUrls（整组图片输入）
+           其它类型（number / boolean / object）没有可选控件形态，这一列被隐藏。 -->
+      <div v-if="canPickWidget" class="flex w-36 flex-col gap-1">
         <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
           {{ t('admin.modelIntros.fields.labelWidget') }}
         </label>
@@ -165,6 +166,22 @@
           min="1"
           max="100"
           class="input h-8 text-xs"
+          @input="emitChange"
+        />
+      </div>
+      <!-- array 专属：元素个数上限（0 / 留空 = 不限制） -->
+      <div v-if="node.type === 'array'" class="flex w-28 flex-col gap-1">
+        <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          {{ t('admin.modelIntros.fields.labelMaxItems') }}
+        </label>
+        <input
+          v-model.number="node.maxItems"
+          type="number"
+          min="0"
+          max="100"
+          class="input h-8 text-xs"
+          :placeholder="t('admin.modelIntros.fields.maxItemsUnlimited')"
+          :title="t('admin.modelIntros.fields.maxItemsHint')"
           @input="emitChange"
         />
       </div>
@@ -354,15 +371,26 @@
       </VueDraggable>
     </div>
 
-    <!-- array 分支：单个 items schema（数组同构，无法排序） -->
+    <!-- array 分支：单个 items schema（数组同构，无法排序）
+         widget='imageUrls' 时元素形态被固定为"图片完整 URL 字符串"，
+         再让管理员编辑 items schema 只会带来误配置，因此换成一行说明。 -->
     <div
       v-if="node.type === 'array'"
       class="nested-block nested-block--array mt-2"
     >
       <div class="mb-2 flex items-center justify-between">
         <span class="font-mono text-[11px] text-gray-500">[ array items ]</span>
+        <span v-if="node.maxItems > 0" class="font-mono text-[11px] text-gray-400">
+          max {{ node.maxItems }}
+        </span>
       </div>
-      <div class="rounded border border-gray-200 bg-white p-2 dark:border-dark-700 dark:bg-dark-800">
+      <div
+        v-if="node.widget === 'imageUrls'"
+        class="rounded border border-dashed border-violet-300 bg-violet-50/50 p-2 text-[11px] leading-relaxed text-violet-800 dark:border-violet-800 dark:bg-violet-900/10 dark:text-violet-200"
+      >
+        {{ t('admin.modelIntros.fields.imageUrlsItemsFixed') }}
+      </div>
+      <div v-else class="rounded border border-gray-200 bg-white p-2 dark:border-dark-700 dark:bg-dark-800">
         <ParamSchemaEditor
           v-if="node.items"
           :model-value="node.items"
@@ -427,6 +455,7 @@ import {
   resetRowForType,
   type SchemaRow,
   type SchemaRowType,
+  type SchemaWidget,
 } from './paramSchemaRow'
 import {
   useDescriptionTranslation,
@@ -490,17 +519,38 @@ const typeOptions: SelectOption[] = [
 const canEnum = computed(() => node.type === 'string' || node.type === 'number')
 
 /**
- * widgetOptions：string 类型的控件形态候选。
+ * canPickWidget：哪些类型有"控件形态"可选。
+ *   - string：input / textarea / image
+ *   - array ：input / imageUrls
+ * number / boolean / object 没有可选形态，整列隐藏。
+ */
+const canPickWidget = computed(() => node.type === 'string' || node.type === 'array')
+
+/**
+ * widgetOptions：按当前类型给出可选控件形态。
+ *
+ * string：
  *   - input    → 单行 <input>
  *   - textarea → 多行 <textarea>（可配 rows）
- *   - image    → 图片输入控件（演练台中渲染为 URL 输入 + 本地上传 + 素材库选择三合一）
- * 只在 type=string 时生效；其它类型下下拉直接被 v-if 隐藏。
+ *   - image    → 单张图片输入（演练台渲染为 URL / 本地上传 / 素材库三合一）
+ * array：
+ *   - input     → 默认，逐元素按 items schema 递归渲染
+ *   - imageUrls → 整组图片输入：演练台渲染成一个图库式多图区域，值为图片
+ *                 完整 URL 的字符串数组（同样支持本地上传 / URL / 素材库）
  */
-const widgetOptions: SelectOption[] = [
-  { value: 'input', label: 'input' },
-  { value: 'textarea', label: 'textarea' },
-  { value: 'image', label: 'image' },
-]
+const widgetOptions = computed<SelectOption[]>(() => {
+  if (node.type === 'array') {
+    return [
+      { value: 'input', label: 'input' },
+      { value: 'imageUrls', label: 'imageUrls' },
+    ]
+  }
+  return [
+    { value: 'input', label: 'input' },
+    { value: 'textarea', label: 'textarea' },
+    { value: 'image', label: 'image' },
+  ]
+})
 
 /**
  * emitChange：任何叶子字段变化都要通知父层重新序列化。
@@ -580,23 +630,39 @@ function onTypeChange(v: string | number | boolean | null) {
     node.isEnum = false
     node.optionsText = ''
   }
-  // 类型切走 string 时把 widget 收回 input，避免残留的 'textarea'
-  // 影响将来切回 string 时的显示（用户预期是"刚切过来的干净默认值"）。
-  if (next !== 'string') {
-    node.widget = 'input'
-  }
+  // widget 归位：string 与 array 的候选集互不相通（textarea/image vs imageUrls），
+  // 切换类型后若残留上一个类型的取值，下拉会显示一个非法选项。统一收回 'input'。
+  node.widget = 'input'
+  // maxItems 只对 array 有意义；切走时清零，避免序列化出无意义的上限。
+  if (next !== 'array') node.maxItems = 0
   emitChange()
 }
 
 /**
- * onWidgetChange：string 类型下的控件形态切换。
- * - 切到 textarea：如果之前 textareaRows 未设或非法，补默认 3
- * - 切到 image：不需要 rows；也不清空已有默认值（可能是一个图片 URL）
- * - 切回 input：不清空 textareaRows（用户下次切回 textarea 可复用），只是不再序列化。
+ * onWidgetChange：控件形态切换。
+ * - string / textarea：如果之前 textareaRows 未设或非法，补默认 3
+ * - string / image：不需要 rows；也不清空已有默认值（可能是一个图片 URL）
+ * - array / imageUrls：把 items 固定为一个 string 元素（值即图片完整 URL）。
+ *   元素 schema 不再暴露给管理员编辑，这里帮他写好，保证存储 shape 合法。
+ * - 切回 input：不清空 textareaRows（下次切回 textarea 可复用），只是不再序列化。
  */
 function onWidgetChange(v: string | number | boolean | null) {
-  const next: 'input' | 'textarea' | 'image' =
-    v === 'textarea' ? 'textarea' : v === 'image' ? 'image' : 'input'
+  const raw = v == null ? 'input' : String(v)
+  if (node.type === 'array') {
+    node.widget = raw === 'imageUrls' ? 'imageUrls' : 'input'
+    if (node.widget === 'imageUrls') {
+      // 元素恒为"图片 URL 字符串"；items 复用 image 控件声明，便于将来
+      // 有人把 widget 切回 input 时，逐元素编辑也依旧是图片输入。
+      if (!node.items || node.items.type !== 'string') {
+        node.items = makeSchemaRow({ key: '', type: 'string', widget: 'image' })
+      } else {
+        node.items.widget = 'image'
+      }
+    }
+    emitChange()
+    return
+  }
+  const next: SchemaWidget = raw === 'textarea' ? 'textarea' : raw === 'image' ? 'image' : 'input'
   node.widget = next
   if (next === 'textarea') {
     const r = Number(node.textareaRows)

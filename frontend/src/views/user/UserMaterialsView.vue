@@ -133,10 +133,10 @@
       </span>
       <div class="flex gap-2">
         <button type="button" class="btn btn-ghost btn-sm" :disabled="page <= 1" @click="goPage(page - 1)">
-          {{ t('common.prev', 'Prev') }}
+          {{ t('materials.prevPage') }}
         </button>
         <button type="button" class="btn btn-ghost btn-sm" :disabled="page * pageSize >= total" @click="goPage(page + 1)">
-          {{ t('common.next', 'Next') }}
+          {{ t('materials.nextPage') }}
         </button>
       </div>
     </div>

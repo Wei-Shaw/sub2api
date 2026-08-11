@@ -35,7 +35,7 @@ export default {
           "enabled": "Enable Support Tickets",
           "enabledHint": "When off, sidebar entries are hidden on both user and admin sides; new submissions return 404. Existing tickets remain accessible to admins via direct URL.",
           "notifyEmails": "Ticket Notification Emails",
-          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailPlaceholder": "admin{'@'}example.com",
           "notifyEmailsHint": "Whitelist of admin-side recipients for the \"new ticket\" / \"new reply\" events. Max {max} entries; disabled toggles skip delivery but keep the entry in the list. Leave empty to notify all admin users by default.",
           "title": "Support Tickets"
         }

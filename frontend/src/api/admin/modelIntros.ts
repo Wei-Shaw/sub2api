@@ -204,13 +204,60 @@ export async function deleteByKey(modelKey: string): Promise<{ message: string }
   return data
 }
 
+/**
+ * ModelIntroDocFetchResult：后端抓取"上游模型文档页"后返回的纯文本结果。
+ *
+ * 用途：管理员在编辑模型介绍时填一个文档页 URL（如 fal.ai 的模型页），
+ * 后端抓页面 → 抽正文 → 返回文本；前端再用大模型把文本解析成表单 JSON 回填。
+ * 由后端代抓是因为浏览器直接请求第三方站点会被 CORS 拦掉，同时后端能统一做
+ * SSRF / 体积 / 超时限制。
+ */
+export interface ModelIntroDocFetchResult {
+  /** 实际抓取的 URL（已归一化：补 scheme、去 fragment）。 */
+  url: string
+  /** 页面 <title>，可能为空。 */
+  title: string
+  /** 抽取出的正文纯文本（markdown 风格的标题前缀）。 */
+  text: string
+  /** text 的字符数。 */
+  length: number
+  /** 是否因超过长度上限被截断。 */
+  truncated: boolean
+}
+
+/**
+ * fetchDoc：抓取一个公开文档页并返回抽取后的纯文本。
+ * @param url 文档页地址；缺少 scheme 时后端会自动补 https://
+ * @param maxChars 抽取文本的字符上限（可选）；缺省由后端决定（40k），硬上限 120k
+ */
+export async function fetchDoc(
+  url: string,
+  maxChars?: number,
+  options?: { signal?: AbortSignal }
+): Promise<ModelIntroDocFetchResult> {
+  const payload: Record<string, unknown> = { url }
+  if (typeof maxChars === 'number' && maxChars > 0) payload.max_chars = maxChars
+  const { data } = await apiClient.post<ModelIntroDocFetchResult>(
+    '/admin/model-intro-doc-fetch',
+    payload,
+    {
+      signal: options?.signal,
+      // 后端抓取上游文档页的硬超时是 25s；apiClient 默认 30s 太贴边，
+      // 慢站点很容易在客户端先超时、错误信息还不如后端的准确，所以放宽到 60s。
+      timeout: 60_000,
+    }
+  )
+  return data
+}
+
 const modelIntrosAPI = {
   list,
   getByKey,
   create,
   update,
   delete: deleteByKey,
-  listCandidates
+  listCandidates,
+  fetchDoc
 }
 
 export default modelIntrosAPI

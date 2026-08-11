@@ -2,6 +2,8 @@
 package admin
 
 import (
+	"errors"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +27,9 @@ func extractModelIntroKey(c *gin.Context) string {
 type ModelIntroHandler struct {
 	svc            *service.ModelIntroService
 	accountService *service.AccountService
+	// docFetcher 用于 FetchDoc 接口：抓取上游模型文档页并抽成纯文本，
+	// 供前端用大模型解析成表单内容（减少管理员手工录入量）。
+	docFetcher *service.ModelIntroDocFetcher
 }
 
 // NewModelIntroHandler 构造 handler。
@@ -39,6 +44,7 @@ func NewModelIntroHandler(
 	return &ModelIntroHandler{
 		svc:            svc,
 		accountService: accountService,
+		docFetcher:     service.NewModelIntroDocFetcher(),
 	}
 }
 
@@ -281,5 +287,71 @@ func (h *ModelIntroHandler) ListCandidates(c *gin.Context) {
 	response.Success(c, gin.H{
 		"items": items,
 		"total": len(items),
+	})
+}
+
+// fetchModelIntroDocRequest 是 FetchDoc 的请求体。
+//
+// MaxChars 允许调用方按自己选的 chat 模型上下文大小调整抽取长度；
+// 缺省 / <=0 时后端用 ModelIntroDocDefaultMaxChars，且始终不超过硬上限。
+type fetchModelIntroDocRequest struct {
+	URL      string `json:"url" binding:"required"`
+	MaxChars int    `json:"max_chars"`
+}
+
+// fetchModelIntroDocResponse 是 FetchDoc 的响应体。
+type fetchModelIntroDocResponse struct {
+	URL       string `json:"url"`
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+	Length    int    `json:"length"`
+	Truncated bool   `json:"truncated"`
+}
+
+// FetchDoc POST /api/v1/admin/model-intro-doc-fetch
+//
+// 抓取一个公开的模型文档页（如 fal.ai 的模型页），把正文抽成纯文本返回。
+// 前端拿到文本后，用管理员在编辑弹窗底部已选好的 API Key + chat 模型，
+// 通过网关自身的 /v1/chat/completions 把它解析成"模型介绍表单 JSON"，
+// 回填到编辑区供管理员修改后保存。
+//
+// 之所以由后端抓页面：浏览器直接 fetch 第三方站点会被 CORS 拦掉；同时
+// 后端抓取可以统一施加 SSRF 防护与大小/超时限制。
+//
+// 路由挂在 admin 父路径下（而非 /model-intros/ 子路径），是为了避免与
+// `/model-intros/*model_key` wildcard 冲突（gin 不允许 static + wildcard 同存）。
+func (h *ModelIntroHandler) FetchDoc(c *gin.Context) {
+	var req fetchModelIntroDocRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if h.docFetcher == nil {
+		response.InternalError(c, "doc fetcher not initialized")
+		return
+	}
+
+	res, err := h.docFetcher.Fetch(c.Request.Context(), req.URL, req.MaxChars)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrModelIntroDocInvalidURL):
+			response.BadRequest(c, "Invalid url: must be an http(s) page url")
+		case errors.Is(err, service.ErrModelIntroDocBlockedURL):
+			response.BadRequest(c, "Url blocked: internal / loopback addresses are not allowed")
+		case errors.Is(err, service.ErrModelIntroDocEmpty):
+			response.BadRequest(c, "No readable text extracted from the page")
+		default:
+			// 上游站点不可达 / 超时 / 非 2xx：属于外部依赖失败，用 502 更准确。
+			response.Error(c, http.StatusBadGateway, "Fetch failed: "+err.Error())
+		}
+		return
+	}
+
+	response.Success(c, fetchModelIntroDocResponse{
+		URL:       res.URL,
+		Title:     res.Title,
+		Text:      res.Text,
+		Length:    res.Length,
+		Truncated: res.Truncated,
 	})
 }

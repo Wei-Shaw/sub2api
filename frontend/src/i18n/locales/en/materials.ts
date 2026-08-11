@@ -19,5 +19,31 @@ export default {
     confirmRemove: 'Remove material "{name}"? (Existing tasks that reference this URL will break.)',
     imageInputEmptyHint: 'Click the buttons above to upload, pick from library, or paste a URL.',
     pageInfo: 'Page {page} of {total}',
+    // Pagination buttons: do not reuse common.prev/common.next — common.next is
+    // the wizard-style "Next step", and common.prev is not defined at all.
+    prevPage: 'Prev',
+    nextPage: 'Next',
+    // ---- Multi-select in the picker (used by the image-group control) ----
+    selectedCount: '{n} selected',
+    remainingSlots: '{n} slot(s) left',
+    confirmPick: 'Confirm',
+    maxSelectReached: 'You can select at most {n} more',
+    // ---- Image group control (array + widget=imageUrls) ----
+    imageUrlsTitle: 'Images',
+    imageUrlsEmptyTitle: 'Add images',
+    imageUrlsEmptyHint: 'Drop images here, or pick from the library / paste URLs',
+    addImage: 'Add',
+    clearAll: 'Clear all',
+    pasteUrls: 'Paste URLs',
+    pasteUrlsPlaceholder: 'https://...\nhttps://...\n(one per line)',
+    pasteUrlsHint: 'One per line; each is imported to your library first',
+    thumbBroken: 'No preview',
+    uploadingProgress: 'Uploading {i}/{n}',
+    importingProgress: 'Importing {i}/{n}',
+    addedCount: 'Added {n} image(s)',
+    uploadPartialFailed: '{n} upload(s) failed',
+    importPartialFailed: '{n} URL import(s) failed',
+    maxItemsReached: 'Limit reached ({n})',
+    maxItemsSkipped: 'Over the limit — {n} skipped',
   },
 }

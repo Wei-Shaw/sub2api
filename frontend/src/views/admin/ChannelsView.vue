@@ -771,7 +771,11 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal']
+// 渠道可配置的平台清单：勾选后会为该平台生成一个 tab，用于绑定分组、配置
+// 模型映射与定价。顺序即 UI 展示顺序（文本平台在前，媒体平台在后）。
+// 注意：这里不含 'composite' —— composite 是分组侧的"混合"标记，
+// 渠道按具体平台分 tab，混合分组会通过 getGroupsForPlatform 出现在每个 tab 里。
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal', 'atlascloud', 'apiz']
 
 // ── Helpers ──
 function formatDate(value: string): string {

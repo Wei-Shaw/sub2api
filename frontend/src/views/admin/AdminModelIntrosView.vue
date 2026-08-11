@@ -481,8 +481,10 @@
       @cancel="showDeleteDialog = false"
     />
 
-    <!-- Schema 导入弹窗：支持 A（粘贴 JSON）与 B（从文件上传）两种方式；
-         导出侧的复制/下载按钮在编辑弹窗内直接完成，不需要专门弹窗。 -->
+    <!-- Schema 导入弹窗：支持三种方式
+         A) 粘贴 JSON；B) 从本地 .json 文件上传；
+         C) 填一个上游模型文档页链接，由后端抓页面 + 大模型解析成 JSON。
+         三者最终都落到同一个 textarea，管理员审阅后点"应用导入"才会回填表单。 -->
     <BaseDialog
       :show="showImportDialog"
       :title="t('admin.modelIntros.fields.schemaImportTitle')"
@@ -490,6 +492,37 @@
       @close="showImportDialog = false"
     >
       <div class="space-y-3">
+        <!-- C) 从文档链接生成：把上游模型文档页解析成表单内容，省去手工录入 -->
+        <div class="space-y-2 rounded border border-dashed border-blue-300 bg-blue-50/50 p-3 dark:border-blue-800 dark:bg-blue-900/10">
+          <p class="text-xs font-semibold text-blue-800 dark:text-blue-200">
+            {{ t('admin.modelIntros.fields.docSection') }}
+          </p>
+          <p class="text-xs text-gray-600 dark:text-gray-300">
+            {{ t('admin.modelIntros.fields.docSectionHint') }}
+          </p>
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              v-model="docUrl"
+              type="text"
+              class="input min-w-[240px] flex-1"
+              :placeholder="t('admin.modelIntros.fields.docUrlPlaceholder')"
+              :disabled="docLoading"
+              @keyup.enter="generateFromDoc"
+            />
+            <button class="btn btn-primary btn-xs whitespace-nowrap" :disabled="docLoading" @click="generateFromDoc">
+              {{ docLoading ? t('admin.modelIntros.fields.docGenerating') : t('admin.modelIntros.fields.docGenerate') }}
+            </button>
+          </div>
+          <input
+            v-model="docExtraHint"
+            type="text"
+            class="input"
+            :placeholder="t('admin.modelIntros.fields.docHintPlaceholder')"
+            :disabled="docLoading"
+          />
+          <p v-if="docStatus" class="text-xs text-blue-700 dark:text-blue-300">{{ docStatus }}</p>
+        </div>
+
         <p class="text-xs text-gray-500">{{ t('admin.modelIntros.fields.schemaImportHint') }}</p>
         <div class="flex flex-wrap items-center gap-2">
           <button class="btn btn-secondary btn-xs" @click="pickImportFile">
@@ -691,6 +724,9 @@ import type { ApiKey } from '@/types'
 // provideDescriptionTranslation：在编辑 dialog 打开的这层 setup 里注入翻译上下文，
 // 递归的 ParamSchemaEditor 就能无 props 透传拿到 apiKey + model + translate()。
 import { provideDescriptionTranslation, fetchModelsForKey } from '@/composables/useDescriptionTranslation'
+// extractModelIntroFromDoc：把"上游模型文档页正文"交给大模型解析成表单草稿 JSON，
+// 配合 adminAPI.modelIntros.fetchDoc（后端代抓页面）实现"填个链接自动填表"。
+import { extractModelIntroFromDoc } from '@/composables/useModelIntroDocExtract'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -1123,6 +1159,20 @@ const showImportDialog = ref(false)
 const importText = ref('')
 const importError = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
+
+// ============ "从文档链接生成"状态 ============
+// 需求：手写整份模型介绍（标题 / 中英简介 / 输入输出参数 schema）成本太高，
+// 而这些信息在上游平台的模型文档页上基本都有。于是提供一条捷径：
+//   管理员填文档页 URL → 后端代抓页面正文（避开 CORS，并做 SSRF/体积限制）
+//   → 前端用底部已选好的 API Key + chat 模型把正文解析成同一份导入 JSON
+//   → 写进下方 textarea，管理员审阅后点"应用导入"回填，再手工微调。
+// docUrl / docExtraHint 故意不在关闭弹窗时清空：管理员常常要对同一个页面反复
+// 重试（换模型、补一句提示词），保留上次输入比每次重填体验更好。
+const docUrl = ref('')
+const docExtraHint = ref('')
+const docLoading = ref(false)
+// docStatus：抓取/解析阶段的进度文案（成功后显示"已生成，请审阅"）。
+const docStatus = ref('')
 
 // resultFieldOptions：递归遍历 form.outputFields（SchemaRow 树），把每一个
 // 可作为"主结果指向"的节点都展开成一条候选。语义如下：
@@ -1662,7 +1712,61 @@ async function copySchemaToClipboard() {
 function openImportDialog() {
   importText.value = JSON.stringify(buildSchemaExport(), null, 2)
   importError.value = ''
+  docStatus.value = ''
   showImportDialog.value = true
+}
+
+/**
+ * generateFromDoc：「填一个文档页链接 → 自动生成表单内容」的入口。
+ *
+ * 两段式，失败点分得很清楚，便于管理员自查：
+ *   1) adminAPI.modelIntros.fetchDoc(url)：后端抓页面并抽正文。失败通常是
+ *      URL 写错 / 页面 403 / 目标是内网地址（被 SSRF 策略拒绝）。
+ *   2) extractModelIntroFromDoc(...)：用底部翻译工具区已选的 API Key + chat
+ *      模型把正文解析成导入 JSON。失败通常是 key 无权访问该模型，或模型
+ *      没按要求只输出 JSON（换个更强的模型基本就好了）。
+ *
+ * 生成结果只写进 textarea，不直接改表单 —— 管理员必须自己看一眼再点"应用导入"，
+ * 避免一次误操作把已经调好的 schema 冲掉。
+ */
+async function generateFromDoc() {
+  const url = docUrl.value.trim()
+  if (!url) {
+    importError.value = t('admin.modelIntros.fields.docUrlRequired')
+    return
+  }
+  // 复用底部"翻译工具"里选好的 key + 模型；没选就提示去选（文案与翻译按钮一致）。
+  if (!introTranslationCtx.ready.value) {
+    importError.value = t('admin.modelIntros.fields.translateNotReady')
+    return
+  }
+
+  docLoading.value = true
+  importError.value = ''
+  docStatus.value = t('admin.modelIntros.fields.docFetching')
+  try {
+    const doc = await adminAPI.modelIntros.fetchDoc(url)
+    docStatus.value = t('admin.modelIntros.fields.docParsing', { chars: doc.length })
+    const { json } = await extractModelIntroFromDoc({
+      docText: doc.text,
+      docTitle: doc.title,
+      docUrl: doc.url,
+      modelKey: form.model_key.trim(),
+      hint: docExtraHint.value.trim(),
+      apiKey: translationApiKey.value,
+      model: translationModel.value,
+    })
+    importText.value = json
+    docStatus.value = doc.truncated
+      ? t('admin.modelIntros.fields.docGeneratedTruncated')
+      : t('admin.modelIntros.fields.docGenerated')
+  } catch (e: unknown) {
+    const msg = (e as { message?: string })?.message || 'unknown error'
+    importError.value = t('admin.modelIntros.fields.docFailed', { msg })
+    docStatus.value = ''
+  } finally {
+    docLoading.value = false
+  }
 }
 
 // pickImportFile：点击"从文件导入"按钮时打开原生 file picker。文件读到内容后
@@ -1712,24 +1816,47 @@ function applyImport() {
     return
   }
   const obj = parsed as Record<string, unknown>
+  // 只覆盖 JSON 里"确实出现过"的键：完整导出的 schema 一定四个键都在，行为不变；
+  // 而"从文档链接生成"的草稿可能只含其中一部分（例如页面没写输出结构），
+  // 此时保留管理员已经调好的那部分，不要被空值冲掉。
   // default_params
   const dp = obj.default_params
   if (dp !== undefined && (dp === null || typeof dp !== 'object' || Array.isArray(dp))) {
     importError.value = t('admin.modelIntros.fields.schemaImportShape')
     return
   }
-  form.params = paramsFromMap((dp as Record<string, unknown>) || {})
+  if (dp !== undefined) {
+    form.params = paramsFromMap(dp as Record<string, unknown>)
+  }
   // output_fields
   const of = obj.output_fields
   if (of !== undefined && !Array.isArray(of)) {
     importError.value = t('admin.modelIntros.fields.schemaImportShape')
     return
   }
-        form.outputFields = outputFieldsToSchemaRows((of as OutputFieldSpec[]) || [])
+  if (of !== undefined) {
+    form.outputFields = outputFieldsToSchemaRows(of as OutputFieldSpec[])
+  }
+  // 文案类字段（title / description / description_en）：只有"从文档链接生成"
+  // 的草稿会带上它们；纯 schema 文件不含这些键，走到这里自然跳过。
+  // 空字符串同样视为"没有内容"，避免模型偷懒返回 "" 把已填好的介绍清掉。
+  if (typeof obj.title === 'string' && obj.title.trim()) {
+    form.title = obj.title.trim()
+  }
+  if (typeof obj.description === 'string' && obj.description.trim()) {
+    form.description = obj.description.trim()
+  }
+  if (typeof obj.description_en === 'string' && obj.description_en.trim()) {
+    form.description_en = obj.description_en.trim()
+  }
   // result_field / result_type
-  form.result_field = typeof obj.result_field === 'string' ? obj.result_field.trim() : ''
-  const rt = typeof obj.result_type === 'string' ? obj.result_type.trim().toLowerCase() : ''
-  form.result_type = rt === 'image' ? 'image' : 'video'
+  if (obj.result_field !== undefined) {
+    form.result_field = typeof obj.result_field === 'string' ? obj.result_field.trim() : ''
+  }
+  if (obj.result_type !== undefined) {
+    const rt = typeof obj.result_type === 'string' ? obj.result_type.trim().toLowerCase() : ''
+    form.result_type = rt === 'image' ? 'image' : 'video'
+  }
   // 校验 result_field 存在性：现在支持多级路径，需在完整展开的候选列表中查找。
   if (
     form.result_field &&

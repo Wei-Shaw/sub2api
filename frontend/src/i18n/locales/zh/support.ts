@@ -35,7 +35,7 @@ export default {
           "enabled": "启用客服工单",
           "enabledHint": "关闭后用户端 / 管理员侧边栏入口隐藏；新工单提交将返回 404，已存在工单仍可由 admin 处理。",
           "notifyEmails": "工单通知邮箱白名单",
-          "notifyEmailPlaceholder": "admin@example.com",
+          "notifyEmailPlaceholder": "admin{'@'}example.com",
           "notifyEmailsHint": "\"新工单 / 新回复\" 事件的管理员方向邮件收件白名单，最多 {max} 项；关闭开关的邮箱不发送邮件但保留在列表里。留空表示按默认发送给所有管理员用户。",
           "title": "客服与工单"
         }

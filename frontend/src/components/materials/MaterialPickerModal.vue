@@ -46,7 +46,12 @@
         <div
           v-for="item in items"
           :key="item.id"
-          class="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-gray-200 bg-white transition hover:border-primary-500 hover:shadow dark:border-dark-700 dark:bg-dark-800"
+          class="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-white transition hover:shadow dark:bg-dark-800"
+          :class="
+            isSelected(item)
+              ? 'border-primary-500 ring-2 ring-primary-500/40'
+              : 'border-gray-200 hover:border-primary-500 dark:border-dark-700'
+          "
           @click="onSelect(item)"
         >
           <div class="relative flex aspect-square items-center justify-center overflow-hidden bg-gray-50 dark:bg-dark-900">
@@ -66,6 +71,19 @@
               </span>
               <span class="text-[10px] uppercase">{{ item.kind }}</span>
             </div>
+            <!-- 多选模式：右上角勾选角标，显示选中次序（1、2、3…），
+                 让用户明确"最终会按点击顺序追加到目标字段"。 -->
+            <span
+              v-if="multiple"
+              class="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow"
+              :class="
+                isSelected(item)
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-white/85 text-gray-400 dark:bg-dark-900/80'
+              "
+            >
+              {{ selectedOrder(item) || '+' }}
+            </span>
           </div>
           <div class="p-2 text-xs">
             <div class="truncate font-medium text-gray-800 dark:text-dark-200" :title="item.file_name">
@@ -93,14 +111,34 @@
         </span>
         <div class="flex gap-2">
           <button type="button" class="btn btn-ghost btn-xs" :disabled="page <= 1" @click="goPage(page - 1)">
-            {{ t('common.prev', 'Prev') }}
+            {{ t('materials.prevPage') }}
           </button>
           <button type="button" class="btn btn-ghost btn-xs" :disabled="page * pageSize >= total" @click="goPage(page + 1)">
-            {{ t('common.next', 'Next') }}
+            {{ t('materials.nextPage') }}
           </button>
         </div>
       </div>
     </div>
+
+    <!-- 多选模式底部：显示已选数量 + 确认按钮。单选模式不渲染 footer，
+         保持"点一下即选中并关闭"的原有交互不变。 -->
+    <template v-if="multiple" #footer>
+      <span class="mr-auto text-xs text-gray-500">
+        {{ t('materials.selectedCount', { n: selectedIds.length }) }}
+        <template v-if="remaining !== null">
+          · {{ t('materials.remainingSlots', { n: remaining }) }}
+        </template>
+      </span>
+      <button type="button" class="btn btn-secondary" @click="close">{{ t('common.cancel') }}</button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="selectedIds.length === 0"
+        @click="confirmMulti"
+      >
+        {{ t('materials.confirmPick') }}
+      </button>
+    </template>
   </BaseDialog>
 </template>
 
@@ -109,15 +147,20 @@
  * MaterialPickerModal：素材库弹窗选择器。
  *
  * 使用场景：
- *   1) 演练台的图片输入控件 ImageInputField 点击"从素材库选择"时打开；
- *   2) （可选）未来其他表单也可以复用（音频/视频输入）。
+ *   1) 演练台的图片输入控件 ImageInputField 点击"从素材库选择"时打开（单选）；
+ *   2) 演练台的多图输入控件 ImageUrlsField 打开（多选，multiple=true）；
+ *   3) （可选）未来其他表单也可以复用（音频/视频输入）。
  *
- * 与独立 UserMaterialsView 的区别：
- *   - 只支持"单选"，选中后 emit('picked', item) 并关闭
- *   - 只按传入的 kind 过滤（默认 'image'）
- *   - 同时提供上传 / URL 导入的快捷入口
+ * 两种选择模式：
+ *   - 单选（默认）：点一下卡片立即 emit('picked', item) 并关闭，交互最短。
+ *   - 多选（multiple=true）：点击切换选中态，右上角角标显示选中次序；
+ *     底部 footer 出现"确认选择"，确认时 emit('picked-multi', items)（按点击
+ *     顺序），让调用方一次性追加多张。maxSelect 用于对齐目标字段的剩余额度。
+ *
+ * 与独立 UserMaterialsView 的区别：只按传入的 kind 过滤（默认 'image'），
+ * 并额外提供上传 / URL 导入的快捷入口。
  */
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import userMaterialsAPI, { type UserMaterialItem, type UserMaterialKind } from '@/api/userMaterials'
@@ -129,14 +172,23 @@ const props = withDefaults(
     show: boolean
     /** 只筛选该类型；默认 'image'（图片输入控件专用） */
     kind?: UserMaterialKind
+    /** 是否多选。默认 false（保持既有单选行为不变）。 */
+    multiple?: boolean
+    /**
+     * 多选模式下最多还能选几个（通常等于目标字段的剩余额度）。
+     * 0 或省略表示不限制；达到上限后继续点击未选中的卡片会给出提示。
+     */
+    maxSelect?: number
   }>(),
-  { kind: 'image' }
+  { kind: 'image', multiple: false, maxSelect: 0 }
 )
 
 const emit = defineEmits<{
   (e: 'update:show', v: boolean): void
-  /** 用户在网格上点击某条素材时触发；父组件负责把 URL 塞回业务字段 */
+  /** 单选模式：用户点击某条素材时触发；父组件负责把 URL 塞回业务字段 */
   (e: 'picked', item: UserMaterialItem): void
+  /** 多选模式：点击"确认选择"时触发，按用户点击顺序给出全部选中项 */
+  (e: 'picked-multi', items: UserMaterialItem[]): void
 }>()
 
 const { t } = useI18n()
@@ -152,6 +204,33 @@ const keyword = ref('')
 const importUrl = ref('')
 const importing = ref(false)
 const showUrlImport = ref(false)
+
+// ---------------- 多选状态 ----------------
+// selectedIds 保存"点击顺序"（不是 Set），因为多图字段的顺序对用户有意义：
+// 确认时按这个顺序追加，用户所见的角标序号就是最终入列顺序。
+// selectedItems 同步保存完整记录，避免确认时因翻页/搜索导致 items 里已经找不到。
+const selectedIds = ref<number[]>([])
+const selectedItems = ref<Map<number, UserMaterialItem>>(new Map())
+
+/** remaining：还能选几个；不限制时为 null（模板里据此决定是否展示剩余额度）。 */
+const remaining = computed<number | null>(() => {
+  if (!props.multiple || !props.maxSelect || props.maxSelect <= 0) return null
+  return Math.max(0, props.maxSelect - selectedIds.value.length)
+})
+
+function isSelected(item: UserMaterialItem): boolean {
+  return selectedIds.value.includes(item.id)
+}
+
+/** selectedOrder：1-based 选中次序；未选中返回 0（模板显示为 '+'）。 */
+function selectedOrder(item: UserMaterialItem): number {
+  return selectedIds.value.indexOf(item.id) + 1
+}
+
+function clearSelection() {
+  selectedIds.value = []
+  selectedItems.value = new Map()
+}
 
 // accept 属性：image → image/*，其他类型对应展开。用户还是可以选择任意文件，
 // 后端会按 Content-Type 校验并拒绝不匹配的（防止误传变成"通用网盘"）。
@@ -178,6 +257,7 @@ watch(
       keyword.value = ''
       importUrl.value = ''
       showUrlImport.value = false
+      clearSelection()
       void reload()
     }
   }
@@ -210,8 +290,43 @@ function goPage(p: number) {
   void reload()
 }
 
+/**
+ * onSelect：卡片点击。
+ *   - 单选：立即 emit + 关闭（原有行为）
+ *   - 多选：切换选中态；已达上限时提示而不是静默忽略
+ */
 function onSelect(item: UserMaterialItem) {
-  emit('picked', item)
+  if (!props.multiple) {
+    emit('picked', item)
+    close()
+    return
+  }
+  const idx = selectedIds.value.indexOf(item.id)
+  if (idx >= 0) {
+    selectedIds.value.splice(idx, 1)
+    selectedItems.value.delete(item.id)
+    // Map 是浅引用，手动触发一次响应式更新。
+    selectedItems.value = new Map(selectedItems.value)
+    return
+  }
+  if (remaining.value !== null && remaining.value <= 0) {
+    appStore.showError(t('materials.maxSelectReached', { n: props.maxSelect }))
+    return
+  }
+  selectedIds.value.push(item.id)
+  selectedItems.value.set(item.id, item)
+  selectedItems.value = new Map(selectedItems.value)
+}
+
+/** confirmMulti：多选确认，按点击顺序回吐全部选中项。 */
+function confirmMulti() {
+  const picked: UserMaterialItem[] = []
+  for (const id of selectedIds.value) {
+    const it = selectedItems.value.get(id)
+    if (it) picked.push(it)
+  }
+  if (picked.length === 0) return
+  emit('picked-multi', picked)
   close()
 }
 
@@ -220,6 +335,11 @@ function close() {
 }
 
 // ---------------- 快捷上传 / URL 导入 ----------------
+/**
+ * onFilePicked：弹窗内的快捷上传。
+ *   - 单选：上传完直接选中并关闭，与"挑一张已有的"体验一致
+ *   - 多选：上传完只把它加入选中集并刷新列表，用户可以继续挑更多再确认
+ */
 async function onFilePicked(ev: Event) {
   const target = ev.target as HTMLInputElement
   const f = target.files?.[0]
@@ -227,9 +347,13 @@ async function onFilePicked(ev: Event) {
   try {
     const resp = await userMaterialsAPI.upload(f)
     appStore.showSuccess(t('materials.uploadSuccess'))
-    // 上传成功直接选中并关闭，与"从素材库挑一张已有的"体验一致
-    emit('picked', resp.data)
-    close()
+    if (props.multiple) {
+      onSelect(resp.data)
+      await reload()
+    } else {
+      emit('picked', resp.data)
+      close()
+    }
   } catch (e: unknown) {
     appStore.showError(errMessage(e))
   } finally {
@@ -245,8 +369,14 @@ async function doImportFromUrl() {
   try {
     const resp = await userMaterialsAPI.importFromUrl(url)
     appStore.showSuccess(t('materials.uploadSuccess'))
-    emit('picked', resp.data)
-    close()
+    importUrl.value = ''
+    if (props.multiple) {
+      onSelect(resp.data)
+      await reload()
+    } else {
+      emit('picked', resp.data)
+      close()
+    }
   } catch (e: unknown) {
     appStore.showError(errMessage(e))
   } finally {
@@ -259,6 +389,13 @@ async function doRemove(item: UserMaterialItem) {
   try {
     await userMaterialsAPI.remove(item.id)
     appStore.showSuccess(t('common.removeSuccess', 'Removed'))
+    // 已删除的素材若还在多选集里，一并移除，避免确认时回吐一个失效 URL。
+    const idx = selectedIds.value.indexOf(item.id)
+    if (idx >= 0) {
+      selectedIds.value.splice(idx, 1)
+      selectedItems.value.delete(item.id)
+      selectedItems.value = new Map(selectedItems.value)
+    }
     void reload()
   } catch (e: unknown) {
     appStore.showError(errMessage(e))

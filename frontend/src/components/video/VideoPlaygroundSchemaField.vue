@@ -112,6 +112,18 @@
       />
     </div>
 
+    <!-- array 图片组控件（widget='imageUrls'）：把整个图片数组当成一个整体展示
+         —— 一个图库式网格（缩略图 + 拖拽排序 + 计数/清空），三种输入源与单图
+         控件一致（本地上传 / 素材库 / 粘贴 URL），最终值是图片完整 URL 的数组。
+         注意这一分支不要求 spec.items 存在：元素形态已被 widget 固定为字符串 URL。 -->
+    <ImageUrlsField
+      v-else-if="spec.rawType === 'array' && spec.widget === 'imageUrls'"
+      :model-value="modelValue"
+      :disabled="disabled"
+      :max-items="spec.maxItems"
+      @update:model-value="(v: string[]) => emit('update:modelValue', v)"
+    />
+
     <!-- array：一组元素，每个元素由 items schema 递归渲染 -->
     <div
       v-else-if="spec.rawType === 'array' && spec.items"
@@ -140,14 +152,20 @@
           ✕
         </button>
       </div>
-      <button
-        type="button"
-        :disabled="disabled"
-        class="rounded border border-dashed border-gray-300 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-        @click="onArrayAdd"
-      >
-        + {{ t('common.add', 'Add') }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          :disabled="disabled || !canAddArrayItem"
+          class="rounded border border-dashed border-gray-300 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          @click="onArrayAdd"
+        >
+          + {{ t('common.add', 'Add') }}
+        </button>
+        <!-- 元素上限：达到后禁用"添加"并说明原因，避免用户以为按钮坏了 -->
+        <span v-if="spec.maxItems > 0" class="text-[11px] text-gray-400">
+          {{ arrayValue.length }} / {{ spec.maxItems }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -170,6 +188,8 @@ import { useI18n } from 'vue-i18n'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageInputField from '@/components/video/ImageInputField.vue'
+// ImageUrlsField：array + widget='imageUrls' 的整组图片输入控件。
+import ImageUrlsField from '@/components/video/ImageUrlsField.vue'
 import type { FieldSpec } from '@/components/video/paramSpec'
 
 defineOptions({ name: 'VideoPlaygroundSchemaField' })
@@ -217,6 +237,17 @@ const stringLeafValue = computed<string>(() => {
 /** 数组当前值：非数组时给一个空数组占位，避免 v-for 报错。 */
 const arrayValue = computed<unknown[]>(() => {
   return Array.isArray(props.modelValue) ? (props.modelValue as unknown[]) : []
+})
+
+/**
+ * canAddArrayItem：通用 array 分支的"添加"按钮是否可用。
+ * spec.maxItems > 0 时按上限限制；0 表示不限制。
+ * （imageUrls 分支的上限判断在 ImageUrlsField 内部完成。）
+ */
+const canAddArrayItem = computed<boolean>(() => {
+  const max = props.spec.maxItems
+  if (!max || max <= 0) return true
+  return arrayValue.value.length < max
 })
 
 /** 枚举选项：把 spec.options（string[]）映射成通用 Select 需要的 {value,label}。 */
@@ -314,6 +345,7 @@ function onArrayRemove(i: number) {
 
 /** array 元素新增：根据 items schema 生成一个默认值（叶子取 rawDefaultValue，object → {}，array → []）。 */
 function onArrayAdd() {
+  if (!canAddArrayItem.value) return
   const arr = Array.isArray(props.modelValue) ? [...(props.modelValue as unknown[])] : []
   arr.push(defaultForSpec(props.spec.items))
   emit('update:modelValue', arr)

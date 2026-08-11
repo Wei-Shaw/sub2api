@@ -232,13 +232,15 @@ func registerBillingAppRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 // 采用 wildcard `*model_key` 以支持含 `/` 的模型名（如
 // `bytedance/seedance-2.5/text-to-video`）。handler 内部会 trim 前置 `/`。
 //
-// 候选模型清单接口 `GET /admin/model-intro-candidates` 单独挂在父路径下，
-// 避免与 wildcard `/model-intros/*` 冲突（gin 同方法同路径不允许 static+wildcard）。
+// 候选模型清单接口 `GET /admin/model-intro-candidates`、文档抓取接口
+// `POST /admin/model-intro-doc-fetch` 都单独挂在父路径下，避免与 wildcard
+// `/model-intros/*` 冲突（gin 同方法同路径不允许 static+wildcard）。
 func registerModelIntroRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	if h == nil || h.Admin == nil || h.Admin.ModelIntro == nil {
 		return
 	}
 	admin.GET("/model-intro-candidates", h.Admin.ModelIntro.ListCandidates)
+	admin.POST("/model-intro-doc-fetch", h.Admin.ModelIntro.FetchDoc)
 	intros := admin.Group("/model-intros")
 	{
 		intros.GET("", h.Admin.ModelIntro.List)

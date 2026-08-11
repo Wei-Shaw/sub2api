@@ -159,7 +159,7 @@
             type="button"
             @click="form.platform = 'fal'"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
               form.platform === 'fal'
                 ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -167,9 +167,35 @@
           >
             <PlatformIcon platform="fal" size="md" />
             fal
-        </button>
-        <button
-          type="button"
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'atlascloud'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'atlascloud'
+                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="atlascloud" size="sm" />
+            AtlasCloud
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'apiz'"
+            :class="[
+              'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
+              form.platform === 'apiz'
+                ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="apiz" size="sm" />
+            apiz
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'kiro'"
             :class="[
               'flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:gap-2 sm:px-4 sm:text-sm',
@@ -1675,8 +1701,9 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
-        <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
+        <!-- 上游倍率自动探测：仅受支持的文本平台可用（媒体平台不实现 /v1/sub2api/billing） -->
         <div
+          v-if="supportsUpstreamBillingProbe(form.platform, 'apikey')"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -4175,6 +4202,10 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+// supportsUpstreamBillingProbe：判定"平台 + 账号类型"是否可参与上游倍率探测。
+// 媒体平台（fal / atlascloud / apiz）按量计费、没有可探测的倍率，必须排除，
+// 否则创建后会白发一次探测请求并弹出失败告警。
+import { supportsUpstreamBillingProbe } from '@/utils/upstreamBillingProbe'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_SELECT_OPTIONS, BEDROCK_REGION_SELECT_OPTIONS } from '@/constants/account'
 import {
@@ -4228,6 +4259,8 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'fal') return t('admin.accounts.fal.baseUrlHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.baseUrlHint')
+  if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.baseUrlHint')
+  if (form.platform === 'apiz') return t('admin.accounts.apiz.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -4237,6 +4270,8 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'fal') return t('admin.accounts.fal.apiKeyHint')
   if (form.platform === 'kiro') return t('admin.accounts.kiro.apiKeyHint')
   if (form.platform === 'grok') return t('admin.accounts.grok.apiKeyHint')
+  if (form.platform === 'atlascloud') return t('admin.accounts.atlascloud.apiKeyHint')
+  if (form.platform === 'apiz') return t('admin.accounts.apiz.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -4942,6 +4977,10 @@ watch(
             ? ''
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
+          : newPlatform === 'atlascloud'
+            ? 'https://api.atlascloud.ai'
+          : newPlatform === 'apiz'
+            ? 'https://api.apiz.ai'
               : 'https://api.anthropic.com'
     // Clear model-related settings
     allowedModels.value = []
@@ -4985,8 +5024,8 @@ watch(
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
     }
-    // fal 仅支持 apikey 类型（存 FAL_KEY），强制走通用 apikey 输入
-    if (newPlatform === 'fal') {
+    // fal / atlascloud / apiz 仅支持 apikey 类型，强制走通用 apikey 输入
+    if (newPlatform === 'fal' || newPlatform === 'atlascloud' || newPlatform === 'apiz') {
       accountCategory.value = 'apikey'
     }
     // Reset Bedrock fields when switching platforms
@@ -5391,8 +5430,8 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
   try {
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
     if (
-      payload.type === 'apikey' &&
-      payload.upstream_billing_probe_enabled === true
+      payload.upstream_billing_probe_enabled === true &&
+      supportsUpstreamBillingProbe(payload.platform, payload.type)
     ) {
       try {
         await adminAPI.accounts.probeUpstreamBilling(account.id)
@@ -6050,7 +6089,10 @@ const handleSubmit = async () => {
     ...form,
     group_ids: form.group_ids,
     extra,
-    upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    // 仅受支持的文本平台 apikey 账号可开启上游倍率探测；媒体平台不提交该字段。
+    upstream_billing_probe_enabled: supportsUpstreamBillingProbe(form.platform, form.type)
+      ? upstreamBillingAutoProbeEnabled.value
+      : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
@@ -6199,9 +6241,11 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    // 上游倍率探测对全部 API-key 平台开放（antigravity upstream 走本 helper）；
-    // 非 apikey 类型（bedrock/oauth）不传，后端不动作。
-    upstream_billing_probe_enabled: type === 'apikey' ? upstreamBillingAutoProbeEnabled.value : undefined,
+    // 上游倍率探测仅对受支持的文本平台 apikey 账号开放（antigravity upstream 走本 helper）；
+    // 非 apikey 类型（bedrock/oauth）与媒体平台（fal/atlascloud/apiz）不传，后端不动作。
+    upstream_billing_probe_enabled: supportsUpstreamBillingProbe(form.platform, type)
+      ? upstreamBillingAutoProbeEnabled.value
+      : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }

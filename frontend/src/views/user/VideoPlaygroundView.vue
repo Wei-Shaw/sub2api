@@ -1126,6 +1126,9 @@ function currentFormBody(): Record<string, unknown> {
     const v = formData[f.key]
     if (v === undefined) continue
     if (typeof v === 'string' && v.trim() === '') continue
+    // 空数组视为"未填"：数组字段（尤其是 imageUrls 图片组）初始化就是 []，
+    // 原样提交会让上游收到一个无意义的空 images 参数，部分平台会直接报错。
+    if (Array.isArray(v) && v.length === 0) continue
     body[f.key] = v
   }
   return body
@@ -1140,9 +1143,27 @@ const canSubmit = computed(() => {
 
 function validateFormRequired(): string | null {
   for (const f of fieldSpecs.value) {
+    // array：先做与类型无关的元素个数上限校验（maxItems 由管理员在编辑页声明）。
+    // 控件层已经禁用了"添加"，这里再兜一次，防止用户走 JSON 模式改完再切回表单。
+    if (f.rawType === 'array') {
+      const arr = Array.isArray(formData[f.key]) ? (formData[f.key] as unknown[]) : []
+      if (f.maxItems > 0 && arr.length > f.maxItems) {
+        return t('videoModels.playground.maxItemsExceeded', {
+          field: f.key,
+          max: f.maxItems,
+          n: arr.length,
+        })
+      }
+      // 必填的图片组要求至少一张。仅限 imageUrls：通用 array 的 required 历史上
+      // 只作展示徽章用，这里不改变其行为，避免影响既有模型配置。
+      if (f.required && f.widget === 'imageUrls' && arr.length === 0) {
+        return t('videoModels.playground.requiredMissing', { field: f.key })
+      }
+      continue
+    }
     if (!f.required) continue
     if (f.rawType === 'boolean') continue
-    if (f.rawType === 'object' || f.rawType === 'array') continue
+    if (f.rawType === 'object') continue
     const raw = formData[f.key]
     if (raw === undefined || String(raw).trim() === '') {
       return t('videoModels.playground.requiredMissing', { field: f.key })

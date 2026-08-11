@@ -13,6 +13,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -31,6 +33,20 @@ const (
 	MaterialImageMaxBytes int64 = 32 << 20
 	MaterialAudioMaxBytes int64 = 64 << 20
 	MaterialVideoMaxBytes int64 = 512 << 20
+)
+
+// 每用户配额。单文件上限之外还必须有"总量"上限，否则任何登录用户都能通过
+// 反复上传把对象存储刷满（COS 按存储量+流量计费，等于直接烧钱）。
+//
+// 取值考虑：素材库是"演练台的图片/音频/视频输入仓库"，正常用法是攒几十到几百
+// 张参考图。给 500 条 / 5 GiB 对真实使用足够宽松，又能把恶意刷量挡在可接受
+// 的成本内。两个维度都要卡：只卡容量挡不住"海量小文件"（DB 行数与 list 性能），
+// 只卡条数挡不住"512MB 视频 × 500"。
+const (
+	// MaterialMaxCountPerUser 单用户最多保留多少条未删除素材。
+	MaterialMaxCountPerUser int64 = 500
+	// MaterialMaxTotalBytesPerUser 单用户未删除素材的总字节上限。
+	MaterialMaxTotalBytesPerUser int64 = 5 << 30 // 5 GiB
 )
 
 // UserMaterial 是一条素材库记录（领域模型）。DB 侧字段一一对应 user_materials 表。
@@ -53,6 +69,8 @@ type UserMaterialRepository interface {
 	GetByID(ctx context.Context, id int64) (*UserMaterial, error)
 	List(ctx context.Context, userID int64, kind, keyword string, offset, limit int) ([]*UserMaterial, int64, error)
 	SoftDelete(ctx context.Context, userID, id int64) error
+	// UsageByUser 返回该用户未删除素材的条数与总字节数，用于配额校验。
+	UsageByUser(ctx context.Context, userID int64) (count int64, totalBytes int64, err error)
 }
 
 // UserMaterialService 负责编排"字节 / URL → COS → DB"三步。
@@ -102,6 +120,10 @@ func (s *UserMaterialService) UploadBytes(ctx context.Context, userID int64, fil
 	if err := checkMaterialSize(kind, int64(len(data))); err != nil {
 		return nil, err
 	}
+	// 配额校验放在写 COS 之前：超限时一个字节都不落桶。
+	if err := s.checkQuota(ctx, userID, int64(len(data))); err != nil {
+		return nil, err
+	}
 
 	key := buildUserMaterialKey(userID, filename, ct)
 	cosURL, err := s.cos.UploadBytesWithKey(ctx, key, data, ct)
@@ -136,6 +158,10 @@ func (s *UserMaterialService) UploadBytes(ctx context.Context, userID int64, fil
 
 // ImportFromURL 从外部 URL 下载后转存到 COS 并落库（source='url_import'）。
 // 与 UploadBytes 语义一致，只是数据源不同。
+//
+// 安全性：srcURL 完全由终端用户控制，是典型的 SSRF 入口，因此必须走
+// cos.DownloadUntrustedToBytes（scheme 白名单 + host 预检 + dial 层 IP 校验），
+// 绝不能用普通的下载路径。
 func (s *UserMaterialService) ImportFromURL(ctx context.Context, userID int64, srcURL string) (*UserMaterial, error) {
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
@@ -147,9 +173,19 @@ func (s *UserMaterialService) ImportFromURL(ctx context.Context, userID int64, s
 	if s.cos == nil {
 		return nil, ErrCOSNotConfigured
 	}
+	// 先做一次配额预检（用 0 增量，只看条数与当前总量是否已达上限），
+	// 避免"明明已经超额还是先把几百 MB 拉下来"的浪费。
+	if err := s.checkQuota(ctx, userID, 0); err != nil {
+		return nil, err
+	}
 	// 先按视频上限拉取（能兜住图片/音频）；后面根据 kind 再复查。
-	data, ct, err := s.cos.DownloadToBytes(ctx, srcURL, MaterialVideoMaxBytes)
+	data, ct, err := s.cos.DownloadUntrustedToBytes(ctx, srcURL, MaterialVideoMaxBytes)
 	if err != nil {
+		// 指向内网/回环/云元数据：明确回一个专用错误码，且不泄漏解析细节。
+		if errors.Is(err, ErrUntrustedURLBlocked) {
+			return nil, infraerrors.BadRequest("URL_BLOCKED",
+				"url points to a disallowed address (internal or loopback)")
+		}
 		return nil, infraerrors.BadRequest("URL_FETCH_FAILED", "fetch url failed: "+err.Error())
 	}
 	if len(data) == 0 {
@@ -167,6 +203,10 @@ func (s *UserMaterialService) ImportFromURL(ctx context.Context, userID int64, s
 			fmt.Sprintf("unsupported content type: %s", ct))
 	}
 	if err := checkMaterialSize(kind, int64(len(data))); err != nil {
+		return nil, err
+	}
+	// 拿到真实体积后再按增量复查一次配额。
+	if err := s.checkQuota(ctx, userID, int64(len(data))); err != nil {
 		return nil, err
 	}
 
@@ -227,9 +267,50 @@ func (s *UserMaterialService) Delete(ctx context.Context, userID, id int64) erro
 	return s.repo.SoftDelete(ctx, userID, id)
 }
 
-// GetByID 只用于内部（或未来 API）按 id 反查素材元信息；调用方需自行校验归属。
-func (s *UserMaterialService) GetByID(ctx context.Context, id int64) (*UserMaterial, error) {
-	return s.repo.GetByID(ctx, id)
+// GetByID 按 id + userID 读取素材元信息。
+//
+// 必须带 userID：素材是用户私有资源，只按 id 查会让任何登录用户通过遍历 id
+// 读到别人的素材（文件名 + COS 公网地址）。归属不匹配时返回 sql.ErrNoRows
+// 语义的 not found，而不是 403 —— 不向调用方泄漏"这个 id 存在但不属于你"。
+func (s *UserMaterialService) GetByID(ctx context.Context, userID, id int64) (*UserMaterial, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
+	}
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if m == nil || m.UserID != userID {
+		return nil, sql.ErrNoRows
+	}
+	return m, nil
+}
+
+// checkQuota 校验"再写入 incomingBytes 字节"是否会突破该用户的素材库配额。
+//
+// incomingBytes 传 0 时只校验条数与当前总量是否已达上限（用于下载前的预检，
+// 避免先白拉几百 MB 再发现超额）。
+//
+// 统计失败时选择放行而不是拦截：配额是成本保护，不是安全边界，
+// 不该因为一次 DB 抖动就让正常用户传不了文件（单文件上限那一层仍然生效）。
+func (s *UserMaterialService) checkQuota(ctx context.Context, userID, incomingBytes int64) error {
+	count, totalBytes, err := s.repo.UsageByUser(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.user_material",
+			"[MATERIAL] quota check skipped (usage query failed) user=%d err=%v", userID, err)
+		return nil
+	}
+	if count >= MaterialMaxCountPerUser {
+		return infraerrors.BadRequest("MATERIAL_COUNT_QUOTA_EXCEEDED",
+			fmt.Sprintf("material count quota exceeded: %d/%d, please delete some first",
+				count, MaterialMaxCountPerUser))
+	}
+	if totalBytes+incomingBytes > MaterialMaxTotalBytesPerUser {
+		return infraerrors.BadRequest("MATERIAL_SIZE_QUOTA_EXCEEDED",
+			fmt.Sprintf("material storage quota exceeded: %d/%d bytes used, please delete some first",
+				totalBytes, MaterialMaxTotalBytesPerUser))
+	}
+	return nil
 }
 
 // ------------------------------- helpers -------------------------------
