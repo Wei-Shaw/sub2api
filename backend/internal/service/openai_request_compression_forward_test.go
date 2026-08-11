@@ -50,6 +50,7 @@ func TestOpenAIGatewayService_ForwardRequestCompressionDoesNotFallbackOnBusiness
 
 	require.Error(t, err)
 	require.Nil(t, result)
+	require.Equal(t, http.StatusBadRequest, c.Writer.Status())
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, "zstd", upstream.requests[0].Header.Get("Content-Encoding"))
 }
