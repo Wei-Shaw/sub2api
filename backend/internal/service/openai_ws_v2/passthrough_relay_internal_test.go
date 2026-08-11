@@ -409,9 +409,12 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	require.True(t, isTokenEvent("response.output_audio.delta"))
 	require.True(t, isTokenEvent("response.function_call_arguments.delta"))
 	require.True(t, isTokenEvent("response.reasoning_summary_text.delta"))
+	require.True(t, isTokenEvent("response.output_text.done"))
+	require.True(t, isTokenEvent("response.function_call_arguments.done"))
 	require.False(t, isTokenEvent("response.output"))
-	require.False(t, isTokenEvent("response.output_text.done"))
 	require.False(t, isTokenEvent("response.output_audio.done"))
+	require.False(t, isTokenEvent("response.content_part.done"))
+	require.False(t, isTokenEvent("response.output_item.done"))
 	require.False(t, isTokenEvent("response.output_text.annotation.added"))
 	require.False(t, isTokenEvent("response.done"))
 REDACTED
