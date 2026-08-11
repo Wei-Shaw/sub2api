@@ -101,14 +101,6 @@
             {{ state?.error_message || '-' }}
           </div>
         </div>
-
-        <div
-          v-if="hasThresholdEvidence"
-          class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
-          data-testid="temp-unsched-trigger-evidence"
-        >
-          {{ triggerEvidenceText }}
-        </div>
       </div>
     </div>
 
@@ -184,26 +176,8 @@ const isActive = computed(() => {
 })
 
 const ruleIndexDisplay = computed(() => {
-  if (!state.value || !state.value.matched_keyword || state.value.rule_index < 0) return '-'
+  if (!state.value) return '-'
   return state.value.rule_index + 1
-})
-
-const hasThresholdEvidence = computed(() => (state.value?.trigger_count || 0) > 1)
-
-const triggerEvidenceText = computed(() => {
-  const count = state.value?.trigger_count || 0
-  const threshold = state.value?.trigger_threshold || 0
-  const minutes = state.value?.trigger_window_minutes || 0
-  if (threshold > 0 && minutes > 0) {
-    return t('admin.accounts.tempUnschedulable.multipleErrorTrigger', { count, threshold, minutes })
-  }
-  if (threshold > 0) {
-    return t('admin.accounts.tempUnschedulable.multipleErrorTriggerNoWindow', { count, threshold })
-  }
-  if (minutes > 0) {
-    return t('admin.accounts.tempUnschedulable.multipleErrorCountInWindow', { count, minutes })
-  }
-  return t('admin.accounts.tempUnschedulable.multipleErrorCount', { count })
 })
 
 const triggeredAtText = computed(() => {

@@ -14,19 +14,15 @@
 
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
-      <div v-if="isTempUnschedulable" class="flex flex-col items-center gap-1">
-        <button
-          type="button"
-          :class="['badge text-xs', statusClass, 'cursor-pointer']"
-          :title="t('admin.accounts.status.viewTempUnschedDetails')"
-          @click="handleTempUnschedClick"
-        >
-          {{ statusText }}
-        </button>
-        <span class="max-w-[180px] text-center text-[11px] leading-4 text-gray-500 dark:text-gray-400">
-          {{ tempUnschedRecoveryText }}
-        </span>
-      </div>
+      <button
+        v-if="isTempUnschedulable"
+        type="button"
+        :class="['badge text-xs', statusClass, 'cursor-pointer']"
+        :title="t('admin.accounts.status.viewTempUnschedDetails')"
+        @click="handleTempUnschedClick"
+      >
+        {{ statusText }}
+      </button>
       <span v-else :class="['badge text-xs', statusClass]">
         {{ statusText }}
       </span>
@@ -304,13 +300,6 @@ const rateLimitResumeText = computed(() => {
 // Computed: countdown text for overload (529)
 const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
-})
-
-const tempUnschedRecoveryText = computed(() => {
-  if (!isTempUnschedulable.value || !props.account.temp_unschedulable_until) return ''
-  return t('admin.accounts.status.tempUnschedulableUntil', {
-    time: formatDateTime(props.account.temp_unschedulable_until)
-  })
 })
 
 // Computed: status badge class

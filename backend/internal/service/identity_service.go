@@ -23,57 +23,7 @@ import (
 var (
 	// 匹配 User-Agent 版本号: xxx/x.y.z
 	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
-
-	// fingerprintUserAgentPattern 校验可写入账号级持久身份的 User-Agent 形态：
-	// <product>/<major>.<minor>.<patch> 之后必须紧跟空白或字符串结束。
-	// 版本号带 -local / -dev / +build 等后缀的本地构建一律不接受。
-	fingerprintUserAgentPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+/\d+\.\d+\.\d+(\s|$)`)
 )
-
-const (
-	// claudeCLIUserAgentProduct 是官方 Claude Code CLI 的产品名（小写）。
-	claudeCLIUserAgentProduct = "claude-cli"
-	// maxFingerprintUserAgentLength 限制写入缓存的 User-Agent 长度。
-	maxFingerprintUserAgentLength = 256
-	// maxClaudeCLIMajorVersionSkew 是 claude-cli 主版本号相对 sub2api 自身伪装
-	// 版本（claude.CLICurrentVersion）允许的最大超前量。给足两个大版本的升级
-	// 窗口，同时挡掉 999 这类哨兵版本号。
-	maxClaudeCLIMajorVersionSkew = 2
-)
-
-// isAcceptableFingerprintUserAgent 判断 User-Agent 是否可作为账号级持久身份写入缓存。
-//
-// 指纹是账号级、“只升不降”、活跃账号懒续期后近乎永不过期的持久状态，且系统内
-// 没有重置入口。一旦写入畸形或哨兵版本（如 claude-cli/999.0.0-local），该账号
-// 此后所有上游请求都会在 HTTP 头与请求体 cc_version 两处声称这个不存在的版本，
-// 被上游判定为非正版客户端并持续返回不带限流重置头的 429；无重置头又会落到 5 秒
-// 兜底冷却，账号池收缩后对外表现为 503 风暴。
-//
-// 校验必须放在创建与升级两条路径的共同入口：只在 isNewerVersion 处加校验是不够的，
-// createFingerprintFromHeaders 首次创建时同样会原样保存畸形 UA，删键恢复后账号可被
-// 同一客户端立即再次毒化。
-func isAcceptableFingerprintUserAgent(ua string) bool {
-	ua = strings.TrimSpace(ua)
-	if ua == "" || len(ua) > maxFingerprintUserAgentLength {
-		return false
-	}
-	if !fingerprintUserAgentPattern.MatchString(ua) {
-		return false
-	}
-	// 非 claude-cli 产品不做版本区间约束：形态合法即可，避免误伤其他合法客户端。
-	if extractProduct(ua) != claudeCLIUserAgentProduct {
-		return true
-	}
-	major, _, _, ok := parseUserAgentVersion(ua)
-	if !ok {
-		return false
-	}
-	currentMajor, _, _, currentOK := parseUserAgentVersion(claudeCLIUserAgentProduct + "/" + claude.CLICurrentVersion)
-	if !currentOK {
-		return true
-	}
-	return major <= currentMajor+maxClaudeCLIMajorVersionSkew
-}
 
 // 默认指纹值（当客户端未提供时使用）
 var defaultFingerprint = Fingerprint{
@@ -126,46 +76,20 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 // 如果缓存存在，检测user-agent版本，新版本则更新
 // 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
-	// 入口统一校验：创建与升级两条路径共用，任一路径漏掉都会让畸形 UA 被持久化。
-	clientUA := strings.TrimSpace(headers.Get("User-Agent"))
-	uaAcceptable := isAcceptableFingerprintUserAgent(clientUA)
-
 	// 尝试从缓存获取指纹
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
 	if err == nil && cached != nil {
 		needWrite := false
 
-		// 只在真正阻止了一次写入时记录，便于定位污染源，同时避免被毒化客户端的
-		// 高频重试刷屏（无重置头的 429 会落到 5 秒兜底冷却，重试相当密集）。
-		if !uaAcceptable && clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-			logger.LegacyPrintf("service.identity",
-				"Rejected fingerprint user-agent for account %d: %q (malformed or implausible version)",
-				accountID, clientUA)
-		}
-
-		if !isAcceptableFingerprintUserAgent(cached.UserAgent) {
-			// 自愈：缓存中已是畸形/哨兵 UA（本次加固之前写入的）。指纹在活跃账号上
-			// 懒续期后近乎永不过期，且系统内没有重置入口——不在读取时纠正，存量被
-			// 毒化的账号就只能靠手工删 Redis 键恢复。
-			poisoned := cached.UserAgent
-			if uaAcceptable {
-				mergeHeadersIntoFingerprint(cached, headers)
-			} else {
-				cached.UserAgent = defaultFingerprint.UserAgent
-			}
-			needWrite = true
-			logger.LegacyPrintf("service.identity",
-				"Replaced malformed cached fingerprint for account %d: %q -> %q",
-				accountID, poisoned, cached.UserAgent)
-		} else if uaAcceptable && isNewerVersion(clientUA, cached.UserAgent) {
+		// 检查客户端的user-agent是否是更新版本
+		clientUA := headers.Get("User-Agent")
+		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
 			// 版本升级：merge 语义 — 仅更新请求中实际携带的字段，保留缓存值
 			// 避免缺失的头被硬编码默认值覆盖（如新 CLI 版本 + 旧 SDK 默认值的不一致）
 			mergeHeadersIntoFingerprint(cached, headers)
 			needWrite = true
 			logger.LegacyPrintf("service.identity", "Updated fingerprint for account %d: %s (merge update)", accountID, clientUA)
-		}
-
-		if !needWrite && time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {
+		} else if time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {
 			// 距上次写入超过24小时，续期TTL
 			needWrite = true
 		}
@@ -179,13 +103,7 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 		return cached, nil
 	}
 
-	// 缓存不存在或解析失败，创建新指纹。首次创建同样是持久化写入，
-	// 畸形 UA 在这里落库后就成了账号的长期身份，必须同样拒绝。
-	if !uaAcceptable && clientUA != "" {
-		logger.LegacyPrintf("service.identity",
-			"Rejected fingerprint user-agent for account %d: %q (malformed or implausible version)",
-			accountID, clientUA)
-	}
+	// 缓存不存在或解析失败，创建新指纹
 	fp := s.createFingerprintFromHeaders(headers)
 
 	// 生成随机ClientID
@@ -205,9 +123,8 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
 	fp := &Fingerprint{}
 
-	// 获取User-Agent：只接受形态合法且版本合理的值，否则回退默认指纹。
-	// 首次创建同样是持久化写入，必须与升级路径共用同一套校验。
-	if ua := strings.TrimSpace(headers.Get("User-Agent")); isAcceptableFingerprintUserAgent(ua) {
+	// 获取User-Agent
+	if ua := headers.Get("User-Agent"); ua != "" {
 		fp.UserAgent = ua
 	} else {
 		fp.UserAgent = defaultFingerprint.UserAgent

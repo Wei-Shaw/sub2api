@@ -114,8 +114,6 @@
         <OpsErrorDetailsModal
           :show="showErrorDetails"
           :time-range="timeRange"
-          :custom-start-time="customStartTime"
-          :custom-end-time="customEndTime"
           :platform="platform"
           :group-id="groupId"
           :error-type="errorDetailsType"

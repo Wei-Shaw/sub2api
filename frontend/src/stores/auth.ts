@@ -6,13 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
-import type {
-  User,
-  LoginRequest,
-  RegisterRequest,
-  AuthResponse,
-  ActionCaptchaRequestProof
-} from '@/types'
+import type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const AUTH_USER_KEY = 'auth_user'
@@ -281,9 +275,9 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function loginWithPasskey(proof?: ActionCaptchaRequestProof): Promise<User> {
+  async function loginWithPasskey(): Promise<User> {
     try {
-      const response = await passkeyAPI.login(proof)
+      const response = await passkeyAPI.login()
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {

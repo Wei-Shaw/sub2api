@@ -191,16 +191,9 @@ func grokContentPolicyClientMessage(responseBody []byte) string {
 // shouldFailoverGrokUpstreamError is the body-aware counterpart of the
 // status-only failover helper. Grok content refusals must stay on the current
 // account and be returned to the caller instead of consuming the account pool.
-// Free-usage / empty-output / billing bodies also failover even when the HTTP
-// status alone would not (e.g. 400 with free-usage-exhausted).
 func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, responseBody []byte) bool {
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
-	}
-	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
-	switch decision.Class {
-	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity:
-		return decision.ShouldFailover
 	}
 	return s.shouldFailoverUpstreamError(statusCode)
 }

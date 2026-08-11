@@ -142,7 +142,7 @@ func TestGrokImportProbeSchedulerProbesSingleAccountOnce(t *testing.T) {
 }
 
 func TestGrokImportProbeSchedulerQueuesBatchWithoutPerTaskGoroutines(t *testing.T) {
-	const taskCount = 50
+	const taskCount = 100
 	release := make(chan struct{})
 	scheduler := newGrokImportProbeScheduler(3, time.Second)
 	prober := newGrokImportProbeStub(taskCount)
@@ -156,7 +156,7 @@ func TestGrokImportProbeSchedulerQueuesBatchWithoutPerTaskGoroutines(t *testing.
 		awaitGrokProbeSignal(t, prober.started)
 	}
 	snapshot := snapshotGrokImportProbeScheduler(scheduler)
-	require.Equal(t, taskCount-3, snapshot.queued)
+	require.Equal(t, 97, snapshot.queued)
 	require.Equal(t, 3, snapshot.workers)
 	require.Equal(t, 3, snapshot.maxWorkers)
 	select {
@@ -180,55 +180,6 @@ func TestGrokImportProbeSchedulerQueuesBatchWithoutPerTaskGoroutines(t *testing.
 		return snapshot.queued == 0 && snapshot.workers == 0
 	}, time.Second, 10*time.Millisecond)
 	require.Equal(t, 3, snapshot.maxWorkers)
-}
-
-func TestGrokImportProbeSchedulerDeduplicatesPendingAndInFlightAccounts(t *testing.T) {
-	scheduler := newGrokImportProbeScheduler(1, time.Second)
-	prober := newGrokImportProbeStub(2)
-	release := make(chan struct{})
-	prober.block = release
-	account := newGrokOAuthImportAccount(501)
-	queued := newGrokOAuthImportAccount(502)
-
-	scheduler.schedule(prober, account)
-	require.Equal(t, int64(501), awaitGrokProbeSignal(t, prober.started))
-	scheduler.schedule(prober, account)
-	scheduler.schedule(prober, queued)
-	scheduler.schedule(prober, queued)
-
-	scheduler.mu.Lock()
-	require.Len(t, scheduler.queue, 1)
-	require.Contains(t, scheduler.inFlight, int64(501))
-	require.Contains(t, scheduler.pending, int64(502))
-	scheduler.mu.Unlock()
-
-	close(release)
-	require.Equal(t, int64(501), awaitGrokProbeSignal(t, prober.done))
-	require.Equal(t, int64(502), awaitGrokProbeSignal(t, prober.done))
-	calls, _, _ := prober.snapshot()
-	require.Equal(t, 1, calls[501])
-	require.Equal(t, 1, calls[502])
-}
-
-func TestGrokImportProbeSchedulerBoundsPendingQueue(t *testing.T) {
-	scheduler := newGrokImportProbeScheduler(1, time.Second)
-	prober := newGrokImportProbeStub(grokImportProbeQueueLimit + 1)
-	release := make(chan struct{})
-	prober.block = release
-	scheduler.schedule(prober, newGrokOAuthImportAccount(600))
-	require.Equal(t, int64(600), awaitGrokProbeSignal(t, prober.started))
-	for id := int64(601); id < 601+grokImportProbeQueueLimit+10; id++ {
-		scheduler.schedule(prober, newGrokOAuthImportAccount(id))
-	}
-
-	scheduler.mu.Lock()
-	require.Len(t, scheduler.queue, grokImportProbeQueueLimit)
-	scheduler.mu.Unlock()
-
-	close(release)
-	for i := 0; i < grokImportProbeQueueLimit+1; i++ {
-		awaitGrokProbeSignal(t, prober.done)
-	}
 }
 
 func TestGrokImportProbeSchedulerTimeoutCancelsProbe(t *testing.T) {

@@ -18,17 +18,6 @@ const {
   showError: vi.fn(),
 }))
 
-
-vi.mock('@/utils/featureFlags', () => ({
-  isChannelMonitorV1Mode: () => true,
-  isChannelMonitorV2Mode: () => false,
-  getChannelMonitorMode: () => 'v1' as const,
-}))
-
-vi.mock('@/features/channel-monitor-v2/MonitorSettingsPanel.vue', () => ({
-  default: { name: 'MonitorSettingsPanel', template: '<div data-testid="v2-settings" />' },
-}))
-
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     channelMonitor: {

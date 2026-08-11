@@ -23,7 +23,6 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
 const props = withDefaults(defineProps<{
@@ -35,9 +34,6 @@ const props = withDefaults(defineProps<{
   providerName: 'OIDC',
   showDivider: true
 })
-const emit = defineEmits<{
-  start: [request: OAuthLoginStart]
-}>()
 
 const route = useRoute()
 const { t } = useI18n()
@@ -52,6 +48,9 @@ const providerInitial = computed(() => normalizedProviderName.value.charAt(0).to
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  emit('start', { provider: 'oidc', params: { redirect: redirectTo } })
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  const startURL = `${normalized}/auth/oauth/oidc/start?redirect=${encodeURIComponent(redirectTo)}`
+  window.location.href = startURL
 }
 </script>

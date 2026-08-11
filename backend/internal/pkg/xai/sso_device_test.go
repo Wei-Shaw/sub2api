@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"strings"
 	"testing"
@@ -26,7 +25,7 @@ func (c *ssoDeviceFakeClient) Do(req *http.Request) (*http.Response, error) {
 	switch req.URL.String() {
 	case SSOAccountsURL:
 		require.Equal(c.t, http.MethodGet, req.Method)
-		return ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {"session=web-session; Domain=x.ai; Path=/"}}, `{}`), nil
+		return ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {"session=web-session; Path=/"}}, `{}`), nil
 	case SSODeviceURL:
 		require.Equal(c.t, http.MethodPost, req.Method)
 		values := readSSODeviceForm(c.t, req)
@@ -93,33 +92,6 @@ func TestNormalizeSSOTokenAcceptsCookieHeader(t *testing.T) {
 	require.Equal(t, "token-1", NormalizeSSOToken("Cookie: foo=bar; sso=token-1; sso-rw=token-2"))
 	require.Equal(t, "token-2", NormalizeSSOToken("sso-rw=token-2; foo=bar"))
 	require.Equal(t, "raw-token", NormalizeSSOToken(" raw-token ; ignored=1"))
-	require.Empty(t, NormalizeSSOToken(strings.Repeat("x", ssoMaxTokenLength+1)))
-}
-
-func TestSSODeviceCookieJarHonorsDomainAndPath(t *testing.T) {
-	jar, err := cookiejar.New(nil)
-	require.NoError(t, err)
-	flow := &ssoDeviceFlow{cookieJar: jar}
-	accountsURL, err := url.Parse("https://accounts.x.ai/")
-	require.NoError(t, err)
-	authURL, err := url.Parse("https://auth.x.ai/oauth2/device/verify")
-	require.NoError(t, err)
-
-	flow.captureCookies(accountsURL, ssoDeviceResponse(http.StatusOK, http.Header{"Set-Cookie": {
-		"host-only=accounts; Path=/",
-		"shared=all-xai; Domain=x.ai; Path=/",
-		"narrow=oauth-only; Domain=x.ai; Path=/oauth2",
-	}}, ""))
-
-	authCookies := flow.cookieHeader(authURL)
-	require.NotContains(t, authCookies, "host-only=accounts")
-	require.Contains(t, authCookies, "shared=all-xai")
-	require.Contains(t, authCookies, "narrow=oauth-only")
-
-	accountsCookies := flow.cookieHeader(accountsURL)
-	require.Contains(t, accountsCookies, "host-only=accounts")
-	require.Contains(t, accountsCookies, "shared=all-xai")
-	require.NotContains(t, accountsCookies, "narrow=oauth-only")
 }
 
 func ssoDeviceResponse(status int, header http.Header, body string) *http.Response {

@@ -47,8 +47,6 @@ func TestGrokOAuthClientExchangeAndRefreshUseFormFields(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	// Tests inject a loopback token endpoint; allowlist requires unsafe override.
-	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	t.Setenv(xai.EnvTokenURL, server.URL)
 
 	client := NewGrokOAuthClient()
@@ -82,7 +80,6 @@ func TestGrokOAuthClientRefreshForbiddenClassifiesOnlyExplicitEntitlement(t *tes
 				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer server.Close()
-			t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 			t.Setenv(xai.EnvTokenURL, server.URL)
 
 			client := NewGrokOAuthClient()
@@ -99,7 +96,6 @@ func TestGrokOAuthClientStatusErrorRedactsSensitiveResponseBody(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"invalid_grant","access_token":"access-secret","refresh_token":"refresh-secret","code_verifier":"verifier-secret"}`))
 	}))
 	defer server.Close()
-	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	t.Setenv(xai.EnvTokenURL, server.URL)
 
 	client := NewGrokOAuthClient()
@@ -122,15 +118,4 @@ func TestGrokOAuthEntitlementDenialRequiresExplicitEvidence(t *testing.T) {
 	require.True(t, grokOAuthHasExplicitEntitlementDenial(`{"message":"no active Grok subscription"}`))
 	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"forbidden","message":"request forbidden"}`))
 	require.False(t, grokOAuthHasExplicitEntitlementDenial(`<html>403 Forbidden</html>`))
-	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"error":"access_denied","message":"You have run out of credits"}`))
-	require.False(t, grokOAuthHasExplicitEntitlementDenial(`{"code":"subscription_required","message":"included free usage exhausted"}`))
-}
-
-func TestNewGrokOAuthClient_UnvalidatedTokenURLFallsBackToDefault(t *testing.T) {
-	// Without unsafe overrides, a random env TokenURL must not be used (fail-closed).
-	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "")
-	t.Setenv(xai.EnvTokenURL, "https://evil.example/oauth/token")
-
-	client := NewGrokOAuthClient().(*grokOAuthClient)
-	require.Equal(t, xai.DefaultTokenURL, client.tokenURL)
 }

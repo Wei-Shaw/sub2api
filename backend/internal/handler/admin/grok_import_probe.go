@@ -13,7 +13,6 @@ import (
 const (
 	grokImportProbeConcurrency = 3
 	grokImportProbeTimeout     = 25 * time.Second
-	grokImportProbeQueueLimit  = 64
 )
 
 type grokImportProber interface {
@@ -28,8 +27,6 @@ type grokImportProbeTask struct {
 type grokImportProbeScheduler struct {
 	mu          sync.Mutex
 	queue       []grokImportProbeTask
-	pending     map[int64]struct{}
-	inFlight    map[int64]struct{}
 	concurrency int
 	workers     int
 	maxWorkers  int
@@ -51,8 +48,6 @@ func newGrokImportProbeScheduler(concurrency int, timeout time.Duration) *grokIm
 	return &grokImportProbeScheduler{
 		concurrency: concurrency,
 		timeout:     timeout,
-		pending:     make(map[int64]struct{}),
-		inFlight:    make(map[int64]struct{}),
 	}
 }
 
@@ -65,21 +60,7 @@ func (s *grokImportProbeScheduler) schedule(prober grokImportProber, account *se
 	}
 
 	s.mu.Lock()
-	if _, exists := s.pending[account.ID]; exists {
-		s.mu.Unlock()
-		return
-	}
-	if _, exists := s.inFlight[account.ID]; exists {
-		s.mu.Unlock()
-		return
-	}
-	if len(s.queue) >= grokImportProbeQueueLimit {
-		s.mu.Unlock()
-		slog.Debug("grok_import_active_probe_dropped", "account_id", account.ID, "reason", "queue_full")
-		return
-	}
 	s.queue = append(s.queue, grokImportProbeTask{prober: prober, accountID: account.ID})
-	s.pending[account.ID] = struct{}{}
 	if s.workers < s.concurrency {
 		s.workers++
 		if s.workers > s.maxWorkers {
@@ -97,7 +78,6 @@ func (s *grokImportProbeScheduler) worker() {
 			return
 		}
 		s.run(task.prober, task.accountID)
-		s.finish(task.accountID)
 	}
 }
 
@@ -114,15 +94,7 @@ func (s *grokImportProbeScheduler) nextTask() (grokImportProbeTask, bool) {
 	if len(s.queue) == 0 {
 		s.queue = nil
 	}
-	delete(s.pending, task.accountID)
-	s.inFlight[task.accountID] = struct{}{}
 	return task, true
-}
-
-func (s *grokImportProbeScheduler) finish(accountID int64) {
-	s.mu.Lock()
-	delete(s.inFlight, accountID)
-	s.mu.Unlock()
 }
 
 func (s *grokImportProbeScheduler) run(prober grokImportProber, accountID int64) {
@@ -136,6 +108,8 @@ func (s *grokImportProbeScheduler) run(prober grokImportProber, accountID int64)
 		}
 	}()
 
+	// Queue time is intentionally excluded: every imported account is probed,
+	// while this timeout only bounds the actual upstream probe execution.
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
 	result, err := prober.QueryQuota(ctx, accountID)

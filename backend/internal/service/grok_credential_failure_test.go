@@ -21,20 +21,6 @@ type grokCredentialPersistingRepo struct {
 	*tokenRefreshAccountRepo
 }
 
-func TestClassifyGrokCredentialFailureBillingExhaustionIsTransient(t *testing.T) {
-	account := expiredGrokOAuthAccountForCredentialTest(9901)
-	for _, message := range []string{
-		"Grok OAuth refresh failed: spending limit reached",
-		"included free usage exhausted",
-		"credits exhausted",
-	} {
-		class := classifyGrokCredentialFailure(account, errors.New(message))
-		require.Equal(t, GrokCredentialReasonRefreshTransient, class.reason, message)
-		require.True(t, class.transient, message)
-		require.False(t, class.permanent, message)
-	}
-}
-
 func (r *grokCredentialPersistingRepo) SetError(ctx context.Context, id int64, message string) error {
 	if err := ctx.Err(); err != nil {
 		return err

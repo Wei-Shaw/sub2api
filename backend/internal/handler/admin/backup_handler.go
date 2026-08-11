@@ -153,12 +153,12 @@ func (h *BackupHandler) GetDownloadURL(c *gin.Context) {
 		response.BadRequest(c, "backup ID is required")
 		return
 	}
-	download, err := h.backupService.GetBackupDownloadURL(c.Request.Context(), backupID)
+	url, err := h.backupService.GetBackupDownloadURL(c.Request.Context(), backupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, download)
+	response.Success(c, gin.H{"url": url})
 }
 
 // ─── 恢复操作（需要重新输入管理员密码） ───

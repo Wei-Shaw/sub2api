@@ -317,19 +317,6 @@ export async function getUsage(id: number, source?: 'passive' | 'active', force?
   return data
 }
 
-export interface BatchAccountUsageResponse {
-  usage: Record<string, AccountUsageInfo>
-  errors: Record<string, string>
-}
-
-export async function getBatchUsage(accountIds: number[], force?: boolean): Promise<BatchAccountUsageResponse> {
-  const { data } = await apiClient.post<BatchAccountUsageResponse>('/admin/accounts/usage/batch', {
-    account_ids: accountIds,
-    force: force === true
-  })
-  return data
-}
-
 /**
  * Clear account rate limit status
  * @param id - Account ID
@@ -847,51 +834,21 @@ export interface OpenAIQuotaResetResult {
   code: string
   credit?: OpenAIQuotaResetCredit | null
   windows_reset: number
-  quota?: OpenAIQuotaUsage | null
-  account?: Account | null
-  cache_refreshed: boolean
-  account_state_recovered: boolean
-  warning_code?:
-    | 'reset_credit_cache_refresh_failed'
-    | 'account_state_recovery_failed'
-    | 'account_state_refresh_failed'
-}
-
-/** Usage payload plus whether the reset-credit snapshot was persisted. */
-export interface OpenAIQuotaRefreshResult extends OpenAIQuotaUsage {
-  cache_persisted: boolean
 }
 
 /**
- * Query the upstream quota AND persist the reset-credit snapshot on the account
- * so the card can be rehydrated without an upstream round-trip. It is a POST
- * because it writes account state (and must therefore be audited).
- *
- * The read-only `GET /admin/openai/accounts/:id/quota` endpoint still exists for
- * API consumers; the panel always wants the snapshot persisted, so it has no
- * client binding here.
+ * Query OpenAI/Codex rate-limit usage for an OAuth account.
  */
-export async function refreshOpenAIQuota(id: number): Promise<OpenAIQuotaRefreshResult> {
-  const { data } = await apiClient.post<OpenAIQuotaRefreshResult>(
-    `/admin/openai/accounts/${id}/quota/refresh`
-  )
+export async function queryOpenAIQuota(id: number): Promise<OpenAIQuotaUsage> {
+  const { data } = await apiClient.get<OpenAIQuotaUsage>(`/admin/openai/accounts/${id}/quota`)
   return data
 }
 
 /**
  * Consume one rate-limit-reset credit for an OpenAI/Codex OAuth account.
- *
- * The credit is non-refundable and the endpoint chains an upstream reset with an
- * upstream re-query, so it needs a larger budget than the default client
- * timeout: aborting locally would report a successful consumption as a failure
- * and invite a retry that spends a second credit.
  */
 export async function resetOpenAIQuota(id: number): Promise<OpenAIQuotaResetResult> {
-  const { data } = await apiClient.post<OpenAIQuotaResetResult>(
-    `/admin/openai/accounts/${id}/reset-quota`,
-    undefined,
-    { timeout: 90_000 }
-  )
+  const { data } = await apiClient.post<OpenAIQuotaResetResult>(`/admin/openai/accounts/${id}/reset-quota`)
   return data
 }
 
@@ -999,7 +956,6 @@ export const accountsAPI = {
   getStats,
   clearError,
   getUsage,
-  getBatchUsage,
   getTodayStats,
   getBatchTodayStats,
   clearRateLimit,
@@ -1029,7 +985,7 @@ export const accountsAPI = {
   batchRefresh,
   setPrivacy,
   revertProxyFallback,
-  refreshOpenAIQuota,
+  queryOpenAIQuota,
   resetOpenAIQuota,
   createSparkShadow,
   getUpstreamBillingProbeSettings,

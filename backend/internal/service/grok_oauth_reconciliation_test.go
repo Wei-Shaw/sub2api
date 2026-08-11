@@ -107,24 +107,6 @@ func (r *grokReconcileRepo) UpdateCredentials(_ context.Context, id int64, crede
 	return nil
 }
 
-func (r *grokReconcileRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for i := range r.accounts {
-		if r.accounts[i].ID != id {
-			continue
-		}
-		if r.accounts[i].Extra == nil {
-			r.accounts[i].Extra = make(map[string]any)
-		}
-		for key, value := range updates {
-			r.accounts[i].Extra[key] = value
-		}
-		break
-	}
-	return nil
-}
-
 func (r *grokReconcileRepo) SetError(_ context.Context, id int64, message string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

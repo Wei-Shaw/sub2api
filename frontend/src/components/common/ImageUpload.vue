@@ -50,7 +50,7 @@
             @change="handleUpload"
           />
           <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
-          {{ resolvedUploadLabel }}
+          {{ uploadLabel }}
         </label>
         <button
           v-if="modelValue"
@@ -59,7 +59,7 @@
           @click="$emit('update:modelValue', '')"
         >
           <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
-          {{ resolvedRemoveLabel }}
+          {{ removeLabel }}
         </button>
       </div>
       <p v-if="hint" class="text-xs text-gray-500 dark:text-gray-400">{{ hint }}</p>
@@ -70,11 +70,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
-
-const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -87,8 +84,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   mode: 'image',
   size: 'md',
-  uploadLabel: '',
-  removeLabel: '',
+  uploadLabel: 'Upload',
+  removeLabel: 'Remove',
   hint: '',
   maxSize: 300 * 1024,
 })
@@ -98,9 +95,6 @@ const emit = defineEmits<{
 }>()
 
 const error = ref('')
-
-const resolvedUploadLabel = computed(() => props.uploadLabel || t('common.upload'))
-const resolvedRemoveLabel = computed(() => props.removeLabel || t('common.remove'))
 
 const acceptTypes = computed(() => props.mode === 'svg' ? '.svg' : 'image/*')
 
@@ -120,10 +114,7 @@ function handleUpload(event: Event) {
   if (!file) return
 
   if (props.maxSize && file.size > props.maxSize) {
-    error.value = t('common.fileTooLargeKb', {
-      size: (file.size / 1024).toFixed(1),
-      max: (props.maxSize / 1024).toFixed(0)
-    })
+    error.value = `File too large (${(file.size / 1024).toFixed(1)} KB), max ${(props.maxSize / 1024).toFixed(0)} KB`
     input.value = ''
     return
   }
@@ -137,7 +128,7 @@ function handleUpload(event: Event) {
     reader.readAsText(file)
   } else {
     if (!file.type.startsWith('image/')) {
-      error.value = t('common.selectImageFile')
+      error.value = 'Please select an image file'
       input.value = ''
       return
     }
@@ -148,7 +139,7 @@ function handleUpload(event: Event) {
   }
 
   reader.onerror = () => {
-    error.value = t('common.fileReadFailed')
+    error.value = 'Failed to read file'
   }
   input.value = ''
 }

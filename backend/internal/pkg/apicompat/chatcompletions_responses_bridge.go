@@ -1053,21 +1053,20 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 
 func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bool, toolSearch bool, namespaceTools map[string]NamespacedToolName) []ResponsesOutput {
 	var outputs []ResponsesOutput
-	reasoning := message.reasoningText()
-	if reasoning != "" {
+	if message.ReasoningContent != "" {
 		outputs = append(outputs, ResponsesOutput{
 			Type: "reasoning",
 			ID:   generateItemID(),
 			Summary: []ResponsesSummary{{
 				Type: "summary_text",
-				Text: reasoning,
+				Text: message.ReasoningContent,
 			}},
 		})
 	}
 
 	text := chatMessageContentText(message.Content)
-	if text == "" && strings.TrimSpace(reasoning) != "" && len(message.ToolCalls) == 0 {
-		text = reasoning
+	if text == "" && strings.TrimSpace(message.ReasoningContent) != "" && len(message.ToolCalls) == 0 {
+		text = message.ReasoningContent
 	}
 	if text != "" || len(message.ToolCalls) == 0 {
 		outputs = append(outputs, ResponsesOutput{
@@ -1329,14 +1328,13 @@ func ChatCompletionsChunkToResponsesEvents(
 		// (output_item.added + reasoning_summary_part.added) before the first
 		// delta, otherwise a strict client discards the delta. The leading
 		// empty-string reasoning delta upstreams send is filtered out.
-		reasoning := choice.Delta.reasoningText()
-		if reasoning != nil && *reasoning != "" {
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
 			events = append(events, ensureChatReasoningItem(state)...)
-			_, _ = state.Reasoning.WriteString(*reasoning)
+			_, _ = state.Reasoning.WriteString(*choice.Delta.ReasoningContent)
 			events = append(events, chatToResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 				OutputIndex:  state.ReasoningIndex,
 				SummaryIndex: 0,
-				Delta:        *reasoning,
+				Delta:        *choice.Delta.ReasoningContent,
 				ItemID:       state.ReasoningItemID,
 			}))
 		}

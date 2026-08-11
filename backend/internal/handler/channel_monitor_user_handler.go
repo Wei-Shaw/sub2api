@@ -35,8 +35,7 @@ func (h *ChannelMonitorUserHandler) featureEnabled(c *gin.Context) bool {
 	if h.settingService == nil {
 		return true
 	}
-	runtime := h.settingService.GetChannelMonitorRuntime(c.Request.Context())
-	return runtime.Enabled && runtime.Mode == service.ChannelMonitorModeV1
+	return h.settingService.GetChannelMonitorRuntime(c.Request.Context()).Enabled
 }
 
 // --- Response ---

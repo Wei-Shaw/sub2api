@@ -39,10 +39,6 @@ const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"
 	BillingModelSourceChannelMapped = "channel_mapped"
-	// BillingModelSourceResponse bills by a trusted model declaration observed
-	// in the successful upstream response. It is deliberately distinct from
-	// "upstream", which means the model sent to the provider.
-	BillingModelSourceResponse = "response_model"
 )
 
 // Channel 渠道实体
@@ -51,7 +47,7 @@ type Channel struct {
 	Name               string
 	Description        string
 	Status             string
-	BillingModelSource string         // "requested", "upstream", "channel_mapped", or "response_model"
+	BillingModelSource string         // "requested", "upstream", or "channel_mapped"
 	RestrictModels     bool           // 是否限制模型（仅允许定价列表中的模型）
 	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
 	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）

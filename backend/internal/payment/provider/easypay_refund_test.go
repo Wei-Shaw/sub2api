@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
@@ -177,18 +176,6 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 				t.Fatalf("Refund error = %q, want substring %q", err.Error(), tt.want)
 			}
 		})
-	}
-}
-
-func TestSummarizeEasyPayResponsePreservesUTF8(t *testing.T) {
-	t.Parallel()
-
-	summary := summarizeEasyPayResponse([]byte(strings.Repeat("错", 171)))
-	if !utf8.ValidString(summary) {
-		t.Fatalf("summarizeEasyPayResponse returned invalid UTF-8: %q", summary)
-	}
-	if !strings.HasSuffix(summary, "...") {
-		t.Fatalf("summarizeEasyPayResponse() = %q, want truncated suffix", summary)
 	}
 }
 

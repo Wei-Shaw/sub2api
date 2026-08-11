@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -85,60 +84,6 @@ func (r *grokQuotaAccountRepo) SetTempUnschedulable(_ context.Context, id int64,
 	r.lastTempUnschedUntil = until
 	r.lastTempUnschedReason = reason
 	return nil
-}
-
-func TestSyncGrokObservedModelsRejectsOAuthCustomURLOutsideOperatorPolicy(t *testing.T) {
-	account := &Account{
-		ID:       901,
-		Platform: PlatformGrok,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"access_token": "secret-token",
-			"base_url":     "https://blocked.example.test/v1",
-		},
-	}
-	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-		accountsByID: map[int64]*Account{account.ID: account},
-	}}
-	upstream := &httpUpstreamRecorder{}
-	cfg := &config.Config{}
-	cfg.Security.URLAllowlist.Enabled = true
-	cfg.Security.URLAllowlist.UpstreamHosts = []string{"allowed.example.test"}
-	svc := &GrokQuotaService{accountRepo: repo, httpUpstream: upstream, cfg: cfg}
-
-	err := svc.syncGrokObservedModels(context.Background(), account)
-	require.ErrorContains(t, err, "base URL rejected by URL security policy")
-	require.Nil(t, upstream.lastReq)
-}
-
-func TestSyncGrokObservedModelsUsesCLIIdentityAndAccountHeaders(t *testing.T) {
-	account := &Account{
-		ID:       902,
-		Platform: PlatformGrok,
-		Type:     AccountTypeOAuth,
-		Credentials: map[string]any{
-			"access_token": "secret-token",
-			"sub":          "user-902",
-			"email":        "user902@example.test",
-		},
-	}
-	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-		accountsByID: map[int64]*Account{account.ID: account},
-	}}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"grok-4.5"}]}`)),
-	}}
-	svc := &GrokQuotaService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
-
-	require.NoError(t, svc.syncGrokObservedModels(context.Background(), account))
-	require.Equal(t, xai.DefaultCLIBaseURL+"/models", upstream.lastReq.URL.String())
-	require.NotEmpty(t, upstream.lastReq.Header.Get("x-grok-client-version"))
-	require.Equal(t, xai.CLIClientIdentifier, upstream.lastReq.Header.Get("x-grok-client-identifier"))
-	require.Equal(t, "interactive", upstream.lastReq.Header.Get("X-Grok-Client-Mode"))
-	require.Equal(t, "user-902", upstream.lastReq.Header.Get("X-UserID"))
-	require.Equal(t, "user902@example.test", upstream.lastReq.Header.Get("X-Email"))
-	require.Contains(t, repo.updates[account.ID], grokObservedModelsExtraKey)
 }
 
 type grokQuotaProxyRepo struct {
@@ -663,28 +608,6 @@ func TestGrokQuotaServiceProbeUsageStoresNoHeadersState(t *testing.T) {
 	require.Equal(t, 1, repo.recoveryClearCalls)
 	require.Equal(t, observedLimitedAt, repo.recoveryObservedAt)
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
-}
-
-func TestGrokQuotaServiceProbeUsageDoesNotOverwriteSnapshotOnUnauthorized(t *testing.T) {
-	t.Parallel()
-
-	account := healthyGrokQuotaOAuthAccount(44)
-	previous := &xai.QuotaSnapshot{StatusCode: http.StatusOK, HeadersObserved: true}
-	account.Extra = map[string]any{grokQuotaSnapshotExtraKey: previous}
-	repo := &grokQuotaAccountRepo{mockAccountRepoForPlatform: &mockAccountRepoForPlatform{
-		accountsByID: map[int64]*Account{account.ID: account},
-	}}
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusUnauthorized,
-		Header:     http.Header{},
-		Body:       io.NopCloser(strings.NewReader(`{"error":"unauthorized"}`)),
-	}}
-	svc := NewGrokQuotaService(repo, nil, NewGrokTokenProvider(repo, nil), upstream, nil)
-
-	_, err := svc.ProbeUsage(context.Background(), account.ID)
-	require.Error(t, err)
-	require.Equal(t, 0, repo.updateCalls)
-	require.Same(t, previous, account.Extra[grokQuotaSnapshotExtraKey])
 }
 
 func TestGrokQuotaServiceProbeUsageReturnsRateLimitedSnapshot(t *testing.T) {

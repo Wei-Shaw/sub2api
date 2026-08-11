@@ -61,18 +61,6 @@ func TestOpenAIWSConnPool_AcquireCleanupInterval(t *testing.T) {
 	require.Less(t, openAIWSAcquireCleanupInterval, openAIWSBackgroundSweepTicker)
 }
 
-func TestNormalizeOpenAIWSRoutingAffinityPrefersCanonicalAndSortsVariants(t *testing.T) {
-	headers := http.Header{
-		"X-CODEX-ROUTING-HINT": []string{" variant-uppercase "},
-		"X-Codex-Routing-Hint": []string{" ", " canonical "},
-	}
-
-	require.Equal(t, "canonical", normalizeOpenAIWSRoutingAffinity(headers))
-
-	delete(headers, "X-Codex-Routing-Hint")
-	require.Equal(t, "variant-uppercase", normalizeOpenAIWSRoutingAffinity(headers))
-}
-
 func TestOpenAIWSConnLease_WriteJSONAndGuards(t *testing.T) {
 	conn := newOpenAIWSConn("lease_write", 1, &openAIWSFakeConn{}, nil)
 	lease := &openAIWSConnLease{conn: conn}
@@ -320,219 +308,6 @@ func TestOpenAIWSConnPool_AcquireQueueWaitMetrics(t *testing.T) {
 	require.GreaterOrEqual(t, metrics.AcquireQueueWaitTotal, int64(1))
 	require.Greater(t, metrics.AcquireQueueWaitMsTotal, int64(0))
 	require.GreaterOrEqual(t, metrics.ConnPickTotal, int64(1))
-}
-
-func TestOpenAIWSConnPool_DialSuccessWakesTopologyWaiterAndCanceledWaiterDoesNotLoseLease(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
-	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 4
-
-	pool := newOpenAIWSConnPool(cfg)
-	dialer := newOpenAIWSFirstDialBlockingCaptureDialer()
-	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 991, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
-
-	type result struct {
-		lease *openAIWSConnLease
-		err   error
-	}
-	firstCh := make(chan result, 1)
-	go func() {
-		lease, err := pool.Acquire(context.Background(), req)
-		firstCh <- result{lease: lease, err: err}
-	}()
-	<-dialer.firstStarted
-
-	waitCtx, cancelWait := context.WithCancel(context.Background())
-	secondCh := make(chan result, 1)
-	waitReq := req
-	waitReq.Headers = http.Header{openAICodexRoutingHintHeader: {"model=gpt-5.6-codex;tier=priority"}}
-	go func() {
-		lease, err := pool.Acquire(waitCtx, waitReq)
-		secondCh <- result{lease: lease, err: err}
-	}()
-
-	close(dialer.releaseFirst)
-	first := <-firstCh
-	require.NoError(t, first.err)
-	require.NotNil(t, first.lease)
-
-	// The second acquire initially waits on the account topology channel while
-	// the first dial is in flight. Dial success must wake it immediately so it
-	// can queue on the newly-created (still leased) connection.
-	require.Eventually(t, func() bool {
-		ap, ok := pool.getAccountPool(account.ID)
-		if !ok || ap == nil {
-			return false
-		}
-		ap.mu.Lock()
-		defer ap.mu.Unlock()
-		for _, conn := range ap.conns {
-			if conn != nil && conn.waiters.Load() == 1 {
-				return true
-			}
-		}
-		return false
-	}, time.Second, 5*time.Millisecond)
-
-	cancelWait()
-	second := <-secondCh
-	require.ErrorIs(t, second.err, context.Canceled)
-	require.Nil(t, second.lease)
-	ap, ok := pool.getAccountPool(account.ID)
-	require.True(t, ok)
-	ap.mu.Lock()
-	require.NotNil(t, ap.lastAcquire)
-	require.Empty(t, normalizeOpenAIWSRoutingAffinity(ap.lastAcquire.Headers), "a canceled acquire must not replace the successful prewarm target")
-	ap.mu.Unlock()
-	first.lease.Release()
-
-	third, err := pool.Acquire(context.Background(), req)
-	require.NoError(t, err)
-	require.True(t, third.Reused(), "a canceled waiter must not consume the released semaphore token")
-	require.Equal(t, first.lease.ConnID(), third.ConnID())
-	third.Release()
-}
-
-func TestOpenAIWSConnPool_PrewarmHintChangeDoesNotInvalidateHealthyDial(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 1
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
-	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 2
-
-	pool := newOpenAIWSConnPool(cfg)
-	dialer := newOpenAIWSFirstDialBlockingCaptureDialer()
-	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 992, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	oldHeaders := make(http.Header)
-	oldHeaders.Set(openAICodexRoutingHintHeader, "model=gpt-5.6-codex")
-	newHeaders := make(http.Header)
-	newHeaders.Set(openAICodexRoutingHintHeader, "model=gpt-5.6-codex;tier=priority")
-	ap := pool.getOrCreateAccountPool(account.ID)
-	ap.mu.Lock()
-	ap.lastAcquire = &openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   "wss://example.com/v1/responses",
-		Headers: oldHeaders,
-	}
-	ap.mu.Unlock()
-
-	pool.ensureTargetIdleAsync(account.ID)
-	<-dialer.firstStarted
-
-	// Simulate a newer priority target arriving while the old model-only
-	// prewarm dial is in flight. Routing hints are advisory, so this alone must
-	// not discard an otherwise compatible connection.
-	ap.mu.Lock()
-	ap.lastAcquire = &openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   "wss://example.com/v1/responses",
-		Headers: newHeaders,
-	}
-	ap.mu.Unlock()
-	close(dialer.releaseFirst)
-
-	require.Eventually(t, func() bool {
-		ap.mu.Lock()
-		defer ap.mu.Unlock()
-		if ap.prewarmActive || len(ap.conns) != 1 {
-			return false
-		}
-		for _, conn := range ap.conns {
-			return conn != nil && conn.routingAffinity == "model=gpt-5.6-codex"
-		}
-		return false
-	}, 2*time.Second, 10*time.Millisecond)
-	require.Equal(t, 1, dialer.DialCount(), "routing-hint-only changes must not turn advisory metadata into hard reconnects")
-}
-
-func TestOpenAIWSConnPool_ClearAccountWakesIncompatibleTopologyWaiter(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
-
-	pool := newOpenAIWSConnPool(cfg)
-	dialer := &openAIWSCountingDialer{}
-	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 993, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	baseReq := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
-	betaAReq := baseReq
-	betaAReq.Headers = http.Header{"X-Codex-Beta-Features": {"feature_a"}}
-	betaBReq := baseReq
-	betaBReq.Headers = http.Header{"X-Codex-Beta-Features": {"feature_b"}}
-
-	busy, err := pool.Acquire(context.Background(), betaAReq)
-	require.NoError(t, err)
-	require.Equal(t, 1, dialer.DialCount())
-
-	type result struct {
-		lease *openAIWSConnLease
-		err   error
-	}
-	resultCh := make(chan result, 1)
-	waitCtx, cancelWait := context.WithTimeout(context.Background(), time.Second)
-	defer cancelWait()
-	go func() {
-		lease, acquireErr := pool.Acquire(waitCtx, betaBReq)
-		resultCh <- result{lease: lease, err: acquireErr}
-	}()
-
-	require.Never(t, func() bool { return dialer.DialCount() > 1 }, 50*time.Millisecond, 5*time.Millisecond)
-	pool.ClearAccount(account.ID)
-
-	resultB := <-resultCh
-	require.NoError(t, resultB.err)
-	require.NotNil(t, resultB.lease)
-	require.False(t, resultB.lease.Reused())
-	require.Equal(t, 2, dialer.DialCount(), "ClearAccount must wake the waiter to redial immediately")
-	resultB.lease.Release()
-	busy.Release()
-}
-
-func TestOpenAIWSConnPool_ClearAccountDoesNotReviveInFlightDialGeneration(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
-	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
-	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
-
-	pool := newOpenAIWSConnPool(cfg)
-	dialer := newOpenAIWSFirstDialBlockingCaptureDialer()
-	pool.setClientDialerForTest(dialer)
-	account := &Account{ID: 994, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	req := openAIWSAcquireRequest{Account: account, WSURL: "wss://example.com/v1/responses"}
-
-	type result struct {
-		lease *openAIWSConnLease
-		err   error
-	}
-	resultCh := make(chan result, 1)
-	go func() {
-		lease, err := pool.Acquire(context.Background(), req)
-		resultCh <- result{lease: lease, err: err}
-	}()
-	<-dialer.firstStarted
-
-	pool.ClearAccount(account.ID)
-	close(dialer.releaseFirst)
-	got := <-resultCh
-	require.NoError(t, got.err)
-	require.NotNil(t, got.lease)
-	require.Equal(t, 2, dialer.DialCount(), "the pre-clear dial must be discarded and retried in the new generation")
-	require.True(t, strings.HasSuffix(got.lease.ConnID(), "_2"))
-
-	ap, ok := pool.getAccountPool(account.ID)
-	require.True(t, ok)
-	ap.mu.Lock()
-	require.Equal(t, uint64(1), ap.generation)
-	require.Len(t, ap.conns, 1)
-	require.NotNil(t, ap.lastAcquire, "only the post-clear successful acquire may restore the prewarm target")
-	ap.mu.Unlock()
-	got.lease.Release()
 }
 
 func TestOpenAIWSConnPool_ForceNewConnSkipsReuse(t *testing.T) {
@@ -1693,21 +1468,6 @@ func TestOpenAIWSConn_AdditionalGuardBranches(t *testing.T) {
 	closeOpenAIWSConns([]*openAIWSConn{nil, connOK})
 }
 
-func TestOpenAIWSConnPool_CanceledWaiterReturnsDeliveredLease(t *testing.T) {
-	conn := newOpenAIWSConn("cancelled_delivery", 1, &openAIWSFakeConn{}, nil)
-
-	// Both branches of acquire's select are ready. Before the post-delivery
-	// cancellation check this intermittently returned nil after consuming the
-	// only lease token, which made the next pool acquire block forever.
-	for range 64 {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		require.ErrorIs(t, conn.acquire(ctx), context.Canceled)
-		require.True(t, conn.tryAcquire(), "a canceled waiter must return a delivered lease token")
-		conn.release()
-	}
-}
-
 func TestOpenAIWSConnLease_MarkBrokenEvictsConn(t *testing.T) {
 	pool := newOpenAIWSConnPool(&config.Config{})
 	accountID := int64(5001)
@@ -1842,21 +1602,6 @@ type openAIWSCountingDialer struct {
 	dialCount int
 }
 
-type openAIWSFirstDialBlockingCaptureDialer struct {
-	mu           sync.Mutex
-	dialCount    int
-	headers      []http.Header
-	firstStarted chan struct{}
-	releaseFirst chan struct{}
-}
-
-func newOpenAIWSFirstDialBlockingCaptureDialer() *openAIWSFirstDialBlockingCaptureDialer {
-	return &openAIWSFirstDialBlockingCaptureDialer{
-		firstStarted: make(chan struct{}),
-		releaseFirst: make(chan struct{}),
-	}
-}
-
 type openAIWSAlwaysFailDialer struct {
 	mu        sync.Mutex
 	dialCount int
@@ -1924,36 +1669,6 @@ func (d *openAIWSCountingDialer) Dial(
 	d.dialCount++
 	d.mu.Unlock()
 	return &openAIWSFakeConn{}, 0, nil, nil
-}
-
-func (d *openAIWSFirstDialBlockingCaptureDialer) Dial(
-	ctx context.Context,
-	wsURL string,
-	headers http.Header,
-	proxyURL string,
-) (openAIWSClientConn, int, http.Header, error) {
-	_ = wsURL
-	_ = proxyURL
-	d.mu.Lock()
-	d.dialCount++
-	dialNumber := d.dialCount
-	d.headers = append(d.headers, cloneHeader(headers))
-	d.mu.Unlock()
-	if dialNumber == 1 {
-		close(d.firstStarted)
-		select {
-		case <-ctx.Done():
-			return nil, 0, nil, ctx.Err()
-		case <-d.releaseFirst:
-		}
-	}
-	return &openAIWSFakeConn{}, 0, nil, nil
-}
-
-func (d *openAIWSFirstDialBlockingCaptureDialer) DialCount() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return d.dialCount
 }
 
 func (d *openAIWSCountingDialer) DialCount() int {

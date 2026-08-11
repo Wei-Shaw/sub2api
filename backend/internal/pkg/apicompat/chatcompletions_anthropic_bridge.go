@@ -423,20 +423,19 @@ func ChatCompletionsResponseToAnthropic(resp *ChatCompletionsResponse, model str
 // + the reasoning→thinking mapping in ResponsesToAnthropic.
 func chatMessageToAnthropicBlocks(message ChatMessage) []AnthropicContentBlock {
 	var blocks []AnthropicContentBlock
-	reasoning := message.reasoningText()
 
-	if reasoning != "" {
+	if message.ReasoningContent != "" {
 		blocks = append(blocks, AnthropicContentBlock{
 			Type:     "thinking",
-			Thinking: reasoning,
+			Thinking: message.ReasoningContent,
 		})
 	}
 
 	text := chatMessageContentText(message.Content)
 	// DeepSeek reasoning-only fallback: when there is no text and no tool calls,
 	// surface the reasoning content as visible text so the turn isn't empty.
-	if text == "" && strings.TrimSpace(reasoning) != "" && len(message.ToolCalls) == 0 {
-		text = reasoning
+	if text == "" && strings.TrimSpace(message.ReasoningContent) != "" && len(message.ToolCalls) == 0 {
+		text = message.ReasoningContent
 	}
 	if text != "" || len(message.ToolCalls) == 0 {
 		blocks = append(blocks, AnthropicContentBlock{Type: "text", Text: text})
@@ -609,12 +608,11 @@ func ChatCompletionsChunkToAnthropicEvents(
 
 	for _, choice := range chunk.Choices {
 		// Reasoning content → thinking block.
-		reasoning := choice.Delta.reasoningText()
-		if reasoning != nil && *reasoning != "" {
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
 			events = append(events, ensureCCAnthropicThinkingBlock(state)...)
 			events = append(events, ccAnthropicDelta(state, &AnthropicDelta{
 				Type:     "thinking_delta",
-				Thinking: *reasoning,
+				Thinking: *choice.Delta.ReasoningContent,
 			})...)
 		}
 

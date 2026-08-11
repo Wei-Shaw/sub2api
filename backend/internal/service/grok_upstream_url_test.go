@@ -255,26 +255,6 @@ func TestGrokOAuthURLPolicy(t *testing.T) {
 	})
 }
 
-func TestBuildGrokBillingURLUsesCLIForOfficialAPIHosts(t *testing.T) {
-	for _, baseURL := range []string{xai.DefaultBaseURL, "https://us-west-2.api.x.ai/v1"} {
-		account := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"base_url": baseURL}}
-
-		weekly, err := buildGrokBillingURL(account, &config.Config{}, true)
-		require.NoError(t, err)
-		require.Equal(t, xai.DefaultCLIBaseURL+xai.BillingWeeklyPath, weekly)
-	}
-}
-
-func TestBuildGrokBillingURLKeepsCustomRelay(t *testing.T) {
-	account := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{
-		"base_url": "https://relay.example.test/xai/v1",
-	}}
-
-	monthly, err := buildGrokBillingURL(account, &config.Config{}, false)
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example.test/xai/v1"+xai.BillingMonthlyPath, monthly)
-}
-
 func TestGrokBillingURLFollowsAccountBaseURL(t *testing.T) {
 	t.Run("oauth default stays on CLI gateway", func(t *testing.T) {
 		account := &Account{

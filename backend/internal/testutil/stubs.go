@@ -104,20 +104,6 @@ func (c StubGatewayCache) DeleteSessionAccountID(_ context.Context, _ int64, _ s
 	return nil
 }
 
-func (c StubGatewayCache) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
-	return nil
-}
-func (c StubGatewayCache) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
-	return nil, nil
-}
-func (c StubGatewayCache) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
-	return true, nil
-}
-
-func (c StubGatewayCache) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
-	return nil
-}
-
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现
 // ============================================================

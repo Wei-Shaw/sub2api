@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { ActionCaptchaRequestProof, AuthResponse } from '@/types'
+import type { AuthResponse } from '@/types'
 
 export interface PasskeyCredentialSummary {
   id: number
@@ -104,11 +104,11 @@ function serializeAssertionCredential(credential: PublicKeyCredential): Record<s
   }
 }
 
-async function login(proof?: ActionCaptchaRequestProof): Promise<AuthResponse> {
+async function login(): Promise<AuthResponse> {
   requirePasskeySupport()
-  const { data: begin } = proof
-    ? await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin', proof)
-    : await apiClient.post<CeremonyOptionsResponse>('/auth/passkey/login/begin')
+  const { data: begin } = await apiClient.post<CeremonyOptionsResponse>(
+    '/auth/passkey/login/begin'
+  )
   const credential = await navigator.credentials.get({
     publicKey: requestOptionsFromJSON(begin.options.publicKey)
   })
