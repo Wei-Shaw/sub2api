@@ -18,6 +18,15 @@
             <button @click="loadList" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
+            <input ref="listImportInput" type="file" accept="application/json,.json" class="hidden" @change="importModelIntroList" />
+            <button class="btn btn-secondary" :disabled="listImporting" @click="listImportInput?.click()">
+              <Icon name="upload" size="sm" />
+              {{ t('admin.modelIntros.listImport') }}
+            </button>
+            <button class="btn btn-secondary" :disabled="listExporting" @click="exportModelIntroList">
+              <Icon name="download" size="sm" />
+              {{ t('admin.modelIntros.listExport') }}
+            </button>
             <button @click="openCreateDialog" class="btn btn-primary">
               {{ t('admin.modelIntros.createBtn') }}
             </button>
@@ -1082,6 +1091,9 @@ watch(translationSelectedKeyId, (newId, oldId) => {
 
 const rows = ref<ModelIntro[]>([])
 const loading = ref(false)
+const listExporting = ref(false)
+const listImporting = ref(false)
+const listImportInput = ref<HTMLInputElement | null>(null)
 const submitting = ref(false)
 const searchKeyword = ref('')
 
@@ -1355,6 +1367,87 @@ async function loadList() {
     appStore.showError(t('admin.modelIntros.loadFailed'))
   } finally {
     loading.value = false
+  }
+}
+
+function modelIntroToUpsert(row: ModelIntro): UpsertModelIntroRequest {
+  return {
+    model_key: String(row.model_key || '').trim(),
+    title: row.title || '',
+    description: row.description || '',
+    description_en: row.description_en || '',
+    cover_url: row.cover_url || '',
+    default_params: row.default_params && typeof row.default_params === 'object' ? row.default_params : {},
+    sort_order: Number.isFinite(row.sort_order) ? row.sort_order : 0,
+    enabled: row.enabled !== false,
+    output_fields: Array.isArray(row.output_fields) ? row.output_fields : [],
+    result_field: row.result_field || '',
+    result_type: row.result_type === 'image' ? 'image' : 'video'
+  }
+}
+
+async function loadAllModelIntros(): Promise<ModelIntro[]> {
+  const pageSize = 100
+  const result: ModelIntro[] = []
+  for (let page = 1; ; page += 1) {
+    const response = await adminAPI.modelIntros.list(page, pageSize, '')
+    const pageItems = response.items ?? []
+    result.push(...pageItems)
+    if (result.length >= (response.total ?? result.length) || pageItems.length < pageSize) break
+  }
+  return result
+}
+
+async function exportModelIntroList() {
+  if (listExporting.value) return
+  listExporting.value = true
+  try {
+    const items = (await loadAllModelIntros()).map(modelIntroToUpsert)
+    const content = JSON.stringify({ version: 1, exported_at: new Date().toISOString(), items }, null, 2)
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `model-intros-${new Date().toISOString().slice(0, 10)}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    appStore.showSuccess(t('admin.modelIntros.listExported', { count: items.length }))
+  } catch {
+    appStore.showError(t('admin.modelIntros.listExportFailed'))
+  } finally {
+    listExporting.value = false
+  }
+}
+
+async function importModelIntroList(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || listImporting.value) return
+  try {
+    const parsed = JSON.parse(await file.text()) as { items?: unknown }
+    if (!parsed || !Array.isArray(parsed.items)) throw new Error('invalid shape')
+    const items = parsed.items.map((item) => modelIntroToUpsert(item as ModelIntro))
+    if (items.some((item) => !item.model_key)) throw new Error('missing model_key')
+    if (new Set(items.map((item) => item.model_key)).size !== items.length) {
+      throw new Error('duplicate model_key')
+    }
+    if (!window.confirm(t('admin.modelIntros.listImportConfirm', { count: items.length }))) return
+
+    listImporting.value = true
+    const existingKeys = new Set((await loadAllModelIntros()).map((item) => item.model_key))
+    for (const item of items) {
+      if (existingKeys.has(item.model_key)) {
+        await adminAPI.modelIntros.update(item.model_key, item)
+      } else {
+        await adminAPI.modelIntros.create(item)
+      }
+    }
+    appStore.showSuccess(t('admin.modelIntros.listImported', { count: items.length }))
+    await loadList()
+  } catch {
+    appStore.showError(t('admin.modelIntros.listImportFailed'))
+  } finally {
+    listImporting.value = false
   }
 }
 

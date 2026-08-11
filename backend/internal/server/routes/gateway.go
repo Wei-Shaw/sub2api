@@ -427,6 +427,15 @@ func RegisterGatewayRoutes(
 	//   - handler 内部按 slug 白名单过滤，仅接收视频模型
 	//   - 选号阶段做混合分组选号，按“该模型属于哪个平台”转发到对应平台账号
 	tasksGroup := r.Group("/api/v1/model")
+	tasksGroup.Use(func(c *gin.Context) {
+		if settingService == nil || !settingService.IsVideoFeatureEnabled(c.Request.Context()) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": gin.H{"type": "feature_disabled", "message": "Video feature is disabled"},
+			})
+			return
+		}
+		c.Next()
+	})
 	tasksGroup.Use(bodyLimit)
 	tasksGroup.Use(clientRequestID)
 	tasksGroup.Use(opsErrorLogger)

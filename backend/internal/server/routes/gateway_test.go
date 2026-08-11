@@ -25,6 +25,50 @@ type routeResponsesImageStatusStore struct {
 	batchSizes []int
 }
 
+type videoFeatureRouteSettingRepo struct{ enabled bool }
+
+func (r *videoFeatureRouteSettingRepo) Get(context.Context, string) (*service.Setting, error) {
+	return nil, service.ErrSettingNotFound
+}
+func (r *videoFeatureRouteSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if key == service.SettingKeyVideoFeatureEnabled {
+		return strconv.FormatBool(r.enabled), nil
+	}
+	return "", service.ErrSettingNotFound
+}
+func (r *videoFeatureRouteSettingRepo) Set(context.Context, string, string) error { return nil }
+func (r *videoFeatureRouteSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+func (r *videoFeatureRouteSettingRepo) SetMultiple(context.Context, map[string]string) error {
+	return nil
+}
+func (r *videoFeatureRouteSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	return nil, nil
+}
+func (r *videoFeatureRouteSettingRepo) Delete(context.Context, string) error { return nil }
+
+func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	authCalled := false
+	settingService := service.NewSettingService(&videoFeatureRouteSettingRepo{}, &config.Config{})
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{},
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) { authCalled = true; c.Next() }),
+		nil, nil, nil, settingService, nil,
+		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1024}},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/model/bytedance/seedance", strings.NewReader(`{}`))
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.False(t, authCalled)
+	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
+}
+
 func (s *routeResponsesImageStatusStore) GetResponsesImageStatus(_ context.Context, requestID string) (*service.ResponsesImageStatus, error) {
 	s.gets++
 	if status := s.items[requestID]; status != nil {

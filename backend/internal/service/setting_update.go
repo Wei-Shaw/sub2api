@@ -437,6 +437,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+	updates[SettingKeyVideoFeatureEnabled] = strconv.FormatBool(settings.VideoFeatureEnabled)
 
 	// Model plaza feature switches + description
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
@@ -730,6 +731,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	backendModeSF.Forget("backend_mode")
 	backendModeCache.Store(&cachedBackendMode{
 		value:     settings.BackendModeEnabled,
+		expiresAt: time.Now().Add(backendModeCacheTTL).UnixNano(),
+	})
+	videoFeatureSF.Forget("video_feature")
+	videoFeatureCache.Store(&cachedBackendMode{
+		value:     settings.VideoFeatureEnabled,
 		expiresAt: time.Now().Add(backendModeCacheTTL).UnixNano(),
 	})
 	gatewayForwardingSF.Forget("gateway_forwarding")

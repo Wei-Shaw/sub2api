@@ -98,6 +98,27 @@ func resetBackendModeTestCache(t *testing.T) {
 	})
 }
 
+func resetVideoFeatureTestCache(t *testing.T) {
+	t.Helper()
+	videoFeatureCache.Store((*cachedBackendMode)(nil))
+	t.Cleanup(func() { videoFeatureCache.Store((*cachedBackendMode)(nil)) })
+}
+
+func TestIsVideoFeatureEnabledDefaultsClosedAndReadsTrue(t *testing.T) {
+	resetVideoFeatureTestCache(t)
+	repo := &bmRepoStub{getValueFn: func(_ context.Context, key string) (string, error) {
+		require.Equal(t, SettingKeyVideoFeatureEnabled, key)
+		return "true", nil
+	}}
+	require.True(t, NewSettingService(repo, &config.Config{}).IsVideoFeatureEnabled(context.Background()))
+
+	resetVideoFeatureTestCache(t)
+	repo = &bmRepoStub{getValueFn: func(_ context.Context, _ string) (string, error) {
+		return "", ErrSettingNotFound
+	}}
+	require.False(t, NewSettingService(repo, &config.Config{}).IsVideoFeatureEnabled(context.Background()))
+}
+
 func TestIsBackendModeEnabled_ReturnsTrue(t *testing.T) {
 	resetBackendModeTestCache(t)
 

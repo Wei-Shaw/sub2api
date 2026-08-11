@@ -47,6 +47,9 @@ type cachedBackendMode struct {
 var backendModeCache atomic.Value // *cachedBackendMode
 var backendModeSF singleflight.Group
 
+var videoFeatureCache atomic.Value // *cachedBackendMode
+var videoFeatureSF singleflight.Group
+
 const backendModeCacheTTL = 60 * time.Second
 const backendModeErrorTTL = 5 * time.Second
 const backendModeDBTimeout = 5 * time.Second
@@ -584,6 +587,32 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 		return val
 	}
 	return false
+}
+
+// IsVideoFeatureEnabled reads the global video feature switch on the gateway hot path.
+// Missing values and repository errors fail closed because the feature is opt-in.
+func (s *SettingService) IsVideoFeatureEnabled(ctx context.Context) bool {
+	if cached, ok := videoFeatureCache.Load().(*cachedBackendMode); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+		return cached.value
+	}
+	result, _, _ := videoFeatureSF.Do("video_feature", func() (any, error) {
+		if cached, ok := videoFeatureCache.Load().(*cachedBackendMode); ok && cached != nil && time.Now().UnixNano() < cached.expiresAt {
+			return cached.value, nil
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), backendModeDBTimeout)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyVideoFeatureEnabled)
+		enabled := err == nil && value == "true"
+		ttl := backendModeCacheTTL
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			ttl = backendModeErrorTTL
+			slog.Warn("failed to get video_feature_enabled setting", "error", err)
+		}
+		videoFeatureCache.Store(&cachedBackendMode{value: enabled, expiresAt: time.Now().Add(ttl).UnixNano()})
+		return enabled, nil
+	})
+	enabled, _ := result.(bool)
+	return enabled
 }
 
 type gatewayForwardingSettingsResult struct {
