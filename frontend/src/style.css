@@ -143,6 +143,15 @@
     @apply dark:shadow-[#2BB741]/20;
   }
 
+  /* btn-xs：比 btn-sm 更紧凑，用于表单内嵌的辅助操作（图片输入控件的
+     上传/素材库/从 URL 导入、列表行内操作等）。
+     此前这个 class 一直没有定义，导致 16 处 `btn btn-xs` 全部退化成基础
+     .btn 的 px-4 py-2.5 text-sm 尺寸，在紧凑表单里显得过大、很突兀。
+     gap 也要跟着收窄，否则带图标的按钮左右会空出一块。 */
+  .btn-xs {
+    @apply gap-1 rounded-lg px-2.5 py-1 text-xs font-normal;
+  }
+
   .btn-sm {
     @apply rounded-lg px-3 py-1.5 text-xs;
   }

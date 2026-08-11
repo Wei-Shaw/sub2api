@@ -54,8 +54,10 @@ type AdminHandlers struct {
 	Compliance                *admin.ComplianceHandler
 	CostCenter                *admin.CostCenterHandler
 	COSImage                  *admin.COSImageHandler
-	AsyncMediaConfig          *admin.AsyncMediaConfigHandler
-	AuditLog                  *admin.AuditLogHandler
+	// File 管理员文件管理：直接管理图片转存桶里的对象（依赖 COSImage 已启用）。
+	File             *admin.FileHandler
+	AsyncMediaConfig *admin.AsyncMediaConfigHandler
+	AuditLog         *admin.AuditLogHandler
 }
 
 // Handlers contains all HTTP handlers

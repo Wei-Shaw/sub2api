@@ -185,13 +185,16 @@
         {{ t('materials.fromLibrary') }}
       </button>
 
+      <!-- 从 URL 导入：与前两个来源同为按钮样式（此前是 btn-ghost，看起来像
+           文字链接，和左边两个按钮不成一组）。点击展开下方的批量 URL 输入区。 -->
       <button
         type="button"
-        class="btn btn-ghost btn-xs"
+        class="btn btn-secondary btn-xs"
         :disabled="disabled || busy || !canAddMore"
+        :aria-expanded="showUrlInput"
         @click="showUrlInput = !showUrlInput"
       >
-        {{ t('materials.pasteUrls') }}
+        {{ t('materials.importUrlBtn') }}
       </button>
 
       <span v-if="!canAddMore" class="text-[11px] text-amber-600 dark:text-amber-400">
@@ -255,6 +258,7 @@ import { useI18n } from 'vue-i18n'
 import { VueDraggable } from 'vue-draggable-plus'
 import MaterialPickerModal from '@/components/materials/MaterialPickerModal.vue'
 import userMaterialsAPI, { type UserMaterialItem } from '@/api/userMaterials'
+import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 
 const props = withDefaults(
@@ -412,14 +416,24 @@ async function onLocalFilesPicked(ev: Event) {
   busy.value = true
   const uploaded: string[] = []
   let failed = 0
+  // firstError：批量场景下只提示"N 张失败"没法排查（到底是文件太大、类型不支持，
+  // 还是管理员压根没配 COS？）。这里留住第一条失败原因一起展示。
+  let firstError = ''
   try {
     for (let i = 0; i < picked.length; i++) {
       busyText.value = t('materials.uploadingProgress', { i: i + 1, n: picked.length })
       try {
         const resp = await userMaterialsAPI.upload(picked[i])
         uploaded.push(resp.data.url)
-      } catch {
+      } catch (e: unknown) {
         failed++
+        if (!firstError) firstError = errMessage(e)
+        // COS 未配置这类"整体性失败"对后续每个文件都会复现，继续循环只是白等，
+        // 直接中断把剩下的算作失败。
+        if (isFatalMaterialError(e)) {
+          failed += picked.length - i - 1
+          break
+        }
       }
     }
   } finally {
@@ -429,7 +443,13 @@ async function onLocalFilesPicked(ev: Event) {
 
   const added = appendUrls(uploaded)
   if (added > 0) appStore.showSuccess(t('materials.addedCount', { n: added }))
-  if (failed > 0) appStore.showError(t('materials.uploadPartialFailed', { n: failed }))
+  if (failed > 0) {
+    appStore.showError(
+      firstError
+        ? t('materials.uploadPartialFailedWithReason', { n: failed, msg: firstError })
+        : t('materials.uploadPartialFailed', { n: failed })
+    )
+  }
   if (skipped > 0) appStore.showError(t('materials.maxItemsSkipped', { n: skipped }))
 }
 
@@ -453,14 +473,20 @@ async function doImportUrls() {
   busy.value = true
   const imported: string[] = []
   let failed = 0
+  let firstError = ''
   try {
     for (let i = 0; i < picked.length; i++) {
       busyText.value = t('materials.importingProgress', { i: i + 1, n: picked.length })
       try {
         const resp = await userMaterialsAPI.importFromUrl(picked[i])
         imported.push(resp.data.url)
-      } catch {
+      } catch (e: unknown) {
         failed++
+        if (!firstError) firstError = errMessage(e)
+        if (isFatalMaterialError(e)) {
+          failed += picked.length - i - 1
+          break
+        }
       }
     }
   } finally {
@@ -474,7 +500,13 @@ async function doImportUrls() {
     urlInputValue.value = ''
     showUrlInput.value = false
   }
-  if (failed > 0) appStore.showError(t('materials.importPartialFailed', { n: failed }))
+  if (failed > 0) {
+    appStore.showError(
+      firstError
+        ? t('materials.importPartialFailedWithReason', { n: failed, msg: firstError })
+        : t('materials.importPartialFailed', { n: failed })
+    )
+  }
   if (skipped > 0) appStore.showError(t('materials.maxItemsSkipped', { n: skipped }))
 }
 
@@ -503,8 +535,7 @@ async function onDrop(ev: DragEvent) {
   await onLocalFilesPicked({ target: { files: dt.files, value: '' } } as unknown as Event)
 }
 
-/** reportAdded：素材库多选后的提示；被上限截断时额外说明。 */
-function reportAdded(added: number, requested: number) {
+/** reportAdded：素材库多选后的提示；被上限截断时额外说明。 */function reportAdded(added: number, requested: number) {
   if (added > 0) appStore.showSuccess(t('materials.addedCount', { n: added }))
   const skipped = requested - added
   if (skipped > 0) appStore.showError(t('materials.maxItemsSkipped', { n: skipped }))
@@ -514,6 +545,32 @@ function onThumbError(url: string) {
   const next = new Set(brokenUrls.value)
   next.add(url)
   brokenUrls.value = next
+}
+
+/**
+ * errMessage：把捕获到的错误转成可展示文案。
+ * apiClient 拦截器 reject 的是普通对象而非 Error，直接 String(e) 会得到
+ * "[object Object]"；extractI18nErrorMessage 会按 reason 查 materials.errors
+ * 给出友好文案，查不到再回落到后端原始 message。
+ */
+function errMessage(e: unknown): string {
+  return extractI18nErrorMessage(e, t, 'materials.errors', t('common.error'))
+}
+
+/**
+ * isFatalMaterialError：判断该错误是否"对后续每个文件都会同样失败"。
+ *
+ * 例如 COS 压根没配置（COS_NOT_CONFIGURED）或已超配额，继续循环剩下的文件
+ * 只是让用户白等 N 个必然失败的请求。命中这些 reason 时提前中断，把剩余数量
+ * 算作失败一次性提示。
+ */
+function isFatalMaterialError(e: unknown): boolean {
+  const code = extractApiErrorCode(e)
+  return (
+    code === 'COS_NOT_CONFIGURED' ||
+    code === 'MATERIAL_COUNT_QUOTA_EXCEEDED' ||
+    code === 'MATERIAL_SIZE_QUOTA_EXCEEDED'
+  )
 }
 </script>
 

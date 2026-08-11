@@ -121,6 +121,7 @@ import {
   updateCOSImageConfig,
   type COSImageConfig,
 } from '@/api/admin/cosImage'
+import { refreshAdminFileManagerStatus } from '@/composables/useAdminFileManager'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -172,6 +173,9 @@ async function onSave() {
       secretKeySet.value = true
     }
     appStore.showSuccess(t('admin.settings.cosImage.saveSuccess'))
+    // 图片转存的启用状态决定侧边栏「文件管理」入口是否出现；
+    // 重新探测一次让菜单即时生效，省去用户手动刷新页面。
+    void refreshAdminFileManagerStatus()
   } catch (e: unknown) {
     appStore.showError((e as { message?: string })?.message ?? t('admin.settings.cosImage.saveFailed'))
   } finally {

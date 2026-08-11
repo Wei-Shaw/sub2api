@@ -21,13 +21,16 @@
         {{ t('materials.fromLibrary') }}
       </button>
 
+      <!-- 从 URL 导入：与前两个来源同为按钮样式（此前是 btn-ghost，看起来像
+           文字链接，和左边两个按钮不成一组）。点击展开下方的 URL 输入行。 -->
       <button
         type="button"
-        class="btn btn-ghost btn-xs"
+        class="btn btn-secondary btn-xs"
         :disabled="disabled"
+        :aria-expanded="showUrlInput"
         @click="showUrlInput = !showUrlInput"
       >
-        {{ t('materials.pasteUrl') }}
+        {{ t('materials.importUrlBtn') }}
       </button>
     </div>
 
@@ -110,6 +113,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import MaterialPickerModal from '@/components/materials/MaterialPickerModal.vue'
 import userMaterialsAPI, { type UserMaterialItem } from '@/api/userMaterials'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 
@@ -199,8 +203,13 @@ function onPreviewError() {
   // 预览失败不清空值：可能仍是有效 URL，只是不支持内嵌预览
 }
 
+/**
+ * errMessage：把捕获到的错误转成可展示文案。
+ * 走 extractI18nErrorMessage —— apiClient 拦截器 reject 的是普通对象而非 Error，
+ * 直接 String(e) 会显示 "[object Object]"；该工具会按 reason 查 materials.errors
+ * 给出友好文案，查不到再回落到后端原始 message。
+ */
 function errMessage(e: unknown): string {
-  if (e instanceof Error) return e.message
-  return String(e)
+  return extractI18nErrorMessage(e, t, 'materials.errors', t('common.error'))
 }
 </script>

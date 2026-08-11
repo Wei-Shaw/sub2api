@@ -164,6 +164,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import userMaterialsAPI, { type UserMaterialItem, type UserMaterialKind } from '@/api/userMaterials'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { formatBytes } from '@/utils/format'
 
@@ -408,8 +409,16 @@ function onThumbError(ev: Event) {
   img.style.display = 'none'
 }
 
+/**
+ * errMessage：把捕获到的错误转成可展示文案。
+ *
+ * 必须走 extractI18nErrorMessage：apiClient 拦截器 reject 的是**普通对象**
+ * （{ status, code, message, reason }）而不是 Error 实例，直接 String(e) 会得到
+ * "[object Object]"。该工具会先按 reason 查 materials.errors.<REASON> 给出友好
+ * 文案（例如 COS_NOT_CONFIGURED → 提示管理员先配置对象存储），查不到再回落到
+ * 后端原始 message。
+ */
 function errMessage(e: unknown): string {
-  if (e instanceof Error) return e.message
-  return String(e)
+  return extractI18nErrorMessage(e, t, 'materials.errors', t('common.error'))
 }
 </script>

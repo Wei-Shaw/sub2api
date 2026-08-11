@@ -67,6 +67,50 @@ type BackupObjectStore interface {
 	HeadBucket(ctx context.Context) error
 }
 
+// ObjectEntry 是列举对象时返回的单条元信息。
+type ObjectEntry struct {
+	// Key 完整对象键（含 prefix）。
+	Key string `json:"key"`
+	// Size 字节数。
+	Size int64 `json:"size"`
+	// LastModified 最后修改时间。
+	LastModified time.Time `json:"last_modified"`
+	// ETag 上游返回的 ETag（可能带引号，调用方按需裁剪）。
+	ETag string `json:"etag"`
+	// IsDir 表示这是一个"目录"（S3 的 CommonPrefix）。
+	// 对象存储没有真正的目录，这里是按分隔符聚合出来的逻辑层级，
+	// 便于前端做逐层浏览而不是一次拉平几万个对象。
+	IsDir bool `json:"is_dir"`
+}
+
+// ObjectPage 是一页列举结果。
+type ObjectPage struct {
+	Entries []ObjectEntry
+	// NextToken 非空表示还有下一页，回传它即可继续。
+	// 用 token 而不是 offset：S3 只提供游标式分页，没有"跳到第 N 页"的能力。
+	NextToken string
+}
+
+// BackupObjectLister 是 BackupObjectStore 的**可选**扩展：列举对象。
+//
+// 之所以单独定义而不是直接加进 BackupObjectStore：那个接口已有多个实现
+// （含测试里的 mock），直接扩展会让它们全部编译失败。调用方用类型断言探测，
+// 不支持时给出明确错误即可。
+type BackupObjectLister interface {
+	// ListObjects 列举 prefix 下的对象。
+	// delimiter 非空时按其聚合出"目录"（返回 IsDir=true 的条目）。
+	// token 为上一页返回的 NextToken；limit<=0 由实现选默认值。
+	ListObjects(ctx context.Context, prefix, delimiter, token string, limit int32) (*ObjectPage, error)
+}
+
+// BackupObjectCopier 是 BackupObjectStore 的**可选**扩展：服务端复制。
+//
+// 对象存储没有 rename 语义，改名 = 服务端 copy 到新 key + 删旧 key。
+// 走服务端 copy 而不是"下载再上传"，避免大文件绕一圈本地内存/带宽。
+type BackupObjectCopier interface {
+	CopyObject(ctx context.Context, srcKey, dstKey string) error
+}
+
 // BackupObjectStoreFactory creates an object store from S3 config
 type BackupObjectStoreFactory func(ctx context.Context, cfg *BackupS3Config) (BackupObjectStore, error)
 

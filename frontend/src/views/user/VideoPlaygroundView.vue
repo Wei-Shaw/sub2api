@@ -212,11 +212,22 @@
             <div v-if="keysLoading" class="text-sm text-gray-500">
               {{ t('common.loading') }}
             </div>
+            <!-- 没有可用密钥：直接在这里给出创建入口。
+                 让用户为了建一把 key 跳去"API 密钥"页，回来后演练台已填的参数
+                 全丢了，体验很差；所以这里内联一个快速创建弹窗。 -->
             <div
               v-else-if="!compositeKeys.length"
               class="rounded border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-200"
             >
-              {{ t('videoModels.playground.noCompositeKey') }}
+              <p>{{ t('videoModels.playground.noCompositeKey') }}</p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" class="btn btn-primary btn-xs" @click="openCreateKey">
+                  {{ t('videoModels.playground.createKeyNow') }}
+                </button>
+                <button type="button" class="btn btn-ghost btn-xs" @click="goKeysPage">
+                  {{ t('videoModels.playground.createKeyAdvanced') }}
+                </button>
+              </div>
             </div>
             <Select
               v-else
@@ -228,6 +239,83 @@
               @update:model-value="(v: string | number | boolean | null) => selectedKeyId = (v == null ? '' : Number(v))"
             />
           </div>
+
+          <!-- 快速创建 API 密钥：只暴露"名称 + 分组"两个必要字段。
+               配额 / IP 名单 / 有效期等高级项交给"API 密钥"页，这里保持最短路径。 -->
+          <BaseDialog
+            :show="showCreateKey"
+            :title="t('videoModels.playground.createKeyTitle')"
+            @close="showCreateKey = false"
+          >
+            <div class="space-y-3">
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('videoModels.playground.createKeyHint') }}
+              </p>
+
+              <div v-if="createKeyGroupsLoading" class="text-sm text-gray-500">
+                {{ t('common.loading') }}
+              </div>
+
+              <!-- 一个可用的 composite 分组都没有：建了 key 也调不通视频模型，
+                   因此不给创建入口，直接引导去分组广场订阅。 -->
+              <div
+                v-else-if="!compositeGroupOptions.length"
+                class="rounded border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-yellow-800 dark:bg-yellow-950/40 dark:text-yellow-200"
+              >
+                {{ t('videoModels.playground.createKeyNoGroup') }}
+              </div>
+
+              <template v-else>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('videoModels.playground.createKeyName') }}
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    v-model="createKeyName"
+                    type="text"
+                    class="input"
+                    maxlength="100"
+                    :disabled="createKeySubmitting"
+                    :placeholder="t('videoModels.playground.createKeyNamePlaceholder')"
+                    @keyup.enter="submitCreateKey"
+                  />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('videoModels.playground.createKeyGroup') }}
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <Select
+                    :model-value="createKeyGroupId"
+                    :options="compositeGroupOptions"
+                    :disabled="createKeySubmitting"
+                    :searchable="compositeGroupOptions.length > 5"
+                    :placeholder="t('videoModels.playground.createKeyGroupPlaceholder')"
+                    @update:model-value="(v: string | number | boolean | null) => createKeyGroupId = (v == null ? '' : Number(v))"
+                  />
+                </div>
+              </template>
+            </div>
+
+            <template #footer>
+              <button type="button" class="btn btn-secondary" @click="showCreateKey = false">
+                {{ t('common.cancel') }}
+              </button>
+              <button
+                v-if="compositeGroupOptions.length"
+                type="button"
+                class="btn btn-primary"
+                :disabled="createKeySubmitting || !createKeyName.trim() || createKeyGroupId === ''"
+                @click="submitCreateKey"
+              >
+                {{ createKeySubmitting ? t('common.submitting') : t('videoModels.playground.createKeySubmit') }}
+              </button>
+              <button v-else type="button" class="btn btn-primary" @click="goKeysPage">
+                {{ t('videoModels.playground.createKeyAdvanced') }}
+              </button>
+            </template>
+          </BaseDialog>
 
           <!-- 参数模式切换：表单 / JSON -->
           <div class="flex items-center gap-2 border-b border-gray-200 pb-2 dark:border-gray-800">
@@ -824,7 +912,8 @@ import videoModelsAPI, {
   type VideoModelItem,
 } from '@/api/videoModels'
 import keysAPI from '@/api/keys'
-import type { ApiKey } from '@/types'
+import userGroupsAPI from '@/api/groups'
+import type { ApiKey, Group } from '@/types'
 import { buildGatewayUrl } from '@/api/url'
 import { useAppStore } from '@/stores/app'
 import { useVideoPlayground } from '@/composables/useVideoPlayground'
@@ -1005,6 +1094,94 @@ function maskKey(key: string): string {
   if (!key) return '-'
   if (key.length <= 10) return key
   return `${key.slice(0, 6)}...${key.slice(-4)}`
+}
+
+// ============ 快速创建 API 密钥 ============
+// 没有可用密钥时，演练台整个提交按钮都是禁用的，等于死路。让用户跳去"API 密钥"
+// 页创建再回来，已填的参数（prompt、上传好的图片组…）就全丢了。所以这里内联一个
+// 只含"名称 + 分组"的最短创建路径，建完自动选中并留在当前页继续跑。
+const showCreateKey = ref(false)
+const createKeyName = ref('')
+const createKeyGroupId = ref<number | ''>('')
+const createKeySubmitting = ref(false)
+const createKeyGroupsLoading = ref(false)
+const availableGroups = ref<Group[]>([])
+
+/**
+ * compositeGroupOptions：可绑定的 composite 分组。
+ * 与 compositeKeys 的口径保持一致 —— 视频门面只接受 composite 分组下的密钥，
+ * 因此这里也只列 composite 且 active 的分组，避免用户建出一把用不了的 key。
+ */
+const compositeGroupOptions = computed<SelectOption[]>(() =>
+  availableGroups.value
+    .filter((g) => g.platform === 'composite' && g.status === 'active')
+    .map((g) => ({ value: g.id, label: g.name }))
+)
+
+/** openCreateKey：打开弹窗并按需拉取一次可用分组（懒加载，正常有 key 的用户不会付这次请求）。 */
+async function openCreateKey() {
+  showCreateKey.value = true
+  createKeyName.value = t('videoModels.playground.createKeyDefaultName')
+  if (availableGroups.value.length === 0) {
+    createKeyGroupsLoading.value = true
+    try {
+      availableGroups.value = await userGroupsAPI.getAvailable()
+    } catch {
+      availableGroups.value = []
+    } finally {
+      createKeyGroupsLoading.value = false
+    }
+  }
+  // 默认选中第一个可用分组：多数用户只有一个，省一步点击。
+  if (createKeyGroupId.value === '' && compositeGroupOptions.value.length) {
+    createKeyGroupId.value = Number(compositeGroupOptions.value[0].value)
+  }
+}
+
+/** goKeysPage：跳到"API 密钥"页并自动打开创建弹窗（复用 KeysView 的 openCreate query）。 */
+function goKeysPage() {
+  const query: Record<string, string> = { openCreate: '1' }
+  if (createKeyGroupId.value !== '') query.group_id = String(createKeyGroupId.value)
+  router.push({ path: '/keys', query })
+}
+
+/**
+ * submitCreateKey：创建后刷新列表并选中新 key。
+ *
+ * 这里显式把 selectedKeyId 指向新 key，而不是依赖 loadKeys 里的
+ * "没选中就选第一个"兜底 —— 那个兜底取的是 compositeKeys[0]，跟创建顺序无关，
+ * 用户刚建的 key 未必排在首位。
+ */
+async function submitCreateKey() {
+  const name = createKeyName.value.trim()
+  if (!name || createKeyGroupId.value === '' || createKeySubmitting.value) return
+  const groupId = Number(createKeyGroupId.value)
+  createKeySubmitting.value = true
+  try {
+    const created = await keysAPI.create(name, groupId)
+    showCreateKey.value = false
+    await loadKeys()
+    if (created?.id) {
+      // 创建接口返回的 DTO 只有 group_id，没有嵌套的 group 对象，而 compositeKeys
+      // 的过滤依赖 k.group?.platform。正常情况上面 loadKeys 拉回的列表里就带了；
+      // 但 list 只取前 100 条，key 很多的用户可能捞不到刚建的这把。这种情况用本地
+      // 已知的分组信息补一条，避免"创建成功却选不上"。
+      if (!allKeys.value.some((k) => k.id === created.id)) {
+        const g = availableGroups.value.find((x) => x.id === groupId)
+        allKeys.value = [{ ...created, group: g } as ApiKey, ...allKeys.value]
+      }
+      selectedKeyId.value = created.id
+    }
+    appStore.showSuccess(t('videoModels.playground.createKeySuccess'))
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+      (e as { message?: string })?.message ||
+      'unknown error'
+    appStore.showError(t('videoModels.playground.createKeyFailed', { msg }))
+  } finally {
+    createKeySubmitting.value = false
+  }
 }
 
 // ============ 表单值 ============

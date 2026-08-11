@@ -743,6 +743,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/files',
+    name: 'AdminFiles',
+    component: () => import('@/views/admin/AdminFilesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'File Manager',
+      titleKey: 'admin.files.title',
+      descriptionKey: 'admin.files.subtitle'
+    }
+  },
+  {
     path: '/admin/model-intros',
     name: 'AdminModelIntros',
     component: () => import('@/views/admin/AdminModelIntrosView.vue'),

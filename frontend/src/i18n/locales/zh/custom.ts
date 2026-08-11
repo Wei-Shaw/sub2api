@@ -487,6 +487,7 @@ export default {
     promoCodes: '优惠码',
     rechargePromos: '充值活动记录',
     modelIntros: '模型介绍',
+    files: '文件管理',
     settings: '系统设置',
     myAccount: '我的账户',
     lightMode: '浅色模式',
@@ -5249,11 +5250,78 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       }
     },
 
+    // 文件管理（直接管理图片转存桶里的对象）
+    files: {
+      title: '文件管理',
+      subtitle: '浏览、上传、下载、重命名与删除图片转存（对象存储）中的文件。',
+      // 未启用引导
+      disabledTitle: '图片转存尚未启用',
+      disabledHint: '文件管理需要先启用图片转存（COS / S3 兼容）。请前往「系统设置 → 图片转存」填写存储桶与密钥，并勾选“启用图片转存”。',
+      gotoSettings: '前往系统设置',
+      // 桶信息
+      bucket: '存储桶',
+      configuredPrefix: '配置前缀',
+      root: '根目录',
+      // 搜索
+      searchPlaceholder: '按名称前缀搜索…',
+      searchHint: '对象存储仅支持前缀匹配，搜索时会递归查找子目录',
+      // 列表
+      colName: '名称',
+      colSize: '大小',
+      colModified: '修改时间',
+      colActions: '操作',
+      empty: '该目录下暂无文件',
+      loadedCount: '已加载 {n} 项',
+      loadMore: '加载更多',
+      noMore: '已全部加载',
+      // 操作
+      upload: '上传文件',
+      download: '下载',
+      rename: '重命名',
+      copyUrl: '复制链接',
+      urlCopied: '链接已复制到剪贴板',
+      copyFailed: '复制失败，请手动复制',
+      // 选择与批量
+      selectedCount: '已选中 {n} 项',
+      clearSelection: '取消选择',
+      deleteSelected: '删除所选',
+      // 上传
+      uploadingProgress: '正在上传 {i}/{n}：{name}',
+      uploadSuccess: '已上传 {n} 个文件',
+      uploadFailed: '{n} 个文件上传失败：{msg}',
+      // 重命名
+      renameTitle: '重命名文件',
+      currentKey: '当前对象键',
+      newName: '新名称',
+      renameHint: '仅修改文件名，所在目录保持不变。对象存储没有重命名操作，实际执行“复制到新名称 + 删除原文件”。',
+      renameSuccess: '重命名成功',
+      // 删除
+      deleteTitle: '删除文件',
+      deleteOneConfirm: '确定要删除「{name}」吗？此操作不可恢复，且已引用该文件的历史记录会失效。',
+      deleteManyConfirm: '确定要删除选中的 {n} 个文件吗？此操作不可恢复，且已引用这些文件的历史记录会失效。',
+      deleteSuccess: '已删除 {n} 个文件',
+      deleteFailed: '{n} 个文件删除失败：{msg}',
+      // 后端错误码 → 友好文案（键名与后端 reason 严格一致）
+      errors: {
+        COS_NOT_CONFIGURED: '图片转存未启用或配置不完整，请先在「系统设置 → 图片转存」完成配置。',
+        INVALID_OBJECT_KEY: '对象键不合法（不能为空、不能含 ".." 或控制字符，且长度不超过 1024 字节）。',
+        OBJECT_KEY_EXISTS: '目标名称已存在，请换一个名称（为避免覆盖数据，重命名不会覆盖已有文件）。',
+        LIST_NOT_SUPPORTED: '当前对象存储实现不支持列举文件。',
+        COPY_NOT_SUPPORTED: '当前对象存储实现不支持服务端复制，无法重命名。',
+      },
+    },
     // Model Intros (模型介绍：封面/描述/默认参数)
     modelIntros: {
       title: '模型介绍',
       description: '为每个对外模型配置展示标题、描述、默认参数和封面图',
       createBtn: '新建介绍',
+      listImport: '导入列表',
+      listExport: '导出列表',
+      listImportConfirm: '将导入 {count} 条模型介绍；已有相同 model_key 的记录会被覆盖。是否继续？',
+      listImported: '已导入 {count} 条模型介绍',
+      listImportFailed: '导入失败，请检查 JSON 文件格式和内容',
+      listExported: '已导出 {count} 条模型介绍',
+      listExportFailed: '导出模型介绍失败',
       createTitle: '新建模型介绍',
       editTitle: '编辑模型介绍',
       detailTitle: '模型详情',
@@ -6351,6 +6419,12 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         saveFailed: '保存异步媒体配置失败',
       },
       features: {
+        video: {
+          title: '视频功能',
+          description: '统一控制用户端视频模型、素材库和视频生成接口。默认关闭。',
+          enabled: '启用视频功能',
+          enabledHint: '关闭后隐藏用户菜单中的视频模型和素材库，并拒绝访问 /api/v1/model。',
+        },
         channelMonitor: {
           title: '渠道监控',
           description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',

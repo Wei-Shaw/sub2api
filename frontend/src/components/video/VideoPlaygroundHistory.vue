@@ -370,7 +370,9 @@ const detailTask = ref<VideoTaskItem | null>(null)
 const videoUrl = ref<string>('')
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-void totalPages // 保留占位，未来加"跳页"
+// 保留占位，未来加"跳页"。读 .value 而不是 void totalPages ——
+// 后者把 ref 本身当操作数，会触发 vue/no-ref-as-operand。
+void totalPages.value
 
 /**
  * load：拉取指定 page 的数据。slug 为空时不发请求（后端会 400，前端直接空态）。

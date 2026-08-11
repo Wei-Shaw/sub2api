@@ -156,6 +156,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import userMaterialsAPI, { type UserMaterialItem, type UserMaterialKind } from '@/api/userMaterials'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { formatBytes, formatDateTime } from '@/utils/format'
@@ -271,9 +272,14 @@ function doCopy(url: string) {
   void copyToClipboard(url, t('common.copied', 'Copied'))
 }
 
+/**
+ * errMessage：把捕获到的错误转成可展示文案。
+ * 走 extractI18nErrorMessage —— apiClient 拦截器 reject 的是普通对象而非 Error，
+ * 直接 String(e) 会显示 "[object Object]"；该工具会按 reason 查 materials.errors
+ * 给出友好文案，查不到再回落到后端原始 message。
+ */
 function errMessage(e: unknown): string {
-  if (e instanceof Error) return e.message
-  return String(e)
+  return extractI18nErrorMessage(e, t, 'materials.errors', t('common.error'))
 }
 
 onMounted(() => {

@@ -293,6 +293,10 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import {
+  ensureAdminFileManagerStatus,
+  makeFileManagerSidebarFlag,
+} from '@/composables/useAdminFileManager'
 import { useRechargePromoDot } from '@/composables/useRechargePromoDot'
 import {
   useCustomMenuRedDotRegistry,
@@ -850,8 +854,11 @@ const ChevronDownIcon = {
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
+const flagVideo = makeSidebarFlag(FeatureFlags.video)
 const flagAffiliate = makeSidebarFlag(FeatureFlags.affiliate)
 const flagRiskControl = makeSidebarFlag(FeatureFlags.riskControl)
+// 文件管理：admin-only 开关，跟随图片转存（对象存储）是否启用。
+const flagFileManager = makeFileManagerSidebarFlag()
 // D1 客服工单：opt-in flag。后端关闭时 sidebar 入口隐藏。
 const flagSupportTicket = makeSidebarFlag(FeatureFlags.supportTicket)
 // 客服对话记录：跟随客服浮窗总开关 support_chat_enabled（opt-in）。
@@ -907,8 +914,8 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
-    { path: '/video-models', label: t('nav.videoModels'), icon: VideoModelIcon, hideInSimpleMode: true },
-    { path: '/materials', label: t('nav.materials'), icon: MaterialsIcon, hideInSimpleMode: true },
+    { path: '/video-models', label: t('nav.videoModels'), icon: VideoModelIcon, hideInSimpleMode: true, featureFlag: flagVideo },
+    { path: '/materials', label: t('nav.materials'), icon: MaterialsIcon, hideInSimpleMode: true, featureFlag: flagVideo },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
@@ -1006,6 +1013,9 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/admin/recharge-promos', label: t('nav.rechargePromos'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagAdminPayment },
     { path: '/admin/model-intros', label: t('nav.modelIntros'), icon: FolderIcon, hideInSimpleMode: true },
+    // 文件管理：仅在图片转存（对象存储）启用后出现。状态来自 admin 侧懒加载探测，
+    // 不走 public settings（那是下发给所有用户的公开配置，COS 属敏感项）。
+    { path: '/admin/files', label: t('nav.files'), icon: FolderIcon, hideInSimpleMode: true, featureFlag: flagFileManager },
     // D1 客服工单：admin 入口，紧跟在通知/促销组之后、affiliate / orders 之前。
     // featureFlag 关闭时也隐藏入口（后端虽然不卡 feature_enabled，但 sidebar
     // 入口仍跟随开关：保留 admin 直接访问 URL 处理存量的能力）。
@@ -1267,6 +1277,8 @@ onMounted(() => {
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
+    // 文件管理入口依赖图片转存是否启用；懒加载一次（模块级缓存，重复挂载不重复请求）。
+    void ensureAdminFileManagerStatus()
   }
   // Restore sidebar scroll position after route change re-mounts the component
   if (appStore.sidebarScrollTop > 0 && sidebarNavRef.value) {

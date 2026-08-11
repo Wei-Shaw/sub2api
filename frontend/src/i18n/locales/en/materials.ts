@@ -11,7 +11,6 @@ export default {
     importToLibraryBtn: 'Import to library',
     searchPlaceholder: 'Search by file name',
     fromLibrary: 'From library',
-    pasteUrl: 'Paste URL',
     openLink: 'Open',
     empty: 'No materials yet. Upload an image or import from a URL.',
     pickerTitle: 'Pick a material',
@@ -34,7 +33,8 @@ export default {
     imageUrlsEmptyHint: 'Drop images here, or pick from the library / paste URLs',
     addImage: 'Add',
     clearAll: 'Clear all',
-    pasteUrls: 'Paste URLs',
+    // Both source buttons reuse importUrlBtn ('Import from URL'),
+    // so separate pasteUrl / pasteUrls entries are no longer needed.
     pasteUrlsPlaceholder: 'https://...\nhttps://...\n(one per line)',
     pasteUrlsHint: 'One per line; each is imported to your library first',
     thumbBroken: 'No preview',
@@ -43,7 +43,27 @@ export default {
     addedCount: 'Added {n} image(s)',
     uploadPartialFailed: '{n} upload(s) failed',
     importPartialFailed: '{n} URL import(s) failed',
+    // Variants that include the reason: "N failed" alone is not actionable in bulk flows
+    uploadPartialFailedWithReason: '{n} upload(s) failed: {msg}',
+    importPartialFailedWithReason: '{n} URL import(s) failed: {msg}',
     maxItemsReached: 'Limit reached ({n})',
     maxItemsSkipped: 'Over the limit — {n} skipped',
+    // ---- Backend error codes → friendly messages ----
+    // Keys must match the backend `reason` exactly (see service/user_material.go and
+    // cos_transfer.go). extractI18nErrorMessage looks them up automatically and falls
+    // back to the raw backend message when a key is missing.
+    errors: {
+      COS_NOT_CONFIGURED: 'The material library is not available yet: an administrator must fill in the bucket and credentials under Settings → Image Transfer (COS / S3-compatible) and tick "Enable image transfer".',
+      URL_BLOCKED: 'That address is not allowed (it points to an internal or loopback host). Please use a publicly reachable image URL.',
+      URL_FETCH_FAILED: 'Could not reach that URL. Make sure it is publicly accessible and has not expired.',
+      EMPTY_REMOTE_FILE: 'That URL returned an empty body. Please double-check the image address.',
+      EMPTY_FILE: 'The file is empty.',
+      FILE_TOO_LARGE: 'The file exceeds the size limit.',
+      UNSUPPORTED_CONTENT_TYPE: 'Unsupported file type. Please upload an image, audio or video file.',
+      UNSUPPORTED_KIND: 'Unsupported material kind.',
+      INVALID_URL: 'Invalid URL — it must start with http:// or https://.',
+      MATERIAL_COUNT_QUOTA_EXCEEDED: 'You have reached the material count limit. Please delete some unused materials first.',
+      MATERIAL_SIZE_QUOTA_EXCEEDED: 'You have reached the material storage limit. Please delete some unused materials first.',
+    },
   },
 }
