@@ -31,6 +31,35 @@ func (m *mockTempUnscheduler) TempUnscheduleRetryableError(_ context.Context, ac
 	m.calls = append(m.calls, tempUnscheduleCall{accountID: accountID, failoverErr: failoverErrREDACTED)
 REDACTED
 
+func TestSameAccountRetryDelayFor(t *testing.T) {
+	capacityErr := &service.UpstreamFailoverError{RequestScopedTransient: trueREDACTED
+
+	for _, tc := range []struct {
+		name       string
+		retryCount int
+		want       time.Duration
+REDACTED{
+		{name: "first retry", retryCount: 1, want: 500 * time.MillisecondREDACTED,
+		{name: "second retry", retryCount: 2, want: time.SecondREDACTED,
+		{name: "third retry", retryCount: 3, want: 2 * time.SecondREDACTED,
+		{name: "fourth retry", retryCount: 4, want: 4 * time.SecondREDACTED,
+		{name: "fifth retry", retryCount: 5, want: 8 * time.SecondREDACTED,
+		{name: "capped retry", retryCount: 10, want: 8 * time.SecondREDACTED,
+REDACTED {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sameAccountRetryDelayFor(capacityErr, tc.retryCount))
+	REDACTED)
+REDACTED
+
+	t.Run("non request scoped errors keep fixed delay", func(t *testing.T) {
+		require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(&service.UpstreamFailoverError{REDACTED, 10))
+REDACTED)
+
+	t.Run("nil error keeps fixed delay", func(t *testing.T) {
+		require.Equal(t, 500*time.Millisecond, sameAccountRetryDelayFor(nil, 10))
+REDACTED)
+REDACTED
+
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
