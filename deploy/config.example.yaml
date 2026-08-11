@@ -213,8 +213,11 @@ gateway:
   openai_first_output_timeout_seconds: 0
   # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
   openai_high_effort_first_output_timeout_seconds: 0
-  # Responses SSE lifecycle event buffering (seconds, 0=flush immediately, default=2)
-  openai_responses_first_event_timeout_seconds: 2
+  # Responses SSE lifecycle event buffering (seconds, 0=flush immediately, runtime default=2)
+  # Codex 出现 "Selected model is at capacity. Please try a different model." 时建议配置 40-60 秒，推荐 60 秒。
+  # For "Selected model is at capacity" errors, use 40-60 seconds here; 60 seconds is a good starting point.
+  # Channel-level override: channel.features_config.responses_first_event_timeout
+  openai_responses_first_event_timeout_seconds: 60
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456

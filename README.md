@@ -618,6 +618,10 @@ If you disable URL validation or response header filtering, harden your network 
 - Enforce TLS-only outbound traffic
 - Strip sensitive upstream response headers at the proxy
 
+#### OpenAI Responses SSE lifecycle buffering
+
+`gateway.openai_responses_first_event_timeout_seconds` controls how long lifecycle SSE events are held before the first semantic payload or retryable upstream error. The default is `2` seconds. When Codex reports `Selected model is at capacity. Please try a different model.`, configure `40-60` seconds, with `60` seconds as the recommended starting point, so the capacity error can trigger automatic failover before the response is committed. A channel can override the global value through `features_config.responses_first_event_timeout`.
+
 #### OpenAI Responses WebSocket ingress limits
 
 `gateway.openai_ws` bounds the lifetime and aggregate count of client-facing

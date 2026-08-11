@@ -617,6 +617,7 @@ SECURITY_FORWARDED_CLIENT_IP_HEADERS=True-Client-IP,X-CDN-Client-IP
 - `gateway.upstream_response_read_max_bytes`：限制非流式上游响应读取大小（默认 `8MB`），用于防止异常响应导致内存放大。
 - `gateway.proxy_probe_response_read_max_bytes`：限制代理探测响应读取大小（默认 `1MB`）。
 - `gateway.gemini_debug_response_headers`：默认 `false`，仅在排障时短时开启，避免高频请求日志开销。
+- `gateway.openai_responses_first_event_timeout_seconds`：Responses SSE 首个生命周期事件缓存窗口，单位为秒，默认 `2`。Codex 出现 `Selected model is at capacity. Please try a different model.` 时建议配置为 `40-60`，推荐先使用 `60`，让容量错误事件在首个正常 payload 到达前触发自动故障转移。单个通道可在 `features_config.responses_first_event_timeout` 中覆盖全局值。
 - `/auth/register`、`/auth/login`、`/auth/login/2fa`、`/auth/send-verify-code` 已提供服务端兜底限流（Redis 故障时 fail-close）。
 - 推荐将 WAF/CDN 作为第一层防护，服务端限流与响应读取上限作为第二层兜底；两层同时保留，避免旁路流量与误配置风险。
 
