@@ -70,7 +70,7 @@
         <label class="input-label">{{ t('admin.costCenter.addExpense') }}</label>
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <input v-model.number="form.initial_expense_usd" type="number" min="0" step="0.01" class="input" placeholder="USD" />
-          <Select v-model="form.initial_expense_category" :options="expenseCategoryOptions" size="sm" />
+          <Select v-model="form.initial_expense_category" :options="expenseCategoryOptions" />
           <input v-model="form.initial_expense_note" type="text" class="input" :placeholder="t('admin.costCenter.note')" />
         </div>
       </div>
@@ -1655,6 +1655,33 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && form.platform !== 'kiro'" class="space-y-4">
+        <div
+          v-if="isVideoAccountPlatform(form.platform)"
+          class="rounded-lg border border-pink-200 bg-pink-50 p-4 dark:border-pink-900/40 dark:bg-pink-900/10"
+        >
+          <label class="flex cursor-pointer items-start gap-3">
+            <input
+              v-model="videoModelsEnabled"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+              data-testid="fal-video-models-enabled"
+            />
+            <span class="flex-1">
+              <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                {{ t('admin.accounts.fal.videoModelsEnabled', '支持视频模型') }}
+              </span>
+              <span class="mt-1 block text-xs text-gray-600 dark:text-gray-400">
+                {{
+                  t(
+                    'admin.accounts.fal.videoModelsEnabledHint',
+                    '开启后，该账号 model_mapping 中的两段及以上视频模型标识（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭后该账号不参与视频调度。'
+                  )
+                }}
+              </span>
+            </span>
+          </label>
+        </div>
+
         <!-- fal 接入域名固定（api.fal.ai / queue.fal.run），无需配置 base URL -->
         <div v-if="form.platform !== 'fal'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
@@ -4364,6 +4391,7 @@ const KIRO_RELAY_DEFAULT_PRIORITY = 100
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const videoModelsEnabled = ref(false)
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
@@ -5003,6 +5031,7 @@ watch(
       kiroOAuthProvider.value = 'google'
       apiKeyBaseUrl.value = ''
       apiKeyValue.value = ''
+      videoModelsEnabled.value = false
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
@@ -5478,6 +5507,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  videoModelsEnabled.value = false
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5585,6 +5615,20 @@ const handleClose = () => {
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
   emit('close')
+}
+
+const isVideoAccountPlatform = (platform?: string): boolean =>
+  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz'
+
+const buildVideoExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (!isVideoAccountPlatform(form.platform)) return base
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  if (videoModelsEnabled.value) {
+    extra.fal_video_models_enabled = true
+  } else {
+    delete extra.fal_video_models_enabled
+  }
+  return Object.keys(extra).length > 0 ? extra : undefined
 }
 
 const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
@@ -6083,7 +6127,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildVideoExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,
@@ -6215,6 +6259,9 @@ const createAccountAndFinish = async (
     const unitPrice = Number(kiroCreditUnitPriceUsd.value ?? 0)
     kiroExtra.kiro_credit_unit_price_usd = Number.isFinite(unitPrice) ? unitPrice : 0
     finalExtra = kiroExtra
+  }
+  if (isVideoAccountPlatform(platform)) {
+    finalExtra = buildVideoExtra(finalExtra)
   }
   if (platform === 'grok') {
     if (!credentials.base_url) {

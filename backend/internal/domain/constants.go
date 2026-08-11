@@ -281,25 +281,28 @@ func IsVideoModelName(model string) bool {
 	return strings.Count(m, "/") >= 1
 }
 
-// FalVideoModelsEnabledExtraKey 是 fal 账号 Extra 字段中"是否支持视频模型"的开关键。
+// VideoModelsEnabledExtraKey 是视频平台账号 Extra 字段中"是否支持视频模型"的开关键。
 //
 // 语义：只有当账号的 Extra[FalVideoModelsEnabledExtraKey] == true 时，
-// 该账号的 model_mapping 中两段及以上的 endpoint 才会作为视频模型暴露给用户菜单
-// /user/video-models。开关关闭（缺省 false）时该账号仅提供图片/其它 fal 能力，
+// 该账号的 model_mapping 中两段及以上的模型才会作为视频模型暴露给用户菜单
+// /user/video-models。开关关闭（缺省 false）时该账号不提供视频能力，
 // 视频门面 /api/v1/model/{model} 不会调度到此账号。
-const FalVideoModelsEnabledExtraKey = "fal_video_models_enabled"
+const VideoModelsEnabledExtraKey = "fal_video_models_enabled"
 
-// IsFalVideoModelsEnabled 从账号 Extra 中读出"支持视频模型"开关。
+// FalVideoModelsEnabledExtraKey 保留旧名称，兼容已有调用和持久化数据。
+const FalVideoModelsEnabledExtraKey = VideoModelsEnabledExtraKey
+
+// IsVideoModelsEnabled 从账号 Extra 中读出"支持视频模型"开关。
 //
 // 该函数容忍多种 JSON 反序列化形态：
 //   - Go bool 直接对应 true/false；
 //   - 字符串 "true"/"false"（忽略大小写、两侧空白）也能识别，防止前端字段类型漂移；
 //   - 缺 key、nil、其它类型均视为 false。
-func IsFalVideoModelsEnabled(extra map[string]any) bool {
+func IsVideoModelsEnabled(extra map[string]any) bool {
 	if len(extra) == 0 {
 		return false
 	}
-	raw, ok := extra[FalVideoModelsEnabledExtraKey]
+	raw, ok := extra[VideoModelsEnabledExtraKey]
 	if !ok {
 		return false
 	}
@@ -311,6 +314,27 @@ func IsFalVideoModelsEnabled(extra map[string]any) bool {
 	default:
 		return false
 	}
+}
+
+// IsFalVideoModelsEnabled 保留旧名称以兼容现有调用。
+func IsFalVideoModelsEnabled(extra map[string]any) bool {
+	return IsVideoModelsEnabled(extra)
+}
+
+// VideoModelSlugs 从账号模型映射中提取对外视频模型名。
+// fal 的 value 是 endpoint；atlascloud/apiz 的 key 是统一门面的公开模型名。
+func VideoModelSlugs(platform string, mapping map[string]string) []string {
+	out := make([]string, 0, len(mapping))
+	for requestedModel, upstreamModel := range mapping {
+		candidate := requestedModel
+		if platform == PlatformFal {
+			candidate = upstreamModel
+		}
+		if slug := NormalizeFalVideoModelEndpoint(candidate); slug != "" {
+			out = append(out, slug)
+		}
+	}
+	return out
 }
 
 // NormalizeFalVideoModelEndpoint 把 fal endpoint 归一化为对外暴露的模型名。

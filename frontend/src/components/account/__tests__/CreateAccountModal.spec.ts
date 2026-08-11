@@ -258,6 +258,27 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
   })
 
+  it.each([
+    ['fal', 'fal'],
+    ['atlascloud', 'AtlasCloud'],
+    ['apiz', 'apiz'],
+  ] as const)('stores the video capability when creating a %s API key account', async (platform, buttonText) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, buttonText)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue(`${platform} video`)
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('video-key')
+    await wrapper.get('[data-testid="fal-video-models-enabled"]').setValue(true)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform,
+      type: 'apikey',
+      extra: { fal_video_models_enabled: true },
+    })
+  })
+
   it('sends an explicit disabled state when the non-OpenAI create toggle is turned off', async () => {
     await submitApiKeyAccount('anthropic', false, true)
 

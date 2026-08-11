@@ -18,7 +18,7 @@ import (
 //
 // 数据来源：
 //  1. 从 JWT 上下文取当前用户 ID → APIKeyService.GetAvailableGroups 拿到用户可访问的 group 集合；
-//  2. AccountRepository.ListByPlatform("fal") 拉所有 fal 账号；
+//  2. 拉取 fal / atlascloud / apiz 三类视频平台账号；
 //  3. 过滤条件：账号状态 = active、GroupIDs 与用户 group 集合有交集、
 //     Extra["fal_video_models_enabled"] == true；
 //  4. 从 account.GetModelMapping() 的 value 中提取 fal endpoint，
@@ -137,11 +137,15 @@ func (h *VideoModelHandler) List(c *gin.Context) {
 		groupIDList = append(groupIDList, userGroups[i].ID)
 	}
 
-	// 2. 所有 fal 账号（含非 active 的一并拉，稍后按 status 过滤）。
-	accounts, err := h.accountRepo.ListByPlatform(ctx, domain.PlatformFal)
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "list fal accounts: "+err.Error())
-		return
+	// 2. 所有视频平台账号（含非 active 的一并拉，稍后按 status 过滤）。
+	accounts := make([]service.Account, 0, 16)
+	for _, platform := range []string{domain.PlatformFal, domain.PlatformAtlasCloud, domain.PlatformApiz} {
+		platformAccounts, listErr := h.accountRepo.ListByPlatform(ctx, platform)
+		if listErr != nil {
+			response.Error(c, http.StatusInternalServerError, "list "+platform+" accounts: "+listErr.Error())
+			return
+		}
+		accounts = append(accounts, platformAccounts...)
 	}
 
 	// 3+4. 过滤并聚合：模型名去重（大小写不敏感），首次出现的原始大小写胜出。
@@ -157,18 +161,10 @@ func (h *VideoModelHandler) List(c *gin.Context) {
 		if !accountBelongsToAny(a, groupSet) {
 			continue
 		}
-		if !domain.IsFalVideoModelsEnabled(a.Extra) {
+		if !domain.IsVideoModelsEnabled(a.Extra) {
 			continue
 		}
-		mapping := a.GetModelMapping()
-		if len(mapping) == 0 {
-			continue
-		}
-		for _, endpoint := range mapping {
-			slug := domain.NormalizeFalVideoModelEndpoint(endpoint)
-			if slug == "" {
-				continue
-			}
+		for _, slug := range videoModelSlugsForAccount(a) {
 			low := strings.ToLower(slug)
 			if _, dup := seen[low]; dup {
 				continue
@@ -187,6 +183,16 @@ func (h *VideoModelHandler) List(c *gin.Context) {
 		"total":                 len(items),
 		"supported_resolutions": []string{"480p", "720p", "1080p", "4k"},
 	})
+}
+
+// videoModelSlugsForAccount 返回账号对外暴露的统一视频模型名。
+// fal 的 mapping value 是 endpoint；atlascloud/apiz 的 key 是对外模型名，
+// value 则是各自上游的内部模型标识。
+func videoModelSlugsForAccount(account *service.Account) []string {
+	if account == nil {
+		return nil
+	}
+	return domain.VideoModelSlugs(account.Platform, account.GetModelMapping())
 }
 
 // respondEmptyVideoModels 统一空列表响应，避免多处重复。

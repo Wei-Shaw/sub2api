@@ -34,7 +34,7 @@ type ModelIntroHandler struct {
 
 // NewModelIntroHandler 构造 handler。
 //
-// accountService 用于 ListCandidates 接口：聚合所有 fal 账号中开启
+// accountService 用于 ListCandidates 接口：聚合所有视频平台账号中开启
 // "支持视频模型"开关（Extra["fal_video_models_enabled"] == true）的
 // 上游模型清单，供 admin 端在配置 model_intro 时下拉选择。
 func NewModelIntroHandler(
@@ -221,7 +221,7 @@ type modelCandidateDTO struct {
 
 // ListCandidates GET /api/v1/admin/model-intros/candidates
 //
-// 聚合所有 fal 账号（不受 groupID 限制，管理员可看全量）中
+// 聚合所有视频平台账号（不受 groupID 限制，管理员可看全量）中
 // Extra["fal_video_models_enabled"] == true 的账号，从其
 // model_mapping 中提取 fal endpoint，经 NormalizeFalVideoModelEndpoint
 // 剥掉 "fal-ai/" 前缀后作为候选 model_key。
@@ -236,10 +236,14 @@ func (h *ModelIntroHandler) ListCandidates(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 
-	accounts, err := h.accountService.ListByPlatform(ctx, domain.PlatformFal)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	accounts := make([]service.Account, 0, 16)
+	for _, platform := range []string{domain.PlatformFal, domain.PlatformAtlasCloud, domain.PlatformApiz} {
+		platformAccounts, err := h.accountService.ListByPlatform(ctx, platform)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		accounts = append(accounts, platformAccounts...)
 	}
 
 	// 聚合：model_key（大小写不敏感 dedupe）-> 账号计数。
@@ -247,20 +251,16 @@ func (h *ModelIntroHandler) ListCandidates(c *gin.Context) {
 	original := make(map[string]string, 16)
 	for i := range accounts {
 		a := &accounts[i]
-		if !domain.IsFalVideoModelsEnabled(a.Extra) {
+		if !domain.IsVideoModelsEnabled(a.Extra) {
 			continue
 		}
-		mapping := a.GetModelMapping()
-		if len(mapping) == 0 {
+		slugs := domain.VideoModelSlugs(a.Platform, a.GetModelMapping())
+		if len(slugs) == 0 {
 			continue
 		}
 		// 每个账号内先去重，避免同账号内多次 mapping 到同一 endpoint 时被重复计数。
-		seenInAccount := make(map[string]struct{}, len(mapping))
-		for _, endpoint := range mapping {
-			slug := domain.NormalizeFalVideoModelEndpoint(endpoint)
-			if slug == "" {
-				continue
-			}
+		seenInAccount := make(map[string]struct{}, len(slugs))
+		for _, slug := range slugs {
 			low := strings.ToLower(slug)
 			if _, dup := seenInAccount[low]; dup {
 				continue

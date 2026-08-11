@@ -28,14 +28,14 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
-        <!-- fal 专属：支持视频模型 开关 -->
+        <!-- 异步视频平台专属：支持视频模型 开关 -->
         <div
-          v-if="account.platform === 'fal'"
+          v-if="isVideoAccountPlatform(account.platform)"
           class="rounded-lg border border-pink-200 bg-pink-50 p-4 dark:border-pink-900/40 dark:bg-pink-900/10"
         >
           <label class="flex items-start gap-3 cursor-pointer">
             <input
-              v-model="falVideoModelsEnabled"
+              v-model="videoModelsEnabled"
               type="checkbox"
               class="mt-0.5 h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500"
             />
@@ -47,7 +47,7 @@
                 {{
                   t(
                     'admin.accounts.fal.videoModelsEnabledHint',
-                    '开启后，该账号 model_mapping 中"两段及以上"的 fal endpoint（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会被聚合展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭则该账号仅提供图片等非视频能力。'
+                    '开启后，该账号 model_mapping 中的两段及以上视频模型标识（如 bytedance/seedance-2.5、bytedance/seedance-2.5/text-to-video）会展示到用户菜单"视频模型"页，并允许调度到视频门面 /api/v1/model/{model}。关闭后该账号不参与视频调度。'
                   )
                 }}
               </span>
@@ -3119,11 +3119,13 @@ const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
-// fal 账号专属："支持视频模型" 开关。
-// 勾选后，账号的 model_mapping value 中两段及以上的 fal endpoint
+const isVideoAccountPlatform = (platform?: string): boolean =>
+  platform === 'fal' || platform === 'atlascloud' || platform === 'apiz'
+// 异步视频平台账号专属："支持视频模型" 开关。
+// 勾选后，账号的 model_mapping 中两段及以上的视频模型
 // 会被 /user/video-models 聚合并对当前用户暴露。缺省 false，与 backend
 // domain.FalVideoModelsEnabledExtraKey 常量对齐。
-const falVideoModelsEnabled = ref(false)
+const videoModelsEnabled = ref(false)
 const antigravityProjectId = ref('')
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
@@ -3654,8 +3656,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = extra?.mixed_scheduling === true
   allowOverages.value = extra?.allow_overages === true
   // 回填 fal "支持视频模型" 开关；只有 fal 平台的账号才需要，其它平台恒为 false。
-  falVideoModelsEnabled.value =
-    newAccount.platform === 'fal' && extra?.fal_video_models_enabled === true
+  videoModelsEnabled.value =
+    isVideoAccountPlatform(newAccount.platform) && extra?.fal_video_models_enabled === true
   const kiroCreditUnitPrice = extra?.kiro_credit_unit_price_usd
   kiroCreditUnitPriceUsd.value = typeof kiroCreditUnitPrice === 'number'
     ? kiroCreditUnitPrice
@@ -4900,15 +4902,15 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For fal accounts, handle "支持视频模型" toggle in extra.
+    // For asynchronous video accounts, handle "支持视频模型" toggle in extra.
     // 与 backend domain.FalVideoModelsEnabledExtraKey 严格对齐；开关关闭时显式删除 key，
     // 避免残留 true 值影响 /user/video-models 聚合结果。
-    if (props.account.platform === 'fal') {
+    if (isVideoAccountPlatform(props.account.platform)) {
       const currentExtra =
         (updatePayload.extra as Record<string, unknown>) ||
         ((props.account.extra as Record<string, unknown>) || {})
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (falVideoModelsEnabled.value) {
+      if (videoModelsEnabled.value) {
         newExtra.fal_video_models_enabled = true
       } else {
         delete newExtra.fal_video_models_enabled

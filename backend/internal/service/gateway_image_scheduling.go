@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
@@ -130,9 +131,13 @@ func (s *GatewayService) videoAccountSupportsRequest(ctx context.Context, accoun
 		return false
 	}
 	switch account.Platform {
-	case PlatformFal:
-		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)
-	case PlatformAtlasCloud, PlatformApiz:
+	case PlatformFal, PlatformAtlasCloud, PlatformApiz:
+		if !domain.IsVideoModelsEnabled(account.Extra) {
+			return false
+		}
+		if account.Platform == PlatformFal {
+			return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)
+		}
 		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
 	default:
 		return false
