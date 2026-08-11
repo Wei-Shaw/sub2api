@@ -213,15 +213,24 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	bucket := s.bucketFor(groupID, platform, mode)
 	var writeToken SchedulerBucketWriteToken
 	canPublish := false
+	if err := ctx.Err(); err != nil {
+		return nil, useMixed, err
+	}
 
 	if s.cache != nil {
 		cached, hit, err := s.cache.GetSnapshot(ctx, bucket)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, useMixed, ctxErr
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache read failed: bucket=%s err=%v", bucket.String(), err)
 		} else if hit {
 			return derefAccounts(cached), useMixed, nil
 		}
 		token, err := s.cache.CaptureBucketWriteToken(ctx, bucket)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, useMixed, ctxErr
+		}
 		if err != nil {
 			if errors.Is(err, ErrSchedulerBucketRetired) || errors.Is(err, ErrSchedulerBucketWriteFenced) {
 				slog.Debug("[Scheduler] cache publish fenced", "bucket", bucket.String())
@@ -245,6 +254,9 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	if err != nil {
 		return nil, useMixed, err
 	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, useMixed, ctxErr
+	}
 
 	if s.cache != nil && canPublish {
 		if err := s.cache.SetSnapshot(fallbackCtx, bucket, writeToken, accounts); err != nil {
@@ -263,8 +275,14 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	if accountID <= 0 {
 		return nil, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if s.cache != nil {
 		account, err := s.cache.GetAccount(ctx, accountID)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] account cache read failed: id=%d err=%v", accountID, err)
 		} else if account != nil {
@@ -286,6 +304,17 @@ func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int
 		return nil, nil
 	}
 	return s.groupRepo.GetByID(ctx, groupID)
+}
+
+// GetGroupByIDLite 获取分组配置但不加载账号计数聚合。
+// 利润门只需要平台、倍率、利润与高峰字段，GetByID 附带的那条账号计数聚合
+// 查询纯属浪费——composite / 模型路由 / fallback 每次装门都要付一次，WS 更是
+// 每个 turn 一次，且发生在「是否启用利润控制」判定之前。
+func (s *SchedulerSnapshotService) GetGroupByIDLite(ctx context.Context, groupID int64) (*Group, error) {
+	if s.groupRepo == nil {
+		return nil, nil
+	}
+	return s.groupRepo.GetByIDLite(ctx, groupID)
 }
 
 // UpdateAccountInCache 立即更新 Redis 中单个账号的数据（用于模型限流后立即生效）
