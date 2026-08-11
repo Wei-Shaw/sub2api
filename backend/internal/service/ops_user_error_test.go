@@ -16,6 +16,9 @@ func TestMapUserErrorCategory(t *testing.T) {
 		{"request", "billing_error", "quota"},
 		{"request", "subscription_error", "quota"},
 		{"request", "invalid_request_error", "invalid_request"},
+		{"request", "image_generation_user_error", "invalid_request"},
+		{"request", "content_policy_violation", "cyber"},
+		{"request", "moderation_blocked", "cyber"},
 		{"routing", "api_error", "service_unavailable"},
 		{"account_auth", "upstream_error", "upstream"},
 		{"upstream", "upstream_error", "upstream"},
@@ -56,7 +59,7 @@ func TestCategoryToFilter(t *testing.T) {
 		t.Fatalf("quota => phases=%v types=%v", phases, types)
 	}
 	phases, types = CategoryToFilter("invalid_request")
-	if len(types) != 1 || types[0] != "invalid_request_error" || len(phases) != 0 {
+	if len(types) != 2 || types[0] != "invalid_request_error" || types[1] != "image_generation_user_error" || len(phases) != 0 {
 		t.Fatalf("invalid_request => phases=%v types=%v", phases, types)
 	}
 	phases, types = CategoryToFilter("other")

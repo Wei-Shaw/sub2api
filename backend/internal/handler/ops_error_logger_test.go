@@ -461,6 +461,7 @@ func TestMarkOpsStreamError_FirstWins(t *testing.T) {
 func TestIsKnownOpsErrorType(t *testing.T) {
 	known := []string{
 		"invalid_request_error",
+		"image_generation_user_error",
 		"authentication_error",
 		"rate_limit_error",
 		"billing_error",
@@ -490,6 +491,7 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 	}{
 		// Known types pass through.
 		{"known invalid_request_error", "invalid_request_error", "", "invalid_request_error"},
+		{"known image_generation_user_error", "image_generation_user_error", "", "image_generation_user_error"},
 		{"known rate_limit_error", "rate_limit_error", "", "rate_limit_error"},
 		{"known upstream_error", "upstream_error", "", "upstream_error"},
 
@@ -516,6 +518,11 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestImageGenerationUserErrorUsesRequestClassification(t *testing.T) {
+	require.Equal(t, "request", classifyOpsPhase("image_generation_user_error", "invalid image prompt", ""))
+	require.Equal(t, "P3", classifyOpsSeverity("image_generation_user_error", http.StatusBadRequest))
 }
 
 func TestClassifyOpsNoAvailableAccountsExcludedFromSLA(t *testing.T) {

@@ -119,6 +119,38 @@
             </figure>
           </div>
 
+          <div
+            v-else-if="entry.task.status === 'failed'"
+            class="min-h-36 border-y border-red-100 bg-red-50/40 p-4 dark:border-red-950/70 dark:bg-red-950/10"
+            data-test="admin-image-task-error"
+          >
+            <div class="flex items-start gap-3">
+              <span class="flex h-9 w-9 flex-none items-center justify-center rounded-md bg-white text-red-600 shadow-sm dark:bg-dark-900 dark:text-red-400">
+                <Icon name="xCircle" size="md" />
+              </span>
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-gray-950 dark:text-white">{{ t('imagePlayground.admin.failureReason') }}</p>
+                <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-300">
+                  {{ errorSummary(entry.task.error) }}
+                </p>
+                <div v-if="errorDetails(entry.task.error).code || errorDetails(entry.task.error).type" class="mt-3 flex flex-wrap gap-2">
+                  <span v-if="errorDetails(entry.task.error).code" class="rounded bg-white px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-800 dark:text-gray-200">
+                    {{ t('imagePlayground.detail.errorCode') }}: {{ errorDetails(entry.task.error).code }}
+                  </span>
+                  <span v-if="errorDetails(entry.task.error).type" class="rounded bg-white px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-800 dark:text-gray-200">
+                    {{ t('imagePlayground.detail.errorType') }}: {{ errorDetails(entry.task.error).type }}
+                  </span>
+                </div>
+                <details v-if="showRawError(entry.task.error)" class="mt-3">
+                  <summary class="cursor-pointer text-xs font-medium text-primary-600 dark:text-primary-400">
+                    {{ t('imagePlayground.detail.fullError') }}
+                  </summary>
+                  <pre class="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-950 p-3 text-xs leading-5 text-gray-100">{{ errorDetails(entry.task.error).raw }}</pre>
+                </details>
+              </div>
+            </div>
+          </div>
+
           <div v-else class="flex min-h-36 items-center justify-center border-y border-gray-100 text-sm text-gray-400 dark:border-dark-800 dark:text-gray-500">
             {{ entry.task.status === 'processing' ? t('imagePlayground.status.generating') : t('imagePlayground.admin.noImages') }}
           </div>
@@ -164,6 +196,7 @@ import {
   type AdminImagePlaygroundTask,
   type ImagePlaygroundTaskStatus,
 } from '@/api/imagePlayground'
+import { parseImageTaskError, type ImageTaskErrorDetails } from '@/utils/imageTaskError'
 
 type PendingDelete =
   | { kind: 'task'; entry: AdminImagePlaygroundTask }
@@ -313,6 +346,22 @@ function statusClass(status: ImagePlaygroundTaskStatus): string {
   if (status === 'completed') return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
   if (status === 'failed') return 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
   return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+}
+
+function errorDetails(error: unknown): ImageTaskErrorDetails {
+  return parseImageTaskError(error, t('imagePlayground.errors.generationFailed'))
+}
+
+function errorSummary(error: unknown): string {
+  const details = errorDetails(error)
+  return details.isContentPolicy
+    ? t('imagePlayground.errors.contentPolicyRejected')
+    : details.message
+}
+
+function showRawError(error: unknown): boolean {
+  const details = errorDetails(error)
+  return Boolean(details.raw) && details.raw !== errorSummary(error)
 }
 
 onMounted(() => {

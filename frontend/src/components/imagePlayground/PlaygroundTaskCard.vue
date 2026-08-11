@@ -5,7 +5,7 @@
     <button
       type="button"
       class="relative block aspect-square w-full overflow-hidden bg-gray-100 text-left dark:bg-dark-900"
-      :disabled="task.status !== 'completed' || !task.images[0]?.url"
+      :disabled="task.status === 'processing' || (task.status === 'completed' && !task.images[0]?.url)"
       @click="$emit('open', task)"
     >
       <img
@@ -40,7 +40,7 @@
           {{ t('imagePlayground.status.failed') }}
         </p>
         <p class="mt-1 line-clamp-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
-          {{ errorMessage }}
+          {{ errorSummary }}
         </p>
       </div>
 
@@ -133,6 +133,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import ExpiryCountdown from '@/components/imagePlayground/ExpiryCountdown.vue'
 import type { ImagePlaygroundTask } from '@/api/imagePlayground'
+import { parseImageTaskError } from '@/utils/imageTaskError'
 
 const props = defineProps<{
   task: ImagePlaygroundTask
@@ -161,19 +162,11 @@ const formattedTime = computed(() => {
   }).format(new Date(timestamp))
 })
 
-const errorMessage = computed(() => {
-  const error = props.task.error
-  if (!error) return t('imagePlayground.errors.generationFailed')
-  if (typeof error === 'string') return error
-  if (typeof error === 'object') {
-    const record = error as Record<string, unknown>
-    if (typeof record.message === 'string') return record.message
-    if (typeof record.error === 'object' && record.error) {
-      const nested = record.error as Record<string, unknown>
-      if (typeof nested.message === 'string') return nested.message
-    }
-  }
-  return t('imagePlayground.errors.generationFailed')
+const errorSummary = computed(() => {
+  const details = parseImageTaskError(props.task.error, t('imagePlayground.errors.generationFailed'))
+  return details.isContentPolicy
+    ? t('imagePlayground.errors.contentPolicyRejected')
+    : details.message
 })
 </script>
 

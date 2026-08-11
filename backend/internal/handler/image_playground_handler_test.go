@@ -90,7 +90,7 @@ func TestImagePlaygroundSubmitCreatesDashboardTask(t *testing.T) {
 	apiKey := &service.APIKey{ID: 9, UserID: 7, GroupID: &groupID, Group: group, Status: service.StatusActive}
 	store := &imageTaskMemoryStoreForPlayground{}
 	tasks := service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
-	async := NewAsyncImageHandler(tasks, nil)
+	async := NewAsyncImageHandler(tasks, nil, nil)
 	release := make(chan struct{})
 	async.execute = func(_ string, c *gin.Context) {
 		<-release
@@ -134,7 +134,7 @@ func TestImagePlaygroundSubmitWithReferenceImageUsesAsyncEdits(t *testing.T) {
 	apiKey := &service.APIKey{ID: 9, UserID: 7, GroupID: &groupID, Group: group, Status: service.StatusActive}
 	store := &imageTaskMemoryStoreForPlayground{}
 	tasks := service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
-	async := NewAsyncImageHandler(tasks, nil)
+	async := NewAsyncImageHandler(tasks, nil, nil)
 	forwarded := make(chan struct {
 		path            string
 		inboundEndpoint string

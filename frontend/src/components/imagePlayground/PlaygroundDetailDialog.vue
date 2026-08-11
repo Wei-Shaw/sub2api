@@ -21,6 +21,39 @@
             :expires-at="task.expires_at"
             :now="now"
           />
+          <div
+            v-else-if="task.status === 'failed'"
+            class="absolute inset-0 flex items-center justify-center p-6 sm:p-10"
+            data-test="image-task-error"
+          >
+            <div class="w-full max-w-2xl border border-red-200 bg-white p-5 shadow-sm dark:border-red-900/70 dark:bg-dark-900 sm:p-6">
+              <div class="flex items-start gap-3">
+                <span class="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-md bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400">
+                  <Icon name="xCircle" size="md" />
+                </span>
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-gray-950 dark:text-white">{{ t('imagePlayground.detail.failureReason') }}</p>
+                  <p class="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-300">{{ errorSummary }}</p>
+                </div>
+              </div>
+
+              <div v-if="errorDetails.code || errorDetails.type" class="mt-4 flex flex-wrap gap-2">
+                <span v-if="errorDetails.code" class="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+                  {{ t('imagePlayground.detail.errorCode') }}: {{ errorDetails.code }}
+                </span>
+                <span v-if="errorDetails.type" class="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-200">
+                  {{ t('imagePlayground.detail.errorType') }}: {{ errorDetails.type }}
+                </span>
+              </div>
+
+              <details v-if="showRawError" class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700">
+                <summary class="cursor-pointer text-xs font-medium text-primary-600 dark:text-primary-400">
+                  {{ t('imagePlayground.detail.fullError') }}
+                </summary>
+                <pre class="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-md bg-gray-950 p-3 text-xs leading-5 text-gray-100">{{ errorDetails.raw }}</pre>
+              </details>
+            </div>
+          </div>
         </div>
 
         <div v-if="task.images.length > 1" class="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -76,7 +109,7 @@
         </dl>
 
         <div class="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
-          <button type="button" class="btn btn-primary w-full" @click="$emit('download', task, selectedIndex)">
+          <button v-if="selectedImage" type="button" class="btn btn-primary w-full" @click="$emit('download', task, selectedIndex)">
             <Icon name="download" size="sm" class="mr-2" />
             {{ t('imagePlayground.actions.download') }}
           </button>
@@ -84,7 +117,7 @@
             <Icon name="copy" size="sm" class="mr-2" />
             {{ t('imagePlayground.actions.reuse') }}
           </button>
-          <button type="button" class="btn btn-danger w-full sm:col-span-2 lg:col-span-1" @click="$emit('deleteImage', task, selectedIndex)">
+          <button v-if="selectedImage" type="button" class="btn btn-danger w-full sm:col-span-2 lg:col-span-1" @click="$emit('deleteImage', task, selectedIndex)">
             <Icon name="trash" size="sm" class="mr-2" />
             {{ t('imagePlayground.actions.deleteImage') }}
           </button>
@@ -101,6 +134,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ExpiryCountdown from '@/components/imagePlayground/ExpiryCountdown.vue'
 import type { ImagePlaygroundTask } from '@/api/imagePlayground'
+import { parseImageTaskError } from '@/utils/imageTaskError'
 
 const props = defineProps<{
   show: boolean
@@ -130,6 +164,14 @@ watch(
 )
 
 const selectedImage = computed(() => props.task?.images.find((image) => image.index === selectedIndex.value))
+const errorDetails = computed(() => parseImageTaskError(
+  props.task?.error,
+  t('imagePlayground.errors.generationFailed'),
+))
+const errorSummary = computed(() => errorDetails.value.isContentPolicy
+  ? t('imagePlayground.errors.contentPolicyRejected')
+  : errorDetails.value.message)
+const showRawError = computed(() => Boolean(errorDetails.value.raw) && errorDetails.value.raw !== errorSummary.value)
 
 function toDate(timestamp: number): Date {
   return new Date(timestamp < 10_000_000_000 ? timestamp * 1000 : timestamp)

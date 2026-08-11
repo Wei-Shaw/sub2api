@@ -152,4 +152,40 @@ describe('ImagePlaygroundAdminView', () => {
 		expect(getPreview).toHaveBeenCalledTimes(4)
 		wrapper.unmount()
 	})
+
+  it('shows the complete failure reason for an image task without a preview', async () => {
+    listTasks.mockResolvedValue({
+      tasks: [{
+        task: {
+          id: 'imgtask_failed', status: 'failed', platform: 'openai', model: 'gpt-image-2',
+          prompt_preview: 'A rejected prompt', images: [], created_at: 1_700_000_000,
+          error: {
+            type: 'image_generation_user_error',
+            code: 'content_policy_violation',
+            message: 'The prompt may contain sexual content or nudity.',
+          },
+        },
+        user_id: 483, api_key_id: 372, storage_bytes: 0, image_sizes: [],
+      }],
+      page: 1, page_size: 24, total: 1, total_images: 0, storage_bytes: 0,
+    })
+
+    const wrapper = mount(ImagePlaygroundAdminView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<main><slot /></main>' },
+          Icon: true,
+          Pagination: true,
+          ConfirmDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="admin-image-task-error"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('imagePlayground.errors.contentPolicyRejected')
+    expect(wrapper.text()).toContain('content_policy_violation')
+    expect(wrapper.text()).toContain('sexual content or nudity')
+    expect(getPreview).not.toHaveBeenCalled()
+  })
 })

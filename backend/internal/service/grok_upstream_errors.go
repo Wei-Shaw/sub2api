@@ -34,6 +34,13 @@ func isGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
 	return grokContentPolicyMessage(string(responseBody))
 }
 
+// IsGrokContentPolicyRejection exposes the canonical Grok safety matcher to
+// handler-level flows such as asynchronous image task finalization. Keeping one
+// matcher prevents sync and async paths from drifting as xAI adds error shapes.
+func IsGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
+	return isGrokContentPolicyRejection(statusCode, responseBody)
+}
+
 func grokStructuredAccountAccessMarker(value any) bool {
 	switch node := value.(type) {
 	case map[string]any:

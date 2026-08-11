@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -22,14 +24,21 @@ import (
 )
 
 type AsyncImageHandler struct {
-	tasks   *service.ImageTaskService
-	openAI  *OpenAIGatewayHandler
-	execute func(platform string, c *gin.Context)
+	tasks       *service.ImageTaskService
+	openAI      *OpenAIGatewayHandler
+	execute     func(platform string, c *gin.Context)
+	recordError func(context.Context, *service.OpsInsertErrorLogInput) error
 }
 
-func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGatewayHandler) *AsyncImageHandler {
+func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGatewayHandler, ops *service.OpsService) *AsyncImageHandler {
 	h := &AsyncImageHandler{tasks: tasks, openAI: openAI}
 	h.execute = h.executeWithGateway
+	if ops != nil {
+		h.recordError = func(_ context.Context, entry *service.OpsInsertErrorLogInput) error {
+			enqueueOpsErrorLog(ops, entry)
+			return nil
+		}
+	}
 	return h
 }
 
@@ -124,7 +133,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+	go h.run(task.ID, platform, metadata, taskCtx, recorder, cancel)
 }
 
 func (h *AsyncImageHandler) imageTaskMetadataFromRequest(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) service.ImageTaskMetadata {
@@ -273,19 +282,19 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 	h.openAI.Images(c)
 }
 
-func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
+func (h *AsyncImageHandler) run(taskID, platform string, metadata service.ImageTaskMetadata, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
 	defer cancel()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
-			h.failTask(taskID, http.StatusInternalServerError, imageTaskErrorPayload("api_error", "image generation task panicked"))
+			h.failTask(taskCtx, taskID, metadata, http.StatusInternalServerError, imageTaskErrorPayload("api_error", "image generation task panicked"))
 		}
 	}()
 
 	h.execute(platform, taskCtx)
 	body := bytes.TrimSpace(recorder.Body.Bytes())
 	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
-		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
+		h.failTask(taskCtx, taskID, metadata, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
 		return
 	}
 	statusCode := recorder.Code
@@ -294,21 +303,176 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 	}
 	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
 		if len(body) == 0 || !json.Valid(body) {
-			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
+			h.failTask(taskCtx, taskID, metadata, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
 			return
 		}
 		if err := h.tasks.Complete(context.Background(), taskID, statusCode, json.RawMessage(body)); err != nil {
 			logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
+			var completionFailure *service.ImageTaskCompletionFailure
+			if errors.As(err, &completionFailure) {
+				if completionFailure.Stored {
+					if recordErr := h.recordAsyncImageFailure(taskCtx, metadata, completionFailure.StatusCode, completionFailure.TaskError); recordErr != nil {
+						logger.L().Error("image_task.ops_error_store_failed", zap.String("task_id", taskID), zap.Error(recordErr))
+					}
+					return
+				}
+				h.failTask(taskCtx, taskID, metadata, completionFailure.StatusCode, completionFailure.TaskError)
+				return
+			}
+			h.failTask(taskCtx, taskID, metadata, http.StatusInternalServerError,
+				imageTaskErrorPayload("api_error", "failed to finalize generated image task"))
 		}
 		return
 	}
-	h.failTask(taskID, statusCode, extractImageTaskError(body))
+	h.failTask(taskCtx, taskID, metadata, statusCode, extractImageTaskError(body))
 }
 
-func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json.RawMessage) {
+func (h *AsyncImageHandler) failTask(taskCtx *gin.Context, taskID string, metadata service.ImageTaskMetadata, statusCode int, taskErr json.RawMessage) {
 	if err := h.tasks.Fail(context.Background(), taskID, statusCode, taskErr); err != nil {
 		logger.L().Error("image_task.failure_store_failed", zap.String("task_id", taskID), zap.Error(err))
 	}
+	if err := h.recordAsyncImageFailure(taskCtx, metadata, statusCode, taskErr); err != nil {
+		logger.L().Error("image_task.ops_error_store_failed", zap.String("task_id", taskID), zap.Error(err))
+	}
+}
+
+func (h *AsyncImageHandler) recordAsyncImageFailure(c *gin.Context, metadata service.ImageTaskMetadata, statusCode int, taskErr json.RawMessage) error {
+	if h == nil || h.recordError == nil || c == nil || c.Request == nil {
+		return nil
+	}
+
+	errorBody, _ := json.Marshal(struct {
+		Error json.RawMessage `json:"error"`
+	}{Error: taskErr})
+	parsed := parseOpsErrorResponse(errorBody)
+	normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
+	securityRejection := isAsyncImageSecurityRejection(metadata.Platform, statusCode, taskErr, parsed)
+	clientRejection := isAsyncImageClientRejection(statusCode, parsed, securityRejection)
+	if securityRejection {
+		normalizedType = "content_policy_violation"
+		if code := strings.ToLower(strings.TrimSpace(parsed.Code)); code == "content_policy_violation" || code == "moderation_blocked" {
+			normalizedType = code
+		}
+	}
+
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, statusCode)
+	if clientRejection {
+		phase = "request"
+		errorOwner = service.OpsResponsibilityClient
+		errorSource = "client_request"
+		isBusinessLimited = false
+	}
+
+	apiKey := getOpsAPIKey(c)
+	modelName := strings.TrimSpace(metadata.Model)
+	if value, ok := c.Get(opsModelKey); ok {
+		if model, ok := value.(string); ok && strings.TrimSpace(model) != "" {
+			modelName = strings.TrimSpace(model)
+		}
+	}
+	platform := strings.TrimSpace(metadata.Platform)
+	if apiKey != nil && apiKey.Group != nil && strings.TrimSpace(apiKey.Group.Platform) != "" {
+		platform = strings.TrimSpace(apiKey.Group.Platform)
+	}
+
+	requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+	clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+	requestType := int16(service.RequestTypeSync)
+	entry := &service.OpsInsertErrorLogInput{
+		RequestID:         strings.TrimSpace(requestID),
+		ClientRequestID:   strings.TrimSpace(clientRequestID),
+		Platform:          platform,
+		Model:             modelName,
+		RequestPath:       c.Request.URL.Path,
+		InboundEndpoint:   GetInboundEndpoint(c),
+		UpstreamEndpoint:  GetUpstreamEndpoint(c, platform),
+		RequestedModel:    modelName,
+		RequestType:       &requestType,
+		UserAgent:         c.GetHeader("User-Agent"),
+		ErrorPhase:        phase,
+		ErrorType:         normalizedType,
+		Severity:          classifyOpsSeverity(normalizedType, statusCode),
+		StatusCode:        statusCode,
+		IsBusinessLimited: isBusinessLimited,
+		ErrorMessage:      parsed.Message,
+		ErrorBody:         string(errorBody),
+		ErrorSource:       errorSource,
+		ErrorOwner:        errorOwner,
+		CreatedAt:         time.Now(),
+	}
+	applyOpsLatencyFieldsFromContext(c, entry)
+	applyOpsUpstreamFieldsFromContext(c, entry)
+
+	if clientRejection {
+		// The final image result is a client request rejection. Preserve the
+		// selected account and raw response, but do not let attempt metadata turn
+		// a content-policy/validation rejection into provider downtime.
+		entry.UpstreamStatusCode = nil
+		entry.UpstreamErrorMessage = nil
+		entry.UpstreamErrorDetail = nil
+		entry.UpstreamErrors = nil
+	}
+	if value, ok := c.Get(opsAccountIDKey); ok {
+		if accountID, ok := value.(int64); ok && accountID > 0 {
+			entry.AccountID = &accountID
+		}
+	}
+	if value, ok := c.Get(opsUpstreamModelKey); ok {
+		if upstreamModel, ok := value.(string); ok {
+			entry.UpstreamModel = strings.TrimSpace(upstreamModel)
+		}
+	}
+	if apiKey != nil {
+		entry.APIKeyID = &apiKey.ID
+		entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
+		if apiKey.UserID > 0 {
+			userID := apiKey.UserID
+			entry.UserID = &userID
+		}
+		if apiKey.GroupID != nil {
+			entry.GroupID = apiKey.GroupID
+		}
+	}
+	if entry.GroupID == nil && metadata.GroupID > 0 {
+		groupID := metadata.GroupID
+		entry.GroupID = &groupID
+	}
+	if clientIP := strings.TrimSpace(ip.ExactClientIP(c)); clientIP != "" {
+		entry.ClientIP = &clientIP
+	}
+	return h.recordError(context.Background(), entry)
+}
+
+func isAsyncImageSecurityRejection(platform string, statusCode int, taskErr json.RawMessage, parsed parsedOpsError) bool {
+	if strings.EqualFold(strings.TrimSpace(platform), service.PlatformGrok) &&
+		service.IsGrokContentPolicyRejection(statusCode, taskErr) {
+		return true
+	}
+	value := strings.ToLower(strings.TrimSpace(parsed.ErrorType + " " + parsed.Code + " " + parsed.Message))
+	return strings.Contains(value, "content_policy_violation") ||
+		strings.Contains(value, "moderation_blocked") ||
+		strings.Contains(value, "content_filter") ||
+		strings.Contains(value, "content policy") ||
+		strings.Contains(value, "content moderation") ||
+		strings.Contains(value, "image is sensitive") ||
+		strings.Contains(value, "text is sensitive") ||
+		strings.Contains(value, "moderation feature is not available") ||
+		strings.Contains(value, "prohibited content") ||
+		strings.Contains(value, "forbidden content")
+}
+
+func isAsyncImageClientRejection(statusCode int, parsed parsedOpsError, securityRejection bool) bool {
+	if securityRejection {
+		return statusCode == http.StatusBadRequest || statusCode == http.StatusForbidden ||
+			statusCode == http.StatusUnprocessableEntity
+	}
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	errType := strings.ToLower(strings.TrimSpace(parsed.ErrorType))
+	code := strings.ToLower(strings.TrimSpace(parsed.Code))
+	return errType == "image_generation_user_error" || errType == "invalid_request_error" ||
+		strings.Contains(code, "invalid_request") || strings.Contains(code, "invalid_parameter")
 }
 
 func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {

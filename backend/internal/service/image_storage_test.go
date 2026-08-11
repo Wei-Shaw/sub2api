@@ -286,7 +286,12 @@ func TestImageTaskServiceCompleteOffloadFailureMarksFailed(t *testing.T) {
 
 	b64 := base64.StdEncoding.EncodeToString(pngBytes)
 	result := json.RawMessage(`{"data":[{"b64_json":"` + b64 + `"}]}`)
-	require.NoError(t, svc.Complete(context.Background(), created.ID, http.StatusOK, result))
+	err = svc.Complete(context.Background(), created.ID, http.StatusOK, result)
+	var completionFailure *ImageTaskCompletionFailure
+	require.ErrorAs(t, err, &completionFailure)
+	require.True(t, completionFailure.Stored)
+	require.Equal(t, http.StatusBadGateway, completionFailure.StatusCode)
+	require.Contains(t, string(completionFailure.TaskError), "failed to store generated image")
 
 	got, err := svc.Get(context.Background(), owner, created.ID)
 	require.NoError(t, err)

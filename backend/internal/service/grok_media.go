@@ -1253,7 +1253,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg, "content_policy_violation")
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
@@ -1328,15 +1328,21 @@ func grokMediaErrorType(statusCode int) string {
 	}
 }
 
-func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string) {
+func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string, code ...string) {
 	if c == nil || c.Writer == nil || c.Writer.Written() {
 		return
 	}
+	errorPayload := gin.H{
+		"type":    strings.TrimSpace(errType),
+		"message": strings.TrimSpace(message),
+	}
+	if len(code) > 0 {
+		if value := strings.TrimSpace(code[0]); value != "" {
+			errorPayload["code"] = value
+		}
+	}
 	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    strings.TrimSpace(errType),
-			"message": strings.TrimSpace(message),
-		},
+		"error": errorPayload,
 	})
 }
 

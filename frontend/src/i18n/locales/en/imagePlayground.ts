@@ -58,11 +58,15 @@ export default {
       description: 'Enter a prompt below. Generated images will appear here and continue running after you leave the page.',
       filtered: 'No tasks with this status yet',
     },
-    detail: { title: 'Image details', prompt: 'Prompt', createdAt: 'Created', expiresAt: 'Available until' },
+    detail: {
+      title: 'Image details', prompt: 'Prompt', createdAt: 'Created', expiresAt: 'Available until',
+      failureReason: 'Why generation failed', errorCode: 'Error code', errorType: 'Error type', fullError: 'View complete raw error',
+    },
     messages: { submitted: 'Task submitted and generating in the background', completed: 'Image generation completed', deleted: 'Deleted {count} image tasks', imageDeleted: 'Image deleted' },
     errors: {
       loadFailed: 'Could not load Image Playground',
       generationFailed: 'The provider did not generate an image. Adjust the prompt or settings and try again.',
+      contentPolicyRejected: 'The prompt did not meet the content policy. Revise descriptions involving nudity, sexual content, violence, or other sensitive material and try again.',
       deleteFailed: '{count} tasks could not be deleted or are still generating and remain in the playground.',
     },
     unavailable: {
@@ -106,6 +110,7 @@ export default {
       createdAt: 'Created',
       empty: 'No retained image tasks',
       noImages: 'No images are available for this task',
+      failureReason: 'Complete failure reason',
       deleteTask: 'Delete task',
       deleteTaskTitle: 'Delete this image task?',
       deleteTaskMessage: 'Every image and record in this task will be permanently deleted and cannot be recovered.',

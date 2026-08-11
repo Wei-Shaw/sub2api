@@ -58,11 +58,15 @@ export default {
       description: '在下方输入提示词。生成的图片会在这里排列，离开页面后也能继续生成。',
       filtered: '这个状态下还没有任务',
     },
-    detail: { title: '图片详情', prompt: '提示词', createdAt: '创建时间', expiresAt: '保留至' },
+    detail: {
+      title: '图片详情', prompt: '提示词', createdAt: '创建时间', expiresAt: '保留至',
+      failureReason: '生成失败原因', errorCode: '错误码', errorType: '错误类型', fullError: '查看完整原始错误',
+    },
     messages: { submitted: '任务已提交，图片将在后台生成', completed: '图片生成完成', deleted: '已删除 {count} 个图片任务', imageDeleted: '图片已删除' },
     errors: {
       loadFailed: '图片工作台加载失败',
       generationFailed: '上游没有成功生成图片，请调整提示词或参数后重试',
+      contentPolicyRejected: '提示词不符合内容政策，请调整涉及裸露、性暗示、暴力或其他敏感内容的描述后重试。',
       deleteFailed: '{count} 个任务删除失败或仍在生成，已保留在工作台中',
     },
     unavailable: {
@@ -106,6 +110,7 @@ export default {
       createdAt: '创建时间',
       empty: '当前没有保留中的图片任务',
       noImages: '该任务没有可用图片',
+      failureReason: '完整失败原因',
       deleteTask: '删除整个任务',
       deleteTaskTitle: '删除整个图片任务？',
       deleteTaskMessage: '该任务的全部图片和记录都会永久删除，无法恢复。',

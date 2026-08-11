@@ -118,6 +118,33 @@ type ImageTaskMetadata struct {
 	InputImageCount int
 }
 
+// ImageTaskCompletionFailure reports a successful upstream response that could
+// not be finalized locally. When Stored is true, Complete already persisted the
+// task as failed; callers only need to emit their external error/audit record.
+type ImageTaskCompletionFailure struct {
+	StatusCode int
+	TaskError  json.RawMessage
+	Stored     bool
+	Cause      error
+}
+
+func (e *ImageTaskCompletionFailure) Error() string {
+	if e == nil {
+		return "image task completion failed"
+	}
+	if e.Cause != nil {
+		return fmt.Sprintf("image task completion failed: %v", e.Cause)
+	}
+	return "image task completion failed"
+}
+
+func (e *ImageTaskCompletionFailure) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 type ImageTaskDownload struct {
 	Data        []byte
 	ContentType string
@@ -698,7 +725,18 @@ func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode i
 		if err != nil {
 			// 转存失败不回退存 base64，避免大 blob 撑爆 Redis：直接把任务标记为失败。
 			logger.L().Error("image_task.offload_failed", zap.String("task_id", id), zap.Error(err))
-			return s.Fail(ctx, id, http.StatusBadGateway, imageTaskErrorJSON("api_error", "failed to store generated image to object storage"))
+			taskErr := imageTaskErrorJSON("api_error", "failed to store generated image to object storage")
+			failure := &ImageTaskCompletionFailure{
+				StatusCode: http.StatusBadGateway,
+				TaskError:  taskErr,
+				Cause:      err,
+			}
+			if failErr := s.Fail(ctx, id, failure.StatusCode, taskErr); failErr != nil {
+				failure.Cause = errors.Join(err, failErr)
+				return failure
+			}
+			failure.Stored = true
+			return failure
 		}
 		result = rewritten
 		storageKeys = make([]string, len(objects))

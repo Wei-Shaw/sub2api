@@ -1514,6 +1514,7 @@ func guessPlatformFromPath(path string) string {
 func isKnownOpsErrorType(t string) bool {
 	switch t {
 	case "invalid_request_error",
+		"image_generation_user_error",
 		"authentication_error",
 		"rate_limit_error",
 		"billing_error",
@@ -1563,7 +1564,7 @@ func classifyOpsPhase(errType, message, code string) string {
 			return "request"
 		}
 		return "upstream"
-	case "invalid_request_error":
+	case "invalid_request_error", "image_generation_user_error":
 		return "request"
 	case "upstream_error", "overloaded_error":
 		return "upstream"
@@ -1579,7 +1580,7 @@ func classifyOpsPhase(errType, message, code string) string {
 
 func classifyOpsSeverity(errType string, status int) string {
 	switch errType {
-	case "invalid_request_error", "authentication_error", "billing_error", "subscription_error":
+	case "invalid_request_error", "image_generation_user_error", "authentication_error", "billing_error", "subscription_error":
 		return "P3"
 	}
 	if status >= 500 {

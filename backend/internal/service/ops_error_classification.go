@@ -474,11 +474,13 @@ func isOpsClientCancellation(status int, message string) bool {
 }
 
 func isOpsExplicitLocalSecurityRejection(errType, message string) bool {
-	return strings.HasPrefix(errType, "cyber_policy") || strings.Contains(message, "turnstile verification")
+	return strings.HasPrefix(errType, "cyber_policy") || errType == "content_policy_violation" ||
+		errType == "moderation_blocked" || strings.Contains(message, "turnstile verification")
 }
 
 func isOpsSecurityPolicyMessage(message string) bool {
 	return strings.Contains(message, "content policy") || strings.Contains(message, "security policy") ||
+		strings.Contains(message, "content_policy_violation") || strings.Contains(message, "moderation_blocked") ||
 		strings.Contains(message, "cyber policy") || strings.Contains(message, "cyber-security policy") ||
 		strings.Contains(message, "cybersecurity risk")
 }
