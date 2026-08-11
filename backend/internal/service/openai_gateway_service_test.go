@@ -472,6 +472,17 @@ func TestExtractOpenAIUsage_CapturesImageInputTokens(t *testing.T) {
 	require.Zero(t, tu.ImageInputTokens)
 REDACTED
 
+func TestExtractOpenAIUsage_ReadsClineDataEnvelope(t *testing.T) {
+	body := []byte(`{"data":{"choices":[{"message":{"content":"OK"REDACTEDREDACTED],"usage":{"prompt_tokens":8,"completion_tokens":27,"total_tokens":35,"prompt_tokens_details":{"cached_tokens":4REDACTEDREDACTEDREDACTED,"success":trueREDACTED`)
+
+	usage, ok := extractOpenAIUsageFromJSONBytes(body)
+
+	require.True(t, ok)
+	require.Equal(t, 8, usage.InputTokens)
+	require.Equal(t, 27, usage.OutputTokens)
+	require.Equal(t, 4, usage.CacheReadInputTokens)
+REDACTED
+
 func TestOpenAIGatewayService_BindHTTPResponseAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
