@@ -24,8 +24,10 @@ import (
 // ─── Mocks ───
 
 type mockSettingRepo struct {
-	mu   sync.Mutex
-	data map[string]string
+	mu            sync.Mutex
+	data          map[string]string
+	getValueErr   error
+	getValueCalls int
 }
 
 func newMockSettingRepo() *mockSettingRepo {
@@ -45,6 +47,10 @@ func (m *mockSettingRepo) Get(_ context.Context, key string) (*Setting, error) {
 func (m *mockSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.getValueCalls++
+	if m.getValueErr != nil {
+		return "", m.getValueErr
+	}
 	v, ok := m.data[key]
 	if !ok {
 		return "", nil
