@@ -218,7 +218,7 @@ REDACTED
 	if clientStream {
 		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 REDACTED else {
-		result, forwardErr = s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 REDACTED
 	if result != nil {
 		addOpenAIUsage(&result.Usage, bridgeUsage)
@@ -420,6 +420,7 @@ REDACTED
 func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -445,6 +446,11 @@ REDACTED
 	var usage OpenAIUsage
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
+REDACTED
+	responseModel := gjson.GetBytes(respBody, "model").String()
+	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
+		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
+		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 REDACTED
 
 	if s.responseHeaderFilter != nil {
