@@ -6,19 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
-	"sync"
 )
 
 const (
-	HomeStyleClassic = "classic"
-	HomeStyleCompact = "compact"
-	HomeStyleStudio  = "studio"
+	HomeStyleClassic     = "classic"
+	HomeStyleCompact     = "compact"
+	HomeStyleStudio      = "studio"
 	AuthPageStyleClassic = "classic"
 	AuthPageStyleStudio  = "studio"
 
