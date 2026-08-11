@@ -119,7 +119,25 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+		registerWeb3DepositRoutes(admin, h, stepUpAuth)
 	}
+}
+
+func registerWeb3DepositRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	if h.Admin.Web3Deposit == nil {
+		return
+	}
+	group := admin.Group("/web3-deposits")
+	group.GET("", h.Admin.Web3Deposit.List)
+	group.GET("/stats", h.Admin.Web3Deposit.Stats)
+	group.GET("/runtime", h.Admin.Web3Deposit.Runtime)
+	group.GET("/rescan-jobs", h.Admin.Web3Deposit.ListRescanJobs)
+	group.GET("/rescan-jobs/:jobId", h.Admin.Web3Deposit.GetRescanJob)
+	group.GET("/:id", h.Admin.Web3Deposit.Get)
+	group.POST("/:id/approve", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Approve)
+	group.POST("/:id/ignore", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Ignore)
+	group.POST("/:id/retry", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Retry)
+	group.POST("/rescan", gin.HandlerFunc(stepUpAuth), h.Admin.Web3Deposit.Rescan)
 }
 
 func registerPromptAuditRoutes(admin *gin.RouterGroup, h *handler.Handlers) {

@@ -2064,6 +2064,219 @@ var (
 			},
 		},
 	}
+	// Web3BalanceTransfersColumns holds the columns for the "web3_balance_transfers" table.
+	Web3BalanceTransfersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "web3_balance_id", Type: field.TypeInt64},
+		{Name: "amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "web3_balance_before", Type: field.TypeString, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "web3_balance_after", Type: field.TypeString, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "user_balance_before", Type: field.TypeString, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "user_balance_after", Type: field.TypeString, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "idempotency_key", Type: field.TypeString, Unique: true, Size: 180},
+		{Name: "metadata", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3BalanceTransfersTable holds the schema information for the "web3_balance_transfers" table.
+	Web3BalanceTransfersTable = &schema.Table{
+		Name:       "web3_balance_transfers",
+		Columns:    Web3BalanceTransfersColumns,
+		PrimaryKey: []*schema.Column{Web3BalanceTransfersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3balancetransfer_user_id_created_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3BalanceTransfersColumns[1], Web3BalanceTransfersColumns[10], Web3BalanceTransfersColumns[0]},
+			},
+			{
+				Name:    "web3balancetransfer_web3_balance_id_created_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3BalanceTransfersColumns[2], Web3BalanceTransfersColumns[10], Web3BalanceTransfersColumns[0]},
+			},
+		},
+	}
+	// Web3DepositsColumns holds the columns for the "web3_deposits" table.
+	Web3DepositsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "deposit_address_id", Type: field.TypeInt64},
+		{Name: "chain_id", Type: field.TypeInt64},
+		{Name: "token_contract", Type: field.TypeString, Size: 42},
+		{Name: "tx_hash", Type: field.TypeString, Size: 66},
+		{Name: "log_index", Type: field.TypeInt64},
+		{Name: "block_number", Type: field.TypeInt64},
+		{Name: "block_hash", Type: field.TypeString, Size: 66},
+		{Name: "from_address", Type: field.TypeString, Size: 42},
+		{Name: "to_address", Type: field.TypeString, Size: 42},
+		{Name: "raw_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(78,0)"}},
+		{Name: "token_decimals", Type: field.TypeInt16},
+		{Name: "token_amount", Type: field.TypeString, SchemaType: map[string]string{"postgres": "numeric(78,6)"}},
+		{Name: "credited_amount", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "detected"},
+		{Name: "review_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "failure_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "retry_count", Type: field.TypeInt32, Default: 0},
+		{Name: "next_retry_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "detected_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finalized_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "credited_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3DepositsTable holds the schema information for the "web3_deposits" table.
+	Web3DepositsTable = &schema.Table{
+		Name:       "web3_deposits",
+		Columns:    Web3DepositsColumns,
+		PrimaryKey: []*schema.Column{Web3DepositsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3deposit_chain_id_tx_hash_log_index",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositsColumns[5], Web3DepositsColumns[7], Web3DepositsColumns[8]},
+			},
+			{
+				Name:    "web3deposit_status_next_retry_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[17], Web3DepositsColumns[21], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_user_id_created_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[3], Web3DepositsColumns[1], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_block_number_id",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[9], Web3DepositsColumns[0]},
+			},
+			{
+				Name:    "web3deposit_deposit_address_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositsColumns[4], Web3DepositsColumns[1]},
+			},
+		},
+	}
+	// Web3DepositAddressesColumns holds the columns for the "web3_deposit_addresses" table.
+	Web3DepositAddressesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "wallet_id", Type: field.TypeString, Size: 64},
+		{Name: "derivation_index", Type: field.TypeInt64},
+		{Name: "address", Type: field.TypeString, Size: 42},
+		{Name: "normalized_address", Type: field.TypeString, Size: 42},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "allocated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "disabled_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_deposit_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3DepositAddressesTable holds the schema information for the "web3_deposit_addresses" table.
+	Web3DepositAddressesTable = &schema.Table{
+		Name:       "web3_deposit_addresses",
+		Columns:    Web3DepositAddressesColumns,
+		PrimaryKey: []*schema.Column{Web3DepositAddressesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3depositaddress_user_id_wallet_id",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[3], Web3DepositAddressesColumns[4]},
+			},
+			{
+				Name:    "web3depositaddress_wallet_id_derivation_index",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[4], Web3DepositAddressesColumns[5]},
+			},
+			{
+				Name:    "web3depositaddress_normalized_address",
+				Unique:  true,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[7]},
+			},
+			{
+				Name:    "web3depositaddress_user_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3DepositAddressesColumns[3], Web3DepositAddressesColumns[1]},
+			},
+		},
+	}
+	// Web3DepositWalletsColumns holds the columns for the "web3_deposit_wallets" table.
+	Web3DepositWalletsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "wallet_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "account_path", Type: field.TypeString, Size: 64},
+		{Name: "xpub_fingerprint", Type: field.TypeString, Size: 64},
+		{Name: "next_derivation_index", Type: field.TypeInt64, Default: 0},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+	}
+	// Web3DepositWalletsTable holds the schema information for the "web3_deposit_wallets" table.
+	Web3DepositWalletsTable = &schema.Table{
+		Name:       "web3_deposit_wallets",
+		Columns:    Web3DepositWalletsColumns,
+		PrimaryKey: []*schema.Column{Web3DepositWalletsColumns[0]},
+	}
+	// Web3ScannerCursorsColumns holds the columns for the "web3_scanner_cursors" table.
+	Web3ScannerCursorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "scanner_key", Type: field.TypeString, Unique: true, Size: 128},
+		{Name: "chain_id", Type: field.TypeInt64},
+		{Name: "token_contract", Type: field.TypeString, Size: 42},
+		{Name: "scan_start_block", Type: field.TypeInt64},
+		{Name: "last_scanned_block", Type: field.TypeInt64},
+		{Name: "last_finalized_block", Type: field.TypeInt64},
+		{Name: "lease_owner", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_token", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "last_success_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// Web3ScannerCursorsTable holds the schema information for the "web3_scanner_cursors" table.
+	Web3ScannerCursorsTable = &schema.Table{
+		Name:       "web3_scanner_cursors",
+		Columns:    Web3ScannerCursorsColumns,
+		PrimaryKey: []*schema.Column{Web3ScannerCursorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3scannercursor_chain_id_token_contract",
+				Unique:  true,
+				Columns: []*schema.Column{Web3ScannerCursorsColumns[4], Web3ScannerCursorsColumns[5]},
+			},
+			{
+				Name:    "web3scannercursor_lease_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{Web3ScannerCursorsColumns[11]},
+			},
+		},
+	}
+	// Web3UserBalancesColumns holds the columns for the "web3_user_balances" table.
+	Web3UserBalancesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "asset_key", Type: field.TypeString, Size: 64},
+		{Name: "available_amount", Type: field.TypeString, Default: "0", SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "total_deposited", Type: field.TypeString, Default: "0", SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "total_transferred", Type: field.TypeString, Default: "0", SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "balance_version", Type: field.TypeInt64, Default: 0},
+	}
+	// Web3UserBalancesTable holds the schema information for the "web3_user_balances" table.
+	Web3UserBalancesTable = &schema.Table{
+		Name:       "web3_user_balances",
+		Columns:    Web3UserBalancesColumns,
+		PrimaryKey: []*schema.Column{Web3UserBalancesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "web3userbalance_user_id_asset_key",
+				Unique:  true,
+				Columns: []*schema.Column{Web3UserBalancesColumns[3], Web3UserBalancesColumns[4]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
@@ -2105,6 +2318,12 @@ var (
 		UserAttributeValuesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
+		Web3BalanceTransfersTable,
+		Web3DepositsTable,
+		Web3DepositAddressesTable,
+		Web3DepositWalletsTable,
+		Web3ScannerCursorsTable,
+		Web3UserBalancesTable,
 	}
 )
 
@@ -2261,5 +2480,23 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
+	}
+	Web3BalanceTransfersTable.Annotation = &entsql.Annotation{
+		Table: "web3_balance_transfers",
+	}
+	Web3DepositsTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposits",
+	}
+	Web3DepositAddressesTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposit_addresses",
+	}
+	Web3DepositWalletsTable.Annotation = &entsql.Annotation{
+		Table: "web3_deposit_wallets",
+	}
+	Web3ScannerCursorsTable.Annotation = &entsql.Annotation{
+		Table: "web3_scanner_cursors",
+	}
+	Web3UserBalancesTable.Annotation = &entsql.Annotation{
+		Table: "web3_user_balances",
 	}
 }

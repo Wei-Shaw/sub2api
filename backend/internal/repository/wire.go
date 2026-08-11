@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -89,6 +90,35 @@ var ProviderSet = wire.NewSet(
 	NewOpsRepository,
 	NewAuditLogRepository,
 	NewWeb3IdentityRepository,
+	NewWeb3DepositWalletRepository,
+	NewWeb3DepositAddressRepository,
+	NewWeb3DepositRepository,
+	NewWeb3ScannerCursorRepository,
+	NewWeb3ScannerBatchRepository,
+	NewWeb3FinalizerBatchRepository,
+	NewWeb3UserBalanceRepository,
+	NewWeb3BalanceTransferRepository,
+	NewWeb3AccountingRepository,
+	NewWeb3CreditJobRepository,
+	NewWeb3RescanJobRepository,
+	wire.Bind(new(web3deposit.WalletMetadataStore), new(*Web3DepositWalletRepository)),
+	wire.Bind(new(web3deposit.DerivationIndexReserver), new(*Web3DepositWalletRepository)),
+	wire.Bind(new(web3deposit.DepositAddressStore), new(*Web3DepositAddressRepository)),
+	wire.Bind(new(web3deposit.UserDepositAddressReader), new(*Web3DepositAddressRepository)),
+	wire.Bind(new(web3deposit.DepositAddressLookup), new(*Web3DepositAddressRepository)),
+	wire.Bind(new(web3deposit.ScannerCursorSource), new(*Web3ScannerCursorRepository)),
+	wire.Bind(new(web3deposit.ScannerLeaseStore), new(*Web3ScannerCursorRepository)),
+	wire.Bind(new(web3deposit.ScannerBatchStore), new(*Web3ScannerBatchRepository)),
+	wire.Bind(new(web3deposit.PendingFinalizationSource), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.DepositCreditEligibilitySource), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.UserDepositReader), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.AdminDepositReader), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.AdminDepositOperator), new(*Web3DepositRepository)),
+	wire.Bind(new(web3deposit.FinalizerBatchStore), new(*Web3FinalizerBatchRepository)),
+	wire.Bind(new(web3deposit.AccountingStore), new(*Web3AccountingRepository)),
+	wire.Bind(new(web3deposit.UserBalanceReader), new(*Web3UserBalanceRepository)),
+	wire.Bind(new(web3deposit.CreditJobStore), new(*Web3CreditJobRepository)),
+	wire.Bind(new(web3deposit.RescanJobStore), new(*Web3RescanJobRepository)),
 	NewWeb3ChallengeStore,
 	NewPasskeyRepository,
 	NewPasskeySessionStore,

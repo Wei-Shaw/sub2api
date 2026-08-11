@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 	"github.com/stretchr/testify/require"
 )
 
@@ -251,4 +253,100 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 			require.InDelta(t, tt.wantValue, gotValue, 0.0001)
 		})
 	}
+}
+
+func TestComputeRuleMetricWeb3DepositIndicators(t *testing.T) {
+	t.Parallel()
+
+	restore := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{
+		RPCHealthy:         false,
+		ScannerLagBlocks:   123,
+		FinalizerLagBlocks: 45,
+		CreditFailures:     2,
+	})
+	defer restore()
+
+	statusCounter := &web3DepositStatusCounterStub{
+		counts: map[web3deposit.DepositStatus]int64{
+			web3deposit.DepositStatusManualReview: 11,
+		},
+	}
+	svc := &OpsAlertEvaluatorService{
+		opsRepo:      &stubOpsRepo{overview: &OpsDashboardOverview{}},
+		web3Deposits: statusCounter,
+		cfg:          web3AlertTestConfig(true),
+	}
+
+	now := time.Now().UTC()
+	tests := []struct {
+		metricType string
+		want       float64
+	}{
+		{metricType: "web3_rpc_unhealthy", want: 1},
+		{metricType: "web3_scanner_lag_blocks", want: 123},
+		{metricType: "web3_finalizer_lag_blocks", want: 45},
+		{metricType: "web3_credit_failures_total", want: 2},
+		{metricType: "web3_manual_review_count", want: 11},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.metricType, func(t *testing.T) {
+			got, ok := svc.computeRuleMetric(context.Background(), &OpsAlertRule{MetricType: tt.metricType}, nil, now.Add(-time.Minute), now, "", nil)
+			require.True(t, ok)
+			require.InDelta(t, tt.want, got, 0.0001)
+		})
+	}
+}
+
+func TestComputeRuleMetricWeb3DepositIndicatorsDisabled(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpsAlertEvaluatorService{
+		opsRepo: &stubOpsRepo{overview: &OpsDashboardOverview{}},
+		cfg:     web3AlertTestConfig(false),
+	}
+
+	now := time.Now().UTC()
+	got, ok := svc.computeRuleMetric(context.Background(), &OpsAlertRule{MetricType: "web3_rpc_unhealthy"}, nil, now.Add(-time.Minute), now, "", nil)
+	require.False(t, ok)
+	require.Zero(t, got)
+}
+
+func web3AlertTestConfig(enabled bool) *config.Config {
+	return &config.Config{Web3Deposit: config.Web3DepositConfig{
+		Enabled: enabled,
+		Networks: map[string]config.Web3DepositNetworkConfig{
+			"conflux": {
+				Enabled: true,
+				Assets: map[string]config.Web3DepositAssetConfig{
+					"usdt0": {ContractAddress: "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"},
+				},
+			},
+		},
+	}}
+}
+
+type web3DepositStatusCounterStub struct {
+	counts map[web3deposit.DepositStatus]int64
+	err    error
+}
+
+func (s *web3DepositStatusCounterStub) ListAdminDeposits(context.Context, web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {
+	return nil, 0, nil
+}
+
+func (s *web3DepositStatusCounterStub) GetAdminDeposit(context.Context, int64) (web3deposit.Deposit, error) {
+	return web3deposit.Deposit{}, nil
+}
+
+func (s *web3DepositStatusCounterStub) CountAdminDepositsByStatus(context.Context) (map[web3deposit.DepositStatus]int64, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.counts, nil
+}
+
+func (s *web3DepositStatusCounterStub) CountAdminDepositsByStatusForTarget(context.Context, uint64, string) (map[web3deposit.DepositStatus]int64, error) {
+	return s.CountAdminDepositsByStatus(context.Background())
 }

@@ -346,6 +346,30 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/web3-deposit',
+    name: 'Web3Deposit',
+    component: () => import('@/views/user/Web3DepositAddressView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit',
+      titleKey: 'web3Deposit.title',
+      descriptionKey: 'web3Deposit.description'
+    }
+  },
+  {
+    path: '/web3-deposit/history',
+    name: 'Web3DepositHistory',
+    component: () => import('@/views/user/Web3DepositHistoryView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Web3 Deposit History',
+      titleKey: 'web3Deposit.historyTitle',
+      descriptionKey: 'web3Deposit.historyDescription'
+    }
+  },
+  {
     path: '/payment/qrcode',
     name: 'PaymentQRCode',
     component: () => import('@/views/user/PaymentQRCodeView.vue'),
@@ -685,6 +709,10 @@ const routes: RouteRecordRaw[] = [
 
 
   // ==================== Payment Admin Routes ====================
+  {
+    path: '/admin/web3-deposits', name: 'AdminWeb3Deposits', component: () => import('@/views/admin/Web3DepositsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Web3 Deposits', titleKey: 'nav.web3Deposits' }
+  },
   {
     path: '/admin/orders/dashboard',
     name: 'AdminPaymentDashboard',

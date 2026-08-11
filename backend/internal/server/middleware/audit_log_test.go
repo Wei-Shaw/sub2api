@@ -146,6 +146,21 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 	}
 }
 
+func TestWeb3DepositMutationAuditRoutesHaveStableActions(t *testing.T) {
+	expected := map[string]string{
+		"POST /api/v1/admin/web3-deposits/:id/approve": "admin.web3_deposits.approve",
+		"POST /api/v1/admin/web3-deposits/:id/ignore":  "admin.web3_deposits.ignore",
+		"POST /api/v1/admin/web3-deposits/:id/retry":   "admin.web3_deposits.retry",
+		"POST /api/v1/admin/web3-deposits/rescan":      "admin.web3_deposits.rescan",
+	}
+	for route, action := range expected {
+		require.Equal(t, action, auditActionOverrides[route])
+	}
+	for _, key := range []string{"deposit_id", "job_id", "old_status", "new_status", "reason", "network_key", "asset_key", "from_block", "to_block"} {
+		require.Contains(t, auditExtraAllowedKeys, key)
+	}
+}
+
 func TestPasskeyLoginAuditUsesCanonicalLoginActionAndOmitsCredentialBody(t *testing.T) {
 	route := "POST /api/v1/auth/passkey/login/finish"
 	require.Equal(t, service.AuditActionLogin, auditActionOverrides[route])

@@ -1330,6 +1330,139 @@ func TestLoadWeb3BrowserCookieSameSiteFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadWeb3DepositDefaults(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.Web3Deposit.Enabled)
+	require.False(t, cfg.Web3Deposit.ScannerEnabled)
+	require.False(t, cfg.Web3Deposit.CreditEnabled)
+	require.False(t, cfg.Web3Deposit.UserEntryEnabled)
+
+	wallet, ok := cfg.Web3Deposit.Wallets[DefaultWeb3DepositWalletKey]
+	require.True(t, ok)
+	require.Empty(t, wallet.AccountXPub)
+	require.Equal(t, DefaultWeb3DepositAccountPath, wallet.AccountPath)
+
+	network, ok := cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey]
+	require.True(t, ok)
+	require.False(t, network.Enabled)
+	require.Equal(t, DefaultWeb3DepositNetworkDisplayName, network.DisplayName)
+	require.Equal(t, DefaultWeb3DepositChainID, network.ChainID)
+	require.Equal(t, DefaultWeb3DepositWalletKey, network.WalletID)
+	require.Zero(t, network.ScanStartBlock)
+	require.Empty(t, network.RPCURLs)
+	require.Equal(t, DefaultWeb3DepositPollIntervalSecs, network.PollIntervalSeconds)
+	require.Equal(t, DefaultWeb3DepositBlockBatchSize, network.BlockBatchSize)
+	require.Equal(t, DefaultWeb3DepositOverlapBlocks, network.OverlapBlocks)
+
+	asset, ok := network.Assets[DefaultWeb3DepositAssetKey]
+	require.True(t, ok)
+	require.Equal(t, DefaultWeb3DepositTokenAddress, asset.ContractAddress)
+	require.Equal(t, DefaultWeb3DepositTokenDecimals, asset.Decimals)
+	require.Equal(t, DefaultWeb3DepositMinimumAmount, asset.MinimumDeposit)
+	require.Equal(t, DefaultWeb3DepositAutoCreditLimit, asset.AutoCreditLimit)
+}
+
+func TestLoadWeb3DepositFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	accountXPub, _ := testWeb3DepositAccountKeysForAccount(t, 1)
+	t.Setenv("WEB3_DEPOSIT_ENABLED", "true")
+	t.Setenv("WEB3_DEPOSIT_SCANNER_ENABLED", "true")
+	t.Setenv("WEB3_DEPOSIT_CREDIT_ENABLED", "true")
+	t.Setenv("WEB3_DEPOSIT_USER_ENTRY_ENABLED", "true")
+	t.Setenv("WEB3_DEPOSIT_WALLETS_EVM_DEPOSIT_V1_ACCOUNT_XPUB", accountXPub)
+	t.Setenv("WEB3_DEPOSIT_WALLETS_EVM_DEPOSIT_V1_ACCOUNT_PATH", "m/44'/60'/1'")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ENABLED", "true")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_DISPLAY_NAME", "Conflux Test")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_CHAIN_ID", "1030")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_WALLET_ID", "evm_deposit_v1")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_SCAN_START_BLOCK", "123456")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_RPC_URLS", " https://rpc-1.example ,https://rpc-2.example ")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_POLL_INTERVAL_SECONDS", "30")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_BLOCK_BATCH_SIZE", "250")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_OVERLAP_BLOCKS", "12")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_CONTRACT_ADDRESS", "0xAf37E8B6C9ED7f6318979f56Fc287d76c30847ff")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_DECIMALS", "6")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_MINIMUM_DEPOSIT", "2.500000")
+	t.Setenv("WEB3_DEPOSIT_NETWORKS_CONFLUX_ESPACE_MAINNET_ASSETS_USDT0_AUTO_CREDIT_LIMIT", "9000.000000")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Web3Deposit.Enabled)
+	require.True(t, cfg.Web3Deposit.ScannerEnabled)
+	require.True(t, cfg.Web3Deposit.CreditEnabled)
+	require.True(t, cfg.Web3Deposit.UserEntryEnabled)
+
+	wallet := cfg.Web3Deposit.Wallets[DefaultWeb3DepositWalletKey]
+	require.Equal(t, accountXPub, wallet.AccountXPub)
+	require.Equal(t, "m/44'/60'/1'", wallet.AccountPath)
+
+	network := cfg.Web3Deposit.Networks[DefaultWeb3DepositNetworkKey]
+	require.True(t, network.Enabled)
+	require.Equal(t, "Conflux Test", network.DisplayName)
+	require.Equal(t, DefaultWeb3DepositChainID, network.ChainID)
+	require.Equal(t, DefaultWeb3DepositWalletKey, network.WalletID)
+	require.Equal(t, uint64(123456), network.ScanStartBlock)
+	require.Equal(t, []string{"https://rpc-1.example", "https://rpc-2.example"}, network.RPCURLs)
+	require.Equal(t, 30, network.PollIntervalSeconds)
+	require.Equal(t, uint64(250), network.BlockBatchSize)
+	require.Equal(t, uint64(12), network.OverlapBlocks)
+
+	asset := network.Assets[DefaultWeb3DepositAssetKey]
+	require.Equal(t, DefaultWeb3DepositTokenAddress, asset.ContractAddress)
+	require.Equal(t, DefaultWeb3DepositTokenDecimals, asset.Decimals)
+	require.Equal(t, "2.500000", asset.MinimumDeposit)
+	require.Equal(t, "9000.000000", asset.AutoCreditLimit)
+}
+
+func TestLoadWeb3DepositMultipleNetworksFromConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	accountXPub, _ := testWeb3DepositAccountKeysForAccount(t, 2)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
+web3_deposit:
+  enabled: true
+  wallets:
+    ethereum_deposit_v1:
+      account_xpub: %s
+      account_path: m/44'/60'/2'
+  networks:
+    ethereum_mainnet:
+      enabled: true
+      display_name: Ethereum Mainnet
+      chain_id: 1
+      wallet_id: ethereum_deposit_v1
+      scan_start_block: 20000000
+      rpc_urls:
+        - https://ethereum-rpc.example
+      poll_interval_seconds: 12
+      block_batch_size: 400
+      overlap_blocks: 16
+      assets:
+        usdc:
+          contract_address: "0x2222222222222222222222222222222222222222"
+          decimals: 6
+          minimum_deposit: "5.000000"
+          auto_credit_limit: "5000.000000"
+`, accountXPub)), 0o600))
+	t.Setenv("CONFIG_FILE", configPath)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Contains(t, cfg.Web3Deposit.Networks, DefaultWeb3DepositNetworkKey)
+	require.Contains(t, cfg.Web3Deposit.Networks, "ethereum_mainnet")
+	require.Contains(t, cfg.Web3Deposit.Wallets, DefaultWeb3DepositWalletKey)
+	require.Contains(t, cfg.Web3Deposit.Wallets, "ethereum_deposit_v1")
+
+	network := cfg.Web3Deposit.Networks["ethereum_mainnet"]
+	require.Equal(t, uint64(1), network.ChainID)
+	require.Equal(t, "ethereum_deposit_v1", network.WalletID)
+	require.Equal(t, []string{"https://ethereum-rpc.example"}, network.RPCURLs)
+	require.Equal(t, "0x2222222222222222222222222222222222222222", network.Assets["usdc"].ContractAddress)
+}
+
 func TestValidateFrontendRedirectURL(t *testing.T) {
 	if err := ValidateFrontendRedirectURL("/auth/callback"); err != nil {
 		t.Fatalf("ValidateFrontendRedirectURL relative error: %v", err)

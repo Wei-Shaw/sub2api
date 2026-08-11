@@ -185,6 +185,8 @@ export default {
     buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
     myOrders: 'My Orders',
+    web3Deposit: 'Web3 Deposit',
+    web3Deposits: 'Web3 Deposits',
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',

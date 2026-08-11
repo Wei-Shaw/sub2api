@@ -5,6 +5,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/web3deposit"
 
 	"github.com/google/wire"
 )
@@ -72,6 +73,7 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
+	web3DepositHandler *admin.Web3DepositHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
@@ -112,6 +114,7 @@ func ProvideAdminHandlers(
 		ContentModeration:      contentModerationHandler,
 		PromptAudit:            promptAuditHandler,
 		Payment:                paymentHandler,
+		Web3Deposit:            web3DepositHandler,
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
@@ -213,6 +216,7 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	passkeyHandler *PasskeyHandler,
 	paymentHandler *PaymentHandler,
+	web3DepositHandler *Web3DepositHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	modelPlazaHandler *ModelPlazaHandler,
@@ -238,6 +242,7 @@ func ProvideHandlers(
 		Totp:             totpHandler,
 		Passkey:          passkeyHandler,
 		Payment:          paymentHandler,
+		Web3Deposit:      web3DepositHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		ModelPlaza:       modelPlazaHandler,
@@ -264,6 +269,13 @@ var ProviderSet = wire.NewSet(
 	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
+	web3deposit.NewAddressAllocator,
+	web3deposit.NewConfluxNetworkRuntimeRegistry,
+	web3deposit.ProvideScannerRuntimeRegistry,
+	web3deposit.ProvideCreditWorkerRuntime,
+	web3deposit.NewBoundedRescannerRegistry,
+	web3deposit.ProvideRescanJobRuntime,
+	NewWeb3DepositHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelPlazaHandler,
@@ -301,6 +313,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
+	admin.NewWeb3DepositHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,

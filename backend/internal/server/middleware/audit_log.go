@@ -58,6 +58,8 @@ var auditExtraAllowedKeys = map[string]struct{}{
 	"http_status": {}, "latency_ms": {}, "token_applied": {}, "retryable": {},
 	"event_id": {}, "requested_count": {}, "deleted_events": {}, "deleted_jobs": {},
 	"matched_count": {}, "snapshot_max_id": {}, "filter_hash": {}, "confirm": {},
+	"deposit_id": {}, "job_id": {}, "old_status": {}, "new_status": {}, "reason": {},
+	"network_key": {}, "asset_key": {}, "from_block": {}, "to_block": {},
 }
 
 // SetAuditExtra adds allowlisted, scalar details to the current audit entry.
@@ -144,6 +146,10 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
+	"POST /api/v1/admin/web3-deposits/:id/approve":            "admin.web3_deposits.approve",
+	"POST /api/v1/admin/web3-deposits/:id/ignore":             "admin.web3_deposits.ignore",
+	"POST /api/v1/admin/web3-deposits/:id/retry":              "admin.web3_deposits.retry",
+	"POST /api/v1/admin/web3-deposits/rescan":                 "admin.web3_deposits.rescan",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
