@@ -302,6 +302,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			markPatchSet("model", upstreamModel)
 		}
 	}
+	if requestView.HasPatches() {
+		patchedBody, patchErr := requestView.ApplyPatches()
+		if patchErr != nil {
+			return nil, patchErr
+		}
+		body = patchedBody
+		requestView = newOpenAIRequestView(body)
+		bodyModified = false
+	}
+	if normalizedBody, suffixModel, normalized, normalizeErr := normalizeOpenAIModelEffortSuffixForUpstream(body, account, true); normalizeErr != nil {
+		return nil, normalizeErr
+	} else if normalized {
+		body = normalizedBody
+		requestView = newOpenAIRequestView(body)
+		reqBody = nil
+		bodyModified = false
+		upstreamModel = normalizeOpenAIModelForUpstream(account, suffixModel)
+	}
 	if strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()) == "minimal" {
 		markPatchSet("reasoning.effort", "none")
 		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)

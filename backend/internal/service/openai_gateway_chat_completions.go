@@ -175,6 +175,17 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 	}
 
+	if normalizedBody, suffixModel, normalized, normalizeErr := normalizeOpenAIModelEffortSuffixForUpstream(responsesBody, account, true); normalizeErr != nil {
+		return nil, normalizeErr
+	} else if normalized {
+		responsesBody = normalizedBody
+		upstreamModel = normalizeOpenAIModelForUpstream(account, suffixModel)
+		responsesReq.Model = upstreamModel
+		if effort := gjson.GetBytes(responsesBody, "reasoning.effort").String(); effort != "" {
+			responsesReq.Reasoning = &apicompat.ResponsesReasoning{Effort: effort}
+		}
+	}
+
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
