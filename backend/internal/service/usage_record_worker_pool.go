@@ -92,6 +92,8 @@ type UsageRecordWorkerPoolStats struct {
 // 用于替代请求路径里的直接 goroutine，避免高并发时无界堆积。
 type UsageRecordWorkerPool struct {
 	pool                  pond.Pool
+	workerCount           int
+	queueSize             int
 	taskTimeout           time.Duration
 	overflowPolicy        string
 	overflowSamplePercent int
@@ -112,7 +114,9 @@ type UsageRecordWorkerPool struct {
 	lastScaleNanos        atomic.Int64
 	autoScaleCancel       context.CancelFunc
 	lifecycleWg           sync.WaitGroup
+	startOnce             sync.Once
 	stopOnce              sync.Once
+	stopped               atomic.Bool
 }
 
 // NewUsageRecordWorkerPool 从配置构建使用量记录池。
@@ -126,6 +130,8 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 	opts = normalizeUsageRecordPoolOptions(opts)
 
 	p := &UsageRecordWorkerPool{
+		workerCount:           opts.WorkerCount,
+		queueSize:             opts.QueueSize,
 		taskTimeout:           opts.TaskTimeout,
 		overflowPolicy:        opts.OverflowPolicy,
 		overflowSamplePercent: opts.OverflowSamplePercent,
@@ -139,15 +145,19 @@ func NewUsageRecordWorkerPoolWithOptions(opts UsageRecordWorkerPoolOptions) *Usa
 		autoScaleInterval:     opts.AutoScaleInterval,
 		autoScaleCooldown:     opts.AutoScaleCooldown,
 	}
-
-	p.pool = pond.NewPool(
-		opts.WorkerCount,
-		pond.WithQueueSize(opts.QueueSize),
-	)
-	if p.autoScaleEnabled {
-		p.startAutoScaler()
-	}
 	return p
+}
+
+func (p *UsageRecordWorkerPool) Start() {
+	if p == nil || p.stopped.Load() {
+		return
+	}
+	p.startOnce.Do(func() {
+		p.pool = pond.NewPool(p.workerCount, pond.WithQueueSize(p.queueSize))
+		if p.autoScaleEnabled {
+			p.startAutoScaler()
+		}
+	})
 }
 
 // Submit 提交一个使用量记录任务。
@@ -195,22 +205,26 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 
 // Stats 返回当前池状态与计数器。
 func (p *UsageRecordWorkerPool) Stats() UsageRecordWorkerPoolStats {
-	if p == nil || p.pool == nil {
+	if p == nil {
 		return UsageRecordWorkerPoolStats{}
 	}
-	return UsageRecordWorkerPoolStats{
-		MaxConcurrency:     p.pool.MaxConcurrency(),
-		RunningWorkers:     p.pool.RunningWorkers(),
-		WaitingTasks:       p.pool.WaitingTasks(),
-		SubmittedTasks:     p.pool.SubmittedTasks(),
-		CompletedTasks:     p.pool.CompletedTasks(),
-		SuccessfulTasks:    p.pool.SuccessfulTasks(),
-		FailedTasks:        p.pool.FailedTasks(),
-		DroppedTasks:       p.pool.DroppedTasks(),
+	stats := UsageRecordWorkerPoolStats{
 		DroppedQueueFull:   p.droppedQueueFull.Load(),
 		DroppedPoolStopped: p.droppedPoolStopped.Load(),
 		SyncFallbackTasks:  p.syncFallback.Load(),
 	}
+	if p.pool == nil {
+		return stats
+	}
+	stats.MaxConcurrency = p.pool.MaxConcurrency()
+	stats.RunningWorkers = p.pool.RunningWorkers()
+	stats.WaitingTasks = p.pool.WaitingTasks()
+	stats.SubmittedTasks = p.pool.SubmittedTasks()
+	stats.CompletedTasks = p.pool.CompletedTasks()
+	stats.SuccessfulTasks = p.pool.SuccessfulTasks()
+	stats.FailedTasks = p.pool.FailedTasks()
+	stats.DroppedTasks = p.pool.DroppedTasks()
+	return stats
 }
 
 // Stop 停止池并等待队列任务完成。
@@ -219,6 +233,7 @@ func (p *UsageRecordWorkerPool) Stop() {
 		return
 	}
 	p.stopOnce.Do(func() {
+		p.stopped.Store(true)
 		if p.autoScaleCancel != nil {
 			p.autoScaleCancel()
 		}

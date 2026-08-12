@@ -235,6 +235,11 @@ type ConcurrencyService struct {
 	accountLoadCacheMu  sync.RWMutex
 	accountLoadCache    map[string]cachedAccountLoadBatch
 	accountLoadGroup    singleflight.Group
+
+	cleanupStop      chan struct{}
+	cleanupDone      chan struct{}
+	cleanupStartOnce sync.Once
+	cleanupStopOnce  sync.Once
 }
 
 type cachedAccountLoadBatch struct {
@@ -721,30 +726,51 @@ func (s *ConcurrencyService) CleanupExpiredAccountSlots(ctx context.Context, acc
 }
 
 // StartSlotCleanupWorker starts a background cleanup worker for expired account slots.
-func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interval time.Duration) {
+func (s *ConcurrencyService) StartSlotCleanupWorker(interval time.Duration) {
 	if s == nil || s.cache == nil || interval <= 0 {
 		return
 	}
 
-	runCleanup := func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
-		cancel()
-		if err != nil {
-			logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired account slots failed: %v", err)
-			return
-		}
+	s.cleanupStartOnce.Do(func() {
+		s.cleanupStop = make(chan struct{})
+		s.cleanupDone = make(chan struct{})
+		go func() {
+			defer close(s.cleanupDone)
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+
+			s.cleanupExpiredAccountSlotKeys()
+			for {
+				select {
+				case <-s.cleanupStop:
+					return
+				case <-ticker.C:
+					s.cleanupExpiredAccountSlotKeys()
+				}
+			}
+		}()
+	})
+}
+
+func (s *ConcurrencyService) cleanupExpiredAccountSlotKeys() {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
+	cancel()
+	if err != nil {
+		logger.LegacyPrintf("service.concurrency", "Warning: cleanup expired account slots failed: %v", err)
 	}
+}
 
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		runCleanup()
-		for range ticker.C {
-			runCleanup()
+func (s *ConcurrencyService) StopSlotCleanupWorker() {
+	if s == nil {
+		return
+	}
+	s.cleanupStopOnce.Do(func() {
+		if s.cleanupStop != nil {
+			close(s.cleanupStop)
+			<-s.cleanupDone
 		}
-	}()
+	})
 }
 
 // GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts.

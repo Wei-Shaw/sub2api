@@ -96,9 +96,21 @@ func (b *billingCacheWorkerStub) BatchGetUserPlatformQuotaCache(ctx context.Cont
 	return nil, nil
 }
 
+func TestBillingCacheServiceConstructionIsPassive(t *testing.T) {
+	svc := NewBillingCacheService(&billingCacheWorkerStub{}, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	defer svc.Stop()
+
+	require.Nil(t, svc.cacheWriteChan)
+	require.False(t, svc.enqueueCacheWrite(cacheWriteTask{kind: cacheWriteDeductBalance, userID: 1, amount: 1}))
+
+	svc.Start()
+	require.NotNil(t, svc.cacheWriteChan)
+}
+
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 	cache := &billingCacheWorkerStub{}
 	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc.Start()
 	t.Cleanup(svc.Stop)
 
 	start := time.Now()

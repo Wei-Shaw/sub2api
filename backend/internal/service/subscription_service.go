@@ -57,6 +57,7 @@ type SubscriptionService struct {
 
 	maintenanceQueue *SubscriptionMaintenanceQueue
 	now              func() time.Time
+	subscriberCancel context.CancelFunc
 }
 
 // NewSubscriptionService 创建订阅服务
@@ -70,7 +71,6 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 	}
 	svc.initSubCache(cfg)
 	svc.initMaintenanceQueue(cfg)
-	svc.StartSubCacheInvalidationSubscriber(context.Background())
 	return svc
 }
 
@@ -85,6 +85,16 @@ func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {
 	s.maintenanceQueue = NewSubscriptionMaintenanceQueue(mc.WorkerCount, mc.QueueSize)
 }
 
+func (s *SubscriptionService) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if s.maintenanceQueue != nil {
+		s.maintenanceQueue.Start()
+	}
+	s.StartSubCacheInvalidationSubscriber(ctx)
+}
+
 // Stop stops the maintenance worker pool.
 func (s *SubscriptionService) Stop() {
 	if s == nil {
@@ -92,6 +102,10 @@ func (s *SubscriptionService) Stop() {
 	}
 	if s.maintenanceQueue != nil {
 		s.maintenanceQueue.Stop()
+	}
+	if s.subscriberCancel != nil {
+		s.subscriberCancel()
+		s.subscriberCancel = nil
 	}
 }
 
@@ -163,14 +177,18 @@ func (s *SubscriptionService) invalidateSubCacheKeySync(key string) {
 
 // StartSubCacheInvalidationSubscriber 启动跨实例订阅 L1 缓存失效订阅。
 func (s *SubscriptionService) StartSubCacheInvalidationSubscriber(ctx context.Context) {
-	if s.billingCacheService == nil || s.subCacheL1 == nil {
+	if s == nil || s.billingCacheService == nil || s.subCacheL1 == nil || s.subscriberCancel != nil {
 		return
 	}
-	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(ctx, func(cacheKey string) {
+	subscriberCtx, cancel := context.WithCancel(ctx)
+	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(subscriberCtx, func(cacheKey string) {
 		s.invalidateSubCacheKeySync(cacheKey)
 	}); err != nil {
+		cancel()
 		log.Printf("Warning: failed to start subscription cache invalidation subscriber: %v", err)
+		return
 	}
+	s.subscriberCancel = cancel
 }
 
 func (s *SubscriptionService) invalidateSubscriptionCaches(userID, groupID int64) error {

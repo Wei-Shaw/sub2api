@@ -31,6 +31,8 @@ type EmailQueueService struct {
 	wg           sync.WaitGroup
 	stopChan     chan struct{}
 	workers      int
+	startOnce    sync.Once
+	stopOnce     sync.Once
 }
 
 // NewEmailQueueService 创建邮件队列服务
@@ -46,10 +48,14 @@ func NewEmailQueueService(emailService *EmailService, workers int) *EmailQueueSe
 		workers:      workers,
 	}
 
-	// 启动工作协程
-	service.start()
-
 	return service
+}
+
+func (s *EmailQueueService) Start() {
+	if s == nil {
+		return
+	}
+	s.startOnce.Do(s.start)
 }
 
 // start 启动工作协程
@@ -138,7 +144,12 @@ func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL strin
 
 // Stop 停止队列服务
 func (s *EmailQueueService) Stop() {
-	close(s.stopChan)
-	s.wg.Wait()
-	logger.LegacyPrintf("service.email_queue", "%s", "[EmailQueue] All workers stopped")
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		close(s.stopChan)
+		s.wg.Wait()
+		logger.LegacyPrintf("service.email_queue", "%s", "[EmailQueue] All workers stopped")
+	})
 }

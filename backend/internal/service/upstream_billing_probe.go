@@ -272,7 +272,6 @@ func ProvideUpstreamBillingProbeService(
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
-	svc.Start()
 	return svc
 }
 

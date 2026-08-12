@@ -38,11 +38,13 @@ type QueueLockResult struct {
 // UserMessageQueueService 用户消息串行队列服务
 // 对真实用户消息实施账号级串行化 + RPM 自适应延迟
 type UserMessageQueueService struct {
-	cache    UserMsgQueueCache
-	rpmCache RPMCache
-	cfg      *config.UserMessageQueueConfig
-	stopCh   chan struct{} // graceful shutdown
-	stopOnce sync.Once     // 确保 Stop() 并发安全
+	cache     UserMsgQueueCache
+	rpmCache  RPMCache
+	cfg       *config.UserMessageQueueConfig
+	stopCh    chan struct{}
+	stopOnce  sync.Once
+	startOnce sync.Once
+	workerWg  sync.WaitGroup
 }
 
 // NewUserMessageQueueService 创建用户消息串行队列服务
@@ -267,18 +269,22 @@ func (s *UserMessageQueueService) StartCleanupWorker(interval time.Duration) {
 		}
 	}
 
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.stopCh:
-				return
-			case <-ticker.C:
-				runCleanup()
+	s.startOnce.Do(func() {
+		s.workerWg.Add(1)
+		go func() {
+			defer s.workerWg.Done()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-s.stopCh:
+					return
+				case <-ticker.C:
+					runCleanup()
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 // Stop 停止后台 cleanup worker
@@ -286,6 +292,7 @@ func (s *UserMessageQueueService) Stop() {
 	if s != nil && s.stopCh != nil {
 		s.stopOnce.Do(func() {
 			close(s.stopCh)
+			s.workerWg.Wait()
 		})
 	}
 }

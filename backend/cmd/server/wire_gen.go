@@ -7,22 +7,19 @@
 package main
 
 import (
-	"context"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
+	"github.com/Wei-Shaw/sub2api/internal/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"log"
-	"net/http"
-	"sync"
-	"time"
 )
 
 import (
@@ -32,12 +29,12 @@ import (
 
 // Injectors from wire.go:
 
-func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
+func initializeApplication(buildInfo handler.BuildInfo, role runtime.Role) (*Application, error) {
 	configConfig, err := config.ProvideConfig()
 	if err != nil {
 		return nil, err
 	}
-	client, err := repository.ProvideEnt(configConfig)
+	client, err := repository.ProvideEntForRole(configConfig, role)
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +70,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	billingCacheService := service.ProvideBillingCacheService(billingCache, userRepository, userSubscriptionRepository, apiKeyRepository, userRPMCache, userGroupRateRepository, configConfig, serviceUserPlatformQuotaRepository)
 	apiKeyCache := repository.NewAPIKeyCache(redisClient)
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)
-	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
-	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
-	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepository, configConfig)
+	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, configConfig)
 	apiKeyService := service.ProvideAPIKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, userGroupRateRepository, apiKeyCache, configConfig, billingCacheService, concurrencyService)
 	apiKeyAuthCacheInvalidator := service.ProvideAPIKeyAuthCacheInvalidator(apiKeyService)
 	promoService := service.NewPromoService(promoCodeRepository, userRepository, billingCacheService, client, apiKeyAuthCacheInvalidator)
@@ -101,15 +96,14 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	usageLogRepository := repository.NewUsageLogRepository(client, db)
 	usageService := service.NewUsageService(usageLogRepository, userRepository, client, apiKeyAuthCacheInvalidator)
 	opsRepository := repository.NewOpsRepository(db)
+	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
+	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
 	usageBillingRepository := repository.NewUsageBillingRepository(client, db)
 	gatewayCache := repository.NewGatewayCache(redisClient)
 	schedulerOutboxRepository := repository.NewSchedulerOutboxRepository(db)
 	schedulerSnapshotService := service.ProvideSchedulerSnapshotService(schedulerCache, schedulerOutboxRepository, accountRepository, groupRepository, configConfig)
 	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
-	pricingService, err := service.ProvidePricingService(configConfig, pricingRemoteClient)
-	if err != nil {
-		return nil, err
-	}
+	pricingService := service.ProvidePricingService(configConfig, pricingRemoteClient)
 	billingService := service.NewBillingService(configConfig, pricingService)
 	geminiQuotaService := service.NewGeminiQuotaService(configConfig, settingRepository)
 	tempUnschedCache := repository.NewTempUnschedCache(redisClient)
@@ -320,27 +314,31 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	stepUpAuthMiddleware := middleware.NewStepUpAuthMiddleware(totpService, userService, settingService)
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, optionalJWTAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, auditLogMiddleware, stepUpAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, compositeRouteResolver, redisClient)
 	httpServer := server.ProvideHTTPServer(configConfig, engine)
-	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsRepository, settingRepository, accountRepository, concurrencyService, db, redisClient, configConfig)
-	opsAggregationService := service.ProvideOpsAggregationService(opsRepository, settingRepository, db, redisClient, configConfig)
-	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig, proxyRepository)
-	opsCleanupService := service.ProvideOpsCleanupService(opsRepository, db, redisClient, configConfig, channelMonitorService, settingRepository, opsService)
-	opsScheduledReportService := service.ProvideOpsScheduledReportService(opsService, userService, emailService, redisClient, configConfig)
+	component := newHTTPServerComponent(httpServer)
 	opsIngressRejectAggregator := service.ProvideOpsIngressRejectAggregator(opsRepository, opsService)
+	batchImageWorkerRuntime := service.ProvideBatchImageWorkerRuntime(batchImageRepository, accountRepository, batchImageQueue, usageBillingRepository, usageLogRepository, batchImageModelPricingResolver, apiKeyAuthCacheInvalidator, configConfig)
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	openAICodexVersionSyncService := service.ProvideOpenAICodexVersionSyncService(settingRepository, settingService, gitHubReleaseClient)
 	proxyExpiryService := service.ProvideProxyExpiryService(proxyRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository, settingRepository, notificationEmailService, leaderLockCache, db)
-	batchImageWorkerRuntime := service.ProvideBatchImageWorkerRuntime(batchImageRepository, accountRepository, batchImageQueue, usageBillingRepository, usageLogRepository, batchImageModelPricingResolver, apiKeyAuthCacheInvalidator, configConfig)
+	opsMetricsCollector := service.ProvideOpsMetricsCollector(opsRepository, settingRepository, accountRepository, concurrencyService, db, redisClient, configConfig)
+	opsAggregationService := service.ProvideOpsAggregationService(opsRepository, settingRepository, db, redisClient, configConfig)
+	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig, proxyRepository)
+	opsCleanupService := service.ProvideOpsCleanupService(opsRepository, db, redisClient, configConfig, channelMonitorService, settingRepository, opsService)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
+	opsScheduledReportService := service.ProvideOpsScheduledReportService(opsService, userService, emailService, redisClient, configConfig)
+	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
 	channelMonitorV2Aggregator := service.ProvideChannelMonitorV2Aggregator(channelMonitorV2Repository, db, settingService)
-	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, userPlatformQuotaUsageFlusher, upstreamBillingProbeService, ollamaCloudUsageService, auditLogService, promptService)
+	lifecycle, err := provideLifecycle(component, timingWheelService, deferredService, opsIngressRejectAggregator, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, grokOAuthService, openAIGatewayService, pricingService, concurrencyService, userMessageQueueService, tlsFingerprintProfileService, errorPassthroughService, configConfig, apiKeyService, opsService, opsSystemLogSink, auditLogService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, authCacheInvalidationWorker, batchImageCleanupService, batchImageWorkerRuntime, promptService, tokenRefreshService, schedulerSnapshotService, dashboardAggregationService, usageCleanupService, accountExpiryService, openAICodexVersionSyncService, proxyExpiryService, subscriptionExpiryService, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, idempotencyCleanupService, scheduledTestRunnerService, opsScheduledReportService, backupService, userPlatformQuotaUsageFlusher, paymentOrderExpiryService, channelMonitorRunner, channelMonitorV2Aggregator, upstreamBillingProbeService, ollamaCloudUsageService)
+	if err != nil {
+		return nil, err
+	}
+	v := provideCleanup(client, redisClient)
 	application := &Application{
-		Server:      httpServer,
-		PromptAudit: promptService,
-		Cleanup:     v,
+		Lifecycle: lifecycle,
+		Cleanup:   v,
 	}
 	return application, nil
 }
@@ -348,9 +346,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 // wire.go:
 
 type Application struct {
-	Server      *http.Server
-	PromptAudit *securityaudit.PromptService
-	Cleanup     func()
+	Lifecycle *runtime.Lifecycle
+	Cleanup   func()
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
@@ -364,336 +361,17 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 	}
 }
 
-func provideCleanup(
-	entClient *ent.Client,
-	rdb *redis.Client,
-	opsMetricsCollector *service.OpsMetricsCollector,
-	opsAggregation *service.OpsAggregationService,
-	opsAlertEvaluator *service.OpsAlertEvaluatorService,
-	opsCleanup *service.OpsCleanupService,
-	opsScheduledReport *service.OpsScheduledReportService,
-	opsSystemLogSink *service.OpsSystemLogSink,
-	opsService *service.OpsService,
-	opsIngressReject *service.OpsIngressRejectAggregator,
-	apiKeyService *service.APIKeyService,
-	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
-	schedulerSnapshot *service.SchedulerSnapshotService,
-	tokenRefresh *service.TokenRefreshService,
-	accountExpiry *service.AccountExpiryService,
-	codexVersionSync *service.OpenAICodexVersionSyncService,
-	proxyExpiry *service.ProxyExpiryService,
-	subscriptionExpiry *service.SubscriptionExpiryService,
-	usageCleanup *service.UsageCleanupService,
-	idempotencyCleanup *service.IdempotencyCleanupService,
-	batchImageCleanup *service.BatchImageCleanupService,
-	batchImageWorker *service.BatchImageWorkerRuntime,
-	pricing *service.PricingService,
-	emailQueue *service.EmailQueueService,
-	billingCache *service.BillingCacheService,
-	usageRecordWorkerPool *service.UsageRecordWorkerPool,
-	subscriptionService *service.SubscriptionService,
-	oauth *service.OAuthService,
-	openaiOAuth *service.OpenAIOAuthService,
-	geminiOAuth *service.GeminiOAuthService,
-	antigravityOAuth *service.AntigravityOAuthService,
-	grokOAuth *service.GrokOAuthService,
-	openAIGateway *service.OpenAIGatewayService,
-	scheduledTestRunner *service.ScheduledTestRunnerService,
-	backupSvc *service.BackupService,
-	paymentOrderExpiry *service.PaymentOrderExpiryService,
-	channelMonitorRunner *service.ChannelMonitorRunner,
-	channelMonitorV2Aggregator *service.ChannelMonitorV2Aggregator,
-	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
-	upstreamBillingProbe *service.UpstreamBillingProbeService,
-	ollamaCloudUsage *service.OllamaCloudUsageService,
-	auditLog *service.AuditLogService,
-	promptAudit *securityaudit.PromptService,
-) func() {
+func provideCleanup(entClient *ent.Client, rdb *redis.Client) func() {
 	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		type cleanupStep struct {
-			name string
-			fn   func() error
-		}
-
-		parallelSteps := []cleanupStep{
-			{"OpsIngressRejectAggregator", func() error {
-				if opsIngressReject != nil {
-					opsIngressReject.Stop()
-				}
-				return nil
-			}},
-			{"AuthCacheInvalidationWorker", func() error {
-				if authCacheInvalidationWorker != nil {
-					authCacheInvalidationWorker.Stop()
-				}
-				return nil
-			}},
-			{"AuthCacheInvalidationSubscriber", func() error {
-				if apiKeyService != nil {
-					apiKeyService.StopAuthCacheInvalidationSubscriber()
-				}
-				return nil
-			}},
-			{"OpsRuntimeSettingsRefresh", func() error {
-				if opsService != nil {
-					opsService.StopRuntimeSettingsRefresh()
-				}
-				return nil
-			}},
-			{"PromptAuditService", func() error {
-				if promptAudit != nil {
-					return promptAudit.Shutdown(ctx)
-				}
-				return nil
-			}},
-			{"OpsScheduledReportService", func() error {
-				if opsScheduledReport != nil {
-					opsScheduledReport.Stop()
-				}
-				return nil
-			}},
-			{"OpsCleanupService", func() error {
-				if opsCleanup != nil {
-					opsCleanup.Stop()
-				}
-				return nil
-			}},
-			{"OpsSystemLogSink", func() error {
-				if opsSystemLogSink != nil {
-					opsSystemLogSink.Stop()
-				}
-				return nil
-			}},
-			{"AuditLogService", func() error {
-				if auditLog != nil {
-					auditLog.Stop()
-				}
-				return nil
-			}},
-			{"OpsAlertEvaluatorService", func() error {
-				if opsAlertEvaluator != nil {
-					opsAlertEvaluator.Stop()
-				}
-				return nil
-			}},
-			{"OpsAggregationService", func() error {
-				if opsAggregation != nil {
-					opsAggregation.Stop()
-				}
-				return nil
-			}},
-			{"OpsMetricsCollector", func() error {
-				if opsMetricsCollector != nil {
-					opsMetricsCollector.Stop()
-				}
-				return nil
-			}},
-			{"SchedulerSnapshotService", func() error {
-				if schedulerSnapshot != nil {
-					schedulerSnapshot.Stop()
-				}
-				return nil
-			}},
-			{"UsageCleanupService", func() error {
-				if usageCleanup != nil {
-					usageCleanup.Stop()
-				}
-				return nil
-			}},
-			{"IdempotencyCleanupService", func() error {
-				if idempotencyCleanup != nil {
-					idempotencyCleanup.Stop()
-				}
-				return nil
-			}},
-			{"BatchImageCleanupService", func() error {
-				if batchImageCleanup != nil {
-					batchImageCleanup.Stop()
-				}
-				return nil
-			}},
-			{"BatchImageWorkerRuntime", func() error {
-				if batchImageWorker != nil {
-					batchImageWorker.Stop()
-				}
-				return nil
-			}},
-			{"TokenRefreshService", func() error {
-				tokenRefresh.Stop()
-				return nil
-			}},
-			{"AccountExpiryService", func() error {
-				accountExpiry.Stop()
-				return nil
-			}},
-			{"OpenAICodexVersionSyncService", func() error {
-				codexVersionSync.Stop()
-				return nil
-			}},
-			{"ProxyExpiryService", func() error {
-				proxyExpiry.Stop()
-				return nil
-			}},
-			{"SubscriptionExpiryService", func() error {
-				subscriptionExpiry.Stop()
-				return nil
-			}},
-			{"SubscriptionService", func() error {
-				if subscriptionService != nil {
-					subscriptionService.Stop()
-				}
-				return nil
-			}},
-			{"PricingService", func() error {
-				pricing.Stop()
-				return nil
-			}},
-			{"EmailQueueService", func() error {
-				emailQueue.Stop()
-				return nil
-			}},
-			{"BillingCacheService", func() error {
-				billingCache.Stop()
-				return nil
-			}},
-			{"UsageRecordWorkerPool", func() error {
-				if usageRecordWorkerPool != nil {
-					usageRecordWorkerPool.Stop()
-				}
-				return nil
-			}},
-			{"OAuthService", func() error {
-				oauth.Stop()
-				return nil
-			}},
-			{"OpenAIOAuthService", func() error {
-				openaiOAuth.Stop()
-				return nil
-			}},
-			{"GeminiOAuthService", func() error {
-				geminiOAuth.Stop()
-				return nil
-			}},
-			{"AntigravityOAuthService", func() error {
-				antigravityOAuth.Stop()
-				return nil
-			}},
-			{"GrokOAuthService", func() error {
-				if grokOAuth != nil {
-					grokOAuth.Stop()
-				}
-				return nil
-			}},
-			{"OpenAIWSPool", func() error {
-				if openAIGateway != nil {
-					openAIGateway.CloseOpenAIWSPool()
-				}
-				return nil
-			}},
-			{"ScheduledTestRunnerService", func() error {
-				if scheduledTestRunner != nil {
-					scheduledTestRunner.Stop()
-				}
-				return nil
-			}},
-			{"BackupService", func() error {
-				if backupSvc != nil {
-					backupSvc.Stop()
-				}
-				return nil
-			}},
-			{"PaymentOrderExpiryService", func() error {
-				if paymentOrderExpiry != nil {
-					paymentOrderExpiry.Stop()
-				}
-				return nil
-			}},
-			{"ChannelMonitorV2Aggregator", func() error {
-				if channelMonitorV2Aggregator != nil {
-					channelMonitorV2Aggregator.Stop()
-				}
-				return nil
-			}},
-			{"ChannelMonitorRunner", func() error {
-				if channelMonitorRunner != nil {
-					channelMonitorRunner.Stop()
-				}
-				return nil
-			}},
-			{"UserPlatformQuotaUsageFlusher", func() error {
-				if quotaFlusher != nil {
-					quotaFlusher.Stop()
-				}
-				return nil
-			}},
-			{"UpstreamBillingProbeService", func() error {
-				if upstreamBillingProbe != nil {
-					upstreamBillingProbe.Stop()
-				}
-				return nil
-			}},
-			{"OllamaCloudUsageService", func() error {
-				if ollamaCloudUsage != nil {
-					ollamaCloudUsage.Stop()
-				}
-				return nil
-			}},
-		}
-
-		infraSteps := []cleanupStep{
-			{"Redis", func() error {
-				if rdb == nil {
-					return nil
-				}
-				return rdb.Close()
-			}},
-			{"Ent", func() error {
-				if entClient == nil {
-					return nil
-				}
-				return entClient.Close()
-			}},
-		}
-
-		runParallel := func(steps []cleanupStep) {
-			var wg sync.WaitGroup
-			for i := range steps {
-				step := steps[i]
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					if err := step.fn(); err != nil {
-						log.Printf("[Cleanup] %s failed: %v", step.name, err)
-						return
-					}
-					log.Printf("[Cleanup] %s succeeded", step.name)
-				}()
-			}
-			wg.Wait()
-		}
-
-		runSequential := func(steps []cleanupStep) {
-			for i := range steps {
-				step := steps[i]
-				if err := step.fn(); err != nil {
-					log.Printf("[Cleanup] %s failed: %v", step.name, err)
-					continue
-				}
-				log.Printf("[Cleanup] %s succeeded", step.name)
+		if rdb != nil {
+			if err := rdb.Close(); err != nil {
+				log.Printf("failed to close Redis client: %v", err)
 			}
 		}
-
-		runParallel(parallelSteps)
-		runSequential(infraSteps)
-
-		select {
-		case <-ctx.Done():
-			log.Printf("[Cleanup] Warning: cleanup timed out after 10 seconds")
-		default:
-			log.Printf("[Cleanup] All cleanup steps completed")
+		if entClient != nil {
+			if err := entClient.Close(); err != nil {
+				log.Printf("failed to close Ent client: %v", err)
+			}
 		}
 	}
 }

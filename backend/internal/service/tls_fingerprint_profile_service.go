@@ -35,8 +35,10 @@ type TLSFingerprintProfileService struct {
 	cache TLSFingerprintProfileCache
 
 	// 本地 ID→Profile 映射缓存，用于 DoWithTLS 热路径快速查找
-	localCache map[int64]*model.TLSFingerprintProfile
-	localMu    sync.RWMutex
+	localCache   map[int64]*model.TLSFingerprintProfile
+	localMu      sync.RWMutex
+	runtimeStart sync.Once
+	runtimeStop  context.CancelFunc
 }
 
 // NewTLSFingerprintProfileService 创建 TLS 指纹模板服务
@@ -50,23 +52,36 @@ func NewTLSFingerprintProfileService(
 		localCache: make(map[int64]*model.TLSFingerprintProfile),
 	}
 
-	ctx := context.Background()
-	if err := svc.reloadFromDB(ctx); err != nil {
-		logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to load profiles from DB on startup: %v", err)
-		if fallbackErr := svc.refreshLocalCache(ctx); fallbackErr != nil {
-			logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to load profiles from cache fallback on startup: %v", fallbackErr)
-		}
-	}
-
-	if cache != nil {
-		cache.SubscribeUpdates(ctx, func() {
-			if err := svc.refreshLocalCache(context.Background()); err != nil {
-				logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to refresh cache on notification: %v", err)
-			}
-		})
-	}
-
 	return svc
+}
+
+func (s *TLSFingerprintProfileService) Start() {
+	if s == nil {
+		return
+	}
+	s.runtimeStart.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.runtimeStop = cancel
+		if err := s.reloadFromDB(ctx); err != nil {
+			logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to load profiles from DB on startup: %v", err)
+			if fallbackErr := s.refreshLocalCache(ctx); fallbackErr != nil {
+				logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to load profiles from cache fallback on startup: %v", fallbackErr)
+			}
+		}
+		if s.cache != nil {
+			s.cache.SubscribeUpdates(ctx, func() {
+				if err := s.refreshLocalCache(context.Background()); err != nil {
+					logger.LegacyPrintf("service.tls_fp_profile", "[TLSFPProfileService] Failed to refresh cache on notification: %v", err)
+				}
+			})
+		}
+	})
+}
+
+func (s *TLSFingerprintProfileService) Stop() {
+	if s != nil && s.runtimeStop != nil {
+		s.runtimeStop()
+	}
 }
 
 // --- CRUD ---
