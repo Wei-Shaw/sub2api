@@ -46,6 +46,8 @@ describe('useModelWhitelist', () => {
   it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {
     const models = getModelsByPlatform('grok')
 
+    expect(models).toContain('grok-4.6')
+    expect(models).toContain('grok-4.6-latest')
     expect(models).toContain('grok-4.5')
     expect(models).toContain('grok-4.5-latest')
     expect(models).toContain('grok-build-latest')

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -495,8 +496,17 @@ REDACTED
 	return json.Marshal(root)
 REDACTED
 
+func grokChatResponsesBridgeModel(model string) bool {
+	switch strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model))) {
+	case "grok-4.5", "grok-4.6", "grok-4.6-latest":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 func grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity string) bool {
-	return strings.TrimSpace(upstreamModel) == "grok-4.5" && strings.TrimSpace(cacheIdentity) != ""
+	return grokChatResponsesBridgeModel(upstreamModel) && strings.TrimSpace(cacheIdentity) != ""
 REDACTED
 
 // forwardGrokChatCompletionsViaResponses converts a strictly compatible Chat
@@ -527,7 +537,7 @@ REDACTED
 	// for non-composer models, so they would be silently dropped. Route them to
 	// Responses even when no prompt-cache identity is available.
 	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || strings.TrimSpace(upstreamModel) != "grok-4.5") {
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || !grokChatResponsesBridgeModel(upstreamModel)) {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 REDACTED
 
