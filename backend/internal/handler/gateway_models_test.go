@@ -380,6 +380,7 @@ func TestGatewayModels_CompositeUnmappedAccountsFallbackToLinkedPlatformsOnly(t 
 
 	ids := modelIDsForTest(got.Data)
 	require.Contains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "grok-4.6")
 	require.Contains(t, ids, "grok-4.3")
 	require.NotContains(t, ids, "claude-sonnet-4-6")
 	require.NotContains(t, ids, "gemini-2.5-flash")

@@ -5173,6 +5173,7 @@
                     placeholder="grok-4.5"
                   />
                   <datalist id="grok-default-text-model-options">
+                    <option value="grok-4.6" />
                     <option value="grok-4.5" />
                     <option value="grok-4.1-fast" />
                     <option value="grok-4" />

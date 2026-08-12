@@ -818,6 +818,15 @@ cli_chat_proxy_base_url = "${baseUrl}"      # CLI chat-proxy base (env: GROK_CLI
 [auth]
 preferred_method = "api_key"
 
+[model."grok-4.6"]
+model = "grok-4.6"                          # id sent to the API
+name = "Grok 4.6"                           # shown in /model picker
+description = "Grok 4.6 via Sub2API (Responses)"
+env_key = "XAI_API_KEY"                     # or: api_key = "${apiKey}"  (not recommended)
+api_backend = "responses"                   # chat_completions | responses | messages
+context_window = 500000                     # drives auto-compaction timing
+supports_backend_search = true
+
 [model."grok-4.5"]
 model = "grok-4.5"                          # id sent to the API
 name = "Grok 4.5"                           # shown in /model picker
@@ -934,7 +943,7 @@ function generateGrokCodexFiles(baseUrl: string, apiKey: string): FileConfig[] {
 # Docs: Codex config reference (model_providers.*, wire_api = "responses")
 #
 # Text models only. Image/video: grok-imagine-image / grok-imagine-video on media endpoints.
-# Switch model: grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309 (text / web_search)
+# Switch model: grok-4.6 | grok-4.5 | grok-4.3 | grok-build-0.1 | grok-4.20-multi-agent-0309 (text / web_search)
 
 model_provider = "sub2api"
 model = "grok-4.5"
@@ -1480,6 +1489,10 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   // Align context_window with Grok Build official sample (docs.x.ai/build/settings) where known.
   // Image/video: grok-imagine-image / grok-imagine-video on media endpoints — not this list.
   const grokModels = {
+    'grok-4.6': {
+      name: 'Grok 4.6',
+      limit: { context: 500000, output: 64000 }
+    },
     'grok-4.5': {
       name: 'Grok 4.5',
       limit: { context: 500000, output: 64000 }
