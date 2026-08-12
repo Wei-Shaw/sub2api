@@ -694,9 +694,9 @@ func (s *OpsAlertEvaluatorService) windowedWeb3CreditFailureDelta(start, end tim
 		}
 	}
 
-	if len(previous) > 0 && previous[len(previous)-1].At.Equal(end) {
-		s.web3CreditFailureSamples[len(s.web3CreditFailureSamples)-1].Value = current
-	} else {
+	// The evaluator truncates window ends to the minute, so sub-minute runs can
+	// share an end timestamp. Keep the first counter value as their baseline.
+	if len(previous) == 0 || !previous[len(previous)-1].At.Equal(end) {
 		s.web3CreditFailureSamples = append(s.web3CreditFailureSamples, opsCounterSample{At: end, Value: current})
 	}
 	cutoff := end.Add(-7 * 24 * time.Hour)

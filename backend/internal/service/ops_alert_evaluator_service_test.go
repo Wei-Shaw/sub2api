@@ -334,6 +334,27 @@ func TestComputeRuleMetricUsesWindowedWeb3CreditFailureDelta(t *testing.T) {
 	require.Zero(t, third)
 }
 
+func TestComputeRuleMetricPreservesWeb3CreditFailureDeltaWithinSameMinute(t *testing.T) {
+	restoreInitial := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 2})
+	defer restoreInitial()
+	svc := &OpsAlertEvaluatorService{cfg: web3AlertTestConfig(true)}
+	rule := &OpsAlertRule{MetricType: "web3_credit_failures_total"}
+	windowEnd := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	windowStart := windowEnd.Add(-time.Minute)
+
+	initial, ok := svc.computeRuleMetric(context.Background(), rule, nil, windowStart, windowEnd, "", nil)
+	require.True(t, ok)
+	require.Zero(t, initial)
+
+	restoreIncrement := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 5})
+	defer restoreIncrement()
+	for evaluation := 1; evaluation <= 3; evaluation++ {
+		breach, ok := svc.computeRuleMetric(context.Background(), rule, nil, windowStart, windowEnd, "", nil)
+		require.True(t, ok)
+		require.Equal(t, float64(3), breach, "evaluation %d should retain the original window baseline", evaluation)
+	}
+}
+
 func TestComputeRuleMetricWeb3DepositIndicatorsDisabled(t *testing.T) {
 	t.Parallel()
 
