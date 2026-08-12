@@ -106,13 +106,20 @@ func normalizeChatToolChoiceToResponses(raw json.RawMessage) json.RawMessage {
 			Name string `json:"name"`
 		} `json:"function"`
 	}
-	if err := json.Unmarshal(raw, &choice); err != nil || choice.Type != "function" || choice.Name != "" || choice.Function.Name == "" {
+	if err := json.Unmarshal(raw, &choice); err != nil || choice.Type != "function" {
+		return raw
+	}
+	name := strings.TrimSpace(choice.Name)
+	if name == "" {
+		name = strings.TrimSpace(choice.Function.Name)
+	}
+	if name == "" {
 		return raw
 	}
 
 	normalized, err := json.Marshal(map[string]string{
 		"type": "function",
-		"name": choice.Function.Name,
+		"name": name,
 	})
 	if err != nil {
 		return raw

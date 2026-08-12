@@ -565,34 +565,51 @@ func TestChatCompletionsToResponses_NormalizesChatFunctionToolChoice(t *testing.
 	base := ChatCompletionsRequest{
 		Model:    "gpt-4o",
 		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Tools: []ChatTool{{
+			Type: "function",
+			Function: &ChatFunction{
+				Name:       "get_weather",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
 	}
 
-	t.Run("Chat Completions function choice", func(t *testing.T) {
-		req := base
-		req.ToolChoice = json.RawMessage(`{"type":"function","function":{"name":"get_weather"}}`)
+	for _, tt := range []struct {
+		name       string
+		toolChoice string
+		want       string
+	}{
+		{
+			name:       "Chat Completions function choice",
+			toolChoice: `{"type":"function","function":{"name":"get_weather"}}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "Responses function choice",
+			toolChoice: `{"type":"function","name":"get_weather"}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "top-level name takes precedence",
+			toolChoice: `{"type":"function","name":"get_weather","function":{"name":"legacy_name"}}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "non-function choice",
+			toolChoice: `"required"`,
+			want:       `"required"`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := base
+			req.ToolChoice = json.RawMessage(tt.toolChoice)
 
-		resp, err := ChatCompletionsToResponses(&req)
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"type":"function","name":"get_weather"}`, string(resp.ToolChoice))
-	})
-
-	t.Run("Responses function choice", func(t *testing.T) {
-		req := base
-		req.ToolChoice = json.RawMessage(`{"type":"function","name":"get_weather"}`)
-
-		resp, err := ChatCompletionsToResponses(&req)
-		require.NoError(t, err)
-		assert.JSONEq(t, `{"type":"function","name":"get_weather"}`, string(resp.ToolChoice))
-	})
-
-	t.Run("non-function choice", func(t *testing.T) {
-		req := base
-		req.ToolChoice = json.RawMessage(`"required"`)
-
-		resp, err := ChatCompletionsToResponses(&req)
-		require.NoError(t, err)
-		assert.JSONEq(t, `"required"`, string(resp.ToolChoice))
-	})
+			resp, err := ChatCompletionsToResponses(&req)
+			require.NoError(t, err)
+			require.Len(t, resp.Tools, 1)
+			assert.JSONEq(t, tt.want, string(resp.ToolChoice))
+		})
+	}
 }
 
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
