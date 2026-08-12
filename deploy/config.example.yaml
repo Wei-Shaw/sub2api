@@ -1274,6 +1274,9 @@ gemini:
 # Update Configuration (在线更新配置)
 # =============================================================================
 update:
+  # GitHub repository used for release checks and update assets.
+  # 用于版本检查与更新制品的 GitHub 仓库。
+  repository: "dextok/sub2api"
   # Proxy URL for accessing GitHub (used for online updates and pricing data)
   # 用于访问 GitHub 的代理地址（用于在线更新和定价数据获取）
   # Supports: http, https, socks5, socks5h

@@ -58,8 +58,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
-	beginUpstreamResponseModelObservation(c)
-
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
@@ -301,7 +299,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if foErr := s.failoverOpenAIUpstreamHTTPError(ctx, c, account, resp, respBody, upstreamMsg, upstreamModel); foErr != nil {
 			return nil, foErr
 		}
-		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
+		return s.handleChatCompletionsErrorResponse(resp, c, account, upstreamModel)
 	}
 
 	// 9. Handle normal response
@@ -421,11 +419,6 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
-	observer := upstreamResponseModelObserverFromContext(c)
-	if observer == nil {
-		observer = beginUpstreamResponseModelObservation(c)
-	}
-	observer.Observe(finalResponse.Model, true)
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
 		// cyber_policy 致命不可重试：不 failover，以 Chat Completions 错误格式回写（F4），
@@ -435,6 +428,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 				Code:           code,
 				Message:        msg,
 				Body:           truncateString(string(payload), 4096),
+				UpstreamModel:  upstreamModel,
 				UpstreamStatus: http.StatusOK,
 				UpstreamInTok:  usage.InputTokens,
 				UpstreamOutTok: usage.OutputTokens,
@@ -489,15 +483,13 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	result := &OpenAIForwardResult{
-		RequestID:                     requestID,
-		Usage:                         usage,
-		Model:                         originalModel,
-		BillingModel:                  billingModel,
-		UpstreamModel:                 upstreamModel,
-		UpstreamResponseModel:         observedUpstreamResponseModel(c),
-		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
-		Stream:                        false,
-		Duration:                      time.Since(startTime),
+		RequestID:     requestID,
+		Usage:         usage,
+		Model:         originalModel,
+		BillingModel:  billingModel,
+		UpstreamModel: upstreamModel,
+		Stream:        false,
+		Duration:      time.Since(startTime),
 	}
 	// Grok chat bridge: bill native search tools found in the terminal Responses body.
 	if account != nil && account.IsGrok() && finalResponse != nil {
@@ -544,10 +536,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
 	countSearch := account != nil && account.IsGrok()
-	observer := upstreamResponseModelObserverFromContext(c)
-	if observer == nil {
-		observer = beginUpstreamResponseModelObservation(c)
-	}
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
@@ -567,16 +555,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		out := &OpenAIForwardResult{
-			RequestID:                     requestID,
-			Usage:                         usage,
-			Model:                         originalModel,
-			BillingModel:                  billingModel,
-			UpstreamModel:                 upstreamModel,
-			UpstreamResponseModel:         observedUpstreamResponseModel(c),
-			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
-			Stream:                        true,
-			Duration:                      time.Since(startTime),
-			FirstTokenMs:                  firstTokenMs,
+			RequestID:     requestID,
+			Usage:         usage,
+			Model:         originalModel,
+			BillingModel:  billingModel,
+			UpstreamModel: upstreamModel,
+			Stream:        true,
+			Duration:      time.Since(startTime),
+			FirstTokenMs:  firstTokenMs,
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -602,7 +588,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			)
 			return false
 		}
-		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))
 
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
@@ -625,6 +610,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					Code:           code,
 					Message:        msg,
 					Body:           truncateString(string(payloadBytes), 4096),
+					UpstreamModel:  upstreamModel,
 					UpstreamStatus: http.StatusOK,
 					UpstreamInTok:  usage.InputTokens,
 					UpstreamOutTok: usage.OutputTokens,

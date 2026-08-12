@@ -285,6 +285,9 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", 0, err
 	}
+	if provider == MonitorProviderOpenAI {
+		body = rewriteOpenAIFinalOpenAIUpstreamBody(body)
+	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)

@@ -435,6 +435,71 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	require.NotContains(t, body, "\"name\":\"edit\"")
 }
 
+func TestOpenAIGatewayService_APIKeyPassthroughTracksFinalLogicalModel(t *testing.T) {
+	tests := []struct {
+		name           string
+		requestedModel string
+		accountMapping map[string]any
+		wantWireModel  string
+		wantOverride   bool
+	}{
+		{
+			name:           "sol ignores residual account mapping",
+			requestedModel: openAISolModel,
+			accountMapping: map[string]any{openAISolModel: "gpt-5.4"},
+			wantWireModel:  openAITerraModel,
+			wantOverride:   true,
+		},
+		{
+			name:           "alias is not remapped during passthrough",
+			requestedModel: "passthrough-alias",
+			accountMapping: map[string]any{"passthrough-alias": openAISolModel},
+			wantWireModel:  "passthrough-alias",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			requestBody := []byte(fmt.Sprintf(`{"model":%q,"stream":false,"instructions":"test","input":"hi"}`, tt.requestedModel))
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(requestBody))
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+					`{"id":"resp_passthrough_model","model":%q,"usage":{"input_tokens":1,"output_tokens":1}}`,
+					tt.wantWireModel,
+				))),
+			}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			account := &Account{
+				ID:       126,
+				Name:     "passthrough-model",
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":       "sk-test",
+					"base_url":      "https://api.openai.example",
+					"model_mapping": tt.accountMapping,
+				},
+				Extra:       map[string]any{"openai_passthrough": true},
+				Status:      StatusActive,
+				Schedulable: true,
+			}
+
+			result, err := svc.Forward(context.Background(), c, account, requestBody)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantWireModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Equal(t, tt.requestedModel, result.UpstreamModel)
+			require.Equal(t, tt.requestedModel, gjson.GetBytes(recorder.Body.Bytes(), "model").String())
+			require.Equal(t, tt.wantOverride, usesOpenAISolToTerraOverride(account, &OpenAIRecordUsageInput{Result: result}))
+		})
+	}
+}
+
 // 「自动透传（仅替换认证）」的默认行为必须真的只替换认证：namespace 声明、
 // namespace 形态的 tool_choice、历史调用项上的 namespace 都原样转发，只清掉
 // 非调用项上的残留 namespace（Codex 协议里只有调用项会带该字段）。

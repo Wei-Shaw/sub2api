@@ -111,15 +111,9 @@ type UsageLog struct {
 	// RequestedModel is the client-requested model name recorded for stable user/admin display.
 	// Empty should be treated as Model for backward compatibility with historical rows.
 	RequestedModel string
-	// UpstreamModel is the actual model sent to the upstream provider after mapping.
-	// Nil means no mapping was applied (requested model was used as-is).
+	// UpstreamModel is the mapped model recorded for display. Internal wire-only
+	// overrides are excluded. Nil means no configured mapping was applied.
 	UpstreamModel *string
-	// UpstreamResponseModel is the model declared by the successful upstream
-	// response before client-facing model rewrites or protocol conversion.
-	UpstreamResponseModel *string
-	// UpstreamModelMismatch is nil when no upstream model was observed. Otherwise
-	// it compares UpstreamResponseModel with the actual model sent upstream.
-	UpstreamModelMismatch *bool
 	// ChannelID 渠道 ID
 	ChannelID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"

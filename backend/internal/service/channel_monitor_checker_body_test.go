@@ -315,6 +315,33 @@ func TestRunCheckForModel_OpenAIResponses_DefaultRequest(t *testing.T) {
 	}
 }
 
+func TestRunCheckForModel_OpenAISolUsesTerraOnlyOnWire(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts *CheckOptions
+	}{
+		{name: "chat_completions"},
+		{name: "responses", opts: &CheckOptions{APIMode: MonitorAPIModeResponses}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &openAICaptureHandler{}
+			endpoint := setupFakeOpenAI(t, h)
+
+			res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "sk-openai", openAISolModel, tc.opts)
+
+			if res.Status != MonitorStatusOperational {
+				t.Fatalf("monitor request should pass challenge, got status=%s message=%q", res.Status, res.Message)
+			}
+			if res.Model != openAISolModel {
+				t.Fatalf("logical monitor model should remain %q, got %q", openAISolModel, res.Model)
+			}
+			if h.lastBody["model"] != openAITerraModel {
+				t.Fatalf("upstream model should be %q, got %v", openAITerraModel, h.lastBody["model"])
+			}
+		})
+	}
+}
+
 func TestRunCheckForModel_OpenAIResponses_SkipsLeadingReasoningItem(t *testing.T) {
 	h := &openAICaptureHandler{responsesLeadingReasoning: true}
 	endpoint := setupFakeOpenAI(t, h)

@@ -100,6 +100,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if policyModel == "" {
 		policyModel = reqModel
 	}
+	upstreamPassthroughModel = policyModel
 	updatedBody, policyErr := s.applyOpenAIFastPolicyToBody(ctx, account, policyModel, body)
 	if policyErr != nil {
 		var blocked *OpenAIFastBlockedError
@@ -233,7 +234,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		if shouldFailoverOpenAIPassthroughResponse(account, resp.StatusCode, probeBody) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 		}
-		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
+		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody, upstreamPassthroughModel)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -255,7 +256,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, openAIFinalUpstreamModel(account, upstreamPassthroughModel))
 		if err != nil {
 			return nil, err
 		}
@@ -278,19 +279,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:                     resp.Header.Get("x-request-id"),
-		ResponseID:                    responseID,
-		Usage:                         *usage,
-		Model:                         reqModel,
-		UpstreamModel:                 upstreamPassthroughModel,
-		UpstreamResponseModel:         observedUpstreamResponseModel(c),
-		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
-		ServiceTier:                   serviceTier,
-		ReasoningEffort:               reasoningEffort,
-		Stream:                        reqStream,
-		OpenAIWSMode:                  false,
-		Duration:                      time.Since(startTime),
-		FirstTokenMs:                  firstTokenMs,
+		RequestID:       resp.Header.Get("x-request-id"),
+		ResponseID:      responseID,
+		Usage:           *usage,
+		Model:           reqModel,
+		UpstreamModel:   upstreamPassthroughModel,
+		ServiceTier:     serviceTier,
+		ReasoningEffort: reasoningEffort,
+		Stream:          reqStream,
+		OpenAIWSMode:    false,
+		Duration:        time.Since(startTime),
+		FirstTokenMs:    firstTokenMs,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -355,6 +354,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		}
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+	body = rewriteOpenAIFinalUpstreamBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -651,6 +651,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	account *Account,
 	requestBody []byte,
 	responseBody []byte,
+	upstreamModel string,
 ) error {
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
@@ -664,6 +665,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 			Code:           cyberCode,
 			Message:        cyberMsg,
 			Body:           truncateString(string(body), 4096),
+			UpstreamModel:  upstreamModel,
 			UpstreamStatus: resp.StatusCode,
 		})
 	}
@@ -1191,10 +1193,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	originalModel string,
 	mappedModel string,
 ) (*openaiStreamingResultPassthrough, error) {
-	observer := upstreamResponseModelObserverFromContext(c)
-	if observer == nil {
-		observer = beginUpstreamResponseModelObservation(c)
-	}
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	// SSE headers
@@ -1276,8 +1274,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
-			rawEventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
-			observer.ObserveOpenAI(dataBytes, rawEventType)
 			if needModelReplace && strings.Contains(data, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
 				if replacedData, replaced := extractOpenAISSEDataLine(line); replaced {
@@ -1318,6 +1314,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						Code:           code,
 						Message:        msg,
 						Body:           truncateString(string(dataBytes), 4096),
+						UpstreamModel:  mappedModel,
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,
@@ -1475,15 +1472,6 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
-	}
-	observer := upstreamResponseModelObserverFromContext(c)
-	if observer == nil {
-		observer = beginUpstreamResponseModelObservation(c)
-	}
-	if bodyHasSSEFraming(body) {
-		observeOpenAISSEBody(observer, string(body))
-	} else {
-		observer.ObserveOpenAI(body, strings.TrimSpace(gjson.GetBytes(body, "type").String()))
 	}
 
 	// Detect SSE responses from upstream and convert to JSON.

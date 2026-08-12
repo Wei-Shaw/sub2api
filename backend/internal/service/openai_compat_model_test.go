@@ -170,7 +170,7 @@ func TestForwardAsAnthropic_UsesExactFableMessagesDispatchModel(t *testing.T) {
 	require.Equal(t, "claude-fable-5", result.Model)
 	require.Equal(t, "gpt-5.6-sol", result.BillingModel)
 	require.Equal(t, "gpt-5.6-sol", result.UpstreamModel)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.NotContains(t, string(upstream.lastBody), "claude-fable-5")
 	require.Equal(t, "claude-fable-5", gjson.GetBytes(rec.Body.Bytes(), "model").String())
 }
@@ -284,6 +284,10 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			wantWireModel := tt.wantModel
+			if tt.account.Platform == PlatformOpenAI && wantWireModel == openAISolModel {
+				wantWireModel = openAITerraModel
+			}
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
 			body := `{"model":"` + tt.model + `","max_tokens":16,"messages":[{"role":"user","content":"hello"}`
@@ -295,7 +299,7 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
 
-			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_gpt56_"+tt.name, tt.wantModel)}
+			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_gpt56_"+tt.name, wantWireModel)}
 			svc := &OpenAIGatewayService{
 				httpUpstream: upstream,
 				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
@@ -305,7 +309,7 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, tt.wantModel, result.UpstreamModel)
-			require.Equal(t, tt.wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Equal(t, wantWireModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 			require.NotNil(t, result.ReasoningEffort)
 			require.Equal(t, tt.wantEffort, *result.ReasoningEffort)

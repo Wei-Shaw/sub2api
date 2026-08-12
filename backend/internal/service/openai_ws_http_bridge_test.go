@@ -342,11 +342,11 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sseBody := strings.Join([]string{
-		`data: {"type":"response.created","response":{"id":"resp_bridge","model":"gpt-5"}}`,
+		`data: {"type":"response.created","response":{"id":"resp_bridge","model":"gpt-5.6-terra"}}`,
 		"",
 		`data: {"type":"response.output_text.delta","response":{"id":"resp_bridge"},"delta":"ok"}`,
 		"",
-		`data: {"type":"response.completed","response":{"id":"resp_bridge","model":"gpt-5","usage":{"input_tokens":3,"output_tokens":2}}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_bridge","model":"gpt-5.6-terra","usage":{"input_tokens":3,"output_tokens":2}}}`,
 		"",
 	}, "\n")
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -378,7 +378,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 		Concurrency: 1,
 		Status:      StatusActive,
 	}
-	payload := []byte(`{"type":"response.create","generate":true,"model":"gpt-5","stream":true,"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"},"input":"hi"}`)
+	payload := []byte(`{"type":"response.create","generate":true,"model":"gpt-5.6-sol","stream":true,"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"},"input":"hi"}`)
 
 	type bridgeResult struct {
 		result *OpenAIForwardResult
@@ -411,7 +411,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 			"sk-test",
 			payload,
 			len(payload),
-			"gpt-5",
+			"gpt-5.6-sol",
 			"",
 			"",
 			"",
@@ -443,8 +443,10 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 	completed := readEvent()
 
 	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	require.Equal(t, openAISolModel, gjson.GetBytes(created, "response.model").String())
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
+	require.Equal(t, openAISolModel, gjson.GetBytes(completed, "response.model").String())
 
 	select {
 	case bridge := <-resultCh:
@@ -453,6 +455,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 		require.Equal(t, "resp_bridge", bridge.result.RequestID)
 		require.Equal(t, 3, bridge.result.Usage.InputTokens)
 		require.Equal(t, 2, bridge.result.Usage.OutputTokens)
+		require.Equal(t, openAISolModel, bridge.result.UpstreamModel)
 		require.True(t, bridge.result.OpenAIWSMode)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for bridge result")
@@ -464,6 +467,7 @@ func TestOpenAIWSHTTPBridgeRelaysSSEFramesAsWebSocketMessages(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstream.lastBody, "type").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "generate").Exists())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, openAITerraModel, gjson.GetBytes(upstream.lastBody, "model").String())
 }
 
 func TestProxyOpenAIWSHTTPBridgeTurnForGrokDefaultsEmptyModelTo45(t *testing.T) {

@@ -15,6 +15,8 @@ import "embed"
 //   - 使用零填充的数字前缀确保正确的执行顺序
 //   - 格式：NNN_description.sql（如 001_init.sql, 002_add_users.sql）
 //   - 描述部分使用下划线分隔的小写单词
+//   - 上游迁移使用上述数字命名；fork 专属迁移必须使用
+//     fork_YYYYMMDDHHMM_description.sql，避免占用上游编号空间
 //
 // 迁移文件要求：
 //   - 必须是幂等的（可重复执行而不产生错误）

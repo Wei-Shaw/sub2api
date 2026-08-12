@@ -162,7 +162,7 @@ func TestAccountTestService_OpenAIOAuthTestNormalizesGPT56Alias(t *testing.T) {
 
 	body, err := io.ReadAll(upstream.requests[0].Body)
 	require.NoError(t, err)
-	require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(body, "model").String())
+	require.Equal(t, "gpt-5.6-terra", gjson.GetBytes(body, "model").String())
 }
 
 func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *testing.T) {

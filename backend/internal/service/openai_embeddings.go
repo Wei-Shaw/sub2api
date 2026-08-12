@@ -61,6 +61,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	targetURL := buildOpenAIEmbeddingsURL(validatedURL)
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	upstreamBody = rewriteOpenAIFinalUpstreamBody(account, upstreamBody)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
 	releaseUpstreamCtx()
 	if err != nil {

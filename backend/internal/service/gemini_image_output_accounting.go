@@ -47,9 +47,7 @@ func geminiImageOutputCounterFromContext(c *gin.Context) *geminiImageOutputCount
 	return counter
 }
 
-// observeGeminiImageOutputs 观测一段上游响应（整份或单个 chunk）里的内联图片。
-// 调用点与 upstreamResponseModelObserver.ObserveGemini 一一对应——那里拿得到
-// 解包后的上游响应体，这里需要的是同一份字节。
+// observeGeminiImageOutputs 观测一段已解包的上游响应（整份或单个 chunk）里的内联图片。
 func observeGeminiImageOutputs(c *gin.Context, payload []byte) {
 	counter := geminiImageOutputCounterFromContext(c)
 	if counter == nil {

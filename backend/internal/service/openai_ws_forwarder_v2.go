@@ -36,7 +36,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
-	responseModelObserver := &upstreamResponseModelObserver{}
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {
@@ -353,10 +352,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	responseID := ""
 	var finalResponse []byte
 	wroteDownstream := false
-	needModelReplace := originalModel != mappedModel
+	responseModel := openAIFinalUpstreamModel(account, mappedModel)
+	needModelReplace := originalModel != responseModel
 	var mappedModelBytes []byte
-	if needModelReplace && mappedModel != "" {
-		mappedModelBytes = []byte(mappedModel)
+	if needModelReplace && responseModel != "" {
+		mappedModelBytes = []byte(responseModel)
 	}
 	bufferedStreamEvents := make([][]byte, 0, 4)
 	eventCount := 0
@@ -525,7 +525,6 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		if eventType == "" {
 			continue
 		}
-		responseModelObserver.ObserveOpenAI(message, eventType)
 		eventCount++
 		if firstEventType == "" {
 			firstEventType = eventType
@@ -564,7 +563,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 		if !clientDisconnected {
 			if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(message, mappedModelBytes) {
-				message = replaceOpenAIWSMessageModel(message, mappedModel, originalModel)
+				message = replaceOpenAIWSMessageModel(message, responseModel, originalModel)
 			}
 			if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(message) {
 				if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(message); changed {
@@ -583,6 +582,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					Code:           code,
 					Message:        msg,
 					Body:           truncateString(string(message), 4096),
+					UpstreamModel:  mappedModel,
 					UpstreamStatus: http.StatusOK,
 					UpstreamInTok:  usage.InputTokens,
 					UpstreamOutTok: usage.OutputTokens,
@@ -717,7 +717,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if needModelReplace {
-			finalResponse = s.replaceModelInResponseBody(finalResponse, mappedModel, originalModel)
+			finalResponse = s.replaceModelInResponseBody(finalResponse, responseModel, originalModel)
 		}
 		finalResponse = s.correctToolCallsInResponseBody(finalResponse)
 		populateOpenAIUsageFromResponseJSON(finalResponse, usage)
@@ -762,22 +762,20 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	return &OpenAIForwardResult{
-		RequestID:                     responseID,
-		Usage:                         *usage,
-		Model:                         originalModel,
-		UpstreamModel:                 mappedModel,
-		UpstreamResponseModel:         responseModelObserver.Model(),
-		UpstreamResponseModelConflict: responseModelObserver.Conflict(),
-		ImageCount:                    imageCounter.Count(),
-		ImageOutputSizes:              imageCounter.Sizes(),
-		ServiceTier:                   extractOpenAIServiceTier(reqBody),
-		ReasoningEffort:               extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
-		Stream:                        reqStream,
-		OpenAIWSMode:                  true,
-		UpstreamTerminalEvent:         upstreamTerminalEvent,
-		ResponseHeaders:               lease.HandshakeHeaders(),
-		Duration:                      time.Since(startTime),
-		FirstTokenMs:                  firstTokenMs,
+		RequestID:             responseID,
+		Usage:                 *usage,
+		Model:                 originalModel,
+		UpstreamModel:         mappedModel,
+		ImageCount:            imageCounter.Count(),
+		ImageOutputSizes:      imageCounter.Sizes(),
+		ServiceTier:           extractOpenAIServiceTier(reqBody),
+		ReasoningEffort:       extractOpenAIReasoningEffort(reqBody, mappedModel, originalModel),
+		Stream:                reqStream,
+		OpenAIWSMode:          true,
+		UpstreamTerminalEvent: upstreamTerminalEvent,
+		ResponseHeaders:       lease.HandshakeHeaders(),
+		Duration:              time.Since(startTime),
+		FirstTokenMs:          firstTokenMs,
 	}, nil
 }
 

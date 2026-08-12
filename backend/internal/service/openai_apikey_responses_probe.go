@@ -139,7 +139,8 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	probeCtx, cancel := context.WithTimeout(ctx, openaiResponsesProbeTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probeURL, bytes.NewReader(openaiResponsesProbePayload(probeModel)))
+	probeBody := rewriteOpenAIFinalUpstreamBody(account, openaiResponsesProbePayload(probeModel))
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probeURL, bytes.NewReader(probeBody))
 	if err != nil {
 		logger.LegacyPrintf("service.openai_probe", "probe_build_request_failed: account_id=%d err=%v", accountID, err)
 		return

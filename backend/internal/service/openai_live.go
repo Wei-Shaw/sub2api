@@ -279,6 +279,7 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	if err != nil {
 		return nil, err
 	}
+	body = rewriteOpenAIFinalUpstreamBody(account, body)
 	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
 	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatGPTLiveCallsURL, bytes.NewReader(body))
 	if err != nil {
@@ -530,6 +531,9 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 			if readErr != nil {
 				errCh <- readErr
 				return
+			}
+			if messageType == coderws.MessageText {
+				payload = rewriteOpenAIFinalOpenAIUpstreamBody(payload)
 			}
 			if writeErr := upstream.WriteFrame(proxyCtx, messageType, payload); writeErr != nil {
 				errCh <- writeErr

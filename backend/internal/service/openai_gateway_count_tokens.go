@@ -242,6 +242,7 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 			targetURL = buildOpenAIResponsesInputTokensURL(validatedURL)
 		}
 	}
+	body = rewriteOpenAIFinalUpstreamBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {

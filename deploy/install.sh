@@ -2,7 +2,7 @@
 #
 # Sub2API Installation Script
 # Sub2API 安装脚本
-# Usage: curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/dextok/sub2api/main/deploy/install.sh | bash
 #
 
 set -e
@@ -31,7 +31,11 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
-GITHUB_REPO="Wei-Shaw/sub2api"
+GITHUB_REPO="${SUB2API_GITHUB_REPO:-dextok/sub2api}"
+if [[ ! "$GITHUB_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    echo "Error: invalid SUB2API_GITHUB_REPO: $GITHUB_REPO" >&2
+    exit 1
+fi
 INSTALL_DIR="/opt/sub2api"
 SERVICE_NAME="sub2api"
 SERVICE_USER="sub2api"
@@ -718,7 +722,7 @@ install_service() {
     cat > /etc/systemd/system/sub2api.service << EOF
 [Unit]
 Description=Sub2API - AI API Gateway Platform
-Documentation=https://github.com/Wei-Shaw/sub2api
+Documentation=https://github.com/${GITHUB_REPO}
 After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 
@@ -727,6 +731,7 @@ Type=simple
 User=sub2api
 Group=sub2api
 WorkingDirectory=/opt/sub2api
+Environment=UPDATE_REPOSITORY=${GITHUB_REPO}
 ExecStart=/opt/sub2api/sub2api
 Restart=always
 RestartSec=5

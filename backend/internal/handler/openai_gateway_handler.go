@@ -3217,6 +3217,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	}
 	// 提前拍成标量，避免在下方 goroutine 内访问 gin.Context。
 	sessionID := service.ExtractClientSessionID(c)
+	upstreamModel := strings.TrimSpace(mark.UpstreamModel)
 	apiKeyPrefix := ""
 	if apiKey != nil {
 		apiKeyPrefix = keyPrefix(apiKey.Key, 8)
@@ -3266,6 +3267,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 				Subscription:       subscription,
 				RequestID:          requestID,
 				Model:              model,
+				UpstreamModel:      upstreamModel,
 				Stream:             stream,
 				InputTokens:        mark.UpstreamInTok,
 				OutputTokens:       mark.UpstreamOutTok,

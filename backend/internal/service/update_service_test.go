@@ -31,13 +31,17 @@ type updateServiceGitHubClientStub struct {
 	release        *GitHubRelease
 	recentReleases []*GitHubRelease
 	recentErr      error
+	latestRepo     string
+	recentRepo     string
 }
 
-func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchLatestRelease(_ context.Context, repo string) (*GitHubRelease, error) {
+	s.latestRepo = repo
 	return s.release, nil
 }
 
-func (s *updateServiceGitHubClientStub) FetchRecentReleases(context.Context, string, int) ([]*GitHubRelease, error) {
+func (s *updateServiceGitHubClientStub) FetchRecentReleases(_ context.Context, repo string, _ int) ([]*GitHubRelease, error) {
+	s.recentRepo = repo
 	return s.recentReleases, s.recentErr
 }
 
@@ -67,6 +71,37 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ErrNoUpdateAvailable))
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
+}
+
+func TestUpdateServiceUsesConfiguredRepository(t *testing.T) {
+	client := &updateServiceGitHubClientStub{
+		release: &GitHubRelease{
+			TagName: "v0.1.172",
+			HTMLURL: "https://github.com/dextok/sub2api/releases/tag/v0.1.172",
+		},
+		recentReleases: []*GitHubRelease{
+			{
+				TagName: "v0.1.170",
+				HTMLURL: "https://github.com/dextok/sub2api/releases/tag/v0.1.170",
+			},
+		},
+	}
+	svc := newUpdateService(
+		&updateServiceCacheStub{},
+		client,
+		"0.1.171",
+		"release",
+		"dextok/sub2api",
+	)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+	require.NoError(t, err)
+	require.Equal(t, "https://github.com/Wei-Shaw/sub2api/releases/tag/v0.1.172", info.ReleaseInfo.HTMLURL)
+	versions, err := svc.ListRollbackVersions(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "https://github.com/Wei-Shaw/sub2api/releases/tag/v0.1.170", versions[0].HTMLURL)
+	require.Equal(t, "dextok/sub2api", client.latestRepo)
+	require.Equal(t, "dextok/sub2api", client.recentRepo)
 }
 
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {

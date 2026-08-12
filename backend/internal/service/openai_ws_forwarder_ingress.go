@@ -798,13 +798,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string) (*OpenAIForwardResult, error) {
-		responseModelObserver := &upstreamResponseModelObserver{}
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
-		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
+		wirePayload := rewriteOpenAIFinalUpstreamBody(account, payload)
+		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(wirePayload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
 				fmt.Errorf("write upstream websocket request: %w", err),
@@ -817,7 +817,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				account.ID,
 				turn,
 				truncateOpenAIWSLogValue(lease.ConnID(), openAIWSIDValueMaxLen),
-				payloadBytes,
+				len(wirePayload),
 			)
 		}
 
@@ -840,15 +840,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		needModelReplace := false
 		clientDisconnected := false
 		mappedModel := ""
+		responseModel := ""
 		var mappedModelBytes []byte
 		if originalModel != "" {
 			mappedModel = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
 			if mappedModel == "" {
 				mappedModel = normalizeOpenAIModelForUpstream(account, account.GetMappedModel(originalModel))
 			}
-			needModelReplace = mappedModel != "" && mappedModel != originalModel
+			responseModel = openAIFinalUpstreamModel(account, mappedModel)
+			needModelReplace = responseModel != "" && responseModel != originalModel
 			if needModelReplace {
-				mappedModelBytes = []byte(mappedModel)
+				mappedModelBytes = []byte(responseModel)
 			}
 		}
 		for {
@@ -866,7 +868,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 
 			eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(upstreamMessage)
-			responseModelObserver.ObserveOpenAI(upstreamMessage, eventType)
 			if responseID == "" && eventResponseID != "" {
 				responseID = eventResponseID
 			}
@@ -971,6 +972,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						Code:           code,
 						Message:        msg,
 						Body:           truncateString(string(upstreamMessage), 4096),
+						UpstreamModel:  mappedModel,
 						UpstreamStatus: http.StatusOK,
 						UpstreamInTok:  usage.InputTokens,
 						UpstreamOutTok: usage.OutputTokens,
@@ -980,7 +982,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
-					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
+					upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, responseModel, originalModel)
 				}
 				if openAIWSEventMayContainToolCalls(eventType) && openAIWSMessageLikelyContainsToolCalls(upstreamMessage) {
 					if corrected, changed := s.toolCorrector.CorrectToolCallsInSSEBytes(upstreamMessage); changed {
@@ -1041,20 +1043,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
-					RequestID:                     responseID,
-					Usage:                         usage,
-					Model:                         originalModel,
-					UpstreamModel:                 mappedModel,
-					UpstreamResponseModel:         responseModelObserver.Model(),
-					UpstreamResponseModelConflict: responseModelObserver.Conflict(),
-					ServiceTier:                   extractOpenAIServiceTierFromBody(payload),
-					ReasoningEffort:               ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
-					Stream:                        reqStream,
-					OpenAIWSMode:                  true,
-					UpstreamTerminalEvent:         terminalEvent,
-					ResponseHeaders:               lease.HandshakeHeaders(),
-					Duration:                      time.Since(turnStart),
-					FirstTokenMs:                  firstTokenMs,
+					RequestID:             responseID,
+					Usage:                 usage,
+					Model:                 originalModel,
+					UpstreamModel:         mappedModel,
+					ServiceTier:           extractOpenAIServiceTierFromBody(payload),
+					ReasoningEffort:       ApplyThinkingEnabledFallback(extractOpenAIReasoningEffortFromBody(payload, mappedModel, originalModel), payload, mappedModel),
+					Stream:                reqStream,
+					OpenAIWSMode:          true,
+					UpstreamTerminalEvent: terminalEvent,
+					ResponseHeaders:       lease.HandshakeHeaders(),
+					Duration:              time.Since(turnStart),
+					FirstTokenMs:          firstTokenMs,
 				}
 				if replayInput := replayCollector.Items(); len(replayInput) > 0 {
 					result.wsReplayInput = replayInput

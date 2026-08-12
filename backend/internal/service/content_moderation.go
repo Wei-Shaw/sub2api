@@ -1740,7 +1740,7 @@ func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Conte
 		return nil, err
 	}
 	payload := moderationAPIRequest{
-		Model: cfg.Model,
+		Model: openAIFinalOpenAIModel(cfg.Model),
 		Input: input,
 	}
 	raw, err := json.Marshal(payload)
