@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,6 +33,20 @@ func newOpenAIUpstreamStreamReadError(err error) error {
 		clientCode:    code,
 		clientMessage: message,
 	}
+}
+
+// shouldClassifyOpenAIUpstreamStreamReadError excludes cancellation and
+// response-size enforcement from upstream retry.
+func shouldClassifyOpenAIUpstreamStreamReadError(err error, contexts ...context.Context) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+		return false
+	}
+	for _, ctx := range contexts {
+		if ctx != nil && ctx.Err() != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // OpenAIUpstreamStreamReadErrorDetails returns the stable, sanitized client

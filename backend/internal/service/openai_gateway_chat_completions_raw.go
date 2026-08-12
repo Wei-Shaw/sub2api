@@ -439,6 +439,11 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(respBody); ok {
 		usage = parsedUsage
 	}
+	responseModel := gjson.GetBytes(respBody, "model").String()
+	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
+		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
+		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
+	}
 	if finalUpstreamModel := openAIFinalUpstreamModel(account, upstreamModel); finalUpstreamModel != upstreamModel {
 		respBody = s.replaceModelInResponseBody(respBody, finalUpstreamModel, upstreamModel)
 	}

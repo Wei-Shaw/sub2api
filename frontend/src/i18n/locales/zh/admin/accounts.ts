@@ -324,6 +324,12 @@ export default {
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
       antigravityProjectIdHint:
         'standard-tier 且未自动返回 project_id 的 Antigravity 账号需要填写用户自带 GCP project。',
+      accountSchedulingThresholdOverride: '账号自动停调阈值覆盖',
+      accountSchedulingThresholdOverrideHint:
+        '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
+      accountSchedulingThresholdOverrideValue: '账号阈值百分比',
+      accountSchedulingThresholdOverrideDisabledHint:
+        '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
       status: {
         active: '正常',
         inactive: '停用',
@@ -334,10 +340,6 @@ export default {
         rateLimited: '限流中',
         overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
-      accountSchedulingThresholdOverride: '账号自动停调阈值覆盖',
-      accountSchedulingThresholdOverrideHint: '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
-      accountSchedulingThresholdOverrideValue: '账号阈值百分比',
-      accountSchedulingThresholdOverrideDisabledHint: '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
         quotaExceeded: '配额超限',
         unschedulable: '不可调度',
         rateLimitedUntil: '限流中，当前不参与调度，预计 {time} 自动恢复',
@@ -641,6 +643,12 @@ export default {
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
         codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
+        codexFingerprintMode: 'Codex 指纹收敛',
+        codexFingerprintModeDesc: '多人共享同一 OAuth 账号时，将各用户的设备/会话标识收敛为账号级恒定值，减少上游可见的设备数和会话数。关闭时原样透传客户端标识。',
+        codexFingerprintOff: '关闭（透传）',
+        codexFingerprintDevice: '仅设备',
+        codexFingerprintSession: '设备+会话（推荐）',
+        codexFingerprintFull: '完全收敛',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',
