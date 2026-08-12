@@ -270,6 +270,8 @@ describe('admin AccountsView — 账号行展示', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -356,6 +358,7 @@ describe('admin AccountsView — 账号行展示', () => {
         credentials: { subscription_tier: 'FREE', plan_type: 'legacy' },
         extra: {
           grok_billing_snapshot: { plan: 'SuperGrok' },
+          grok_usage_snapshot: { subscription_tier: 'SuperGrok Heavy' },
           subscription_tier: 'BASIC',
         },
       },
@@ -377,7 +380,8 @@ describe('admin AccountsView — 账号行展示', () => {
         type: 'oauth',
         credentials: { subscription_tier: 'FREE' },
         extra: {
-          grok_quota_snapshot: { subscription_tier: 'SuperGrok' },
+          grok_usage_snapshot: { subscription_tier: 'SuperGrok' },
+          grok_quota_snapshot: { subscription_tier: 'Free' },
           subscription_tier: 'BASIC',
         },
       },
@@ -395,6 +399,14 @@ describe('admin AccountsView — 账号行展示', () => {
         platform: 'grok',
         type: 'oauth',
         credentials: { plan_type: 'SuperGrok' },
+      },
+      {
+        id: 206,
+        name: 'legacy-quota-alias',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE' },
+        extra: { grok_quota_snapshot: { subscription_tier: 'SuperGrok' } },
       },
     ]
 
@@ -416,8 +428,105 @@ describe('admin AccountsView — 账号行展示', () => {
       'SuperGrok',
       'BASIC',
       'SuperGrok',
+      'SuperGrok',
     ])
 
+    wrapper.unmount()
+  })
+
+  it('skips malformed Grok plan fields and safely uses the next valid fallback', async () => {
+    const grokAccounts = [
+      {
+        id: 207,
+        name: 'legacy-fallback',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'FREE' },
+        extra: {
+          grok_usage_snapshot: { subscription_tier: { name: 'SuperGrok Heavy' } },
+          grok_quota_snapshot: { subscription_tier: 'SuperGrok' },
+        },
+      },
+      {
+        id: 208,
+        name: 'credential-plan-fallback',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 0, plan_type: 'SuperGrok Heavy' },
+        extra: {
+          grok_billing_snapshot: { plan: {} },
+          grok_usage_snapshot: { subscription_tier: 1 },
+          grok_quota_snapshot: { subscription_tier: [] },
+          subscription_tier: '   ',
+        },
+      },
+      {
+        id: 209,
+        name: 'no-valid-plan',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: {}, plan_type: 2 },
+        parent_plan_type: [],
+        extra: {
+          grok_billing_snapshot: { plan: [] },
+          grok_usage_snapshot: { subscription_tier: 1 },
+          grok_quota_snapshot: { subscription_tier: {} },
+          subscription_tier: null,
+        },
+      },
+    ]
+
+    listAccounts.mockResolvedValue({
+      items: grokAccounts,
+      total: grokAccounts.length,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    expect(wrapper.findAllComponents(PlatformTypeBadge).map((badge) => badge.props('planType'))).toEqual([
+      'SuperGrok',
+      'SuperGrok Heavy',
+      undefined,
+    ])
+    wrapper.unmount()
+  })
+
+  it('replaces a Grok row when auto refresh returns a changed canonical usage snapshot', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+
+    const initialAccount = {
+      id: 207,
+      name: 'refresh-tier',
+      platform: 'grok',
+      type: 'oauth',
+      extra: { grok_usage_snapshot: { subscription_tier: 'Free', status_code: 200 } },
+    }
+    const refreshedAccount = {
+      ...initialAccount,
+      extra: { grok_usage_snapshot: { subscription_tier: 'SuperGrok', status_code: 200 } },
+    }
+    listAccounts.mockResolvedValue({ items: [initialAccount], total: 1, page: 1, page_size: 20, pages: 1 })
+    listWithEtag.mockResolvedValueOnce({
+      notModified: false,
+      etag: 'grok-snapshot-2',
+      data: { items: [refreshedAccount], total: 1, page: 1, page_size: 20, pages: 1 },
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+    expect(wrapper.findComponent(PlatformTypeBadge).props('planType')).toBe('Free')
+
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    expect(wrapper.findComponent(PlatformTypeBadge).props('planType')).toBe('SuperGrok')
     wrapper.unmount()
   })
 })
