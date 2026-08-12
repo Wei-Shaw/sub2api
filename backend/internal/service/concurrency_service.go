@@ -61,6 +61,15 @@ type APIKeyConcurrencyCache interface {
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
 }
 
+// APIKeyProcessLivenessCache is a narrow optional capability for reconciling
+// stats-only API key slots after a process exits. Unknown owners are never
+// guessed dead; cleanup requires an expired lease registered by that owner.
+type APIKeyProcessLivenessCache interface {
+	RegisterProcessLease(ctx context.Context, processPrefix string, ttl time.Duration) error
+	RefreshProcessLease(ctx context.Context, processPrefix string, ttl time.Duration) (bool, error)
+	CleanupDeadAPIKeySlots(ctx context.Context) error
+}
+
 // OpenAIWSIngressLeaseCache owns the short-lived distributed lease used to
 // bound live client WebSocket sessions. It is deliberately independent of the
 // request-slot namespace: idle ingress connections do not occupy turn slots.
@@ -225,6 +234,9 @@ const (
 	maxAccountLoadBatchCacheEntries = 256
 	apiKeyConcurrencyFetchTimeout   = 3 * time.Second
 	apiKeySlotTrackTimeout          = 2 * time.Second
+	apiKeyProcessLeaseTTL           = 90 * time.Second
+	apiKeyProcessLeaseRefresh       = 20 * time.Second
+	apiKeyProcessLeaseOperationTO   = 5 * time.Second
 )
 
 // ConcurrencyService 管理账号和用户的并发限制。
@@ -235,6 +247,13 @@ type ConcurrencyService struct {
 	accountLoadCacheMu  sync.RWMutex
 	accountLoadCache    map[string]cachedAccountLoadBatch
 	accountLoadGroup    singleflight.Group
+
+	apiKeyLeaseMu   sync.Mutex
+	apiKeyLeaseStop chan struct{}
+	apiKeyLeaseDone chan struct{}
+
+	apiKeyLeaseRefreshMu   sync.Mutex
+	apiKeyLeaseConfirmedAt atomic.Int64
 }
 
 type cachedAccountLoadBatch struct {
@@ -430,6 +449,15 @@ func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64
 	baseCtx := context.Background()
 	if ctx != nil {
 		baseCtx = context.WithoutCancel(ctx)
+	}
+	if livenessCache, ok := s.cache.(APIKeyProcessLivenessCache); ok {
+		leaseCtx, leaseCancel := context.WithTimeout(baseCtx, apiKeySlotTrackTimeout)
+		err := s.ensureAPIKeyProcessLease(leaseCtx, livenessCache)
+		leaseCancel()
+		if err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to confirm api key process lease before tracking key %d: %v", apiKeyID, err)
+			return func() {}
+		}
 	}
 	trackCtx, cancel := context.WithTimeout(baseCtx, apiKeySlotTrackTimeout)
 	err := cache.TrackAPIKeySlot(trackCtx, apiKeyID, requestID)
@@ -720,6 +748,141 @@ func (s *ConcurrencyService) CleanupExpiredAccountSlots(ctx context.Context, acc
 	return s.cache.CleanupExpiredAccountSlots(ctx, accountID)
 }
 
+// StartAPIKeyProcessLiveness registers this process before reconciling dead
+// API key stats slots. Registration first is important during rolling deploys:
+// a new instance must not treat a healthy peer as dead.
+func (s *ConcurrencyService) StartAPIKeyProcessLiveness() error {
+	if s == nil || s.cache == nil {
+		return nil
+	}
+	cache, ok := s.cache.(APIKeyProcessLivenessCache)
+	if !ok {
+		return nil
+	}
+
+	s.apiKeyLeaseMu.Lock()
+	defer s.apiKeyLeaseMu.Unlock()
+	if s.apiKeyLeaseStop != nil {
+		return nil
+	}
+
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	s.apiKeyLeaseStop = stopCh
+	s.apiKeyLeaseDone = doneCh
+	go s.runAPIKeyProcessLiveness(cache, stopCh, doneCh)
+
+	registerCtx, registerCancel := context.WithTimeout(context.Background(), apiKeyProcessLeaseOperationTO)
+	err := cache.RegisterProcessLease(registerCtx, RequestIDPrefix(), apiKeyProcessLeaseTTL)
+	registerCancel()
+	if err != nil {
+		logger.LegacyPrintf(
+			"service.concurrency",
+			"Warning: initial API key process lease registration failed; heartbeat and request tracking will retry: %v",
+			err,
+		)
+		return nil
+	}
+	s.apiKeyLeaseConfirmedAt.Store(time.Now().UnixNano())
+
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), apiKeyProcessLeaseOperationTO)
+	err = cache.CleanupDeadAPIKeySlots(cleanupCtx)
+	cleanupCancel()
+	if err != nil {
+		logger.LegacyPrintf(
+			"service.concurrency",
+			"Warning: initial dead API key slot cleanup failed; background cleanup will retry: %v",
+			err,
+		)
+	}
+	return nil
+}
+
+func (s *ConcurrencyService) runAPIKeyProcessLiveness(
+	cache APIKeyProcessLivenessCache,
+	stopCh <-chan struct{},
+	doneCh chan<- struct{},
+) {
+	defer close(doneCh)
+	ticker := time.NewTicker(apiKeyProcessLeaseRefresh)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case <-ticker.C:
+			refreshCtx, refreshCancel := context.WithTimeout(context.Background(), apiKeyProcessLeaseOperationTO)
+			err := s.ensureAPIKeyProcessLease(refreshCtx, cache)
+			refreshCancel()
+			if err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: refresh API key process lease failed: %v", err)
+			}
+		}
+	}
+}
+
+// ensureAPIKeyProcessLease keeps request tracking ordered after process
+// liveness. The local confirmation avoids a Redis round trip per request; when
+// Redis recovers after a long interruption, the first request re-establishes
+// the process lease before publishing a new stats slot.
+func (s *ConcurrencyService) ensureAPIKeyProcessLease(ctx context.Context, cache APIKeyProcessLivenessCache) error {
+	now := time.Now()
+	confirmedAt := s.apiKeyLeaseConfirmedAt.Load()
+	if confirmedAt > 0 {
+		elapsed := now.Sub(time.Unix(0, confirmedAt))
+		if elapsed >= 0 && elapsed < apiKeyProcessLeaseRefresh {
+			return nil
+		}
+	}
+
+	s.apiKeyLeaseRefreshMu.Lock()
+	defer s.apiKeyLeaseRefreshMu.Unlock()
+
+	now = time.Now()
+	confirmedAt = s.apiKeyLeaseConfirmedAt.Load()
+	if confirmedAt > 0 {
+		elapsed := now.Sub(time.Unix(0, confirmedAt))
+		if elapsed >= 0 && elapsed < apiKeyProcessLeaseRefresh {
+			return nil
+		}
+	}
+
+	owned, err := cache.RefreshProcessLease(ctx, RequestIDPrefix(), apiKeyProcessLeaseTTL)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		if err := cache.RegisterProcessLease(ctx, RequestIDPrefix(), apiKeyProcessLeaseTTL); err != nil {
+			return err
+		}
+	}
+	s.apiKeyLeaseConfirmedAt.Store(time.Now().UnixNano())
+	return nil
+}
+
+// StopAPIKeyProcessLiveness stops the heartbeat. The lease is deliberately not
+// marked expired: peers must observe the full liveness timeout before cleanup,
+// including when HTTP graceful shutdown itself timed out.
+func (s *ConcurrencyService) StopAPIKeyProcessLiveness() error {
+	if s == nil {
+		return nil
+	}
+
+	s.apiKeyLeaseMu.Lock()
+	stopCh, doneCh := s.apiKeyLeaseStop, s.apiKeyLeaseDone
+	s.apiKeyLeaseStop, s.apiKeyLeaseDone = nil, nil
+	if stopCh != nil {
+		close(stopCh)
+	}
+	s.apiKeyLeaseMu.Unlock()
+	if doneCh != nil {
+		<-doneCh
+	}
+
+	return nil
+}
+
 // StartSlotCleanupWorker starts a background cleanup worker for expired account slots.
 func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interval time.Duration) {
 	if s == nil || s.cache == nil || interval <= 0 {
@@ -727,6 +890,14 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(_ AccountRepository, interva
 	}
 
 	runCleanup := func() {
+		if cache, ok := s.cache.(APIKeyProcessLivenessCache); ok {
+			apiKeyCleanupCtx, apiKeyCleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := cache.CleanupDeadAPIKeySlots(apiKeyCleanupCtx); err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: cleanup dead API key slots failed: %v", err)
+			}
+			apiKeyCleanupCancel()
+		}
+
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := s.cache.CleanupExpiredAccountSlotKeys(cleanupCtx)
 		cancel()

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
@@ -44,6 +44,7 @@ const messages: Record<string, string> = {
   'keys.group': 'Group',
   'keys.id': 'ID',
   'keys.currentConcurrency': 'Current Concurrency',
+  'keys.concurrencyUpdatedAt': 'Concurrency updated {time}',
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
@@ -215,6 +216,8 @@ const IconStub = {
   template: '<span data-test="icon">{{ name }}</span>',
 }
 
+const mountedWrappers: VueWrapper[] = []
+
 const mountView = async () => {
   const wrapper = mount(KeysView, {
     global: {
@@ -239,6 +242,7 @@ const mountView = async () => {
   })
   await flushPromises()
   await nextTick()
+  mountedWrappers.push(wrapper)
   return wrapper
 }
 
@@ -283,6 +287,14 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  afterEach(() => {
+    for (const wrapper of mountedWrappers.splice(0)) {
+      if (wrapper.exists()) wrapper.unmount()
+    }
+    vi.useRealTimers()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {
@@ -392,6 +404,47 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+  })
+
+  it('silently refreshes concurrency every 30 seconds and shows the successful update time', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-12T05:00:00Z'))
+    const wrapper = await mountView()
+    expect(wrapper.get('[data-test="keys-last-updated"]').text()).toContain('Concurrency updated')
+    listKeys.mockClear()
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushPromises()
+
+    expect(listKeys).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('button[title="Refresh"]').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('pauses background refresh while hidden and catches up when visible', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountView()
+    listKeys.mockClear()
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true })
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(listKeys).not.toHaveBeenCalled()
+
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(listKeys).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('clears the refresh timer on unmount', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountView()
+    listKeys.mockClear()
+    wrapper.unmount()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(listKeys).not.toHaveBeenCalled()
   })
 
   it('marks current concurrency as sortable', async () => {

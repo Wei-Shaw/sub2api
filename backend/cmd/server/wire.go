@@ -85,6 +85,7 @@ func provideCleanup(
 	opsIngressReject *service.OpsIngressRejectAggregator,
 	apiKeyService *service.APIKeyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
+	concurrencyService *service.ConcurrencyService,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
@@ -151,6 +152,12 @@ func provideCleanup(
 					opsService.StopRuntimeSettingsRefresh()
 				}
 				return nil
+			}},
+			{"APIKeyConcurrencyProcessLiveness", func() error {
+				if concurrencyService == nil {
+					return nil
+				}
+				return concurrencyService.StopAPIKeyProcessLiveness()
 			}},
 			{"PromptAuditService", func() error {
 				if promptAudit != nil {

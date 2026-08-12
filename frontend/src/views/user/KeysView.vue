@@ -32,10 +32,17 @@
       </template>
 
       <template #actions>
-        <div class="flex justify-end gap-3">
+        <div class="flex flex-wrap items-center justify-end gap-3">
+          <span
+            v-if="lastUpdatedAt"
+            data-test="keys-last-updated"
+            class="text-xs text-gray-500 dark:text-gray-400"
+          >
+            {{ t('keys.concurrencyUpdatedAt', { time: formatDateTime(lastUpdatedAt) }) }}
+          </span>
           <button
-            @click="loadApiKeys"
-            :disabled="loading"
+            @click="loadApiKeys()"
+            :disabled="loading || refreshing"
             class="btn btn-secondary"
             :title="t('common.refresh')"
           >
@@ -1272,9 +1279,12 @@ const columns = computed<Column[]>(() =>
 const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(false)
+const refreshing = ref(false)
+const lastUpdatedAt = ref<Date | null>(null)
 const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
+let apiKeyRefreshTimer: ReturnType<typeof setInterval> | null = null
 const usageStats = ref<Record<string, BatchApiKeyUsageStats>>({})
 const userGroupRates = ref<Record<number, number>>({})
 
@@ -1451,12 +1461,20 @@ const isAbortError = (error: unknown) => {
   return name === 'AbortError' || code === 'ERR_CANCELED'
 }
 
-const loadApiKeys = async () => {
+type LoadApiKeysOptions = {
+  silent?: boolean
+  skipIfBusy?: boolean
+}
+
+const loadApiKeys = async (options: LoadApiKeysOptions = {}) => {
+  if (options.skipIfBusy && abortController) return
   abortController?.abort()
   const controller = new AbortController()
   abortController = controller
   const { signal } = controller
-  loading.value = true
+  const showLoading = !options.silent
+  if (showLoading) loading.value = true
+  refreshing.value = true
   try {
     // Build filters
     const filters: {
@@ -1479,6 +1497,7 @@ const loadApiKeys = async () => {
     apiKeys.value = response.items
     pagination.value.total = response.total
     pagination.value.pages = response.pages
+    lastUpdatedAt.value = new Date()
 
     // Load usage stats for all API keys in the list
     if (response.items.length > 0) {
@@ -1492,6 +1511,8 @@ const loadApiKeys = async () => {
           console.error('Failed to load usage stats:', e)
         }
       }
+    } else {
+      usageStats.value = {}
     }
   } catch (error) {
     if (isAbortError(error)) {
@@ -1500,9 +1521,20 @@ const loadApiKeys = async () => {
     appStore.showError(t('keys.failedToLoad'))
   } finally {
     if (abortController === controller) {
-      loading.value = false
+      abortController = null
+      refreshing.value = false
+      if (showLoading) loading.value = false
     }
   }
+}
+
+const refreshApiKeysInBackground = () => {
+  if (document.hidden || refreshing.value) return
+  void loadApiKeys({ silent: true, skipIfBusy: true })
+}
+
+const handleVisibilityChange = () => {
+  if (!document.hidden) refreshApiKeysInBackground()
 }
 
 const loadGroups = async () => {
@@ -1960,11 +1992,17 @@ onMounted(() => {
   loadUserGroupRates()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
+  apiKeyRefreshTimer = setInterval(refreshApiKeysInBackground, 30000)
 })
 
 onUnmounted(() => {
+  abortController?.abort()
+  abortController = null
   document.removeEventListener('click', closeGroupSelector)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (resetTimer) clearInterval(resetTimer)
+  if (apiKeyRefreshTimer) clearInterval(apiKeyRefreshTimer)
 })
 </script>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,6 +51,8 @@ const (
 	// member 是账号/用户 ID，score 是“预计仍需关注到”的 Redis Unix 秒时间戳。
 	accountActiveIndexKey = "concurrency:account:active_index" // ZSET member=accountID, score=expireAtUnixSeconds
 	userActiveIndexKey    = "concurrency:user:active_index"    // ZSET member=userID, score=expireAtUnixSeconds
+	apiKeyActiveIndexKey  = "concurrency:api_key:active_index" // ZSET member=apiKeyID, score=expireAtUnixSeconds
+	processLeaseIndexKey  = "concurrency:process:leases"       // ZSET member=processPrefix, score=leaseExpireAtUnixSeconds
 
 	// 后台清理只按批处理索引候选，避免单次任务占用 Redis 太久。
 	activeIndexCleanupBatchSize  = 1000
@@ -199,6 +202,28 @@ var (
 		redis.call('ZREMRANGEBYSCORE', key, '-inf', expireBefore)
 		redis.call('ZADD', key, now, requestID)
 		redis.call('EXPIRE', key, ttl)
+		return now
+	`)
+
+	registerProcessLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local ttl = tonumber(ARGV[1])
+		local processPrefix = ARGV[2]
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZADD', KEYS[1], now + ttl, processPrefix)
+		return 1
+	`)
+
+	refreshProcessLeaseScript = redis.NewScript(`
+		redis.replicate_commands()
+		local ttl = tonumber(ARGV[1])
+		local processPrefix = ARGV[2]
+		local now = tonumber(redis.call('TIME')[1])
+		local expiresAt = redis.call('ZSCORE', KEYS[1], processPrefix)
+		if expiresAt == false or tonumber(expiresAt) <= now then
+			return 0
+		end
+		redis.call('ZADD', KEYS[1], now + ttl, processPrefix)
 		return 1
 	`)
 
@@ -349,6 +374,36 @@ var (
 			redis.call('DEL', key)
 		else
 			redis.call('EXPIRE', key, slotTTL)
+		end
+		return {removed, remaining}
+	`)
+
+	// cleanupDeadAPIKeySlotScript derives each request owner's process prefix and
+	// removes the member only when that exact lease is still expired inside the
+	// atomic script. Unknown pre-upgrade owners are preserved for the TTL fallback.
+	// A heartbeat that wins the race changes the lease score and keeps its slots.
+	cleanupDeadAPIKeySlotScript = redis.NewScript(`
+		redis.replicate_commands()
+		local slotKey = KEYS[1]
+		local processLeases = KEYS[2]
+		local slotTTL = tonumber(ARGV[1])
+		local cutoff = tonumber(ARGV[2])
+		local removed = 0
+		local members = redis.call('ZRANGE', slotKey, 0, -1)
+		for _, member in ipairs(members) do
+			local ownerPrefix = string.match(member, '^(.*)%-[^%-]+$')
+			if ownerPrefix ~= nil then
+				local lease = redis.call('ZSCORE', processLeases, ownerPrefix)
+				if lease ~= false and tonumber(lease) <= cutoff then
+					removed = removed + redis.call('ZREM', slotKey, member)
+				end
+			end
+		end
+		local remaining = redis.call('ZCARD', slotKey)
+		if remaining == 0 then
+			redis.call('DEL', slotKey)
+		else
+			redis.call('EXPIRE', slotKey, slotTTL)
 		end
 		return {removed, remaining}
 	`)
@@ -741,13 +796,46 @@ func (c *concurrencyCache) GetUserConcurrency(ctx context.Context, userID int64)
 
 func (c *concurrencyCache) TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
-	_, err := trackSlotScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds, requestID).Result()
-	return err
+	now, err := trackSlotScript.Run(ctx, c.rdb, []string{key}, c.slotTTLSeconds, requestID).Int64()
+	if err != nil {
+		return err
+	}
+	c.touchActiveIndexAt(ctx, apiKeyActiveIndexKey, apiKeyID, now+int64(c.slotTTLSeconds))
+	return nil
 }
 
 func (c *concurrencyCache) ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error {
 	key := apiKeySlotKey(apiKeyID)
-	return c.rdb.ZRem(ctx, key, requestID).Err()
+	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
+		return err
+	}
+	c.refreshAPIKeyActiveIndex(ctx, apiKeyID)
+	return nil
+}
+
+func (c *concurrencyCache) refreshAPIKeyActiveIndex(ctx context.Context, apiKeyID int64) {
+	if c == nil || c.rdb == nil || apiKeyID <= 0 {
+		return
+	}
+	now, err := c.redisUnixSeconds(ctx)
+	if err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: refresh API key active index for %d failed: %v", apiKeyID, err)
+		return
+	}
+	key := apiKeySlotKey(apiKeyID)
+	cutoff := now - int64(c.slotTTLSeconds)
+	pipe := c.rdb.Pipeline()
+	pipe.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(cutoff, 10))
+	countCmd := pipe.ZCard(ctx, key)
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		logger.LegacyPrintf("repository.concurrency", "Warning: refresh API key active index for %d failed: %v", apiKeyID, err)
+		return
+	}
+	if countCmd.Val() == 0 {
+		c.removeActiveIndexMembers(ctx, apiKeyActiveIndexKey, []string{strconv.FormatInt(apiKeyID, 10)})
+		return
+	}
+	c.touchActiveIndexAt(ctx, apiKeyActiveIndexKey, apiKeyID, now+int64(c.slotTTLSeconds))
 }
 
 func (c *concurrencyCache) AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int, leaseID string) (bool, error) {
@@ -853,6 +941,12 @@ func (c *concurrencyCache) GetAPIKeyConcurrencyBatch(ctx context.Context, apiKey
 		return nil, fmt.Errorf("redis TIME: %w", err)
 	}
 	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+	if err := c.cleanupDeadAPIKeySlots(ctx, apiKeyIDs, now.Unix()); err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: cleanup dead API key slots during batch read failed: %v", err)
+	}
+	if err := c.pruneExpiredProcessLeases(ctx, now.Unix()); err != nil {
+		logger.LegacyPrintf("repository.concurrency", "Warning: prune expired API key process leases during batch read failed: %v", err)
+	}
 
 	pipe := c.rdb.Pipeline()
 	type apiKeyCmd struct {
@@ -878,10 +972,127 @@ func (c *concurrencyCache) GetAPIKeyConcurrencyBatch(ctx context.Context, apiKey
 	}
 
 	result := make(map[int64]int, len(apiKeyIDs))
+	staleIndexMembers := make([]string, 0)
 	for _, cmd := range cmds {
 		result[cmd.apiKeyID] = int(cmd.zcardCmd.Val() + cmd.liveCmd.Val())
+		if cmd.zcardCmd.Val() == 0 {
+			staleIndexMembers = append(staleIndexMembers, strconv.FormatInt(cmd.apiKeyID, 10))
+		}
 	}
+	c.removeActiveIndexMembers(ctx, apiKeyActiveIndexKey, staleIndexMembers)
 	return result, nil
+}
+
+func (c *concurrencyCache) RegisterProcessLease(ctx context.Context, processPrefix string, ttl time.Duration) error {
+	if processPrefix == "" || ttl <= 0 {
+		return nil
+	}
+	_, err := registerProcessLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{processLeaseIndexKey},
+		int64(ttl/time.Second),
+		processPrefix,
+	).Result()
+	return err
+}
+
+func (c *concurrencyCache) RefreshProcessLease(ctx context.Context, processPrefix string, ttl time.Duration) (bool, error) {
+	if processPrefix == "" || ttl <= 0 {
+		return false, nil
+	}
+	result, err := refreshProcessLeaseScript.Run(
+		ctx,
+		c.rdb,
+		[]string{processLeaseIndexKey},
+		int64(ttl/time.Second),
+		processPrefix,
+	).Int()
+	return result == 1, err
+}
+
+// CleanupDeadAPIKeySlots removes only stats slots whose registered owner lease
+// has expired. Slots from pre-upgrade processes have no lease evidence and are
+// deliberately left to the existing score/TTL fallback.
+func (c *concurrencyCache) CleanupDeadAPIKeySlots(ctx context.Context) error {
+	now, err := c.redisUnixSeconds(ctx)
+	if err != nil {
+		return err
+	}
+	// Process a bounded slice on each worker pass. The index is ordered by the
+	// expected expiry time, so older candidates are reconciled first.
+	members, err := c.rdb.ZRange(ctx, apiKeyActiveIndexKey, 0, activeIndexCleanupBatchSize-1).Result()
+	if err != nil {
+		return fmt.Errorf("read API key active index: %w", err)
+	}
+	apiKeyIDs := make([]int64, 0, len(members))
+	staleMembers := make([]string, 0)
+	for _, member := range members {
+		id, err := strconv.ParseInt(member, 10, 64)
+		if err != nil || id <= 0 {
+			staleMembers = append(staleMembers, member)
+			continue
+		}
+		apiKeyIDs = append(apiKeyIDs, id)
+	}
+	c.removeActiveIndexMembers(ctx, apiKeyActiveIndexKey, staleMembers)
+	if err := c.cleanupDeadAPIKeySlots(ctx, apiKeyIDs, now); err != nil {
+		return err
+	}
+
+	// A dead lease remains proof for one full regular-slot TTL. After that no
+	// member from the owner can still be valid, so prune it to bound this index.
+	return c.pruneExpiredProcessLeases(ctx, now)
+}
+
+func (c *concurrencyCache) pruneExpiredProcessLeases(ctx context.Context, now int64) error {
+	pruneBefore := now - int64(c.slotTTLSeconds)
+	if err := c.rdb.ZRemRangeByScore(
+		ctx,
+		processLeaseIndexKey,
+		"-inf",
+		strconv.FormatInt(pruneBefore, 10),
+	).Err(); err != nil {
+		return fmt.Errorf("prune expired process leases: %w", err)
+	}
+	return nil
+}
+
+func (c *concurrencyCache) cleanupDeadAPIKeySlots(ctx context.Context, apiKeyIDs []int64, now int64) error {
+	if len(apiKeyIDs) == 0 {
+		return nil
+	}
+
+	staleIndexMembers := make([]string, 0)
+	refreshedIndexMembers := make([]redis.Z, 0, len(apiKeyIDs))
+	for _, apiKeyID := range apiKeyIDs {
+		_, remaining, err := runScriptInt64Pair(
+			ctx,
+			c.rdb,
+			cleanupDeadAPIKeySlotScript,
+			[]string{apiKeySlotKey(apiKeyID), processLeaseIndexKey},
+			c.slotTTLSeconds,
+			now,
+		)
+		if err != nil {
+			return fmt.Errorf("cleanup dead api key slots %d: %w", apiKeyID, err)
+		}
+		if remaining == 0 {
+			staleIndexMembers = append(staleIndexMembers, strconv.FormatInt(apiKeyID, 10))
+			continue
+		}
+		refreshedIndexMembers = append(refreshedIndexMembers, redis.Z{
+			Score:  float64(now + int64(c.slotTTLSeconds)),
+			Member: strconv.FormatInt(apiKeyID, 10),
+		})
+	}
+	if len(refreshedIndexMembers) > 0 {
+		if err := c.rdb.ZAdd(ctx, apiKeyActiveIndexKey, refreshedIndexMembers...).Err(); err != nil {
+			return fmt.Errorf("refresh API key active index: %w", err)
+		}
+	}
+	c.removeActiveIndexMembers(ctx, apiKeyActiveIndexKey, staleIndexMembers)
+	return nil
 }
 
 // Wait queue operations
