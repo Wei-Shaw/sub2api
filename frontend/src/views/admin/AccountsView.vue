@@ -525,7 +525,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
-import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -1300,7 +1300,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
-    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next)
+    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 }
 
@@ -1483,23 +1484,30 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
 
 // Fresh billing/quota snapshots are authoritative. Imported credential tiers
 // can be stale, so they remain fallbacks together with legacy plan_type fields.
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => (
+    typeof value === 'string' && value.trim().length > 0
+  ))
+}
+
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
   if (row.platform === 'grok') {
     const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
-    const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
-    return (
-      billing?.plan ||
-      quota?.subscription_tier ||
-      row.credentials?.subscription_tier ||
-      extra.subscription_tier ||
-      row.credentials?.plan_type ||
-      row.parent_plan_type ||
-      undefined
+    const usage = extra.grok_usage_snapshot as Record<string, any> | undefined
+    const legacyQuota = extra.grok_quota_snapshot as Record<string, any> | undefined
+    return firstNonBlankString(
+      billing?.plan,
+      usage?.subscription_tier,
+      legacyQuota?.subscription_tier,
+      row.credentials?.subscription_tier,
+      extra.subscription_tier,
+      row.credentials?.plan_type,
+      row.parent_plan_type
     )
   }
-  return row.credentials?.plan_type || row.parent_plan_type || undefined
+  return firstNonBlankString(row.credentials?.plan_type, row.parent_plan_type)
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {
