@@ -346,7 +346,7 @@ describe('admin AccountsView — 账号行展示', () => {
     wrapper.unmount()
   REDACTED)
 
-  it('passes fresh Grok billing and quota snapshots before stale credential fallbacks', async () => {
+  it('prefers persisted Grok JWT tier over lagging billing/quota snapshots', async () => {
     const grokAccounts = [
       {
         id: 201,
@@ -411,9 +411,9 @@ describe('admin AccountsView — 账号行展示', () => {
 
     const badges = wrapper.findAllComponents(PlatformTypeBadge)
     expect(badges.map((badge) => badge.props('planType'))).toEqual([
-      'SuperGrok',
+      'FREE',
       'SuperGrok Heavy',
-      'SuperGrok',
+      'FREE',
       'BASIC',
       'SuperGrok',
     ])

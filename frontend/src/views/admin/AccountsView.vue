@@ -1481,8 +1481,7 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useInterva
   { immediate: false REDACTED
 )
 
-// Fresh billing/quota snapshots are authoritative. Imported credential tiers
-// can be stale, so they remain fallbacks together with legacy plan_type fields.
+// Persisted credentials.subscription_tier outranks lagging billing/quota snapshots.
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
   if (row.platform === 'grok') {
@@ -1490,9 +1489,9 @@ function getAccountPlanType(row: any): string | undefined {
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
     const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
     return (
+      row.credentials?.subscription_tier ||
       billing?.plan ||
       quota?.subscription_tier ||
-      row.credentials?.subscription_tier ||
       extra.subscription_tier ||
       row.credentials?.plan_type ||
       row.parent_plan_type ||
