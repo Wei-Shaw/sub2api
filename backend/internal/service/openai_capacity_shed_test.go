@@ -94,11 +94,167 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded"}}}`, "response.failed", false},
 		{`{"type":"response.created","response":{"id":"resp_1"}}`, "response.created", false},
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
+		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[],"status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[{"type":"summary_text","text":""}],"status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"message","content":[],"status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"message","content":[{"type":"output_text","text":""}],"status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"function_call","name":"exec_command","arguments":"","status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"compaction","status":"in_progress"}}`, "response.output_item.added", false},
+		{`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":""}}`, "response.reasoning_summary_part.added", false},
+		{`{"type":"response.content_part.added","part":{"type":"output_text","text":"","annotations":[]}}`, "response.content_part.added", false},
+		{`{"type":"response.output_item.added","item":{"type":"reasoning","encrypted_content":"opaque"}}`, "response.output_item.added", true},
+		{`{"type":"response.output_item.added","item":{"type":"function_call","name":"exec_command","arguments":"{}"}}`, "response.output_item.added", true},
+		{`{"type":"response.output_item.added","item":{"type":"compaction","encrypted_content":"opaque"}}`, "response.output_item.added", true},
 		{`{"type":"response.output_text.delta","delta":"hi"}`, "response.output_text.delta", true},
 		{`[DONE]`, "", true},
 	}
 	for _, tc := range cases {
 		require.Equal(t, tc.want, openAIStreamDataStartsClientOutput(tc.data, tc.eventType), "data=%s type=%s", tc.data, tc.eventType)
+	}
+}
+
+// Codex may receive an output_item.added lifecycle frame before the upstream
+// rejects the request for capacity. The frame contains no usable model output,
+// so it must remain attempt-local and must not prevent the existing retry path.
+func TestOpenAIStreamMetadataOnlyEventsBeforeCapacityStillFailOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+	}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_metadata"}}`,
+			"",
+			"event: response.output_item.added",
+			`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"rs_metadata","type":"reasoning","summary":[],"status":"in_progress"}}`,
+			"",
+			"event: response.reasoning_summary_part.added",
+			`data: {"type":"response.reasoning_summary_part.added","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}`,
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_metadata","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-metadata-capacity"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc",
+	}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+// Pre-output staging must not depend on the optional first-output timeout.
+// A lifecycle frame can exceed bufio.Writer's 4 KiB buffer; it still must not
+// leak to the client and turn a safe retry into a committed stream.
+func TestOpenAIStreamLargePreambleBeforeCapacityRemainsAttemptLocal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+	}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	largeMetadata := strings.Repeat("x", 16*1024)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_large","metadata":{"padding":"` + largeMetadata + `"}}}`,
+			"",
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-large-preamble-capacity"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc",
+	}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamMetadataBeforeCapacityAfterKeepaliveStillFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		MaxLineSize:             defaultMaxLineSize,
+		StreamKeepaliveInterval: 1,
+	}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	reader, writer := io.Pipe()
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		defer func() { _ = writer.Close() }()
+		_, _ = writer.Write([]byte(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_keepalive"}}`,
+			"",
+			"event: response.output_item.added",
+			`data: {"type":"response.output_item.added","item":{"type":"reasoning","summary":[],"status":"in_progress"}}`,
+			"",
+			"",
+		}, "\n")))
+		// The first ticker edge can land fractionally before a full interval and
+		// be skipped by the downstream-idle check. Wait through the next edge.
+		time.Sleep(2100 * time.Millisecond)
+		_, _ = writer.Write([]byte(strings.Join([]string{
+			"event: error",
+			`data: {"type":"error","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+			"",
+		}, "\n")))
+	}()
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       reader,
+		Header:     http.Header{"X-Request-Id": []string{"rid-keepalive-capacity"}},
+	}
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc",
+	}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Contains(t, rec.Body.String(), ":\n\n")
+	require.NotContains(t, rec.Body.String(), "resp_keepalive")
+	for _, line := range strings.Split(strings.TrimSpace(rec.Body.String()), "\n") {
+		if line != "" {
+			require.Equal(t, ":", line, "only keepalive comments may precede failover")
+		}
+	}
+	select {
+	case <-writerDone:
+	case <-time.After(time.Second):
+		t.Fatal("upstream writer did not exit")
 	}
 }
 
