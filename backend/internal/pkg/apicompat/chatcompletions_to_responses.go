@@ -82,10 +82,11 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
 	}
 
-	// tool_choice: already compatible format — pass through directly.
-	// Legacy function_call needs mapping.
+	// tool_choice: Responses uses {"type":"function","name":"..."}, while
+	// Chat Completions uses {"type":"function","function":{"name":"..."}}.
+	// Normalize the latter before forwarding it to a Responses upstream.
 	if len(req.ToolChoice) > 0 {
-		out.ToolChoice = req.ToolChoice
+		out.ToolChoice = normalizeChatToolChoiceToResponses(req.ToolChoice)
 	} else if len(req.FunctionCall) > 0 {
 		tc, err := convertChatFunctionCallToToolChoice(req.FunctionCall)
 		if err != nil {
@@ -95,6 +96,28 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 	}
 
 	return out, nil
+}
+
+func normalizeChatToolChoiceToResponses(raw json.RawMessage) json.RawMessage {
+	var choice struct {
+		Type     string `json:"type"`
+		Name     string `json:"name"`
+		Function struct {
+			Name string `json:"name"`
+		} `json:"function"`
+	}
+	if err := json.Unmarshal(raw, &choice); err != nil || choice.Type != "function" || choice.Name != "" || choice.Function.Name == "" {
+		return raw
+	}
+
+	normalized, err := json.Marshal(map[string]string{
+		"type": "function",
+		"name": choice.Function.Name,
+	})
+	if err != nil {
+		return raw
+	}
+	return normalized
 }
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages

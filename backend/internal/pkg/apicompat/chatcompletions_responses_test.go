@@ -561,6 +561,40 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	assert.NotContains(t, tc, "function")
 }
 
+func TestChatCompletionsToResponses_NormalizesChatFunctionToolChoice(t *testing.T) {
+	base := ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+	}
+
+	t.Run("Chat Completions function choice", func(t *testing.T) {
+		req := base
+		req.ToolChoice = json.RawMessage(`{"type":"function","function":{"name":"get_weather"}}`)
+
+		resp, err := ChatCompletionsToResponses(&req)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"type":"function","name":"get_weather"}`, string(resp.ToolChoice))
+	})
+
+	t.Run("Responses function choice", func(t *testing.T) {
+		req := base
+		req.ToolChoice = json.RawMessage(`{"type":"function","name":"get_weather"}`)
+
+		resp, err := ChatCompletionsToResponses(&req)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"type":"function","name":"get_weather"}`, string(resp.ToolChoice))
+	})
+
+	t.Run("non-function choice", func(t *testing.T) {
+		req := base
+		req.ToolChoice = json.RawMessage(`"required"`)
+
+		resp, err := ChatCompletionsToResponses(&req)
+		require.NoError(t, err)
+		assert.JSONEq(t, `"required"`, string(resp.ToolChoice))
+	})
+}
+
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model:       "gpt-4o",
