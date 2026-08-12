@@ -70,6 +70,11 @@ type Group struct {
 	AudioTTSPricePerMillionChars *float64
 	AudioSTTPricePerHour         *float64
 
+	// ModelPricing overrides channel and built-in prices for matching models.
+	// Token intervals are selected only when LongContextPricingEnabled is true.
+	LongContextPricingEnabled bool
+	ModelPricing              []ChannelModelPricing
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64

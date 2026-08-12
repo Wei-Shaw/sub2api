@@ -659,7 +659,7 @@ REDACTED
 REDACTED
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
-	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
+	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage || p.BillingMode == BillingModeVideo {
 		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
 			return infraerrors.BadRequest(
 				"BILLING_MODE_MISSING_PRICE",

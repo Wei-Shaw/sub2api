@@ -1005,6 +1005,13 @@ export default {
         searchPricePer1k: 'Search price per 1k calls (USD)',
         pricePlaceholder: 'optional'
       REDACTED,
+      modelPricing: {
+        title: 'Per-model group pricing',
+        description: 'Overrides channel and built-in prices for matching models. Use per-request tiers such as realtime, tts, and stt for audio.',
+        longContext: 'Enable long-context tier pricing',
+        longContextHint: 'When disabled, token models always use the lowest configured tier.',
+        add: 'Add model price'
+      REDACTED,
       voicePricing: {
         title: 'Grok Voice Pricing',
         description: 'Optional per-group prices for Voice realtime / TTS / STT (USD). Leave empty to leave unpriced.',

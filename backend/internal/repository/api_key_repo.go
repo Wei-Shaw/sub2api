@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -196,6 +197,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldAudioRealtimePricePerMin,
 				group.FieldAudioTtsPricePerMillionChars,
 				group.FieldAudioSttPricePerHour,
+				group.FieldLongContextPricingEnabled,
+				group.FieldModelPricing,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -946,6 +949,10 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 REDACTED
+	var modelPricing []service.ChannelModelPricing
+	if len(g.ModelPricing) > 0 {
+		_ = json.Unmarshal(g.ModelPricing, &modelPricing)
+REDACTED
 	return &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -980,6 +987,8 @@ REDACTED
 		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
 		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
+		LongContextPricingEnabled:       g.LongContextPricingEnabled,
+		ModelPricing:                    modelPricing,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
