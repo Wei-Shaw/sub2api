@@ -243,33 +243,26 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
 	}
 	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
-	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedOpenAIResponsePricing
-	// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
-	// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
-	baselineBillingModel := firstUsageBillingModel(billingModels)
+	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedOpenAIResponsePricing，
+	// 且重算成本不得高于基线——上游声明永远不能抬高用户费用。任一条件不满足都静默
+	// 回落基线，即开启本模式前的既有行为。
 	if responseModel := responseModelBillingDeclaration(
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
-	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
-		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
-			responseModels := usageBillingModelCandidates(responseModel)
-			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
-				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
-				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
-			)
-			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
-			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
-			// 定价基准（有渠道价就一定能算出价，循环不会落到后续候选）。
-			baselineChannelPriced := s.resolveOpenAIChannelPricing(ctx, baselineBillingModel, apiKey) != nil
-			if responseErr == nil && responseModelBillingAdoptable(cost, responseCost, baselineChannelPriced, responseChannelPriced) {
-				logResponseModelBillingApplied("service.openai_gateway", account, result.RequestID,
-					baselineBillingModel, responseModel, cost, responseCost)
-				billingModels = responseModels
-				cost = responseCost
-			}
+		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0,
+	); responseModel != "" && s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey) {
+		responseModels := usageBillingModelCandidates(responseModel)
+		responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
+			ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
+			videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingEnabled,
+		)
+		if responseErr == nil && responseCost != nil && cost != nil &&
+			responseCost.TotalCost <= cost.TotalCost+responseModelBillingCostEpsilon {
+			logResponseModelBillingApplied("service.openai_gateway", account, result.RequestID,
+				firstUsageBillingModel(billingModels), responseModel, cost, responseCost)
+			billingModels = responseModels
+			cost = responseCost
 		}
 	}
 
@@ -453,21 +446,19 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	return nil
 }
 
-// hasIdentifiedOpenAIResponsePricing 判断上游自报的响应模型是否可以作为计费基准，
-// 并回传它是否解析到了渠道级定价（供 responseModelBillingAdoptable 的跨定价源守卫使用，
-// 避免为此再解析一次）。
+// hasIdentifiedOpenAIResponsePricing 判断上游自报的响应模型是否可以作为计费基准。
 // 只接受管理员为该模型显式配置的渠道定价，或价格表中能被确定性识别的条目；
 // 刻意不接受按子串猜出来的系列兜底价，否则上游随便编一个含 "haiku" 的名字就能把
 // 计费拉到最便宜的系列价上。详见 responseModelBillingDeclaration。
-func (s *OpenAIGatewayService) hasIdentifiedOpenAIResponsePricing(ctx context.Context, model string, apiKey *APIKey) (identified bool, channelPriced bool) {
+func (s *OpenAIGatewayService) hasIdentifiedOpenAIResponsePricing(ctx context.Context, model string, apiKey *APIKey) bool {
 	model = strings.TrimSpace(model)
 	if model == "" {
-		return false, false
+		return false
 	}
 	if s.resolveOpenAIChannelPricing(ctx, model, apiKey) != nil {
-		return true, true
+		return true
 	}
-	return s.billingService.HasIdentifiedTokenPricing(model), false
+	return s.billingService.HasIdentifiedTokenPricing(model)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
