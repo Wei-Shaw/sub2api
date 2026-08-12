@@ -610,6 +610,12 @@ export default {
       adjustSubscription: 'Adjust Subscription',
       revokeSubscription: 'Revoke Subscription',
       restoreSubscription: 'Restore Subscription',
+      permanentDelete: 'Delete Permanently',
+      permanentDeleteTitle: 'Permanently Delete Subscription',
+      permanentDeleteConfirm:
+        "Permanently delete the revoked subscription for '{user}'? This cannot be undone.",
+      permanentDeleteSuccess: 'Subscription permanently deleted',
+      failedToPermanentDelete: 'Failed to permanently delete subscription',
       allStatus: 'All Status',
       allGroups: 'All Groups',
       allPlatforms: 'All Platforms',
@@ -690,6 +696,32 @@ export default {
         "Are you sure you want to revoke the subscription for '{user}'? You can restore it later from the revoked list.",
       restoreConfirm:
         "Restore the subscription for '{user}'? If the original subscription has expired, it will be restored as expired.",
+      batch: {
+        title: 'Batch Subscription Actions',
+        open: 'Batch Actions ({count})',
+        clearSelection: 'Clear selection',
+        selectSubscription: 'Select subscription #{id}',
+        selectedCount: '{count} subscriptions selected',
+        action: 'Action',
+        apply: 'Apply',
+        applying: 'Applying...',
+        resetWindows: 'Quota windows to reset',
+        selectResetWindow: 'Select at least one quota window',
+        invalidDays: 'Enter a non-zero whole number between -36500 and 36500',
+        selectionLimit: 'You can process up to {max} subscriptions at once',
+        revokeWarning: 'Only active subscriptions will be revoked. Ineligible subscriptions will be skipped.',
+        permanentDeleteWarning: 'Only revoked subscriptions will be permanently deleted. This cannot be undone.',
+        confirmDanger: 'I understand the impact of this action',
+        result: 'Completed: {succeeded} succeeded, {skipped} skipped, {failed} failed',
+        failed: 'Batch subscription action failed',
+        actions: {
+          adjust: 'Adjust validity',
+          resetQuota: 'Reset quota',
+          revoke: 'Revoke',
+          restore: 'Restore',
+          permanentDelete: 'Delete permanently'
+        }
+      },
       guide: {
         title: 'Subscription Management Guide',
         subtitle: 'Subscription mode lets you assign time-based usage quotas to users, with daily/weekly/monthly limits. Follow these steps to get started.',

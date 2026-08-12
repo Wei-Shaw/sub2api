@@ -2229,6 +2229,9 @@ func (stubUserSubscriptionRepo) Update(ctx context.Context, sub *service.UserSub
 func (stubUserSubscriptionRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
+func (stubUserSubscriptionRepo) HardDelete(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
 func (stubUserSubscriptionRepo) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }

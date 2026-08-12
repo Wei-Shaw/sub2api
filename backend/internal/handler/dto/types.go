@@ -674,6 +674,21 @@ type BulkAssignResult struct {
 	Statuses      map[string]string       `json:"statuses,omitempty"`
 }
 
+type SubscriptionBatchActionItem struct {
+	SubscriptionID int64  `json:"subscription_id"`
+	Status         string `json:"status"`
+	Reason         string `json:"reason,omitempty"`
+	Message        string `json:"message,omitempty"`
+}
+
+type SubscriptionBatchActionResult struct {
+	TotalCount     int                           `json:"total_count"`
+	SucceededCount int                           `json:"succeeded_count"`
+	SkippedCount   int                           `json:"skipped_count"`
+	FailedCount    int                           `json:"failed_count"`
+	Items          []SubscriptionBatchActionItem `json:"items"`
+}
+
 // PromoCode 注册优惠码
 type PromoCode struct {
 	ID          int64      `json:"id"`

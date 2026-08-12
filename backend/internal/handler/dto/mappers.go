@@ -841,6 +841,28 @@ func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult 
 	}
 }
 
+func SubscriptionBatchActionResultFromService(r *service.SubscriptionBatchActionResult) *SubscriptionBatchActionResult {
+	if r == nil {
+		return nil
+	}
+	items := make([]SubscriptionBatchActionItem, 0, len(r.Items))
+	for _, item := range r.Items {
+		items = append(items, SubscriptionBatchActionItem{
+			SubscriptionID: item.SubscriptionID,
+			Status:         item.Status,
+			Reason:         item.Reason,
+			Message:        item.Message,
+		})
+	}
+	return &SubscriptionBatchActionResult{
+		TotalCount:     r.TotalCount,
+		SucceededCount: r.SucceededCount,
+		SkippedCount:   r.SkippedCount,
+		FailedCount:    r.FailedCount,
+		Items:          items,
+	}
+}
+
 func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	if pc == nil {
 		return nil

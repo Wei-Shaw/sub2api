@@ -94,6 +94,25 @@
           <!-- Right: Actions -->
           <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
             <button
+              v-if="selectedCount > 0"
+              type="button"
+              class="btn btn-secondary"
+              data-test="batch-actions-open"
+              @click="openBatchActionDialog"
+            >
+              <Icon name="cog" size="md" class="mr-2" />
+              {{ t('admin.subscriptions.batch.open', { count: selectedCount }) }}
+            </button>
+            <button
+              v-if="selectedCount > 0"
+              type="button"
+              class="btn btn-secondary px-2"
+              :title="t('admin.subscriptions.batch.clearSelection')"
+              @click="clearSelection"
+            >
+              <Icon name="x" size="md" />
+            </button>
+            <button
               @click="loadSubscriptions"
               :disabled="loading"
               class="btn btn-secondary"
@@ -173,9 +192,14 @@
           :columns="columns"
           :data="subscriptions"
           :loading="loading"
+          row-key="id"
+          selectable
+          :selected-keys="selectedIds"
+          :selection-label="getSelectionLabel"
           :server-side-sort="true"
           default-sort-key="created_at"
           default-sort-order="desc"
+          @update:selected-keys="handleSelectionChange"
           @sort="handleSort"
         >
           <template #cell-user="{ row }">
@@ -417,6 +441,14 @@
                 <Icon name="refresh" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.restore') }}</span>
               </button>
+              <button
+                v-if="row.status === 'revoked'"
+                @click="handlePermanentDelete(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              >
+                <Icon name="trash" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.permanentDelete') }}</span>
+              </button>
             </div>
           </template>
 
@@ -443,6 +475,13 @@
       />
       </template>
     </TablePageLayout>
+
+    <SubscriptionBatchActionDialog
+      :show="showBatchActionDialog"
+      :selected-ids="selectedIds"
+      @close="showBatchActionDialog = false"
+      @success="handleBatchActionSuccess"
+    />
 
     <!-- Assign Subscription Modal -->
     <BaseDialog
@@ -669,6 +708,18 @@
       @cancel="showRestoreDialog = false"
     />
 
+    <!-- Permanent Delete Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showPermanentDeleteDialog"
+      :title="t('admin.subscriptions.permanentDeleteTitle')"
+      :message="t('admin.subscriptions.permanentDeleteConfirm', { user: deletingSubscription?.user?.email })"
+      :confirm-text="t('admin.subscriptions.permanentDelete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmPermanentDelete"
+      @cancel="closePermanentDeleteDialog"
+    />
+
     <!-- Reset Quota Confirmation Dialog -->
     <ConfirmDialog
       :show="showResetQuotaConfirm"
@@ -771,6 +822,8 @@ import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useTableSelection } from '@/composables/useTableSelection'
+import type { SubscriptionBatchActionResult } from '@/api/admin/subscriptions'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -781,6 +834,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import SubscriptionBatchActionDialog from '@/components/admin/subscription/SubscriptionBatchActionDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
   getRemainingDurationParts,
@@ -926,6 +980,15 @@ const statusOptions = computed(() => [
 ])
 
 const subscriptions = ref<UserSubscription[]>([])
+const {
+  selectedIds,
+  selectedCount,
+  setSelectedIds,
+  clear: clearSelection
+} = useTableSelection<UserSubscription>({
+  rows: subscriptions,
+  getId: (subscription) => subscription.id
+})
 const groups = ref<Group[]>([])
 const loading = ref(false)
 let abortController: AbortController | null = null
@@ -971,12 +1034,17 @@ const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showBatchActionDialog = ref(false)
+const showPermanentDeleteDialog = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
+const deletingSubscription = ref<UserSubscription | null>(null)
+const permanentlyDeleting = ref(false)
+const permanentDeleteOperationKey = ref('')
 
 const assignForm = reactive({
   user_id: null as number | null,
@@ -1018,7 +1086,32 @@ const subscriptionGroupOptions = computed(() =>
 
 const applyFilters = () => {
   pagination.page = 1
+  clearSelection()
   loadSubscriptions()
+}
+
+const handleSelectionChange = (keys: Array<string | number>) => {
+  setSelectedIds(keys.map(Number).filter(Number.isInteger))
+}
+
+const getSelectionLabel = (subscription: UserSubscription) =>
+  t('admin.subscriptions.batch.selectSubscription', { id: subscription.id })
+
+const openBatchActionDialog = () => {
+  if (selectedCount.value > 100) {
+    appStore.showError(t('admin.subscriptions.batch.selectionLimit', { max: 100 }))
+    return
+  }
+  showBatchActionDialog.value = true
+}
+
+const handleBatchActionSuccess = async (result: SubscriptionBatchActionResult) => {
+  setSelectedIds(
+    result.items
+      .filter((item) => item.status === 'failed')
+      .map((item) => item.subscription_id)
+  )
+  await loadSubscriptions()
 }
 
 const loadSubscriptions = async () => {
@@ -1309,6 +1402,56 @@ const confirmRestore = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToRestore'))
     console.error('Error restoring subscription:', error)
+  }
+}
+
+const createOperationKey = (prefix: string) => {
+  const requestID = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `${prefix}-${requestID}`
+}
+
+const handlePermanentDelete = (subscription: UserSubscription) => {
+  deletingSubscription.value = subscription
+  permanentDeleteOperationKey.value = createOperationKey(
+    `subscription-permanent-delete-${subscription.id}`
+  )
+  showPermanentDeleteDialog.value = true
+}
+
+const closePermanentDeleteDialog = () => {
+  if (permanentlyDeleting.value) return
+  showPermanentDeleteDialog.value = false
+  deletingSubscription.value = null
+  permanentDeleteOperationKey.value = ''
+}
+
+const confirmPermanentDelete = async () => {
+  if (!deletingSubscription.value || permanentlyDeleting.value) return
+
+  permanentlyDeleting.value = true
+  try {
+    const subscriptionID = deletingSubscription.value.id
+    await adminAPI.subscriptions.permanentDelete(
+      subscriptionID,
+      permanentDeleteOperationKey.value
+    )
+    appStore.showSuccess(t('admin.subscriptions.permanentDeleteSuccess'))
+    showPermanentDeleteDialog.value = false
+    deletingSubscription.value = null
+    permanentDeleteOperationKey.value = ''
+    setSelectedIds(selectedIds.value.filter((id) => id !== subscriptionID))
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(
+      error.response?.data?.message
+      || error.response?.data?.detail
+      || error.message
+      || t('admin.subscriptions.failedToPermanentDelete')
+    )
+    console.error('Error permanently deleting subscription:', error)
+  } finally {
+    permanentlyDeleting.value = false
   }
 }
 
