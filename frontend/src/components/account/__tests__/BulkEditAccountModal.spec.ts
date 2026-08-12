@@ -26,7 +26,9 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/api/admin/accounts', () => ({
-  getAntigravityDefaultModelMapping: vi.fn()
+  getAntigravityDefaultModelMapping: vi.fn(),
+  syncUpstreamModels: vi.fn(),
+  syncUpstreamModelsPreview: vi.fn()
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -118,6 +120,34 @@ describe('BulkEditAccountModal', () => {
     await flushPromises()
 
     expect(showError).toHaveBeenCalledWith('admin.accounts.bulkEdit.rateSyncConflict')
+  })
+
+  it('批量白名单传入首个账号 ID，以显示同步上游模型按钮', () => {
+    const wrapper = mountModal({
+      accountIds: [11, 22],
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    const selector = wrapper.findComponent(ModelWhitelistSelector)
+    expect(selector.exists()).toBe(true)
+    expect(selector.props('accountId')).toBe(11)
+    expect(wrapper.text()).toContain('admin.accounts.bulkEdit.syncUpstreamModelsHint')
+  })
+
+  it('筛选批量更新用 sampleAccountId 作为同步源', () => {
+    const wrapper = mountModal({
+      accountIds: [],
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey'],
+      target: {
+        mode: 'filtered',
+        previewCount: 8,
+        selectedPlatforms: ['anthropic'],
+        selectedTypes: ['apikey'],
+        sampleAccountId: 88
+      }
+    })
+    expect(wrapper.findComponent(ModelWhitelistSelector).props('accountId')).toBe(88)
   })
 
   it('antigravity 白名单包含 Gemini 图片模型且过滤掉普通 GPT 模型', async () => {

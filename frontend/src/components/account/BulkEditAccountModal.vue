@@ -284,7 +284,14 @@
               <ModelWhitelistSelector
                 v-model="allowedModels"
                 :platforms="targetSelectedPlatforms"
+                :account-id="syncSourceAccountId"
               />
+              <p
+                v-if="syncSourceAccountId"
+                class="mb-2 text-xs text-gray-500 dark:text-gray-400"
+              >
+                {{ t('admin.accounts.bulkEdit.syncUpstreamModelsHint') }}
+              </p>
 
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
@@ -1399,6 +1406,7 @@ interface Props {
     previewCount?: number
     selectedPlatforms?: AccountPlatform[]
     selectedTypes?: AccountType[]
+    sampleAccountId?: number
   }
   proxies: ProxyConfig[]
   proxyGroups?: ProxyGroup[]
@@ -1428,6 +1436,14 @@ const allTargetsGrok = computed(
     targetSelectedPlatforms.value.every((p) => p === 'grok')
 )
 const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
+
+const syncSourceAccountId = computed(() => {
+  if (props.accountIds.length > 0) {
+    return props.accountIds[0]
+  }
+  const sample = props.target?.sampleAccountId
+  return typeof sample === 'number' && sample > 0 ? sample : undefined
+})
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (

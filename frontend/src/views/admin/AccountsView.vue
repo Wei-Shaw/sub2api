@@ -568,6 +568,7 @@ type AccountBulkEditTarget =
       previewCount: number
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
+      sampleAccountId?: number
     }
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
@@ -1952,16 +1953,22 @@ const openBulkEditSelected = () => {
   showBulkEdit.value = true
 }
 
+const UPSTREAM_MODEL_SYNC_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity', 'grok'])
+
 const openBulkEditFiltered = async () => {
   const filters = buildBulkEditFilterSnapshot()
   const preview = await adminAPI.accounts.list(1, 100, filters)
   const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
+  const sampleAccountId = preview.items.find((account) =>
+    UPSTREAM_MODEL_SYNC_PLATFORMS.has(account.platform)
+  )?.id
   bulkEditTarget.value = {
     mode: 'filtered',
     filters,
     previewCount: preview.total,
     selectedPlatforms,
-    selectedTypes
+    selectedTypes,
+    sampleAccountId
   }
   showBulkEdit.value = true
 }
