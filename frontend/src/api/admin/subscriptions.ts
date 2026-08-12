@@ -148,6 +148,31 @@ export async function resetQuota(
   return data
 }
 
+export interface BulkResetSubscriptionQuotaResult {
+  total: number
+  success: number
+  failed: number
+  failed_subscription_ids: number[]
+  errors: string[]
+}
+
+/**
+ * Reset usage quota for every active subscription in a group
+ * @param groupId - Subscription group ID
+ * @param options - Which quota windows to reset
+ * @returns Aggregate reset result
+ */
+export async function resetGroupQuota(
+  groupId: number,
+  options: { daily: boolean; weekly: boolean; monthly: boolean }
+): Promise<BulkResetSubscriptionQuotaResult> {
+  const { data } = await apiClient.post<BulkResetSubscriptionQuotaResult>(
+    `/admin/groups/${groupId}/subscriptions/reset-quota`,
+    options
+  )
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -200,6 +225,7 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  resetGroupQuota,
   listByGroup,
   listByUser
 }

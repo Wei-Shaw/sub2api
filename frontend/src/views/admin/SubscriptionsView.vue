@@ -159,10 +159,22 @@
             >
               <Icon name="questionCircle" size="md" />
             </button>
-            <button @click="showAssignModal = true" class="btn btn-primary">
-              <Icon name="plus" size="md" class="mr-2" />
-              {{ t('admin.subscriptions.assignSubscription') }}
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="selectedFilterGroup?.subscription_type === 'subscription'"
+                data-testid="reset-group-quota"
+                @click="showResetGroupQuotaConfirm = true"
+                :disabled="resettingGroupQuota"
+                class="btn btn-warning"
+              >
+                <Icon name="eraser" size="md" :class="resettingGroupQuota ? 'animate-pulse' : ''" />
+                <span>{{ t('admin.subscriptions.resetGroupQuota') }}</span>
+              </button>
+              <button @click="showAssignModal = true" class="btn btn-primary">
+                <Icon name="plus" size="md" class="mr-2" />
+                {{ t('admin.subscriptions.assignSubscription') }}
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -398,7 +410,7 @@
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Icon name="refresh" size="sm" />
+                <Icon name="eraser" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.resetQuota') }}</span>
               </button>
               <button
@@ -678,6 +690,15 @@
       :cancel-text="t('common.cancel')"
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
+    />
+    <ConfirmDialog
+      :show="showResetGroupQuotaConfirm"
+      :title="t('admin.subscriptions.resetGroupQuotaTitle')"
+      :message="t('admin.subscriptions.resetGroupQuotaConfirm', { group: selectedFilterGroup?.name || '' })"
+      :confirm-text="t('admin.subscriptions.resetGroupQuota')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmResetGroupQuota"
+      @cancel="showResetGroupQuotaConfirm = false"
     />
     <!-- Subscription Guide Modal -->
     <teleport to="body">
@@ -971,9 +992,11 @@ const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showResetGroupQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
+const resettingGroupQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
@@ -993,6 +1016,11 @@ const groupOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allGroups') },
   ...groups.value.map((g) => ({ value: g.id.toString(), label: g.name }))
 ])
+
+const selectedFilterGroup = computed(() => {
+  const groupID = Number(filters.group_id)
+  return groups.value.find((group) => group.id === groupID) ?? null
+})
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
@@ -1332,6 +1360,35 @@ const confirmResetQuota = async () => {
     console.error('Error resetting quota:', error)
   } finally {
     resettingQuota.value = false
+  }
+}
+
+const confirmResetGroupQuota = async () => {
+  const groupID = Number(filters.group_id)
+  if (!Number.isInteger(groupID) || groupID <= 0 || resettingGroupQuota.value) return
+
+  resettingGroupQuota.value = true
+  try {
+    const result = await adminAPI.subscriptions.resetGroupQuota(groupID, {
+      daily: true,
+      weekly: true,
+      monthly: true
+    })
+    showResetGroupQuotaConfirm.value = false
+    if (result.failed > 0) {
+      appStore.showError(t('admin.subscriptions.groupQuotaResetPartial', {
+        success: result.success,
+        failed: result.failed
+      }))
+    } else {
+      appStore.showSuccess(t('admin.subscriptions.groupQuotaResetSuccess', { count: result.success }))
+    }
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToResetGroupQuota'))
+    console.error('Error resetting group quota:', error)
+  } finally {
+    resettingGroupQuota.value = false
   }
 }
 
