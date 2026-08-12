@@ -179,9 +179,22 @@ REDACTED
 		usage.SubscriptionTier = tier
 		usage.SubscriptionTierRaw = tier
 REDACTED
+	applyGrokLiveJWTSubscriptionTier(usage, account)
 	if usage.GrokEntitlementStatus == "" {
 		usage.GrokEntitlementStatus = strings.TrimSpace(account.GetCredential("entitlement_status"))
 REDACTED
+REDACTED
+
+func applyGrokLiveJWTSubscriptionTier(usage *UsageInfo, account *Account) {
+	if usage == nil || account == nil {
+		return
+REDACTED
+	tier := xai.SubscriptionTierFromJWT(account.GetCredential("access_token"))
+	if tier == "" {
+		return
+REDACTED
+	usage.SubscriptionTier = tier
+	usage.SubscriptionTierRaw = tier
 REDACTED
 
 func grokBillingSnapshotFromExtra(extra map[string]any) (*xai.BillingSummary, error) {
