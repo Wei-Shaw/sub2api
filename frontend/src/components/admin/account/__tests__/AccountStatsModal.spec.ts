@@ -154,11 +154,43 @@ describe('AccountStatsModal', () => {
     expect(wrapper.text()).toContain('111')
   })
 
+  it('renders cached window boundaries before aggregation resolves', async () => {
+    const pendingWindow = deferred<AccountWindowUsageResponse>()
+    getWindowUsage.mockReturnValueOnce(pendingWindow.promise)
+
+    const wrapper = mountModal()
+    const quota = wrapper.findComponent({ name: 'AccountQuotaWindowSection' })
+
+    expect(quota.props('loading')).toBe(true)
+    expect(quota.props('windows')).toHaveLength(1)
+    expect(quota.props('windows')[0].current).toBeNull()
+    expect(getUsage).not.toHaveBeenCalled()
+
+    pendingWindow.resolve(windowResponse(12))
+    await flushPromises()
+    expect(quota.props('loading')).toBe(false)
+    expect(quota.props('windows')[0].current.total_requests).toBe(12)
+  })
+
   it('falls back to the existing usage endpoint when no cached snapshot is available', async () => {
     mountModal(1, null)
     await flushPromises()
     expect(getUsage).toHaveBeenCalledWith(1)
     expect(getWindowUsage).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps an empty loading model while an uncached provider snapshot resolves', async () => {
+    const pendingUsage = deferred<AccountUsageInfo>()
+    getUsage.mockReturnValueOnce(pendingUsage.promise)
+
+    const wrapper = mountModal(1, null)
+    const quota = wrapper.findComponent({ name: 'AccountQuotaWindowSection' })
+    expect(quota.props('loading')).toBe(true)
+    expect(quota.props('windows')).toEqual([])
+
+    pendingUsage.resolve(usageInfo())
+    await flushPromises()
+    expect(quota.props('windows')).toHaveLength(1)
   })
 
   it('reloads only quota windows when a refreshed provider snapshot arrives', async () => {
@@ -169,7 +201,7 @@ describe('AccountStatsModal', () => {
     refreshedUsage.five_hour = {
       ...refreshedUsage.five_hour!,
       utilization: 5,
-      resets_at: new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()
+      resets_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
     }
     await wrapper.setProps({ usageInfo: refreshedUsage })
     await flushPromises()

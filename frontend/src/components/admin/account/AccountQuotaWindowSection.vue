@@ -36,6 +36,48 @@
       {{ t('admin.accounts.quotaWindows.noSupportedWindows') }}
     </div>
 
+    <template v-if="loading && windows.length === 0">
+      <article
+        v-for="skeletonIndex in 2"
+        :key="skeletonIndex"
+        class="card overflow-hidden p-0 motion-safe:animate-pulse"
+        data-testid="quota-window-skeleton"
+        aria-hidden="true"
+      >
+        <header class="px-4 py-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-2.5">
+              <div class="h-8 w-8 shrink-0 rounded-lg bg-gray-200 dark:bg-dark-500" />
+              <div class="min-w-0 space-y-2">
+                <div class="h-3.5 w-28 max-w-full rounded bg-gray-200 dark:bg-dark-500" />
+                <div class="h-2.5 w-40 max-w-full rounded bg-gray-100 dark:bg-dark-600" />
+              </div>
+            </div>
+            <div class="h-5 w-16 shrink-0 rounded bg-gray-200 dark:bg-dark-500" />
+          </div>
+          <div class="mt-3 h-1.5 rounded-full bg-gray-200 dark:bg-dark-500" />
+        </header>
+        <div class="grid grid-cols-1 border-t border-gray-200 md:grid-cols-3 dark:border-dark-600">
+          <div
+            v-for="columnIndex in 3"
+            :key="columnIndex"
+            class="min-h-44 space-y-4 p-4"
+            :class="columnIndex > 1 ? 'border-t border-gray-200 md:border-l md:border-t-0 dark:border-dark-600' : ''"
+            data-testid="quota-window-skeleton-column"
+          >
+            <div class="space-y-2">
+              <div class="h-3.5 w-32 max-w-full rounded bg-gray-200 dark:bg-dark-500" />
+              <div class="h-2.5 w-40 max-w-full rounded bg-gray-100 dark:bg-dark-600" />
+            </div>
+            <div v-for="metricIndex in 4" :key="metricIndex" class="flex justify-between gap-4">
+              <div class="h-2.5 w-16 rounded bg-gray-100 dark:bg-dark-600" />
+              <div class="h-3 w-14 rounded bg-gray-200 dark:bg-dark-500" />
+            </div>
+          </div>
+        </div>
+      </article>
+    </template>
+
     <article
       v-for="window in windows"
       :key="window.key"

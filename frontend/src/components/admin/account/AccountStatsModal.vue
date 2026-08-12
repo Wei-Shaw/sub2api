@@ -766,7 +766,7 @@ async function loadWindowUsage(accountID: number, generation: number) {
   windowError.value = null
   let usage = props.usageInfo ?? null
 
-  if (usage && !isAccountUsageSnapshotFresh(usage)) {
+  if (usage) {
     quotaWindows.value = buildAccountQuotaWindows(account, usage)
   }
 

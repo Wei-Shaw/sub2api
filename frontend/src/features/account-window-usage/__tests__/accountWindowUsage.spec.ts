@@ -240,6 +240,21 @@ describe('estimateAccountWindowUsage', () => {
     })
   })
 
+  it('uses the raw provider percentage instead of the rounded display value', () => {
+    const forecast = estimateAccountWindowUsage(item({
+      total_requests: 6525,
+      total_tokens: 840_000_000,
+      account_cost: 456.15
+    }), null, 15.121)
+
+    expect(forecast).toEqual({
+      total_requests: 43_152,
+      total_tokens: 5_555_188_149,
+      account_cost: 3016.67,
+      basis: 'quota'
+    })
+  })
+
   it('falls back to the previous window for zero current usage or an invalid percentage', () => {
     const previous = item({
       period: 'previous',

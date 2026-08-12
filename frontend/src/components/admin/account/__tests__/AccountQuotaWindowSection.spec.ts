@@ -90,10 +90,15 @@ const readyWindow = (): AccountQuotaWindowModel => ({
   forecast: { total_requests: 15, total_tokens: 2909, account_cost: 1.82, basis: 'quota' }
 })
 
-function mountSection(locale: 'en' | 'zh', windows: AccountQuotaWindowModel[], error: string | null = null) {
+function mountSection(
+  locale: 'en' | 'zh',
+  windows: AccountQuotaWindowModel[],
+  error: string | null = null,
+  loading = false
+) {
   localeState.value = locale
   return mount(AccountQuotaWindowSection, {
-    props: { windows, loading: false, error },
+    props: { windows, loading, error },
     global: {
       stubs: { Icon: true, LoadingSpinner: true }
     }
@@ -114,6 +119,15 @@ describe('AccountQuotaWindowSection', () => {
     expect(wrapper.find('.bg-amber-500').exists()).toBe(true)
   })
 
+  it('keeps the display percentage rounded independently from forecast precision', () => {
+    const window = readyWindow()
+    window.utilization = 15.121
+    const wrapper = mountSection('zh', [window])
+
+    expect(wrapper.text()).toContain('已用15.1%')
+    expect(wrapper.text()).not.toContain('15.121%')
+  })
+
   it('renders English labels and a boundary-specific unavailable state', () => {
     const window = readyWindow()
     window.boundaryStatus = 'stale_snapshot'
@@ -132,5 +146,18 @@ describe('AccountQuotaWindowSection', () => {
     await wrapper.find('[data-testid="quota-window-error"] button').trigger('click')
     expect(wrapper.emitted('retry')).toHaveLength(1)
     expect(wrapper.find('[data-window-key="five_hour"]').exists()).toBe(true)
+  })
+
+  it('reserves responsive card height while uncached windows load', () => {
+    const wrapper = mountSection('en', [], null, true)
+    const skeletons = wrapper.findAll('[data-testid="quota-window-skeleton"]')
+
+    expect(skeletons).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="quota-window-skeleton-column"]')).toHaveLength(6)
+    for (const skeleton of skeletons) {
+      expect(skeleton.find('.grid.grid-cols-1[class~="md:grid-cols-3"]').exists()).toBe(true)
+      expect(skeleton.findAll('[data-testid="quota-window-skeleton-column"]')).toHaveLength(3)
+    }
+    expect(wrapper.find('[data-testid="quota-window-empty"]').exists()).toBe(false)
   })
 })
