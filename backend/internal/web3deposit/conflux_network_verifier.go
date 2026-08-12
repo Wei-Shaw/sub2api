@@ -48,7 +48,11 @@ func (p *ConfluxRPCPool) VerifyNetwork(ctx context.Context, expected ConfluxNetw
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return results, ctxErr
 			}
-			p.quarantine(endpoint)
+			if errors.Is(err, ErrConfluxNetworkVerificationFailed) {
+				p.quarantine(endpoint)
+			} else {
+				p.markUnhealthy(endpoint)
+			}
 			results = append(results, ConfluxEndpointVerification{EndpointID: endpoint.id, Failure: failure})
 			continue
 		}

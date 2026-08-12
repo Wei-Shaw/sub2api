@@ -47,6 +47,55 @@ func TestConfluxNetworkVerifierIsolatesBadEndpoint(t *testing.T) {
 	require.False(t, pool.EndpointStates()[0].Healthy)
 }
 
+func TestConfluxNetworkVerifierRestoresEndpointsAfterTransientFailures(t *testing.T) {
+	expected := testConfluxNetworkExpectation()
+	tests := []struct {
+		method  string
+		failure string
+	}{
+		{method: "eth_chainId", failure: "chain_id_unavailable"},
+		{method: "eth_getCode", failure: "token_code_unavailable"},
+		{method: "eth_call", failure: "token_decimals_unavailable"},
+		{method: "eth_getBlockByNumber", failure: "finalized_unsupported"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.method, func(t *testing.T) {
+			now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+			recovered := healthyConfluxRPCResponseCaller(expected.TokenDecimals)
+			failedOnce := false
+			transient := &confluxRPCCallerStub{call: func(ctx context.Context, result any, method string, args ...any) error {
+				if method == test.method && !failedOnce {
+					failedOnce = true
+					return errors.New("temporary endpoint failure")
+				}
+				return recovered.CallContext(ctx, result, method, args...)
+			}}
+			pool := newConfluxRPCPoolForTest(t, map[string]confluxRPCCaller{
+				"https://transient.example": transient,
+				"https://healthy.example":   healthyConfluxRPCResponseCaller(expected.TokenDecimals),
+			}, []string{"https://transient.example", "https://healthy.example"}, ConfluxRPCPoolOptions{
+				RequestTimeout:  time.Second,
+				FailureCooldown: time.Minute,
+				Now:             func() time.Time { return now },
+			})
+
+			results, err := pool.VerifyNetwork(context.Background(), expected)
+			require.NoError(t, err)
+			require.Equal(t, test.failure, results[0].Failure)
+			require.False(t, pool.EndpointStates()[0].Healthy)
+
+			now = now.Add(2 * time.Minute)
+			require.True(t, pool.EndpointStates()[0].Healthy)
+			callsBefore := transient.calls.Load()
+			var chainID string
+			require.NoError(t, pool.CallContext(context.Background(), &chainID, "eth_chainId"))
+			require.Equal(t, "0x406", chainID)
+			require.Equal(t, callsBefore+1, transient.calls.Load())
+		})
+	}
+}
+
 func TestConfluxNetworkVerifierRejectsInvalidNetworkResponses(t *testing.T) {
 	expected := testConfluxNetworkExpectation()
 	tests := []struct {
