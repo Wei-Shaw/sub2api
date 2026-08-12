@@ -1,6 +1,6 @@
 <template>
   <section
-    class="rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
+    class="overflow-hidden rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
     :class="[platformBorderStrongClass(group.platform)]"
   >
     <!-- 分组头部:名称/平台/倍率徽章/专属/订阅徽章 + 描述 -->
@@ -44,16 +44,18 @@
       </p>
     </header>
 
-    <!-- 模型价格表 -->
-    <div class="px-5">
+    <!-- 模型价格表:整行(含 hover 底色/分区底色)顶到卡片边缘,左右留白由表格首列/末列的 padding 提供 -->
+    <div>
       <PlazaModelPricingTable
         v-if="group.models.length > 0"
         :models="group.models"
         :platform="group.platform"
         :rate-multiplier="group.rate_multiplier"
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
+        :image-rate-independent="group.image_rate_independent"
+        :image-rate-multiplier="group.image_rate_multiplier"
       />
-      <p v-else class="py-4 text-center text-sm text-gray-400 dark:text-dark-500">
+      <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
       </p>
     </div>

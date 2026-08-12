@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -126,11 +127,68 @@ func (u *ImageResultUploader) fetchImageBytes(ctx context.Context, item map[stri
 		var rawURL string
 		if err := json.Unmarshal(raw, &rawURL); err == nil {
 			if rawURL = strings.TrimSpace(rawURL); rawURL != "" {
+				if len(rawURL) >= len("data:") && strings.EqualFold(rawURL[:len("data:")], "data:") {
+					return u.decodeImageDataURL(rawURL)
+				}
 				return u.download(ctx, rawURL)
 			}
 		}
 	}
 	return nil, "", errors.New("image item has neither b64_json nor url")
+}
+
+func (u *ImageResultUploader) decodeImageDataURL(rawURL string) ([]byte, string, error) {
+	header, payload, ok := strings.Cut(rawURL[len("data:"):], ",")
+	if !ok {
+		return nil, "", errors.New("decode image data URL: missing comma separator")
+	}
+
+	parts := strings.Split(header, ";")
+	if strings.TrimSpace(parts[0]) == "" {
+		return nil, "", errors.New("decode image data URL: missing media type")
+	}
+	base64Index := len(parts) - 1
+	if base64Index < 1 || !strings.EqualFold(strings.TrimSpace(parts[base64Index]), "base64") {
+		for i := 1; i < base64Index; i++ {
+			if strings.EqualFold(strings.TrimSpace(parts[i]), "base64") {
+				return nil, "", errors.New("decode image data URL: base64 marker must be the final header token")
+			}
+		}
+		return nil, "", errors.New("decode image data URL: payload is not base64 encoded")
+	}
+	for i := 1; i < base64Index; i++ {
+		if strings.EqualFold(strings.TrimSpace(parts[i]), "base64") {
+			return nil, "", errors.New("decode image data URL: duplicate base64 marker")
+		}
+	}
+	mediaTypeHeader := strings.Join(parts[:base64Index], ";")
+	declaredType, _, err := mime.ParseMediaType(mediaTypeHeader)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode image data URL: invalid media type: %w", err)
+	}
+	declaredType = strings.ToLower(declaredType)
+	if !strings.HasPrefix(declaredType, "image/") {
+		return nil, "", fmt.Errorf("decode image data URL: media type %q is not an image", declaredType)
+	}
+
+	limit := u.maxDownloadBytes
+	if limit <= 0 {
+		limit = defaultImageMaxDownloadBytes
+	}
+	decoder := base64.NewDecoder(base64.StdEncoding, strings.NewReader(payload))
+	data, err := io.ReadAll(io.LimitReader(decoder, limit+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("decode image data URL base64 payload: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return nil, "", fmt.Errorf("decoded image data URL exceeds %d bytes", limit)
+	}
+
+	contentType := detectedImageContentType(data)
+	if contentType == "" {
+		contentType = declaredType
+	}
+	return data, contentType, nil
 }
 
 func (u *ImageResultUploader) download(ctx context.Context, rawURL string) ([]byte, string, error) {
@@ -169,11 +227,18 @@ func (u *ImageResultUploader) buildKey(taskID string, index int, contentType str
 }
 
 func detectImageContentType(data []byte) string {
+	if ct := detectedImageContentType(data); ct != "" {
+		return ct
+	}
+	return "image/png"
+}
+
+func detectedImageContentType(data []byte) string {
 	ct := strings.TrimSpace(strings.Split(http.DetectContentType(data), ";")[0])
 	if strings.HasPrefix(ct, "image/") {
 		return ct
 	}
-	return "image/png"
+	return ""
 }
 
 func extensionForContentType(ct string) string {
