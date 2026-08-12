@@ -396,6 +396,38 @@ describe('admin AccountsView — 账号行展示', () => {
         type: 'oauth',
         credentials: { plan_type: 'SuperGrok' REDACTED,
       REDACTED,
+      {
+        id: 206,
+        name: 'supergrokpro-responses-quota',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'SuperGrokPro' REDACTED,
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' REDACTED,
+          grok_quota_snapshot: {
+            model: 'grok-4.5',
+            last_headers_seen_at: new Date().toISOString(),
+            requests: { limit: 8300 REDACTED,
+            tokens: { limit: 53_000_000 REDACTED,
+          REDACTED,
+        REDACTED,
+      REDACTED,
+      {
+        id: 207,
+        name: 'supergrokpro-other-model-quota',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: { subscription_tier: 'SuperGrokPro' REDACTED,
+        extra: {
+          grok_billing_snapshot: { plan: 'SuperGrok' REDACTED,
+          grok_quota_snapshot: {
+            model: 'grok-4.6',
+            last_headers_seen_at: new Date().toISOString(),
+            requests: { limit: 8300 REDACTED,
+            tokens: { limit: 53_000_000 REDACTED,
+          REDACTED,
+        REDACTED,
+      REDACTED,
     ]
 
     listAccounts.mockResolvedValue({
@@ -415,6 +447,8 @@ describe('admin AccountsView — 账号行展示', () => {
       'SuperGrok Heavy',
       'FREE',
       'BASIC',
+      'SuperGrok',
+      'SuperGrok Heavy',
       'SuperGrok',
     ])
 

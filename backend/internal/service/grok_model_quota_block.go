@@ -47,6 +47,32 @@ REDACTED
 	if max := now.Add(grokModelQuotaBlockMaxTTL); until.After(max) {
 		until = max
 REDACTED
+	storeGrokModelQuotaBlock(accountID, model, until, now)
+REDACTED
+
+const (
+	grokModelTransientBlockMinTTL = 500 * time.Millisecond
+	grokModelTransientBlockMaxTTL = 5 * time.Minute
+)
+
+// markGrokModelTransientBlock soft-blocks a single model for a short capacity
+// burst without the free-usage 20m floor (and without unscheduling the account).
+func markGrokModelTransientBlock(accountID int64, model string, until time.Time) {
+	model = strings.TrimSpace(model)
+	if accountID <= 0 || model == "" || until.IsZero() {
+		return
+REDACTED
+	now := time.Now()
+	if !until.After(now.Add(grokModelTransientBlockMinTTL)) {
+		until = now.Add(grokModelTransientBlockMinTTL)
+REDACTED
+	if max := now.Add(grokModelTransientBlockMaxTTL); until.After(max) {
+		until = max
+REDACTED
+	storeGrokModelQuotaBlock(accountID, model, until, now)
+REDACTED
+
+func storeGrokModelQuotaBlock(accountID int64, model string, until, now time.Time) {
 	key := grokModelQuotaBlockKey(accountID, model)
 	globalGrokModelQuotaBlocks.mu.Lock()
 	defer globalGrokModelQuotaBlocks.mu.Unlock()
