@@ -107,4 +107,25 @@ describe('PlatformTypeBadge OpenAI authentication modes', () => {
     await wrapper.setProps({ authMode: undefined })
     expect(wrapper.text()).toContain('OAuth')
   })
+
+  it('shows minute-level source metadata and emits only on an explicit query click', async () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'openai',
+        type: 'oauth',
+        planType: 'plus',
+        subscriptionExpiresAt: '2026-08-08T07:23:45Z',
+        subscriptionExpirySource: 'upstream',
+        subscriptionExpiryCheckedAt: '2026-08-07T06:17:00Z',
+        subscriptionExpiryQueryable: true,
+      },
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.subscriptionExpires')
+    expect(wrapper.text()).toContain('admin.accounts.subscriptionExpirySourceUpstream')
+    expect(wrapper.emitted('query-subscription-expiry')).toBeUndefined()
+
+    await wrapper.get('[data-testid="query-subscription-expiry"]').trigger('click')
+    expect(wrapper.emitted('query-subscription-expiry')).toHaveLength(1)
+  })
 })

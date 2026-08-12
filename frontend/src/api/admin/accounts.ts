@@ -780,6 +780,43 @@ export async function batchRefresh(accountIds: number[]): Promise<BatchOperation
   return data
 }
 
+export interface OpenAISubscriptionExpirySnapshot {
+  status: 'available' | 'unavailable'
+  expires_at?: string
+  checked_at: string
+  source?: string
+  plan_type?: string
+  will_renew?: boolean
+}
+
+export interface OpenAISubscriptionExpiryResult {
+  account_id: number
+  snapshot?: OpenAISubscriptionExpirySnapshot
+  effective_expires_at?: string
+  effective_source?: 'upstream' | 'manual' | 'none'
+  error?: string
+}
+
+/** Explicitly query and cache one OpenAI account's real subscription expiry. */
+export async function queryOpenAISubscriptionExpiry(id: number): Promise<OpenAISubscriptionExpiryResult> {
+  const { data } = await apiClient.post<OpenAISubscriptionExpiryResult>(
+    `/admin/openai/accounts/${id}/subscription-expiry/query`
+  )
+  return data
+}
+
+/** Explicitly query and cache multiple OpenAI accounts with server-side bounded concurrency. */
+export async function queryOpenAISubscriptionExpiryBatch(
+  accountIds: number[]
+): Promise<OpenAISubscriptionExpiryResult[]> {
+  const { data } = await apiClient.post<{ results: OpenAISubscriptionExpiryResult[] }>(
+    '/admin/openai/accounts/subscription-expiry/query',
+    { account_ids: accountIds },
+    { timeout: 120_000 }
+  )
+  return data.results
+}
+
 /**
  * Set privacy for an Antigravity OAuth account
  * @param id - Account ID
@@ -1027,6 +1064,8 @@ export const accountsAPI = {
   batchDelete,
   batchClearError,
   batchRefresh,
+  queryOpenAISubscriptionExpiry,
+  queryOpenAISubscriptionExpiryBatch,
   setPrivacy,
   revertProxyFallback,
   refreshOpenAIQuota,

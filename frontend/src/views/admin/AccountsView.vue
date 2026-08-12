@@ -180,9 +180,11 @@
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
+          :subscription-expiry-loading="subscriptionExpiryBatchLoading"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
+          @query-subscription-expiry="handleBulkQuerySubscriptionExpiry"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
@@ -262,7 +264,12 @@
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  :subscription-expires-at="getOpenAISubscriptionExpiryDisplay(row).expiresAt"
+                  :subscription-expiry-source="getOpenAISubscriptionExpiryDisplay(row).source"
+                  :subscription-expiry-checked-at="getOpenAISubscriptionExpiryDisplay(row).checkedAt"
+                  :subscription-expiry-queryable="row.platform === 'openai' && row.type === 'oauth'"
+                  :subscription-expiry-loading="queryingSubscriptionExpiry.has(row.id)"
+                  @query-subscription-expiry="handleQuerySubscriptionExpiry(row)" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -532,6 +539,11 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
+import {
+  getOpenAISubscriptionExpiryDisplay,
+  OPENAI_SUBSCRIPTION_EXPIRY_SNAPSHOT_KEY,
+  type OpenAISubscriptionExpirySnapshot
+} from '@/utils/openaiSubscriptionExpiry'
 import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
@@ -611,6 +623,8 @@ const togglingSchedulable = ref<number | null>(null)
 const menu = reactive<{show:boolean, acc:Account|null, pos:{top:number, left:number}|null}>({ show: false, acc: null, pos: null })
 const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
+const queryingSubscriptionExpiry = reactive(new Set<number>())
+const subscriptionExpiryBatchLoading = ref(false)
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
 let lastUpstreamBillingSortRefreshMinute = -1
@@ -1753,6 +1767,48 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+const patchSubscriptionExpirySnapshot = (
+  accountID: number,
+  snapshot: OpenAISubscriptionExpirySnapshot
+) => {
+  const account = accounts.value.find(item => item.id === accountID)
+  if (!account) return
+  patchAccountInList({
+    ...account,
+    extra: {
+      ...account.extra,
+      [OPENAI_SUBSCRIPTION_EXPIRY_SNAPSHOT_KEY]: snapshot
+    }
+  })
+}
+const handleBulkQuerySubscriptionExpiry = async () => {
+  const accountIDs = [...selIds.value]
+  if (accountIDs.length === 0 || subscriptionExpiryBatchLoading.value) return
+
+  subscriptionExpiryBatchLoading.value = true
+  accountIDs.forEach(id => queryingSubscriptionExpiry.add(id))
+  try {
+    const results = await adminAPI.accounts.queryOpenAISubscriptionExpiryBatch(accountIDs)
+    results.forEach(result => {
+      if (result.snapshot) patchSubscriptionExpirySnapshot(result.account_id, result.snapshot)
+    })
+    const failed = results.filter(result => result.error || !result.snapshot).length
+    if (failed > 0) {
+      appStore.showError(t('admin.accounts.subscriptionExpiryBatchPartial', {
+        success: results.length - failed,
+        failed
+      }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.subscriptionExpiryBatchCompleted', { count: results.length }))
+    }
+  } catch (error) {
+    console.error('Failed to query subscription expiry in batch:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.subscriptionExpiryQueryFailed')))
+  } finally {
+    accountIDs.forEach(id => queryingSubscriptionExpiry.delete(id))
+    subscriptionExpiryBatchLoading.value = false
+  }
+}
 const handleBulkProbeUpstreamBilling = async () => {
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {
@@ -2093,6 +2149,24 @@ const handleProbeUpstreamBilling = async (account: Account) => {
     appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
   } finally {
     probingUpstreamBilling.delete(account.id)
+  }
+}
+const handleQuerySubscriptionExpiry = async (account: Account) => {
+  if (queryingSubscriptionExpiry.has(account.id)) return
+  queryingSubscriptionExpiry.add(account.id)
+  try {
+    const result = await adminAPI.accounts.queryOpenAISubscriptionExpiry(account.id)
+    if (!result.snapshot) {
+      appStore.showError(t('admin.accounts.subscriptionExpiryQueryFailed'))
+      return
+    }
+    patchSubscriptionExpirySnapshot(account.id, result.snapshot)
+    appStore.showSuccess(t('admin.accounts.subscriptionExpiryQuerySuccess', { id: account.id }))
+  } catch (error) {
+    console.error('Failed to query subscription expiry:', error)
+    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.subscriptionExpiryQueryFailed')))
+  } finally {
+    queryingSubscriptionExpiry.delete(account.id)
   }
 }
 const handleAccountUpdated = (updatedAccount: Account) => {

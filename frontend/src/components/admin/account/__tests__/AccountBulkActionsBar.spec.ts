@@ -47,4 +47,24 @@ describe('AccountBulkActionsBar', () => {
     await button!.trigger('click')
     expect(wrapper.emitted('probe-upstream-billing')).toHaveLength(1)
   })
+
+  it('queries subscription expiry only after the batch button is clicked', async () => {
+    const wrapper = mount(AccountBulkActionsBar, {
+      props: {
+        selectedIds: [41, 42],
+        totalResults: 2,
+        selectingAll: false,
+        allResultsSelected: true
+      }
+    })
+
+    expect(wrapper.emitted('query-subscription-expiry')).toBeUndefined()
+    const button = wrapper.findAll('button').find(item =>
+      item.text().includes('admin.accounts.bulkActions.querySubscriptionExpiry')
+    )
+
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(wrapper.emitted('query-subscription-expiry')).toHaveLength(1)
+  })
 })
