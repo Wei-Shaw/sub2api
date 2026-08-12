@@ -25,10 +25,10 @@ describe('Prompt Audit API', () => {
       id: 'guard-1', name: 'Guard', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000', model: 'guard',
       token: 'api-canary-secret', clear_token: false, timeout_ms: 1000, input_limit: 1000, enabled: true, has_token: false, token_status: 'missing',
 		engine_type: 'generic_llm', schema_version: 1, system_guidance: '', confidence_threshold: .75,
-		json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 16384, stage: 'shadow', failure_policy: 'fail_open', composition_mode: 'llm_only',
+		json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 16384, reasoning_effort: 'high', stage: 'shadow', failure_policy: 'fail_open', composition_mode: 'llm_only',
     })
     expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/endpoints/probe', expect.objectContaining({ endpoint: expect.objectContaining({ token: 'api-canary-secret' }) }))
-	expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/endpoints/probe', expect.objectContaining({ endpoint: expect.objectContaining({ engine_type: 'generic_llm', max_output_tokens: 16384, composition_mode: 'llm_only' }) }))
+	expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/endpoints/probe', expect.objectContaining({ endpoint: expect.objectContaining({ engine_type: 'generic_llm', max_output_tokens: 16384, reasoning_effort: 'high', composition_mode: 'llm_only' }) }))
     expect(JSON.stringify(result)).not.toContain('api-canary-secret')
   })
 

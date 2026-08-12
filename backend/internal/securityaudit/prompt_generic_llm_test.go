@@ -39,9 +39,10 @@ func TestGenericPlainJSONRequestIncludesCompleteContract(t *testing.T) {
 
 func TestGenericRequestUsesConfiguredMaxOutputTokens(t *testing.T) {
 	payload := genericRequestPayload(ActiveEndpoint{
-		Model: "audit", EngineType: EngineGenericLLM, MaxOutputTokens: 16384, JSONOutputMode: "plain_json",
+		Model: "audit", EngineType: EngineGenericLLM, MaxOutputTokens: 16384, ReasoningEffort: "xhigh", JSONOutputMode: "plain_json",
 	}, "input", AllScannerIDs)
 	require.Equal(t, 16384, payload["max_tokens"])
+	require.Equal(t, "xhigh", payload["reasoning_effort"])
 }
 
 func TestParseGenericObservation(t *testing.T) {

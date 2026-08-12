@@ -45,6 +45,7 @@ export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise
 		json_output_mode: endpoint.json_output_mode,
 		sample_rate: endpoint.sample_rate,
 		max_output_tokens: endpoint.max_output_tokens,
+		reasoning_effort: endpoint.reasoning_effort,
 		stage: endpoint.stage,
 		failure_policy: endpoint.failure_policy,
 		composition_mode: endpoint.composition_mode,

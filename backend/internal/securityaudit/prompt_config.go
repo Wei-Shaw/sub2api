@@ -70,6 +70,7 @@ type StorageEndpoint struct {
 	JSONOutputMode      string  `json:"json_output_mode,omitempty"`
 	SampleRate          float64 `json:"sample_rate,omitempty"`
 	MaxOutputTokens     int     `json:"max_output_tokens,omitempty"`
+	ReasoningEffort     string  `json:"reasoning_effort,omitempty"`
 	Stage               string  `json:"stage,omitempty"`
 	FailurePolicy       string  `json:"failure_policy,omitempty"`
 	CompositionMode     string  `json:"composition_mode,omitempty"`
@@ -110,6 +111,7 @@ type ActiveEndpoint struct {
 	JSONOutputMode      string
 	SampleRate          float64
 	MaxOutputTokens     int
+	ReasoningEffort     string
 	Stage               string
 	FailurePolicy       string
 	CompositionMode     string
@@ -157,6 +159,7 @@ type PublicEndpoint struct {
 	JSONOutputMode      string  `json:"json_output_mode"`
 	SampleRate          float64 `json:"sample_rate"`
 	MaxOutputTokens     int     `json:"max_output_tokens"`
+	ReasoningEffort     string  `json:"reasoning_effort"`
 	Stage               string  `json:"stage"`
 	FailurePolicy       string  `json:"failure_policy"`
 	CompositionMode     string  `json:"composition_mode"`
@@ -199,6 +202,7 @@ type UpdateEndpoint struct {
 	JSONOutputMode      string  `json:"json_output_mode"`
 	SampleRate          float64 `json:"sample_rate"`
 	MaxOutputTokens     int     `json:"max_output_tokens"`
+	ReasoningEffort     string  `json:"reasoning_effort"`
 	Stage               string  `json:"stage"`
 	FailurePolicy       string  `json:"failure_policy"`
 	CompositionMode     string  `json:"composition_mode"`
@@ -319,6 +323,10 @@ func normalizeEndpointPolicy(ep *StorageEndpoint) {
 	if ep.MaxOutputTokens == 0 {
 		ep.MaxOutputTokens = DefaultGenericMaxOutputTokens
 	}
+	ep.ReasoningEffort = strings.TrimSpace(ep.ReasoningEffort)
+	if ep.ReasoningEffort == "" {
+		ep.ReasoningEffort = "low"
+	}
 	ep.Stage = strings.TrimSpace(ep.Stage)
 	if ep.Stage == "" {
 		ep.Stage = "shadow"
@@ -357,6 +365,9 @@ func validateEndpointPolicy(ep StorageEndpoint) error {
 	}
 	if ep.MaxOutputTokens < 16 || ep.MaxOutputTokens > MaxGenericMaxOutputTokens {
 		return infraerrors.BadRequest("prompt_audit_invalid_max_output_tokens", "通用审计输出 Token 上限无效")
+	}
+	if ep.ReasoningEffort != "low" && ep.ReasoningEffort != "high" && ep.ReasoningEffort != "xhigh" && ep.ReasoningEffort != "max" {
+		return infraerrors.BadRequest("prompt_audit_invalid_reasoning_effort", "通用审计推理强度无效")
 	}
 	if ep.Stage != "shadow" && ep.Stage != "warn" && ep.Stage != "block" {
 		return infraerrors.BadRequest("prompt_audit_invalid_stage", "通用审计阶段无效")
@@ -471,7 +482,7 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 		if endpoint.InputLimit < MinInputLimit || endpoint.InputLimit > MaxInputLimit {
 			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
 		}
-		policy := StorageEndpoint{EngineType: endpoint.EngineType, SchemaVersion: endpoint.SchemaVersion, SystemGuidance: endpoint.SystemGuidance, ConfidenceThreshold: endpoint.ConfidenceThreshold, JSONOutputMode: endpoint.JSONOutputMode, SampleRate: endpoint.SampleRate, MaxOutputTokens: endpoint.MaxOutputTokens, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, CompositionMode: endpoint.CompositionMode}
+		policy := StorageEndpoint{EngineType: endpoint.EngineType, SchemaVersion: endpoint.SchemaVersion, SystemGuidance: endpoint.SystemGuidance, ConfidenceThreshold: endpoint.ConfidenceThreshold, JSONOutputMode: endpoint.JSONOutputMode, SampleRate: endpoint.SampleRate, MaxOutputTokens: endpoint.MaxOutputTokens, ReasoningEffort: endpoint.ReasoningEffort, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, CompositionMode: endpoint.CompositionMode}
 		normalizeEndpointPolicy(&policy)
 		if err := validateEndpointPolicy(policy); err != nil {
 			return err
@@ -546,7 +557,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 			Enabled: ep.Enabled, HasToken: hasToken, TokenStatus: status,
 			EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance,
 			ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate,
-			MaxOutputTokens: ep.MaxOutputTokens, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
+			MaxOutputTokens: ep.MaxOutputTokens, ReasoningEffort: ep.ReasoningEffort, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
 		})
 	}
 	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled}
@@ -594,7 +605,7 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 			Enabled: ep.Enabled && !tokenInvalid, TokenInvalid: tokenInvalid,
 			EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance,
 			ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate,
-			MaxOutputTokens: ep.MaxOutputTokens, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
+			MaxOutputTokens: ep.MaxOutputTokens, ReasoningEffort: ep.ReasoningEffort, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
 		})
 	}
 	return active, nil

@@ -48,7 +48,7 @@ export default {
       probeProgress: '配置校验 ✓ · 请求已发送 · 等待服务响应…', probeResult: '配置校验 ✓ · 请求 ✓ · HTTP {http} · {status} · {latency} ms',
       name: '节点名称', id: '稳定节点 ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: '留空以保留已保存的 API Key', reenterSecret: '已保存的 API Key 无法解密（加密密钥已变更），请重新输入',
       secretHint: '明文只在本次编辑内存中存在；保存成功后会立即清除。', clearSecret: '显式清除已保存的 API Key', timeout: '总超时（毫秒）', inputLimit: '单片 Unicode 字符上限',
-      engineType: '审计引擎', systemGuidance: '附加审计指引', confidence: '置信度阈值', sampleRate: '采样率', maxOutputTokens: '最大输出 Token', jsonMode: 'JSON 输出模式', stage: '执行阶段', failurePolicy: '失败策略', compositionMode: '关键词组合模式',
+      engineType: '审计引擎', systemGuidance: '附加审计指引', confidence: '置信度阈值', sampleRate: '采样率', maxOutputTokens: '最大输出 Token', reasoningEffort: '推理强度', jsonMode: 'JSON 输出模式', stage: '执行阶段', failurePolicy: '失败策略', compositionMode: '关键词组合模式',
 		options: { plainJson: '兼容 JSON（Plain JSON）', jsonSchema: '严格 JSON Schema', shadow: '影子（只记录）', warn: '警告（记录并放行）', block: '阻止（执行拦截）', failOpen: '失败放行（fail_open）', failClosed: '失败阻止（fail_closed）', keywordFirst: '关键词优先', combined: '并行组合', llmOnly: '仅 LLM' },
 		help: {
 			jsonMode: '控制模型返回结构。兼容 JSON：仅通过提示词要求返回 JSON，适合不支持 Structured Outputs 的兼容接口，但格式失败概率更高。严格 JSON Schema：向上游发送 response_format/json_schema，由接口约束字段和类型，稳定性更高，但要求上游支持该能力。',

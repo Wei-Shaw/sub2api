@@ -69,7 +69,7 @@ func genericResponseSchema() map[string]any {
 func genericRequestPayload(endpoint ActiveEndpoint, content string, enabledScanners []string) map[string]any {
 	payload := map[string]any{
 		"model": endpoint.Model, "messages": []map[string]string{{"role": "system", "content": genericSystemPrompt(endpoint, enabledScanners)}, {"role": "user", "content": genericUserPrompt(content)}},
-		"temperature": 0, "max_tokens": endpoint.MaxOutputTokens, "tools": []any{}, "tool_choice": "none",
+		"temperature": 0, "max_tokens": endpoint.MaxOutputTokens, "reasoning_effort": endpoint.ReasoningEffort, "tools": []any{}, "tool_choice": "none",
 	}
 	if endpoint.JSONOutputMode == "json_schema" {
 		payload["response_format"] = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "prompt_audit_v1", "strict": true, "schema": genericResponseSchema()}}

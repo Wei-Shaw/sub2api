@@ -22,7 +22,7 @@ const endpoint = (): PromptAuditEndpointDraft => ({
   model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true,
   has_token: true, token_status: 'configured', token: '', clear_token: false,
   engine_type: 'qwen3_guard', schema_version: 1, system_guidance: '', confidence_threshold: 0.75,
-  json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 512, stage: 'shadow',
+  json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 512, reasoning_effort: 'low', stage: 'shadow',
   failure_policy: 'fail_open', composition_mode: 'keyword_first',
 })
 

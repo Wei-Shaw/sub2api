@@ -353,7 +353,7 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 			TimeoutMS: endpoint.TimeoutMS, InputLimit: endpoint.InputLimit, Enabled: endpoint.Enabled,
 			EngineType: endpoint.EngineType, SchemaVersion: endpoint.SchemaVersion, SystemGuidance: endpoint.SystemGuidance,
 			ConfidenceThreshold: endpoint.ConfidenceThreshold, JSONOutputMode: endpoint.JSONOutputMode, SampleRate: endpoint.SampleRate,
-			MaxOutputTokens: endpoint.MaxOutputTokens, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, CompositionMode: endpoint.CompositionMode,
+			MaxOutputTokens: endpoint.MaxOutputTokens, ReasoningEffort: endpoint.ReasoningEffort, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, CompositionMode: endpoint.CompositionMode,
 		}
 		old, hadOld := currentByID[stored.ID]
 		switch {

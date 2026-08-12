@@ -6,6 +6,7 @@ export type PromptAuditStage = 'shadow' | 'warn' | 'block'
 export type PromptAuditFailurePolicy = 'fail_open' | 'fail_closed'
 export type PromptAuditCompositionMode = 'keyword_first' | 'llm_only' | 'combined'
 export type PromptAuditJSONOutputMode = 'plain_json' | 'json_schema'
+export type PromptAuditReasoningEffort = 'low' | 'high' | 'xhigh' | 'max'
 
 export interface PromptAuditEndpoint {
   id: string
@@ -25,6 +26,7 @@ export interface PromptAuditEndpoint {
   json_output_mode: PromptAuditJSONOutputMode
   sample_rate: number
   max_output_tokens: number
+  reasoning_effort: PromptAuditReasoningEffort
   stage: PromptAuditStage
   failure_policy: PromptAuditFailurePolicy
   composition_mode: PromptAuditCompositionMode
@@ -88,6 +90,7 @@ export interface PromptAuditUpdateRequest {
     json_output_mode: PromptAuditJSONOutputMode
     sample_rate: number
     max_output_tokens: number
+    reasoning_effort: PromptAuditReasoningEffort
     stage: PromptAuditStage
     failure_policy: PromptAuditFailurePolicy
     composition_mode: PromptAuditCompositionMode

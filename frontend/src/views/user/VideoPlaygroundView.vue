@@ -653,17 +653,21 @@
                 {{ t('videoModels.playground.previewFromDefault') }}
               </span>
             </div>
-            <div v-if="resultType === 'video'" class="relative mx-auto w-fit max-w-full">
+            <div v-if="resultType === 'video'" class="mx-auto w-fit max-w-full">
               <video
                 :src="primaryPreview.url"
                 controls
                 preload="metadata"
                 class="block h-auto max-h-[520px] max-w-full rounded border border-gray-200 bg-black dark:border-gray-700"
               />
+            </div>
+            <div
+              v-if="resultType === 'video' && primaryPreview.source === 'payload' && playground.phase.value === 'completed'"
+              class="flex justify-end"
+            >
               <button
-                v-if="primaryPreview.source === 'payload' && playground.phase.value === 'completed'"
                 type="button"
-                class="absolute bottom-3 right-3 rounded-lg bg-black/70 px-3 py-1.5 text-xs font-medium text-white shadow backdrop-blur hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
+                class="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-600"
                 :disabled="savingMaterialURLs.has(primaryPreview.url) || savedMaterialURLs.has(primaryPreview.url)"
                 @click="saveVideoToMaterials(primaryPreview.url)"
               >

@@ -58,6 +58,7 @@ func TestLegacyEndpointDefaultsToQwen3Guard(t *testing.T) {
 func TestGenericEndpointValidation(t *testing.T) {
 	base := StorageEndpoint{ID: "generic", Name: "Generic", Protocol: "openai_compatible", BaseURL: "https://8.8.8.8", Model: "audit-model", TimeoutMS: 1000, InputLimit: 1000, EngineType: EngineGenericLLM}
 	normalizeEndpointPolicy(&base)
+	require.Equal(t, "low", base.ReasoningEffort)
 	require.NoError(t, validateEndpointPolicy(base))
 
 	invalid := base
@@ -481,6 +482,10 @@ func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
 		{name: "group positive", mutate: func(req *UpdateConfigRequest) { req.AllGroups = false; req.GroupIDs = []int64{0} }, reason: "prompt_audit_invalid_group"},
 		{name: "timeout low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MinTimeoutMS - 1 }, reason: "prompt_audit_invalid_timeout"},
 		{name: "timeout high", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MaxTimeoutMS + 1 }, reason: "prompt_audit_invalid_timeout"},
+		{name: "reasoning effort", mutate: func(req *UpdateConfigRequest) {
+			req.Endpoints[0].EngineType = EngineGenericLLM
+			req.Endpoints[0].ReasoningEffort = "medium"
+		}, reason: "prompt_audit_invalid_reasoning_effort"},
 		{name: "input low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].InputLimit = MinInputLimit - 1 }, reason: "prompt_audit_invalid_input_limit"},
 		{name: "input high", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].InputLimit = MaxInputLimit + 1 }, reason: "prompt_audit_invalid_input_limit"},
 	}

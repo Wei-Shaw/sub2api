@@ -138,6 +138,10 @@
           <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200"><span>{{ t('admin.promptAudit.pool.sampleRate') }}</span><input v-model.number="editing.sample_rate" class="input w-full" type="number" min="0.01" max="1" step="0.01" /></label>
           <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200"><span>{{ t('admin.promptAudit.pool.maxOutputTokens') }}</span><input v-model.number="editing.max_output_tokens" class="input w-full" type="number" min="16" max="32768" /></label>
 			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
+				<span>{{ t('admin.promptAudit.pool.reasoningEffort') }}</span>
+				<Select v-model="editing.reasoning_effort" :options="reasoningEffortOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.reasoningEffort')" />
+			</label>
+			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
 				<span class="flex items-center gap-1">{{ t('admin.promptAudit.pool.jsonMode') }}<FieldHelp :content="t('admin.promptAudit.pool.help.jsonMode')" /></span>
 				<Select v-model="editing.json_output_mode" :options="jsonModeOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.jsonMode')" />
 			</label>
@@ -202,6 +206,12 @@ const engineOptions = computed<SelectOption[]>(() => [
 const jsonModeOptions = computed<SelectOption[]>(() => [
 	{ value: 'plain_json', label: t('admin.promptAudit.pool.options.plainJson') },
 	{ value: 'json_schema', label: t('admin.promptAudit.pool.options.jsonSchema') },
+])
+const reasoningEffortOptions = computed<SelectOption[]>(() => [
+	{ value: 'low', label: 'low' },
+	{ value: 'high', label: 'high' },
+	{ value: 'xhigh', label: 'xhigh' },
+	{ value: 'max', label: 'max' },
 ])
 const stageOptions = computed<SelectOption[]>(() => [
 	{ value: 'shadow', label: t('admin.promptAudit.pool.options.shadow') },

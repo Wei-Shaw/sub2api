@@ -27,7 +27,7 @@ const config = (): PromptAuditConfig => ({
     model: 'sileader/qwen3guard:0.6b', timeout_ms: 3000, input_limit: 4000, enabled: true,
     has_token: true, token_status: 'configured',
     engine_type: 'qwen3_guard', schema_version: 1, system_guidance: '', confidence_threshold: 0.75,
-    json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 512, stage: 'shadow',
+    json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 512, reasoning_effort: 'low', stage: 'shadow',
     failure_policy: 'fail_open', composition_mode: 'keyword_first',
   }],
   config_version: 7,
@@ -68,11 +68,11 @@ describe('Prompt Audit view model', () => {
 
   it('hydrates legacy endpoint policy defaults and saves generic fields', () => {
     const legacy = config()
-    legacy.endpoints = [Object.fromEntries(Object.entries(legacy.endpoints[0]).filter(([key]) => !['engine_type', 'schema_version', 'system_guidance', 'confidence_threshold', 'json_output_mode', 'sample_rate', 'max_output_tokens', 'stage', 'failure_policy', 'composition_mode'].includes(key))) as unknown as PromptAuditConfig['endpoints'][number]]
+    legacy.endpoints = [Object.fromEntries(Object.entries(legacy.endpoints[0]).filter(([key]) => !['engine_type', 'schema_version', 'system_guidance', 'confidence_threshold', 'json_output_mode', 'sample_rate', 'max_output_tokens', 'reasoning_effort', 'stage', 'failure_policy', 'composition_mode'].includes(key))) as unknown as PromptAuditConfig['endpoints'][number]]
     const draft = configToDraft(legacy)
-    expect(draft.endpoints[0]).toMatchObject({ engine_type: 'qwen3_guard', sample_rate: 1, stage: 'shadow', failure_policy: 'fail_open' })
-    Object.assign(draft.endpoints[0], { engine_type: 'generic_llm', system_guidance: 'Audit policy', confidence_threshold: .8, json_output_mode: 'json_schema', sample_rate: .5, max_output_tokens: 256, stage: 'warn', failure_policy: 'fail_open', composition_mode: 'combined' })
-    expect(buildUpdateRequest(draft).endpoints[0]).toMatchObject({ engine_type: 'generic_llm', system_guidance: 'Audit policy', confidence_threshold: .8, json_output_mode: 'json_schema', sample_rate: .5, max_output_tokens: 256, stage: 'warn', failure_policy: 'fail_open', composition_mode: 'combined' })
+    expect(draft.endpoints[0]).toMatchObject({ engine_type: 'qwen3_guard', sample_rate: 1, reasoning_effort: 'low', stage: 'shadow', failure_policy: 'fail_open' })
+    Object.assign(draft.endpoints[0], { engine_type: 'generic_llm', system_guidance: 'Audit policy', confidence_threshold: .8, json_output_mode: 'json_schema', sample_rate: .5, max_output_tokens: 256, reasoning_effort: 'max', stage: 'warn', failure_policy: 'fail_open', composition_mode: 'combined' })
+    expect(buildUpdateRequest(draft).endpoints[0]).toMatchObject({ engine_type: 'generic_llm', system_guidance: 'Audit policy', confidence_threshold: .8, json_output_mode: 'json_schema', sample_rate: .5, max_output_tokens: 256, reasoning_effort: 'max', stage: 'warn', failure_policy: 'fail_open', composition_mode: 'combined' })
   })
 
   it('tracks dirty state from the full normalized save payload', () => {

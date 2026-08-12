@@ -436,7 +436,7 @@ func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoi
 	}
 	storage := storageConfig{Enabled: false, Strategy: "priority", WorkerCount: DefaultWorkerCount, QueueCapacity: DefaultQueueCapacity, Scanners: append([]string(nil), AllScannerIDs...), AllGroups: true,
 		Endpoints: []StorageEndpoint{{ID: strings.TrimSpace(input.ID), Name: strings.TrimSpace(input.Name), Protocol: "openai_compatible", BaseURL: baseURL, Model: model, TimeoutMS: timeout, InputLimit: limit,
-			EngineType: input.EngineType, SchemaVersion: input.SchemaVersion, SystemGuidance: input.SystemGuidance, ConfidenceThreshold: input.ConfidenceThreshold, JSONOutputMode: input.JSONOutputMode, SampleRate: input.SampleRate, MaxOutputTokens: input.MaxOutputTokens, Stage: input.Stage, FailurePolicy: input.FailurePolicy, CompositionMode: input.CompositionMode}}}
+			EngineType: input.EngineType, SchemaVersion: input.SchemaVersion, SystemGuidance: input.SystemGuidance, ConfidenceThreshold: input.ConfidenceThreshold, JSONOutputMode: input.JSONOutputMode, SampleRate: input.SampleRate, MaxOutputTokens: input.MaxOutputTokens, ReasoningEffort: input.ReasoningEffort, Stage: input.Stage, FailurePolicy: input.FailurePolicy, CompositionMode: input.CompositionMode}}}
 	normalizeStorageConfig(&storage)
 	if storage.Endpoints[0].ID == "" {
 		storage.Endpoints[0].ID = "probe"
@@ -449,7 +449,7 @@ func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoi
 	}
 	ep := storage.Endpoints[0]
 	return ActiveEndpoint{ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL, Model: ep.Model, Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit, Enabled: true,
-		EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance, ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate, MaxOutputTokens: ep.MaxOutputTokens, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode}, token != "", nil
+		EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance, ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate, MaxOutputTokens: ep.MaxOutputTokens, ReasoningEffort: ep.ReasoningEffort, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode}, token != "", nil
 }
 
 func (s *PromptService) finishProbe(id string, started time.Time, result ProbeResult) ProbeResult {
