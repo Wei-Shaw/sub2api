@@ -124,6 +124,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
 	FieldModelsListConfig = "models_list_config"
+	// FieldAutoModeClassifierModel holds the string denoting the auto_mode_classifier_model field in the database.
+	FieldAutoModeClassifierModel = "auto_mode_classifier_model"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
@@ -265,6 +267,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldModelsListConfig,
+	FieldAutoModeClassifierModel,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
 	FieldReasoningEffortMappings,
@@ -390,6 +393,10 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
 	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultAutoModeClassifierModel holds the default value on creation for the "auto_mode_classifier_model" field.
+	DefaultAutoModeClassifierModel string
+	// AutoModeClassifierModelValidator is a validator for the "auto_mode_classifier_model" field. It is called by the builders before save.
+	AutoModeClassifierModelValidator func(string) error
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
@@ -657,6 +664,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByAutoModeClassifierModel orders the results by the auto_mode_classifier_model field.
+func ByAutoModeClassifierModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAutoModeClassifierModel, opts...).ToFunc()
 }
 
 // ByRpmLimit orders the results by the rpm_limit field.

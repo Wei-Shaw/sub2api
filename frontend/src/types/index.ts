@@ -620,6 +620,9 @@ export interface AdminGroup extends Group {
   // 支持的模型系列（仅 antigravity 平台使用）
   supported_model_scopes?: string[]
 
+  // Claude Code Auto Mode 分类器模型
+  auto_mode_classifier_model?: string
+
   // 分组下账号数量（仅管理员可见）
   account_count?: number
   active_account_count?: number
@@ -809,6 +812,7 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   max_reasoning_effort?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
+  auto_mode_classifier_model?: string
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   // 从指定分组复制账号
@@ -869,6 +873,7 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   max_reasoning_effort?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
+  auto_mode_classifier_model?: string
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
@@ -1617,6 +1622,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  upstream_model?: string | null
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null

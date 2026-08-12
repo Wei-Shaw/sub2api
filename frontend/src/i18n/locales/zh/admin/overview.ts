@@ -1103,7 +1103,10 @@ export default {
         disabled: '允许所有客户端',
         fallbackGroup: '降级分组',
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
-        noFallback: '不降级（直接拒绝）'
+        noFallback: '不降级（直接拒绝）',
+        classifierModel: 'Auto Mode 分类器模型',
+        classifierModelPlaceholder: '例如 claude-haiku-4-5-20251001',
+        classifierModelHint: '设置后，Claude Code Auto Mode 的分类器请求（同步、无推理）将改用此模型，留空则不改写'
       },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',

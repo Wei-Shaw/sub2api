@@ -300,6 +300,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// AutoModeClassifierModel applies equality check predicate on the "auto_mode_classifier_model" field. It's identical to AutoModeClassifierModelEQ.
+func AutoModeClassifierModel(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoModeClassifierModel, v))
+}
+
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
@@ -2328,6 +2333,71 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// AutoModeClassifierModelEQ applies the EQ predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelNEQ applies the NEQ predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelIn applies the In predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldAutoModeClassifierModel, vs...))
+}
+
+// AutoModeClassifierModelNotIn applies the NotIn predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldAutoModeClassifierModel, vs...))
+}
+
+// AutoModeClassifierModelGT applies the GT predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelGTE applies the GTE predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelLT applies the LT predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelLTE applies the LTE predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelContains applies the Contains predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelHasPrefix applies the HasPrefix predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelHasSuffix applies the HasSuffix predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelEqualFold applies the EqualFold predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldAutoModeClassifierModel, v))
+}
+
+// AutoModeClassifierModelContainsFold applies the ContainsFold predicate on the "auto_mode_classifier_model" field.
+func AutoModeClassifierModelContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldAutoModeClassifierModel, v))
 }
 
 // RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.

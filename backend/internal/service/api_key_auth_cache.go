@@ -130,6 +130,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitControlEnabled bool    `json:"profit_control_enabled"`
 	ProfitMinMargin      float64 `json:"profit_min_margin"`
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
+
+	// AutoModeClassifierModel 分组级 Claude Code auto mode 分类器模型改写目标（空 = 不改写）。
+	AutoModeClassifierModel string `json:"auto_mode_classifier_model,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

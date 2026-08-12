@@ -101,6 +101,9 @@ type Group struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	ModelsListConfig            GroupModelsListConfig
 
+	// AutoModeClassifierModel Claude Code Auto Mode 分类器请求使用的模型，空字符串表示不改写
+	AutoModeClassifierModel string
+
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）。
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int

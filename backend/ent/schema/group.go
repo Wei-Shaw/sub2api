@@ -252,6 +252,12 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("自定义 /v1/models 展示列表配置；仅影响模型列表响应，不影响调度"),
 
+		// Claude Code Auto Mode 分类器模型（空字符串 = 不改写，使用原始模型）
+		field.String("auto_mode_classifier_model").
+			MaxLen(100).
+			Default("").
+			Comment("Auto Mode 分类器请求使用的模型，空表示不改写"),
+
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
 		field.Int("rpm_limit").
 			Default(0).
