@@ -194,6 +194,10 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 			result.Modified = true
 		}
 	}
+	if truncation, ok := reqBody["truncation"].(string); ok && truncation == "disabled" {
+		delete(reqBody, "truncation")
+		result.Modified = true
+	}
 
 	// 请求带 reasoning 时补齐 include:["reasoning.encrypted_content"]，与真实 Codex 对齐
 	// （compact 端点形态不同，单独处理，此处跳过）。
