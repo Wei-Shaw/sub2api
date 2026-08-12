@@ -84,6 +84,9 @@ func TestGeminiMonitorBodyIncludesExplicitUserRole(t *testing.T) {
 		Contents []struct {
 			Role string `json:"role"`
 		} `json:"contents"`
+		GenerationConfig struct {
+			MaxOutputTokens int `json:"maxOutputTokens"`
+		} `json:"generationConfig"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
@@ -93,5 +96,8 @@ func TestGeminiMonitorBodyIncludesExplicitUserRole(t *testing.T) {
 	}
 	if payload.Contents[0].Role != "user" {
 		t.Fatalf("contents[0].role = %q, want user", payload.Contents[0].Role)
+	}
+	if payload.GenerationConfig.MaxOutputTokens != monitorGeminiChallengeMaxTokens {
+		t.Fatalf("generationConfig.maxOutputTokens = %d, want %d", payload.GenerationConfig.MaxOutputTokens, monitorGeminiChallengeMaxTokens)
 	}
 }

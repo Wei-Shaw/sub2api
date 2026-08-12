@@ -100,6 +100,10 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 
 	if !validateChallenge(respText, challenge.Expected) {
 		res.Status = MonitorStatusFailed
+		if provider == MonitorProviderGemini && strings.EqualFold(gjson.Get(rawBody, "candidates.0.finishReason").String(), "MAX_TOKENS") {
+			res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge response truncated by max tokens (expected %s, got %q)", challenge.Expected, respText)))
+			return res
+		}
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge mismatch (expected %s, got %q)", challenge.Expected, respText)))
 		return res
 	}
@@ -195,7 +199,7 @@ var providerAdapters = map[string]providerAdapter{
 				"contents": []map[string]any{
 					{"role": "user", "parts": []map[string]any{{"text": prompt}}},
 				},
-				"generationConfig": map[string]any{"maxOutputTokens": monitorChallengeMaxTokens},
+				"generationConfig": map[string]any{"maxOutputTokens": monitorGeminiChallengeMaxTokens},
 			})
 		},
 		// 使用 x-goog-api-key header 而不是 ?key= query，避免 *url.Error 把 key 回填到错误日志。

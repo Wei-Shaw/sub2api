@@ -16,6 +16,7 @@ import (
 //
 // upstreamModel 是最终发往上游的模型 ID。
 // totalCost 是本次请求的客户计费（倍率前），用于优先级 2。
+// serviceTier 是最终参与用户计费的 OpenAI 服务层级，用于优先级 3。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
@@ -26,6 +27,7 @@ func resolveAccountStatsCost(
 	tokens UsageTokens,
 	requestCount int,
 	totalCost float64,
+	serviceTier string,
 ) *float64 {
 	if channelService == nil || upstreamModel == "" {
 		return nil
@@ -53,17 +55,19 @@ func resolveAccountStatsCost(
 
 	// 优先级 3：模型定价文件（LiteLLM）默认价格
 	if billingService != nil {
-		return tryModelFilePricing(billingService, upstreamModel, tokens)
+		return tryModelFilePricing(billingService, upstreamModel, tokens, serviceTier)
 	}
 
 	return nil
 }
 
-// tryModelFilePricing 使用模型定价文件（LiteLLM/fallback）中的标准价格计算费用。
-func tryModelFilePricing(billingService *BillingService, model string, tokens UsageTokens) *float64 {
-	// Reuse the canonical token calculator so image input/output tokens use the
-	// same rates as customer billing and future pricing policies stay aligned.
-	breakdown, err := billingService.CalculateCost(model, tokens, 1)
+// tryModelFilePricing 使用模型定价文件（LiteLLM/fallback）中的统一计费明细计算费用。
+//
+// 这里必须复用 BillingService 的核心计算器，不能手工把 input/output 相乘：
+// 核心计算器还负责图片输入/输出的独立价格、5m/1h cache breakdown、priority/flex
+// 价格、长上下文倍率以及未显式配置图片价格时的回退规则。
+func tryModelFilePricing(billingService *BillingService, model string, tokens UsageTokens, serviceTier string) *float64 {
+	breakdown, err := billingService.CalculateCostWithServiceTier(model, tokens, 1, serviceTier)
 	if err != nil || breakdown == nil || breakdown.TotalCost <= 0 {
 		return nil
 	}
@@ -245,7 +249,11 @@ func applyAccountStatsCost(
 	if usageLog != nil && usageLog.ImageCount > 0 {
 		requestCount = usageLog.ImageCount
 	}
+	serviceTier := ""
+	if usageLog != nil && usageLog.ServiceTier != nil {
+		serviceTier = *usageLog.ServiceTier
+	}
 	usageLog.AccountStatsCost = resolveAccountStatsCost(
-		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost,
+		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost, serviceTier,
 	)
 }

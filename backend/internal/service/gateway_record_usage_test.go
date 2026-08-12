@@ -194,6 +194,48 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_AccountStatsPreservesCacheCreationBreakdown(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	channel := &Channel{ID: 1, Status: StatusActive, ApplyPricingToAccountStats: false}
+	svc.channelService = newTestChannelServiceForStats(t, channel, 10, "anthropic")
+	svc.billingService = newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			CacheCreation5mPrice:   0.01,
+			CacheCreation1hPrice:   0.02,
+			SupportsCacheBreakdown: true,
+		},
+	})
+	groupID := int64(10)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_account_stats_cache_breakdown",
+			Usage: ClaudeUsage{
+				CacheCreationInputTokens: 100,
+				CacheCreation5mTokens:    20,
+				CacheCreation1hTokens:    80,
+			},
+			Model:         "claude-sonnet-4",
+			UpstreamModel: "claude-sonnet-4",
+			Duration:      time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      501,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, Platform: PlatformAnthropic, RateMultiplier: 1},
+		},
+		User:    &User{ID: 601},
+		Account: &Account{ID: 701},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
+	// 20 five-minute cache tokens * $0.01 + 80 one-hour cache tokens * $0.02.
+	require.InDelta(t, 1.8, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+}
+
 func TestGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})

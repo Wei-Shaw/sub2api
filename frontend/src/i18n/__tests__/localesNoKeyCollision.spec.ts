@@ -6,6 +6,7 @@ import enAdminOps from '../locales/en/admin/ops'
 import enAdminOverview from '../locales/en/admin/overview'
 import enAdminResources from '../locales/en/admin/resources'
 import enAdminSettings from '../locales/en/admin/settings'
+import enAdmin from '../locales/en/admin'
 import enCommon from '../locales/en/common'
 import enDashboard from '../locales/en/dashboard'
 import enLanding from '../locales/en/landing'
@@ -16,6 +17,7 @@ import zhAdminOps from '../locales/zh/admin/ops'
 import zhAdminOverview from '../locales/zh/admin/overview'
 import zhAdminResources from '../locales/zh/admin/resources'
 import zhAdminSettings from '../locales/zh/admin/settings'
+import zhAdmin from '../locales/zh/admin'
 import zhCommon from '../locales/zh/common'
 import zhDashboard from '../locales/zh/dashboard'
 import zhLanding from '../locales/zh/landing'
@@ -78,5 +80,15 @@ describe.each(Object.keys(roots))('locale %s spread assembly', (locale) => {
 
   it('admin modules have no overlapping top-level keys', () => {
     expect(collisions(admins[locale])).toEqual([])
+  })
+})
+
+describe('account scheduling threshold translations', () => {
+  it.each([
+    ['zh', zhAdmin],
+    ['en', enAdmin]
+  ])('resolves account threshold labels in %s admin namespace', (_locale, admin) => {
+    expect(admin.accounts.accountSchedulingThresholdOverride).not.toMatch(/^admin\.accounts\./)
+    expect(admin.accounts.accountSchedulingThresholdOverrideHint).not.toMatch(/^admin\.accounts\./)
   })
 })

@@ -91,8 +91,11 @@ const (
 
 	// monitorAnthropicAPIVersion Anthropic Messages API 版本头。
 	monitorAnthropicAPIVersion = "2023-06-01"
-	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
+	// monitorChallengeMaxTokens 单次 challenge 请求的通用 max_tokens。
 	monitorChallengeMaxTokens = 50
+	// monitorGeminiChallengeMaxTokens 给 Gemini 留出内部推理预算。
+	// Gemini 3.x 会把 thinking tokens 计入 maxOutputTokens；50 可能只够输出答案首位。
+	monitorGeminiChallengeMaxTokens = 256
 
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
