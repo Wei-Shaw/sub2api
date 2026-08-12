@@ -405,6 +405,72 @@ REDACTED
 	require.NotContains(t, emptySchema, "type")
 REDACTED
 
+func TestCleanToolSchema_ConvertsNestedIntegerExclusiveMinimum(t *testing.T) {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"counts": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":             "integer",
+					"exclusiveMinimum": float64(0),
+			REDACTED,
+		REDACTED,
+			"strict": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 0,
+				"minimum":          5,
+		REDACTED,
+			"weak": map[string]any{
+				"type":             "integer",
+				"exclusiveMinimum": 2,
+				"minimum":          1,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	cleaned, ok := cleanToolSchema(schema).(map[string]any)
+	require.True(t, ok)
+	properties, ok := cleaned["properties"].(map[string]any)
+	require.True(t, ok)
+	counts, ok := properties["counts"].(map[string]any)
+	require.True(t, ok)
+	items, ok := counts["items"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, items, "exclusiveMinimum")
+	require.Equal(t, float64(1), items["minimum"])
+
+	strict, ok := properties["strict"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, strict, "exclusiveMinimum")
+	require.Equal(t, 5, strict["minimum"])
+
+	weak, ok := properties["weak"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, weak, "exclusiveMinimum")
+	require.Equal(t, 3, weak["minimum"])
+REDACTED
+
+func TestCleanToolSchema_DropsAmbiguousExclusiveMinimumWithoutConversion(t *testing.T) {
+	for name, schema := range map[string]map[string]any{
+		"number schema": {
+			"type":             "number",
+			"exclusiveMinimum": 0,
+	REDACTED,
+		"fractional integer bound": {
+			"type":             "integer",
+			"exclusiveMinimum": 0.5,
+	REDACTED,
+REDACTED {
+		t.Run(name, func(t *testing.T) {
+			cleaned, ok := cleanToolSchema(schema).(map[string]any)
+			require.True(t, ok)
+			require.NotContains(t, cleaned, "exclusiveMinimum")
+			require.NotContains(t, cleaned, "minimum")
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestConvertClaudeToolsToGeminiTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	tools := []any{
 		map[string]any{
