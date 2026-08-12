@@ -206,6 +206,8 @@ type Account struct {
 	ProxyID                 *int64                         `json:"proxy_id"`
 	ProxyFallbackOriginID   *int64                         `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string                        `json:"proxy_fallback_origin_name,omitempty"`
+	PoolID                  *int64                         `json:"pool_id"`
+	PoolName                string                         `json:"pool_name,omitempty"`
 	Concurrency             int                            `json:"concurrency"`
 	LoadFactor              *int                           `json:"load_factor,omitempty"`
 	Priority                int                            `json:"priority"`
@@ -333,10 +335,16 @@ type Proxy struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	ExpiresAt      *time.Time `json:"expires_at"`
-	FallbackMode   string     `json:"fallback_mode"`
-	BackupProxyID  *int64     `json:"backup_proxy_id"`
-	ExpiryWarnDays int        `json:"expiry_warn_days"`
+	ExpiresAt        *time.Time `json:"expires_at"`
+	FallbackMode     string     `json:"fallback_mode"`
+	BackupProxyID    *int64     `json:"backup_proxy_id"`
+	ExpiryWarnDays   int        `json:"expiry_warn_days"`
+	ForceHTTP1       bool       `json:"force_http1"`
+	DisableKeepAlive bool       `json:"disable_keep_alive"`
+	PoolID           *int64     `json:"pool_id,omitempty"`
+	PoolHealth       string     `json:"pool_health,omitempty"`
+	PoolCheckedAt    *time.Time `json:"pool_checked_at,omitempty"`
+	PoolFailures     int        `json:"pool_failures,omitempty"`
 }
 
 type ProxyWithAccountCount struct {
@@ -362,6 +370,54 @@ type ProxyWithAccountCount struct {
 type AdminProxy struct {
 	Proxy
 	Password string `json:"password,omitempty"`
+}
+
+// AdminProxyPool 代理池 DTO。
+type AdminProxyPool struct {
+	ID                    int64     `json:"id"`
+	Name                  string    `json:"name"`
+	Description           *string   `json:"description,omitempty"`
+	Status                string    `json:"status"`
+	HealthIntervalSeconds int       `json:"health_interval_seconds"`
+	FailureThreshold      int       `json:"failure_threshold"`
+	AutoRebind            bool      `json:"auto_rebind"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+// AdminProxyPoolWithStats 代理池列表 DTO（含统计）。
+type AdminProxyPoolWithStats struct {
+	AdminProxyPool
+	ProxyCount             int64 `json:"proxy_count"`
+	HealthyCount           int64 `json:"healthy_count"`
+	UnhealthyCount         int64 `json:"unhealthy_count"`
+	UnknownCount           int64 `json:"unknown_count"`
+	BoundAccountSum        int64 `json:"bound_account_sum"`
+	UnassignedAccountCount int64 `json:"unassigned_account_count"`
+}
+
+// AdminProxyPoolAccountSummary 池详情中的账号及当前代理。
+type AdminProxyPoolAccountSummary struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	ProxyID   *int64 `json:"proxy_id,omitempty"`
+	ProxyName string `json:"proxy_name,omitempty"`
+}
+
+// AdminProxyPoolRebindLog 重绑日志 DTO。
+type AdminProxyPoolRebindLog struct {
+	ID            int64     `json:"id"`
+	PoolID        int64     `json:"pool_id"`
+	FromProxyID   *int64    `json:"from_proxy_id,omitempty"`
+	ToProxyID     *int64    `json:"to_proxy_id,omitempty"`
+	FromProxyName string    `json:"from_proxy_name,omitempty"`
+	ToProxyName   string    `json:"to_proxy_name,omitempty"`
+	AccountCount  int       `json:"account_count"`
+	Reason        string    `json:"reason"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // AdminProxyWithAccountCount 是管理员接口使用的带账号统计的 proxy DTO。

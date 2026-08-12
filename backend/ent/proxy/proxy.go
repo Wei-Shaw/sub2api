@@ -29,6 +29,10 @@ const (
 	FieldHost = "host"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
+	// FieldForceHttp1 holds the string denoting the force_http1 field in the database.
+	FieldForceHttp1 = "force_http1"
+	// FieldDisableKeepAlive holds the string denoting the disable_keep_alive field in the database.
+	FieldDisableKeepAlive = "disable_keep_alive"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldPassword holds the string denoting the password field in the database.
@@ -43,10 +47,20 @@ const (
 	FieldBackupProxyID = "backup_proxy_id"
 	// FieldExpiryWarnDays holds the string denoting the expiry_warn_days field in the database.
 	FieldExpiryWarnDays = "expiry_warn_days"
+	// FieldPoolID holds the string denoting the pool_id field in the database.
+	FieldPoolID = "pool_id"
+	// FieldPoolHealth holds the string denoting the pool_health field in the database.
+	FieldPoolHealth = "pool_health"
+	// FieldPoolCheckedAt holds the string denoting the pool_checked_at field in the database.
+	FieldPoolCheckedAt = "pool_checked_at"
+	// FieldPoolFailures holds the string denoting the pool_failures field in the database.
+	FieldPoolFailures = "pool_failures"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
 	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
 	EdgeBackupProxy = "backup_proxy"
+	// EdgePool holds the string denoting the pool edge name in mutations.
+	EdgePool = "pool"
 	// Table holds the table name of the proxy in the database.
 	Table = "proxies"
 	// AccountsTable is the table that holds the accounts relation/edge.
@@ -60,6 +74,13 @@ const (
 	BackupProxyTable = "proxies"
 	// BackupProxyColumn is the table column denoting the backup_proxy relation/edge.
 	BackupProxyColumn = "backup_proxy_id"
+	// PoolTable is the table that holds the pool relation/edge.
+	PoolTable = "proxies"
+	// PoolInverseTable is the table name for the ProxyPool entity.
+	// It exists in this package in order to avoid circular dependency with the "proxypool" package.
+	PoolInverseTable = "proxy_pools"
+	// PoolColumn is the table column denoting the pool relation/edge.
+	PoolColumn = "pool_id"
 )
 
 // Columns holds all SQL columns for proxy fields.
@@ -72,6 +93,8 @@ var Columns = []string{
 	FieldProtocol,
 	FieldHost,
 	FieldPort,
+	FieldForceHttp1,
+	FieldDisableKeepAlive,
 	FieldUsername,
 	FieldPassword,
 	FieldStatus,
@@ -79,6 +102,10 @@ var Columns = []string{
 	FieldFallbackMode,
 	FieldBackupProxyID,
 	FieldExpiryWarnDays,
+	FieldPoolID,
+	FieldPoolHealth,
+	FieldPoolCheckedAt,
+	FieldPoolFailures,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -111,6 +138,10 @@ var (
 	ProtocolValidator func(string) error
 	// HostValidator is a validator for the "host" field. It is called by the builders before save.
 	HostValidator func(string) error
+	// DefaultForceHttp1 holds the default value on creation for the "force_http1" field.
+	DefaultForceHttp1 bool
+	// DefaultDisableKeepAlive holds the default value on creation for the "disable_keep_alive" field.
+	DefaultDisableKeepAlive bool
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
@@ -125,6 +156,12 @@ var (
 	FallbackModeValidator func(string) error
 	// DefaultExpiryWarnDays holds the default value on creation for the "expiry_warn_days" field.
 	DefaultExpiryWarnDays int
+	// DefaultPoolHealth holds the default value on creation for the "pool_health" field.
+	DefaultPoolHealth string
+	// PoolHealthValidator is a validator for the "pool_health" field. It is called by the builders before save.
+	PoolHealthValidator func(string) error
+	// DefaultPoolFailures holds the default value on creation for the "pool_failures" field.
+	DefaultPoolFailures int
 )
 
 // OrderOption defines the ordering options for the Proxy queries.
@@ -170,6 +207,16 @@ func ByPort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort, opts...).ToFunc()
 }
 
+// ByForceHttp1 orders the results by the force_http1 field.
+func ByForceHttp1(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceHttp1, opts...).ToFunc()
+}
+
+// ByDisableKeepAlive orders the results by the disable_keep_alive field.
+func ByDisableKeepAlive(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisableKeepAlive, opts...).ToFunc()
+}
+
 // ByUsername orders the results by the username field.
 func ByUsername(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUsername, opts...).ToFunc()
@@ -205,6 +252,26 @@ func ByExpiryWarnDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExpiryWarnDays, opts...).ToFunc()
 }
 
+// ByPoolID orders the results by the pool_id field.
+func ByPoolID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPoolID, opts...).ToFunc()
+}
+
+// ByPoolHealth orders the results by the pool_health field.
+func ByPoolHealth(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPoolHealth, opts...).ToFunc()
+}
+
+// ByPoolCheckedAt orders the results by the pool_checked_at field.
+func ByPoolCheckedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPoolCheckedAt, opts...).ToFunc()
+}
+
+// ByPoolFailures orders the results by the pool_failures field.
+func ByPoolFailures(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPoolFailures, opts...).ToFunc()
+}
+
 // ByAccountsCount orders the results by accounts count.
 func ByAccountsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -225,6 +292,13 @@ func ByBackupProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newBackupProxyStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByPoolField orders the results by pool field.
+func ByPoolField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPoolStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newAccountsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -237,5 +311,12 @@ func newBackupProxyStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(Table, FieldID),
 		sqlgraph.Edge(sqlgraph.O2O, false, BackupProxyTable, BackupProxyColumn),
+	)
+}
+func newPoolStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PoolInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, PoolTable, PoolColumn),
 	)
 }

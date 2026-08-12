@@ -70,17 +70,19 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 	}
 
 	proxy := &Proxy{
-		Name:           input.Name,
-		Protocol:       input.Protocol,
-		Host:           input.Host,
-		Port:           input.Port,
-		Username:       input.Username,
-		Password:       input.Password,
-		Status:         StatusActive,
-		ExpiresAt:      input.ExpiresAt,
-		FallbackMode:   mode,
-		BackupProxyID:  input.BackupProxyID,
-		ExpiryWarnDays: input.ExpiryWarnDays,
+		Name:             input.Name,
+		Protocol:         input.Protocol,
+		Host:             input.Host,
+		Port:             input.Port,
+		Username:         input.Username,
+		Password:         input.Password,
+		Status:           StatusActive,
+		ExpiresAt:        input.ExpiresAt,
+		FallbackMode:     mode,
+		BackupProxyID:    input.BackupProxyID,
+		ExpiryWarnDays:   input.ExpiryWarnDays,
+		ForceHTTP1:       input.ForceHTTP1,
+		DisableKeepAlive: input.DisableKeepAlive,
 	}
 	if err := s.proxyRepo.Create(ctx, proxy); err != nil {
 		return nil, err
@@ -139,6 +141,12 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	proxy.FallbackMode = mode
 	proxy.BackupProxyID = input.BackupProxyID
 	proxy.ExpiryWarnDays = input.ExpiryWarnDays
+	if input.ForceHTTP1 != nil {
+		proxy.ForceHTTP1 = *input.ForceHTTP1
+	}
+	if input.DisableKeepAlive != nil {
+		proxy.DisableKeepAlive = *input.DisableKeepAlive
+	}
 
 	if err := s.proxyRepo.Update(ctx, proxy); err != nil {
 		return nil, err

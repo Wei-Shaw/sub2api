@@ -131,9 +131,9 @@ func TestAnthropicToChatCompletionsRequest_ToolResultBecomesToolMessage(t *testi
 	require.Equal(t, `"sunny, 72F"`, string(toolMsg.Content))
 }
 
-func TestAnthropicToChatCompletionsRequest_ThinkingDropped(t *testing.T) {
+func TestAnthropicToChatCompletionsRequest_ThinkingPreservedAsReasoningContent(t *testing.T) {
 	req := &AnthropicRequest{
-		Model:     "claude-sonnet-4-20250514",
+		Model:     "deepseek-v4-flash",
 		MaxTokens: 100,
 		Messages: []AnthropicMessage{
 			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"secret thoughts"},{"type":"text","text":"answer"}]`)},
@@ -143,8 +143,58 @@ func TestAnthropicToChatCompletionsRequest_ThinkingDropped(t *testing.T) {
 	out, err := AnthropicToChatCompletionsRequest(req)
 	require.NoError(t, err)
 	require.Len(t, out.Messages, 1)
-	// Only text survives; thinking is dropped
+	// Text stays as content; thinking is preserved as reasoning_content so
+	// passback-required upstreams (DeepSeek thinking mode) accept the history.
 	require.Equal(t, `"answer"`, string(out.Messages[0].Content))
+	require.Equal(t, "secret thoughts", out.Messages[0].ReasoningContent)
+}
+
+func TestAnthropicToChatCompletionsRequest_ThinkingOnlyAssistantSurvives(t *testing.T) {
+	// A thinking-only turn (no text, no tool call) must still reach the upstream
+	// as an assistant message carrying reasoning_content — otherwise DeepSeek
+	// rejects the empty assistant message in thinking mode.
+	req := &AnthropicRequest{
+		Model:     "deepseek-v4-flash",
+		MaxTokens: 100,
+		Messages: []AnthropicMessage{
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"secret thoughts"}]`)},
+		},
+	}
+
+	out, err := AnthropicToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+	require.Equal(t, "assistant", out.Messages[0].Role)
+	require.Equal(t, "secret thoughts", out.Messages[0].ReasoningContent)
+}
+
+func TestAnthropicToChatCompletionsRequest_ThinkingWithToolUsePreserved(t *testing.T) {
+	// The DeepSeek tool-call round-trip: a thinking block preceding a tool_use
+	// must become reasoning_content on the same assistant message as the
+	// tool_calls, mirroring chatMessageToAnthropicBlocks in reverse.
+	req := &AnthropicRequest{
+		Model:     "deepseek-v4-flash",
+		MaxTokens: 100,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"what's the weather in SF?"`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"need data"},{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"SF"}}]`)},
+			{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"toolu_1","content":"sunny"}]`)},
+		},
+	}
+
+	out, err := AnthropicToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	var assistant *ChatMessage
+	for i := range out.Messages {
+		if out.Messages[i].Role == "assistant" && len(out.Messages[i].ToolCalls) > 0 {
+			assistant = &out.Messages[i]
+		}
+	}
+	require.NotNil(t, assistant, "assistant message with tool_calls should survive normalization")
+	require.Equal(t, "need data", assistant.ReasoningContent)
+	require.Len(t, assistant.ToolCalls, 1)
+	require.Equal(t, "toolu_1", assistant.ToolCalls[0].ID)
+	require.Equal(t, "get_weather", assistant.ToolCalls[0].Function.Name)
 }
 
 func TestAnthropicToChatCompletionsRequest_ToolChoiceAuto(t *testing.T) {

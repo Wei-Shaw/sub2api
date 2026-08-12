@@ -206,6 +206,19 @@ func TestParse_SOCKS5H保持不变(t *testing.T) {
 	}
 }
 
+func TestParseWithTransportOptionsExtractsAndStripsInternalQuery(t *testing.T) {
+	trimmed, parsed, options, err := ParseWithTransportOptions("socks5h://[2001:db8::1]:1087?_sub2api_force_http1=1&_sub2api_disable_keep_alive=true&ignored=value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !options.ForceHTTP1 || !options.DisableKeepAlive {
+		t.Fatalf("unexpected options: %+v", options)
+	}
+	if parsed.RawQuery != "" || trimmed != "socks5h://[2001:db8::1]:1087" {
+		t.Fatalf("internal query was not stripped: trimmed=%q parsed=%q", trimmed, parsed.String())
+	}
+}
+
 func TestParse_无Scheme裸地址(t *testing.T) {
 	// 无 scheme 的裸地址，Go url.Parse 将其视为 path，Host 为空
 	_, _, err := Parse("proxy.example.com:8080")

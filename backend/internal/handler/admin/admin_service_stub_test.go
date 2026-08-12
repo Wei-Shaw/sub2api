@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -806,3 +807,52 @@ func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opt
 
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)
+
+// ---- Proxy Pool stub methods (feature: proxy-pool) ----
+
+func (s *stubAdminService) ListProxyPools(ctx context.Context) ([]service.ProxyPoolWithStats, error) {
+	return nil, nil
+}
+
+func (s *stubAdminService) GetProxyPool(ctx context.Context, id int64) (*service.ProxyPool, error) {
+	return nil, nil
+}
+
+func (s *stubAdminService) GetProxyPoolProxies(ctx context.Context, poolID int64) ([]service.ProxyWithAccountCount, error) {
+	return nil, nil
+}
+
+func (s *stubAdminService) GetProxyPoolAccounts(context.Context, int64, int, int) ([]service.ProxyPoolAccountSummary, int64, error) {
+	return nil, 0, nil
+}
+
+func (s *stubAdminService) CreateProxyPool(ctx context.Context, input *service.CreateProxyPoolInput) (*service.ProxyPool, error) {
+	if input == nil || input.Name == "" {
+		return nil, errors.New("pool name is required")
+	}
+	return &service.ProxyPool{ID: 1, Name: input.Name, Status: service.StatusActive}, nil
+}
+
+func (s *stubAdminService) UpdateProxyPool(ctx context.Context, id int64, input *service.UpdateProxyPoolInput) (*service.ProxyPool, error) {
+	return nil, nil
+}
+
+func (s *stubAdminService) DeleteProxyPool(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (s *stubAdminService) AssignProxiesToPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error) {
+	return int64(len(proxyIDs)), nil
+}
+
+func (s *stubAdminService) RemoveProxiesFromPool(ctx context.Context, poolID int64, proxyIDs []int64) (int64, error) {
+	return int64(len(proxyIDs)), nil
+}
+
+func (s *stubAdminService) RunProxyPoolRebind(ctx context.Context, poolID int64) (int64, error) {
+	return 0, nil
+}
+
+func (s *stubAdminService) ListProxyPoolRebindLogs(ctx context.Context, poolID int64, limit int) ([]service.ProxyPoolRebindLog, error) {
+	return nil, nil
+}

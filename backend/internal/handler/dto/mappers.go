@@ -246,6 +246,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		ProxyID:                 a.ProxyID,
 		ProxyFallbackOriginID:   a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		PoolID:                  a.PoolID,
+		PoolName:                a.PoolName,
 		Concurrency:             a.Concurrency,
 		LoadFactor:              a.LoadFactor,
 		Priority:                a.Priority,
@@ -467,19 +469,25 @@ func ProxyFromService(p *service.Proxy) *Proxy {
 		return nil
 	}
 	return &Proxy{
-		ID:             p.ID,
-		Name:           p.Name,
-		Protocol:       p.Protocol,
-		Host:           p.Host,
-		Port:           p.Port,
-		Username:       p.Username,
-		Status:         p.Status,
-		CreatedAt:      p.CreatedAt,
-		UpdatedAt:      p.UpdatedAt,
-		ExpiresAt:      p.ExpiresAt,
-		FallbackMode:   p.FallbackMode,
-		BackupProxyID:  p.BackupProxyID,
-		ExpiryWarnDays: p.ExpiryWarnDays,
+		ID:               p.ID,
+		Name:             p.Name,
+		Protocol:         p.Protocol,
+		Host:             p.Host,
+		Port:             p.Port,
+		Username:         p.Username,
+		Status:           p.Status,
+		CreatedAt:        p.CreatedAt,
+		UpdatedAt:        p.UpdatedAt,
+		ExpiresAt:        p.ExpiresAt,
+		FallbackMode:     p.FallbackMode,
+		BackupProxyID:    p.BackupProxyID,
+		ExpiryWarnDays:   p.ExpiryWarnDays,
+		ForceHTTP1:       p.ForceHTTP1,
+		DisableKeepAlive: p.DisableKeepAlive,
+		PoolID:           p.PoolID,
+		PoolHealth:       p.PoolHealth,
+		PoolCheckedAt:    p.PoolCheckedAt,
+		PoolFailures:     p.PoolFailures,
 	}
 }
 
@@ -871,4 +879,80 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UsedAt:      u.UsedAt,
 		User:        UserFromServiceShallow(u.User),
 	}
+}
+
+// ProxyPoolFromService 代理池 DTO 转换。
+func ProxyPoolFromService(p *service.ProxyPool) *AdminProxyPool {
+	if p == nil {
+		return nil
+	}
+	return &AdminProxyPool{
+		ID:                    p.ID,
+		Name:                  p.Name,
+		Description:           p.Description,
+		Status:                p.Status,
+		HealthIntervalSeconds: p.HealthIntervalSeconds,
+		FailureThreshold:      p.FailureThreshold,
+		AutoRebind:            p.AutoRebind,
+		CreatedAt:             p.CreatedAt,
+		UpdatedAt:             p.UpdatedAt,
+	}
+}
+
+// ProxyPoolWithStatsFromService 代理池列表 DTO 转换（含统计）。
+func ProxyPoolWithStatsFromService(p *service.ProxyPoolWithStats) *AdminProxyPoolWithStats {
+	if p == nil {
+		return nil
+	}
+	base := ProxyPoolFromService(&p.ProxyPool)
+	if base == nil {
+		return nil
+	}
+	return &AdminProxyPoolWithStats{
+		AdminProxyPool:         *base,
+		ProxyCount:             p.ProxyCount,
+		HealthyCount:           p.HealthyCount,
+		UnhealthyCount:         p.UnhealthyCount,
+		UnknownCount:           p.UnknownCount,
+		BoundAccountSum:        p.BoundAccountSum,
+		UnassignedAccountCount: p.UnassignedAccountCount,
+	}
+}
+
+func ProxyPoolAccountSummaryFromService(a *service.ProxyPoolAccountSummary) *AdminProxyPoolAccountSummary {
+	if a == nil {
+		return nil
+	}
+	return &AdminProxyPoolAccountSummary{
+		ID:        a.ID,
+		Name:      a.Name,
+		Platform:  a.Platform,
+		Type:      a.Type,
+		Status:    a.Status,
+		ProxyID:   a.ProxyID,
+		ProxyName: a.ProxyName,
+	}
+}
+
+// ProxyPoolRebindLogFromService 重绑日志 DTO 转换。
+func ProxyPoolRebindLogFromService(l *service.ProxyPoolRebindLog) *AdminProxyPoolRebindLog {
+	if l == nil {
+		return nil
+	}
+	out := &AdminProxyPoolRebindLog{
+		ID:           l.ID,
+		PoolID:       l.PoolID,
+		FromProxyID:  l.FromProxyID,
+		ToProxyID:    l.ToProxyID,
+		AccountCount: l.AccountCount,
+		Reason:       l.Reason,
+		CreatedAt:    l.CreatedAt,
+	}
+	if l.FromProxy != nil {
+		out.FromProxyName = l.FromProxy.Name
+	}
+	if l.ToProxy != nil {
+		out.ToProxyName = l.ToProxy.Name
+	}
+	return out
 }

@@ -126,6 +126,7 @@ var (
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "quota_dimension", Type: field.TypeEnum, Enums: []string{"global", "spark"}, Default: "global"},
 		{Name: "proxy_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "pool_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "parent_account_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// AccountsTable holds the schema information for the "accounts" table.
@@ -141,8 +142,14 @@ var (
 				OnDelete:   schema.SetNull,
 			},
 			{
-				Symbol:     "accounts_accounts_children",
+				Symbol:     "accounts_proxy_pools_pool",
 				Columns:    []*schema.Column{AccountsColumns[31]},
+				RefColumns: []*schema.Column{ProxyPoolsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "accounts_accounts_children",
+				Columns:    []*schema.Column{AccountsColumns[32]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.Restrict,
 			},
@@ -167,6 +174,11 @@ var (
 				Name:    "account_proxy_id",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[30]},
+			},
+			{
+				Name:    "account_pool_id",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[31]},
 			},
 			{
 				Name:    "account_priority",
@@ -216,7 +228,7 @@ var (
 			{
 				Name:    "account_parent_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[31]},
+				Columns: []*schema.Column{AccountsColumns[32]},
 			},
 		},
 	}
@@ -1393,13 +1405,19 @@ var (
 		{Name: "protocol", Type: field.TypeString, Size: 20},
 		{Name: "host", Type: field.TypeString, Size: 255},
 		{Name: "port", Type: field.TypeInt},
+		{Name: "force_http1", Type: field.TypeBool, Default: false},
+		{Name: "disable_keep_alive", Type: field.TypeBool, Default: false},
 		{Name: "username", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "password", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
 		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
 		{Name: "fallback_mode", Type: field.TypeString, Size: 20, Default: "none"},
 		{Name: "expiry_warn_days", Type: field.TypeInt, Default: 7},
+		{Name: "pool_health", Type: field.TypeString, Size: 20, Default: "unknown"},
+		{Name: "pool_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "pool_failures", Type: field.TypeInt, Default: 0},
 		{Name: "backup_proxy_id", Type: field.TypeInt64, Unique: true, Nullable: true},
+		{Name: "pool_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ProxiesTable holds the schema information for the "proxies" table.
 	ProxiesTable = &schema.Table{
@@ -1409,8 +1427,14 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "proxies_proxies_backup_proxy",
-				Columns:    []*schema.Column{ProxiesColumns[14]},
+				Columns:    []*schema.Column{ProxiesColumns[19]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "proxies_proxy_pools_pool",
+				Columns:    []*schema.Column{ProxiesColumns[20]},
+				RefColumns: []*schema.Column{ProxyPoolsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 		},
@@ -1418,7 +1442,7 @@ var (
 			{
 				Name:    "proxy_status",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[10]},
+				Columns: []*schema.Column{ProxiesColumns[12]},
 			},
 			{
 				Name:    "proxy_deleted_at",
@@ -1428,12 +1452,53 @@ var (
 			{
 				Name:    "proxy_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[11]},
+				Columns: []*schema.Column{ProxiesColumns[13]},
 			},
 			{
 				Name:    "proxy_backup_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[14]},
+				Columns: []*schema.Column{ProxiesColumns[19]},
+			},
+			{
+				Name:    "proxy_pool_id",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[20]},
+			},
+			{
+				Name:    "proxy_pool_health",
+				Unique:  false,
+				Columns: []*schema.Column{ProxiesColumns[16]},
+			},
+		},
+	}
+	// ProxyPoolsColumns holds the columns for the "proxy_pools" table.
+	ProxyPoolsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "description", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "health_interval_seconds", Type: field.TypeInt, Default: 300},
+		{Name: "failure_threshold", Type: field.TypeInt, Default: 2},
+		{Name: "auto_rebind", Type: field.TypeBool, Default: true},
+	}
+	// ProxyPoolsTable holds the schema information for the "proxy_pools" table.
+	ProxyPoolsTable = &schema.Table{
+		Name:       "proxy_pools",
+		Columns:    ProxyPoolsColumns,
+		PrimaryKey: []*schema.Column{ProxyPoolsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "proxypool_status",
+				Unique:  false,
+				Columns: []*schema.Column{ProxyPoolsColumns[6]},
+			},
+			{
+				Name:    "proxypool_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{ProxyPoolsColumns[3]},
 			},
 		},
 	}
@@ -2099,6 +2164,7 @@ var (
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
+		ProxyPoolsTable,
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
@@ -2122,7 +2188,8 @@ func init() {
 		Table: "api_keys",
 	}
 	AccountsTable.ForeignKeys[0].RefTable = ProxiesTable
-	AccountsTable.ForeignKeys[1].RefTable = AccountsTable
+	AccountsTable.ForeignKeys[1].RefTable = ProxyPoolsTable
+	AccountsTable.ForeignKeys[2].RefTable = AccountsTable
 	AccountsTable.Annotation = &entsql.Annotation{
 		Table: "accounts",
 	}
@@ -2212,8 +2279,12 @@ func init() {
 		Table: "promo_code_usages",
 	}
 	ProxiesTable.ForeignKeys[0].RefTable = ProxiesTable
+	ProxiesTable.ForeignKeys[1].RefTable = ProxyPoolsTable
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",
+	}
+	ProxyPoolsTable.Annotation = &entsql.Annotation{
+		Table: "proxy_pools",
 	}
 	RedeemCodesTable.ForeignKeys[0].RefTable = GroupsTable
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable

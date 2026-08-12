@@ -462,6 +462,9 @@ type OpenAIGatewayService struct {
 	codexModelsManifestCache            codexModelsManifestCache
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
+	grokEndpointUnsupportedMu           sync.RWMutex
+	grokEndpointUnsupported             map[grokEndpointUnsupportedKey]time.Time
+	grokEndpointNow                     func() time.Time
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService

@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 )
 
 // Proxy is the model entity for the Proxy schema.
@@ -31,6 +32,10 @@ type Proxy struct {
 	Host string `json:"host,omitempty"`
 	// Port holds the value of the "port" field.
 	Port int `json:"port,omitempty"`
+	// Force HTTP/1.1 for upstream requests using this proxy.
+	ForceHttp1 bool `json:"force_http1,omitempty"`
+	// Create a new proxy connection for every upstream HTTP request.
+	DisableKeepAlive bool `json:"disable_keep_alive,omitempty"`
 	// Username holds the value of the "username" field.
 	Username *string `json:"username,omitempty"`
 	// Password holds the value of the "password" field.
@@ -45,6 +50,14 @@ type Proxy struct {
 	BackupProxyID *int64 `json:"backup_proxy_id,omitempty"`
 	// Days before expiry to flag as expiring-soon (per proxy).
 	ExpiryWarnDays int `json:"expiry_warn_days,omitempty"`
+	// Owning proxy pool id (NULL means standalone proxy).
+	PoolID *int64 `json:"pool_id,omitempty"`
+	// Pool health status: unknown/healthy/unhealthy.
+	PoolHealth string `json:"pool_health,omitempty"`
+	// Last pool health probe time.
+	PoolCheckedAt *time.Time `json:"pool_checked_at,omitempty"`
+	// Consecutive pool health probe failures.
+	PoolFailures int `json:"pool_failures,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ProxyQuery when eager-loading is set.
 	Edges        ProxyEdges `json:"edges"`
@@ -57,9 +70,11 @@ type ProxyEdges struct {
 	Accounts []*Account `json:"accounts,omitempty"`
 	// BackupProxy holds the value of the backup_proxy edge.
 	BackupProxy *Proxy `json:"backup_proxy,omitempty"`
+	// Pool holds the value of the pool edge.
+	Pool *ProxyPool `json:"pool,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // AccountsOrErr returns the Accounts value or an error if the edge
@@ -82,16 +97,29 @@ func (e ProxyEdges) BackupProxyOrErr() (*Proxy, error) {
 	return nil, &NotLoadedError{edge: "backup_proxy"}
 }
 
+// PoolOrErr returns the Pool value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ProxyEdges) PoolOrErr() (*ProxyPool, error) {
+	if e.Pool != nil {
+		return e.Pool, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: proxypool.Label}
+	}
+	return nil, &NotLoadedError{edge: "pool"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Proxy) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays:
+		case proxy.FieldForceHttp1, proxy.FieldDisableKeepAlive:
+			values[i] = new(sql.NullBool)
+		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays, proxy.FieldPoolID, proxy.FieldPoolFailures:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode, proxy.FieldPoolHealth:
 			values[i] = new(sql.NullString)
-		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt, proxy.FieldExpiresAt:
+		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt, proxy.FieldExpiresAt, proxy.FieldPoolCheckedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -157,6 +185,18 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Port = int(value.Int64)
 			}
+		case proxy.FieldForceHttp1:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field force_http1", values[i])
+			} else if value.Valid {
+				_m.ForceHttp1 = value.Bool
+			}
+		case proxy.FieldDisableKeepAlive:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field disable_keep_alive", values[i])
+			} else if value.Valid {
+				_m.DisableKeepAlive = value.Bool
+			}
 		case proxy.FieldUsername:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field username", values[i])
@@ -203,6 +243,32 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ExpiryWarnDays = int(value.Int64)
 			}
+		case proxy.FieldPoolID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field pool_id", values[i])
+			} else if value.Valid {
+				_m.PoolID = new(int64)
+				*_m.PoolID = value.Int64
+			}
+		case proxy.FieldPoolHealth:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field pool_health", values[i])
+			} else if value.Valid {
+				_m.PoolHealth = value.String
+			}
+		case proxy.FieldPoolCheckedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field pool_checked_at", values[i])
+			} else if value.Valid {
+				_m.PoolCheckedAt = new(time.Time)
+				*_m.PoolCheckedAt = value.Time
+			}
+		case proxy.FieldPoolFailures:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field pool_failures", values[i])
+			} else if value.Valid {
+				_m.PoolFailures = int(value.Int64)
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -224,6 +290,11 @@ func (_m *Proxy) QueryAccounts() *AccountQuery {
 // QueryBackupProxy queries the "backup_proxy" edge of the Proxy entity.
 func (_m *Proxy) QueryBackupProxy() *ProxyQuery {
 	return NewProxyClient(_m.config).QueryBackupProxy(_m)
+}
+
+// QueryPool queries the "pool" edge of the Proxy entity.
+func (_m *Proxy) QueryPool() *ProxyPoolQuery {
+	return NewProxyClient(_m.config).QueryPool(_m)
 }
 
 // Update returns a builder for updating this Proxy.
@@ -272,6 +343,12 @@ func (_m *Proxy) String() string {
 	builder.WriteString("port=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port))
 	builder.WriteString(", ")
+	builder.WriteString("force_http1=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ForceHttp1))
+	builder.WriteString(", ")
+	builder.WriteString("disable_keep_alive=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DisableKeepAlive))
+	builder.WriteString(", ")
 	if v := _m.Username; v != nil {
 		builder.WriteString("username=")
 		builder.WriteString(*v)
@@ -300,6 +377,22 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("expiry_warn_days=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ExpiryWarnDays))
+	builder.WriteString(", ")
+	if v := _m.PoolID; v != nil {
+		builder.WriteString("pool_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("pool_health=")
+	builder.WriteString(_m.PoolHealth)
+	builder.WriteString(", ")
+	if v := _m.PoolCheckedAt; v != nil {
+		builder.WriteString("pool_checked_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("pool_failures=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PoolFailures))
 	builder.WriteByte(')')
 	return builder.String()
 }

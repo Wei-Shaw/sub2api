@@ -14,6 +14,17 @@ func TestProxyURL(t *testing.T) {
 		want  string
 	}{
 		{
+			name: "with transport options",
+			proxy: Proxy{
+				Protocol:         "socks5h",
+				Host:             "2001:db8::1",
+				Port:             1087,
+				ForceHTTP1:       true,
+				DisableKeepAlive: true,
+			},
+			want: "socks5h://[2001:db8::1]:1087?_sub2api_disable_keep_alive=1&_sub2api_force_http1=1",
+		},
+		{
 			name: "without auth",
 			proxy: Proxy{
 				Protocol: "http",

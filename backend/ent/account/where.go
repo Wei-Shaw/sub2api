@@ -95,6 +95,11 @@ func ProxyID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProxyID, v))
 }
 
+// PoolID applies equality check predicate on the "pool_id" field. It's identical to PoolIDEQ.
+func PoolID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldPoolID, v))
+}
+
 // ProxyFallbackOriginID applies equality check predicate on the "proxy_fallback_origin_id" field. It's identical to ProxyFallbackOriginIDEQ.
 func ProxyFallbackOriginID(v int64) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldProxyFallbackOriginID, v))
@@ -623,6 +628,36 @@ func ProxyIDIsNil() predicate.Account {
 // ProxyIDNotNil applies the NotNil predicate on the "proxy_id" field.
 func ProxyIDNotNil() predicate.Account {
 	return predicate.Account(sql.FieldNotNull(FieldProxyID))
+}
+
+// PoolIDEQ applies the EQ predicate on the "pool_id" field.
+func PoolIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldPoolID, v))
+}
+
+// PoolIDNEQ applies the NEQ predicate on the "pool_id" field.
+func PoolIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldPoolID, v))
+}
+
+// PoolIDIn applies the In predicate on the "pool_id" field.
+func PoolIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldPoolID, vs...))
+}
+
+// PoolIDNotIn applies the NotIn predicate on the "pool_id" field.
+func PoolIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldPoolID, vs...))
+}
+
+// PoolIDIsNil applies the IsNil predicate on the "pool_id" field.
+func PoolIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldPoolID))
+}
+
+// PoolIDNotNil applies the NotNil predicate on the "pool_id" field.
+func PoolIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldPoolID))
 }
 
 // ProxyFallbackOriginIDEQ applies the EQ predicate on the "proxy_fallback_origin_id" field.
@@ -1643,6 +1678,29 @@ func HasProxy() predicate.Account {
 func HasProxyWith(preds ...predicate.Proxy) predicate.Account {
 	return predicate.Account(func(s *sql.Selector) {
 		step := newProxyStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasPool applies the HasEdge predicate on the "pool" edge.
+func HasPool() predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, PoolTable, PoolColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasPoolWith applies the HasEdge predicate on the "pool" edge with a given conditions (other predicates).
+func HasPoolWith(preds ...predicate.ProxyPool) predicate.Account {
+	return predicate.Account(func(s *sql.Selector) {
+		step := newPoolStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

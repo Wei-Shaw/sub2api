@@ -1446,7 +1446,24 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <div class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="input-label">{{ t('admin.proxyPools.proxyPool') }}</label>
+            <Select
+              data-testid="edit-account-pool-select"
+              v-model="form.pool_id"
+              :options="poolSelectOptions"
+              :placeholder="t('admin.proxyPools.noPool')"
+              :clearable="true"
+              @change="onPoolSelectChange"
+            />
+            <p v-if="form.pool_id" class="input-hint">{{ t('admin.proxyPools.poolAssignmentHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
+            <ProxySelector v-model="form.proxy_id" :proxies="proxies" @update:model-value="onProxySelectChange" />
+          </div>
+        </div>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -2719,6 +2736,7 @@ import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
   Proxy,
+  ProxyPool,
   AdminGroup,
   CheckMixedChannelResponse,
   OpenAICompactMode,
@@ -2779,10 +2797,31 @@ interface Props {
   show: boolean
   account: Account | null
   proxies: Proxy[]
+  pools?: ProxyPool[]
   groups: AdminGroup[]
 }
 
 const props = defineProps<Props>()
+
+// 代理池选项：用于账号「代理」处选择代理池（绑定后由池服务分配池内健康代理）。
+const poolSelectOptions = computed(() =>
+  (props.pools ?? []).map((pool) => ({ label: pool.name, value: pool.id }))
+)
+
+const onPoolSelectChange = (value: string | number | boolean | null) => {
+  form.pool_id = typeof value === 'number' ? value : null
+  if (form.pool_id) {
+    form.proxy_id = null
+  }
+}
+
+// 选择具体代理：解除池绑定（提交时以 0 表达清除）。
+const onProxySelectChange = (value: number | null) => {
+  // 选择代理池会把 proxy_id 联动清空为“直连”；只有显式选择具体代理才解绑池。
+  if (value !== null) {
+    form.pool_id = 0
+  }
+}
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
@@ -3286,6 +3325,7 @@ const form = reactive({
   name: '',
   notes: '',
   proxy_id: null as number | null,
+  pool_id: null as number | null,
   concurrency: 1,
   load_factor: null as number | null,
   priority: 1,
@@ -3389,6 +3429,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
+  form.pool_id = newAccount.pool_id ?? null
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
@@ -4264,6 +4305,15 @@ const handleSubmit = async () => {
 
   const updatePayload: Record<string, unknown> = { ...form }
   try {
+    // 仅在管理员真正改变代理池选择时发送 pool_id；重复发送当前池会触发后端重新分配代理。
+    // 后端以 0 表达解绑，省略字段表达“不修改”。
+    const currentPoolID = props.account.pool_id ?? null
+    const selectedPoolID = form.pool_id == null ? null : Number(form.pool_id)
+    if (selectedPoolID === currentPoolID) {
+      delete updatePayload.pool_id
+    } else {
+      updatePayload.pool_id = selectedPoolID ?? 0
+    }
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0

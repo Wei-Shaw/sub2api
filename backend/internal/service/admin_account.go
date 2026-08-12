@@ -20,12 +20,59 @@ import (
 )
 
 // Account management implementations
+
+// enrichPoolNames 为账号填充所属代理池名称（仅展示用）。
+// 无池绑定或池仓库不可用时静默跳过。
+func (s *adminServiceImpl) enrichPoolNames(ctx context.Context, accounts []Account) {
+	if s.poolRepo == nil || len(accounts) == 0 {
+		return
+	}
+	need := false
+	for i := range accounts {
+		if accounts[i].PoolID != nil {
+			need = true
+			break
+		}
+	}
+	if !need {
+		return
+	}
+	pools, err := s.poolRepo.ListPools(ctx)
+	if err != nil {
+		return
+	}
+	names := make(map[int64]string, len(pools))
+	for i := range pools {
+		names[pools[i].ID] = pools[i].Name
+	}
+	for i := range accounts {
+		if accounts[i].PoolID != nil {
+			accounts[i].PoolName = names[*accounts[i].PoolID]
+		}
+	}
+}
+
+func (s *adminServiceImpl) enrichPoolName(ctx context.Context, account *Account) {
+	if account == nil || account.PoolID == nil {
+		return
+	}
+	if s.poolRepo == nil {
+		return
+	}
+	pool, err := s.poolRepo.GetPoolByID(ctx, *account.PoolID)
+	if err != nil {
+		return
+	}
+	account.PoolName = pool.Name
+}
+
 func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
 	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
 	if err != nil {
 		return nil, 0, err
 	}
+	s.enrichPoolNames(ctx, accounts)
 	return accounts, result.Total, nil
 }
 
@@ -47,7 +94,12 @@ func (s *adminServiceImpl) ListOpenAISchedulableAccountsForSchedulerScore(ctx co
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
-	return s.accountRepo.GetByID(ctx, id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.enrichPoolName(ctx, account)
+	return account, nil
 }
 
 func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error) {
@@ -412,10 +464,16 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Credentials: input.Credentials,
 		Extra:       accountExtra,
 		ProxyID:     input.ProxyID,
+		PoolID:      input.PoolID,
 		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	// 代理池绑定优先于具体代理：绑池时由池服务维护池内代理分配，
+	// 这里不携带独立 proxy_id（否则两者并存会导致池分配与手动选择冲突）。
+	if input.PoolID != nil && *input.PoolID > 0 {
+		account.ProxyID = nil
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -502,8 +560,36 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if account.PoolID != nil && *account.PoolID > 0 {
+		// 校验池存在；创建时绑定无效池直接拒绝。
+		if s.poolRepo == nil {
+			return nil, ErrProxyPoolNotFound
+		}
+		pool, poolErr := s.poolRepo.GetPoolByID(ctx, *account.PoolID)
+		if poolErr != nil {
+			return nil, fmt.Errorf("proxy pool not found: %w", poolErr)
+		}
+		if pool == nil {
+			return nil, ErrProxyPoolNotFound
+		}
+	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
+	}
+
+	// 绑定池的账号：立即分配池内健康代理（无健康代理时留空，由池服务后续补齐）。
+	if account.PoolID != nil && *account.PoolID > 0 {
+		proxyID, assignErr := s.assignPoolHealthyProxy(ctx, *account.PoolID)
+		if assignErr != nil {
+			slog.Warn("create_account_pool_proxy_assignment_failed",
+				"account_id", account.ID, "pool_id", *account.PoolID, "error", assignErr)
+		} else if proxyID != nil {
+			account.ProxyID = proxyID
+			if updateErr := s.accountRepo.Update(ctx, account); updateErr != nil {
+				slog.Error("create_account_pool_proxy_persist_failed",
+					"account_id", account.ID, "pool_id", *account.PoolID, "proxy_id", *proxyID, "error", updateErr)
+			}
+		}
 	}
 
 	// 绑定分组
@@ -538,6 +624,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	s.enrichPoolName(ctx, account)
 	return account, nil
 }
 
@@ -710,6 +797,30 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
 	}
+	// 代理池绑定：nil=不改；0=解绑池（保留当前 proxy_id）；>0=绑定池并由池分配健康代理。
+	// 影子账号由母账号继承池绑定（propagateProxyToShadows 同步 proxy_id），不接受独立编辑。
+	if input.PoolID != nil && !account.IsCredentialShadow() {
+		if *input.PoolID <= 0 {
+			account.PoolID = nil
+		} else {
+			if s.poolRepo == nil {
+				return nil, ErrProxyPoolNotFound
+			}
+			pool, poolErr := s.poolRepo.GetPoolByID(ctx, *input.PoolID)
+			if poolErr != nil {
+				return nil, fmt.Errorf("proxy pool not found: %w", poolErr)
+			}
+			if pool == nil {
+				return nil, ErrProxyPoolNotFound
+			}
+			account.PoolID = input.PoolID
+			// 绑定池覆盖独立代理：分配池内健康代理；无健康代理则置空等待池服务补齐。
+			if proxyID, assignErr := s.assignPoolHealthyProxy(ctx, *input.PoolID); assignErr == nil {
+				account.ProxyID = proxyID
+				account.Proxy = nil
+			}
+		}
+	}
 	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
 		delete(account.Extra, UpstreamBillingProbeExtraKey)
 		if !isUpstreamBillingProbeAccount(account) {
@@ -846,6 +957,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	s.enrichPoolName(ctx, updated)
 	return updated, nil
 }
 

@@ -170,6 +170,57 @@ func (s *AccountRepoSuite) TestCreate() {
 	s.Require().Equal("test-create", got.Name)
 }
 
+func (s *AccountRepoSuite) TestCreateAndUnrelatedUpdatePreservePoolID() {
+	pool, err := s.client.ProxyPool.Create().SetName("account-pool-persistence").Save(s.ctx)
+	s.Require().NoError(err)
+
+	poolID := pool.ID
+	account := &service.Account{
+		Name:        "pool-bound-account",
+		Platform:    service.PlatformAnthropic,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{},
+		Concurrency: 1,
+		Priority:    1,
+		Schedulable: true,
+		PoolID:      &poolID,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, account))
+
+	created, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(created.PoolID)
+	s.Require().Equal(poolID, *created.PoolID)
+
+	created.Name = "pool-bound-account-renamed"
+	s.Require().NoError(s.repo.Update(s.ctx, created))
+	updated, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NotNil(updated.PoolID)
+	s.Require().Equal(poolID, *updated.PoolID)
+}
+
+func (s *AccountRepoSuite) TestSoftDeletedAccountNameCanBeReused() {
+	original := mustCreateAccount(s.T(), s.client, &service.Account{Name: "reusable-account-name"})
+	s.Require().NoError(s.repo.Delete(s.ctx, original.ID))
+
+	replacement := &service.Account{
+		Name:        original.Name,
+		Platform:    service.PlatformAnthropic,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{},
+		Concurrency: 1,
+		Priority:    1,
+		Schedulable: true,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, replacement))
+	s.Require().NotEqual(original.ID, replacement.ID)
+}
+
 func (s *AccountRepoSuite) TestGetByID_NotFound() {
 	_, err := s.repo.GetByID(s.ctx, 999999)
 	s.Require().Error(err, "expected error for non-existent ID")

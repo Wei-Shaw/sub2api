@@ -99,6 +99,8 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	proxyOptionForceHTTP1                = proxyurl.OptionForceHTTP1
+	proxyOptionDisableKeepAlive          = proxyurl.OptionDisableKeepAlive
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -986,6 +988,9 @@ func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamPr
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 	}
+	if proxyOptionEnabled(parsedProxy, proxyOptionForceHTTP1) {
+		return upstreamProtocolModeOpenAIH1
+	}
 	settings := s.resolveOpenAIHTTP2Settings()
 	if !settings.enabled {
 		return upstreamProtocolModeOpenAIH1
@@ -1192,19 +1197,26 @@ func (s *openAIHTTP2FallbackState) recordFailure(now time.Time, threshold int, w
 //   - *url.URL: 解析后的 URL（空返回 nil）
 //   - error: 非空代理 URL 解析失败时返回错误（禁止回退到直连）
 func normalizeProxyURL(raw string) (string, *url.URL, error) {
-	_, parsed, err := proxyurl.Parse(raw)
+	_, parsed, transportOptions, err := proxyurl.ParseWithTransportOptions(raw)
 	if err != nil {
 		return "", nil, err
 	}
 	if parsed == nil {
 		return directProxyKey, nil, nil
 	}
-	// 规范化：小写 scheme/host，去除路径和查询参数
+	// 规范化：小写 scheme/host，去除路径和非内部查询参数。
 	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Path = ""
 	parsed.RawPath = ""
-	parsed.RawQuery = ""
+	options := make(url.Values)
+	if transportOptions.ForceHTTP1 {
+		options.Set(proxyOptionForceHTTP1, "1")
+	}
+	if transportOptions.DisableKeepAlive {
+		options.Set(proxyOptionDisableKeepAlive, "1")
+	}
+	parsed.RawQuery = options.Encode()
 	parsed.Fragment = ""
 	parsed.ForceQuery = false
 	if hostname := parsed.Hostname(); hostname != "" {
@@ -1220,6 +1232,24 @@ func normalizeProxyURL(raw string) (string, *url.URL, error) {
 		}
 	}
 	return parsed.String(), parsed, nil
+}
+
+func proxyOptionEnabled(proxyURL *url.URL, option string) bool {
+	if proxyURL == nil {
+		return false
+	}
+	value := strings.TrimSpace(proxyURL.Query().Get(option))
+	return value == "1" || strings.EqualFold(value, "true")
+}
+
+func proxyURLWithoutOptions(proxyURL *url.URL) *url.URL {
+	if proxyURL == nil {
+		return nil
+	}
+	clone := *proxyURL
+	clone.RawQuery = ""
+	clone.ForceQuery = false
+	return &clone
 }
 
 // defaultPoolSettings 获取默认连接池配置
@@ -1320,7 +1350,14 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		transport.ForceAttemptHTTP2 = false
 		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
 	}
-	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+	if proxyOptionEnabled(proxyURL, proxyOptionForceHTTP1) {
+		transport.ForceAttemptHTTP2 = false
+		transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+	}
+	if proxyOptionEnabled(proxyURL, proxyOptionDisableKeepAlive) {
+		transport.DisableKeepAlives = true
+	}
+	if err := proxyutil.ConfigureTransportProxy(transport, proxyURLWithoutOptions(proxyURL)); err != nil {
 		return nil, err
 	}
 	return transport, nil
@@ -1368,6 +1405,9 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
 		ForceAttemptHTTP2: false,
 	}
+	if proxyOptionEnabled(proxyURL, proxyOptionDisableKeepAlive) {
+		transport.DisableKeepAlives = true
+	}
 
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
 	if proxyURL == nil {
@@ -1381,7 +1421,7 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		case "socks5", "socks5h":
 			// SOCKS5 代理：使用 SOCKS5ProxyDialer
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
-			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
+			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURLWithoutOptions(proxyURL))
 			transport.DialTLSContext = socks5Dialer.DialTLSContext
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
@@ -1390,12 +1430,12 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		case "http":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
-			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
+			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURLWithoutOptions(proxyURL))
 			transport.DialTLSContext = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+			if err := proxyutil.ConfigureTransportProxy(transport, proxyURLWithoutOptions(proxyURL)); err != nil {
 				return nil, err
 			}
 		}

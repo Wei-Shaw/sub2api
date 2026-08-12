@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/proxypool"
 )
 
 // ProxyCreate is the builder for creating a Proxy entity.
@@ -86,6 +87,34 @@ func (_c *ProxyCreate) SetHost(v string) *ProxyCreate {
 // SetPort sets the "port" field.
 func (_c *ProxyCreate) SetPort(v int) *ProxyCreate {
 	_c.mutation.SetPort(v)
+	return _c
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (_c *ProxyCreate) SetForceHttp1(v bool) *ProxyCreate {
+	_c.mutation.SetForceHttp1(v)
+	return _c
+}
+
+// SetNillableForceHttp1 sets the "force_http1" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableForceHttp1(v *bool) *ProxyCreate {
+	if v != nil {
+		_c.SetForceHttp1(*v)
+	}
+	return _c
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (_c *ProxyCreate) SetDisableKeepAlive(v bool) *ProxyCreate {
+	_c.mutation.SetDisableKeepAlive(v)
+	return _c
+}
+
+// SetNillableDisableKeepAlive sets the "disable_keep_alive" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableDisableKeepAlive(v *bool) *ProxyCreate {
+	if v != nil {
+		_c.SetDisableKeepAlive(*v)
+	}
 	return _c
 }
 
@@ -187,6 +216,62 @@ func (_c *ProxyCreate) SetNillableExpiryWarnDays(v *int) *ProxyCreate {
 	return _c
 }
 
+// SetPoolID sets the "pool_id" field.
+func (_c *ProxyCreate) SetPoolID(v int64) *ProxyCreate {
+	_c.mutation.SetPoolID(v)
+	return _c
+}
+
+// SetNillablePoolID sets the "pool_id" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillablePoolID(v *int64) *ProxyCreate {
+	if v != nil {
+		_c.SetPoolID(*v)
+	}
+	return _c
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (_c *ProxyCreate) SetPoolHealth(v string) *ProxyCreate {
+	_c.mutation.SetPoolHealth(v)
+	return _c
+}
+
+// SetNillablePoolHealth sets the "pool_health" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillablePoolHealth(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetPoolHealth(*v)
+	}
+	return _c
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (_c *ProxyCreate) SetPoolCheckedAt(v time.Time) *ProxyCreate {
+	_c.mutation.SetPoolCheckedAt(v)
+	return _c
+}
+
+// SetNillablePoolCheckedAt sets the "pool_checked_at" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillablePoolCheckedAt(v *time.Time) *ProxyCreate {
+	if v != nil {
+		_c.SetPoolCheckedAt(*v)
+	}
+	return _c
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (_c *ProxyCreate) SetPoolFailures(v int) *ProxyCreate {
+	_c.mutation.SetPoolFailures(v)
+	return _c
+}
+
+// SetNillablePoolFailures sets the "pool_failures" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillablePoolFailures(v *int) *ProxyCreate {
+	if v != nil {
+		_c.SetPoolFailures(*v)
+	}
+	return _c
+}
+
 // AddAccountIDs adds the "accounts" edge to the Account entity by IDs.
 func (_c *ProxyCreate) AddAccountIDs(ids ...int64) *ProxyCreate {
 	_c.mutation.AddAccountIDs(ids...)
@@ -205,6 +290,11 @@ func (_c *ProxyCreate) AddAccounts(v ...*Account) *ProxyCreate {
 // SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
 func (_c *ProxyCreate) SetBackupProxy(v *Proxy) *ProxyCreate {
 	return _c.SetBackupProxyID(v.ID)
+}
+
+// SetPool sets the "pool" edge to the ProxyPool entity.
+func (_c *ProxyCreate) SetPool(v *ProxyPool) *ProxyCreate {
+	return _c.SetPoolID(v.ID)
 }
 
 // Mutation returns the ProxyMutation object of the builder.
@@ -258,6 +348,14 @@ func (_c *ProxyCreate) defaults() error {
 		v := proxy.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.ForceHttp1(); !ok {
+		v := proxy.DefaultForceHttp1
+		_c.mutation.SetForceHttp1(v)
+	}
+	if _, ok := _c.mutation.DisableKeepAlive(); !ok {
+		v := proxy.DefaultDisableKeepAlive
+		_c.mutation.SetDisableKeepAlive(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := proxy.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -269,6 +367,14 @@ func (_c *ProxyCreate) defaults() error {
 	if _, ok := _c.mutation.ExpiryWarnDays(); !ok {
 		v := proxy.DefaultExpiryWarnDays
 		_c.mutation.SetExpiryWarnDays(v)
+	}
+	if _, ok := _c.mutation.PoolHealth(); !ok {
+		v := proxy.DefaultPoolHealth
+		_c.mutation.SetPoolHealth(v)
+	}
+	if _, ok := _c.mutation.PoolFailures(); !ok {
+		v := proxy.DefaultPoolFailures
+		_c.mutation.SetPoolFailures(v)
 	}
 	return nil
 }
@@ -308,6 +414,12 @@ func (_c *ProxyCreate) check() error {
 	if _, ok := _c.mutation.Port(); !ok {
 		return &ValidationError{Name: "port", err: errors.New(`ent: missing required field "Proxy.port"`)}
 	}
+	if _, ok := _c.mutation.ForceHttp1(); !ok {
+		return &ValidationError{Name: "force_http1", err: errors.New(`ent: missing required field "Proxy.force_http1"`)}
+	}
+	if _, ok := _c.mutation.DisableKeepAlive(); !ok {
+		return &ValidationError{Name: "disable_keep_alive", err: errors.New(`ent: missing required field "Proxy.disable_keep_alive"`)}
+	}
 	if v, ok := _c.mutation.Username(); ok {
 		if err := proxy.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "Proxy.username": %w`, err)}
@@ -336,6 +448,17 @@ func (_c *ProxyCreate) check() error {
 	}
 	if _, ok := _c.mutation.ExpiryWarnDays(); !ok {
 		return &ValidationError{Name: "expiry_warn_days", err: errors.New(`ent: missing required field "Proxy.expiry_warn_days"`)}
+	}
+	if _, ok := _c.mutation.PoolHealth(); !ok {
+		return &ValidationError{Name: "pool_health", err: errors.New(`ent: missing required field "Proxy.pool_health"`)}
+	}
+	if v, ok := _c.mutation.PoolHealth(); ok {
+		if err := proxy.PoolHealthValidator(v); err != nil {
+			return &ValidationError{Name: "pool_health", err: fmt.Errorf(`ent: validator failed for field "Proxy.pool_health": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.PoolFailures(); !ok {
+		return &ValidationError{Name: "pool_failures", err: errors.New(`ent: missing required field "Proxy.pool_failures"`)}
 	}
 	return nil
 }
@@ -392,6 +515,14 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 		_spec.SetField(proxy.FieldPort, field.TypeInt, value)
 		_node.Port = value
 	}
+	if value, ok := _c.mutation.ForceHttp1(); ok {
+		_spec.SetField(proxy.FieldForceHttp1, field.TypeBool, value)
+		_node.ForceHttp1 = value
+	}
+	if value, ok := _c.mutation.DisableKeepAlive(); ok {
+		_spec.SetField(proxy.FieldDisableKeepAlive, field.TypeBool, value)
+		_node.DisableKeepAlive = value
+	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(proxy.FieldUsername, field.TypeString, value)
 		_node.Username = &value
@@ -415,6 +546,18 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ExpiryWarnDays(); ok {
 		_spec.SetField(proxy.FieldExpiryWarnDays, field.TypeInt, value)
 		_node.ExpiryWarnDays = value
+	}
+	if value, ok := _c.mutation.PoolHealth(); ok {
+		_spec.SetField(proxy.FieldPoolHealth, field.TypeString, value)
+		_node.PoolHealth = value
+	}
+	if value, ok := _c.mutation.PoolCheckedAt(); ok {
+		_spec.SetField(proxy.FieldPoolCheckedAt, field.TypeTime, value)
+		_node.PoolCheckedAt = &value
+	}
+	if value, ok := _c.mutation.PoolFailures(); ok {
+		_spec.SetField(proxy.FieldPoolFailures, field.TypeInt, value)
+		_node.PoolFailures = value
 	}
 	if nodes := _c.mutation.AccountsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -447,6 +590,23 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.BackupProxyID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PoolIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   proxy.PoolTable,
+			Columns: []string{proxy.PoolColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxypool.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.PoolID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -585,6 +745,30 @@ func (u *ProxyUpsert) AddPort(v int) *ProxyUpsert {
 	return u
 }
 
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsert) SetForceHttp1(v bool) *ProxyUpsert {
+	u.Set(proxy.FieldForceHttp1, v)
+	return u
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateForceHttp1() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldForceHttp1)
+	return u
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsert) SetDisableKeepAlive(v bool) *ProxyUpsert {
+	u.Set(proxy.FieldDisableKeepAlive, v)
+	return u
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateDisableKeepAlive() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldDisableKeepAlive)
+	return u
+}
+
 // SetUsername sets the "username" field.
 func (u *ProxyUpsert) SetUsername(v string) *ProxyUpsert {
 	u.Set(proxy.FieldUsername, v)
@@ -696,6 +880,72 @@ func (u *ProxyUpsert) UpdateExpiryWarnDays() *ProxyUpsert {
 // AddExpiryWarnDays adds v to the "expiry_warn_days" field.
 func (u *ProxyUpsert) AddExpiryWarnDays(v int) *ProxyUpsert {
 	u.Add(proxy.FieldExpiryWarnDays, v)
+	return u
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *ProxyUpsert) SetPoolID(v int64) *ProxyUpsert {
+	u.Set(proxy.FieldPoolID, v)
+	return u
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdatePoolID() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldPoolID)
+	return u
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *ProxyUpsert) ClearPoolID() *ProxyUpsert {
+	u.SetNull(proxy.FieldPoolID)
+	return u
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (u *ProxyUpsert) SetPoolHealth(v string) *ProxyUpsert {
+	u.Set(proxy.FieldPoolHealth, v)
+	return u
+}
+
+// UpdatePoolHealth sets the "pool_health" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdatePoolHealth() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldPoolHealth)
+	return u
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (u *ProxyUpsert) SetPoolCheckedAt(v time.Time) *ProxyUpsert {
+	u.Set(proxy.FieldPoolCheckedAt, v)
+	return u
+}
+
+// UpdatePoolCheckedAt sets the "pool_checked_at" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdatePoolCheckedAt() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldPoolCheckedAt)
+	return u
+}
+
+// ClearPoolCheckedAt clears the value of the "pool_checked_at" field.
+func (u *ProxyUpsert) ClearPoolCheckedAt() *ProxyUpsert {
+	u.SetNull(proxy.FieldPoolCheckedAt)
+	return u
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (u *ProxyUpsert) SetPoolFailures(v int) *ProxyUpsert {
+	u.Set(proxy.FieldPoolFailures, v)
+	return u
+}
+
+// UpdatePoolFailures sets the "pool_failures" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdatePoolFailures() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldPoolFailures)
+	return u
+}
+
+// AddPoolFailures adds v to the "pool_failures" field.
+func (u *ProxyUpsert) AddPoolFailures(v int) *ProxyUpsert {
+	u.Add(proxy.FieldPoolFailures, v)
 	return u
 }
 
@@ -842,6 +1092,34 @@ func (u *ProxyUpsertOne) UpdatePort() *ProxyUpsertOne {
 	})
 }
 
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsertOne) SetForceHttp1(v bool) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetForceHttp1(v)
+	})
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateForceHttp1() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateForceHttp1()
+	})
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsertOne) SetDisableKeepAlive(v bool) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetDisableKeepAlive(v)
+	})
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateDisableKeepAlive() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateDisableKeepAlive()
+	})
+}
+
 // SetUsername sets the "username" field.
 func (u *ProxyUpsertOne) SetUsername(v string) *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
@@ -972,6 +1250,83 @@ func (u *ProxyUpsertOne) AddExpiryWarnDays(v int) *ProxyUpsertOne {
 func (u *ProxyUpsertOne) UpdateExpiryWarnDays() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateExpiryWarnDays()
+	})
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *ProxyUpsertOne) SetPoolID(v int64) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolID(v)
+	})
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdatePoolID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolID()
+	})
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *ProxyUpsertOne) ClearPoolID() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearPoolID()
+	})
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (u *ProxyUpsertOne) SetPoolHealth(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolHealth(v)
+	})
+}
+
+// UpdatePoolHealth sets the "pool_health" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdatePoolHealth() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolHealth()
+	})
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (u *ProxyUpsertOne) SetPoolCheckedAt(v time.Time) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolCheckedAt(v)
+	})
+}
+
+// UpdatePoolCheckedAt sets the "pool_checked_at" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdatePoolCheckedAt() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolCheckedAt()
+	})
+}
+
+// ClearPoolCheckedAt clears the value of the "pool_checked_at" field.
+func (u *ProxyUpsertOne) ClearPoolCheckedAt() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearPoolCheckedAt()
+	})
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (u *ProxyUpsertOne) SetPoolFailures(v int) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolFailures(v)
+	})
+}
+
+// AddPoolFailures adds v to the "pool_failures" field.
+func (u *ProxyUpsertOne) AddPoolFailures(v int) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.AddPoolFailures(v)
+	})
+}
+
+// UpdatePoolFailures sets the "pool_failures" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdatePoolFailures() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolFailures()
 	})
 }
 
@@ -1284,6 +1639,34 @@ func (u *ProxyUpsertBulk) UpdatePort() *ProxyUpsertBulk {
 	})
 }
 
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsertBulk) SetForceHttp1(v bool) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetForceHttp1(v)
+	})
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateForceHttp1() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateForceHttp1()
+	})
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsertBulk) SetDisableKeepAlive(v bool) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetDisableKeepAlive(v)
+	})
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateDisableKeepAlive() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateDisableKeepAlive()
+	})
+}
+
 // SetUsername sets the "username" field.
 func (u *ProxyUpsertBulk) SetUsername(v string) *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
@@ -1414,6 +1797,83 @@ func (u *ProxyUpsertBulk) AddExpiryWarnDays(v int) *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) UpdateExpiryWarnDays() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdateExpiryWarnDays()
+	})
+}
+
+// SetPoolID sets the "pool_id" field.
+func (u *ProxyUpsertBulk) SetPoolID(v int64) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolID(v)
+	})
+}
+
+// UpdatePoolID sets the "pool_id" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdatePoolID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolID()
+	})
+}
+
+// ClearPoolID clears the value of the "pool_id" field.
+func (u *ProxyUpsertBulk) ClearPoolID() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearPoolID()
+	})
+}
+
+// SetPoolHealth sets the "pool_health" field.
+func (u *ProxyUpsertBulk) SetPoolHealth(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolHealth(v)
+	})
+}
+
+// UpdatePoolHealth sets the "pool_health" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdatePoolHealth() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolHealth()
+	})
+}
+
+// SetPoolCheckedAt sets the "pool_checked_at" field.
+func (u *ProxyUpsertBulk) SetPoolCheckedAt(v time.Time) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolCheckedAt(v)
+	})
+}
+
+// UpdatePoolCheckedAt sets the "pool_checked_at" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdatePoolCheckedAt() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolCheckedAt()
+	})
+}
+
+// ClearPoolCheckedAt clears the value of the "pool_checked_at" field.
+func (u *ProxyUpsertBulk) ClearPoolCheckedAt() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearPoolCheckedAt()
+	})
+}
+
+// SetPoolFailures sets the "pool_failures" field.
+func (u *ProxyUpsertBulk) SetPoolFailures(v int) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetPoolFailures(v)
+	})
+}
+
+// AddPoolFailures adds v to the "pool_failures" field.
+func (u *ProxyUpsertBulk) AddPoolFailures(v int) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.AddPoolFailures(v)
+	})
+}
+
+// UpdatePoolFailures sets the "pool_failures" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdatePoolFailures() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdatePoolFailures()
 	})
 }
 
