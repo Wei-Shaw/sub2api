@@ -185,7 +185,6 @@
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
           @edit-selected="openBulkEditSelected"
-          @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
           @select-all-results="handleSelectAllResults"
@@ -542,29 +541,12 @@ const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
-type AccountBulkEditTarget =
-  | {
-      mode: 'selected'
-      accountIds: number[]
-      selectedPlatforms: AccountPlatform[]
-      selectedTypes: AccountType[]
-    }
-  | {
-      mode: 'filtered'
-      filters: {
-        platform?: string
-        type?: string
-        status?: string
-        group?: string
-        search?: string
-        privacy_mode?: string
-        sort_by?: string
-        sort_order?: AccountSortOrder
-      }
-      previewCount: number
-      selectedPlatforms: AccountPlatform[]
-      selectedTypes: AccountType[]
-    }
+type AccountBulkEditTarget = {
+  mode: 'selected'
+  accountIds: number[]
+  selectedPlatforms: AccountPlatform[]
+  selectedTypes: AccountType[]
+}
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
@@ -1119,6 +1101,18 @@ const clearSelection = () => {
 }
 
 const selectPage = () => {
+  // 若当前处于"全选所有结果"状态，"本页全选"应切换为仅选中当前页：
+  // 清掉 all-results 快照并把选择重置为当前页的行，否则追加语义下所有行
+  // 已在选中集中、点击无任何变化。
+  if (allResultsSelected.value || selectingAllResults.value) {
+    // 先自增版本号，作废任何 in-flight 的 handleSelectAllResults 请求，
+    // 否则其晚到的 resolve 会通过版本校验、把刚收窄的当前页选择覆盖回全选。
+    selectionRequestVersion.value++
+    selectingAllResults.value = false
+    selectedAllResultIDs.value = null
+    setSelectedIds(accounts.value.map((a) => a.id))
+    return
+  }
   selectCurrentPage()
 }
 
@@ -1206,6 +1200,9 @@ const handlePageChange = (page: number) => {
 }
 
 const handlePageSizeChange = (size: number) => {
+  // 换页大小会替换当前页的行集合，跨页选择的语义不再成立：清空选择，
+  // 避免旧选中集让表头 checkbox 以旧页大小的行来判断/操作。
+  clearSelection()
   syncAccountListDerivedParams()
   hasPendingListSync.value = false
   resetAutoRefreshCache()
@@ -1651,8 +1648,11 @@ const openMenu = (a: Account, e: MouseEvent) => {
   const target = e.currentTarget as HTMLElement
   if (target) {
     const rect = target.getBoundingClientRect()
-    const menuWidth = 200
-    const menuHeight = 240
+    const menuWidth = 208 // 与 AccountActionMenu 的 w-52 (13rem=208px) 对齐，避免右缘错位
+    // 菜单最多约 8 项（测试/统计/定时测试/重新授权/刷新令牌/创建 Spark/设置隐私 等），
+    // 旧值 240 低估真实高度，导致最后几行时底部项超出视口被裁。估算取偏大值，
+    // 并配合菜单自身 max-height + 滚动兜底，保证内容永不被隐藏。
+    const menuHeight = 380
     const padding = 8
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -1685,7 +1685,7 @@ const openMenu = (a: Account, e: MouseEvent) => {
       ))
       top = e.clientY
       if (top + menuHeight > viewportHeight - padding) {
-        top = viewportHeight - menuHeight - padding
+        top = Math.max(padding, viewportHeight - menuHeight - padding)
       }
     }
 
@@ -1930,32 +1930,12 @@ const handleSelectAllResults = async () => {
   }
 }
 
-const collectSelectionMetadata = (rows: Account[]) => {
-  const selectedPlatforms = Array.from(new Set(rows.map(account => account.platform)))
-  const selectedTypes = Array.from(new Set(rows.map(account => account.type)))
-  return { selectedPlatforms, selectedTypes }
-}
-
 const openBulkEditSelected = () => {
   bulkEditTarget.value = {
     mode: 'selected',
     accountIds: [...selIds.value],
     selectedPlatforms: [...selPlatforms.value],
     selectedTypes: [...selTypes.value]
-  }
-  showBulkEdit.value = true
-}
-
-const openBulkEditFiltered = async () => {
-  const filters = buildBulkEditFilterSnapshot()
-  const preview = await adminAPI.accounts.list(1, 100, filters)
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
-  bulkEditTarget.value = {
-    mode: 'filtered',
-    filters,
-    previewCount: preview.total,
-    selectedPlatforms,
-    selectedTypes
   }
   showBulkEdit.value = true
 }

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"reflect"
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -263,47 +262,4 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	require.Contains(t, err.Error(), "mixed channel")
 	// No BindGroups should have been called since the check runs before any write.
 	require.Empty(t, repo.bindGroupsCalls)
-}
-
-func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {
-	repo := &accountRepoStubForBulkUpdate{
-		listData: []Account{
-			{ID: 7},
-			{ID: 11},
-		},
-		listResult: &pagination.PaginationResult{Total: 2},
-	}
-	svc := &adminServiceImpl{accountRepo: repo}
-
-	schedulable := true
-	input := &BulkUpdateAccountsInput{
-		Schedulable: &schedulable,
-	}
-
-	filtersField := reflect.ValueOf(input).Elem().FieldByName("Filters")
-	require.True(t, filtersField.IsValid(), "BulkUpdateAccountsInput should expose Filters for filter-target bulk update")
-	require.Equal(t, reflect.Ptr, filtersField.Kind(), "BulkUpdateAccountsInput.Filters should be a pointer field")
-
-	filtersValue := reflect.New(filtersField.Type().Elem())
-	filtersValue.Elem().FieldByName("Platform").SetString(PlatformOpenAI)
-	filtersValue.Elem().FieldByName("Type").SetString(AccountTypeOAuth)
-	filtersValue.Elem().FieldByName("Status").SetString(StatusActive)
-	filtersValue.Elem().FieldByName("Group").SetString("12")
-	filtersValue.Elem().FieldByName("PrivacyMode").SetString(PrivacyModeCFBlocked)
-	filtersValue.Elem().FieldByName("Search").SetString("bulk-target")
-	filtersField.Set(filtersValue)
-
-	result, err := svc.BulkUpdateAccounts(context.Background(), input)
-	require.NoError(t, err)
-	require.True(t, repo.listCalled, "expected filter-target bulk update to resolve matching IDs via account list filters")
-	require.Equal(t, PlatformOpenAI, repo.lastListFilters.platform)
-	require.Equal(t, AccountTypeOAuth, repo.lastListFilters.accountType)
-	require.Equal(t, StatusActive, repo.lastListFilters.status)
-	require.Equal(t, "bulk-target", repo.lastListFilters.search)
-	require.Equal(t, int64(12), repo.lastListFilters.groupID)
-	require.Equal(t, PrivacyModeCFBlocked, repo.lastListFilters.privacyMode)
-	require.Equal(t, []int64{7, 11}, repo.bulkUpdateIDs)
-	require.Equal(t, 2, result.Success)
-	require.Equal(t, 0, result.Failed)
-	require.Equal(t, []int64{7, 11}, result.SuccessIDs)
 }

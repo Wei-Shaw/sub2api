@@ -884,14 +884,6 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
 
-	if len(input.AccountIDs) == 0 && input.Filters != nil {
-		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
-		if err != nil {
-			return nil, err
-		}
-		input.AccountIDs = accountIDs
-	}
-
 	result := &BulkUpdateAccountsResult{
 		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
 		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
@@ -1144,55 +1136,6 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 		}
 	}
 	return identity
-}
-
-func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filters *BulkUpdateAccountFilters) ([]int64, error) {
-	if filters == nil {
-		return nil, nil
-	}
-
-	groupID := int64(0)
-	switch strings.TrimSpace(filters.Group) {
-	case "":
-	case "ungrouped":
-		groupID = AccountListGroupUngrouped
-	default:
-		parsedGroupID, err := strconv.ParseInt(strings.TrimSpace(filters.Group), 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid group filter: %w", err)
-		}
-		groupID = parsedGroupID
-	}
-
-	const pageSize = 500
-	page := 1
-	accountIDs := make([]int64, 0, pageSize)
-
-	for {
-		accounts, total, err := s.ListAccounts(
-			ctx,
-			page,
-			pageSize,
-			filters.Platform,
-			filters.Type,
-			filters.Status,
-			filters.Search,
-			groupID,
-			filters.PrivacyMode,
-			"",
-			"",
-		)
-		if err != nil {
-			return nil, err
-		}
-		for _, account := range accounts {
-			accountIDs = append(accountIDs, account.ID)
-		}
-		if int64(len(accountIDs)) >= total || len(accounts) == 0 {
-			return accountIDs, nil
-		}
-		page++
-	}
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {

@@ -102,10 +102,9 @@ const ProbeDataTableStub = {
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds'],
-  emits: ['edit-filtered', 'probe-upstream-billing'],
+  emits: ['probe-upstream-billing'],
   template: `
     <div>
-      <button data-test="edit-filtered" @click="$emit('edit-filtered')">edit filtered</button>
       <button data-test="probe-upstream-billing" @click="$emit('probe-upstream-billing')">probe</button>
     </div>
   `
@@ -154,52 +153,6 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllGroups.mockResolvedValue([])
     probeUpstreamBilling.mockResolvedValue({})
     probeUpstreamBillingBatch.mockResolvedValue([])
-  })
-
-  it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
-    const wrapper = mount(AccountsView, {
-      global: {
-        stubs: {
-          AppLayout: { template: '<div><slot /></div>' },
-          TablePageLayout: {
-            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
-          },
-          DataTable: DataTableStub,
-          Pagination: true,
-          ConfirmDialog: true,
-          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
-          AccountTableFilters: { template: '<div></div>' },
-          AccountBulkActionsBar: AccountBulkActionsBarStub,
-          AccountActionMenu: true,
-          ImportDataModal: true,
-          ReAuthAccountModal: true,
-          AccountTestModal: true,
-          AccountStatsModal: true,
-          ScheduledTestsPanel: true,
-          SyncFromCrsModal: true,
-          TempUnschedStatusModal: true,
-          ErrorPassthroughRulesModal: true,
-          TLSFingerprintProfilesModal: true,
-          CreateAccountModal: true,
-          EditAccountModal: true,
-          BulkEditAccountModal: BulkEditAccountModalStub,
-          PlatformTypeBadge: true,
-          AccountCapacityCell: true,
-          AccountStatusIndicator: true,
-          AccountTodayStatsCell: true,
-          AccountGroupsCell: true,
-          AccountUsageCell: true,
-          Icon: true
-        }
-      }
-    })
-
-    await flushPromises()
-    await wrapper.get('[data-test="edit-filtered"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-show')).toBe('true')
-    expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-target-mode')).toBe('filtered')
   })
 
   it('renders the created_at column by default', async () => {
@@ -268,6 +221,92 @@ describe('admin AccountsView bulk edit scope', () => {
       label: 'admin.accounts.columns.createdAt',
       sortable: true
     })
+  })
+
+  it('changing page size clears the stale selection so the header checkbox no longer uses the old page rows (BUG2-2)', async () => {
+    const rows20 = Array.from({ length: 20 }, (_, i) => ({
+      id: i + 1,
+      name: `acc-${i + 1}`,
+      platform: 'anthropic',
+      type: 'oauth',
+      status: 'active',
+      schedulable: true
+    }))
+    const rows10 = Array.from({ length: 10 }, (_, i) => ({
+      id: 100 + i,
+      name: `acc-${100 + i}`,
+      platform: 'anthropic',
+      type: 'oauth',
+      status: 'active',
+      schedulable: true
+    }))
+    listAccounts.mockResolvedValue({ items: rows20, total: 20, page: 1, page_size: 20, pages: 1 })
+
+    // DataTable stub that surfaces the header-select checkbox slot from AccountsView.
+    const HeaderSelectDataTableStub = {
+      props: ['data'],
+      template: `
+        <div>
+          <div data-test="header-select"><slot name="header-select" /></div>
+          <div v-for="row in data" :key="row.id"><slot name="cell-select" :row="row" /></div>
+        </div>
+      `
+    }
+    // Pagination stub that can emit a page-size change.
+    const PageSizePaginationStub = {
+      emits: ['update:page', 'update:pageSize'],
+      template: `<button data-test="set-page-size-10" @click="$emit('update:pageSize', 10)">10</button>`
+    }
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: HeaderSelectDataTableStub,
+          Pagination: PageSizePaginationStub,
+          ConfirmDialog: true,
+          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
+          AccountTableFilters: { template: '<div></div>' },
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    // Select the whole (20-row) page via the header checkbox.
+    await wrapper.get('[data-test="header-select"] input').setValue(true)
+    expect((wrapper.getComponent(AccountBulkActionsBarStub).props('selectedIds') as number[]).length).toBe(20)
+
+    // Switch to 10/page: the reload returns 10 different rows; selection must be cleared.
+    listAccounts.mockResolvedValue({ items: rows10, total: 16, page: 1, page_size: 10, pages: 2 })
+    await wrapper.get('[data-test="set-page-size-10"]').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.getComponent(AccountBulkActionsBarStub).props('selectedIds') as number[]).length).toBe(0)
   })
 
   it('passes the loaded global probe state to every upstream billing cell', async () => {
