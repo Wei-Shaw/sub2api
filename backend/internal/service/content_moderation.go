@@ -2987,18 +2987,23 @@ type CyberPolicyRecordInput struct {
 
 // RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
 // 并给用户发邮件。当前请求已由 gateway 透传给用户；本方法仅做事后记录/通知/计数。
-// 仅受 risk_control_enabled 总开关约束（不受内容审核 Enabled/Mode/scope/sample 约束）。
+// 受 risk_control_enabled 总开关和内容审核 group/model scope 约束，
+// 不受内容审核 Enabled/Mode/sample 约束。
 func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, in CyberPolicyRecordInput) {
 	if s == nil || s.repo == nil {
 		return
 	}
-	if !s.isRiskControlEnabled(ctx) {
+	runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
+	if err != nil {
+		slog.Warn("content_moderation.cyber_runtime_snapshot_load_failed", "error", err)
 		return
 	}
-	cfg, err := s.loadConfig(ctx)
-	if err != nil {
-		slog.Warn("content_moderation.cyber_load_config_failed", "error", err)
-		cfg = &ContentModerationConfig{}
+	if !runtimeSnapshot.riskControlEnabled {
+		return
+	}
+	cfg := runtimeSnapshot.config
+	if !cfg.includesGroup(in.GroupID) || !cfg.includesModel(in.Model) {
+		return
 	}
 	var userID *int64
 	if in.UserID > 0 {
