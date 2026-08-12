@@ -85,7 +85,7 @@ func TestWeb3DepositRepositoryEventIdentityIncludesLogIndex(t *testing.T) {
 	require.Len(t, deposits, 3)
 }
 
-func TestWeb3DepositRepositoryUpsertDetectedReturnsExistingWithoutChangingFacts(t *testing.T) {
+func TestWeb3DepositRepositoryUpsertDetectedRefreshesPreFinalizationCanonicalFacts(t *testing.T) {
 	repo := newWeb3DepositRepository(t)
 	ctx := context.Background()
 	original := testWeb3DepositRecord(7)
@@ -106,11 +106,34 @@ func TestWeb3DepositRepositoryUpsertDetectedReturnsExistingWithoutChangingFacts(
 	require.Equal(t, created.ID, stored.ID)
 	require.Equal(t, original.UserID, stored.UserID)
 	require.Equal(t, original.DepositAddressID, stored.DepositAddressID)
-	require.Equal(t, original.BlockNumber, stored.BlockNumber)
-	require.Equal(t, original.BlockHash, stored.BlockHash)
-	require.Equal(t, original.RawAmount, stored.RawAmount)
-	require.Equal(t, original.TokenAmount, stored.TokenAmount)
+	require.Equal(t, duplicate.BlockNumber, stored.BlockNumber)
+	require.Equal(t, duplicate.BlockHash, stored.BlockHash)
+	require.Equal(t, duplicate.RawAmount, stored.RawAmount)
+	require.Equal(t, duplicate.TokenAmount, stored.TokenAmount)
 	require.Equal(t, web3deposit.DepositStatusConfirming, stored.Status)
+}
+
+func TestWeb3DepositRepositoryUpsertDetectedDoesNotRewriteFinalizedFacts(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+	original := testWeb3DepositRecord(7)
+	original.Status = web3deposit.DepositStatusReadyToCredit
+	created, err := repo.Create(ctx, original)
+	require.NoError(t, err)
+
+	duplicate := original
+	duplicate.BlockNumber = 54321
+	duplicate.BlockHash = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	duplicate.RawAmount = "7654321"
+	duplicate.TokenAmount = "7.654321"
+
+	stored, err := repo.UpsertDetected(ctx, duplicate)
+
+	require.NoError(t, err)
+	require.Equal(t, created.BlockNumber, stored.BlockNumber)
+	require.Equal(t, created.BlockHash, stored.BlockHash)
+	require.Equal(t, created.RawAmount, stored.RawAmount)
+	require.Equal(t, created.TokenAmount, stored.TokenAmount)
 }
 
 func TestWeb3DepositRepositoryUpsertDetectedCreatesDifferentLogIndexes(t *testing.T) {
@@ -176,6 +199,38 @@ func TestWeb3DepositRepositoryPaginatesAndScopesUserDeposits(t *testing.T) {
 	require.Len(t, targeted, 1)
 	require.Equal(t, uint64(71), targeted[0].ChainID)
 	require.Equal(t, testnet.TokenContract, targeted[0].TokenContract)
+}
+
+func TestWeb3DepositRepositoryCountsStatusesInDatabaseAndScopesTarget(t *testing.T) {
+	repo := newWeb3DepositRepository(t)
+	ctx := context.Background()
+	for index, status := range []web3deposit.DepositStatus{
+		web3deposit.DepositStatusDetected,
+		web3deposit.DepositStatusDetected,
+		web3deposit.DepositStatusManualReview,
+	} {
+		deposit := testWeb3DepositRecord(uint64(index + 1))
+		deposit.TxHash = fmt.Sprintf("0x%064x", index+1)
+		deposit.Status = status
+		_, err := repo.Create(ctx, deposit)
+		require.NoError(t, err)
+	}
+	otherTarget := testWeb3DepositRecord(9)
+	otherTarget.ChainID = 71
+	otherTarget.TokenContract = "0x1111111111111111111111111111111111111111"
+	otherTarget.TxHash = fmt.Sprintf("0x%064x", 9)
+	otherTarget.Status = web3deposit.DepositStatusDetected
+	_, err := repo.Create(ctx, otherTarget)
+	require.NoError(t, err)
+
+	all, err := repo.CountAdminDepositsByStatus(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), all[web3deposit.DepositStatusDetected])
+	require.Equal(t, int64(1), all[web3deposit.DepositStatusManualReview])
+	targeted, err := repo.CountAdminDepositsByStatusForTarget(ctx, 1030, testWeb3DepositTokenContract)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), targeted[web3deposit.DepositStatusDetected])
+	require.Equal(t, int64(1), targeted[web3deposit.DepositStatusManualReview])
 }
 
 func TestWeb3DepositRepositoryAdminStateTransitionsAreConditional(t *testing.T) {

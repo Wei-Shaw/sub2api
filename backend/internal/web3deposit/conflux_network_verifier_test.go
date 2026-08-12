@@ -17,6 +17,7 @@ import (
 
 func TestConfluxNetworkVerifierIsolatesBadEndpoint(t *testing.T) {
 	expected := testConfluxNetworkExpectation()
+	now := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
 	bad := newConfluxRPCResponseCaller(map[string]any{
 		"eth_chainId": "0x1",
 	})
@@ -27,6 +28,7 @@ func TestConfluxNetworkVerifierIsolatesBadEndpoint(t *testing.T) {
 	}, []string{"https://bad.example", "https://good.example"}, ConfluxRPCPoolOptions{
 		RequestTimeout:  time.Second,
 		FailureCooldown: time.Minute,
+		Now:             func() time.Time { return now },
 	})
 
 	results, err := pool.VerifyNetwork(context.Background(), expected)
@@ -37,6 +39,12 @@ func TestConfluxNetworkVerifierIsolatesBadEndpoint(t *testing.T) {
 	}, results)
 	require.False(t, pool.EndpointStates()[0].Healthy)
 	require.True(t, pool.EndpointStates()[1].Healthy)
+
+	now = now.Add(2 * time.Minute)
+	var chainID string
+	require.NoError(t, pool.CallContext(context.Background(), &chainID, "eth_chainId"))
+	require.Equal(t, "0x406", chainID)
+	require.False(t, pool.EndpointStates()[0].Healthy)
 }
 
 func TestConfluxNetworkVerifierRejectsInvalidNetworkResponses(t *testing.T) {

@@ -91,6 +91,7 @@ function mountView() {
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
+        BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
         Icon: true,
       },
     },
@@ -179,5 +180,41 @@ describe('Web3DepositAddressView', () => {
     expect(wrapper.text()).toContain('0x2222222222222222222222222222222222222222')
     expect(wrapper.text()).toContain('web3Deposit.chainId')
     expect(replace).toHaveBeenLastCalledWith({ query: { network: 'conflux_espace_testnet', asset: 'usdt0' } })
+  })
+
+  it('reuses the transfer idempotency key after an uncertain response and resets it when the request changes', async () => {
+    getConfig.mockResolvedValue({ data: enabledConfig })
+    getOrCreateAddress.mockResolvedValue({
+      data: { assigned: true, address: '0x1111111111111111111111111111111111111111', networks: enabledConfig.networks.map(item => item.key) },
+    })
+    listBalances.mockResolvedValue({ data: [{
+      asset_key: 'usdt',
+      available_amount: '12.00000000',
+      total_deposited: '12.00000000',
+      total_transferred: '0.00000000',
+      updated_at: '2026-08-10T00:00:00Z',
+    }] })
+    transferBalance.mockRejectedValueOnce(new Error('response lost')).mockRejectedValueOnce(new Error('response lost again')).mockResolvedValue({ data: {} })
+    const wrapper = mountView()
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      transferAmount: string
+      submitTransfer: () => Promise<void>
+    }
+
+    vm.transferAmount = '5'
+    await wrapper.vm.$nextTick()
+    await vm.submitTransfer()
+    await vm.submitTransfer()
+
+    const firstKey = transferBalance.mock.calls[0][2]
+    expect(firstKey).toEqual(expect.any(String))
+    expect(transferBalance.mock.calls[1][2]).toBe(firstKey)
+
+    vm.transferAmount = '6'
+    await wrapper.vm.$nextTick()
+    await vm.submitTransfer()
+
+    expect(transferBalance.mock.calls[2][2]).not.toBe(firstKey)
   })
 })

@@ -35,6 +35,9 @@ func (p *DepositEventPersister) PersistDetected(ctx context.Context, matches []M
 	deposits := make([]Deposit, 0, len(matches))
 	for _, match := range matches {
 		deposit, err := p.detectedDeposit(match)
+		if errors.Is(err, ErrRawAmountZero) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}

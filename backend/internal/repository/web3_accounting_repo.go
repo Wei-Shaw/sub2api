@@ -180,6 +180,21 @@ func (r *Web3AccountingRepository) TransferToMainBalance(ctx context.Context, re
 		}
 		return web3deposit.TransferToMainBalanceResult{Transfer: existing, AlreadyDone: true}, nil
 	}
+	var userBalanceRaw, totalRechargedRaw, userStatus string
+	var deletedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		SELECT balance::text, total_recharged::text, status, deleted_at
+		FROM users WHERE id = $1 FOR UPDATE
+	`, request.UserID).Scan(&userBalanceRaw, &totalRechargedRaw, &userStatus, &deletedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return web3deposit.TransferToMainBalanceResult{}, web3deposit.ErrUserNotCreditable
+	}
+	if err != nil {
+		return web3deposit.TransferToMainBalanceResult{}, fmt.Errorf("lock user for web3 balance transfer: %w", err)
+	}
+	if deletedAt.Valid || userStatus != domain.StatusActive {
+		return web3deposit.TransferToMainBalanceResult{}, web3deposit.ErrUserNotCreditable
+	}
 	var balanceID int64
 	var availableAmount, totalTransferred string
 	err = tx.QueryRowContext(ctx, `
@@ -212,18 +227,6 @@ func (r *Web3AccountingRepository) TransferToMainBalance(ctx context.Context, re
 	totalBefore, err := decimal.NewFromString(totalTransferred)
 	if err != nil {
 		return web3deposit.TransferToMainBalanceResult{}, fmt.Errorf("parse web3 transferred total: %w", err)
-	}
-	var userBalanceRaw, totalRechargedRaw, userStatus string
-	var deletedAt sql.NullTime
-	err = tx.QueryRowContext(ctx, `
-		SELECT balance::text, total_recharged::text, status, deleted_at
-		FROM users WHERE id = $1 FOR UPDATE
-	`, request.UserID).Scan(&userBalanceRaw, &totalRechargedRaw, &userStatus, &deletedAt)
-	if errors.Is(err, sql.ErrNoRows) || deletedAt.Valid || userStatus != domain.StatusActive {
-		return web3deposit.TransferToMainBalanceResult{}, web3deposit.ErrUserNotCreditable
-	}
-	if err != nil {
-		return web3deposit.TransferToMainBalanceResult{}, fmt.Errorf("lock user for web3 balance transfer: %w", err)
 	}
 	userBefore, err := decimal.NewFromString(userBalanceRaw)
 	if err != nil {

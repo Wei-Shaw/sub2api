@@ -468,8 +468,9 @@ func ProvideOpsAlertEvaluatorService(
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 	web3Deposits web3deposit.AdminDepositReader,
+	web3RuntimeHealth *web3deposit.ConfluxNetworkRuntimeRegistry,
 ) *OpsAlertEvaluatorService {
-	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo, web3Deposits)
+	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo, web3Deposits, web3RuntimeHealth)
 	svc.Start()
 	return svc
 }

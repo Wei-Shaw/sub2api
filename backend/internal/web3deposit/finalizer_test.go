@@ -26,7 +26,7 @@ func TestFinalizerVerifiesClassifiesAndAdvancesIndependentCursor(t *testing.T) {
 		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 140, LastFinalizedBlock: 100}},
 		canonical,
 		verifier,
-		pendingFinalizationSourceStub{deposits: candidates},
+		&pendingFinalizationSourceStub{deposits: candidates},
 		finalizerEligibilityStub{eligible: true},
 		batchStore,
 		FinalizerOptions{
@@ -66,7 +66,7 @@ func TestFinalizerRoutesInactiveUserToManualReview(t *testing.T) {
 		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 100, LastFinalizedBlock: 100}},
 		canonical,
 		verifier,
-		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		&pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
 		finalizerEligibilityStub{reason: ReviewReasonUserDeleted},
 		batchStore,
 		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 10, ChainConfig: ChainConfig{
@@ -92,7 +92,7 @@ func TestFinalizerRoutesDisabledHistoricalAddressToManualReview(t *testing.T) {
 		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 100, LastFinalizedBlock: 100}},
 		canonical,
 		verifier,
-		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		&pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
 		finalizerEligibilityStub{reason: ReviewReasonAddressDisabled},
 		batchStore,
 		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 10, ChainConfig: ChainConfig{
@@ -119,7 +119,7 @@ func TestFinalizerMarksCanonicalMismatchOrphaned(t *testing.T) {
 		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 100, LastFinalizedBlock: 100}},
 		canonical,
 		verifier,
-		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		&pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
 		finalizerEligibilityStub{eligible: true},
 		batchStore,
 		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 10, ChainConfig: ChainConfig{
@@ -136,6 +136,37 @@ func TestFinalizerMarksCanonicalMismatchOrphaned(t *testing.T) {
 	require.Equal(t, string(CanonicalMismatchBlockHash), batchStore.batch.Decisions[0].FailureReason)
 }
 
+func TestFinalizerScopesCandidatesAndIncludesHistoricalPendingDeposits(t *testing.T) {
+	deposit := finalizerTestDeposit(1, "10")
+	deposit.BlockNumber = 90
+	canonical := finalizerCanonicalSource([]Deposit{deposit}, 150)
+	verifier, err := NewCanonicalDepositVerifier(canonical)
+	require.NoError(t, err)
+	pending := &pendingFinalizationSourceStub{deposits: []Deposit{deposit}}
+	batchStore := &finalizerBatchStoreStub{}
+	finalizer, err := NewFinalizer(
+		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 140, LastFinalizedBlock: 100}},
+		canonical,
+		verifier,
+		pending,
+		finalizerEligibilityStub{eligible: true},
+		batchStore,
+		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 20, ChainConfig: ChainConfig{
+			ChainID: 1030, TokenAddress: common.HexToAddress("0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"),
+			MinimumDeposit: decimal.NewFromInt(1), AutoCreditLimit: decimal.NewFromInt(10000),
+		}},
+	)
+	require.NoError(t, err)
+
+	result, err := finalizer.FinalizeNext(context.Background(), "lease-token", time.Now())
+
+	require.NoError(t, err)
+	require.Equal(t, uint64(1030), pending.chainID)
+	require.Equal(t, "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff", pending.tokenContract)
+	require.Equal(t, uint64(119), pending.toBlock)
+	require.Equal(t, 1, result.FinalizedCount)
+}
+
 func TestFinalizerFailsSafeWhenAmountExceedsPlatformRange(t *testing.T) {
 	deposit := finalizerTestDeposit(1, "1000000000000.000000")
 	canonical := finalizerCanonicalSource([]Deposit{deposit}, 150)
@@ -146,7 +177,7 @@ func TestFinalizerFailsSafeWhenAmountExceedsPlatformRange(t *testing.T) {
 		finalizerCursorSourceStub{cursor: ScannerCursor{LastScannedBlock: 140, LastFinalizedBlock: 100}},
 		canonical,
 		verifier,
-		pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
+		&pendingFinalizationSourceStub{deposits: []Deposit{deposit}},
 		finalizerEligibilityStub{eligible: true},
 		batchStore,
 		FinalizerOptions{ScannerKey: "scanner", BlockBatchSize: 20, ChainConfig: ChainConfig{
@@ -220,9 +251,17 @@ func (s finalizerCursorSourceStub) GetByKey(context.Context, string) (ScannerCur
 	return s.cursor, nil
 }
 
-type pendingFinalizationSourceStub struct{ deposits []Deposit }
+type pendingFinalizationSourceStub struct {
+	deposits      []Deposit
+	chainID       uint64
+	tokenContract string
+	toBlock       uint64
+}
 
-func (s pendingFinalizationSourceStub) ListPendingFinalization(context.Context, uint64, uint64) ([]Deposit, error) {
+func (s *pendingFinalizationSourceStub) ListPendingFinalization(_ context.Context, chainID uint64, tokenContract string, toBlock uint64) ([]Deposit, error) {
+	s.chainID = chainID
+	s.tokenContract = tokenContract
+	s.toBlock = toBlock
 	return s.deposits, nil
 }
 

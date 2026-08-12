@@ -71,11 +71,6 @@ func TestDepositEventPersisterRejectsInvalidEventsBeforeWriting(t *testing.T) {
 			event:   newDepositPersisterEvent(t, 71, 7, 1_000_000),
 			wantErr: ErrDepositEventChainMismatch,
 		},
-		{
-			name:    "zero amount",
-			event:   newDepositPersisterEvent(t, config.ChainID, 7, 0),
-			wantErr: ErrRawAmountZero,
-		},
 	}
 
 	for _, test := range tests {
@@ -91,6 +86,22 @@ func TestDepositEventPersisterRejectsInvalidEventsBeforeWriting(t *testing.T) {
 			require.Empty(t, store.deposits)
 		})
 	}
+}
+
+func TestDepositEventPersisterSkipsZeroAmountWithoutBlockingLaterEvents(t *testing.T) {
+	config := testDepositPersisterChainConfig()
+	store := &detectedDepositStoreStub{}
+	matches := []MatchedTransferEvent{
+		{Event: newDepositPersisterEvent(t, config.ChainID, 7, 0), DepositAddressID: 11, UserID: 101},
+		{Event: newDepositPersisterEvent(t, config.ChainID, 8, 2_000_000), DepositAddressID: 12, UserID: 102},
+	}
+
+	deposits, err := NewDepositEventPersister(store, config).PersistDetected(context.Background(), matches)
+
+	require.NoError(t, err)
+	require.Len(t, deposits, 1)
+	require.Equal(t, uint64(8), deposits[0].LogIndex)
+	require.Len(t, store.deposits, 1)
 }
 
 func TestDepositEventPersisterRejectsUnsupportedTokenDecimals(t *testing.T) {

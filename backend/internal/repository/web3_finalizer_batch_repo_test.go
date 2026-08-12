@@ -100,12 +100,17 @@ func TestWeb3FinalizerBatchRepositoryRollsBackWhenLeaseIsLost(t *testing.T) {
 	require.Nil(t, stored.FinalizedAt)
 }
 
-func TestWeb3DepositRepositoryListsOnlyPendingFinalizationRange(t *testing.T) {
+func TestWeb3DepositRepositoryListsPendingFinalizationForTargetThroughUpperBound(t *testing.T) {
 	repo := newWeb3DepositRepository(t)
 	ctx := context.Background()
+	historical := testWeb3DepositRecord(6)
+	historical.TxHash = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccd"
+	historical.BlockNumber = 90
+	_, err := repo.Create(ctx, historical)
+	require.NoError(t, err)
 	inside := testWeb3DepositRecord(7)
 	inside.BlockNumber = 105
-	_, err := repo.Create(ctx, inside)
+	_, err = repo.Create(ctx, inside)
 	require.NoError(t, err)
 	terminal := testWeb3DepositRecord(8)
 	terminal.TxHash = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
@@ -118,10 +123,23 @@ func TestWeb3DepositRepositoryListsOnlyPendingFinalizationRange(t *testing.T) {
 	outOfRange.BlockNumber = 120
 	_, err = repo.Create(ctx, outOfRange)
 	require.NoError(t, err)
+	otherChain := testWeb3DepositRecord(10)
+	otherChain.ChainID = 71
+	otherChain.TokenContract = "0x1111111111111111111111111111111111111111"
+	otherChain.TxHash = "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe"
+	otherChain.BlockNumber = 105
+	_, err = repo.Create(ctx, otherChain)
+	require.NoError(t, err)
+	otherToken := testWeb3DepositRecord(11)
+	otherToken.TokenContract = "0x1111111111111111111111111111111111111111"
+	otherToken.TxHash = "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffd"
+	otherToken.BlockNumber = 105
+	_, err = repo.Create(ctx, otherToken)
+	require.NoError(t, err)
 
-	deposits, err := repo.ListPendingFinalization(ctx, 100, 110)
+	deposits, err := repo.ListPendingFinalization(ctx, 1030, testWeb3DepositTokenContract, 110)
 
 	require.NoError(t, err)
-	require.Len(t, deposits, 1)
-	require.Equal(t, uint64(7), deposits[0].LogIndex)
+	require.Len(t, deposits, 2)
+	require.Equal(t, []uint64{6, 7}, []uint64{deposits[0].LogIndex, deposits[1].LogIndex})
 }
