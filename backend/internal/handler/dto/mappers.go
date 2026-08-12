@@ -841,6 +841,19 @@ func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult 
 	}
 }
 
+func BulkResetSubscriptionQuotaResultFromService(r *service.BulkResetSubscriptionQuotaResult) *BulkResetSubscriptionQuotaResult {
+	if r == nil {
+		return nil
+	}
+	return &BulkResetSubscriptionQuotaResult{
+		Total:                 r.TotalCount,
+		Success:               r.SuccessCount,
+		Failed:                r.FailedCount,
+		FailedSubscriptionIDs: r.FailedSubscriptionIDs,
+		Errors:                r.Errors,
+	}
+}
+
 func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 	if pc == nil {
 		return nil

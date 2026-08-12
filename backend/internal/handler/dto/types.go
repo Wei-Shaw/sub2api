@@ -674,6 +674,14 @@ type BulkAssignResult struct {
 	Statuses      map[string]string       `json:"statuses,omitempty"`
 }
 
+type BulkResetSubscriptionQuotaResult struct {
+	Total                 int      `json:"total"`
+	Success               int      `json:"success"`
+	Failed                int      `json:"failed"`
+	FailedSubscriptionIDs []int64  `json:"failed_subscription_ids"`
+	Errors                []string `json:"errors"`
+}
+
 // PromoCode 注册优惠码
 type PromoCode struct {
 	ID          int64      `json:"id"`
