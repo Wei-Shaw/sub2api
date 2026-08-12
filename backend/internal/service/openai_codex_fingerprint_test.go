@@ -143,7 +143,7 @@ REDACTED
 func TestApplyCodexFingerprintHeaders_DeviceMode(t *testing.T) {
 	account := newTestOAuthAccount(1, map[string]any{
 		codexFingerprintModeExtraKey: "device",
-		"openai_device_id":          "converged-device",
+		"openai_device_id":           "converged-device",
 REDACTED)
 	turnMetadata := `{"installation_id":"user-install","session_id":"user-session","sandbox":"seccomp"REDACTED`
 	h := http.Header{REDACTED
@@ -293,16 +293,22 @@ REDACTED
 	// 从头 turn-metadata JSON 提取 turn_id
 	var headerMeta map[string]any
 	require.NoError(t, json.Unmarshal([]byte(h.Get("x-codex-turn-metadata")), &headerMeta))
-	headerTurnID := headerMeta["turn_id"].(string)
+	headerTurnID, ok := headerMeta["turn_id"].(string)
+	require.True(t, ok, "头 turn-metadata 应包含 string 类型的 turn_id")
 
 	// 从体 client_metadata 提取 turn_id
-	cm := reqBody["client_metadata"].(map[string]any)
-	bodyTurnID := cm["turn_id"].(string)
+	cm, ok := reqBody["client_metadata"].(map[string]any)
+	require.True(t, ok, "请求体应包含 client_metadata")
+	bodyTurnID, ok := cm["turn_id"].(string)
+	require.True(t, ok, "体 client_metadata 应包含 string 类型的 turn_id")
 
 	// 从体内嵌 turn-metadata JSON 提取 turn_id
+	embeddedRaw, ok := cm["x-codex-turn-metadata"].(string)
+	require.True(t, ok, "体 client_metadata 应包含 x-codex-turn-metadata 字符串")
 	var bodyMeta map[string]any
-	require.NoError(t, json.Unmarshal([]byte(cm["x-codex-turn-metadata"].(string)), &bodyMeta))
-	bodyEmbeddedTurnID := bodyMeta["turn_id"].(string)
+	require.NoError(t, json.Unmarshal([]byte(embeddedRaw), &bodyMeta))
+	bodyEmbeddedTurnID, ok := bodyMeta["turn_id"].(string)
+	require.True(t, ok, "体内嵌 turn-metadata 应包含 string 类型的 turn_id")
 
 	assert.Equal(t, headerTurnID, bodyTurnID, "头和体的 turn_id 必须一致")
 	assert.Equal(t, headerTurnID, bodyEmbeddedTurnID, "头和体内嵌 turn-metadata 的 turn_id 必须一致")
@@ -324,7 +330,7 @@ REDACTED
 func TestApplyCodexFingerprintClientMetadata_DeviceMode(t *testing.T) {
 	account := newTestOAuthAccount(1, map[string]any{
 		codexFingerprintModeExtraKey: "device",
-		"openai_device_id":          "converged-device",
+		"openai_device_id":           "converged-device",
 REDACTED)
 	ids := resolveCodexFingerprintIDsFromRequest(account, nil)
 	require.NotNil(t, ids)
@@ -341,12 +347,15 @@ REDACTED
 	modified := applyCodexFingerprintClientMetadata(reqBody, ids)
 	require.True(t, modified)
 
-	cm := reqBody["client_metadata"].(map[string]any)
+	cm, ok := reqBody["client_metadata"].(map[string]any)
+	require.True(t, ok)
 	assert.Equal(t, "converged-device", cm["x-codex-installation-id"])
 	assert.Equal(t, "user-session", cm["session_id"], "device 模式不改 session_id")
 
+	turnMetaStr, ok := cm["x-codex-turn-metadata"].(string)
+	require.True(t, ok)
 	var meta map[string]any
-	require.NoError(t, json.Unmarshal([]byte(cm["x-codex-turn-metadata"].(string)), &meta))
+	require.NoError(t, json.Unmarshal([]byte(turnMetaStr), &meta))
 	assert.Equal(t, "converged-device", meta["installation_id"])
 	assert.Equal(t, "seccomp", meta["sandbox"], "非指纹字段保留原样")
 REDACTED
@@ -373,7 +382,8 @@ REDACTED
 	modified := applyCodexFingerprintClientMetadata(reqBody, ids)
 	require.True(t, modified)
 
-	cm := reqBody["client_metadata"].(map[string]any)
+	cm, ok := reqBody["client_metadata"].(map[string]any)
+	require.True(t, ok)
 	convergedInstall := resolveConvergedInstallationID(account)
 	convergedSession := resolveConvergedSessionID(account)
 	convergedThread := resolveConvergedThreadID(account, "client-session-aaa")
@@ -383,8 +393,10 @@ REDACTED
 	assert.Equal(t, convergedThread, cm["thread_id"])
 	assert.Equal(t, convergedThread+":0", cm["x-codex-window-id"])
 
+	turnMetaStr, ok := cm["x-codex-turn-metadata"].(string)
+	require.True(t, ok)
 	var meta map[string]any
-	require.NoError(t, json.Unmarshal([]byte(cm["x-codex-turn-metadata"].(string)), &meta))
+	require.NoError(t, json.Unmarshal([]byte(turnMetaStr), &meta))
 	assert.Equal(t, convergedInstall, meta["installation_id"])
 	assert.Equal(t, convergedSession, meta["session_id"])
 	assert.Equal(t, "seccomp", meta["sandbox"], "非指纹字段保留原样")
@@ -402,7 +414,7 @@ REDACTED)
 
 	reqBody := map[string]any{
 		"client_metadata": map[string]any{
-			"session_id":             "x",
+			"session_id":            "x",
 			"thread_id":             "x",
 			"x-codex-turn-metadata": `{"installation_id":"x","session_id":"x","thread_id":"x","turn_id":"x","window_id":"x:0"REDACTED`,
 	REDACTED,
@@ -411,7 +423,8 @@ REDACTED
 	modified := applyCodexFingerprintClientMetadata(reqBody, ids)
 	require.True(t, modified)
 
-	cm := reqBody["client_metadata"].(map[string]any)
+	cm, ok := reqBody["client_metadata"].(map[string]any)
+	require.True(t, ok)
 	convergedSession := resolveConvergedSessionID(account)
 
 	assert.Equal(t, convergedSession, cm["session_id"])
