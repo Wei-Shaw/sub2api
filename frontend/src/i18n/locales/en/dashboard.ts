@@ -178,9 +178,9 @@ export default {
         codexConfigTomlHint:
           'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
         note:
-          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml (endpoints/auth/models/session/features) as ~/.grok/config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml (endpoints/auth/models/session/features) as ~/.grok/config.toml, run grok inspect, then /model grok-4.6 (or grok-4.5 / grok-build-0.1 for coding).',
         noteWindows:
-          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.6 (or grok-4.5 / grok-build-0.1 for coding).',
         claudeNote:
           'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
         codexNote:

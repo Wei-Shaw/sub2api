@@ -49,6 +49,7 @@ describe('UseKeyModal', () => {
     const allCode = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
     expect(allCode).toContain('GROK_MODELS_BASE_URL')
     expect(allCode).toContain('XAI_API_KEY')
+    expect(allCode).toContain('[model."grok-4.6"]')
     expect(allCode).toContain('[model."grok-4.5"]')
     expect(allCode).toContain('[model."grok-build-0.1"]')
     expect(allCode).toContain('[model."grok-4.20-multi-agent-0309"]')
@@ -105,6 +106,8 @@ describe('UseKeyModal', () => {
       baseURL: 'https://example.com/v1',
       apiKey: 'sk-grok-test'
     })
+    expect(parsed.provider.grok.models['grok-4.6']).toBeDefined()
+    expect(parsed.provider.grok.models['grok-4.6'].limit.context).toBe(500000)
     expect(parsed.provider.grok.models['grok-4.5']).toBeDefined()
     expect(parsed.provider.grok.models['grok-4.5'].limit.context).toBe(500000)
     expect(parsed.provider.grok.models['grok-build-0.1']).toBeDefined()
