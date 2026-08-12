@@ -233,8 +233,11 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 		_, _, _ = sanitizeOpenAIResponsesToolParameterTypes(large)
 	})
 
-	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
-	require.Less(t, largeAllocs, smallAllocs+40,
+	// testing.AllocsPerRun measures process-wide runtime allocation activity. The
+	// full package suite can leave background workers alive, so CI needs enough
+	// headroom for unrelated allocations while still rejecting the old linear
+	// implementation (roughly one full rewrite/allocation per one of 2000 hits).
+	require.Less(t, largeAllocs, smallAllocs+200,
 		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
 
 	// 同时确认大 body 的结果确实全部修好了。
