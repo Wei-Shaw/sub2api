@@ -662,6 +662,14 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
+	channelCacheInvalidator ChannelCacheInvalidator
+REDACTED
+
+// ChannelCacheInvalidator 失效渠道缓存。
+// 窄接口，避免 admin 服务依赖整个 ChannelService——与 APIKeyAuthCacheInvalidator 同一思路。
+type ChannelCacheInvalidator interface {
+	InvalidateCache()
 REDACTED
 
 type adminRechargeAffiliateAccruer interface {
@@ -695,6 +703,7 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
+	channelCacheInvalidator ChannelCacheInvalidator,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -721,5 +730,7 @@ func NewAdminService(
 		affiliateService:     affiliateService,
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
+
+		channelCacheInvalidator: channelCacheInvalidator,
 REDACTED
 REDACTED
