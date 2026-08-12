@@ -33,11 +33,12 @@ return 0
 `)
 
 type OpsAlertEvaluatorService struct {
-	opsService   *OpsService
-	opsRepo      OpsRepository
-	emailService *EmailService
-	proxyRepo    ProxyRepository
-	web3Deposits web3deposit.AdminDepositReader
+	opsService        *OpsService
+	opsRepo           OpsRepository
+	emailService      *EmailService
+	proxyRepo         ProxyRepository
+	web3Deposits      web3deposit.AdminDepositReader
+	web3RuntimeHealth web3RuntimeHealthSource
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -48,8 +49,9 @@ type OpsAlertEvaluatorService struct {
 	stopOnce  sync.Once
 	wg        sync.WaitGroup
 
-	mu         sync.Mutex
-	ruleStates map[int64]*opsAlertRuleState
+	mu                       sync.Mutex
+	ruleStates               map[int64]*opsAlertRuleState
+	web3CreditFailureSamples []opsCounterSample
 
 	emailLimiter *slidingWindowLimiter
 
@@ -64,6 +66,15 @@ type opsAlertRuleState struct {
 	ConsecutiveBreaches int
 }
 
+type web3RuntimeHealthSource interface {
+	AllReady() bool
+}
+
+type opsCounterSample struct {
+	At    time.Time
+	Value uint64
+}
+
 func NewOpsAlertEvaluatorService(
 	opsService *OpsService,
 	opsRepo OpsRepository,
@@ -72,18 +83,20 @@ func NewOpsAlertEvaluatorService(
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 	web3Deposits web3deposit.AdminDepositReader,
+	web3RuntimeHealth web3RuntimeHealthSource,
 ) *OpsAlertEvaluatorService {
 	return &OpsAlertEvaluatorService{
-		opsService:   opsService,
-		opsRepo:      opsRepo,
-		emailService: emailService,
-		proxyRepo:    proxyRepo,
-		web3Deposits: web3Deposits,
-		redisClient:  redisClient,
-		cfg:          cfg,
-		instanceID:   uuid.NewString(),
-		ruleStates:   map[int64]*opsAlertRuleState{},
-		emailLimiter: newSlidingWindowLimiter(0, time.Hour),
+		opsService:        opsService,
+		opsRepo:           opsRepo,
+		emailService:      emailService,
+		proxyRepo:         proxyRepo,
+		web3Deposits:      web3Deposits,
+		web3RuntimeHealth: web3RuntimeHealth,
+		redisClient:       redisClient,
+		cfg:               cfg,
+		instanceID:        uuid.NewString(),
+		ruleStates:        map[int64]*opsAlertRuleState{},
+		emailLimiter:      newSlidingWindowLimiter(0, time.Hour),
 	}
 }
 
@@ -589,7 +602,11 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		if !s.web3AlertMetricsEnabled() {
 			return 0, false
 		}
-		if web3deposit.SnapshotRuntimeMetrics().RPCHealthy {
+		healthy := web3deposit.SnapshotRuntimeMetrics().RPCHealthy
+		if s != nil && s.web3RuntimeHealth != nil {
+			healthy = s.web3RuntimeHealth.AllReady()
+		}
+		if healthy {
 			return 0, true
 		}
 		return 1, true
@@ -607,7 +624,7 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 		if !s.web3AlertMetricsEnabled() {
 			return 0, false
 		}
-		return float64(web3deposit.SnapshotRuntimeMetrics().CreditFailures), true
+		return s.windowedWeb3CreditFailureDelta(start, end, web3deposit.SnapshotRuntimeMetrics().CreditFailures), true
 	case "web3_manual_review_count":
 		if !s.web3AlertMetricsEnabled() {
 			return 0, false
@@ -655,6 +672,46 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 	default:
 		return 0, false
 	}
+}
+
+func (s *OpsAlertEvaluatorService) windowedWeb3CreditFailureDelta(start, end time.Time, current uint64) float64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	previous := s.web3CreditFailureSamples
+	var baseline uint64
+	haveBaseline := false
+	for _, sample := range previous {
+		if !haveBaseline {
+			baseline = sample.Value
+			haveBaseline = true
+		}
+		if !sample.At.After(start) {
+			baseline = sample.Value
+		}
+	}
+
+	// The evaluator truncates window ends to the minute, so sub-minute runs can
+	// share an end timestamp. Keep the first counter value as their baseline.
+	if len(previous) == 0 || !previous[len(previous)-1].At.Equal(end) {
+		s.web3CreditFailureSamples = append(s.web3CreditFailureSamples, opsCounterSample{At: end, Value: current})
+	}
+	cutoff := end.Add(-7 * 24 * time.Hour)
+	firstRetained := 0
+	for firstRetained < len(s.web3CreditFailureSamples)-1 && s.web3CreditFailureSamples[firstRetained].At.Before(cutoff) {
+		firstRetained++
+	}
+	if firstRetained > 0 {
+		s.web3CreditFailureSamples = append([]opsCounterSample(nil), s.web3CreditFailureSamples[firstRetained:]...)
+	}
+
+	if !haveBaseline || current < baseline {
+		return 0
+	}
+	return float64(current - baseline)
 }
 
 func (s *OpsAlertEvaluatorService) web3AlertMetricsEnabled() bool {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
@@ -113,12 +114,31 @@ func (r *Web3DepositRepository) UpsertDetected(ctx context.Context, deposit depo
 		return depositdomain.Deposit{}, err
 	}
 	err = create.
-		OnConflictColumns(
-			web3deposit.FieldChainID,
-			web3deposit.FieldTxHash,
-			web3deposit.FieldLogIndex,
+		OnConflict(
+			entsql.ConflictColumns(
+				web3deposit.FieldChainID,
+				web3deposit.FieldTxHash,
+				web3deposit.FieldLogIndex,
+			),
+			entsql.ResolveWith(func(update *entsql.UpdateSet) {
+				for _, field := range []string{
+					web3deposit.FieldBlockNumber,
+					web3deposit.FieldBlockHash,
+					web3deposit.FieldFromAddress,
+					web3deposit.FieldToAddress,
+					web3deposit.FieldRawAmount,
+					web3deposit.FieldTokenDecimals,
+					web3deposit.FieldTokenAmount,
+				} {
+					update.SetExcluded(field)
+				}
+			}),
+			entsql.UpdateWhere(entsql.In(
+				web3deposit.FieldStatus,
+				string(depositdomain.DepositStatusDetected),
+				string(depositdomain.DepositStatusConfirming),
+			)),
 		).
-		DoNothing().
 		Exec(ctx)
 	if err != nil && !isSQLNoRowsError(err) {
 		return depositdomain.Deposit{}, fmt.Errorf("upsert detected web3 deposit: %w", err)
@@ -276,13 +296,21 @@ func (r *Web3DepositRepository) CountAdminDepositsByStatus(ctx context.Context) 
 
 func (r *Web3DepositRepository) CountAdminDepositsByStatusForTarget(ctx context.Context, chainID uint64, tokenContract string) (map[depositdomain.DepositStatus]int64, error) {
 	predicates := appendDepositTargetPredicates(nil, chainID, tokenContract)
-	entities, err := r.client.Web3Deposit.Query().Where(predicates...).Select(web3deposit.FieldStatus).All(ctx)
+	var rows []struct {
+		Status string `json:"status"`
+		Count  int64  `json:"count"`
+	}
+	err := r.client.Web3Deposit.Query().
+		Where(predicates...).
+		GroupBy(web3deposit.FieldStatus).
+		Aggregate(dbent.Count()).
+		Scan(ctx, &rows)
 	if err != nil {
 		return nil, fmt.Errorf("count admin web3 deposits by status: %w", err)
 	}
-	counts := make(map[depositdomain.DepositStatus]int64)
-	for _, entity := range entities {
-		counts[depositdomain.DepositStatus(entity.Status)]++
+	counts := make(map[depositdomain.DepositStatus]int64, len(rows))
+	for _, row := range rows {
+		counts[depositdomain.DepositStatus(row.Status)] = row.Count
 	}
 	return counts, nil
 }
@@ -337,8 +365,8 @@ func (r *Web3DepositRepository) RetryFailedDeposit(ctx context.Context, depositI
 	return nil
 }
 
-func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]depositdomain.Deposit, error) {
-	storedFromBlock, err := web3DepositUint64ToInt64(fromBlock, "finalizer from block")
+func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, chainID uint64, tokenContract string, toBlock uint64) ([]depositdomain.Deposit, error) {
+	storedChainID, err := web3DepositUint64ToInt64(chainID, "finalizer chain ID")
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +376,8 @@ func (r *Web3DepositRepository) ListPendingFinalization(ctx context.Context, fro
 	}
 	entities, err := r.client.Web3Deposit.Query().
 		Where(
-			web3deposit.BlockNumberGTE(storedFromBlock),
+			web3deposit.ChainIDEQ(storedChainID),
+			web3deposit.TokenContractEQ(strings.ToLower(strings.TrimSpace(tokenContract))),
 			web3deposit.BlockNumberLTE(storedToBlock),
 			web3deposit.StatusIn(
 				string(depositdomain.DepositStatusDetected),

@@ -256,8 +256,6 @@ func TestComputeRuleMetricNewIndicators(t *testing.T) {
 }
 
 func TestComputeRuleMetricWeb3DepositIndicators(t *testing.T) {
-	t.Parallel()
-
 	restore := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{
 		RPCHealthy:         false,
 		ScannerLagBlocks:   123,
@@ -285,7 +283,7 @@ func TestComputeRuleMetricWeb3DepositIndicators(t *testing.T) {
 		{metricType: "web3_rpc_unhealthy", want: 1},
 		{metricType: "web3_scanner_lag_blocks", want: 123},
 		{metricType: "web3_finalizer_lag_blocks", want: 45},
-		{metricType: "web3_credit_failures_total", want: 2},
+		{metricType: "web3_credit_failures_total", want: 0},
 		{metricType: "web3_manual_review_count", want: 11},
 	}
 
@@ -296,6 +294,64 @@ func TestComputeRuleMetricWeb3DepositIndicators(t *testing.T) {
 			require.True(t, ok)
 			require.InDelta(t, tt.want, got, 0.0001)
 		})
+	}
+}
+
+func TestComputeRuleMetricUsesLiveWeb3RPCHealth(t *testing.T) {
+	restore := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{RPCHealthy: true})
+	defer restore()
+	svc := &OpsAlertEvaluatorService{
+		cfg:               web3AlertTestConfig(true),
+		web3RuntimeHealth: web3RuntimeHealthStub(false),
+	}
+	now := time.Now().UTC()
+
+	got, ok := svc.computeRuleMetric(context.Background(), &OpsAlertRule{MetricType: "web3_rpc_unhealthy"}, nil, now.Add(-time.Minute), now, "", nil)
+
+	require.True(t, ok)
+	require.Equal(t, float64(1), got)
+}
+
+func TestComputeRuleMetricUsesWindowedWeb3CreditFailureDelta(t *testing.T) {
+	restoreInitial := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 2})
+	defer restoreInitial()
+	svc := &OpsAlertEvaluatorService{cfg: web3AlertTestConfig(true)}
+	rule := &OpsAlertRule{MetricType: "web3_credit_failures_total"}
+	base := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+
+	first, ok := svc.computeRuleMetric(context.Background(), rule, nil, base.Add(-time.Minute), base, "", nil)
+	require.True(t, ok)
+	require.Zero(t, first)
+
+	restoreIncrement := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 5})
+	defer restoreIncrement()
+	second, ok := svc.computeRuleMetric(context.Background(), rule, nil, base, base.Add(time.Minute), "", nil)
+	require.True(t, ok)
+	require.Equal(t, float64(3), second)
+
+	third, ok := svc.computeRuleMetric(context.Background(), rule, nil, base.Add(time.Minute), base.Add(2*time.Minute), "", nil)
+	require.True(t, ok)
+	require.Zero(t, third)
+}
+
+func TestComputeRuleMetricPreservesWeb3CreditFailureDeltaWithinSameMinute(t *testing.T) {
+	restoreInitial := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 2})
+	defer restoreInitial()
+	svc := &OpsAlertEvaluatorService{cfg: web3AlertTestConfig(true)}
+	rule := &OpsAlertRule{MetricType: "web3_credit_failures_total"}
+	windowEnd := time.Date(2026, time.August, 12, 12, 0, 0, 0, time.UTC)
+	windowStart := windowEnd.Add(-time.Minute)
+
+	initial, ok := svc.computeRuleMetric(context.Background(), rule, nil, windowStart, windowEnd, "", nil)
+	require.True(t, ok)
+	require.Zero(t, initial)
+
+	restoreIncrement := web3deposit.SetRuntimeMetricsForTest(web3deposit.RuntimeMetricsSnapshot{CreditFailures: 5})
+	defer restoreIncrement()
+	for evaluation := 1; evaluation <= 3; evaluation++ {
+		breach, ok := svc.computeRuleMetric(context.Background(), rule, nil, windowStart, windowEnd, "", nil)
+		require.True(t, ok)
+		require.Equal(t, float64(3), breach, "evaluation %d should retain the original window baseline", evaluation)
 	}
 }
 
@@ -331,6 +387,10 @@ type web3DepositStatusCounterStub struct {
 	counts map[web3deposit.DepositStatus]int64
 	err    error
 }
+
+type web3RuntimeHealthStub bool
+
+func (s web3RuntimeHealthStub) AllReady() bool { return bool(s) }
 
 func (s *web3DepositStatusCounterStub) ListAdminDeposits(context.Context, web3deposit.AdminDepositFilter) ([]web3deposit.Deposit, int64, error) {
 	return nil, 0, nil

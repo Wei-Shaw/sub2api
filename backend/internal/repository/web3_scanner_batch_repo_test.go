@@ -70,13 +70,14 @@ func TestWeb3ScannerBatchRepositoryRollsBackDepositsWhenBatchWriteFails(t *testi
 	ctx := context.Background()
 	now := time.Date(2026, time.August, 8, 10, 0, 0, 0, time.UTC)
 	initializeScannerBatchCursor(t, cursorRepo, ctx, now)
-	invalid := testWeb3ScannerBatchMatch(t, 8, 0)
+	invalid := testWeb3ScannerBatchMatch(t, 8, 1_000_000)
+	invalid.Event.ID.ChainID = 71
 
 	deposits, err := batchRepo.CommitDetectedBatch(ctx, testWeb3ScannerBatch(t, now,
 		testWeb3ScannerBatchMatch(t, 7, 1_000_000),
 		invalid,
 	))
-	require.ErrorIs(t, err, web3deposit.ErrRawAmountZero)
+	require.ErrorIs(t, err, web3deposit.ErrDepositEventChainMismatch)
 	require.Nil(t, deposits)
 	assertWeb3ScannerBatchRolledBack(t, client, cursorRepo, ctx)
 }

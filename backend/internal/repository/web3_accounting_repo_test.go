@@ -54,6 +54,30 @@ func TestWeb3AccountingTransferRejectsAnotherUsersIdempotencyKey(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestWeb3AccountingTransferLocksUserBeforeWeb3Balance(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id,user_id,web3_balance_id").WithArgs("request-key").WillReturnRows(sqlmock.NewRows([]string{
+		"id", "user_id", "web3_balance_id", "amount", "web3_balance_before", "web3_balance_after",
+		"user_balance_before", "user_balance_after", "idempotency_key", "metadata", "created_at",
+	}))
+	mock.ExpectQuery("FROM users WHERE id = \\$1 FOR UPDATE").WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{
+		"balance", "total_recharged", "status", "deleted_at",
+	}).AddRow("10.00000000", "2.00000000", "active", nil))
+	mock.ExpectQuery("FROM web3_user_balances").WithArgs(int64(42), web3deposit.AssetKeyUSDT).WillReturnError(errors.New("balance unavailable"))
+	mock.ExpectRollback()
+
+	repo := NewWeb3AccountingRepository(db)
+	_, err = repo.TransferToMainBalance(context.Background(), web3deposit.TransferToMainBalanceRequest{
+		UserID: 42, AssetKey: web3deposit.AssetKeyUSDT, Amount: "1", IdempotencyKey: "request-key",
+	})
+
+	require.ErrorContains(t, err, "lock web3 balance for transfer")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestWeb3CreditJobRetryRejectsStaleClaim(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

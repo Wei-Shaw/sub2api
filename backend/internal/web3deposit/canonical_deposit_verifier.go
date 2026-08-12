@@ -12,7 +12,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-var ErrCanonicalDepositSourceInvalid = errors.New("canonical deposit source is invalid")
+var (
+	ErrCanonicalDepositSourceInvalid = errors.New("canonical deposit source is invalid")
+	ErrCanonicalDataUnavailable      = errors.New("canonical deposit data is temporarily unavailable")
+)
 
 type CanonicalMismatchReason string
 
@@ -62,7 +65,7 @@ func (v *CanonicalDepositVerifier) Verify(ctx context.Context, deposit Deposit) 
 		return CanonicalDepositVerification{}, fmt.Errorf("read canonical deposit block: %w", err)
 	}
 	if !found {
-		return canonicalMismatch(CanonicalMismatchBlockMissing), nil
+		return CanonicalDepositVerification{}, fmt.Errorf("%w: block %d is missing", ErrCanonicalDataUnavailable, deposit.BlockNumber)
 	}
 	storedBlockHash := common.HexToHash(deposit.BlockHash)
 	if canonicalHash != storedBlockHash {
@@ -74,7 +77,7 @@ func (v *CanonicalDepositVerifier) Verify(ctx context.Context, deposit Deposit) 
 		return CanonicalDepositVerification{}, fmt.Errorf("read canonical deposit receipt: %w", err)
 	}
 	if !found {
-		return canonicalMismatch(CanonicalMismatchReceiptMissing), nil
+		return CanonicalDepositVerification{}, fmt.Errorf("%w: receipt %s is missing", ErrCanonicalDataUnavailable, deposit.TxHash)
 	}
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		return canonicalMismatch(CanonicalMismatchReceiptFailed), nil

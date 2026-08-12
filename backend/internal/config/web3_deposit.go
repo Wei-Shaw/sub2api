@@ -270,6 +270,9 @@ func normalizeAndValidateWeb3DepositAssets(path string, network *Web3DepositNetw
 		if asset.Decimals < 0 || asset.Decimals > maxWeb3DepositTokenDecimals {
 			return fmt.Errorf("%s.decimals must be between 0 and %d", assetPath, maxWeb3DepositTokenDecimals)
 		}
+		if network.Enabled && asset.Decimals != DefaultWeb3DepositTokenDecimals {
+			return fmt.Errorf("%s.decimals must be %d while web3 deposits support six-decimal assets", assetPath, DefaultWeb3DepositTokenDecimals)
+		}
 
 		maximumRuleScale := asset.Decimals
 		if maximumRuleScale > web3DepositBalanceScale {

@@ -134,6 +134,7 @@ const balances = ref<Web3UserBalance[]>([])
 const balanceLoading = ref(true)
 const showTransfer = ref(false)
 const transferAmount = ref('')
+const transferIdempotencyKey = ref('')
 const transferring = ref(false)
 const network = computed(() => config.value?.networks.find(item => item.key === selectedNetworkKey.value) || config.value?.networks[0])
 const asset = computed(() => network.value?.assets.find(item => item.key === selectedAssetKey.value) || network.value?.assets[0])
@@ -157,6 +158,10 @@ watch(network, value => {
 watch([selectedNetworkKey, selectedAssetKey], ([networkKey, assetKey]) => {
   if (!selectionReady.value || !networkKey || !assetKey) return
   void router.replace({ query: { ...route.query, network: networkKey, asset: assetKey } })
+})
+
+watch([balanceAssetKey, transferAmount], () => {
+  transferIdempotencyKey.value = ''
 })
 const unavailableMessage = computed(() => {
   if (!config.value || config.value.enabled) return ''
@@ -196,6 +201,7 @@ async function loadBalances() {
 
 function openTransfer() {
   transferAmount.value = ''
+  transferIdempotencyKey.value = ''
   showTransfer.value = true
 }
 
@@ -203,6 +209,7 @@ function closeTransfer() {
   if (transferring.value) return
   showTransfer.value = false
   transferAmount.value = ''
+  transferIdempotencyKey.value = ''
 }
 
 function fillAllBalance() {
@@ -211,13 +218,17 @@ function fillAllBalance() {
 
 async function submitTransfer() {
   if (!validTransferAmount.value || transferring.value) return
+  if (!transferIdempotencyKey.value) {
+    transferIdempotencyKey.value = crypto.randomUUID()
+  }
   transferring.value = true
   try {
-    await web3DepositAPI.transferBalance(balanceAssetKey.value, transferAmount.value, crypto.randomUUID())
+    await web3DepositAPI.transferBalance(balanceAssetKey.value, transferAmount.value, transferIdempotencyKey.value)
     await loadBalances()
     await authStore.refreshUser().catch(() => undefined)
     showTransfer.value = false
     transferAmount.value = ''
+    transferIdempotencyKey.value = ''
     appStore.showSuccess(t('web3Deposit.transferSuccess'))
   } catch (error) {
     appStore.showError(extractI18nErrorMessage(error, t, 'web3Deposit.errors', t('web3Deposit.errors.transferFailed')))

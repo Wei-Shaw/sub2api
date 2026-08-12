@@ -37,6 +37,7 @@ type confluxRPCEndpoint struct {
 	id             string
 	client         confluxRPCCaller
 	unhealthyUntil time.Time
+	quarantined    bool
 }
 
 type confluxRPCCaller interface {
@@ -139,7 +140,7 @@ func (p *ConfluxRPCPool) EndpointStates() []ConfluxRPCEndpointState {
 	for _, endpoint := range p.endpoints {
 		states = append(states, ConfluxRPCEndpointState{
 			ID:             endpoint.id,
-			Healthy:        endpoint.client != nil && !endpoint.unhealthyUntil.After(now),
+			Healthy:        endpoint.client != nil && !endpoint.quarantined && !endpoint.unhealthyUntil.After(now),
 			UnhealthyUntil: endpoint.unhealthyUntil,
 		})
 	}
@@ -174,6 +175,9 @@ func (p *ConfluxRPCPool) candidates() []*confluxRPCEndpoint {
 		if endpoint.client == nil {
 			continue
 		}
+		if endpoint.quarantined {
+			continue
+		}
 		if endpoint.unhealthyUntil.After(now) {
 			unhealthy = append(unhealthy, endpoint)
 			continue
@@ -188,6 +192,20 @@ func (p *ConfluxRPCPool) candidates() []*confluxRPCEndpoint {
 
 func (p *ConfluxRPCPool) markHealthy(endpoint *confluxRPCEndpoint) {
 	p.mu.Lock()
+	endpoint.unhealthyUntil = time.Time{}
+	p.mu.Unlock()
+}
+
+func (p *ConfluxRPCPool) markVerifiedHealthy(endpoint *confluxRPCEndpoint) {
+	p.mu.Lock()
+	endpoint.quarantined = false
+	endpoint.unhealthyUntil = time.Time{}
+	p.mu.Unlock()
+}
+
+func (p *ConfluxRPCPool) quarantine(endpoint *confluxRPCEndpoint) {
+	p.mu.Lock()
+	endpoint.quarantined = true
 	endpoint.unhealthyUntil = time.Time{}
 	p.mu.Unlock()
 }

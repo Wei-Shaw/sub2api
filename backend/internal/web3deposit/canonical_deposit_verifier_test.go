@@ -42,9 +42,7 @@ func TestCanonicalDepositVerifierRejectsCanonicalMismatches(t *testing.T) {
 		mutate     func(*canonicalDepositSourceStub)
 		wantReason CanonicalMismatchReason
 	}{
-		{name: "block missing", mutate: func(source *canonicalDepositSourceStub) { source.blockFound = boolPointer(false) }, wantReason: CanonicalMismatchBlockMissing},
 		{name: "block hash", mutate: func(source *canonicalDepositSourceStub) { source.blockHash = common.HexToHash("0x02") }, wantReason: CanonicalMismatchBlockHash},
-		{name: "receipt missing", mutate: func(source *canonicalDepositSourceStub) { source.receiptFound = boolPointer(false) }, wantReason: CanonicalMismatchReceiptMissing},
 		{name: "receipt failed", mutate: func(source *canonicalDepositSourceStub) { source.receipt.Status = types.ReceiptStatusFailed }, wantReason: CanonicalMismatchReceiptFailed},
 		{name: "receipt block hash", mutate: func(source *canonicalDepositSourceStub) { source.receipt.BlockHash = common.HexToHash("0x03") }, wantReason: CanonicalMismatchReceiptBlockHash},
 		{name: "log missing", mutate: func(source *canonicalDepositSourceStub) { source.receipt.Logs = nil }, wantReason: CanonicalMismatchTransferLogMissing},
@@ -78,6 +76,37 @@ func TestCanonicalDepositVerifierRejectsCanonicalMismatches(t *testing.T) {
 			require.NoError(t, err)
 			require.False(t, result.Valid)
 			require.Equal(t, test.wantReason, result.Reason)
+		})
+	}
+}
+
+func TestCanonicalDepositVerifierRetriesMissingCanonicalData(t *testing.T) {
+	deposit := canonicalVerifierDeposit()
+	tests := []struct {
+		name   string
+		mutate func(*canonicalDepositSourceStub)
+	}{
+		{name: "block missing", mutate: func(source *canonicalDepositSourceStub) { source.blockFound = boolPointer(false) }},
+		{name: "receipt missing", mutate: func(source *canonicalDepositSourceStub) { source.receiptFound = boolPointer(false) }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := canonicalDepositSourceStub{
+				blockHash: common.HexToHash(deposit.BlockHash),
+				receipt: CanonicalReceipt{
+					Status:    types.ReceiptStatusSuccessful,
+					BlockHash: common.HexToHash(deposit.BlockHash),
+					Logs:      []types.Log{canonicalVerifierTransferLog(deposit)},
+				},
+			}
+			test.mutate(&source)
+			verifier, err := NewCanonicalDepositVerifier(source)
+			require.NoError(t, err)
+
+			_, err = verifier.Verify(context.Background(), deposit)
+
+			require.ErrorIs(t, err, ErrCanonicalDataUnavailable)
 		})
 	}
 }

@@ -13,7 +13,7 @@ var (
 )
 
 type PendingFinalizationSource interface {
-	ListPendingFinalization(ctx context.Context, fromBlock, toBlock uint64) ([]Deposit, error)
+	ListPendingFinalization(ctx context.Context, chainID uint64, tokenContract string, toBlock uint64) ([]Deposit, error)
 }
 
 type FinalizerOptions struct {
@@ -84,7 +84,12 @@ func (f *Finalizer) FinalizeNext(ctx context.Context, leaseToken string, now tim
 	targetBlock := min(finalizedHead, cursor.LastScannedBlock)
 	fromBlock := cursor.LastFinalizedBlock
 	toBlock := finalizerBatchEnd(fromBlock, targetBlock, f.options.BlockBatchSize)
-	candidates, err := f.pending.ListPendingFinalization(ctx, fromBlock, toBlock)
+	candidates, err := f.pending.ListPendingFinalization(
+		ctx,
+		f.options.ChainConfig.ChainID,
+		normalizeEVMAddress(f.options.ChainConfig.TokenAddress),
+		toBlock,
+	)
 	if err != nil {
 		return FinalizerResult{}, fmt.Errorf("list pending web3 deposits for finalization: %w", err)
 	}

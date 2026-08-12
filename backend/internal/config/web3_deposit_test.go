@@ -279,6 +279,20 @@ func TestValidateWeb3DepositConfigAssetRules(t *testing.T) {
 		cfg.Networks[DefaultWeb3DepositNetworkKey] = network
 		require.ErrorContains(t, validateWeb3DepositConfig(&cfg), "duplicates asset")
 	})
+
+	t.Run("unsupported decimals on additional enabled asset", func(t *testing.T) {
+		cfg := validWeb3DepositConfig(t)
+		network := cfg.Networks[DefaultWeb3DepositNetworkKey]
+		network.Assets["unsupported"] = Web3DepositAssetConfig{
+			ContractAddress: "0x1111111111111111111111111111111111111111",
+			Decimals:        18,
+			MinimumDeposit:  "1",
+			AutoCreditLimit: "10000",
+		}
+		cfg.Networks[DefaultWeb3DepositNetworkKey] = network
+
+		require.ErrorContains(t, validateWeb3DepositConfig(&cfg), "decimals must be 6")
+	})
 }
 
 func TestValidateWeb3DepositConfigConfluxIdentity(t *testing.T) {
