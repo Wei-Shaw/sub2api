@@ -55,6 +55,7 @@ const DefaultTextModel = "grok-4.5"
 
 // Official Imagine model IDs (https://docs.x.ai/docs/models).
 const (
+	DefaultImagineImage20Model       = "grok-imagine-image-2.0"
 	DefaultImagineImageQualityModel  = "grok-imagine-image-quality"
 	DefaultImagineImageFastModel     = "grok-imagine-image"
 	DefaultImagineVideoModel         = "grok-imagine-video"
@@ -94,6 +95,7 @@ var defaultModels = []Model{
 	{ID: "grok-4.20-0309-non-reasoning", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Non Reasoning"},
 	{ID: "grok-4.20-multi-agent-0309", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.20 Multi Agent"},
 	// Imagine
+	{ID: DefaultImagineImage20Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image 2.0"},
 	{ID: DefaultImagineImageQualityModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image Quality"},
 	{ID: DefaultImagineImageFastModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image"},
 	{ID: DefaultImagineVideoModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video"},
@@ -174,6 +176,7 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 	// Backward-compatible client alias; xAI exposes image editing through the
 	// image-quality model rather than a separate grok-imagine-edit model.
 	mapping["grok-imagine-edit"] = DefaultImagineImageQualityModel
+	mapping["grok-imagine-image-2.0"] = DefaultImagineImage20Model
 	mapping["grok-imagine-image"] = DefaultImagineImageFastModel
 	mapping["grok-imagine-image-quality"] = DefaultImagineImageQualityModel
 	// Keep official IDs as identity so client-requested model strings are not

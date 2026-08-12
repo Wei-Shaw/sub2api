@@ -102,6 +102,23 @@ func TestGrokMediaCapabilityFiltersOnlyGeneration(t *testing.T) {
 	))
 }
 
+func TestGrokImagineImage20DefaultMappingIsSchedulable(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformGrok,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+
+	require.True(t, account.IsModelSupported(xai.DefaultImagineImage20Model))
+	require.Equal(t, xai.DefaultImagineImage20Model, account.GetMappedModel(xai.DefaultImagineImage20Model))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(
+		context.Background(), account, PlatformGrok, xai.DefaultImagineImage20Model, false,
+		OpenAIEndpointCapabilityGrokMediaGeneration,
+	))
+}
+
 func TestNormalizeGrokMediaEligibilityExtra(t *testing.T) {
 	t.Run("boolean override is accepted", func(t *testing.T) {
 		extra, err := normalizeGrokMediaEligibilityExtra(PlatformGrok, map[string]any{GrokMediaEligibleExtraKey: false})

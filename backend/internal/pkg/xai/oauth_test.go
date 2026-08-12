@@ -366,6 +366,7 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine"])
 	require.Equal(t, DefaultImagineImageFastModel, mapping["grok-imagine-image"])
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-image-quality"])
+	require.Equal(t, DefaultImagineImage20Model, mapping["grok-imagine-image-2.0"])
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-edit"])
 	require.Equal(t, DefaultImagineVideoModel, mapping["grok-imagine-video"])
 	require.Equal(t, DefaultImagineVideo15LegacyModel, mapping["grok-imagine-video-1.5"])

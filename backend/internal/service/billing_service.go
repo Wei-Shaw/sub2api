@@ -1531,12 +1531,15 @@ type VideoPriceConfig struct {
 const (
 	defaultImageGenerationPrice = 0.134
 
-	defaultGrokImagineImagePrice1K        = 0.02
-	defaultGrokImagineImagePrice2K        = 0.02
-	defaultGrokImagineImageQualityPrice1K = 0.05
-	defaultGrokImagineImageQualityPrice2K = 0.07
-	defaultGrokImagineImage20Price1K      = 0.06 // default quality is Medium
-	defaultGrokImagineImage20Price2K      = 0.08
+	defaultGrokImagineImagePrice1K         = 0.02
+	defaultGrokImagineImagePrice2K         = 0.02
+	defaultGrokImagineImageQualityPrice1K  = 0.05
+	defaultGrokImagineImageQualityPrice2K  = 0.07
+	defaultGrokImagineImage20InputPrice    = 0.01
+	defaultGrokImagineImage20LowPrice1K    = 0.04
+	defaultGrokImagineImage20LowPrice2K    = 0.06
+	defaultGrokImagineImage20MediumPrice1K = 0.06
+	defaultGrokImagineImage20MediumPrice2K = 0.08
 
 	// 视频默认价为 xAI 官方**每秒**输出价格（USD/s），总价 = 每秒价 × 时长（秒）。
 	defaultGrokImagineVideoPrice480P    = 0.05
@@ -1664,16 +1667,36 @@ func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64
 // groupConfig: 分组配置的价格（可能为 nil，表示使用默认值）
 // rateMultiplier: 费率倍数
 func (s *BillingService) CalculateImageCost(model string, imageSize string, imageCount int, groupConfig *ImagePriceConfig, rateMultiplier float64) *CostBreakdown {
+	return s.CalculateImageCostWithDetails(model, imageSize, "", imageCount, 0, groupConfig, rateMultiplier)
+}
+
+// CalculateImageCostWithDetails extends image billing with the quality and
+// input-image dimensions used by grok-imagine-image-2.0. Older image models
+// retain the legacy output-only behavior.
+func (s *BillingService) CalculateImageCostWithDetails(
+	model string,
+	imageSize string,
+	quality string,
+	imageCount int,
+	inputImageCount int,
+	groupConfig *ImagePriceConfig,
+	rateMultiplier float64,
+) *CostBreakdown {
 	if imageCount <= 0 {
 		return &CostBreakdown{}
 	}
 	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
 
 	// 获取单价
-	unitPrice := s.getImageUnitPrice(model, imageSize, groupConfig)
+	unitPrice := s.getImageUnitPriceWithQuality(model, imageSize, quality, groupConfig)
 
 	// 计算总费用
-	totalCost := unitPrice * float64(imageCount)
+	imageOutputCost := unitPrice * float64(imageCount)
+	imageInputCost := 0.0
+	if isGrokImagineImage20Model(model) && inputImageCount > 0 {
+		imageInputCost = defaultGrokImagineImage20InputPrice * float64(inputImageCount)
+	}
+	totalCost := imageOutputCost + imageInputCost
 
 	// 应用倍率（保存时强制 > 0；负数按 0 处理避免按 1x 误扣）
 	if rateMultiplier < 0 {
@@ -1681,11 +1704,16 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 	}
 	actualCost := totalCost * rateMultiplier
 
-	return &CostBreakdown{
+	breakdown := &CostBreakdown{
 		TotalCost:   totalCost,
 		ActualCost:  actualCost,
 		BillingMode: string(BillingModeImage),
 	}
+	if isGrokImagineImage20Model(model) {
+		breakdown.ImageInputCost = imageInputCost
+		breakdown.ImageOutputCost = imageOutputCost
+	}
+	return breakdown
 }
 
 // CalculateVideoCost 计算视频生成费用（按秒计费，与 xAI 口径一致）。
@@ -1717,8 +1745,7 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 	}
 }
 
-// getImageUnitPrice 获取图片单价
-func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
+func (s *BillingService) getImageUnitPriceWithQuality(model string, imageSize string, quality string, groupConfig *ImagePriceConfig) float64 {
 	// 优先使用分组配置的价格
 	if groupConfig != nil {
 		switch imageSize {
@@ -1738,7 +1765,7 @@ func (s *BillingService) getImageUnitPrice(model string, imageSize string, group
 	}
 
 	// 回退到 LiteLLM 默认价格
-	return s.getDefaultImagePrice(model, imageSize)
+	return s.getDefaultImagePriceWithQuality(model, imageSize, quality)
 }
 
 func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
@@ -1768,7 +1795,11 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格
 func (s *BillingService) getDefaultImagePrice(model string, imageSize string) float64 {
-	if price, ok := getDefaultGrokImagineImagePrice(model, imageSize); ok {
+	return s.getDefaultImagePriceWithQuality(model, imageSize, "")
+}
+
+func (s *BillingService) getDefaultImagePriceWithQuality(model string, imageSize string, quality string) float64 {
+	if price, ok := getDefaultGrokImagineImagePriceWithQuality(model, imageSize, quality); ok {
 		return price
 	}
 
@@ -1810,14 +1841,21 @@ func (s *BillingService) getDefaultVideoPrice(model string, resolution string) f
 	return s.getDefaultImagePrice(model, ImageBillingSize2K)
 }
 
-func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, bool) {
-	model = strings.ToLower(strings.TrimSpace(model))
+func getDefaultGrokImagineImagePriceWithQuality(model string, imageSize string, quality string) (float64, bool) {
+	model = normalizeGrokImagineBillingModel(model)
 	switch model {
 	case "grok-imagine-image-2.0":
+		if NormalizeGrokImagineImageQualityOrDefault(quality) == GrokImagineImageQualityLow {
+			return getGrokImagineImageTierPrice(
+				imageSize,
+				defaultGrokImagineImage20LowPrice1K,
+				defaultGrokImagineImage20LowPrice2K,
+			), true
+		}
 		return getGrokImagineImageTierPrice(
 			imageSize,
-			defaultGrokImagineImage20Price1K,
-			defaultGrokImagineImage20Price2K,
+			defaultGrokImagineImage20MediumPrice1K,
+			defaultGrokImagineImage20MediumPrice2K,
 		), true
 	case "grok-imagine-image-quality":
 		return getGrokImagineImageTierPrice(
@@ -1834,6 +1872,26 @@ func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, b
 	default:
 		return 0, false
 	}
+}
+
+func normalizeGrokImagineBillingModel(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	for _, prefix := range []string{"xai/", "x-ai/", "grok/"} {
+		model = strings.TrimPrefix(model, prefix)
+	}
+	return model
+}
+
+func isGrokImagineImage20Model(model string) bool {
+	return normalizeGrokImagineBillingModel(model) == "grok-imagine-image-2.0"
+}
+
+func grokImagineImagePricingTier(model string, imageSize string, quality string) string {
+	imageSize = NormalizeImageBillingTierOrDefault(imageSize)
+	if !isGrokImagineImage20Model(model) {
+		return imageSize
+	}
+	return imageSize + "-" + NormalizeGrokImagineImageQualityOrDefault(quality)
 }
 
 func getGrokImagineImageTierPrice(imageSize string, price1K float64, price2K float64) float64 {

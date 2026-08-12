@@ -174,6 +174,7 @@ func TestGetRequestTierPrice(t *testing.T) {
 
 	require.InDelta(t, 0.04, r.GetRequestTierPrice(resolved, "1K"), 1e-12)
 	require.InDelta(t, 0.08, r.GetRequestTierPrice(resolved, "2K"), 1e-12)
+	require.InDelta(t, 0.08, r.GetRequestTierPrice(resolved, " 2k "), 1e-12)
 	require.InDelta(t, 0.0, r.GetRequestTierPrice(resolved, "4K"), 1e-12)
 }
 
