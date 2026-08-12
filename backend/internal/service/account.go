@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -1289,11 +1290,19 @@ func (a *Account) IsOpenAIApiKey() bool {
 }
 
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() {
+	if !a.IsOpenAI() && !a.IsMiniMax() {
 		return ""
 	}
 	if a.Type == AccountTypeAPIKey {
-		baseURL := a.GetCredential("base_url")
+		baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+		if a.IsMiniMax() {
+			switch strings.TrimRight(baseURL, "/") {
+			case "", strings.TrimRight(minimax.DefaultAnthropicBaseURL, "/"):
+				return minimax.DefaultOpenAIBaseURL
+			case strings.TrimRight(minimax.CNAnthropicBaseURL, "/"):
+				return minimax.CNOpenAIBaseURL
+			}
+		}
 		if baseURL != "" {
 			return baseURL
 		}
@@ -1405,7 +1414,7 @@ func (a *Account) GetOpenAIIDToken() string {
 }
 
 func (a *Account) GetOpenAIApiKey() string {
-	if !a.IsOpenAIApiKey() {
+	if !a.IsOpenAIApiKey() && !(a.IsMiniMax() && a.Type == AccountTypeAPIKey) {
 		return ""
 	}
 	return a.GetCredential("api_key")
