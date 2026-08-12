@@ -32,6 +32,7 @@ const messages: Record<string, string> = {
   'admin.dashboard.day': 'Day',
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
+	'admin.usage.requestId': 'Request ID',
 	'usage.requestedModel': 'Requested model',
 	'usage.sentUpstreamModel': 'Sent upstream model',
 	'usage.upstreamResponseModel': 'Upstream response model',
@@ -133,6 +134,7 @@ const UsageFiltersStub = defineComponent({
   template: '<div><span data-test="user-filter-label">{{ userKeyword }}</span><slot name="after-reset" /></div>',
 })
 const UsageTableStub = {
+  props: ['columns'],
   emits: ['userClick'],
   template: '<div data-test="usage-table"><button class="user-click" @click="$emit(\'userClick\', 2)">user</button></div>',
 }
@@ -390,6 +392,70 @@ describe('admin UsageView distribution metric toggles', () => {
     expect(modelChart.find('.metric').text()).toBe('actual_cost')
     expect(groupChart.find('.metric').text()).toBe('actual_cost')
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('admin UsageView request ID column visibility', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.mocked(localStorage.getItem).mockReset().mockReturnValue(null)
+    vi.mocked(localStorage.setItem).mockReset()
+    list.mockReset().mockResolvedValue({ items: [], total: 0, pages: 0 })
+    getStats.mockReset().mockResolvedValue({
+      total_requests: 0, total_input_tokens: 0, total_output_tokens: 0,
+      total_cache_tokens: 0, total_tokens: 0, total_cost: 0, total_actual_cost: 0, average_duration_ms: 0,
+    })
+    getSnapshotV2.mockReset().mockResolvedValue({ trend: [], models: [], groups: [] })
+    getModelStats.mockReset().mockResolvedValue({ models: [] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('keeps request ID hidden by default and allows enabling it from column settings', async () => {
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: UsageTableStub,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          AuditLogModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+          UserTokenRanking: true,
+        },
+      },
+    })
+    await wrapper.vm.$nextTick()
+
+    const usageTable = wrapper.findComponent(UsageTableStub)
+    expect(usageTable.props('columns')).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'request_id' })]),
+    )
+
+    await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
+    const requestIdToggle = wrapper.findAll('button').find((button) => button.text() === 'Request ID')
+    expect(requestIdToggle).toBeDefined()
+    await requestIdToggle!.trigger('click')
+
+    expect(usageTable.props('columns')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'request_id', label: 'Request ID' })]),
+    )
+    expect(localStorage.setItem).toHaveBeenCalledWith(
+      'usage-hidden-columns-version',
+      'request-id-hidden-by-default',
+    )
   })
 })
 
