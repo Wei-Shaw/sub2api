@@ -694,54 +694,6 @@ type recordUsageCoreInput struct {
 	ChannelUsageFields
 }
 
-// responseModelBillingCostEpsilon 吸收两次成本计算之间的浮点末位误差，
-// 避免同价模型因浮点误差被判成"更贵"而白白放弃采纳。
-const responseModelBillingCostEpsilon = 1e-12
-
-// responseModelBillingDeclaration 返回可用于计费的上游响应模型；返回空字符串表示
-// 必须沿用基线计费模型。两条计费主干（Anthropic 系 / OpenAI 系）共用本准入判断。
-//
-// 渠道把 billing_model_source 设为 response_model，等于把"按哪个模型计价"的一部分
-// 决定权交给上游，因此准入条件必须收紧：
-//   - 只在渠道显式开启该模式时生效，其余模式一律不看响应模型；
-//   - 一次请求内出现过互相冲突的模型声明时不采纳（无法确定上游究竟服务了哪个模型）；
-//   - 图片 / 视频 / 网页搜索这类按次计费的请求不采纳：它们按张、按秒、按次定价，
-//     与本模式的 token 定价准入检查不是同一套价格表，混用会让一个只验过 token 价的
-//     模型名去决定媒体单价。
-//
-// 调用方还必须额外满足两条：模型能被价格表确定性识别（见
-// hasIdentifiedResponseModelPricing / hasIdentifiedOpenAIResponsePricing），以及
-// 重算成本不高于基线成本——上游声明永远不能抬高用户费用。
-func responseModelBillingDeclaration(source, responseModel string, conflict, mediaBilled bool) string {
-	if source != BillingModelSourceResponse || conflict || mediaBilled {
-		return ""
-	}
-	return strings.TrimSpace(responseModel)
-}
-
-// logResponseModelBillingApplied 记录一次实际生效的响应模型计费切换。
-// 本模式下的少收由上游声明驱动，必须留下可审计痕迹；计费基准未变时不记录，避免刷屏。
-func logResponseModelBillingApplied(component string, account *Account, requestID, baselineModel, responseModel string, baselineCost, responseCost *CostBreakdown) {
-	baselineModel = strings.TrimSpace(baselineModel)
-	responseModel = strings.TrimSpace(responseModel)
-	if strings.EqualFold(baselineModel, responseModel) {
-		return
-	}
-	attrs := []any{
-		"component", component,
-		"request_id", strings.TrimSpace(requestID),
-		"baseline_model", baselineModel,
-		"response_model", responseModel,
-	}
-	if baselineCost != nil && responseCost != nil {
-		attrs = append(attrs, "baseline_cost", baselineCost.TotalCost, "billed_cost", responseCost.TotalCost)
-	}
-	if account != nil {
-		attrs = append(attrs, "platform", account.Platform, "account_id", account.ID)
-	}
-	slog.Info("billing.response_model_applied", attrs...)
-}
-
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
 // LongContextThreshold > 0 时 Token 计费回退走 CalculateCostWithLongContext。
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
@@ -814,22 +766,18 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 计算费用
 	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
-	// response_model：按上游成功响应自报的模型计费（渠道显式开启才生效）。
-	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedResponseModelPricing，
-	// 且重算成本不得高于基线——上游声明永远不能抬高用户费用。任一条件不满足都静默
-	// 回落基线，即开启本模式前的既有行为。
-	if responseModel := responseModelBillingDeclaration(
-		input.BillingModelSource,
-		result.UpstreamResponseModel,
-		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0,
-	); responseModel != "" && s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey) {
-		responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, opts)
-		if cost != nil && responseCost != nil && responseCost.TotalCost <= cost.TotalCost+responseModelBillingCostEpsilon {
-			// billingModel 到此为止只是定价查表的入参，后续流程只消费 cost，
-			// 因此这里不改写它，改由日志记录实际生效的计费基准。
-			logResponseModelBillingApplied("service.gateway", account, result.RequestID, billingModel, responseModel, cost, responseCost)
-			cost = responseCost
+	// response_model is an explicit, opt-in billing mode. The response model is
+	// only accepted when it is unambiguous, priced, and cannot increase the
+	// existing charge (an upstream declaration must never be able to raise cost).
+	if input.BillingModelSource == BillingModelSourceResponse {
+		responseModel := strings.TrimSpace(result.UpstreamResponseModel)
+		if responseModel != "" && !result.UpstreamResponseModelConflict &&
+			s.hasResolvableTokenPricing(ctx, responseModel, apiKey) {
+			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, opts)
+			if responseCost != nil && responseCost.TotalCost <= cost.TotalCost+1e-12 {
+				billingModel = responseModel
+				cost = responseCost
+			}
 		}
 	}
 
@@ -994,20 +942,6 @@ func (s *GatewayService) hasResolvableTokenPricing(ctx context.Context, model st
 	}
 	_, err := s.billingService.GetModelPricing(model)
 	return err == nil
-}
-
-// hasIdentifiedResponseModelPricing 判断上游自报的响应模型是否可以作为计费基准。
-// 与 hasResolvableTokenPricing 的区别是刻意更严：只接受管理员为该模型显式配置的
-// 渠道定价，或价格表中能被确定性识别的条目；不接受按子串猜出来的系列兜底价。
-// 详见 responseModelBillingDeclaration 的说明。
-func (s *GatewayService) hasIdentifiedResponseModelPricing(ctx context.Context, model string, apiKey *APIKey) bool {
-	if strings.TrimSpace(model) == "" {
-		return false
-	}
-	if s.resolveChannelPricing(ctx, model, apiKey) != nil {
-		return true
-	}
-	return s.billingService.HasIdentifiedTokenPricing(model)
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。

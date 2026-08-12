@@ -10,20 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 夹具模型必须同时满足两个条件，否则测的就不是想测的那条规则：
-//  1. 两者价格不同——否则"更便宜才采纳"的断言退化成恒真；
-//  2. 两者都能被 HasIdentifiedTokenPricing 确定性识别（即价格表里的精确条目），
-//     否则请求会先被"响应模型必须可识别"这道更靠前的门挡掉，成本比较根本走不到。
-//
-// claude-opus-4 / gpt-5.1 之类的名字不满足条件 2（前者不是 fallback 精确键，
-// 后者与 gpt-5.5 共用同一条 gpt-5.4 价格因而也不满足条件 1）。
-const (
-	anthropicCheapFixtureModel  = "claude-sonnet-4"
-	anthropicPriceyFixtureModel = "claude-opus-4.8"
-	openAICheapFixtureModel     = "gpt-5.4-nano"
-	openAIPriceyFixtureModel    = "gpt-5.5"
-)
-
 // orderedResponseBillingModels 返回 (cheaper, pricier) 及各自成本，按当前价格表排序，
 // 使断言不依赖两个具体模型的价格大小关系（价格表调整时测试仍然自洽）。
 func orderedResponseBillingModels(t *testing.T, svc *BillingService, tokens UsageTokens, a, b string) (string, string, *CostBreakdown, *CostBreakdown) {
@@ -33,8 +19,6 @@ func orderedResponseBillingModels(t *testing.T, svc *BillingService, tokens Usag
 	costB, err := svc.CalculateCost(b, tokens, 1.1)
 	require.NoError(t, err)
 	require.NotEqual(t, costA.TotalCost, costB.TotalCost, "fixture prices for %s and %s must differ", a, b)
-	require.True(t, svc.HasIdentifiedTokenPricing(a), "fixture model %s must be identifiable in the pricing table", a)
-	require.True(t, svc.HasIdentifiedTokenPricing(b), "fixture model %s must be identifiable in the pricing table", b)
 	if costA.TotalCost < costB.TotalCost {
 		return a, b, costA, costB
 	}
@@ -48,7 +32,7 @@ func TestGatewayServiceRecordUsage_ResponseModelBillsCheaperResponseModel(t *tes
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, anthropicCheapFixtureModel, anthropicPriceyFixtureModel)
+	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, "claude-sonnet-4", "claude-opus-4")
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
@@ -88,7 +72,7 @@ func TestGatewayServiceRecordUsage_ResponseModelRejectsPricierResponseModel(t *t
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, anthropicCheapFixtureModel, anthropicPriceyFixtureModel)
+	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, "claude-sonnet-4", "claude-opus-4")
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
@@ -151,7 +135,7 @@ func TestGatewayServiceRecordUsage_ResponseModelSafeFallbacks(t *testing.T) {
 			userRepo := &openAIRecordUsageUserRepoStub{}
 			svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
 			tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-			cheaper, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, anthropicCheapFixtureModel, anthropicPriceyFixtureModel)
+			cheaper, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, "claude-sonnet-4", "claude-opus-4")
 
 			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 				Result: &ForwardResult{
@@ -188,7 +172,7 @@ func TestOpenAIGatewayServiceRecordUsage_ResponseModelBillsCheaperResponseModel(
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
 	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
-	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, openAICheapFixtureModel, openAIPriceyFixtureModel)
+	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, "gpt-5.1", "gpt-5.5")
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -228,7 +212,7 @@ func TestOpenAIGatewayServiceRecordUsage_ResponseModelRejectsPricierResponseMode
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
 	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
-	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, openAICheapFixtureModel, openAIPriceyFixtureModel)
+	cheaper, pricier, cheaperCost, _ := orderedResponseBillingModels(t, svc.billingService, tokens, "gpt-5.1", "gpt-5.5")
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -292,7 +276,7 @@ func TestOpenAIGatewayServiceRecordUsage_ResponseModelSafeFallbacks(t *testing.T
 			userRepo := &openAIRecordUsageUserRepoStub{}
 			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
 			tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
-			cheaper, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, openAICheapFixtureModel, openAIPriceyFixtureModel)
+			cheaper, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, "gpt-5.1", "gpt-5.5")
 
 			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 				Result: &OpenAIForwardResult{
@@ -321,135 +305,6 @@ func TestOpenAIGatewayServiceRecordUsage_ResponseModelSafeFallbacks(t *testing.T
 			require.InDelta(t, pricierCost.ActualCost, userRepo.lastAmount, 1e-12)
 		})
 	}
-}
-
-// --- 准入规则本身 ---
-
-func TestResponseModelBillingDeclaration(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name        string
-		source      string
-		model       string
-		conflict    bool
-		mediaBilled bool
-		want        string
-	}{
-		{name: "opted_in_and_clean", source: BillingModelSourceResponse, model: " claude-sonnet-4 ", want: "claude-sonnet-4"},
-		{name: "other_source_never_looks_at_response", source: BillingModelSourceChannelMapped, model: "claude-sonnet-4"},
-		{name: "empty_source_never_looks_at_response", source: "", model: "claude-sonnet-4"},
-		{name: "upstream_source_never_looks_at_response", source: BillingModelSourceUpstream, model: "claude-sonnet-4"},
-		{name: "in_stream_conflict_rejected", source: BillingModelSourceResponse, model: "claude-sonnet-4", conflict: true},
-		{name: "media_billed_request_rejected", source: BillingModelSourceResponse, model: "claude-sonnet-4", mediaBilled: true},
-		{name: "blank_declaration_rejected", source: BillingModelSourceResponse, model: "   "},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, responseModelBillingDeclaration(tt.source, tt.model, tt.conflict, tt.mediaBilled))
-		})
-	}
-}
-
-// 上游自报的模型名是外部输入。GetModelPricing 的系列兜底会给任意含 "haiku" 的名字
-// 返回最便宜的系列价，因此计费准入必须走"确定性识别"，否则上游随手编一个名字就能
-// 把账单压到地板价。本用例把这个差异钉死。
-func TestBillingServiceHasIdentifiedTokenPricing_RejectsFamilyGuesses(t *testing.T) {
-	t.Parallel()
-	billing := newGatewayRecordUsageServiceForTest(
-		&openAIRecordUsageLogRepoStub{}, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{},
-	).billingService
-
-	require.True(t, billing.HasIdentifiedTokenPricing("claude-sonnet-4"))
-	require.True(t, billing.HasIdentifiedTokenPricing("  CLAUDE-SONNET-4  "), "识别应当忽略大小写与空白")
-	require.True(t, billing.HasIdentifiedTokenPricing("gpt-5.4-nano"))
-
-	const forged = "totally-made-up-haiku-v9"
-	if _, err := billing.GetModelPricing(forged); err == nil {
-		// 这正是本函数存在的理由：宽松查价对编造的名字也会成功。
-		require.False(t, billing.HasIdentifiedTokenPricing(forged),
-			"family-guessed pricing must not qualify a model as a billing basis")
-	}
-	require.False(t, billing.HasIdentifiedTokenPricing(""))
-	require.False(t, billing.HasIdentifiedTokenPricing("zz-unpriced-response-model"))
-}
-
-func TestGatewayServiceRecordUsage_ResponseModelRejectsUnidentifiedFamilyName(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
-	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	const forged = "totally-made-up-haiku-v9"
-
-	baselineCost, err := svc.billingService.CalculateCost(anthropicPriceyFixtureModel, tokens, 1.1)
-	require.NoError(t, err)
-	// 前提：这个编造的名字确实能被宽松查价算出更低的费用——正是必须被拒绝的那条路径。
-	forgedCost, err := svc.billingService.CalculateCost(forged, tokens, 1.1)
-	require.NoError(t, err)
-	require.Less(t, forgedCost.TotalCost, baselineCost.TotalCost)
-
-	err = svc.RecordUsage(context.Background(), &RecordUsageInput{
-		Result: &ForwardResult{
-			RequestID:             "gateway_response_model_forged_family_name",
-			Usage:                 ClaudeUsage{InputTokens: 100, OutputTokens: 50},
-			Model:                 anthropicPriceyFixtureModel,
-			UpstreamResponseModel: forged,
-			Duration:              time.Second,
-		},
-		APIKey:  &APIKey{ID: 501, Quota: 100},
-		User:    &User{ID: 601},
-		Account: &Account{ID: 701},
-		ChannelUsageFields: ChannelUsageFields{
-			ChannelID:          9,
-			OriginalModel:      anthropicPriceyFixtureModel,
-			ChannelMappedModel: anthropicPriceyFixtureModel,
-			BillingModelSource: BillingModelSourceResponse,
-		},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.InDelta(t, baselineCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
-	require.InDelta(t, baselineCost.ActualCost, userRepo.lastAmount, 1e-12)
-}
-
-func TestOpenAIGatewayServiceRecordUsage_ResponseModelRejectsUnidentifiedFamilyName(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
-	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
-	const forged = "totally-made-up-haiku-v9"
-
-	baselineCost, err := svc.billingService.CalculateCost(openAIPriceyFixtureModel, tokens, 1.1)
-	require.NoError(t, err)
-	forgedCost, err := svc.billingService.CalculateCost(forged, tokens, 1.1)
-	require.NoError(t, err)
-	require.Less(t, forgedCost.TotalCost, baselineCost.TotalCost)
-
-	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{
-			RequestID:             "openai_response_model_forged_family_name",
-			Model:                 openAIPriceyFixtureModel,
-			UpstreamModel:         openAIPriceyFixtureModel,
-			UpstreamResponseModel: forged,
-			Usage:                 OpenAIUsage{InputTokens: 20, OutputTokens: 10},
-			Duration:              time.Second,
-		},
-		APIKey:  &APIKey{ID: 10},
-		User:    &User{ID: 20},
-		Account: &Account{ID: 30},
-		ChannelUsageFields: ChannelUsageFields{
-			ChannelID:          9,
-			OriginalModel:      openAIPriceyFixtureModel,
-			ChannelMappedModel: openAIPriceyFixtureModel,
-			BillingModelSource: BillingModelSourceResponse,
-		},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.InDelta(t, baselineCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
-	require.InDelta(t, baselineCost.ActualCost, userRepo.lastAmount, 1e-12)
 }
 
 // --- 渠道配置透传 ---
