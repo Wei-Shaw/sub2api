@@ -740,6 +740,37 @@ func (s *HTTPUpstreamSuite) TestNormalizeProxyURL_Canonicalizes() {
 	require.Equal(s.T(), key1, key2, "expected normalized proxy keys to match")
 }
 
+func (s *HTTPUpstreamSuite) TestNormalizeProxyURLPreservesOnlyTransportOptions() {
+	key, parsed, err := normalizeProxyURL("socks5h://[2001:db8::1]:1087?ignored=value&_sub2api_force_http1=true&_sub2api_disable_keep_alive=1")
+	require.NoError(s.T(), err)
+	require.Contains(s.T(), key, proxyOptionForceHTTP1+"=1")
+	require.Contains(s.T(), key, proxyOptionDisableKeepAlive+"=1")
+	require.NotContains(s.T(), key, "ignored")
+	require.Empty(s.T(), proxyURLWithoutOptions(parsed).RawQuery)
+}
+
+func (s *HTTPUpstreamSuite) TestProxyTransportOptionsAreIndependent() {
+	settings := defaultPoolSettings(nil)
+
+	forceHTTP1, err := url.Parse("socks5h://[2001:db8::1]:1087?" + proxyOptionForceHTTP1 + "=1")
+	require.NoError(s.T(), err)
+	transport, err := buildUpstreamTransport(settings, forceHTTP1, upstreamProtocolModeOpenAIH2)
+	require.NoError(s.T(), err)
+	require.False(s.T(), transport.ForceAttemptHTTP2)
+	require.False(s.T(), transport.DisableKeepAlives)
+	require.NotNil(s.T(), transport.TLSNextProto)
+
+	disableKeepAlive, err := url.Parse("socks5h://[2001:db8::1]:1087?" + proxyOptionDisableKeepAlive + "=1")
+	require.NoError(s.T(), err)
+	transport, err = buildUpstreamTransport(settings, disableKeepAlive, upstreamProtocolModeOpenAIH1)
+	require.NoError(s.T(), err)
+	require.True(s.T(), transport.DisableKeepAlives)
+
+	tlsTransport, err := buildUpstreamTransportWithTLSFingerprint(settings, disableKeepAlive, &tlsfingerprint.Profile{Name: "test"})
+	require.NoError(s.T(), err)
+	require.True(s.T(), tlsTransport.DisableKeepAlives)
+}
+
 // TestAcquireClient_OverLimitReturnsError 测试连接池缓存上限保护
 // 验证超限且无可淘汰条目时返回错误
 func (s *HTTPUpstreamSuite) TestAcquireClient_OverLimitReturnsError() {

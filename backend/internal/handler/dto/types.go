@@ -335,14 +335,16 @@ type Proxy struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	ExpiresAt      *time.Time `json:"expires_at"`
-	FallbackMode   string     `json:"fallback_mode"`
-	BackupProxyID  *int64     `json:"backup_proxy_id"`
-	ExpiryWarnDays int        `json:"expiry_warn_days"`
-	PoolID         *int64     `json:"pool_id,omitempty"`
-	PoolHealth     string     `json:"pool_health,omitempty"`
-	PoolCheckedAt  *time.Time `json:"pool_checked_at,omitempty"`
-	PoolFailures   int        `json:"pool_failures,omitempty"`
+	ExpiresAt        *time.Time `json:"expires_at"`
+	FallbackMode     string     `json:"fallback_mode"`
+	BackupProxyID    *int64     `json:"backup_proxy_id"`
+	ExpiryWarnDays   int        `json:"expiry_warn_days"`
+	ForceHTTP1       bool       `json:"force_http1"`
+	DisableKeepAlive bool       `json:"disable_keep_alive"`
+	PoolID           *int64     `json:"pool_id,omitempty"`
+	PoolHealth       string     `json:"pool_health,omitempty"`
+	PoolCheckedAt    *time.Time `json:"pool_checked_at,omitempty"`
+	PoolFailures     int        `json:"pool_failures,omitempty"`
 }
 
 type ProxyWithAccountCount struct {

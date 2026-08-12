@@ -497,30 +497,34 @@ type BulkUpdateAccountsResult struct {
 }
 
 type CreateProxyInput struct {
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	Name             string
+	Protocol         string
+	Host             string
+	Port             int
+	Username         string
+	Password         string
+	ExpiresAt        *time.Time
+	FallbackMode     string
+	BackupProxyID    *int64
+	ExpiryWarnDays   int
+	ForceHTTP1       bool
+	DisableKeepAlive bool
 }
 
 type UpdateProxyInput struct {
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	Status         string
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	Name             string
+	Protocol         string
+	Host             string
+	Port             int
+	Username         string
+	Password         string
+	Status           string
+	ExpiresAt        *time.Time
+	FallbackMode     string
+	BackupProxyID    *int64
+	ExpiryWarnDays   int
+	ForceHTTP1       *bool
+	DisableKeepAlive *bool
 }
 
 type GenerateRedeemCodesInput struct {

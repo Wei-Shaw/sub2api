@@ -36,18 +36,20 @@ type DataPayload struct {
 }
 
 type DataProxy struct {
-	ProxyKey        string `json:"proxy_key"`
-	Name            string `json:"name"`
-	Protocol        string `json:"protocol"`
-	Host            string `json:"host"`
-	Port            int    `json:"port"`
-	Username        string `json:"username,omitempty"`
-	Password        string `json:"password,omitempty"`
-	Status          string `json:"status"`
-	ExpiresAt       *int64 `json:"expires_at,omitempty"`        // unix 秒，与 DataAccount.ExpiresAt 风格一致
-	FallbackMode    string `json:"fallback_mode,omitempty"`     // none/direct/proxy
-	BackupProxyName string `json:"backup_proxy_name,omitempty"` // 备用代理 name（跨实例按 name 反查）
-	ExpiryWarnDays  int    `json:"expiry_warn_days,omitempty"`
+	ProxyKey         string `json:"proxy_key"`
+	Name             string `json:"name"`
+	Protocol         string `json:"protocol"`
+	Host             string `json:"host"`
+	Port             int    `json:"port"`
+	Username         string `json:"username,omitempty"`
+	Password         string `json:"password,omitempty"`
+	Status           string `json:"status"`
+	ExpiresAt        *int64 `json:"expires_at,omitempty"`        // unix 秒，与 DataAccount.ExpiresAt 风格一致
+	FallbackMode     string `json:"fallback_mode,omitempty"`     // none/direct/proxy
+	BackupProxyName  string `json:"backup_proxy_name,omitempty"` // 备用代理 name（跨实例按 name 反查）
+	ExpiryWarnDays   int    `json:"expiry_warn_days,omitempty"`
+	ForceHTTP1       bool   `json:"force_http1,omitempty"`
+	DisableKeepAlive bool   `json:"disable_keep_alive,omitempty"`
 }
 
 // DataAccount 是管理员显式备份导出使用的账号结构，故意不走 dto.Account 的脱敏路径，
@@ -84,6 +86,10 @@ type DataImportResult struct {
 	AccountCreated int               `json:"account_created"`
 	AccountFailed  int               `json:"account_failed"`
 	Errors         []DataImportError `json:"errors,omitempty"`
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 type DataImportError struct {
@@ -170,18 +176,20 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			backupProxyName = proxyNameByID[*p.BackupProxyID]
 		}
 		dataProxies = append(dataProxies, DataProxy{
-			ProxyKey:        key,
-			Name:            p.Name,
-			Protocol:        p.Protocol,
-			Host:            p.Host,
-			Port:            p.Port,
-			Username:        p.Username,
-			Password:        p.Password,
-			Status:          p.Status,
-			ExpiresAt:       expiresAt,
-			FallbackMode:    p.FallbackMode,
-			BackupProxyName: backupProxyName,
-			ExpiryWarnDays:  p.ExpiryWarnDays,
+			ProxyKey:         key,
+			Name:             p.Name,
+			Protocol:         p.Protocol,
+			Host:             p.Host,
+			Port:             p.Port,
+			Username:         p.Username,
+			Password:         p.Password,
+			Status:           p.Status,
+			ExpiresAt:        expiresAt,
+			FallbackMode:     p.FallbackMode,
+			BackupProxyName:  backupProxyName,
+			ExpiryWarnDays:   p.ExpiryWarnDays,
+			ForceHTTP1:       p.ForceHTTP1,
+			DisableKeepAlive: p.DisableKeepAlive,
 		})
 	}
 
@@ -289,7 +297,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			proxyKeyToID[key] = existingID
 			result.ProxyReused++
 			if normalizedStatus != "" {
-				if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil && proxy.Status != normalizedStatus {
+				if proxy, getErr := h.adminService.GetProxy(ctx, existingID); getErr == nil && proxy != nil && (proxy.Status != normalizedStatus || proxy.ForceHTTP1 != item.ForceHTTP1 || proxy.DisableKeepAlive != item.DisableKeepAlive) {
 					// 同步 status 时传入完整字段，避免零值覆盖已存在代理的有效期/fallback 配置。
 					var existingExpiresAt *time.Time
 					if item.ExpiresAt != nil {
@@ -307,17 +315,19 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 						}
 					}
 					_, _ = h.adminService.UpdateProxy(ctx, existingID, &service.UpdateProxyInput{
-						Status:         normalizedStatus,
-						ExpiresAt:      existingExpiresAt,
-						FallbackMode:   existingFallbackMode,
-						BackupProxyID:  existingBackupProxyID,
-						ExpiryWarnDays: item.ExpiryWarnDays,
-						Name:           proxy.Name,
-						Protocol:       proxy.Protocol,
-						Host:           proxy.Host,
-						Port:           proxy.Port,
-						Username:       proxy.Username,
-						Password:       proxy.Password,
+						Status:           normalizedStatus,
+						ExpiresAt:        existingExpiresAt,
+						FallbackMode:     existingFallbackMode,
+						BackupProxyID:    existingBackupProxyID,
+						ExpiryWarnDays:   item.ExpiryWarnDays,
+						ForceHTTP1:       boolPointer(item.ForceHTTP1),
+						DisableKeepAlive: boolPointer(item.DisableKeepAlive),
+						Name:             proxy.Name,
+						Protocol:         proxy.Protocol,
+						Host:             proxy.Host,
+						Port:             proxy.Port,
+						Username:         proxy.Username,
+						Password:         proxy.Password,
 					})
 				}
 			}
@@ -350,16 +360,18 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		created, createErr := h.adminService.CreateProxy(ctx, &service.CreateProxyInput{
-			Name:           defaultProxyName(item.Name),
-			Protocol:       item.Protocol,
-			Host:           item.Host,
-			Port:           item.Port,
-			Username:       item.Username,
-			Password:       item.Password,
-			ExpiresAt:      expiresAt,
-			FallbackMode:   fallbackMode,
-			BackupProxyID:  backupProxyID,
-			ExpiryWarnDays: item.ExpiryWarnDays,
+			Name:             defaultProxyName(item.Name),
+			Protocol:         item.Protocol,
+			Host:             item.Host,
+			Port:             item.Port,
+			Username:         item.Username,
+			Password:         item.Password,
+			ExpiresAt:        expiresAt,
+			FallbackMode:     fallbackMode,
+			BackupProxyID:    backupProxyID,
+			ExpiryWarnDays:   item.ExpiryWarnDays,
+			ForceHTTP1:       item.ForceHTTP1,
+			DisableKeepAlive: item.DisableKeepAlive,
 		})
 		if createErr != nil {
 			result.ProxyFailed++
@@ -381,17 +393,19 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		if normalizedStatus != "" && normalizedStatus != created.Status {
 			// 新建后同步 status 时，传入完整字段，避免零值覆盖刚创建的有效期/fallback 配置。
 			_, _ = h.adminService.UpdateProxy(ctx, created.ID, &service.UpdateProxyInput{
-				Status:         normalizedStatus,
-				ExpiresAt:      expiresAt,
-				FallbackMode:   fallbackMode,
-				BackupProxyID:  backupProxyID,
-				ExpiryWarnDays: item.ExpiryWarnDays,
-				Name:           created.Name,
-				Protocol:       created.Protocol,
-				Host:           created.Host,
-				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
+				Status:           normalizedStatus,
+				ExpiresAt:        expiresAt,
+				FallbackMode:     fallbackMode,
+				BackupProxyID:    backupProxyID,
+				ExpiryWarnDays:   item.ExpiryWarnDays,
+				ForceHTTP1:       boolPointer(item.ForceHTTP1),
+				DisableKeepAlive: boolPointer(item.DisableKeepAlive),
+				Name:             created.Name,
+				Protocol:         created.Protocol,
+				Host:             created.Host,
+				Port:             created.Port,
+				Username:         created.Username,
+				Password:         created.Password,
 			})
 		}
 	}

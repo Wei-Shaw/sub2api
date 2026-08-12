@@ -1680,38 +1680,46 @@ func init() {
 			return nil
 		}
 	}()
+	// proxyDescForceHttp1 is the schema descriptor for force_http1 field.
+	proxyDescForceHttp1 := proxyFields[4].Descriptor()
+	// proxy.DefaultForceHttp1 holds the default value on creation for the force_http1 field.
+	proxy.DefaultForceHttp1 = proxyDescForceHttp1.Default.(bool)
+	// proxyDescDisableKeepAlive is the schema descriptor for disable_keep_alive field.
+	proxyDescDisableKeepAlive := proxyFields[5].Descriptor()
+	// proxy.DefaultDisableKeepAlive holds the default value on creation for the disable_keep_alive field.
+	proxy.DefaultDisableKeepAlive = proxyDescDisableKeepAlive.Default.(bool)
 	// proxyDescUsername is the schema descriptor for username field.
-	proxyDescUsername := proxyFields[4].Descriptor()
+	proxyDescUsername := proxyFields[6].Descriptor()
 	// proxy.UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	proxy.UsernameValidator = proxyDescUsername.Validators[0].(func(string) error)
 	// proxyDescPassword is the schema descriptor for password field.
-	proxyDescPassword := proxyFields[5].Descriptor()
+	proxyDescPassword := proxyFields[7].Descriptor()
 	// proxy.PasswordValidator is a validator for the "password" field. It is called by the builders before save.
 	proxy.PasswordValidator = proxyDescPassword.Validators[0].(func(string) error)
 	// proxyDescStatus is the schema descriptor for status field.
-	proxyDescStatus := proxyFields[6].Descriptor()
+	proxyDescStatus := proxyFields[8].Descriptor()
 	// proxy.DefaultStatus holds the default value on creation for the status field.
 	proxy.DefaultStatus = proxyDescStatus.Default.(string)
 	// proxy.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	proxy.StatusValidator = proxyDescStatus.Validators[0].(func(string) error)
 	// proxyDescFallbackMode is the schema descriptor for fallback_mode field.
-	proxyDescFallbackMode := proxyFields[8].Descriptor()
+	proxyDescFallbackMode := proxyFields[10].Descriptor()
 	// proxy.DefaultFallbackMode holds the default value on creation for the fallback_mode field.
 	proxy.DefaultFallbackMode = proxyDescFallbackMode.Default.(string)
 	// proxy.FallbackModeValidator is a validator for the "fallback_mode" field. It is called by the builders before save.
 	proxy.FallbackModeValidator = proxyDescFallbackMode.Validators[0].(func(string) error)
 	// proxyDescExpiryWarnDays is the schema descriptor for expiry_warn_days field.
-	proxyDescExpiryWarnDays := proxyFields[10].Descriptor()
+	proxyDescExpiryWarnDays := proxyFields[12].Descriptor()
 	// proxy.DefaultExpiryWarnDays holds the default value on creation for the expiry_warn_days field.
 	proxy.DefaultExpiryWarnDays = proxyDescExpiryWarnDays.Default.(int)
 	// proxyDescPoolHealth is the schema descriptor for pool_health field.
-	proxyDescPoolHealth := proxyFields[12].Descriptor()
+	proxyDescPoolHealth := proxyFields[14].Descriptor()
 	// proxy.DefaultPoolHealth holds the default value on creation for the pool_health field.
 	proxy.DefaultPoolHealth = proxyDescPoolHealth.Default.(string)
 	// proxy.PoolHealthValidator is a validator for the "pool_health" field. It is called by the builders before save.
 	proxy.PoolHealthValidator = proxyDescPoolHealth.Validators[0].(func(string) error)
 	// proxyDescPoolFailures is the schema descriptor for pool_failures field.
-	proxyDescPoolFailures := proxyFields[14].Descriptor()
+	proxyDescPoolFailures := proxyFields[16].Descriptor()
 	// proxy.DefaultPoolFailures holds the default value on creation for the pool_failures field.
 	proxy.DefaultPoolFailures = proxyDescPoolFailures.Default.(int)
 	proxypoolMixin := schema.ProxyPool{}.Mixin()

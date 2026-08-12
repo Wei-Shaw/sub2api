@@ -25,6 +25,8 @@ docs/
 
 # OS files
 .DS_Store
+._*
+**/._*
 Thumbs.db
 
 # Build artifacts

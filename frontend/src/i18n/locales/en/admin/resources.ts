@@ -330,6 +330,10 @@ export default {
       fallbackProxy: 'Backup proxy',
       fallbackDirect: 'Direct connection',
       backupProxy: 'Backup proxy',
+		forceHTTP1: 'Force HTTP/1.1',
+		forceHTTP1Hint: 'Disable HTTP/2 multiplexing for this proxy.',
+		disableKeepAlive: 'Disable Keep-Alive',
+		disableKeepAliveHint: 'Create a new proxy connection for every upstream HTTP request; this adds TCP/TLS handshake overhead.',
     },
     // Redeem Codes
     redeem: {

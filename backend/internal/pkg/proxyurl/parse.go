@@ -20,6 +20,16 @@ var allowedSchemes = map[string]bool{
 	"socks5h": true,
 }
 
+const (
+	OptionForceHTTP1       = "_sub2api_force_http1"
+	OptionDisableKeepAlive = "_sub2api_disable_keep_alive"
+)
+
+type TransportOptions struct {
+	ForceHTTP1       bool
+	DisableKeepAlive bool
+}
+
 // Parse 解析并验证代理 URL。
 //
 // 语义:
@@ -34,33 +44,50 @@ var allowedSchemes = map[string]bool{
 //   - Scheme 必须为 http/https/socks5/socks5h
 //   - socks5:// 自动升级为 socks5h://（确保 DNS 由代理端解析，防止 DNS 泄漏）
 func Parse(raw string) (trimmed string, parsed *url.URL, err error) {
+	trimmed, parsed, _, err = ParseWithTransportOptions(raw)
+	return trimmed, parsed, err
+}
+
+// ParseWithTransportOptions parses a proxy URL and extracts Sub2API's internal
+// transport policy. The returned URL never contains those internal options.
+func ParseWithTransportOptions(raw string) (trimmed string, parsed *url.URL, options TransportOptions, err error) {
 	trimmed = strings.TrimSpace(raw)
 	if trimmed == "" {
-		return "", nil, nil
+		return "", nil, options, nil
 	}
 
 	parsed, err = url.Parse(trimmed)
 	if err != nil {
 		// 不使用 %w 包装，避免 url.Parse 的底层错误消息泄漏原始 URL（可能含凭据）
-		return "", nil, fmt.Errorf("invalid proxy URL: %v", err)
+		return "", nil, options, fmt.Errorf("invalid proxy URL: %v", err)
 	}
 
 	if parsed.Host == "" || parsed.Hostname() == "" {
-		return "", nil, fmt.Errorf("proxy URL missing host: %s", parsed.Redacted())
+		return "", nil, options, fmt.Errorf("proxy URL missing host: %s", parsed.Redacted())
 	}
 
 	scheme := strings.ToLower(parsed.Scheme)
 	if !allowedSchemes[scheme] {
-		return "", nil, fmt.Errorf("unsupported proxy scheme %q (allowed: http, https, socks5, socks5h)", scheme)
+		return "", nil, options, fmt.Errorf("unsupported proxy scheme %q (allowed: http, https, socks5, socks5h)", scheme)
 	}
+
+	options.ForceHTTP1 = optionEnabled(parsed.Query().Get(OptionForceHTTP1))
+	options.DisableKeepAlive = optionEnabled(parsed.Query().Get(OptionDisableKeepAlive))
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
 
 	// 自动升级 socks5 → socks5h，确保 DNS 由代理端解析，防止 DNS 泄漏。
 	// Go 的 golang.org/x/net/proxy 对 socks5:// 默认在客户端本地解析 DNS，
 	// 仅 socks5h:// 才将域名发送给代理端做远程 DNS 解析。
 	if scheme == "socks5" {
 		parsed.Scheme = "socks5h"
-		trimmed = parsed.String()
 	}
+	trimmed = parsed.String()
 
-	return trimmed, parsed, nil
+	return trimmed, parsed, options, nil
+}
+
+func optionEnabled(value string) bool {
+	value = strings.TrimSpace(value)
+	return value == "1" || strings.EqualFold(value, "true")
 }

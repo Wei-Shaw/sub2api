@@ -14,20 +14,22 @@ const (
 )
 
 type Proxy struct {
-	ID             int64
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	Status         string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	ID               int64
+	Name             string
+	Protocol         string
+	Host             string
+	Port             int
+	ForceHTTP1       bool
+	DisableKeepAlive bool
+	Username         string
+	Password         string
+	Status           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	ExpiresAt        *time.Time
+	FallbackMode     string
+	BackupProxyID    *int64
+	ExpiryWarnDays   int
 
 	// ProxyPool 归属：池 ID 与池内健康状态（由 ProxyPoolService 周期探测更新）
 	PoolID        *int64
@@ -53,6 +55,14 @@ func (p *Proxy) URL() string {
 	if p.Username != "" && p.Password != "" {
 		u.User = url.UserPassword(p.Username, p.Password)
 	}
+	query := u.Query()
+	if p.ForceHTTP1 {
+		query.Set("_sub2api_force_http1", "1")
+	}
+	if p.DisableKeepAlive {
+		query.Set("_sub2api_disable_keep_alive", "1")
+	}
+	u.RawQuery = query.Encode()
 	return u.String()
 }
 

@@ -492,6 +492,22 @@
             </button>
           </div>
         </div>
+        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.proxies.forceHTTP1') }}</div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.proxies.forceHTTP1Hint') }}</div>
+            </div>
+            <Toggle v-model="createForm.force_http1" />
+          </div>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.proxies.disableKeepAlive') }}</div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.proxies.disableKeepAliveHint') }}</div>
+            </div>
+            <Toggle v-model="createForm.disable_keep_alive" />
+          </div>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
           <div class="mb-2 flex flex-wrap gap-2">
@@ -724,6 +740,22 @@
         <div>
           <label class="input-label">{{ t('admin.proxies.status') }}</label>
           <Select v-model="editForm.status" :options="editStatusOptions" />
+        </div>
+        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-700">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.proxies.forceHTTP1') }}</div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.proxies.forceHTTP1Hint') }}</div>
+            </div>
+            <Toggle v-model="editForm.force_http1" />
+          </div>
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.proxies.disableKeepAlive') }}</div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.proxies.disableKeepAliveHint') }}</div>
+            </div>
+            <Toggle v-model="editForm.disable_keep_alive" />
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t('admin.proxies.expiresAt') }}</label>
@@ -979,6 +1011,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import ImportDataModal from '@/components/admin/proxy/ImportDataModal.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
@@ -1132,6 +1165,8 @@ const createForm = reactive({
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
   backup_proxy_id: null as number | null,
   expiry_warn_days: 7 as number,
+	force_http1: false,
+	disable_keep_alive: false,
 })
 
 const editForm = reactive({
@@ -1146,6 +1181,8 @@ const editForm = reactive({
   fallback_mode: 'none' as 'none' | 'proxy' | 'direct',
   backup_proxy_id: null as number | null,
   expiry_warn_days: 7 as number,
+	force_http1: false,
+	disable_keep_alive: false,
 })
 
 const allProxiesForBackup = ref<Proxy[]>([])
@@ -1261,6 +1298,8 @@ const closeCreateModal = () => {
   createForm.fallback_mode = 'none'
   createForm.backup_proxy_id = null
   createForm.expiry_warn_days = 7
+	createForm.force_http1 = false
+	createForm.disable_keep_alive = false
   createPasswordVisible.value = false
   batchInput.value = ''
   batchParseResult.total = 0
@@ -1390,6 +1429,8 @@ const handleCreateProxy = async () => {
       fallback_mode: createForm.fallback_mode,
       backup_proxy_id: createForm.fallback_mode === 'proxy' ? createForm.backup_proxy_id : null,
       expiry_warn_days: createForm.expiry_warn_days,
+		force_http1: createForm.force_http1,
+		disable_keep_alive: createForm.disable_keep_alive,
     })
     appStore.showSuccess(t('admin.proxies.proxyCreated'))
     closeCreateModal()
@@ -1415,6 +1456,8 @@ const handleEdit = (proxy: Proxy) => {
   editForm.fallback_mode = proxy.fallback_mode || 'none'
   editForm.backup_proxy_id = proxy.backup_proxy_id ?? null
   editForm.expiry_warn_days = proxy.expiry_warn_days ?? 7
+	editForm.force_http1 = proxy.force_http1 ?? false
+	editForm.disable_keep_alive = proxy.disable_keep_alive ?? false
   editPasswordVisible.value = false
   editPasswordDirty.value = false
   showEditModal.value = true
@@ -1455,6 +1498,8 @@ const handleUpdateProxy = async () => {
       fallback_mode: editForm.fallback_mode,
       backup_proxy_id: editForm.fallback_mode === 'proxy' ? editForm.backup_proxy_id : null,
       expiry_warn_days: editForm.expiry_warn_days,
+		force_http1: editForm.force_http1,
+		disable_keep_alive: editForm.disable_keep_alive,
     }
 
     // Only include password if user actually modified the field

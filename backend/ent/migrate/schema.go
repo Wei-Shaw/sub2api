@@ -1405,6 +1405,8 @@ var (
 		{Name: "protocol", Type: field.TypeString, Size: 20},
 		{Name: "host", Type: field.TypeString, Size: 255},
 		{Name: "port", Type: field.TypeInt},
+		{Name: "force_http1", Type: field.TypeBool, Default: false},
+		{Name: "disable_keep_alive", Type: field.TypeBool, Default: false},
 		{Name: "username", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "password", Type: field.TypeString, Nullable: true, Size: 100},
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
@@ -1425,13 +1427,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "proxies_proxies_backup_proxy",
-				Columns:    []*schema.Column{ProxiesColumns[17]},
+				Columns:    []*schema.Column{ProxiesColumns[19]},
 				RefColumns: []*schema.Column{ProxiesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "proxies_proxy_pools_pool",
-				Columns:    []*schema.Column{ProxiesColumns[18]},
+				Columns:    []*schema.Column{ProxiesColumns[20]},
 				RefColumns: []*schema.Column{ProxyPoolsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1440,7 +1442,7 @@ var (
 			{
 				Name:    "proxy_status",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[10]},
+				Columns: []*schema.Column{ProxiesColumns[12]},
 			},
 			{
 				Name:    "proxy_deleted_at",
@@ -1450,22 +1452,22 @@ var (
 			{
 				Name:    "proxy_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[11]},
+				Columns: []*schema.Column{ProxiesColumns[13]},
 			},
 			{
 				Name:    "proxy_backup_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[17]},
+				Columns: []*schema.Column{ProxiesColumns[19]},
 			},
 			{
 				Name:    "proxy_pool_id",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[18]},
+				Columns: []*schema.Column{ProxiesColumns[20]},
 			},
 			{
 				Name:    "proxy_pool_health",
 				Unique:  false,
-				Columns: []*schema.Column{ProxiesColumns[14]},
+				Columns: []*schema.Column{ProxiesColumns[16]},
 			},
 		},
 	}

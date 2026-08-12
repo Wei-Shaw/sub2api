@@ -32,6 +32,10 @@ type Proxy struct {
 	Host string `json:"host,omitempty"`
 	// Port holds the value of the "port" field.
 	Port int `json:"port,omitempty"`
+	// Force HTTP/1.1 for upstream requests using this proxy.
+	ForceHttp1 bool `json:"force_http1,omitempty"`
+	// Create a new proxy connection for every upstream HTTP request.
+	DisableKeepAlive bool `json:"disable_keep_alive,omitempty"`
 	// Username holds the value of the "username" field.
 	Username *string `json:"username,omitempty"`
 	// Password holds the value of the "password" field.
@@ -109,6 +113,8 @@ func (*Proxy) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case proxy.FieldForceHttp1, proxy.FieldDisableKeepAlive:
+			values[i] = new(sql.NullBool)
 		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays, proxy.FieldPoolID, proxy.FieldPoolFailures:
 			values[i] = new(sql.NullInt64)
 		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode, proxy.FieldPoolHealth:
@@ -178,6 +184,18 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field port", values[i])
 			} else if value.Valid {
 				_m.Port = int(value.Int64)
+			}
+		case proxy.FieldForceHttp1:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field force_http1", values[i])
+			} else if value.Valid {
+				_m.ForceHttp1 = value.Bool
+			}
+		case proxy.FieldDisableKeepAlive:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field disable_keep_alive", values[i])
+			} else if value.Valid {
+				_m.DisableKeepAlive = value.Bool
 			}
 		case proxy.FieldUsername:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -324,6 +342,12 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("port=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Port))
+	builder.WriteString(", ")
+	builder.WriteString("force_http1=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ForceHttp1))
+	builder.WriteString(", ")
+	builder.WriteString("disable_keep_alive=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DisableKeepAlive))
 	builder.WriteString(", ")
 	if v := _m.Username; v != nil {
 		builder.WriteString("username=")

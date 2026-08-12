@@ -90,6 +90,16 @@ func Port(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldPort, v))
 }
 
+// ForceHttp1 applies equality check predicate on the "force_http1" field. It's identical to ForceHttp1EQ.
+func ForceHttp1(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldForceHttp1, v))
+}
+
+// DisableKeepAlive applies equality check predicate on the "disable_keep_alive" field. It's identical to DisableKeepAliveEQ.
+func DisableKeepAlive(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldDisableKeepAlive, v))
+}
+
 // Username applies equality check predicate on the "username" field. It's identical to UsernameEQ.
 func Username(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldUsername, v))
@@ -508,6 +518,26 @@ func PortLT(v int) predicate.Proxy {
 // PortLTE applies the LTE predicate on the "port" field.
 func PortLTE(v int) predicate.Proxy {
 	return predicate.Proxy(sql.FieldLTE(FieldPort, v))
+}
+
+// ForceHttp1EQ applies the EQ predicate on the "force_http1" field.
+func ForceHttp1EQ(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldForceHttp1, v))
+}
+
+// ForceHttp1NEQ applies the NEQ predicate on the "force_http1" field.
+func ForceHttp1NEQ(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldForceHttp1, v))
+}
+
+// DisableKeepAliveEQ applies the EQ predicate on the "disable_keep_alive" field.
+func DisableKeepAliveEQ(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldDisableKeepAlive, v))
+}
+
+// DisableKeepAliveNEQ applies the NEQ predicate on the "disable_keep_alive" field.
+func DisableKeepAliveNEQ(v bool) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldDisableKeepAlive, v))
 }
 
 // UsernameEQ applies the EQ predicate on the "username" field.

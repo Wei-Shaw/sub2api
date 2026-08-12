@@ -328,6 +328,10 @@ export default {
       fallbackProxy: '指定备用代理',
       fallbackDirect: '回退直连',
       backupProxy: '备用代理',
+		forceHTTP1: '强制 HTTP/1.1',
+		forceHTTP1Hint: '禁用该代理上的 HTTP/2 多路复用。',
+		disableKeepAlive: '关闭 Keep-Alive',
+		disableKeepAliveHint: '每个上游 HTTP 请求新建一次代理连接；会增加 TCP/TLS 握手开销。',
     },
     // Redeem Codes Management
     redeem: {

@@ -119,6 +119,34 @@ func (_u *ProxyUpdate) AddPort(v int) *ProxyUpdate {
 	return _u
 }
 
+// SetForceHttp1 sets the "force_http1" field.
+func (_u *ProxyUpdate) SetForceHttp1(v bool) *ProxyUpdate {
+	_u.mutation.SetForceHttp1(v)
+	return _u
+}
+
+// SetNillableForceHttp1 sets the "force_http1" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableForceHttp1(v *bool) *ProxyUpdate {
+	if v != nil {
+		_u.SetForceHttp1(*v)
+	}
+	return _u
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (_u *ProxyUpdate) SetDisableKeepAlive(v bool) *ProxyUpdate {
+	_u.mutation.SetDisableKeepAlive(v)
+	return _u
+}
+
+// SetNillableDisableKeepAlive sets the "disable_keep_alive" field if the given value is not nil.
+func (_u *ProxyUpdate) SetNillableDisableKeepAlive(v *bool) *ProxyUpdate {
+	if v != nil {
+		_u.SetDisableKeepAlive(*v)
+	}
+	return _u
+}
+
 // SetUsername sets the "username" field.
 func (_u *ProxyUpdate) SetUsername(v string) *ProxyUpdate {
 	_u.mutation.SetUsername(v)
@@ -509,6 +537,12 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedPort(); ok {
 		_spec.AddField(proxy.FieldPort, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.ForceHttp1(); ok {
+		_spec.SetField(proxy.FieldForceHttp1, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DisableKeepAlive(); ok {
+		_spec.SetField(proxy.FieldDisableKeepAlive, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(proxy.FieldUsername, field.TypeString, value)
 	}
@@ -763,6 +797,34 @@ func (_u *ProxyUpdateOne) SetNillablePort(v *int) *ProxyUpdateOne {
 // AddPort adds value to the "port" field.
 func (_u *ProxyUpdateOne) AddPort(v int) *ProxyUpdateOne {
 	_u.mutation.AddPort(v)
+	return _u
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (_u *ProxyUpdateOne) SetForceHttp1(v bool) *ProxyUpdateOne {
+	_u.mutation.SetForceHttp1(v)
+	return _u
+}
+
+// SetNillableForceHttp1 sets the "force_http1" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableForceHttp1(v *bool) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetForceHttp1(*v)
+	}
+	return _u
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (_u *ProxyUpdateOne) SetDisableKeepAlive(v bool) *ProxyUpdateOne {
+	_u.mutation.SetDisableKeepAlive(v)
+	return _u
+}
+
+// SetNillableDisableKeepAlive sets the "disable_keep_alive" field if the given value is not nil.
+func (_u *ProxyUpdateOne) SetNillableDisableKeepAlive(v *bool) *ProxyUpdateOne {
+	if v != nil {
+		_u.SetDisableKeepAlive(*v)
+	}
 	return _u
 }
 
@@ -1185,6 +1247,12 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 	}
 	if value, ok := _u.mutation.AddedPort(); ok {
 		_spec.AddField(proxy.FieldPort, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ForceHttp1(); ok {
+		_spec.SetField(proxy.FieldForceHttp1, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.DisableKeepAlive(); ok {
+		_spec.SetField(proxy.FieldDisableKeepAlive, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(proxy.FieldUsername, field.TypeString, value)

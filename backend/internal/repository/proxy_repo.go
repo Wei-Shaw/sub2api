@@ -39,6 +39,8 @@ func (r *proxyRepository) Create(ctx context.Context, proxyIn *service.Proxy) er
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
 		SetPort(proxyIn.Port).
+		SetForceHttp1(proxyIn.ForceHTTP1).
+		SetDisableKeepAlive(proxyIn.DisableKeepAlive).
 		SetStatus(proxyIn.Status).
 		SetFallbackMode(proxyIn.FallbackMode).
 		SetExpiryWarnDays(proxyIn.ExpiryWarnDays)
@@ -153,6 +155,8 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
 		SetPort(proxyIn.Port).
+		SetForceHttp1(proxyIn.ForceHTTP1).
+		SetDisableKeepAlive(proxyIn.DisableKeepAlive).
 		SetStatus(proxyIn.Status).
 		SetFallbackMode(proxyIn.FallbackMode).
 		SetExpiryWarnDays(proxyIn.ExpiryWarnDays)
@@ -584,18 +588,20 @@ func proxyEntityToService(m *dbent.Proxy) *service.Proxy {
 		return nil
 	}
 	out := &service.Proxy{
-		ID:             m.ID,
-		Name:           m.Name,
-		Protocol:       m.Protocol,
-		Host:           m.Host,
-		Port:           m.Port,
-		Status:         m.Status,
-		CreatedAt:      m.CreatedAt,
-		UpdatedAt:      m.UpdatedAt,
-		ExpiresAt:      m.ExpiresAt,
-		FallbackMode:   m.FallbackMode,
-		BackupProxyID:  m.BackupProxyID,
-		ExpiryWarnDays: m.ExpiryWarnDays,
+		ID:               m.ID,
+		Name:             m.Name,
+		Protocol:         m.Protocol,
+		Host:             m.Host,
+		Port:             m.Port,
+		Status:           m.Status,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		ExpiresAt:        m.ExpiresAt,
+		FallbackMode:     m.FallbackMode,
+		BackupProxyID:    m.BackupProxyID,
+		ExpiryWarnDays:   m.ExpiryWarnDays,
+		ForceHTTP1:       m.ForceHttp1,
+		DisableKeepAlive: m.DisableKeepAlive,
 	}
 	if m.Username != nil {
 		out.Username = *m.Username

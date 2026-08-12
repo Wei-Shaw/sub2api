@@ -29,6 +29,10 @@ const (
 	FieldHost = "host"
 	// FieldPort holds the string denoting the port field in the database.
 	FieldPort = "port"
+	// FieldForceHttp1 holds the string denoting the force_http1 field in the database.
+	FieldForceHttp1 = "force_http1"
+	// FieldDisableKeepAlive holds the string denoting the disable_keep_alive field in the database.
+	FieldDisableKeepAlive = "disable_keep_alive"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldPassword holds the string denoting the password field in the database.
@@ -89,6 +93,8 @@ var Columns = []string{
 	FieldProtocol,
 	FieldHost,
 	FieldPort,
+	FieldForceHttp1,
+	FieldDisableKeepAlive,
 	FieldUsername,
 	FieldPassword,
 	FieldStatus,
@@ -132,6 +138,10 @@ var (
 	ProtocolValidator func(string) error
 	// HostValidator is a validator for the "host" field. It is called by the builders before save.
 	HostValidator func(string) error
+	// DefaultForceHttp1 holds the default value on creation for the "force_http1" field.
+	DefaultForceHttp1 bool
+	// DefaultDisableKeepAlive holds the default value on creation for the "disable_keep_alive" field.
+	DefaultDisableKeepAlive bool
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
 	UsernameValidator func(string) error
 	// PasswordValidator is a validator for the "password" field. It is called by the builders before save.
@@ -195,6 +205,16 @@ func ByHost(opts ...sql.OrderTermOption) OrderOption {
 // ByPort orders the results by the port field.
 func ByPort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPort, opts...).ToFunc()
+}
+
+// ByForceHttp1 orders the results by the force_http1 field.
+func ByForceHttp1(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceHttp1, opts...).ToFunc()
+}
+
+// ByDisableKeepAlive orders the results by the disable_keep_alive field.
+func ByDisableKeepAlive(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDisableKeepAlive, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

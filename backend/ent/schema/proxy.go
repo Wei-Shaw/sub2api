@@ -41,6 +41,12 @@ func (Proxy) Fields() []ent.Field {
 			MaxLen(255).
 			NotEmpty(),
 		field.Int("port"),
+		field.Bool("force_http1").
+			Default(false).
+			Comment("Force HTTP/1.1 for upstream requests using this proxy."),
+		field.Bool("disable_keep_alive").
+			Default(false).
+			Comment("Create a new proxy connection for every upstream HTTP request."),
 		field.String("username").
 			MaxLen(100).
 			Optional().

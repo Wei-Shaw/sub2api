@@ -36904,6 +36904,8 @@ type ProxyMutation struct {
 	host                *string
 	port                *int
 	addport             *int
+	force_http1         *bool
+	disable_keep_alive  *bool
 	username            *string
 	password            *string
 	status              *string
@@ -37309,6 +37311,78 @@ func (m *ProxyMutation) AddedPort() (r int, exists bool) {
 func (m *ProxyMutation) ResetPort() {
 	m.port = nil
 	m.addport = nil
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (m *ProxyMutation) SetForceHttp1(b bool) {
+	m.force_http1 = &b
+}
+
+// ForceHttp1 returns the value of the "force_http1" field in the mutation.
+func (m *ProxyMutation) ForceHttp1() (r bool, exists bool) {
+	v := m.force_http1
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldForceHttp1 returns the old "force_http1" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldForceHttp1(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldForceHttp1 is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldForceHttp1 requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldForceHttp1: %w", err)
+	}
+	return oldValue.ForceHttp1, nil
+}
+
+// ResetForceHttp1 resets all changes to the "force_http1" field.
+func (m *ProxyMutation) ResetForceHttp1() {
+	m.force_http1 = nil
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (m *ProxyMutation) SetDisableKeepAlive(b bool) {
+	m.disable_keep_alive = &b
+}
+
+// DisableKeepAlive returns the value of the "disable_keep_alive" field in the mutation.
+func (m *ProxyMutation) DisableKeepAlive() (r bool, exists bool) {
+	v := m.disable_keep_alive
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisableKeepAlive returns the old "disable_keep_alive" field's value of the Proxy entity.
+// If the Proxy object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProxyMutation) OldDisableKeepAlive(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisableKeepAlive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisableKeepAlive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisableKeepAlive: %w", err)
+	}
+	return oldValue.DisableKeepAlive, nil
+}
+
+// ResetDisableKeepAlive resets all changes to the "disable_keep_alive" field.
+func (m *ProxyMutation) ResetDisableKeepAlive() {
+	m.disable_keep_alive = nil
 }
 
 // SetUsername sets the "username" field.
@@ -37967,7 +38041,7 @@ func (m *ProxyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProxyMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 20)
 	if m.created_at != nil {
 		fields = append(fields, proxy.FieldCreatedAt)
 	}
@@ -37988,6 +38062,12 @@ func (m *ProxyMutation) Fields() []string {
 	}
 	if m.port != nil {
 		fields = append(fields, proxy.FieldPort)
+	}
+	if m.force_http1 != nil {
+		fields = append(fields, proxy.FieldForceHttp1)
+	}
+	if m.disable_keep_alive != nil {
+		fields = append(fields, proxy.FieldDisableKeepAlive)
 	}
 	if m.username != nil {
 		fields = append(fields, proxy.FieldUsername)
@@ -38044,6 +38124,10 @@ func (m *ProxyMutation) Field(name string) (ent.Value, bool) {
 		return m.Host()
 	case proxy.FieldPort:
 		return m.Port()
+	case proxy.FieldForceHttp1:
+		return m.ForceHttp1()
+	case proxy.FieldDisableKeepAlive:
+		return m.DisableKeepAlive()
 	case proxy.FieldUsername:
 		return m.Username()
 	case proxy.FieldPassword:
@@ -38089,6 +38173,10 @@ func (m *ProxyMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldHost(ctx)
 	case proxy.FieldPort:
 		return m.OldPort(ctx)
+	case proxy.FieldForceHttp1:
+		return m.OldForceHttp1(ctx)
+	case proxy.FieldDisableKeepAlive:
+		return m.OldDisableKeepAlive(ctx)
 	case proxy.FieldUsername:
 		return m.OldUsername(ctx)
 	case proxy.FieldPassword:
@@ -38168,6 +38256,20 @@ func (m *ProxyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPort(v)
+		return nil
+	case proxy.FieldForceHttp1:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetForceHttp1(v)
+		return nil
+	case proxy.FieldDisableKeepAlive:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisableKeepAlive(v)
 		return nil
 	case proxy.FieldUsername:
 		v, ok := value.(string)
@@ -38399,6 +38501,12 @@ func (m *ProxyMutation) ResetField(name string) error {
 		return nil
 	case proxy.FieldPort:
 		m.ResetPort()
+		return nil
+	case proxy.FieldForceHttp1:
+		m.ResetForceHttp1()
+		return nil
+	case proxy.FieldDisableKeepAlive:
+		m.ResetDisableKeepAlive()
 		return nil
 	case proxy.FieldUsername:
 		m.ResetUsername()

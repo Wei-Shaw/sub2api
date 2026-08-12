@@ -90,6 +90,34 @@ func (_c *ProxyCreate) SetPort(v int) *ProxyCreate {
 	return _c
 }
 
+// SetForceHttp1 sets the "force_http1" field.
+func (_c *ProxyCreate) SetForceHttp1(v bool) *ProxyCreate {
+	_c.mutation.SetForceHttp1(v)
+	return _c
+}
+
+// SetNillableForceHttp1 sets the "force_http1" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableForceHttp1(v *bool) *ProxyCreate {
+	if v != nil {
+		_c.SetForceHttp1(*v)
+	}
+	return _c
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (_c *ProxyCreate) SetDisableKeepAlive(v bool) *ProxyCreate {
+	_c.mutation.SetDisableKeepAlive(v)
+	return _c
+}
+
+// SetNillableDisableKeepAlive sets the "disable_keep_alive" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableDisableKeepAlive(v *bool) *ProxyCreate {
+	if v != nil {
+		_c.SetDisableKeepAlive(*v)
+	}
+	return _c
+}
+
 // SetUsername sets the "username" field.
 func (_c *ProxyCreate) SetUsername(v string) *ProxyCreate {
 	_c.mutation.SetUsername(v)
@@ -320,6 +348,14 @@ func (_c *ProxyCreate) defaults() error {
 		v := proxy.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.ForceHttp1(); !ok {
+		v := proxy.DefaultForceHttp1
+		_c.mutation.SetForceHttp1(v)
+	}
+	if _, ok := _c.mutation.DisableKeepAlive(); !ok {
+		v := proxy.DefaultDisableKeepAlive
+		_c.mutation.SetDisableKeepAlive(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := proxy.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -377,6 +413,12 @@ func (_c *ProxyCreate) check() error {
 	}
 	if _, ok := _c.mutation.Port(); !ok {
 		return &ValidationError{Name: "port", err: errors.New(`ent: missing required field "Proxy.port"`)}
+	}
+	if _, ok := _c.mutation.ForceHttp1(); !ok {
+		return &ValidationError{Name: "force_http1", err: errors.New(`ent: missing required field "Proxy.force_http1"`)}
+	}
+	if _, ok := _c.mutation.DisableKeepAlive(); !ok {
+		return &ValidationError{Name: "disable_keep_alive", err: errors.New(`ent: missing required field "Proxy.disable_keep_alive"`)}
 	}
 	if v, ok := _c.mutation.Username(); ok {
 		if err := proxy.UsernameValidator(v); err != nil {
@@ -472,6 +514,14 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Port(); ok {
 		_spec.SetField(proxy.FieldPort, field.TypeInt, value)
 		_node.Port = value
+	}
+	if value, ok := _c.mutation.ForceHttp1(); ok {
+		_spec.SetField(proxy.FieldForceHttp1, field.TypeBool, value)
+		_node.ForceHttp1 = value
+	}
+	if value, ok := _c.mutation.DisableKeepAlive(); ok {
+		_spec.SetField(proxy.FieldDisableKeepAlive, field.TypeBool, value)
+		_node.DisableKeepAlive = value
 	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(proxy.FieldUsername, field.TypeString, value)
@@ -692,6 +742,30 @@ func (u *ProxyUpsert) UpdatePort() *ProxyUpsert {
 // AddPort adds v to the "port" field.
 func (u *ProxyUpsert) AddPort(v int) *ProxyUpsert {
 	u.Add(proxy.FieldPort, v)
+	return u
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsert) SetForceHttp1(v bool) *ProxyUpsert {
+	u.Set(proxy.FieldForceHttp1, v)
+	return u
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateForceHttp1() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldForceHttp1)
+	return u
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsert) SetDisableKeepAlive(v bool) *ProxyUpsert {
+	u.Set(proxy.FieldDisableKeepAlive, v)
+	return u
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateDisableKeepAlive() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldDisableKeepAlive)
 	return u
 }
 
@@ -1015,6 +1089,34 @@ func (u *ProxyUpsertOne) AddPort(v int) *ProxyUpsertOne {
 func (u *ProxyUpsertOne) UpdatePort() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdatePort()
+	})
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsertOne) SetForceHttp1(v bool) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetForceHttp1(v)
+	})
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateForceHttp1() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateForceHttp1()
+	})
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsertOne) SetDisableKeepAlive(v bool) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetDisableKeepAlive(v)
+	})
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateDisableKeepAlive() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateDisableKeepAlive()
 	})
 }
 
@@ -1534,6 +1636,34 @@ func (u *ProxyUpsertBulk) AddPort(v int) *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) UpdatePort() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.UpdatePort()
+	})
+}
+
+// SetForceHttp1 sets the "force_http1" field.
+func (u *ProxyUpsertBulk) SetForceHttp1(v bool) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetForceHttp1(v)
+	})
+}
+
+// UpdateForceHttp1 sets the "force_http1" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateForceHttp1() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateForceHttp1()
+	})
+}
+
+// SetDisableKeepAlive sets the "disable_keep_alive" field.
+func (u *ProxyUpsertBulk) SetDisableKeepAlive(v bool) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetDisableKeepAlive(v)
+	})
+}
+
+// UpdateDisableKeepAlive sets the "disable_keep_alive" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateDisableKeepAlive() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateDisableKeepAlive()
 	})
 }
 
