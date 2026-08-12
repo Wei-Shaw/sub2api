@@ -109,7 +109,7 @@ func TestEvaluateAccountSchedulingThreshold_OpenAIPreservesPercentageSemantics(t
 		},
 	}
 
-	candidate := openAIThresholdCandidate(openAIAccount.Extra, "5h")
+	candidate := openAIThresholdCandidate(openAIAccount.Extra, "5h", now)
 	require.NotNil(t, candidate)
 	require.Equal(t, 1.0, candidate.usedPercent)
 
@@ -124,6 +124,88 @@ func TestEvaluateAccountSchedulingThreshold_OpenAIPreservesPercentageSemantics(t
 	}, now)
 	require.True(t, openAIDecision.ShouldPause)
 	require.Equal(t, 91.0, openAIDecision.UsedPercent)
+}
+
+func TestEvaluateAccountSchedulingThreshold_OpenAISkipsStaleSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			"codex_usage_updated_at": now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      now.Add(3 * time.Hour).Format(time.RFC3339),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenAI: 90}, now)
+
+	require.False(t, decision.ShouldPause)
+}
+
+func TestEvaluateAccountSchedulingThreshold_OpenAISkipsResetWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      now.Add(-time.Second).Format(time.RFC3339),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenAI: 90}, now)
+
+	require.False(t, decision.ShouldPause)
+}
+
+func TestEvaluateAccountSchedulingThreshold_OpenAIPausesFreshExhaustedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	resetAt := now.Add(3 * time.Hour)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+			"codex_5h_used_percent":  100.0,
+			"codex_5h_reset_at":      resetAt.Format(time.RFC3339),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenAI: 90}, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "5h", decision.Window)
+	require.Equal(t, 100.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, resetAt.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_OpenAIPausesFreshExhaustedSevenDayWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	resetAt := now.Add(5 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			"codex_usage_updated_at": now.Add(-time.Minute).Format(time.RFC3339),
+			"codex_7d_used_percent":  95.0,
+			"codex_7d_reset_at":      resetAt.Format(time.RFC3339),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenAI: 90}, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, "7d", decision.Window)
+	require.Equal(t, 95.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, resetAt.Equal(*decision.Until))
 }
 
 func TestEvaluateAccountSchedulingThreshold_AnthropicPreservesFractionalUtilizationSemantics(t *testing.T) {
