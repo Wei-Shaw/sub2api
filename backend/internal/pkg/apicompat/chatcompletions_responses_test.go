@@ -561,6 +561,57 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	assert.NotContains(t, tc, "function")
 }
 
+func TestChatCompletionsToResponses_NormalizesChatFunctionToolChoice(t *testing.T) {
+	base := ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		Tools: []ChatTool{{
+			Type: "function",
+			Function: &ChatFunction{
+				Name:       "get_weather",
+				Parameters: json.RawMessage(`{"type":"object"}`),
+			},
+		}},
+	}
+
+	for _, tt := range []struct {
+		name       string
+		toolChoice string
+		want       string
+	}{
+		{
+			name:       "Chat Completions function choice",
+			toolChoice: `{"type":"function","function":{"name":"get_weather"}}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "Responses function choice",
+			toolChoice: `{"type":"function","name":"get_weather"}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "top-level name takes precedence",
+			toolChoice: `{"type":"function","name":"get_weather","function":{"name":"legacy_name"}}`,
+			want:       `{"type":"function","name":"get_weather"}`,
+		},
+		{
+			name:       "non-function choice",
+			toolChoice: `"required"`,
+			want:       `"required"`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := base
+			req.ToolChoice = json.RawMessage(tt.toolChoice)
+
+			resp, err := ChatCompletionsToResponses(&req)
+			require.NoError(t, err)
+			require.Len(t, resp.Tools, 1)
+			assert.JSONEq(t, tt.want, string(resp.ToolChoice))
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model:       "gpt-4o",
