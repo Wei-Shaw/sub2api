@@ -463,6 +463,17 @@ type StreamTimeoutSettings struct {
 	ThresholdWindowMinutes int    `json:"threshold_window_minutes"`
 }
 
+// ImageInputFallbackSettings 上游不支持图片输入时的自动降级配置 DTO。
+// VisionAPIKey 不回传明文，仅返回是否已配置。
+type ImageInputFallbackSettings struct {
+	Mode                   string `json:"mode"`
+	Models                 string `json:"models"`
+	VisionBaseURL          string `json:"vision_base_url"`
+	VisionAPIKeyConfigured bool   `json:"vision_api_key_configured"`
+	VisionModel            string `json:"vision_model"`
+	VisionTimeoutSeconds   int    `json:"vision_timeout_seconds"`
+}
+
 // RectifierSettings 请求整流器配置 DTO
 type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`

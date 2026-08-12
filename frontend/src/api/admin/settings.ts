@@ -1371,6 +1371,45 @@ export async function updateStreamTimeoutSettings(
   return data;
 }
 
+// ==================== Image Input Fallback Settings ====================
+
+/**
+ * Image input fallback settings interface
+ * 上游不支持图片输入(unknown variant `image_url`)时自动降级处理
+ */
+export interface ImageInputFallbackSettings {
+  mode: "off" | "strip" | "describe";
+  models: string;
+  vision_base_url: string;
+  vision_api_key_configured: boolean;
+  vision_model: string;
+  vision_timeout_seconds: number;
+}
+
+/**
+ * Get image input fallback settings
+ */
+export async function getImageInputFallbackSettings(): Promise<ImageInputFallbackSettings> {
+  const { data } = await apiClient.get<ImageInputFallbackSettings>(
+    "/admin/settings/image-input-fallback",
+  );
+  return data;
+}
+
+/**
+ * Update image input fallback settings
+ * @param settings - settings to update (vision_api_key 留空表示保持不变)
+ */
+export async function updateImageInputFallbackSettings(
+  settings: Partial<ImageInputFallbackSettings> & { vision_api_key?: string },
+): Promise<ImageInputFallbackSettings> {
+  const { data } = await apiClient.put<ImageInputFallbackSettings>(
+    "/admin/settings/image-input-fallback",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Rectifier Settings ====================
 
 /**
@@ -1563,6 +1602,8 @@ export const settingsAPI = {
   updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
+  getImageInputFallbackSettings,
+  updateImageInputFallbackSettings,
   getRectifierSettings,
   updateRectifierSettings,
   getBetaPolicySettings,

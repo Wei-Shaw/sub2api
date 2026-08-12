@@ -431,6 +431,83 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	})
 }
 
+// GetImageInputFallbackSettings 获取上游不支持图片输入时的自动降级配置
+// GET /api/v1/admin/settings/image-input-fallback
+// 返回实际生效配置：数据库优先，未配置时回退环境变量（gateway.image_input_*）。
+func (h *SettingHandler) GetImageInputFallbackSettings(c *gin.Context) {
+	settings, err := h.settingService.GetImageInputFallbackEffectiveSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.ImageInputFallbackSettings{
+		Mode:                   settings.Mode,
+		Models:                 settings.Models,
+		VisionBaseURL:          settings.VisionBaseURL,
+		VisionAPIKeyConfigured: settings.VisionAPIKey != "",
+		VisionModel:            settings.VisionModel,
+		VisionTimeoutSeconds:   settings.VisionTimeoutSeconds,
+	})
+}
+
+// UpdateImageInputFallbackSettingsRequest 更新图片输入降级配置请求
+type UpdateImageInputFallbackSettingsRequest struct {
+	Mode                 string `json:"mode"`
+	Models               string `json:"models"`
+	VisionBaseURL        string `json:"vision_base_url"`
+	VisionAPIKey         string `json:"vision_api_key"` // 留空=保持不变
+	VisionModel          string `json:"vision_model"`
+	VisionTimeoutSeconds int    `json:"vision_timeout_seconds"`
+}
+
+// UpdateImageInputFallbackSettings 更新上游不支持图片输入时的自动降级配置
+// PUT /api/v1/admin/settings/image-input-fallback
+func (h *SettingHandler) UpdateImageInputFallbackSettings(c *gin.Context) {
+	var req UpdateImageInputFallbackSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	current, err := h.settingService.GetImageInputFallbackSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	settings := &service.ImageInputFallbackSettings{
+		Mode:                 req.Mode,
+		Models:               strings.TrimSpace(req.Models),
+		VisionBaseURL:        strings.TrimSpace(req.VisionBaseURL),
+		VisionModel:          strings.TrimSpace(req.VisionModel),
+		VisionTimeoutSeconds: req.VisionTimeoutSeconds,
+		VisionAPIKey:         current.VisionAPIKey, // 默认保留原 Key
+	}
+	if strings.TrimSpace(req.VisionAPIKey) != "" {
+		settings.VisionAPIKey = strings.TrimSpace(req.VisionAPIKey)
+	}
+
+	if err := h.settingService.SetImageInputFallbackSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updated, err := h.settingService.GetImageInputFallbackSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.ImageInputFallbackSettings{
+		Mode:                   updated.Mode,
+		Models:                 updated.Models,
+		VisionBaseURL:          updated.VisionBaseURL,
+		VisionAPIKeyConfigured: updated.VisionAPIKey != "",
+		VisionModel:            updated.VisionModel,
+		VisionTimeoutSeconds:   updated.VisionTimeoutSeconds,
+	})
+}
+
 // GetWebSearchEmulationConfig 获取 Web Search 模拟配置
 // GET /api/v1/admin/settings/web-search-emulation
 func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {

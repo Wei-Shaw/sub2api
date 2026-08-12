@@ -813,6 +813,88 @@ func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamT
 	return &settings, nil
 }
 
+// GetImageInputFallbackSettings 获取上游不支持图片输入时的自动降级配置。
+func (s *SettingService) GetImageInputFallbackSettings(ctx context.Context) (*ImageInputFallbackSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyImageInputFallbackSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultImageInputFallbackSettings(), nil
+		}
+		return nil, fmt.Errorf("get image input fallback settings: %w", err)
+	}
+	if strings.TrimSpace(value) == "" {
+		return DefaultImageInputFallbackSettings(), nil
+	}
+
+	var settings ImageInputFallbackSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultImageInputFallbackSettings(), nil
+	}
+	settings.Mode = strings.TrimSpace(settings.Mode)
+	switch settings.Mode {
+	case ImageInputFallbackModeOff, ImageInputFallbackModeStrip, ImageInputFallbackModeDescribe:
+		// valid
+	default:
+		settings.Mode = ""
+	}
+	settings.Models = strings.TrimSpace(settings.Models)
+	if settings.VisionTimeoutSeconds < 0 {
+		settings.VisionTimeoutSeconds = 0
+	}
+	if settings.VisionTimeoutSeconds > 300 {
+		settings.VisionTimeoutSeconds = 300
+	}
+	return &settings, nil
+}
+
+// SetImageInputFallbackSettings 设置上游不支持图片输入时的自动降级配置。
+func (s *SettingService) SetImageInputFallbackSettings(ctx context.Context, settings *ImageInputFallbackSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+	}
+	settings.Mode = strings.TrimSpace(settings.Mode)
+	switch settings.Mode {
+	case ImageInputFallbackModeOff, ImageInputFallbackModeStrip, ImageInputFallbackModeDescribe:
+		// valid
+	default:
+		return fmt.Errorf("mode must be one of: off, strip, describe")
+	}
+	settings.Models = strings.TrimSpace(settings.Models)
+	if settings.VisionTimeoutSeconds < 0 {
+		settings.VisionTimeoutSeconds = 0
+	}
+	if settings.VisionTimeoutSeconds > 300 {
+		return fmt.Errorf("vision_timeout_seconds must be between 0-300")
+	}
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal image input fallback settings: %w", err)
+	}
+	return s.settingRepo.Set(ctx, SettingKeyImageInputFallbackSettings, string(data))
+}
+
+// GetImageInputFallbackEffectiveSettings 返回实际生效的图片输入降级配置：
+// 数据库配置优先；未配置（mode 为空）时回退到环境变量（gateway.image_input_*）配置。
+func (s *SettingService) GetImageInputFallbackEffectiveSettings(ctx context.Context) (*ImageInputFallbackSettings, error) {
+	settings, err := s.GetImageInputFallbackSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(settings.Mode) != "" {
+		return settings, nil
+	}
+	fallback := DefaultImageInputFallbackSettings()
+	if s.cfg != nil {
+		fallback.Mode = openAIImageInputFallbackMode(s.cfg)
+		vision := s.cfg.Gateway.ImageInputVision
+		fallback.VisionBaseURL = strings.TrimSpace(vision.BaseURL)
+		fallback.VisionAPIKey = strings.TrimSpace(vision.APIKey)
+		fallback.VisionModel = strings.TrimSpace(vision.Model)
+		fallback.VisionTimeoutSeconds = vision.TimeoutSeconds
+	}
+	return fallback, nil
+}
+
 // IsUngroupedKeySchedulingAllowed 查询是否允许未分组 Key 调度
 func (s *SettingService) IsUngroupedKeySchedulingAllowed(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAllowUngroupedKeyScheduling)

@@ -522,6 +522,27 @@ gateway:
   # Max bytes to log from upstream error body
   # 记录上游错误响应体的最大字节数
   log_upstream_error_body_max_bytes: 2048
+  # Auto-handle upstream "unknown variant `image_url`" (image input unsupported) errors:
+  # off=return the upstream error as-is, strip=remove image content and retry,
+  # describe=ask a vision model for a description and retry with text (falls back to strip on failure)
+  # 自动处理上游不支持图片输入（如 serde 报错 unknown variant `image_url`）：
+  # off=不处理原样返回错误，strip=删除图片内容后重试，describe=调用视觉模型生成描述替换后重试（失败时退化为 strip）
+  image_input_fallback: ""
+  # Vision model config used when image_input_fallback=describe
+  # 当 image_input_fallback=describe 时使用的视觉描述模型配置
+  image_input_vision:
+    # OpenAI-compatible endpoint, e.g. https://api.openai.com/v1
+    # OpenAI 兼容端点地址，例如 https://api.openai.com/v1
+    base_url: ""
+    # API key for the vision model
+    # 视觉模型 API Key
+    api_key: ""
+    # Vision-capable model name, e.g. gpt-4o-mini
+    # 支持图片理解的模型名称，例如 gpt-4o-mini
+    model: ""
+    # Per-image describe request timeout in seconds, 0 uses default 60s
+    # 单张图片描述请求超时（秒），0 使用默认 60s
+    timeout_seconds: 0
   # Auto inject anthropic-beta header for API-key accounts when needed (default: off)
   # 需要时自动为 API-key 账户注入 anthropic-beta 头（默认：关闭）
   inject_beta_for_apikey: false

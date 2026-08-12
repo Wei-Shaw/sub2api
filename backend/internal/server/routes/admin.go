@@ -559,6 +559,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// 流超时处理配置
 		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
 		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)
+		// 图片输入降级配置（上游不支持 image_url 时自动处理）
+		adminSettings.GET("/image-input-fallback", h.Admin.Setting.GetImageInputFallbackSettings)
+		adminSettings.PUT("/image-input-fallback", h.Admin.Setting.UpdateImageInputFallbackSettings)
 		// 请求整流器配置
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
