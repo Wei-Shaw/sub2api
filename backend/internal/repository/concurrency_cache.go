@@ -380,7 +380,8 @@ var (
 
 	// cleanupDeadAPIKeySlotScript derives each request owner's process prefix and
 	// removes the member only when that exact lease is still expired inside the
-	// atomic script. Unknown pre-upgrade owners are preserved for the TTL fallback.
+	// atomic script. It also applies the regular score-based TTL fallback so
+	// unknown pre-upgrade owners cannot be kept alive by index reconciliation.
 	// A heartbeat that wins the race changes the lease score and keeps its slots.
 	cleanupDeadAPIKeySlotScript = redis.NewScript(`
 		redis.replicate_commands()
@@ -388,7 +389,7 @@ var (
 		local processLeases = KEYS[2]
 		local slotTTL = tonumber(ARGV[1])
 		local cutoff = tonumber(ARGV[2])
-		local removed = 0
+		local removed = redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoff - slotTTL)
 		local members = redis.call('ZRANGE', slotKey, 0, -1)
 		for _, member in ipairs(members) do
 			local ownerPrefix = string.match(member, '^(.*)%-[^%-]+$')

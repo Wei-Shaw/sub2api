@@ -217,6 +217,7 @@ const IconStub = {
 }
 
 const mountedWrappers: VueWrapper[] = []
+const originalDocumentHiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden')
 
 const mountView = async () => {
   const wrapper = mount(KeysView, {
@@ -294,7 +295,11 @@ describe('user KeysView column settings', () => {
       if (wrapper.exists()) wrapper.unmount()
     }
     vi.useRealTimers()
-    Object.defineProperty(document, 'hidden', { configurable: true, value: false })
+    if (originalDocumentHiddenDescriptor) {
+      Object.defineProperty(document, 'hidden', originalDocumentHiddenDescriptor)
+    } else {
+      Reflect.deleteProperty(document, 'hidden')
+    }
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {

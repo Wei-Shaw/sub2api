@@ -29,7 +29,7 @@
     </div>
 
     <div
-      v-if="!loading && windows.length === 0"
+      v-if="!loading && !error && windows.length === 0"
       class="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
       data-testid="quota-window-empty"
     >

@@ -148,6 +148,13 @@ describe('AccountQuotaWindowSection', () => {
     expect(wrapper.find('[data-window-key="five_hour"]').exists()).toBe(true)
   })
 
+  it('does not render the empty state together with a load error', () => {
+    const wrapper = mountSection('en', [], 'load_failed')
+
+    expect(wrapper.find('[data-testid="quota-window-error"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="quota-window-empty"]').exists()).toBe(false)
+  })
+
   it('reserves responsive card height while uncached windows load', () => {
     const wrapper = mountSection('en', [], null, true)
     const skeletons = wrapper.findAll('[data-testid="quota-window-skeleton"]')
