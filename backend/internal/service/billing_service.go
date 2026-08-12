@@ -819,6 +819,30 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	return nil
 }
 
+// HasIdentifiedTokenPricing 判断模型能否在价格表中被"确定性识别"出 token 价格。
+//
+// 与 GetModelPricing 的关键区别：本函数拒绝按子串猜系列的兜底。GetModelPricing 会
+// 让任意含 "haiku"/"opus"/"claude" 的名字（哪怕是不存在的型号）落到 getFallbackPricing
+// 的系列兜底价上，因此凡是模型名来自外部、且"能查到价"会直接影响计费金额的场景
+// （如按上游响应自报模型计费），都必须用本函数而不是 GetModelPricing 做准入判断。
+func (s *BillingService) HasIdentifiedTokenPricing(model string) bool {
+	if s == nil {
+		return false
+	}
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	if s.pricingService != nil {
+		// 仅有图片价的条目不能用于 token 计费，口径与 GetModelPricing 保持一致。
+		if pricing := s.pricingService.GetIdentifiedModelPricing(model); pricing != nil && !pricing.TokenPricingAbsent {
+			return true
+		}
+	}
+	pricing, ok := s.fallbackPrices[model]
+	return ok && pricing != nil
+}
+
 // GetModelPricing 获取模型价格配置
 func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
