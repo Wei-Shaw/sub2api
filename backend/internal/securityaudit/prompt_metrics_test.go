@@ -21,6 +21,11 @@ func TestAtomicMetricsExposeCountsLatencyDistributionAndAsyncDelivery(t *testing
 	metrics.IncRecordFailed()
 	metrics.IncEnqueued()
 	metrics.IncDropped()
+	metrics.IncGenericSampledOut()
+	metrics.IncGenericSchemaFailure()
+	metrics.IncGenericFailOpen()
+	metrics.IncGenericFailClosed()
+	metrics.ObserveGeneric(&NormalizedResult{EngineType: EngineGenericLLM, PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18}, 55*time.Millisecond)
 
 	snapshot := metrics.Snapshot()
 	require.Equal(t, int64(5), snapshot.Total)
@@ -31,6 +36,16 @@ func TestAtomicMetricsExposeCountsLatencyDistributionAndAsyncDelivery(t *testing
 	require.Equal(t, int64(40), snapshot.LatencyP99MS)
 	require.Equal(t, int64(100), snapshot.LatencyMaxMS)
 	require.Equal(t, AuditMetricsSnapshot{Enqueued: 1, Dropped: 1}, metrics.AuditSnapshot())
+	require.Equal(t, int64(1), snapshot.GenericRequests)
+	require.Equal(t, int64(1), snapshot.GenericSampledOut)
+	require.Equal(t, int64(1), snapshot.GenericSchemaFailures)
+	require.Equal(t, int64(1), snapshot.GenericFailOpen)
+	require.Equal(t, int64(1), snapshot.GenericFailClosed)
+	require.Equal(t, int64(11), snapshot.GenericPromptTokens)
+	require.Equal(t, int64(7), snapshot.GenericCompletionTokens)
+	require.Equal(t, int64(18), snapshot.GenericTotalTokens)
+	require.Equal(t, int64(55), snapshot.GenericLatencyAvgMS)
+	require.Equal(t, int64(55), snapshot.GenericLatencyMaxMS)
 }
 
 func TestAtomicMetricsConcurrentObservationIsBoundedAndRaceSafe(t *testing.T) {

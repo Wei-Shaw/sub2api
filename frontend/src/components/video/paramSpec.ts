@@ -77,9 +77,11 @@ export interface FieldSpec {
    *   - rawType='string'：'input' | 'textarea' | 'image'
    *   - rawType='array' ：'input'（逐元素递归渲染）| 媒体 URL 组控件
    */
-  widget: 'input' | 'textarea' | SingleMediaWidget | MediaUrlWidget
+  widget: 'input' | 'textarea' | 'PromptTextArea' | SingleMediaWidget | MediaUrlWidget
   /** 仅 widget==='textarea' 时有意义。默认 3。 */
   textareaRows: number
+  /** PromptTextArea 可引用的字段路径；空数组表示不提供 @ 候选。 */
+  referenceFields: string[]
   /**
    * 仅 rawType==='array' 时有意义：元素个数上限。0 表示不限制。
    * 演练台据此禁用"添加"按钮，并在提交前做一次校验。
@@ -231,6 +233,7 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       rawType: 'object',
       widget: 'input',
       textareaRows: 3,
+      referenceFields: [],
       maxItems: 0,
       children,
       items: null,
@@ -263,6 +266,7 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       rawType: 'array',
       widget: arrWidget,
       textareaRows: 3,
+      referenceFields: [],
       maxItems,
       children: [],
       items,
@@ -285,8 +289,8 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
     let textareaRows = 3
     if (rawType === 'string') {
       const w = (spec as Record<string, unknown>).widget
-      if (w === 'textarea') {
-        widget = 'textarea'
+      if (w === 'textarea' || w === 'PromptTextArea') {
+        widget = w
         const rr = Number((spec as Record<string, unknown>).rows)
         if (Number.isFinite(rr) && rr > 0) {
           textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
@@ -308,6 +312,9 @@ function parseFieldSpec(key: string, raw: unknown): FieldSpec | null {
       rawType,
       widget,
       textareaRows,
+      referenceFields: Array.isArray(spec.reference_fields)
+        ? spec.reference_fields.filter((field): field is string => typeof field === 'string').map((field) => field.trim()).filter(Boolean)
+        : [],
       maxItems: 0,
       children: [],
       items: null,
@@ -336,6 +343,7 @@ function makeLeafFromPlain(key: string, v: unknown): FieldSpec {
     rawType,
     widget: 'input',
     textareaRows: 3,
+    referenceFields: [],
     maxItems: 0,
     children: [],
     items: null,

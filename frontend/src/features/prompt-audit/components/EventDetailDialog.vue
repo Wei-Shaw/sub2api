@@ -23,6 +23,10 @@
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.group') }}</dt><dd>{{ event.snapshot.group_name || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.model') }}</dt><dd>{{ event.snapshot.model || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.categories') }}</dt><dd>{{ formatCategories(event.categories) }}</dd>
+            <template v-if="event.error_code">
+              <dt class="text-gray-500">{{ t('admin.promptAudit.events.errorCode') }}</dt><dd class="break-all font-mono text-red-600 dark:text-red-300">{{ event.error_code }}</dd>
+              <dt class="text-gray-500">{{ t('admin.promptAudit.events.errorMessage') }}</dt><dd class="break-words text-red-600 dark:text-red-300">{{ event.error_message || '—' }}</dd>
+            </template>
           </dl>
         </div>
 
@@ -67,8 +71,23 @@
           <dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.config') }}</dt><dd>v{{ event.config_version }}</dd>
           <dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.chunks') }}</dt><dd>{{ event.chunk_total }}</dd>
           <dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.latency') }}</dt><dd>{{ event.latency_ms }} ms</dd>
+          <template v-if="event.error_code">
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.errorCode') }}</dt><dd class="break-all font-mono">{{ event.error_code }}</dd>
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.errorMessage') }}</dt><dd class="break-words">{{ event.error_message || '—' }}</dd>
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.failedChunk') }}</dt><dd>{{ event.failed_chunk_index || '—' }}</dd>
+          </template>
           <dt class="text-gray-500">{{ t('admin.promptAudit.events.stage') }}</dt><dd>{{ event.snapshot.stage || 'http' }}</dd>
           <dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.protocol') }}</dt><dd>{{ event.snapshot.protocol }} · {{ event.snapshot.endpoint }}</dd>
+			<template v-if="event.engine_type">
+				<dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.engine') }}</dt><dd>{{ event.engine_type }} · {{ event.audit_model || event.scanner_version }}</dd>
+				<dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.schemaConfidence') }}</dt><dd>v{{ event.schema_version || 0 }} · {{ event.confidence ?? '—' }}</dd>
+				<dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.enforcement') }}</dt><dd>{{ event.enforcement_stage || '—' }} · {{ event.failure_policy || '—' }}</dd>
+				<dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.usage') }}</dt><dd>{{ event.prompt_tokens || 0 }} / {{ event.completion_tokens || 0 }} / {{ event.total_tokens || 0 }}</dd>
+			</template>
+			<template v-if="event.shadow_comparison">
+				<dt class="text-gray-500">{{ t('admin.promptAudit.events.technical.shadowComparison') }}</dt>
+				<dd data-test="shadow-comparison">{{ event.shadow_comparison.keyword_decision }} / {{ event.shadow_comparison.llm_decision }} · {{ event.shadow_comparison.agreement ? t('admin.promptAudit.events.technical.agree') : t('admin.promptAudit.events.technical.disagree') }}</dd>
+			</template>
         </dl>
       </div>
     </div>
@@ -89,9 +108,9 @@ const tabs = ['summary', 'risks', 'technical'] as const
 const activeTab = ref<(typeof tabs)[number]>('summary')
 watch(() => props.event?.id, () => { activeTab.value = 'summary' })
 
-const DECISIONS = new Set(['pass', 'flag', 'critical'])
-const ACTIONS = new Set(['Allow', 'Warn', 'Block'])
-const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
+const DECISIONS = new Set(['pass', 'flag', 'critical', 'failed'])
+const ACTIONS = new Set(['Allow', 'Warn', 'Block', 'Error'])
+const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical', 'unknown'])
 
 function displayPrompt(event: PromptAuditEvent): string {
   return event.snapshot.full_prompt || event.snapshot.redacted_preview || '—'
@@ -136,6 +155,9 @@ function formatGuardReturn(event: PromptAuditEvent): string {
     guard_endpoint_id: event.guard_endpoint_id,
     chunk_total: event.chunk_total,
     latency_ms: event.latency_ms,
+    error_code: event.error_code,
+    error_message: event.error_message,
+    failed_chunk_index: event.failed_chunk_index,
   }, null, 2)
 }
 function issueTitle(issue: PromptIssueSummary): string {

@@ -3,6 +3,8 @@ package securityaudit
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -44,6 +46,63 @@ func TestHTTPClientUsesDirectStandardDialer(t *testing.T) {
 	require.True(t, ok)
 	require.Nil(t, transport.Proxy)
 	require.NotNil(t, transport.DialContext)
+}
+
+func TestGenericHTTPClientRejectsRedirect(t *testing.T) {
+	client, err := NewSecureHTTPClient(ActiveEndpoint{BaseURL: "https://guard.example.com", EngineType: EngineGenericLLM, TimeoutMS: 1000})
+	require.NoError(t, err)
+	err = client.CheckRedirect(&http.Request{}, []*http.Request{{}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prompt_audit_redirect_rejected")
+}
+
+func TestGenericHTTPClientRejectsLiteralLocalAddress(t *testing.T) {
+	_, err := NewSecureHTTPClient(ActiveEndpoint{BaseURL: "http://127.0.0.1:8080", EngineType: EngineGenericLLM, TimeoutMS: 1000})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prompt_audit_unsafe_destination")
+}
+
+func TestGenericDialRejectsLocalAndMixedDNSAnswers(t *testing.T) {
+	originalLookup := lookupPromptAuditIP
+	t.Cleanup(func() { lookupPromptAuditIP = originalLookup })
+
+	tests := []struct {
+		name      string
+		addresses []net.IPAddr
+	}{
+		{name: "loopback", addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}},
+		{name: "private", addresses: []net.IPAddr{{IP: net.ParseIP("10.0.0.8")}}},
+		{name: "link local", addresses: []net.IPAddr{{IP: net.ParseIP("169.254.169.254")}}},
+		{name: "mixed DNS rebinding answer", addresses: []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}, {IP: net.ParseIP("127.0.0.1")}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lookupPromptAuditIP = func(context.Context, string) ([]net.IPAddr, error) { return tt.addresses, nil }
+			dial := secureGenericDialContext(func(context.Context, string, string) (net.Conn, error) {
+				t.Fatal("unsafe address must not be dialed")
+				return nil, nil
+			}, "guard.example.com")
+			_, err := dial(context.Background(), "tcp", "guard.example.com:443")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "prompt_audit_unsafe_destination")
+		})
+	}
+}
+
+func TestGenericDialPinsValidatedPublicAddress(t *testing.T) {
+	originalLookup := lookupPromptAuditIP
+	t.Cleanup(func() { lookupPromptAuditIP = originalLookup })
+	lookupPromptAuditIP = func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("8.8.8.8")}}, nil
+	}
+	called := ""
+	dial := secureGenericDialContext(func(_ context.Context, _, address string) (net.Conn, error) {
+		called = address
+		return nil, errors.New("stop after address assertion")
+	}, "guard.example.com")
+	_, err := dial(context.Background(), "tcp", "guard.example.com:443")
+	require.Error(t, err)
+	require.Equal(t, "8.8.8.8:443", called)
 }
 
 func TestOpenAICompatibleScannerRequestContract(t *testing.T) {

@@ -59,11 +59,14 @@ var categoryAliases = map[string]string{
 }
 
 type GuardError struct {
-	Code       string
-	HTTPStatus int
-	Retryable  bool
-	Timeout    bool
-	Cause      error
+	Code         string
+	HTTPStatus   int
+	Retryable    bool
+	Timeout      bool
+	RequestURL   string
+	RequestBody  string
+	ResponseBody string
+	Cause        error
 }
 
 func (e *GuardError) Error() string {
@@ -198,24 +201,14 @@ func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpo
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
 	}
-	requestURL, err := ChatCompletionsURL(endpoint.BaseURL)
+	requestURL, body, err := promptGuardRequest(endpoint, chunk, enabledScanners)
 	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
+		return nil, err
 	}
-	payload := map[string]any{
-		"model":       endpoint.Model,
-		"messages":    []map[string]string{{"role": "user", "content": chunk}},
-		"temperature": 0,
-		"max_tokens":  64,
-		"seed":        42,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
-	}
+	requestBody := string(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
+		return nil, &GuardError{Code: ErrorCodeUnavailable, RequestURL: requestURL, RequestBody: requestBody, Cause: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if endpoint.Token != "" {
@@ -228,32 +221,87 @@ func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpo
 		if errors.As(err, &netErr) && netErr.Timeout() {
 			timeout = true
 		}
-		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Timeout: timeout, Cause: err}
+		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Timeout: timeout, RequestURL: requestURL, RequestBody: requestBody, Cause: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-		return nil, &GuardError{Code: ErrorCodeUnavailable, HTTPStatus: resp.StatusCode, Retryable: retryable}
-	}
 	limited := io.LimitReader(resp.Body, maxGuardResponseBytes+1)
-	responseBody, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Cause: err}
+	responseBody, readErr := io.ReadAll(limited)
+	responseText := string(responseBody)
+	if readErr != nil {
+		timeout := errors.Is(readErr, context.DeadlineExceeded)
+		var netErr net.Error
+		if errors.As(readErr, &netErr) && netErr.Timeout() {
+			timeout = true
+		}
+		return nil, &GuardError{Code: ErrorCodeUnavailable, HTTPStatus: resp.StatusCode, Retryable: true, Timeout: timeout, RequestURL: requestURL, RequestBody: requestBody, ResponseBody: responseText, Cause: readErr}
 	}
 	if int64(len(responseBody)) > maxGuardResponseBytes {
-		return nil, &GuardError{Code: ErrorCodeInvalidResponse}
+		return nil, &GuardError{Code: ErrorCodeInvalidResponse, HTTPStatus: resp.StatusCode, RequestURL: requestURL, RequestBody: requestBody, ResponseBody: responseText}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		var cause error
+		if excerpt := compactGuardErrorBody(responseBody); excerpt != "" {
+			cause = errors.New(excerpt)
+		}
+		return nil, &GuardError{Code: ErrorCodeUnavailable, HTTPStatus: resp.StatusCode, Retryable: retryable, RequestURL: requestURL, RequestBody: requestBody, ResponseBody: responseText, Cause: cause}
 	}
 	content, err := extractOpenAIContent(responseBody)
 	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
+		return nil, &GuardError{Code: ErrorCodeInvalidResponse, HTTPStatus: resp.StatusCode, RequestURL: requestURL, RequestBody: requestBody, ResponseBody: responseText, Cause: err}
 	}
-	result, err := ParseQwen3Guard(content, enabledScanners)
+	var result *NormalizedResult
+	if endpoint.EngineType == EngineGenericLLM {
+		result, err = parseGenericObservation(content, enabledScanners, endpoint.ConfidenceThreshold)
+	} else {
+		result, err = ParseQwen3Guard(content, enabledScanners)
+	}
 	if err != nil {
-		return nil, err
+		var guardErr *GuardError
+		if errors.As(err, &guardErr) {
+			guardErr.HTTPStatus = resp.StatusCode
+			guardErr.RequestURL = requestURL
+			guardErr.RequestBody = requestBody
+			guardErr.ResponseBody = responseText
+			return nil, guardErr
+		}
+		return nil, &GuardError{Code: ErrorCodeInvalidResponse, HTTPStatus: resp.StatusCode, RequestURL: requestURL, RequestBody: requestBody, ResponseBody: responseText, Cause: err}
 	}
+	usage := extractOpenAIUsage(responseBody)
+	result.PromptTokens, result.CompletionTokens, result.TotalTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens
 	result.GuardEndpointID = endpoint.ID
 	result.ScannerVersion = endpoint.Model
+	if result.EngineType == "" {
+		result.EngineType = EngineQwen3Guard
+	}
+	result.Stage = endpoint.Stage
+	result.FailurePolicy = endpoint.FailurePolicy
+	result.OutboundURL = requestURL
+	result.HTTPStatus = resp.StatusCode
+	result.OutboundResponse = responseText
 	return result, nil
+}
+
+func promptGuardRequest(endpoint ActiveEndpoint, chunk string, enabledScanners []string) (string, []byte, error) {
+	requestURL, err := ChatCompletionsURL(endpoint.BaseURL)
+	if err != nil {
+		return "", nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
+	}
+	payload := map[string]any{
+		"model":       endpoint.Model,
+		"messages":    []map[string]string{{"role": "user", "content": chunk}},
+		"temperature": 0,
+		"max_tokens":  64,
+		"seed":        42,
+	}
+	if endpoint.EngineType == EngineGenericLLM {
+		payload = genericRequestPayload(endpoint, chunk, enabledScanners)
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", nil, &GuardError{Code: ErrorCodeInvalidResponse, RequestURL: requestURL, Cause: err}
+	}
+	return requestURL, body, nil
 }
 
 func (s *OpenAICompatibleScanner) clientFor(endpoint ActiveEndpoint) (*http.Client, error) {
@@ -282,7 +330,8 @@ func (s *OpenAICompatibleScanner) clientFor(endpoint ActiveEndpoint) (*http.Clie
 func extractOpenAIContent(body []byte) (string, error) {
 	var response struct {
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
 				Content any `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
@@ -294,6 +343,9 @@ func extractOpenAIContent(body []byte) (string, error) {
 	switch typed := content.(type) {
 	case string:
 		if strings.TrimSpace(typed) == "" {
+			if response.Choices[0].FinishReason == "length" {
+				return "", errors.New("prompt guard output truncated before content: finish_reason=length; increase max output tokens")
+			}
 			return "", errors.New("prompt guard response content empty")
 		}
 		return typed, nil
@@ -309,12 +361,28 @@ func extractOpenAIContent(body []byte) (string, error) {
 			}
 		}
 		if len(parts) == 0 {
+			if response.Choices[0].FinishReason == "length" {
+				return "", errors.New("prompt guard output truncated before content: finish_reason=length; increase max output tokens")
+			}
 			return "", errors.New("prompt guard response content empty")
 		}
 		return strings.Join(parts, "\n"), nil
 	default:
 		return "", errors.New("prompt guard response content invalid")
 	}
+}
+
+func extractOpenAIUsage(body []byte) openAIUsage {
+	var envelope struct {
+		Usage openAIUsage `json:"usage"`
+	}
+	if json.Unmarshal(body, &envelope) != nil {
+		return openAIUsage{}
+	}
+	if envelope.Usage.PromptTokens < 0 || envelope.Usage.CompletionTokens < 0 || envelope.Usage.TotalTokens < 0 {
+		return openAIUsage{}
+	}
+	return envelope.Usage
 }
 
 func ScannerDefinitions() []ScannerDefinition {

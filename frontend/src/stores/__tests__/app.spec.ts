@@ -120,6 +120,17 @@ describe('useAppStore', () => {
       expect(store.toasts[0].type).toBe('warning')
     })
 
+    it('showWarningAction 创建自动关闭且带操作的 warning toast', () => {
+      const store = useAppStore()
+      const action = vi.fn()
+      store.showWarningAction('连接提示', '连接已转移', '在此继续', action)
+
+      expect(store.toasts[0]).toMatchObject({
+        type: 'warning', title: '连接提示', message: '连接已转移',
+        actionLabel: '在此继续', action, duration: 10000,
+      })
+    })
+
     it('showInfo 创建 info 类型 toast', () => {
       const store = useAppStore()
       store.showInfo('提示信息')

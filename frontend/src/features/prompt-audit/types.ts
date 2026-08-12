@@ -1,6 +1,11 @@
 export type PromptAuditMode = 'off' | 'async_audit' | 'blocking'
-export type PromptDecision = 'pass' | 'flag' | 'critical'
-export type PromptRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+export type PromptDecision = 'pass' | 'flag' | 'critical' | 'failed'
+export type PromptRiskLevel = 'low' | 'medium' | 'high' | 'critical' | 'unknown'
+export type PromptAuditEngineType = 'qwen3_guard' | 'generic_llm'
+export type PromptAuditStage = 'shadow' | 'warn' | 'block'
+export type PromptAuditFailurePolicy = 'fail_open' | 'fail_closed'
+export type PromptAuditCompositionMode = 'keyword_first' | 'llm_only' | 'combined'
+export type PromptAuditJSONOutputMode = 'plain_json' | 'json_schema'
 
 export interface PromptAuditEndpoint {
   id: string
@@ -13,6 +18,16 @@ export interface PromptAuditEndpoint {
   enabled: boolean
   has_token: boolean
   token_status: 'configured' | 'missing' | 'invalid' | string
+  engine_type: PromptAuditEngineType
+  schema_version: number
+  system_guidance: string
+  confidence_threshold: number
+  json_output_mode: PromptAuditJSONOutputMode
+  sample_rate: number
+  max_output_tokens: number
+  stage: PromptAuditStage
+  failure_policy: PromptAuditFailurePolicy
+  composition_mode: PromptAuditCompositionMode
 }
 
 export interface PromptAuditEndpointDraft extends PromptAuditEndpoint {
@@ -66,6 +81,16 @@ export interface PromptAuditUpdateRequest {
     timeout_ms: number
     input_limit: number
     enabled: boolean
+    engine_type: PromptAuditEngineType
+    schema_version: number
+    system_guidance: string
+    confidence_threshold: number
+    json_output_mode: PromptAuditJSONOutputMode
+    sample_rate: number
+    max_output_tokens: number
+    stage: PromptAuditStage
+    failure_policy: PromptAuditFailurePolicy
+    composition_mode: PromptAuditCompositionMode
   }>
 }
 
@@ -79,6 +104,11 @@ export interface PromptProbeResult {
   retryable: boolean
   checked_at: string
   token_applied: boolean
+  engine_type?: PromptAuditEngineType
+  model?: string
+  schema_version?: number
+  benign_decision?: string
+  unsafe_decision?: string
 }
 
 export interface PromptQueueStats {
@@ -107,6 +137,17 @@ export interface PromptGuardMetrics {
   latency_p95_ms?: number
   latency_p99_ms?: number
   latency_max_ms?: number
+	generic_requests?: number
+	generic_sampled_out?: number
+	generic_schema_failures?: number
+	generic_fail_open?: number
+	generic_fail_closed?: number
+	generic_prompt_tokens?: number
+	generic_completion_tokens?: number
+	generic_total_tokens?: number
+	generic_latency_count?: number
+	generic_latency_avg_ms?: number
+	generic_latency_max_ms?: number
 }
 
 export interface PromptAuditRuntime {
@@ -186,6 +227,25 @@ export interface PromptAuditEvent {
   scanner_backend: string
   scanner_version: string
   guard_endpoint_id: string
+  engine_type?: PromptAuditEngineType
+  schema_version?: number
+  confidence?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+	audit_model?: string
+	enforcement_stage?: PromptAuditStage
+	failure_policy?: PromptAuditFailurePolicy
+	unknown_categories?: string[]
+  shadow_comparison?: {
+		composition_mode?: PromptAuditCompositionMode
+		keyword_decision: string
+		llm_decision: string
+		agreement: boolean
+		}
+	error_code?: string
+	error_message?: string
+	failed_chunk_index?: number
   policy_id: string
   policy_version: number
   config_version: number

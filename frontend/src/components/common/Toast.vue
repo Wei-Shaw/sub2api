@@ -50,6 +50,14 @@
                 >
                   {{ toast.message }}
                 </p>
+                <button
+                  v-if="toast.actionLabel && toast.action"
+                  type="button"
+                  class="mt-2 text-sm font-medium text-yellow-700 underline underline-offset-2 hover:text-yellow-600 dark:text-yellow-300 dark:hover:text-yellow-200"
+                  @click="runAction(toast.id, toast.action)"
+                >
+                  {{ toast.actionLabel }}
+                </button>
               </div>
 
               <!-- Close button -->
@@ -131,6 +139,11 @@ const getProgressBarColor = (type: string): string => {
 
 const removeToast = (id: string) => {
   appStore.hideToast(id)
+}
+
+const runAction = (id: string, action: () => void) => {
+  action()
+  removeToast(id)
 }
 </script>
 

@@ -89,6 +89,7 @@ type fakeJobRepository struct {
 	recordBlockingSnapshot PromptSnapshot
 	recordBlockingResult   *NormalizedResult
 	recordBlockingErr      error
+	recordBlockingFailure  *AuditFailure
 }
 
 func (r *fakeJobRepository) record(value string) {
@@ -176,6 +177,13 @@ func (r *fakeJobRepository) RecordBlocking(_ context.Context, snapshot PromptSna
 	defer r.mu.Unlock()
 	r.recordBlockingCalls++
 	r.recordBlockingSnapshot, r.recordBlockingResult = snapshot, result
+	return nil, r.recordBlockingErr
+}
+
+func (r *fakeJobRepository) RecordBlockingFailure(_ context.Context, _ PromptSnapshot, _ int64, failure AuditFailure) (*Event, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recordBlockingFailure = &failure
 	return nil, r.recordBlockingErr
 }
 

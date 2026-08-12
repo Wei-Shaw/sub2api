@@ -154,7 +154,7 @@
       </div>
       <!-- string + textarea 专属：行数（仅 textarea 时显示） -->
       <div
-        v-if="node.type === 'string' && node.widget === 'textarea'"
+        v-if="node.type === 'string' && (node.widget === 'textarea' || node.widget === 'PromptTextArea')"
         class="flex w-24 flex-col gap-1"
       >
         <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
@@ -168,6 +168,21 @@
           class="input h-8 text-xs"
           @input="emitChange"
         />
+      </div>
+      <div
+        v-if="node.type === 'string' && node.widget === 'PromptTextArea'"
+        class="flex min-w-64 flex-1 flex-col gap-1"
+      >
+        <label class="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          {{ t('admin.modelIntros.fields.labelReferenceFields') }}
+        </label>
+        <div class="flex min-h-8 flex-wrap gap-2 rounded-xl border border-gray-300 bg-white px-2 py-1.5 dark:border-dark-600 dark:bg-dark-800">
+          <label v-for="field in referenceFieldOptions" :key="field" class="flex cursor-pointer items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+            <input type="checkbox" :checked="node.referenceFields.includes(field)" @change="toggleReferenceField(field)" />
+            <span class="font-mono">{{ field }}</span>
+          </label>
+          <span v-if="referenceFieldOptions.length === 0" class="text-xs text-gray-400">{{ t('admin.modelIntros.fields.noReferenceFields') }}</span>
+        </div>
       </div>
       <!-- array 专属：元素个数上限（0 / 留空 = 不限制） -->
       <div v-if="node.type === 'array'" class="flex w-28 flex-col gap-1">
@@ -357,6 +372,7 @@
             :model-value="child"
             :removable="true"
             :allow-array-defaults="allowArrayDefaults"
+            :reference-field-options="referenceFieldOptions"
             :can-move-up="i > 0"
             :can-move-down="i < node.children.length - 1"
             @update:modelValue="onChildUpdate(i, $event)"
@@ -409,6 +425,7 @@
           :is-array-item="true"
           :array-index="0"
           :allow-array-defaults="allowArrayDefaults"
+          :reference-field-options="referenceFieldOptions"
           @update:modelValue="onItemsUpdate"
         />
       </div>
@@ -522,7 +539,7 @@
  *  - 排序：本节点自身位置由父层控制，故只 emit 'move-up' / 'move-down'；
  *    object.children 的排序（拖拽 + 上下按钮）在本组件内直接完成。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { VueDraggable } from 'vue-draggable-plus'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -579,6 +596,8 @@ const props = defineProps<{
   canMoveDown?: boolean
   /** 是否允许为 array 配置请求默认值；输出 schema 关闭此能力。 */
   allowArrayDefaults?: boolean
+  /** 根参数 schema 自动计算出的可引用媒体字段路径。 */
+  referenceFieldOptions?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -638,6 +657,7 @@ const widgetOptions = computed<SelectOption[]>(() => {
   return [
     { value: 'input', label: 'input' },
     { value: 'textarea', label: 'textarea' },
+    { value: 'PromptTextArea', label: 'PromptTextArea' },
     { value: 'image', label: 'image' },
   ]
 })
@@ -757,12 +777,30 @@ function onWidgetChange(v: string | number | boolean | null) {
     emitChange()
     return
   }
-  const next: SchemaWidget = raw === 'textarea' ? 'textarea' : raw === 'image' ? 'image' : 'input'
+  const next: SchemaWidget = raw === 'textarea' ? 'textarea' : raw === 'PromptTextArea' ? 'PromptTextArea' : raw === 'image' ? 'image' : 'input'
   node.widget = next
-  if (next === 'textarea') {
+  if (next === 'textarea' || next === 'PromptTextArea') {
     const r = Number(node.textareaRows)
     if (!Number.isFinite(r) || r <= 0) node.textareaRows = 3
   }
+  emitChange()
+}
+
+const referenceFieldOptions = computed(() => props.referenceFieldOptions ?? [])
+watch(referenceFieldOptions, (options) => {
+  if (node.widget !== 'PromptTextArea') return
+  const allowed = new Set(options)
+  const normalized = node.referenceFields.filter((field) => allowed.has(field))
+  if (normalized.length !== node.referenceFields.length) {
+    node.referenceFields = normalized
+    emitChange()
+  }
+}, { immediate: true })
+
+function toggleReferenceField(field: string) {
+  node.referenceFields = node.referenceFields.includes(field)
+    ? node.referenceFields.filter((item) => item !== field)
+    : [...node.referenceFields, field]
   emitChange()
 }
 

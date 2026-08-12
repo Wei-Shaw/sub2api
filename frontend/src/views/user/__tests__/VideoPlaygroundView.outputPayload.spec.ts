@@ -19,4 +19,10 @@ describe('VideoPlaygroundView output payload fallback', () => {
       'v-if="playground.resultPayload.value"\n                class="max-h-96',
     )
   })
+
+  it('saves only completed payload videos into the current user material library', () => {
+    expect(viewSource).toContain("primaryPreview.source === 'payload' && playground.phase.value === 'completed'")
+    expect(viewSource).toContain('userMaterialsAPI.importFromUrl(normalized)')
+    expect(viewSource).toContain("t('videoModels.playground.saveToMaterials')")
+  })
 })

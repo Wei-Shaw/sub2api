@@ -2,7 +2,11 @@ package securityaudit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,11 +50,17 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 	baseFields := snapshotLogFields(snapshot)
 	baseFields["config_version"] = cfg.ConfigVersion
 	endpoints := cfg.EnabledEndpoints()
+	genericBeforeSampling := countGenericEndpoints(endpoints)
+	endpoints = sampledEndpoints(snapshot.RequestID, endpoints)
+	if genericBeforeSampling > 0 && countGenericEndpoints(endpoints) == 0 && g.metrics != nil {
+		g.metrics.IncGenericSampledOut()
+	}
 	if len(endpoints) == 0 {
 		if g.metrics != nil {
 			g.metrics.Observe(DecisionUnavailable, g.clock.Now().Sub(start))
 		}
 		logGuardFailure(snapshot, cfg, DecisionUnavailable, ErrorCodeUnavailable, "", g.clock.Now().Sub(start))
+		g.recordFailure(ctx, snapshot, cfg, nil, &GuardError{Code: ErrorCodeUnavailable}, 0, 0, g.clock.Now().Sub(start))
 		return nil, &GuardError{Code: ErrorCodeUnavailable}
 	}
 	select {
@@ -62,6 +72,7 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 			g.metrics.Observe(DecisionUnavailable, g.clock.Now().Sub(start))
 		}
 		logGuardFailure(snapshot, cfg, DecisionUnavailable, ErrorCodeUnavailable, "", g.clock.Now().Sub(start))
+		g.recordFailure(ctx, snapshot, cfg, &endpoints[0], &GuardError{Code: ErrorCodeUnavailable}, 0, 0, g.clock.Now().Sub(start))
 		return nil, &GuardError{Code: ErrorCodeUnavailable}
 	}
 	timeout := time.Duration(endpoints[0].TimeoutMS) * time.Millisecond
@@ -78,11 +89,16 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		}
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
-	LogInfo(EventEvaluationStarted, mergeLogFields(baseFields, map[string]any{"chunk_total": len(chunks), "status": "started"}))
+	evaluationFields := map[string]any{"chunk_total": len(chunks), "status": "started"}
+	if requestURL, requestBody, requestErr := promptGuardRequest(endpoints[0], chunks[0], cfg.Scanners); requestErr == nil {
+		evaluationFields["outbound_url"] = requestURL
+		evaluationFields["outbound_request_body"] = string(requestBody)
+	}
+	LogDebug(EventEvaluationStarted, mergeLogFields(baseFields, evaluationFields))
 	results := make([]*NormalizedResult, 0, len(chunks))
 	for index, chunk := range chunks {
 		chunkStarted := g.clock.Now()
-		LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{
+		LogDebug(EventChunkStarted, mergeLogFields(baseFields, map[string]any{
 			"chunk_index": index + 1, "chunk_total": len(chunks),
 			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
 			"status": "started",
@@ -90,11 +106,13 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		result, err := g.scanChunk(evalCtx, cfg, endpoints, chunk)
 		if err != nil {
 			code := guardErrorCode(err)
-			LogWarn(EventChunkFailed, mergeLogFields(baseFields, map[string]any{
+			failureFields := map[string]any{
 				"chunk_index": index + 1, "chunk_total": len(chunks),
 				"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
 				"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "error_code": code, "status": "failed",
-			}))
+			}
+			addGuardHTTPLogFields(failureFields, err)
+			LogWarn(EventChunkFailed, mergeLogFields(baseFields, failureFields))
 			kind := DecisionUnavailable
 			if code == ErrorCodeInvalidResponse {
 				kind = DecisionInvalid
@@ -107,15 +125,17 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 				}
 			}
 			logGuardFailure(snapshot, cfg, kind, code, "", g.clock.Now().Sub(start))
+			g.recordFailure(ctx, snapshot, cfg, &endpoints[0], err, len(chunks), index+1, g.clock.Now().Sub(start))
 			return nil, err
 		}
 		result.ChunkTotal = len(chunks)
 		results = append(results, result)
-		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
+		LogDebug(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
 			"chunk_index": index + 1, "chunk_total": len(chunks),
 			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
 			"guard_endpoint_id": result.GuardEndpointID, "action": result.Action,
 			"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed",
+			"outbound_url": result.OutboundURL, "http_status": result.HTTPStatus, "outbound_response_body": result.OutboundResponse,
 		}))
 		if result.Action == ActionBlock {
 			break
@@ -127,6 +147,7 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 			g.metrics.Observe(DecisionInvalid, g.clock.Now().Sub(start))
 		}
 		logGuardFailure(snapshot, cfg, DecisionInvalid, ErrorCodeInvalidResponse, "", g.clock.Now().Sub(start))
+		g.recordFailure(ctx, snapshot, cfg, &endpoints[0], &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}, len(chunks), 0, g.clock.Now().Sub(start))
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
 	aggregated.ChunkTotal = len(chunks)
@@ -137,14 +158,25 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 	if aggregated.Action == ActionBlock {
 		kind = DecisionBlock
 	}
+	if aggregated.EngineType == EngineGenericLLM {
+		switch aggregated.Stage {
+		case "shadow":
+			kind = DecisionAllow
+		case "warn":
+			if aggregated.Action != ActionAllow {
+				kind = DecisionFlag
+			}
+		}
+	}
 	decision := &PromptDecision{Kind: kind, Result: aggregated, AllowNextStage: kind == DecisionAllow || kind == DecisionFlag}
 	if kind == DecisionBlock {
 		decision.ErrorCode = ErrorCodeBlocked
 	}
 	if g.metrics != nil {
 		g.metrics.Observe(kind, g.clock.Now().Sub(start))
+		g.metrics.ObserveGeneric(aggregated, g.clock.Now().Sub(start))
 	}
-	LogInfo(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
+	LogDebug(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
 		"decision":   kind,
 		"risk_level": aggregated.RiskLevel, "action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
 		"latency_ms": aggregated.LatencyMS, "guard_endpoint_id": aggregated.GuardEndpointID, "stage": snapshot.Stage,
@@ -169,13 +201,104 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 			"stage": snapshot.Stage, "upstream_dispatched": false, "billing_preconsumed": false,
 		}))
 	} else {
-		LogInfo(EventGuardAllowed, mergeLogFields(baseFields, map[string]any{
+		LogDebug(EventGuardAllowed, mergeLogFields(baseFields, map[string]any{
 			"decision": kind, "risk_level": aggregated.RiskLevel, "action": aggregated.Action,
 			"guard_endpoint_id": aggregated.GuardEndpointID, "chunk_total": aggregated.ChunkTotal,
 			"latency_ms": aggregated.LatencyMS, "stage": snapshot.Stage, "status": "allowed",
 		}))
 	}
 	return decision, nil
+}
+
+func (g *GuardEvaluator) recordFailure(ctx context.Context, snapshot PromptSnapshot, cfg ActiveConfig, endpoint *ActiveEndpoint, failure error, chunkTotal, failedChunkIndex int, latency time.Duration) {
+	if g == nil || g.repo == nil {
+		return
+	}
+	record := AuditFailure{Code: guardErrorCode(failure), Message: auditFailureMessage(failure), ChunkTotal: chunkTotal, FailedChunkIndex: failedChunkIndex, LatencyMS: int(latency.Milliseconds())}
+	if endpoint != nil {
+		record.GuardEndpointID, record.EngineType, record.AuditModel = endpoint.ID, endpoint.EngineType, endpoint.Model
+		record.Stage, record.FailurePolicy = endpoint.Stage, endpoint.FailurePolicy
+	}
+	if _, err := g.repo.RecordBlockingFailure(ctx, snapshot.Redacted(), cfg.ConfigVersion, record); err != nil {
+		if g.metrics != nil {
+			g.metrics.IncRecordFailed()
+		}
+		LogWarn(EventResultRecordFailed, mergeLogFields(snapshotLogFields(snapshot), map[string]any{"decision": "failed", "error_code": "result_record_failed", "status": "failed"}))
+	}
+}
+
+func auditFailureMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	var guardErr *GuardError
+	if errors.As(err, &guardErr) {
+		parts := make([]string, 0, 3)
+		if guardErr.Timeout {
+			parts = append(parts, "request timed out")
+		}
+		if guardErr.HTTPStatus > 0 {
+			parts = append(parts, fmt.Sprintf("upstream returned HTTP %d", guardErr.HTTPStatus))
+		}
+		if guardErr.Cause != nil {
+			parts = append(parts, strings.TrimSpace(guardErr.Cause.Error()))
+		}
+		if len(parts) > 0 {
+			message = strings.Join(parts, ": ")
+		}
+	}
+	const limit = 500
+	if len([]rune(message)) > limit {
+		message = string([]rune(message)[:limit])
+	}
+	return message
+}
+
+func addGuardHTTPLogFields(fields map[string]any, err error) {
+	var guardErr *GuardError
+	if !errors.As(err, &guardErr) {
+		if err != nil {
+			fields["error_message"] = err.Error()
+		}
+		return
+	}
+	fields["outbound_url"] = guardErr.RequestURL
+	fields["outbound_request_body"] = guardErr.RequestBody
+	fields["http_status"] = guardErr.HTTPStatus
+	fields["outbound_response_body"] = guardErr.ResponseBody
+	fields["error_message"] = auditFailureMessage(guardErr)
+}
+
+func compactGuardErrorBody(body []byte) string {
+	value := strings.Join(strings.Fields(string(body)), " ")
+	const limit = 300
+	if len([]rune(value)) > limit {
+		value = string([]rune(value)[:limit]) + "..."
+	}
+	return value
+}
+
+func sampledEndpoints(requestID string, endpoints []ActiveEndpoint) []ActiveEndpoint {
+	result := make([]ActiveEndpoint, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		if endpoint.EngineType != EngineGenericLLM || endpoint.SampleRate >= 1 || deterministicSample(requestID, endpoint.ID, endpoint.SampleRate) {
+			result = append(result, endpoint)
+		}
+	}
+	return result
+}
+
+func deterministicSample(requestID, endpointID string, rate float64) bool {
+	if rate >= 1 {
+		return true
+	}
+	if rate <= 0 {
+		return false
+	}
+	digest := sha256.Sum256([]byte(requestID + "\x00" + endpointID))
+	value := binary.BigEndian.Uint64(digest[:8])
+	return float64(value)/float64(^uint64(0)) < rate
 }
 
 func logGuardFailure(snapshot PromptSnapshot, cfg ActiveConfig, kind DecisionKind, code, guardEndpointID string, latency time.Duration) {
@@ -215,6 +338,9 @@ func (g *GuardEvaluator) scanChunk(ctx context.Context, cfg ActiveConfig, endpoi
 		}
 		lastErr = err
 		var guardErr *GuardError
+		if endpoint.EngineType == EngineGenericLLM && errors.As(err, &guardErr) && guardErr.Code == ErrorCodeInvalidResponse && g.metrics != nil {
+			g.metrics.IncGenericSchemaFailure()
+		}
 		if !errors.As(err, &guardErr) || !guardErr.Retryable {
 			return nil, err
 		}
@@ -226,6 +352,16 @@ func (g *GuardEvaluator) scanChunk(ctx context.Context, cfg ActiveConfig, endpoi
 		lastErr = &GuardError{Code: ErrorCodeUnavailable}
 	}
 	return nil, lastErr
+}
+
+func countGenericEndpoints(endpoints []ActiveEndpoint) int {
+	count := 0
+	for _, endpoint := range endpoints {
+		if endpoint.EngineType == EngineGenericLLM {
+			count++
+		}
+	}
+	return count
 }
 
 func callPromptScanner(ctx context.Context, scanner PromptScanner, endpoint ActiveEndpoint, chunk string, scanners []string) (result *NormalizedResult, err error) {

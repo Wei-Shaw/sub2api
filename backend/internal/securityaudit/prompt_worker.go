@@ -135,7 +135,7 @@ func (r *Runner) processSafely(ctx context.Context, workerID int, cfg ActiveConf
 
 func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig, job *Job) error {
 	baseFields := jobLogFields(job)
-	LogInfo(EventAuditStarted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "attempts": job.Attempts, "status": "processing"}))
+	LogDebug(EventAuditStarted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "attempts": job.Attempts, "status": "processing"}))
 	scanText, err := r.payload.Get(ctx, job.ID)
 	if err != nil {
 		return r.finishFailure(ctx, job, &GuardError{Code: "payload_missing", Retryable: false, Cause: err})
@@ -155,20 +155,22 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 			return err
 		}
 		chunkStarted := r.clock.Now()
-		LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "chunk_chars": len([]rune(chunk)), "input_chars": job.Snapshot.PromptLength, "input_limit": minimumInputLimit(endpoints), "status": "started"}))
+		LogDebug(EventChunkStarted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "chunk_chars": len([]rune(chunk)), "input_chars": job.Snapshot.PromptLength, "input_limit": minimumInputLimit(endpoints), "status": "started"}))
 		result, scanErr := scanWithFailover(ctx, r.scanner, cfg.Scanners, endpoints, chunk, r.metrics)
 		if scanErr != nil {
-			LogWarn(EventChunkFailed, mergeLogFields(baseFields, map[string]any{
+			failureFields := map[string]any{
 				"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks),
 				"chunk_chars": len([]rune(chunk)), "input_chars": job.Snapshot.PromptLength,
 				"input_limit": minimumInputLimit(endpoints), "latency_ms": r.clock.Now().Sub(chunkStarted).Milliseconds(),
 				"error_code": guardErrorCode(scanErr), "status": "failed",
-			}))
+			}
+			addGuardHTTPLogFields(failureFields, scanErr)
+			LogWarn(EventChunkFailed, mergeLogFields(baseFields, failureFields))
 			r.observeAsyncFailure(scanErr, r.clock.Now().Sub(started))
 			return r.finishFailure(ctx, job, scanErr)
 		}
 		results = append(results, result)
-		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "guard_endpoint_id": result.GuardEndpointID, "action": result.Action, "latency_ms": r.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed"}))
+		LogDebug(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "guard_endpoint_id": result.GuardEndpointID, "action": result.Action, "latency_ms": r.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed", "outbound_url": result.OutboundURL, "http_status": result.HTTPStatus, "outbound_response_body": result.OutboundResponse}))
 		if result.Action == ActionBlock {
 			break
 		}
@@ -184,7 +186,7 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 	if r.metrics != nil {
 		r.metrics.Observe(decisionKindForResult(aggregated), r.clock.Now().Sub(started))
 	}
-	LogInfo(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
+	LogDebug(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
 		"worker_id": workerID, "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel,
 		"action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
 		"latency_ms": aggregated.LatencyMS, "guard_endpoint_id": aggregated.GuardEndpointID, "status": "completed",
@@ -196,7 +198,7 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 	if deleteErr := r.payload.Delete(ctx, job.ID); deleteErr != nil {
 		LogWarn(EventProcessFailed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "status": "payload_delete_deferred", "error_code": "payload_delete_failed"}))
 	}
-	LogInfo(EventProcessed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": eventID(event), "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "guard_endpoint_id": aggregated.GuardEndpointID, "latency_ms": aggregated.LatencyMS, "status": "done"}))
+	LogDebug(EventProcessed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": eventID(event), "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "guard_endpoint_id": aggregated.GuardEndpointID, "latency_ms": aggregated.LatencyMS, "status": "done"}))
 	if event != nil && aggregated.Decision != EventPass {
 		LogWarn(EventFindingRecorded, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": event.ID, "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "guard_endpoint_id": aggregated.GuardEndpointID, "status": "recorded"}))
 	}

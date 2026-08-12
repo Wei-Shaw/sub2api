@@ -33,6 +33,16 @@ function mountField(params: Record<string, unknown>) {
 }
 
 describe('VideoPlaygroundSchemaField media arrays', () => {
+  it('renders only the select control for an enum input field', () => {
+    const wrapper = mountField({
+      mode: { value: 'fast', widget: 'input', enum: true, options: ['fast', 'quality'] },
+    })
+
+    expect(wrapper.findComponent({ name: 'Select' }).exists()).toBe(true)
+    expect(wrapper.find('input').exists()).toBe(false)
+    expect(wrapper.find('textarea').exists()).toBe(false)
+  })
+
   it('renders ImageUrls defaults as a compact gallery with max-items guidance', () => {
     const urls = [
       'https://cdn.example.com/reference-a.png',
@@ -99,7 +109,7 @@ describe('VideoPlaygroundSchemaField media arrays', () => {
     wrapper.unmount()
   })
 
-  it('uses the media-reference prompt input for the prompt field', () => {
+  it('renders an ordinary textarea for a prompt field unless the schema selects PromptTextArea', () => {
     const spec = extractFieldSpecs({ prompt: { value: '', widget: 'textarea' } })[0]
     const wrapper = mount(VideoPlaygroundSchemaField, {
       props: {
@@ -118,7 +128,33 @@ describe('VideoPlaygroundSchemaField media arrays', () => {
       },
     })
 
-    expect(wrapper.findComponent({ name: 'PromptMediaReferenceInput' }).exists()).toBe(true)
-    expect(wrapper.find('.prompt-media-editor .media-reference-token img').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'PromptMediaReferenceInput' }).exists()).toBe(false)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    expect(wrapper.find('.prompt-reference-hint').exists()).toBe(false)
+  })
+
+  it('renders PromptTextArea for any string key and filters configured references', () => {
+    const spec = extractFieldSpecs({
+      instruction: {
+        value: '', widget: 'PromptTextArea', rows: 5,
+        reference_fields: ['reference_images'],
+      },
+    })[0]
+    const wrapper = mount(VideoPlaygroundSchemaField, {
+      props: {
+        spec,
+        modelValue: 'Animate @IMAGE1',
+        mediaReferences: [
+          { label: '@IMAGE1', kind: 'image', url: 'https://cdn.example.com/a.png', fieldKey: 'reference_images', itemIndex: 0 },
+          { label: '@VIDEO1', kind: 'video', url: 'https://cdn.example.com/a.mp4', fieldKey: 'video_urls', itemIndex: 0 },
+        ],
+      },
+      global: { plugins: [i18n, createPinia()] },
+    })
+
+    const editor = wrapper.getComponent({ name: 'PromptMediaReferenceInput' })
+    expect(editor.props('references')).toHaveLength(1)
+    expect(editor.props('references')[0].fieldKey).toBe('reference_images')
+    expect(wrapper.find('.prompt-reference-hint').exists()).toBe(true)
   })
 })

@@ -653,13 +653,23 @@
                 {{ t('videoModels.playground.previewFromDefault') }}
               </span>
             </div>
-            <video
-              v-if="resultType === 'video'"
-              :src="primaryPreview.url"
-              controls
-              preload="metadata"
-              class="mx-auto block h-auto max-h-[520px] max-w-full rounded border border-gray-200 bg-black dark:border-gray-700"
-            />
+            <div v-if="resultType === 'video'" class="relative mx-auto w-fit max-w-full">
+              <video
+                :src="primaryPreview.url"
+                controls
+                preload="metadata"
+                class="block h-auto max-h-[520px] max-w-full rounded border border-gray-200 bg-black dark:border-gray-700"
+              />
+              <button
+                v-if="primaryPreview.source === 'payload' && playground.phase.value === 'completed'"
+                type="button"
+                class="absolute bottom-3 right-3 rounded-lg bg-black/70 px-3 py-1.5 text-xs font-medium text-white shadow backdrop-blur hover:bg-black/85 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="savingMaterialURLs.has(primaryPreview.url) || savedMaterialURLs.has(primaryPreview.url)"
+                @click="saveVideoToMaterials(primaryPreview.url)"
+              >
+                {{ savedMaterialURLs.has(primaryPreview.url) ? t('videoModels.playground.savedToMaterials') : savingMaterialURLs.has(primaryPreview.url) ? t('videoModels.playground.savingToMaterials') : t('videoModels.playground.saveToMaterials') }}
+              </button>
+            </div>
             <img
               v-else
               :src="primaryPreview.url"
@@ -919,6 +929,7 @@ import videoModelsAPI, {
 } from '@/api/videoModels'
 import keysAPI from '@/api/keys'
 import userGroupsAPI from '@/api/groups'
+import userMaterialsAPI from '@/api/userMaterials'
 import type { ApiKey, Group } from '@/types'
 import { buildGatewayUrl } from '@/api/url'
 import { useAppStore } from '@/stores/app'
@@ -938,6 +949,24 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const playground = useVideoPlayground()
+const savingMaterialURLs = reactive(new Set<string>())
+const savedMaterialURLs = reactive(new Set<string>())
+
+async function saveVideoToMaterials(url: string) {
+  const normalized = url.trim()
+  if (!normalized || savingMaterialURLs.has(normalized) || savedMaterialURLs.has(normalized)) return
+  savingMaterialURLs.add(normalized)
+  try {
+    await userMaterialsAPI.importFromUrl(normalized)
+    savedMaterialURLs.add(normalized)
+    appStore.showSuccess(t('videoModels.playground.saveToMaterialsSuccess'))
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    appStore.showError(t('videoModels.playground.saveToMaterialsFailed', { msg: message }))
+  } finally {
+    savingMaterialURLs.delete(normalized)
+  }
+}
 
 // ============ slug 与模型加载 ============
 // 路由用 pathMatch (:slug(.*)+)。vue-router 会把它作为 route.params.slug（string 或 string[]）。

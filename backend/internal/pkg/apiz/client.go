@@ -21,6 +21,10 @@
 //	resolution(480P|720P, 默认720P) / aspect_ratio(21:9|16:9|4:3|1:1|3:4|9:16)
 //	audio(bool) / image_url(首帧,带图即图生视频) / end_image_url(尾帧,需同时给image_url)
 //	reference_image_urls(<=30) / reference_video_urls(<=10) / reference_audio_urls(<=10)
+//
+// adaptSubmitParams 会把 fal 系的字段名映射成上面这套（generate_audio→audio、
+// {image,video,audio}_urls→reference_{image,video,audio}_urls），并把
+// duration/aspect_ratio 的 "auto" 换成具体值。直接按 apiz 原生名传参也支持。
 package apiz
 
 import (
@@ -203,12 +207,8 @@ func adaptSubmitParams(body any) any {
 	for k, v := range src {
 		out[k] = v
 	}
-	if v, exists := out["generate_audio"]; exists {
-		if _, hasAudio := out["audio"]; !hasAudio {
-			out["audio"] = v
-		}
-		delete(out, "generate_audio")
-	}
+	// generate_audio → audio：fal 系用 generate_audio，apiz 用 audio。
+	renameKeyIfAbsent(out, "generate_audio", "audio")
 	if v, exists := out["resolution"]; exists {
 		if s, isStr := v.(string); isStr {
 			out["resolution"] = normalizeApizResolution(s)
@@ -224,7 +224,39 @@ func adaptSubmitParams(body any) any {
 			out["aspect_ratio"] = apizAutoAspectRatioFallback
 		}
 	}
+	// 参考素材数组的字段名转换：其他 fal 兼容上游用 {image,video,audio}_urls，
+	// apiz 侧要求 reference_{image,video,audio}_urls（见本文件头部的参数说明）。
+	// 不在此处校验数量上限（<=30/10/10），保持"只做名字映射、由上游判定业务规则"
+	// 的既有原则，避免网关与上游规则各写一份而漂移。
+	for _, m := range apizReferenceURLFieldRenames {
+		renameKeyIfAbsent(out, m.from, m.to)
+	}
 	return out
+}
+
+// apizReferenceURLFieldRenames 是参考素材数组字段的重命名表。
+// 用表驱动而不是三段重复的 if：将来 apiz 再加 reference_xxx_urls 只需加一行。
+var apizReferenceURLFieldRenames = []struct{ from, to string }{
+	{from: "image_urls", to: "reference_image_urls"},
+	{from: "video_urls", to: "reference_video_urls"},
+	{from: "audio_urls", to: "reference_audio_urls"},
+}
+
+// renameKeyIfAbsent 把 m[from] 搬到 m[to]，并删除 from。
+//
+// 语义与既有的 generate_audio → audio 转换保持一致：
+//   - from 不存在：什么都不做（不会凭空造出一个 to 键）
+//   - to 已被调用方显式指定：尊重调用方的 to，仅丢弃 from，避免同键冲突
+//     （调用方直接按 apiz 原生字段名传参时就是这种情况）
+func renameKeyIfAbsent(m map[string]any, from, to string) {
+	v, exists := m[from]
+	if !exists {
+		return
+	}
+	if _, hasTarget := m[to]; !hasTarget {
+		m[to] = v
+	}
+	delete(m, from)
 }
 
 // apizAutoDurationFallback 是当客户端传 duration="auto" 时，转发给 apiz 上游
@@ -259,12 +291,20 @@ func normalizeApizResolution(s string) string {
 // 即：{ "model": "<upstream_model>", "params": { ...原始 payload... } }。
 // 因此这里把调用方透传下来的 body 包一层，再发给上游。
 //
-// 参数命名差异（apiz vs 其他 fal 兼容上游）：
+// 参数命名差异（apiz vs 其他 fal 兼容上游），统一由 adaptSubmitParams 处理：
 //   - generate_audio (bool) → audio (bool)
 //     其他 fal 兼容上游用 generate_audio 控制是否生成音轨；apiz 侧字段名是 audio。
-//     这里做一次名字转换：把入参里的 generate_audio 搬到 audio。
-//     如果调用方同时显式传了 audio，尊重调用方的 audio，仅丢弃 generate_audio，
-//     避免同键冲突。
+//   - image_urls → reference_image_urls（<=30）
+//   - video_urls → reference_video_urls（<=10）
+//   - audio_urls → reference_audio_urls（<=10）
+//     参考素材数组：其他上游用 {kind}_urls，apiz 要求 reference_{kind}_urls。
+//     数量上限交给上游校验，网关只做名字映射，避免两边规则各写一份而漂移。
+//
+// 以上转换的共同语义：源字段不存在则不动；若调用方同时显式传了目标字段，
+// 尊重目标字段、仅丢弃别名，避免同键冲突（直接按 apiz 原生名传参即属此例）。
+//
+// 另外 duration / aspect_ratio 传 "auto" 时会被替换为具体值（apiz 不接受 "auto"，
+// 收到会 422），resolution 的 "720p" 会规范化为 "720P"。
 //
 // 上游返回 { task_id, status, ... }，映射为 fal.SubmitResponse：
 //   - RequestID = task_id
@@ -616,7 +656,7 @@ func (c *Client) queryTask(ctx context.Context, statusURL string) (*taskResponse
 	if err != nil {
 		return nil, err
 	}
-	return c.doTask(ctx, endpoint, map[string]any{queryParamTaskID: taskID})
+	return c.doTaskWithLogEvents(ctx, endpoint, map[string]any{queryParamTaskID: taskID}, "apiz_status_poll_request", "apiz_status_poll_response", true)
 }
 
 // splitQueryURL 把 {base}/api/v3/tasks/query?task_id=xxx 拆成端点与 task_id。
@@ -639,7 +679,11 @@ func splitQueryURL(statusURL string) (endpoint, taskID string, err error) {
 
 // doTask 执行一次 POST 请求并解析为 taskResponse（含原始 Raw map）。
 func (c *Client) doTask(ctx context.Context, endpoint string, reqBody any) (*taskResponse, error) {
-	raw, err := c.doJSON(ctx, http.MethodPost, endpoint, reqBody)
+	return c.doTaskWithLogEvents(ctx, endpoint, reqBody, "apiz_http_request", "apiz_http_response", false)
+}
+
+func (c *Client) doTaskWithLogEvents(ctx context.Context, endpoint string, reqBody any, requestEvent, responseEvent string, info bool) (*taskResponse, error) {
+	raw, err := c.doJSON(ctx, http.MethodPost, endpoint, reqBody, requestEvent, responseEvent, info)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +707,7 @@ func (c *Client) doTask(ctx context.Context, endpoint string, reqBody any) (*tas
 // doJSON 执行一次 HTTP 请求，序列化 reqBody（可为 nil）并返回原始响应体。
 // 非 2xx 返回 *fal.APIError（复用 fal 的错误类型，让 service 层的
 // errors.As(err, &fal.APIError) 分支统一处理退费/脱敏）。
-func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody any) ([]byte, error) {
+func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody any, requestEvent, responseEvent string, info bool) ([]byte, error) {
 	var bodyReader io.Reader
 	var rawBody []byte
 	if reqBody != nil {
@@ -686,11 +730,11 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 	}
 
 	requestID := newRequestID()
-	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+	if info || slog.Default().Enabled(ctx, slog.LevelDebug) {
 		// 完整 request body 分块打印，便于线上排障（如 apiz 422 时看真实提交内容）。
 		// 分块长度参照 async_video_executor 里对 upstream error dump 的做法，
 		// 保证单条 log 记录不会撑爆日志系统。
-		logBodyChunks(ctx, "apiz_http_request", requestID, method, endpoint, 0, rawBody)
+		logBodyChunks(ctx, requestEvent, requestID, method, endpoint, 0, rawBody, info)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -704,9 +748,9 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 		return nil, fmt.Errorf("apiz: read response: %w", err)
 	}
 
-	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+	if info || slog.Default().Enabled(ctx, slog.LevelDebug) {
 		// 完整 response body 分块打印。status 一并附带便于筛选 4xx/5xx。
-		logBodyChunks(ctx, "apiz_http_response", requestID, method, endpoint, resp.StatusCode, raw)
+		logBodyChunks(ctx, responseEvent, requestID, method, endpoint, resp.StatusCode, raw, info)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -853,7 +897,7 @@ const apizLogBodyChunkSize = 4000
 //   - body       : 完整字节数组；为空时输出一条 body_bytes=0 的空 body 记录
 //
 // 每条 log 附带 chunk_index / chunk_total 便于串起来重组原始 body。
-func logBodyChunks(ctx context.Context, event, requestID, method, endpoint string, status int, body []byte) {
+func logBodyChunks(ctx context.Context, event, requestID, method, endpoint string, status int, body []byte, info bool) {
 	total := len(body)
 	// baseAttrs 组装每条 log 的公共字段。
 	// 使用 []any 而非 struct 是为了走 slog 变参 API，避免额外的分配。
@@ -875,7 +919,7 @@ func logBodyChunks(ctx context.Context, event, requestID, method, endpoint strin
 		return attrs
 	}
 	if total == 0 {
-		slog.Debug(event, baseAttrs(0, 1, "")...)
+		logApizBodyChunk(ctx, info, event, baseAttrs(0, 1, "")...)
 		return
 	}
 	// 按字节切分即可；apiz 提交与返回体均为 JSON（ASCII/UTF-8 混合），
@@ -888,6 +932,14 @@ func logBodyChunks(ctx context.Context, event, requestID, method, endpoint strin
 		if end > total {
 			end = total
 		}
-		slog.Debug(event, baseAttrs(i, chunks, string(body[start:end]))...)
+		logApizBodyChunk(ctx, info, event, baseAttrs(i, chunks, string(body[start:end]))...)
 	}
+}
+
+func logApizBodyChunk(ctx context.Context, info bool, event string, attrs ...any) {
+	if info {
+		slog.InfoContext(ctx, event, attrs...)
+		return
+	}
+	slog.DebugContext(ctx, event, attrs...)
 }

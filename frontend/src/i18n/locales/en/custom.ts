@@ -5190,6 +5190,8 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
       searchPlaceholder: 'Search by model_key / title',
       statusEnabled: 'Enabled',
       statusDisabled: 'Disabled',
+      tryIt: 'Try it',
+      tryItDisabled: 'Enable this model intro first',
       loadFailed: 'Failed to load list',
       created: 'Model intro created',
       updated: 'Model intro updated',
@@ -5320,6 +5322,8 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         labelEnumOptions: 'Enum options',
         // String-only widget kind and textarea row count
         labelWidget: 'Widget',
+        labelReferenceFields: 'Reference fields',
+        noReferenceFields: 'Add an image, video, or audio field first',
         labelTextareaRows: 'Rows',
         // Array-only: max element count + imageUrls widget note
         labelMaxItems: 'Max items',

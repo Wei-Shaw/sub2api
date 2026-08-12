@@ -530,7 +530,7 @@ func toVideoTaskItem(t *service.AsyncVideoTask) videoTaskItem {
 		AspectRatio:       deref(t.AspectRatio),
 		FinalCost:         t.FinalCost,
 		HeldCost:          t.HeldCost,
-		ErrorReason:       deref(t.ErrorReason),
+		ErrorReason:       service.SanitizeVideoErrorReason(deref(t.ErrorReason)),
 		VideoURLs:         t.VideoURLs,
 		CosURLs:           t.CosURLs,
 		RequestPayload:    t.RequestPayload,

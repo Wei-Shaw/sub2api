@@ -73,6 +73,58 @@ func TestGuardEvaluatorOrderedFailoverAndInvalidTerminal(t *testing.T) {
 	require.Equal(t, int64(1), snapshotMetrics.Invalid)
 }
 
+func TestGenericStagesAndDeterministicSampling(t *testing.T) {
+	unsafeScanner := PromptScannerFunc(func(_ context.Context, endpoint ActiveEndpoint, _ string, _ []string) (*NormalizedResult, error) {
+		return &NormalizedResult{Decision: EventCritical, RiskLevel: RiskCritical, Action: ActionBlock, EngineType: EngineGenericLLM, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
+	})
+	for _, test := range []struct {
+		stage string
+		kind  DecisionKind
+		allow bool
+	}{{"shadow", DecisionAllow, true}, {"warn", DecisionFlag, true}, {"block", DecisionBlock, false}} {
+		t.Run(test.stage, func(t *testing.T) {
+			ep := ActiveEndpoint{ID: "generic", Enabled: true, EngineType: EngineGenericLLM, Stage: test.stage, FailurePolicy: "fail_open", SampleRate: 1, TimeoutMS: 1000, InputLimit: 100}
+			decision, err := newGuardEvaluator(unsafeScanner, nil, NewAtomicMetrics(), 2, 2).Evaluate(context.Background(), guardConfig(ep), PromptSnapshot{RequestID: "stable", ScanText: "unsafe", PromptLength: 6})
+			require.NoError(t, err)
+			require.Equal(t, test.kind, decision.Kind)
+			require.Equal(t, test.allow, decision.AllowNextStage)
+		})
+	}
+
+	for _, rate := range []float64{.01, .5, .99} {
+		first := deterministicSample("request-123", "endpoint-a", rate)
+		for i := 0; i < 10; i++ {
+			require.Equal(t, first, deterministicSample("request-123", "endpoint-a", rate))
+		}
+	}
+}
+
+func TestPromptServiceGenericFailurePolicies(t *testing.T) {
+	base := guardConfig(ActiveEndpoint{ID: "generic", Enabled: true, EngineType: EngineGenericLLM, Stage: "shadow", FailurePolicy: "fail_open", SampleRate: 1, TimeoutMS: 1000, InputLimit: 100})
+	base.AllGroups = true
+	store := &fakeConfigStore{cfg: base, active: true}
+	repo := &fakeJobRepository{}
+	failing := newGuardEvaluator(PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		return nil, &GuardError{Code: ErrorCodeInvalidResponse}
+	}), repo, NewAtomicMetrics(), 2, 2)
+	service := &PromptService{config: store, evaluator: failing}
+	req := Request{RequestID: "r", Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"user","content":"hello"}]}`)}
+	decision, err := service.Evaluate(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.Equal(t, ErrorCodeInvalidResponse, decision.ErrorCode)
+	require.NotNil(t, repo.recordBlockingFailure)
+	require.Equal(t, ErrorCodeInvalidResponse, repo.recordBlockingFailure.Code)
+	require.Equal(t, "generic", repo.recordBlockingFailure.GuardEndpointID)
+	require.Equal(t, 1, repo.recordBlockingFailure.FailedChunkIndex)
+
+	base.Endpoints[0].Stage, base.Endpoints[0].FailurePolicy = "block", "fail_closed"
+	store.cfg = base
+	decision, err = service.Evaluate(context.Background(), req)
+	require.Error(t, err)
+	require.Nil(t, decision)
+}
+
 func TestGuardEvaluatorGlobalBulkheadIsNonBlocking(t *testing.T) {
 	release := make(chan struct{})
 	entered := make(chan struct{}, 1)
@@ -291,6 +343,55 @@ func TestGuardEvaluatorNilResultAndScannerPanicBecomeStableFailures(t *testing.T
 			require.NotContains(t, err.Error(), "canary")
 		})
 	}
+}
+
+func TestAuditFailureMessageIncludesDiagnosticCause(t *testing.T) {
+	require.Equal(t, "request timed out: context deadline exceeded", auditFailureMessage(&GuardError{
+		Code: ErrorCodeUnavailable, Timeout: true, Cause: context.DeadlineExceeded,
+	}))
+	require.Equal(t, "upstream returned HTTP 401: invalid API key", auditFailureMessage(&GuardError{
+		Code: ErrorCodeUnavailable, HTTPStatus: 401, Cause: errors.New("invalid API key"),
+	}))
+
+	repo := &fakeJobRepository{}
+	evaluator := newGuardEvaluator(PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Cause: errors.New("dial tcp: connection refused")}
+	}), repo, NewAtomicMetrics(), 2, 2)
+	_, err := evaluator.Evaluate(context.Background(), guardConfig(ActiveEndpoint{ID: "one", Enabled: true, TimeoutMS: 1000, InputLimit: 100}), PromptSnapshot{ScanText: "input", PromptLength: 5})
+	require.Error(t, err)
+	require.NotNil(t, repo.recordBlockingFailure)
+	require.Equal(t, "dial tcp: connection refused", repo.recordBlockingFailure.Message)
+	require.NotEqual(t, ErrorCodeUnavailable, repo.recordBlockingFailure.Message)
+}
+
+func TestCompactGuardErrorBody(t *testing.T) {
+	require.Contains(t, compactGuardErrorBody([]byte("  {\n\"error\":\"invalid API key\"}  ")), `"error":"invalid API key"`)
+	require.LessOrEqual(t, len([]rune(compactGuardErrorBody([]byte(strings.Repeat("x", 1000))))), 303)
+}
+
+func TestPromptGuardHTTPDiagnosticFields(t *testing.T) {
+	endpoint := ActiveEndpoint{BaseURL: "https://guard.example.com/v1", Model: "guard-model"}
+	requestURL, requestBody, err := promptGuardRequest(endpoint, "raw prompt", AllScannerIDs)
+	require.NoError(t, err)
+	require.Equal(t, "https://guard.example.com/v1/chat/completions", requestURL)
+	require.JSONEq(t, `{"max_tokens":64,"messages":[{"content":"raw prompt","role":"user"}],"model":"guard-model","seed":42,"temperature":0}`, string(requestBody))
+
+	fields := map[string]any{}
+	addGuardHTTPLogFields(fields, &GuardError{
+		Code: ErrorCodeUnavailable, HTTPStatus: 503,
+		RequestURL: requestURL, RequestBody: string(requestBody), ResponseBody: `{"error":"busy"}`,
+	})
+	require.Equal(t, requestURL, fields["outbound_url"])
+	require.Equal(t, string(requestBody), fields["outbound_request_body"])
+	require.Equal(t, 503, fields["http_status"])
+	require.Equal(t, `{"error":"busy"}`, fields["outbound_response_body"])
+	require.Equal(t, "upstream returned HTTP 503", fields["error_message"])
+
+	timeoutFields := map[string]any{}
+	addGuardHTTPLogFields(timeoutFields, &GuardError{
+		Code: ErrorCodeUnavailable, HTTPStatus: 200, Timeout: true, Cause: context.DeadlineExceeded,
+	})
+	require.Equal(t, "request timed out: upstream returned HTTP 200: context deadline exceeded", timeoutFields["error_message"])
 }
 
 type PromptScannerFunc func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error)

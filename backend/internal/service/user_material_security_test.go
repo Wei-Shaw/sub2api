@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -9,6 +10,35 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+type ownerScopedMaterialRepo struct {
+	UserMaterialRepository
+	wantUserID int64
+	wantID     int64
+	material   *UserMaterial
+}
+
+func (r *ownerScopedMaterialRepo) GetByID(_ context.Context, userID, id int64) (*UserMaterial, error) {
+	if userID != r.wantUserID || id != r.wantID {
+		return nil, errors.New("unscoped material lookup")
+	}
+	return r.material, nil
+}
+
+func TestUserMaterialGetByIDIsOwnerScoped(t *testing.T) {
+	t.Run("passes owner into repository query", func(t *testing.T) {
+		repo := &ownerScopedMaterialRepo{wantUserID: 22, wantID: 7, material: &UserMaterial{ID: 7, UserID: 22}}
+		material, err := NewUserMaterialService(repo, nil).GetByID(context.Background(), 22, 7)
+		require.NoError(t, err)
+		require.Equal(t, int64(22), material.UserID)
+	})
+	t.Run("other owner is indistinguishable from missing", func(t *testing.T) {
+		repo := &ownerScopedMaterialRepo{wantUserID: 99, wantID: 7, material: nil}
+		material, err := NewUserMaterialService(repo, nil).GetByID(context.Background(), 99, 7)
+		require.Nil(t, material)
+		require.ErrorIs(t, err, sql.ErrNoRows)
+	})
+}
 
 // ---------------------------------------------------------------------------
 // SSRF 防护：素材库 import-url 是唯一"URL 完全由终端用户控制"的下载入口，

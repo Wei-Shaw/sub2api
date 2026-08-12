@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { RouterView, useRouter, useRoute } from 'vue-router'
 import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
 import AdminComplianceDialog from '@/components/admin/AdminComplianceDialog.vue'
 import { resolveRouteDocumentTitle } from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import SupportChatWidget from '@/components/support/SupportChatWidget.vue'
-import InboxKickedOverlay from '@/components/common/InboxKickedOverlay.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore, useAdminComplianceStore, useAdminSettingsStore, useInboxStore } from '@/stores'
 import { getSetupStatus } from '@/api/setup'
 import { updateFavicon } from '@/utils/branding'
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const subscriptionStore = useSubscriptionStore()
@@ -24,6 +25,25 @@ const adminSettingsStore = useAdminSettingsStore()
 // （namespace=support_ticket）。登录后 bootstrap() 建立 WebSocket + catchup 补齐；
 // logout 时 reset() 断连清状态。
 const inboxStore = useInboxStore()
+let inboxKickedToastId = ''
+
+watch(() => inboxStore.kicked, (kicked) => {
+  if (kicked) {
+    if (!inboxKickedToastId) {
+      inboxKickedToastId = appStore.showWarningAction(
+        t('inbox.kicked.title'),
+        t('inbox.kicked.description'),
+        t('inbox.kicked.resume'),
+        () => inboxStore.resume(),
+      )
+    }
+    return
+  }
+  if (inboxKickedToastId) {
+    appStore.hideToast(inboxKickedToastId)
+    inboxKickedToastId = ''
+  }
+})
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -156,6 +176,4 @@ onMounted(async () => {
        关闭 / 路由排除时不渲染任何节点。 -->
   <SupportChatWidget />
   <AdminComplianceDialog />
-  <!-- 通用信箱单例连接遮罩：被其他端踢出时展示，点"在此继续"重连。 -->
-  <InboxKickedOverlay />
 </template>

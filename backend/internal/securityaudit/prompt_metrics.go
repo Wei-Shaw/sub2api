@@ -10,23 +10,33 @@ import (
 const latencySampleCapacity = 2048
 
 type AtomicMetrics struct {
-	total        atomic.Int64
-	allowed      atomic.Int64
-	flagged      atomic.Int64
-	blocked      atomic.Int64
-	unavailable  atomic.Int64
-	invalid      atomic.Int64
-	timeouts     atomic.Int64
-	failovers    atomic.Int64
-	bulkheadFull atomic.Int64
-	recordFailed atomic.Int64
-	latencyTotal atomic.Int64
-	latencyMax   atomic.Int64
-	enqueued     atomic.Int64
-	dropped      atomic.Int64
-	latencyMu    sync.RWMutex
-	latencies    []int64
-	latencyNext  int
+	total                   atomic.Int64
+	allowed                 atomic.Int64
+	flagged                 atomic.Int64
+	blocked                 atomic.Int64
+	unavailable             atomic.Int64
+	invalid                 atomic.Int64
+	timeouts                atomic.Int64
+	failovers               atomic.Int64
+	bulkheadFull            atomic.Int64
+	recordFailed            atomic.Int64
+	genericRequests         atomic.Int64
+	genericSampledOut       atomic.Int64
+	genericSchemaFailures   atomic.Int64
+	genericFailOpen         atomic.Int64
+	genericFailClosed       atomic.Int64
+	genericPromptTokens     atomic.Int64
+	genericCompletionTokens atomic.Int64
+	genericTotalTokens      atomic.Int64
+	genericLatencyTotal     atomic.Int64
+	genericLatencyMax       atomic.Int64
+	latencyTotal            atomic.Int64
+	latencyMax              atomic.Int64
+	enqueued                atomic.Int64
+	dropped                 atomic.Int64
+	latencyMu               sync.RWMutex
+	latencies               []int64
+	latencyNext             int
 }
 
 func NewAtomicMetrics() *AtomicMetrics { return &AtomicMetrics{} }
@@ -40,9 +50,17 @@ func (m *AtomicMetrics) Snapshot() GuardMetricsSnapshot {
 		Blocked: m.blocked.Load(), Unavailable: m.unavailable.Load(), Invalid: m.invalid.Load(),
 		Timeouts: m.timeouts.Load(), Failovers: m.failovers.Load(), BulkheadFull: m.bulkheadFull.Load(),
 		RecordFailed: m.recordFailed.Load(), LatencyCount: m.total.Load(), LatencyMaxMS: m.latencyMax.Load(),
+		GenericRequests: m.genericRequests.Load(), GenericSampledOut: m.genericSampledOut.Load(),
+		GenericSchemaFailures: m.genericSchemaFailures.Load(), GenericFailOpen: m.genericFailOpen.Load(),
+		GenericFailClosed: m.genericFailClosed.Load(), GenericPromptTokens: m.genericPromptTokens.Load(),
+		GenericCompletionTokens: m.genericCompletionTokens.Load(), GenericTotalTokens: m.genericTotalTokens.Load(),
+		GenericLatencyCount: m.genericRequests.Load(), GenericLatencyMaxMS: m.genericLatencyMax.Load(),
 	}
 	if snapshot.LatencyCount > 0 {
 		snapshot.LatencyAvgMS = m.latencyTotal.Load() / snapshot.LatencyCount
+	}
+	if snapshot.GenericLatencyCount > 0 {
+		snapshot.GenericLatencyAvgMS = m.genericLatencyTotal.Load() / snapshot.GenericLatencyCount
 	}
 	m.latencyMu.RLock()
 	samples := append([]int64(nil), m.latencies...)
@@ -141,5 +159,43 @@ func (m *AtomicMetrics) IncBulkheadFull() {
 func (m *AtomicMetrics) IncRecordFailed() {
 	if m != nil {
 		m.recordFailed.Add(1)
+	}
+}
+
+func (m *AtomicMetrics) IncGenericSampledOut() {
+	if m != nil {
+		m.genericSampledOut.Add(1)
+	}
+}
+func (m *AtomicMetrics) IncGenericSchemaFailure() {
+	if m != nil {
+		m.genericSchemaFailures.Add(1)
+	}
+}
+func (m *AtomicMetrics) IncGenericFailOpen() {
+	if m != nil {
+		m.genericFailOpen.Add(1)
+	}
+}
+func (m *AtomicMetrics) IncGenericFailClosed() {
+	if m != nil {
+		m.genericFailClosed.Add(1)
+	}
+}
+
+func (m *AtomicMetrics) ObserveGeneric(result *NormalizedResult, latency time.Duration) {
+	if m == nil || result == nil || result.EngineType != EngineGenericLLM {
+		return
+	}
+	m.genericRequests.Add(1)
+	m.genericPromptTokens.Add(int64(result.PromptTokens))
+	m.genericCompletionTokens.Add(int64(result.CompletionTokens))
+	m.genericTotalTokens.Add(int64(result.TotalTokens))
+	latencyMS := latency.Milliseconds()
+	if latencyMS < 0 {
+		latencyMS = 0
+	}
+	m.genericLatencyTotal.Add(latencyMS)
+	for current := m.genericLatencyMax.Load(); latencyMS > current && !m.genericLatencyMax.CompareAndSwap(current, latencyMS); current = m.genericLatencyMax.Load() {
 	}
 }

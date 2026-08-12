@@ -198,6 +198,40 @@ func TestPromptAdminProbeSupportsTemporaryOrSavedTokenWithoutEcho(t *testing.T) 
 	}
 }
 
+func TestPromptAdminBindsGenericEndpointPolicyFields(t *testing.T) {
+	service := &fakePromptAdminService{save: func(_ context.Context, req UpdateConfigRequest, _ int64) (PublicConfig, error) {
+		require.Len(t, req.Endpoints, 1)
+		endpoint := req.Endpoints[0]
+		require.Equal(t, EngineGenericLLM, endpoint.EngineType)
+		require.Equal(t, GenericSchemaVersion, endpoint.SchemaVersion)
+		require.Equal(t, "Only classify configured risks.", endpoint.SystemGuidance)
+		require.InDelta(t, 0.82, endpoint.ConfidenceThreshold, 0.001)
+		require.Equal(t, "json_schema", endpoint.JSONOutputMode)
+		require.InDelta(t, 0.25, endpoint.SampleRate, 0.001)
+		require.Equal(t, 256, endpoint.MaxOutputTokens)
+		require.Equal(t, "warn", endpoint.Stage)
+		require.Equal(t, "fail_open", endpoint.FailurePolicy)
+		require.Equal(t, "keyword_first", endpoint.CompositionMode)
+		return PublicConfig{ConfigVersion: 8}, nil
+	}}
+	request := validHandlerUpdateRequest("")
+	request.Endpoints[0].BaseURL = "https://audit.example.com"
+	request.Endpoints[0].Model = "audit-model"
+	request.Endpoints[0].EngineType = EngineGenericLLM
+	request.Endpoints[0].SchemaVersion = GenericSchemaVersion
+	request.Endpoints[0].SystemGuidance = "Only classify configured risks."
+	request.Endpoints[0].ConfidenceThreshold = 0.82
+	request.Endpoints[0].JSONOutputMode = "json_schema"
+	request.Endpoints[0].SampleRate = 0.25
+	request.Endpoints[0].MaxOutputTokens = 256
+	request.Endpoints[0].Stage = "warn"
+	request.Endpoints[0].FailurePolicy = "fail_open"
+	request.Endpoints[0].CompositionMode = "keyword_first"
+
+	response := promptAdminRequest(t, promptAdminRouter(service), http.MethodPut, "/admin/prompt-audit/config", request)
+	require.Equal(t, http.StatusOK, response.Code)
+}
+
 func TestPromptAdminRejectsInvalidEventIDsTimesAndPagination(t *testing.T) {
 	router := promptAdminRouter(&fakePromptAdminService{})
 	for _, tc := range []struct {

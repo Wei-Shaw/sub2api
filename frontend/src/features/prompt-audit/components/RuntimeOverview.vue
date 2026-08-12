@@ -105,6 +105,11 @@ const guardMetricItems = computed(() => {
     { label: t('admin.promptAudit.metrics.timeouts'), value: metrics.timeouts },
     { label: t('admin.promptAudit.metrics.failovers'), value: metrics.failovers },
     { label: 'P95', value: metrics.latency_p95_ms != null ? `${metrics.latency_p95_ms} ms` : '—' },
+		{ label: t('admin.promptAudit.metrics.genericRequests'), value: metrics.generic_requests ?? 0 },
+		{ label: t('admin.promptAudit.metrics.sampledOut'), value: metrics.generic_sampled_out ?? 0 },
+		{ label: t('admin.promptAudit.metrics.genericFailures'), value: `${metrics.generic_schema_failures ?? 0} / ${(metrics.generic_fail_open ?? 0) + (metrics.generic_fail_closed ?? 0)}` },
+		{ label: t('admin.promptAudit.metrics.genericTokens'), value: metrics.generic_total_tokens ?? 0 },
+		{ label: t('admin.promptAudit.metrics.genericLatency'), value: metrics.generic_latency_count ? `${metrics.generic_latency_avg_ms} ms` : '—' },
   ]
 })
 

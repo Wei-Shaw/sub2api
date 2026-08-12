@@ -5345,6 +5345,8 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       searchPlaceholder: '搜索 model_key / 标题',
       statusEnabled: '已启用',
       statusDisabled: '未启用',
+      tryIt: '试一试',
+      tryItDisabled: '请先启用该模型介绍',
       loadFailed: '加载列表失败',
       created: '介绍已创建',
       updated: '介绍已更新',
@@ -5475,6 +5477,8 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         labelEnumOptions: '枚举候选值',
         // string 类型专属：控件类型（input/textarea）与 textarea 行数
         labelWidget: '控件',
+        labelReferenceFields: '引用字段',
+        noReferenceFields: '请先添加图片、视频或音频素材字段',
         labelTextareaRows: '行数',
         // array 类型专属：元素个数上限 + imageUrls 控件说明
         labelMaxItems: '最大个数',

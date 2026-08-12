@@ -40,7 +40,7 @@ export type SchemaRowType = 'string' | 'number' | 'boolean' | 'object' | 'array'
  * 存储侧：默认 'input' 时不写该字段，以保持存储 shape 精简与向后兼容；
  * 其余取值会持久化（'textarea' 时连同 rows 一起写）。
  */
-export type SchemaWidget = 'input' | 'textarea' | 'image' | MediaUrlWidget
+export type SchemaWidget = 'input' | 'textarea' | 'PromptTextArea' | 'image' | MediaUrlWidget
 
 /** textarea 行数默认值（rows 属性缺省时使用）。 */
 export const DEFAULT_TEXTAREA_ROWS = 3
@@ -89,6 +89,8 @@ export interface SchemaRow {
   widget: SchemaWidget
   /** 仅 widget='textarea' 有意义。默认 DEFAULT_TEXTAREA_ROWS。 */
   textareaRows: number
+  /** PromptTextArea 可通过 @ 引用的 schema 字段路径。 */
+  referenceFields: string[]
   /**
    * 仅 type='array' 有意义：元素个数上限。0 表示不限制（默认，也不落库）。
    * 演练台会据此禁用"添加"按钮、并在提交前做一次校验。
@@ -123,11 +125,32 @@ export function makeSchemaRow(overrides: Partial<SchemaRow> = {}): SchemaRow {
     optionsText: overrides.optionsText ?? '',
     widget: overrides.widget ?? 'input',
     textareaRows: overrides.textareaRows ?? DEFAULT_TEXTAREA_ROWS,
+    referenceFields: overrides.referenceFields ?? [],
     maxItems: overrides.maxItems ?? 0,
     arrayDefaults: overrides.arrayDefaults ?? [],
     children: overrides.children ?? [],
     items: overrides.items ?? null,
   }
+}
+
+/** 收集 PromptTextArea 可引用的媒体字段完整路径。 */
+export function collectReferenceFieldPaths(rows: SchemaRow[]): string[] {
+  const result: string[] = []
+  const visit = (row: SchemaRow, path: string) => {
+    const current = path ? `${path}.${row.key}` : row.key
+    if (!current) return
+    if (row.type === 'object') {
+      row.children.forEach((child) => visit(child, current))
+      return
+    }
+    if (row.type === 'array') {
+      if (normalizeMediaUrlWidget(row.widget)) result.push(current)
+      return
+    }
+    if (row.type === 'string' && row.widget === 'image') result.push(current)
+  }
+  rows.forEach((row) => visit(row, ''))
+  return [...new Set(result)]
 }
 
 /** 按 schema 生成一份独立的 JSON 默认值，供 array 新增默认元素使用。 */
@@ -386,12 +409,16 @@ export function rowToSchema(row: SchemaRow): Record<string, unknown> {
   // widget/rows 仅对 string 叶子有意义；widget='input' 视为默认，不写入以保持
   // 存储 shape 与旧数据一致（避免历史无该字段的行升级后 diff 变噪）。
   if (row.type === 'string') {
-    if (row.widget === 'textarea') {
-      out.widget = 'textarea'
+    if (row.widget === 'textarea' || row.widget === 'PromptTextArea') {
+      out.widget = row.widget
       const r = Number.isFinite(row.textareaRows) ? Math.trunc(row.textareaRows) : DEFAULT_TEXTAREA_ROWS
       // 行数下限1、上限 20：既避免负数/0 导致 <textarea rows='0'> 塌陷，
       // 也避免手滑填 999 生成一个占满整屏的输入区。
       out.rows = Math.min(20, Math.max(1, r))
+      if (row.widget === 'PromptTextArea') {
+        const fields = [...new Set(row.referenceFields.map((field) => field.trim()).filter(Boolean))]
+        if (fields.length > 0) out.reference_fields = fields
+      }
     } else if (row.widget === 'image') {
       out.widget = 'image'
     }
@@ -577,8 +604,8 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
       let widget: SchemaWidget = 'input'
       let textareaRows = DEFAULT_TEXTAREA_ROWS
       if (type === 'string') {
-        if (obj.widget === 'textarea') {
-          widget = 'textarea'
+        if (obj.widget === 'textarea' || obj.widget === 'PromptTextArea') {
+          widget = obj.widget
           const rr = Number(obj.rows)
           if (Number.isFinite(rr) && rr > 0) {
             textareaRows = Math.min(100, Math.max(1, Math.trunc(rr)))
@@ -600,6 +627,9 @@ export function schemaToRow(key: string, raw: unknown): SchemaRow {
         optionsText,
         widget,
         textareaRows,
+        referenceFields: Array.isArray(obj.reference_fields)
+          ? obj.reference_fields.filter((field): field is string => typeof field === 'string').map((field) => field.trim()).filter(Boolean)
+          : [],
       })
     }
   }

@@ -66,7 +66,7 @@ type UserMaterial struct {
 // UserMaterialRepository 定义 SQL 层依赖，实现见 repository/user_material_repo.go。
 type UserMaterialRepository interface {
 	Insert(ctx context.Context, m *UserMaterial) (int64, error)
-	GetByID(ctx context.Context, id int64) (*UserMaterial, error)
+	GetByID(ctx context.Context, userID, id int64) (*UserMaterial, error)
 	List(ctx context.Context, userID int64, kind, keyword string, offset, limit int) ([]*UserMaterial, int64, error)
 	SoftDelete(ctx context.Context, userID, id int64) error
 	// UsageByUser 返回该用户未删除素材的条数与总字节数，用于配额校验。
@@ -276,11 +276,11 @@ func (s *UserMaterialService) GetByID(ctx context.Context, userID, id int64) (*U
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user id")
 	}
-	m, err := s.repo.GetByID(ctx, id)
+	m, err := s.repo.GetByID(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
-	if m == nil || m.UserID != userID {
+	if m == nil {
 		return nil, sql.ErrNoRows
 	}
 	return m, nil

@@ -43,6 +43,34 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
 }
 
+func TestLegacyEndpointDefaultsToQwen3Guard(t *testing.T) {
+	raw := `{"endpoints":[{"id":"legacy","name":"Legacy","base_url":"http://127.0.0.1:8080","timeout_ms":1000,"input_limit":1000}]}`
+	storage, err := ParseStorageConfig(raw)
+	require.NoError(t, err)
+	require.Equal(t, EngineQwen3Guard, storage.Endpoints[0].EngineType)
+	require.Equal(t, DefaultGuardModel, storage.Endpoints[0].Model)
+	active, err := ActiveFromStorage(storage, true, prefixEncryptor{})
+	require.NoError(t, err)
+	require.Equal(t, EngineQwen3Guard, active.Endpoints[0].EngineType)
+	require.Equal(t, EngineQwen3Guard, PublicFromStorage(storage, true, nil).Endpoints[0].EngineType)
+}
+
+func TestGenericEndpointValidation(t *testing.T) {
+	base := StorageEndpoint{ID: "generic", Name: "Generic", Protocol: "openai_compatible", BaseURL: "https://8.8.8.8", Model: "audit-model", TimeoutMS: 1000, InputLimit: 1000, EngineType: EngineGenericLLM}
+	normalizeEndpointPolicy(&base)
+	require.NoError(t, validateEndpointPolicy(base))
+
+	invalid := base
+	invalid.Stage, invalid.SampleRate = "block", .5
+	require.Equal(t, "prompt_audit_block_requires_full_sampling", infraerrors.Reason(validateEndpointPolicy(invalid)))
+	invalid = base
+	invalid.Stage, invalid.FailurePolicy = "shadow", "fail_closed"
+	require.Equal(t, "prompt_audit_fail_closed_requires_block", infraerrors.Reason(validateEndpointPolicy(invalid)))
+	invalid = base
+	invalid.ConfidenceThreshold = 1.1
+	require.Equal(t, "prompt_audit_invalid_confidence_threshold", infraerrors.Reason(validateEndpointPolicy(invalid)))
+}
+
 func TestBlockingLatestTurnOnlyConfigRoundTrip(t *testing.T) {
 	manager := &ConfigManager{encryptor: prefixEncryptor{}, encryptionKeyConfigured: true}
 	request := UpdateConfigRequest{
@@ -224,6 +252,19 @@ func TestBuildNextStoragePreserveReplaceAndClearToken(t *testing.T) {
 	cleared, err := manager.buildNextStorage(current, clearedReq, 9)
 	require.NoError(t, err)
 	require.Empty(t, cleared.Endpoints[0].TokenCiphertext)
+}
+
+func TestBuildNextStorageRejectsUnsafeGenericDestination(t *testing.T) {
+	manager := &ConfigManager{encryptor: prefixEncryptor{}, encryptionKeyConfigured: true}
+	current := DefaultStorageConfig()
+	request := promptAuditUpdateRequest(1, 1, "")
+	request.Endpoints[0].EngineType = EngineGenericLLM
+	request.Endpoints[0].Model = "audit-model"
+	request.Endpoints[0].BaseURL = "http://127.0.0.1:8080"
+
+	_, err := manager.buildNextStorage(current, request, 9)
+	require.Error(t, err)
+	require.Equal(t, "prompt_audit_unsafe_destination", infraerrors.Reason(err))
 }
 
 // Without a fixed encryption key the per-boot auto-generated key would make a
@@ -421,6 +462,8 @@ func TestParseLegacyConfigDefaultsMissingFieldsWithoutEnablingBlocking(t *testin
 
 func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
 	valid := promptAuditUpdateRequest(1, 1, "")
+	require.NoError(t, validateUpdateConfigRequest(valid))
+	valid.Endpoints[0].TimeoutMS = MaxTimeoutMS
 	require.NoError(t, validateUpdateConfigRequest(valid))
 
 	tests := []struct {

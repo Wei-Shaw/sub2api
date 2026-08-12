@@ -96,6 +96,11 @@ func TestExtractOpenAIContentSupportsStringAndTextBlocks(t *testing.T) {
 	}
 }
 
+func TestExtractOpenAIContentReportsReasoningTokenTruncation(t *testing.T) {
+	_, err := extractOpenAIContent([]byte(`{"choices":[{"message":{"content":"","reasoning_content":"analysis"},"finish_reason":"length"}]}`))
+	require.EqualError(t, err, "prompt guard output truncated before content: finish_reason=length; increase max output tokens")
+}
+
 func TestAggregateRequiresEveryResult(t *testing.T) {
 	_, err := AggregateResults([]*NormalizedResult{{Decision: EventPass, Action: ActionAllow}, nil}, 0)
 	require.Error(t, err)
@@ -111,7 +116,7 @@ func TestAggregateRequiresEveryResult(t *testing.T) {
 
 func TestAggregateDeduplicatesFactsAndUsesMostSevereEndpointMetadata(t *testing.T) {
 	result, err := AggregateResults([]*NormalizedResult{
-		{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, Safety: "Safe", Categories: []string{"pii"}, MatchedScanners: []string{"pii"}, ScannerScores: map[string]float64{"pii": 0}, ScannerEvidence: map[string]string{"pii": "first"}, GuardEndpointID: "safe-node", ScannerVersion: "safe-version", PolicyID: "priority", PolicyVersion: 1},
+		{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, Safety: "Safe", Categories: []string{"pii"}, MatchedScanners: []string{"pii"}, ScannerScores: map[string]float64{"pii": 0}, ScannerEvidence: map[string]string{"pii": "first"}, ScannerBackend: "generic-llm-openai", GuardEndpointID: "safe-node", ScannerVersion: "safe-version", PolicyID: "priority", PolicyVersion: 1, EngineType: EngineGenericLLM},
 		{Decision: EventCritical, RiskLevel: RiskCritical, Action: ActionBlock, Safety: "Unsafe", Categories: []string{"pii", "jailbreak"}, MatchedScanners: []string{"pii", "jailbreak"}, ScannerScores: map[string]float64{"pii": 1, "jailbreak": 1}, ScannerEvidence: map[string]string{"pii": "second", "jailbreak": "blocked"}, GuardEndpointID: "block-node", ScannerVersion: "block-version", PolicyID: "priority", PolicyVersion: 2},
 	}, 7*time.Millisecond)
 	require.NoError(t, err)
@@ -120,6 +125,8 @@ func TestAggregateDeduplicatesFactsAndUsesMostSevereEndpointMetadata(t *testing.
 	require.Equal(t, "first", result.ScannerEvidence["pii"], "evidence is deterministically first-seen")
 	require.Equal(t, "block-node", result.GuardEndpointID)
 	require.Equal(t, "block-version", result.ScannerVersion)
+	require.Equal(t, "generic-llm-openai", result.ScannerBackend)
+	require.Equal(t, EngineGenericLLM, result.EngineType)
 	require.Equal(t, 2, result.PolicyVersion)
 	require.Equal(t, 7, result.LatencyMS)
 }

@@ -21,6 +21,9 @@ const endpoint = (): PromptAuditEndpointDraft => ({
   id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
   model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true,
   has_token: true, token_status: 'configured', token: '', clear_token: false,
+  engine_type: 'qwen3_guard', schema_version: 1, system_guidance: '', confidence_threshold: 0.75,
+  json_output_mode: 'plain_json', sample_rate: 1, max_output_tokens: 512, stage: 'shadow',
+  failure_policy: 'fail_open', composition_mode: 'keyword_first',
 })
 
 describe('Prompt Audit components', () => {
@@ -65,6 +68,20 @@ describe('Prompt Audit components', () => {
     expect(token.attributes('placeholder')).toContain('admin.promptAudit.pool.reenterSecret')
   })
 
+  it('validates generic blocking policy and renders semantic probe diagnostics', async () => {
+    const generic = { ...endpoint(), engine_type: 'generic_llm' as const, stage: 'block' as const, sample_rate: .5 }
+    const wrapper = mount(EndpointPool, {
+      props: { endpoints: [generic], probeResults: { 'guard-1': { ok: true, status: 'healthy', message: 'ok', latency_ms: 10, http_status: 200, retryable: false, checked_at: '', token_applied: true, engine_type: 'generic_llm', model: 'audit-model', schema_version: 1, benign_decision: 'pass', unsafe_decision: 'critical' } }, probingIds: [] },
+      global: { stubs: { BaseDialog: DialogStub } },
+    })
+    expect(wrapper.text()).toContain('audit-model · schema v1 · pass / critical')
+    const edit = wrapper.findAll('button').find((button) => button.text().includes('common.edit'))
+    await edit!.trigger('click')
+    expect(wrapper.text()).toContain('admin.promptAudit.pool.blockSamplingWarning')
+    await wrapper.get('[data-test="save-endpoint"]').trigger('click')
+    expect(wrapper.emitted('update:endpoints')).toBeUndefined()
+  })
+
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
       enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
@@ -101,6 +118,8 @@ describe('Prompt Audit components', () => {
     expect(wrapper.get('[data-test="filter-delete"]').attributes()).not.toHaveProperty('disabled')
     await wrapper.get('[data-test="filter-delete"]').trigger('click')
     expect(wrapper.emitted('preview-delete')).toHaveLength(1)
+    await wrapper.get('[data-test="refresh-events"]').trigger('click')
+    expect(wrapper.emitted('refresh')).toHaveLength(1)
     await wrapper.get('[aria-label="admin.promptAudit.events.selectEvent"]').setValue(true)
     expect(wrapper.emitted('selection')?.at(-1)?.[0]).toEqual([1])
   })
@@ -243,6 +262,19 @@ describe('Prompt Audit components', () => {
     expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('"decision": "admin.promptAudit.decisions.critical"')
     expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
     expect(wrapper.get('[data-test="risk-issue"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
+
+		await wrapper.setProps({ event: {
+			...event, engine_type: 'generic_llm', audit_model: 'audit-model', schema_version: 1,
+			confidence: 0.91, enforcement_stage: 'shadow', failure_policy: 'fail_open',
+			prompt_tokens: 21, completion_tokens: 8, total_tokens: 29,
+			shadow_comparison: { composition_mode: 'combined', keyword_decision: 'allow', llm_decision: 'block', agreement: false },
+		} })
+		const technicalTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('admin.promptAudit.events.tabs.technical'))
+		await technicalTab!.trigger('click')
+		expect(wrapper.get('[data-test="shadow-comparison"]').text()).toContain('allow / block')
+		expect(wrapper.get('[data-test="shadow-comparison"]').text()).toContain('admin.promptAudit.events.technical.disagree')
+		expect(wrapper.text()).toContain('audit-model')
+		expect(wrapper.text()).toContain('21 / 8 / 29')
   })
 
   it('falls back to the redacted preview for events stored before full prompts were kept', async () => {

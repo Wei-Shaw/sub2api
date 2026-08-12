@@ -8,6 +8,19 @@ import type {
 
 export const DEFAULT_GUARD_MODEL = 'sileader/qwen3guard:0.6b'
 
+const GENERIC_ENDPOINT_DEFAULTS = {
+  engine_type: 'qwen3_guard' as const,
+  schema_version: 1,
+  system_guidance: '',
+  confidence_threshold: 0.75,
+  json_output_mode: 'plain_json' as const,
+  sample_rate: 1,
+  max_output_tokens: 512,
+  stage: 'shadow' as const,
+  failure_policy: 'fail_open' as const,
+  composition_mode: 'keyword_first' as const,
+}
+
 export const SCANNER_CATALOG = [
   { id: 'violent', label: 'Violent' },
   { id: 'non_violent_illegal_acts', label: 'Non-violent Illegal Acts' },
@@ -33,6 +46,7 @@ export function configToDraft(config: PromptAuditConfig): PromptAuditDraft {
     group_ids: [...(config.group_ids ?? [])],
     scanners: [...(config.scanners ?? [])],
     endpoints: (config.endpoints ?? []).map((endpoint) => ({
+      ...GENERIC_ENDPOINT_DEFAULTS,
       ...endpoint,
       token: '',
       clear_token: false,
@@ -54,6 +68,7 @@ export function createDefaultEndpoint(index = 1): PromptAuditEndpointDraft {
     token_status: 'missing',
     token: '',
     clear_token: false,
+    ...GENERIC_ENDPOINT_DEFAULTS,
   }
 }
 
@@ -81,6 +96,16 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
       timeout_ms: Number(endpoint.timeout_ms),
       input_limit: Number(endpoint.input_limit),
       enabled: endpoint.enabled,
+      engine_type: endpoint.engine_type,
+      schema_version: Number(endpoint.schema_version),
+      system_guidance: endpoint.system_guidance.trim(),
+      confidence_threshold: Number(endpoint.confidence_threshold),
+      json_output_mode: endpoint.json_output_mode,
+      sample_rate: Number(endpoint.sample_rate),
+      max_output_tokens: Number(endpoint.max_output_tokens),
+      stage: endpoint.stage,
+      failure_policy: endpoint.failure_policy,
+      composition_mode: endpoint.composition_mode,
     })),
   }
 }

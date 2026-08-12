@@ -79,6 +79,9 @@
               {{ t('admin.promptAudit.pool.probeResult', { status: probeResults[endpoint.id].status, http: probeResults[endpoint.id].http_status || '—', latency: probeResults[endpoint.id].latency_ms }) }}
               · {{ probeResults[endpoint.id].message }}
             </p>
+            <p v-if="probeResults[endpoint.id]?.engine_type === 'generic_llm'" class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">
+              {{ probeResults[endpoint.id].model }} · schema v{{ probeResults[endpoint.id].schema_version }} · {{ probeResults[endpoint.id].benign_decision || '—' }} / {{ probeResults[endpoint.id].unsafe_decision || '—' }}
+            </p>
           </div>
 
           <div class="flex flex-wrap items-center justify-end gap-1 border-t border-gray-100 pt-3 dark:border-dark-800 xl:flex-nowrap xl:border-0 xl:pt-0">
@@ -119,9 +122,42 @@
           <span>{{ t('admin.promptAudit.pool.model') }}</span>
           <input v-model="editing.model" class="input w-full" :aria-label="t('admin.promptAudit.pool.model')" />
         </label>
+        <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+          <span>{{ t('admin.promptAudit.pool.engineType') }}</span>
+			<Select v-model="editing.engine_type" :options="engineOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.engineType')" />
+        </label>
+        <template v-if="editing.engine_type === 'generic_llm'">
+          <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 sm:col-span-2">
+            {{ t('admin.promptAudit.pool.genericWarning') }}
+          </div>
+          <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+            <span>{{ t('admin.promptAudit.pool.systemGuidance') }}</span>
+            <textarea v-model="editing.system_guidance" class="input min-h-24 w-full" maxlength="4000" />
+          </label>
+          <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200"><span>{{ t('admin.promptAudit.pool.confidence') }}</span><input v-model.number="editing.confidence_threshold" class="input w-full" type="number" min="0" max="1" step="0.01" /></label>
+          <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200"><span>{{ t('admin.promptAudit.pool.sampleRate') }}</span><input v-model.number="editing.sample_rate" class="input w-full" type="number" min="0.01" max="1" step="0.01" /></label>
+          <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200"><span>{{ t('admin.promptAudit.pool.maxOutputTokens') }}</span><input v-model.number="editing.max_output_tokens" class="input w-full" type="number" min="16" max="32768" /></label>
+			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
+				<span class="flex items-center gap-1">{{ t('admin.promptAudit.pool.jsonMode') }}<FieldHelp :content="t('admin.promptAudit.pool.help.jsonMode')" /></span>
+				<Select v-model="editing.json_output_mode" :options="jsonModeOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.jsonMode')" />
+			</label>
+			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
+				<span class="flex items-center gap-1">{{ t('admin.promptAudit.pool.stage') }}<FieldHelp :content="t('admin.promptAudit.pool.help.stage')" /></span>
+				<Select v-model="editing.stage" :options="stageOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.stage')" />
+			</label>
+			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
+				<span class="flex items-center gap-1">{{ t('admin.promptAudit.pool.failurePolicy') }}<FieldHelp :content="t('admin.promptAudit.pool.help.failurePolicy')" /></span>
+				<Select v-model="editing.failure_policy" :options="failurePolicyOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.failurePolicy')" />
+			</label>
+			<label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+				<span class="flex items-center gap-1">{{ t('admin.promptAudit.pool.compositionMode') }}<FieldHelp :content="t('admin.promptAudit.pool.help.compositionMode')" /></span>
+				<Select v-model="editing.composition_mode" :options="compositionModeOptions" :searchable="false" :aria-label="t('admin.promptAudit.pool.compositionMode')" />
+			</label>
+          <p v-if="editorValidation" class="text-xs text-red-600 dark:text-red-300 sm:col-span-2">{{ editorValidation }}</p>
+        </template>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.pool.timeout') }}</span>
-          <input v-model.number="editing.timeout_ms" class="input w-full" type="number" min="100" max="30000" required :aria-label="t('admin.promptAudit.pool.timeout')" />
+          <input v-model.number="editing.timeout_ms" class="input w-full" type="number" min="100" max="60000" required :aria-label="t('admin.promptAudit.pool.timeout')" />
         </label>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.pool.inputLimit') }}</span>
@@ -139,9 +175,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
+import FieldHelp from './FieldHelp.vue'
 import type { PromptAuditEndpointDraft, PromptProbeResult } from '../types'
 import { cloneData, createDefaultEndpoint } from '../viewModel'
 
@@ -153,10 +191,41 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:endpoints', value: PromptAuditEndpointDraft[]): void
   (event: 'probe', endpoint: PromptAuditEndpointDraft): void
+  (event: 'applied'): void
 }>()
 const { t } = useI18n()
+
+const engineOptions = computed<SelectOption[]>(() => [
+	{ value: 'qwen3_guard', label: 'Qwen3Guard' },
+	{ value: 'generic_llm', label: 'Generic LLM' },
+])
+const jsonModeOptions = computed<SelectOption[]>(() => [
+	{ value: 'plain_json', label: t('admin.promptAudit.pool.options.plainJson') },
+	{ value: 'json_schema', label: t('admin.promptAudit.pool.options.jsonSchema') },
+])
+const stageOptions = computed<SelectOption[]>(() => [
+	{ value: 'shadow', label: t('admin.promptAudit.pool.options.shadow') },
+	{ value: 'warn', label: t('admin.promptAudit.pool.options.warn') },
+	{ value: 'block', label: t('admin.promptAudit.pool.options.block') },
+])
+const failurePolicyOptions = computed<SelectOption[]>(() => [
+	{ value: 'fail_open', label: t('admin.promptAudit.pool.options.failOpen') },
+	{ value: 'fail_closed', label: t('admin.promptAudit.pool.options.failClosed') },
+])
+const compositionModeOptions = computed<SelectOption[]>(() => [
+	{ value: 'keyword_first', label: t('admin.promptAudit.pool.options.keywordFirst') },
+	{ value: 'combined', label: t('admin.promptAudit.pool.options.combined') },
+	{ value: 'llm_only', label: t('admin.promptAudit.pool.options.llmOnly') },
+])
 const editing = ref<PromptAuditEndpointDraft | null>(null)
 const editingIndex = ref(-1)
+const editorValidation = computed(() => {
+  const endpoint = editing.value
+  if (!endpoint || endpoint.engine_type !== 'generic_llm') return ''
+  if (endpoint.stage === 'block' && endpoint.sample_rate !== 1) return t('admin.promptAudit.pool.blockSamplingWarning')
+  if (endpoint.failure_policy === 'fail_closed' && endpoint.stage !== 'block') return t('admin.promptAudit.pool.failClosedWarning')
+  return ''
+})
 
 function openCreate() {
   editingIndex.value = -1
@@ -172,12 +241,14 @@ function closeEditor() {
 }
 function saveEditor() {
   if (!editing.value?.id.trim() || !editing.value.name.trim() || !editing.value.base_url.trim()) return
+  if (editorValidation.value) return
   const next = props.endpoints.map((item) => cloneData(item))
   const value = cloneData(editing.value)
   if (value.token.trim()) value.clear_token = false
   if (editingIndex.value < 0) next.push(value)
   else next.splice(editingIndex.value, 1, value)
   emit('update:endpoints', next)
+  emit('applied')
   closeEditor()
 }
 function toggleEndpoint(id: string) {

@@ -52,10 +52,11 @@ var allowedLogFields = map[string]struct{}{
 	"protocol": {}, "endpoint": {}, "model": {}, "job_id": {}, "event_id": {},
 	"config_version": {}, "guard_endpoint_id": {}, "decision": {}, "risk_level": {},
 	"action": {}, "chunk_index": {}, "chunk_total": {}, "chunk_chars": {}, "input_chars": {},
-	"input_limit": {}, "latency_ms": {}, "status": {}, "error_code": {}, "error_kind": {},
+	"input_limit": {}, "latency_ms": {}, "status": {}, "error_code": {}, "error_kind": {}, "error_message": {},
 	"queue_length": {}, "queue_capacity": {}, "stage": {}, "upstream_dispatched": {},
 	"billing_preconsumed": {}, "worker_id": {}, "reclaimed_total": {}, "attempts": {},
 	"max_attempts": {}, "claim_version": {}, "http_status": {}, "retryable": {},
+	"outbound_url": {}, "outbound_request_body": {}, "outbound_response_body": {},
 }
 
 func LogInfo(event string, fields map[string]any) {
@@ -64,6 +65,14 @@ func LogInfo(event string, fields map[string]any) {
 	}
 	slog.LogAttrs(context.Background(), slog.LevelInfo, event, safeAttrs(fields)...)
 }
+
+func LogDebug(event string, fields map[string]any) {
+	if _, ok := knownLogEvents[event]; !ok {
+		return
+	}
+	slog.LogAttrs(context.Background(), slog.LevelDebug, event, safeAttrs(fields)...)
+}
+
 func LogWarn(event string, fields map[string]any) {
 	if _, ok := knownLogEvents[event]; !ok {
 		return
@@ -85,9 +94,12 @@ func safeAttrs(fields map[string]any) []slog.Attr {
 			continue
 		}
 		if text, ok := value.(string); ok {
-			if key == "error_kind" || key == "error_code" {
+			switch key {
+			case "error_kind", "error_code":
 				value = stableErrorCode(text)
-			} else {
+			case "outbound_url", "outbound_request_body", "outbound_response_body":
+				value = text
+			default:
 				value = TrimRunes(strings.TrimSpace(text), 256)
 			}
 		}

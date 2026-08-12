@@ -101,6 +101,14 @@
               ${{ (item.final_cost || item.held_cost || 0).toFixed(4) }}
             </span>
           </div>
+          <div class="flex min-w-0 flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-gray-500 dark:text-gray-400">
+            <span class="max-w-[18rem] truncate" :title="item.internal_request_id">
+              {{ t('videoModels.playground.historyDetail.requestId') }}: {{ item.internal_request_id || '-' }}
+            </span>
+            <span class="max-w-[18rem] truncate" :title="item.upstream_request_id">
+              {{ t('videoModels.playground.historyDetail.taskId') }}: {{ item.upstream_request_id || '-' }}
+            </span>
+          </div>
           <div v-if="item.error_reason" class="truncate text-xs text-red-600 dark:text-red-400" :title="item.error_reason">
             {{ item.error_reason }}
           </div>
@@ -197,6 +205,14 @@
             <div class="mt-1 truncate font-mono text-xs" :title="detailTask.requested_model">
               {{ detailTask.requested_model }}
             </div>
+          </div>
+          <div class="col-span-2 sm:col-span-3">
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('videoModels.playground.historyDetail.requestId') }}</div>
+            <div class="mt-1 break-all font-mono text-xs">{{ detailTask.internal_request_id || '-' }}</div>
+          </div>
+          <div class="col-span-2 sm:col-span-3">
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('videoModels.playground.historyDetail.taskId') }}</div>
+            <div class="mt-1 break-all font-mono text-xs">{{ detailTask.upstream_request_id || '-' }}</div>
           </div>
         </section>
 

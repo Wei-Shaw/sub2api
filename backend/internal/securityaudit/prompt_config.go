@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -20,7 +22,7 @@ const (
 	MaxQueueCapacity     = 100000
 	DefaultTimeoutMS     = 3000
 	MinTimeoutMS         = 100
-	MaxTimeoutMS         = 30000
+	MaxTimeoutMS         = 60000
 	DefaultInputLimit    = 4000
 	MinInputLimit        = 128
 	MaxInputLimit        = 100000
@@ -52,15 +54,25 @@ type ConfigStore interface {
 }
 
 type StorageEndpoint struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Protocol        string `json:"protocol"`
-	BaseURL         string `json:"base_url"`
-	Model           string `json:"model"`
-	TokenCiphertext string `json:"token_ciphertext,omitempty"`
-	TimeoutMS       int    `json:"timeout_ms"`
-	InputLimit      int    `json:"input_limit"`
-	Enabled         bool   `json:"enabled"`
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	Protocol            string  `json:"protocol"`
+	BaseURL             string  `json:"base_url"`
+	Model               string  `json:"model"`
+	TokenCiphertext     string  `json:"token_ciphertext,omitempty"`
+	TimeoutMS           int     `json:"timeout_ms"`
+	InputLimit          int     `json:"input_limit"`
+	Enabled             bool    `json:"enabled"`
+	EngineType          string  `json:"engine_type,omitempty"`
+	SchemaVersion       int     `json:"schema_version,omitempty"`
+	SystemGuidance      string  `json:"system_guidance,omitempty"`
+	ConfidenceThreshold float64 `json:"confidence_threshold,omitempty"`
+	JSONOutputMode      string  `json:"json_output_mode,omitempty"`
+	SampleRate          float64 `json:"sample_rate,omitempty"`
+	MaxOutputTokens     int     `json:"max_output_tokens,omitempty"`
+	Stage               string  `json:"stage,omitempty"`
+	FailurePolicy       string  `json:"failure_policy,omitempty"`
+	CompositionMode     string  `json:"composition_mode,omitempty"`
 }
 
 type storageConfig struct {
@@ -82,15 +94,25 @@ type storageConfig struct {
 }
 
 type ActiveEndpoint struct {
-	ID         string
-	Name       string
-	Protocol   string
-	BaseURL    string
-	Model      string
-	Token      string
-	TimeoutMS  int
-	InputLimit int
-	Enabled    bool
+	ID                  string
+	Name                string
+	Protocol            string
+	BaseURL             string
+	Model               string
+	Token               string
+	TimeoutMS           int
+	InputLimit          int
+	Enabled             bool
+	EngineType          string
+	SchemaVersion       int
+	SystemGuidance      string
+	ConfidenceThreshold float64
+	JSONOutputMode      string
+	SampleRate          float64
+	MaxOutputTokens     int
+	Stage               string
+	FailurePolicy       string
+	CompositionMode     string
 	// TokenInvalid marks an endpoint whose persisted token ciphertext cannot be
 	// decrypted with the current encryption key (key changed or auto-generated
 	// on restart). The endpoint is kept visible for admins but excluded from
@@ -118,16 +140,26 @@ type ActiveConfig struct {
 }
 
 type PublicEndpoint struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Protocol    string `json:"protocol"`
-	BaseURL     string `json:"base_url"`
-	Model       string `json:"model"`
-	TimeoutMS   int    `json:"timeout_ms"`
-	InputLimit  int    `json:"input_limit"`
-	Enabled     bool   `json:"enabled"`
-	HasToken    bool   `json:"has_token"`
-	TokenStatus string `json:"token_status"`
+	ID                  string  `json:"id"`
+	Name                string  `json:"name"`
+	Protocol            string  `json:"protocol"`
+	BaseURL             string  `json:"base_url"`
+	Model               string  `json:"model"`
+	TimeoutMS           int     `json:"timeout_ms"`
+	InputLimit          int     `json:"input_limit"`
+	Enabled             bool    `json:"enabled"`
+	HasToken            bool    `json:"has_token"`
+	TokenStatus         string  `json:"token_status"`
+	EngineType          string  `json:"engine_type"`
+	SchemaVersion       int     `json:"schema_version"`
+	SystemGuidance      string  `json:"system_guidance"`
+	ConfidenceThreshold float64 `json:"confidence_threshold"`
+	JSONOutputMode      string  `json:"json_output_mode"`
+	SampleRate          float64 `json:"sample_rate"`
+	MaxOutputTokens     int     `json:"max_output_tokens"`
+	Stage               string  `json:"stage"`
+	FailurePolicy       string  `json:"failure_policy"`
+	CompositionMode     string  `json:"composition_mode"`
 }
 
 type PublicConfig struct {
@@ -150,16 +182,26 @@ type PublicConfig struct {
 }
 
 type UpdateEndpoint struct {
-	ID         string `json:"id" binding:"required"`
-	Name       string `json:"name" binding:"required"`
-	Protocol   string `json:"protocol"`
-	BaseURL    string `json:"base_url" binding:"required"`
-	Model      string `json:"model"`
-	Token      string `json:"token,omitempty"`
-	ClearToken bool   `json:"clear_token"`
-	TimeoutMS  int    `json:"timeout_ms"`
-	InputLimit int    `json:"input_limit"`
-	Enabled    bool   `json:"enabled"`
+	ID                  string  `json:"id" binding:"required"`
+	Name                string  `json:"name" binding:"required"`
+	Protocol            string  `json:"protocol"`
+	BaseURL             string  `json:"base_url" binding:"required"`
+	Model               string  `json:"model"`
+	Token               string  `json:"token,omitempty"`
+	ClearToken          bool    `json:"clear_token"`
+	TimeoutMS           int     `json:"timeout_ms"`
+	InputLimit          int     `json:"input_limit"`
+	Enabled             bool    `json:"enabled"`
+	EngineType          string  `json:"engine_type"`
+	SchemaVersion       int     `json:"schema_version"`
+	SystemGuidance      string  `json:"system_guidance"`
+	ConfidenceThreshold float64 `json:"confidence_threshold"`
+	JSONOutputMode      string  `json:"json_output_mode"`
+	SampleRate          float64 `json:"sample_rate"`
+	MaxOutputTokens     int     `json:"max_output_tokens"`
+	Stage               string  `json:"stage"`
+	FailurePolicy       string  `json:"failure_policy"`
+	CompositionMode     string  `json:"composition_mode"`
 }
 
 type UpdateConfigRequest struct {
@@ -251,7 +293,87 @@ func normalizeStorageConfig(cfg *storageConfig) {
 		if ep.InputLimit == 0 {
 			ep.InputLimit = DefaultInputLimit
 		}
+		normalizeEndpointPolicy(ep)
 	}
+}
+
+func normalizeEndpointPolicy(ep *StorageEndpoint) {
+	ep.EngineType = strings.TrimSpace(ep.EngineType)
+	if ep.EngineType == "" {
+		ep.EngineType = EngineQwen3Guard
+	}
+	if ep.SchemaVersion == 0 {
+		ep.SchemaVersion = GenericSchemaVersion
+	}
+	ep.SystemGuidance = strings.TrimSpace(ep.SystemGuidance)
+	if ep.ConfidenceThreshold == 0 {
+		ep.ConfidenceThreshold = DefaultConfidenceThreshold
+	}
+	ep.JSONOutputMode = strings.TrimSpace(ep.JSONOutputMode)
+	if ep.JSONOutputMode == "" {
+		ep.JSONOutputMode = "plain_json"
+	}
+	if ep.SampleRate == 0 {
+		ep.SampleRate = 1
+	}
+	if ep.MaxOutputTokens == 0 {
+		ep.MaxOutputTokens = DefaultGenericMaxOutputTokens
+	}
+	ep.Stage = strings.TrimSpace(ep.Stage)
+	if ep.Stage == "" {
+		ep.Stage = "shadow"
+	}
+	ep.FailurePolicy = strings.TrimSpace(ep.FailurePolicy)
+	if ep.FailurePolicy == "" {
+		ep.FailurePolicy = "fail_open"
+	}
+	ep.CompositionMode = strings.TrimSpace(ep.CompositionMode)
+	if ep.CompositionMode == "" {
+		ep.CompositionMode = "keyword_first"
+	}
+}
+
+func validateEndpointPolicy(ep StorageEndpoint) error {
+	if ep.EngineType != EngineQwen3Guard && ep.EngineType != EngineGenericLLM {
+		return infraerrors.BadRequest("prompt_audit_invalid_engine_type", "审计引擎类型无效")
+	}
+	if ep.EngineType == EngineQwen3Guard {
+		return nil
+	}
+	if ep.SchemaVersion != GenericSchemaVersion {
+		return infraerrors.BadRequest("prompt_audit_invalid_schema_version", "通用审计协议版本无效")
+	}
+	if len([]rune(ep.SystemGuidance)) > MaxGenericSystemGuidanceRunes {
+		return infraerrors.BadRequest("prompt_audit_guidance_too_long", "通用审计策略说明过长")
+	}
+	if ep.ConfidenceThreshold < 0 || ep.ConfidenceThreshold > 1 {
+		return infraerrors.BadRequest("prompt_audit_invalid_confidence_threshold", "通用审计置信度阈值无效")
+	}
+	if ep.JSONOutputMode != "plain_json" && ep.JSONOutputMode != "json_schema" {
+		return infraerrors.BadRequest("prompt_audit_invalid_json_output_mode", "通用审计 JSON 输出模式无效")
+	}
+	if ep.SampleRate <= 0 || ep.SampleRate > 1 {
+		return infraerrors.BadRequest("prompt_audit_invalid_sample_rate", "通用审计采样率无效")
+	}
+	if ep.MaxOutputTokens < 16 || ep.MaxOutputTokens > MaxGenericMaxOutputTokens {
+		return infraerrors.BadRequest("prompt_audit_invalid_max_output_tokens", "通用审计输出 Token 上限无效")
+	}
+	if ep.Stage != "shadow" && ep.Stage != "warn" && ep.Stage != "block" {
+		return infraerrors.BadRequest("prompt_audit_invalid_stage", "通用审计阶段无效")
+	}
+	if ep.FailurePolicy != "fail_open" && ep.FailurePolicy != "fail_closed" {
+		return infraerrors.BadRequest("prompt_audit_invalid_failure_policy", "通用审计失败策略无效")
+	}
+	if ep.CompositionMode != "keyword_first" && ep.CompositionMode != "llm_only" && ep.CompositionMode != "combined" {
+		return infraerrors.BadRequest("prompt_audit_invalid_composition_mode", "通用审计组合模式无效")
+	}
+	if ep.Stage == "block" && ep.SampleRate != 1 {
+		return infraerrors.BadRequest("prompt_audit_block_requires_full_sampling", "阻止阶段必须使用完整采样")
+	}
+	if ep.FailurePolicy == "fail_closed" && ep.Stage != "block" {
+		return infraerrors.BadRequest("prompt_audit_fail_closed_requires_block", "仅阻止阶段可启用失败关闭")
+	}
+	return nil
 }
 
 func validateStorageConfig(cfg storageConfig) error {
@@ -289,11 +411,20 @@ func validateStorageConfig(cfg storageConfig) error {
 		if _, err := NormalizeBaseURL(ep.BaseURL); err != nil {
 			return err
 		}
+		if ep.EngineType == EngineGenericLLM {
+			parsed, _ := url.Parse(ep.BaseURL)
+			if literal := net.ParseIP(parsed.Hostname()); literal != nil && !isPublicPromptAuditIP(literal) {
+				return infraerrors.BadRequest("prompt_audit_unsafe_destination", "通用审计节点必须使用公网地址")
+			}
+		}
 		if ep.TimeoutMS < MinTimeoutMS || ep.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
 		}
 		if ep.InputLimit < MinInputLimit || ep.InputLimit > MaxInputLimit {
 			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		}
+		if err := validateEndpointPolicy(ep); err != nil {
+			return err
 		}
 		if ep.Enabled {
 			enabled++
@@ -339,6 +470,11 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 		}
 		if endpoint.InputLimit < MinInputLimit || endpoint.InputLimit > MaxInputLimit {
 			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		}
+		policy := StorageEndpoint{EngineType: endpoint.EngineType, SchemaVersion: endpoint.SchemaVersion, SystemGuidance: endpoint.SystemGuidance, ConfidenceThreshold: endpoint.ConfidenceThreshold, JSONOutputMode: endpoint.JSONOutputMode, SampleRate: endpoint.SampleRate, MaxOutputTokens: endpoint.MaxOutputTokens, Stage: endpoint.Stage, FailurePolicy: endpoint.FailurePolicy, CompositionMode: endpoint.CompositionMode}
+		normalizeEndpointPolicy(&policy)
+		if err := validateEndpointPolicy(policy); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -408,6 +544,9 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL,
 			Model: ep.Model, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit,
 			Enabled: ep.Enabled, HasToken: hasToken, TokenStatus: status,
+			EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance,
+			ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate,
+			MaxOutputTokens: ep.MaxOutputTokens, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
 		})
 	}
 	active := ActiveConfig{RiskControlEnabled: riskControlEnabled, Enabled: cfg.Enabled, BlockingEnabled: cfg.BlockingEnabled}
@@ -453,6 +592,9 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL, Model: ep.Model,
 			Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit,
 			Enabled: ep.Enabled && !tokenInvalid, TokenInvalid: tokenInvalid,
+			EngineType: ep.EngineType, SchemaVersion: ep.SchemaVersion, SystemGuidance: ep.SystemGuidance,
+			ConfidenceThreshold: ep.ConfidenceThreshold, JSONOutputMode: ep.JSONOutputMode, SampleRate: ep.SampleRate,
+			MaxOutputTokens: ep.MaxOutputTokens, Stage: ep.Stage, FailurePolicy: ep.FailurePolicy, CompositionMode: ep.CompositionMode,
 		})
 	}
 	return active, nil

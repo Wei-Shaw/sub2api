@@ -17,6 +17,19 @@ type PromptEngine interface {
 	Evaluate(ctx context.Context, req Request) (*PromptDecision, error)
 }
 
+type PromptPolicy struct {
+	EngineType      string
+	CompositionMode string
+}
+
+type PromptPolicyProvider interface {
+	Policy(req Request) PromptPolicy
+}
+
+type ShadowComparisonRecorder interface {
+	RecordShadowComparison(context.Context, string, ShadowComparison)
+}
+
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
@@ -50,6 +63,24 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 }
 
 func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {
+	policy := PromptPolicy{EngineType: EngineQwen3Guard, CompositionMode: "combined"}
+	if provider, ok := c.prompt.(PromptPolicyProvider); ok {
+		policy = provider.Policy(req)
+	}
+	if policy.EngineType == EngineGenericLLM {
+		switch policy.CompositionMode {
+		case "keyword_first":
+			legacy, _ := c.checkLegacy(ctx, req)
+			if legacy != nil && legacy.Blocked {
+				return prioritize(legacy, nil)
+			}
+			prompt := c.evaluatePrompt(ctx, req)
+			c.recordShadowComparison(ctx, req.RequestID, policy.CompositionMode, legacy, prompt)
+			return prioritize(legacy, prompt)
+		case "llm_only":
+			return prioritize(nil, c.evaluatePrompt(ctx, req))
+		}
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	var legacy *LegacyDecision
@@ -60,28 +91,53 @@ func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {
 	}()
 	go func() {
 		defer wg.Done()
-		if c.prompt == nil {
-			prompt = unavailablePromptDecision(ErrorCodeUnavailable)
-			return
-		}
-		result, err := c.prompt.Evaluate(ctx, req.Clone())
-		if err != nil {
-			var guardErr *GuardError
-			if errors.As(err, &guardErr) && guardErr.Code == ErrorCodeInvalidResponse {
-				prompt = unavailablePromptDecision(ErrorCodeInvalidResponse)
-				return
-			}
-			prompt = unavailablePromptDecision(ErrorCodeUnavailable)
-			return
-		}
-		if result == nil {
-			prompt = unavailablePromptDecision(ErrorCodeUnavailable)
-			return
-		}
-		prompt = result
+		prompt = c.evaluatePrompt(ctx, req)
 	}()
 	wg.Wait()
+	if policy.EngineType == EngineGenericLLM {
+		c.recordShadowComparison(ctx, req.RequestID, policy.CompositionMode, legacy, prompt)
+	}
 	return prioritize(legacy, prompt)
+}
+
+func (c *Coordinator) recordShadowComparison(ctx context.Context, requestID, mode string, legacy *LegacyDecision, prompt *PromptDecision) {
+	recorder, ok := c.prompt.(ShadowComparisonRecorder)
+	if !ok || prompt == nil || prompt.Result == nil || prompt.Result.Stage != "shadow" {
+		return
+	}
+	keywordDecision := "allow"
+	if legacy != nil && legacy.Blocked {
+		keywordDecision = "block"
+	}
+	llmDecision := prompt.Kind
+	switch prompt.Result.Action {
+	case ActionBlock:
+		llmDecision = DecisionBlock
+	case ActionWarn:
+		llmDecision = DecisionFlag
+	}
+	recorder.RecordShadowComparison(ctx, requestID, ShadowComparison{
+		CompositionMode: mode, KeywordDecision: keywordDecision, LLMDecision: llmDecision,
+		Agreement: (keywordDecision == "block") == (llmDecision == DecisionBlock),
+	})
+}
+
+func (c *Coordinator) evaluatePrompt(ctx context.Context, req Request) *PromptDecision {
+	if c.prompt == nil {
+		return unavailablePromptDecision(ErrorCodeUnavailable)
+	}
+	result, err := c.prompt.Evaluate(ctx, req.Clone())
+	if err != nil {
+		var guardErr *GuardError
+		if errors.As(err, &guardErr) && guardErr.Code == ErrorCodeInvalidResponse {
+			return unavailablePromptDecision(ErrorCodeInvalidResponse)
+		}
+		return unavailablePromptDecision(ErrorCodeUnavailable)
+	}
+	if result == nil {
+		return unavailablePromptDecision(ErrorCodeUnavailable)
+	}
+	return result
 }
 
 func (c *Coordinator) checkLegacy(ctx context.Context, req Request) (*LegacyDecision, error) {

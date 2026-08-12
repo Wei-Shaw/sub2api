@@ -41,26 +41,40 @@ type Job struct {
 }
 
 type Event struct {
-	ID              int64              `json:"id"`
-	JobID           int64              `json:"job_id"`
-	Snapshot        PromptSnapshot     `json:"snapshot"`
-	Decision        EventDecision      `json:"decision"`
-	RiskLevel       RiskLevel          `json:"risk_level"`
-	Action          Action             `json:"action"`
-	Categories      []string           `json:"categories"`
-	MatchedScanners []string           `json:"matched_scanners"`
-	ScannerScores   map[string]float64 `json:"scanner_scores"`
-	ScannerEvidence map[string]string  `json:"scanner_evidence"`
-	ScannerBackend  string             `json:"scanner_backend"`
-	ScannerVersion  string             `json:"scanner_version"`
-	GuardEndpointID string             `json:"guard_endpoint_id"`
-	PolicyID        string             `json:"policy_id"`
-	PolicyVersion   int                `json:"policy_version"`
-	ConfigVersion   int64              `json:"config_version"`
-	ChunkTotal      int                `json:"chunk_total"`
-	LatencyMS       int                `json:"latency_ms"`
-	IssueSummaries  []IssueSummary     `json:"issue_summaries"`
-	CreatedAt       time.Time          `json:"created_at"`
+	ID                int64              `json:"id"`
+	JobID             int64              `json:"job_id"`
+	Snapshot          PromptSnapshot     `json:"snapshot"`
+	Decision          EventDecision      `json:"decision"`
+	RiskLevel         RiskLevel          `json:"risk_level"`
+	Action            Action             `json:"action"`
+	Categories        []string           `json:"categories"`
+	MatchedScanners   []string           `json:"matched_scanners"`
+	ScannerScores     map[string]float64 `json:"scanner_scores"`
+	ScannerEvidence   map[string]string  `json:"scanner_evidence"`
+	ScannerBackend    string             `json:"scanner_backend"`
+	ScannerVersion    string             `json:"scanner_version"`
+	GuardEndpointID   string             `json:"guard_endpoint_id"`
+	PolicyID          string             `json:"policy_id"`
+	PolicyVersion     int                `json:"policy_version"`
+	ConfigVersion     int64              `json:"config_version"`
+	ChunkTotal        int                `json:"chunk_total"`
+	LatencyMS         int                `json:"latency_ms"`
+	EngineType        string             `json:"engine_type,omitempty"`
+	AuditModel        string             `json:"audit_model,omitempty"`
+	SchemaVersion     int                `json:"schema_version,omitempty"`
+	Confidence        float64            `json:"confidence,omitempty"`
+	EnforcementStage  string             `json:"enforcement_stage,omitempty"`
+	FailurePolicy     string             `json:"failure_policy,omitempty"`
+	PromptTokens      int                `json:"prompt_tokens,omitempty"`
+	CompletionTokens  int                `json:"completion_tokens,omitempty"`
+	TotalTokens       int                `json:"total_tokens,omitempty"`
+	UnknownCategories []string           `json:"unknown_categories,omitempty"`
+	ShadowComparison  *ShadowComparison  `json:"shadow_comparison,omitempty"`
+	ErrorCode         string             `json:"error_code,omitempty"`
+	ErrorMessage      string             `json:"error_message,omitempty"`
+	FailedChunkIndex  int                `json:"failed_chunk_index,omitempty"`
+	IssueSummaries    []IssueSummary     `json:"issue_summaries"`
+	CreatedAt         time.Time          `json:"created_at"`
 }
 
 type JobRepository interface {
@@ -75,6 +89,24 @@ type JobRepository interface {
 	ReclaimStale(ctx context.Context, stagingBefore, processingBefore time.Time, limit int) (int64, error)
 	QueueStats(ctx context.Context) (QueueStats, error)
 	RecordBlocking(ctx context.Context, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, storePassEvents bool) (*Event, error)
+	RecordBlockingFailure(ctx context.Context, snapshot PromptSnapshot, configVersion int64, failure AuditFailure) (*Event, error)
+}
+
+type AuditFailure struct {
+	Code, Message, GuardEndpointID, EngineType, AuditModel, Stage, FailurePolicy string
+	LatencyMS, ChunkTotal, FailedChunkIndex                                      int
+}
+
+func (r *PostgreSQLRepository) RecordShadowComparison(ctx context.Context, requestID string, comparison ShadowComparison) error {
+	if r == nil || r.db == nil || strings.TrimSpace(requestID) == "" {
+		return nil
+	}
+	payload, err := json.Marshal(comparison)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `UPDATE prompt_audit_events SET audit_metadata=jsonb_set(audit_metadata,'{shadow_comparison}',$2::jsonb,true) WHERE request_id=$1`, strings.TrimSpace(requestID), payload)
+	return err
 }
 
 type PostgreSQLRepository struct {
@@ -304,6 +336,35 @@ func (r *PostgreSQLRepository) RecordBlocking(ctx context.Context, snapshot Prom
 	return event, nil
 }
 
+func (r *PostgreSQLRepository) RecordBlockingFailure(ctx context.Context, snapshot PromptSnapshot, configVersion int64, failure AuditFailure) (*Event, error) {
+	result := &NormalizedResult{
+		Decision: EventFailed, RiskLevel: RiskUnknown, Action: ActionError,
+		Categories: []string{}, MatchedScanners: []string{}, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{},
+		GuardEndpointID: failure.GuardEndpointID, EngineType: failure.EngineType, ScannerVersion: failure.AuditModel,
+		Stage: failure.Stage, FailurePolicy: failure.FailurePolicy, LatencyMS: failure.LatencyMS, ChunkTotal: failure.ChunkTotal,
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	job, err := insertJob(ctx, tx, snapshot.Redacted(), ModeBlocking, configVersion, "failed", 1)
+	if err != nil {
+		return nil, err
+	}
+	event, err := insertEventWithMetadata(ctx, tx, job.ID, snapshot.Redacted(), configVersion, result, eventMetadata{
+		EngineType: failure.EngineType, AuditModel: failure.AuditModel, EnforcementStage: failure.Stage, FailurePolicy: failure.FailurePolicy,
+		ErrorCode: failure.Code, ErrorMessage: failure.Message, FailedChunkIndex: failure.FailedChunkIndex,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return event, nil
+}
+
 // shouldStorePromptAuditEvent keeps store_pass_events scoped to safe results.
 // Risk events are always persisted while prompt auditing itself is enabled.
 func shouldStorePromptAuditEvent(decision EventDecision, storePassEvents bool) bool {
@@ -335,6 +396,10 @@ func insertJob(ctx context.Context, queryer sqlQueryer, snapshot PromptSnapshot,
 }
 
 func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult) (*Event, error) {
+	return insertEventWithMetadata(ctx, queryer, jobID, snapshot, configVersion, result, eventMetadataFromResult(result))
+}
+
+func insertEventWithMetadata(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot PromptSnapshot, configVersion int64, result *NormalizedResult, metadata eventMetadata) (*Event, error) {
 	categories, _ := json.Marshal(result.Categories)
 	matched, _ := json.Marshal(result.MatchedScanners)
 	scores, _ := json.Marshal(result.ScannerScores)
@@ -343,15 +408,16 @@ func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot 
 		evidence[key] = RedactPreview(value, 160)
 	}
 	evidenceJSON, _ := json.Marshal(evidence)
+	metadataJSON, _ := json.Marshal(metadata)
 	row := queryer.QueryRowContext(ctx, `
 		INSERT INTO prompt_audit_events (
 			job_id,request_id,user_id,username_snapshot,user_email_snapshot,api_key_id,api_key_name_snapshot,
 			group_id,group_name,provider,endpoint,protocol,model,prompt_hash,redacted_preview,stage,
 			decision,risk_level,action,categories,matched_scanners,scanner_scores,scanner_evidence,
 			scanner_backend,scanner_version,guard_endpoint_id,policy_id,policy_version,config_version,chunk_total,latency_ms,
-			full_prompt
+			full_prompt,audit_metadata
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+			$20::jsonb,$21::jsonb,$22::jsonb,$23::jsonb,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33::jsonb)
 		RETURNING `+eventDetailColumns("prompt_audit_events"),
 		jobID, snapshot.RequestID, nullableID(snapshot.UserID), snapshot.UsernameSnapshot, snapshot.UserEmailSnapshot,
 		nullableID(snapshot.APIKeyID), snapshot.APIKeyNameSnapshot, snapshot.GroupID, snapshot.GroupName,
@@ -359,7 +425,7 @@ func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot 
 		snapshot.RedactedPreview, normalizeStage(snapshot.Stage), string(result.Decision), string(result.RiskLevel),
 		string(result.Action), categories, matched, scores, evidenceJSON, result.ScannerBackend, result.ScannerVersion,
 		result.GuardEndpointID, result.PolicyID, result.PolicyVersion, configVersion, result.ChunkTotal, result.LatencyMS,
-		snapshot.FullPrompt)
+		snapshot.FullPrompt, metadataJSON)
 	return scanEvent(row, true)
 }
 

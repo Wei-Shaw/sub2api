@@ -1,7 +1,10 @@
 package securityaudit
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,6 +15,8 @@ import (
 )
 
 const maxGuardResponseBytes int64 = 256 * 1024
+
+var lookupPromptAuditIP = net.DefaultResolver.LookupIPAddr
 
 func NormalizeBaseURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
@@ -56,9 +61,15 @@ func ModelsURL(base string) (string, error) {
 }
 
 func NewSecureHTTPClient(endpoint ActiveEndpoint) (*http.Client, error) {
-	_, err := NormalizeBaseURL(endpoint.BaseURL)
+	normalized, err := NormalizeBaseURL(endpoint.BaseURL)
 	if err != nil {
 		return nil, err
+	}
+	parsed, _ := url.Parse(normalized)
+	if endpoint.EngineType == EngineGenericLLM {
+		if literal := net.ParseIP(parsed.Hostname()); literal != nil && !isPublicPromptAuditIP(literal) {
+			return nil, infraerrors.BadRequest("prompt_audit_unsafe_destination", "通用审计节点必须使用公网地址")
+		}
 	}
 	dialer := &net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
@@ -74,16 +85,51 @@ func NewSecureHTTPClient(endpoint ActiveEndpoint) (*http.Client, error) {
 		ExpectContinueTimeout: time.Second,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 	}
-	// Endpoint ownership and destination trust are administrator concerns.
-	// Use the standard dialer so configured private, loopback, reserved, and
-	// DNS-resolved addresses are all reachable from the service environment.
 	transport.DialContext = dialer.DialContext
+	if endpoint.EngineType == EngineGenericLLM {
+		transport.DialContext = secureGenericDialContext(dialer.DialContext, parsed.Hostname())
+		if parsed.Scheme == "https" {
+			transport.TLSClientConfig.ServerName = parsed.Hostname()
+		}
+	}
 	timeout := time.Duration(endpoint.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = DefaultTimeoutMS * time.Millisecond
 	}
-	return &http.Client{
+	client := &http.Client{
 		Transport: transport,
 		Timeout:   timeout,
-	}, nil
+	}
+	if endpoint.EngineType == EngineGenericLLM {
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return infraerrors.BadRequest("prompt_audit_redirect_rejected", "通用审计节点不能重定向")
+		}
+	}
+	return client, nil
+}
+
+func secureGenericDialContext(dial func(context.Context, string, string) (net.Conn, error), configuredHost string) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil || !strings.EqualFold(strings.TrimSuffix(host, "."), strings.TrimSuffix(configuredHost, ".")) {
+			return nil, infraerrors.BadRequest("prompt_audit_destination_mismatch", "通用审计节点目标无效")
+		}
+		addresses, err := lookupPromptAuditIP(ctx, host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve prompt audit endpoint: %w", err)
+		}
+		if len(addresses) == 0 {
+			return nil, errors.New("resolve prompt audit endpoint: no addresses")
+		}
+		for _, address := range addresses {
+			if !isPublicPromptAuditIP(address.IP) {
+				return nil, infraerrors.BadRequest("prompt_audit_unsafe_destination", "通用审计节点必须解析到公网地址")
+			}
+		}
+		return dial(ctx, network, net.JoinHostPort(addresses[0].IP.String(), port))
+	}
+}
+
+func isPublicPromptAuditIP(ip net.IP) bool {
+	return ip != nil && ip.IsGlobalUnicast() && !ip.IsPrivate() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsLinkLocalMulticast() && !ip.IsUnspecified()
 }

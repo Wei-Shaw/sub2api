@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +27,15 @@ const (
 	// 完成时会按上游返回的实际时长重算 finalCost 并追扣/退还差额。
 	defaultAutoDurationSeconds = 10
 )
+
+var videoErrorPlatformNamePattern = regexp.MustCompile(`(?i)\b(?:apiz|atlascloud|fal)(?:\.ai)?\b[\s:,-]*`)
+
+// SanitizeVideoErrorReason removes internal upstream platform names from errors
+// exposed in playground history while preserving status codes and diagnostics.
+func SanitizeVideoErrorReason(reason string) string {
+	cleaned := videoErrorPlatformNamePattern.ReplaceAllString(reason, "")
+	return strings.TrimSpace(cleaned)
+}
 
 // AsyncVideoService 视频异步任务执行内核。
 //
@@ -52,6 +63,7 @@ type AsyncVideoService struct {
 
 	// cosService：视频产物 COS 转存器。nil 或未启用时全程 no-op，直接返回上游原始 URL。
 	cosService *COSImageTransferService
+	opsService *OpsService
 
 	pollInterval time.Duration
 	failTimeout  time.Duration
@@ -110,6 +122,14 @@ func (s *AsyncVideoService) SetCostCenterWriter(w CostCenterWriter) {
 func (s *AsyncVideoService) SetCOSTransferService(c *COSImageTransferService) {
 	if s != nil {
 		s.cosService = c
+	}
+}
+
+// SetOpsService 注入错误记录服务。异步视频请求已离开 HTTP 中间件生命周期，
+// 上游失败必须在终态处理处显式写入 ops_error_logs。
+func (s *AsyncVideoService) SetOpsService(ops *OpsService) {
+	if s != nil {
+		s.opsService = ops
 	}
 }
 
@@ -633,6 +653,7 @@ func replaceURLsInPayload(node any, mapping map[string]string) any {
 
 // markFailedAndRefund 失败终态：退还全部预扣、置 refunded/expired、终态写 usage_log（refunded）。
 func (s *AsyncVideoService) markFailedAndRefund(ctx context.Context, task *AsyncVideoTask, billingType int8, reason string) {
+	reason = SanitizeVideoErrorReason(reason)
 	status := AsyncVideoStatusRefunded
 	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
 		status = AsyncVideoStatusExpired
@@ -659,7 +680,64 @@ func (s *AsyncVideoService) markFailedAndRefund(ctx context.Context, task *Async
 	if task.HeldCost > 0 {
 		s.refund(ctx, billingType, asyncVideoBillingContext(task), task.HeldCost)
 	}
-	s.writeTerminalUsageLog(ctx, task, billingType, 0, BillingStatusRefunded, nil, nil)
+	// 失败任务不属于实际用量，不能写入 usage_logs。任务本身仍保留失败原因，
+	// 并将非客户端取消类失败写入 ops_error_logs 供“错误记录”查看。
+	s.recordTerminalVideoError(ctx, task, reason)
+}
+
+func (s *AsyncVideoService) recordTerminalVideoError(ctx context.Context, task *AsyncVideoTask, reason string) {
+	if s == nil || s.opsService == nil || task == nil || strings.EqualFold(strings.TrimSpace(reason), "cancelled by client") {
+		return
+	}
+	statusCode := upstreamStatusCodeFromMessage(reason)
+	userID, apiKeyID := task.UserID, task.APIKeyID
+	entry := &OpsInsertErrorLogInput{
+		RequestID: task.InternalRequestID, ClientRequestID: task.InternalRequestID,
+		UserID: &userID, APIKeyID: &apiKeyID, GroupID: task.GroupID,
+		Platform: task.Facade, Model: task.RequestedModel,
+		RequestedModel: task.RequestedModel, UpstreamModel: amDerefStr(task.UpstreamModel),
+		InboundEndpoint: amDerefStr(task.InboundEndpoint), UpstreamEndpoint: amDerefStr(task.UpstreamEndpoint),
+		UserAgent: amDerefStr(task.UserAgent), ErrorPhase: "upstream", ErrorType: "upstream_error",
+		Severity: "error", StatusCode: statusCode, ErrorMessage: reason, ErrorBody: reason,
+		ErrorSource: "upstream", ErrorOwner: "provider", CreatedAt: time.Now(),
+	}
+	if task.AccountID != nil {
+		accountID := *task.AccountID
+		entry.AccountID = &accountID
+	}
+	if task.ClientIP != nil {
+		clientIP := *task.ClientIP
+		entry.ClientIP = &clientIP
+	}
+	if statusCode > 0 {
+		entry.UpstreamStatusCode = &statusCode
+	}
+	upstreamMessage := reason
+	entry.UpstreamErrorMessage = &upstreamMessage
+	if err := s.opsService.RecordError(ctx, entry); err != nil && !errors.Is(err, ErrOpsDisabled) {
+		logger.L().Warn("async_video.error_log_failed", zap.Int64("task_id", task.ID), zap.Error(err))
+	}
+}
+
+func upstreamStatusCodeFromMessage(message string) int {
+	const marker = "HTTP "
+	start := strings.Index(message, marker)
+	if start < 0 {
+		return 0
+	}
+	start += len(marker)
+	end := start
+	for end < len(message) && message[end] >= '0' && message[end] <= '9' {
+		end++
+	}
+	if end == start {
+		return 0
+	}
+	code, err := strconv.Atoi(message[start:end])
+	if err != nil || code < 100 || code > 599 {
+		return 0
+	}
+	return code
 }
 
 // writeTerminalUsageLog 终态追加写 usage_log（视频路径）。

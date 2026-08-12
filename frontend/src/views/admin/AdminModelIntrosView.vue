@@ -112,6 +112,14 @@
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-2">
+              <button
+                class="btn btn-primary btn-xs"
+                :disabled="!row.enabled"
+                :title="row.enabled ? t('admin.modelIntros.tryIt') : t('admin.modelIntros.tryItDisabled')"
+                @click="openPlayground(row)"
+              >
+                {{ t('admin.modelIntros.tryIt') }}
+              </button>
               <button class="btn btn-secondary btn-xs" @click="openDetailDialog(row)">{{ t('common.view') }}</button>
               <button class="btn btn-secondary btn-xs" @click="openEditDialog(row)">{{ t('common.edit') }}</button>
               <button class="btn btn-danger btn-xs" @click="askDelete(row)">{{ t('common.delete') }}</button>
@@ -339,6 +347,7 @@
                   :model-value="row"
                   :removable="true"
                   :allow-array-defaults="true"
+                  :reference-field-options="referenceFieldOptions"
                   :can-move-up="idx > 0"
                   :can-move-down="idx < form.params.length - 1"
                   @update:modelValue="onParamRowUpdate(idx, $event)"
@@ -695,6 +704,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
@@ -720,6 +730,7 @@ import ParamSchemaEditor from '@/components/common/ParamSchemaEditor.vue'
 // 按钮双通道并存，管理员可任选一种交互。
 import { VueDraggable } from 'vue-draggable-plus'
 import {
+  collectReferenceFieldPaths,
   type SchemaRow,
   makeSchemaRow,
   mapToRows,
@@ -739,7 +750,15 @@ import { provideDescriptionTranslation, fetchModelsForKey } from '@/composables/
 import { extractModelIntroFromDoc } from '@/composables/useModelIntroDocExtract'
 
 const { t, locale } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
+
+function openPlayground(row: ModelIntro) {
+  if (!row.enabled) return
+  const slug = String(row.model_key || '').split('/').filter(Boolean)
+  if (slug.length === 0) return
+  router.push({ name: 'VideoPlayground', params: { slug } })
+}
 
 /**
  * localizedDescription：按当前 i18n locale 挑选"模型介绍"的显示语言。
@@ -1155,6 +1174,7 @@ const form = reactive<FormState>({
   result_field: '',
   result_type: 'video'
 })
+const referenceFieldOptions = computed(() => collectReferenceFieldPaths(form.params))
 
 // ============ Schema 导入导出弹窗状态 ============
 // 支持三种方式：

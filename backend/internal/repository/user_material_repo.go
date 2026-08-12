@@ -47,14 +47,14 @@ RETURNING id, created_at
 	return id, nil
 }
 
-// GetByID 按 id 查一条；找不到（含已软删）返回 nil, nil。
-func (r *userMaterialRepository) GetByID(ctx context.Context, id int64) (*service.UserMaterial, error) {
+// GetByID 按 user_id + id 原子查询；归属不匹配与不存在使用相同结果。
+func (r *userMaterialRepository) GetByID(ctx context.Context, userID, id int64) (*service.UserMaterial, error) {
 	const q = `
 SELECT id, user_id, file_name, cos_key, cos_url, content_type, size_bytes, kind, source, created_at
 FROM user_materials
-WHERE id = $1 AND deleted_at IS NULL
+WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
 `
-	row := r.db.QueryRowContext(ctx, q, id)
+	row := r.db.QueryRowContext(ctx, q, id, userID)
 	m := &service.UserMaterial{}
 	if err := row.Scan(&m.ID, &m.UserID, &m.FileName, &m.CosKey, &m.CosURL,
 		&m.ContentType, &m.SizeBytes, &m.Kind, &m.Source, &m.CreatedAt); err != nil {

@@ -13,6 +13,7 @@ import {
   makeSchemaRow,
   mapToRows,
   rowsToMap,
+  collectReferenceFieldPaths,
 } from '@/components/common/paramSchemaRow'
 import { extractFieldSpecs } from '@/components/video/paramSpec'
 import { buildDefaultBody, fieldSpecToDefaultValue } from '@/components/video/paramSpec'
@@ -123,6 +124,34 @@ describe('paramSchemaRow: array media URL widgets + maxItems', () => {
     const row = mapToRows({ imgs: { items: { value: '' }, widget: 'imageUrls' } })[0]
     expect(row.widget).toBe('ImageUrls')
     expect((rowsToMap([row]).imgs as Record<string, unknown>).widget).toBe('ImageUrls')
+  })
+})
+
+describe('paramSchemaRow: PromptTextArea', () => {
+  it('derives selectable media paths from the schema', () => {
+    expect(collectReferenceFieldPaths([
+      makeSchemaRow({ key: 'cover', type: 'string', widget: 'image' }),
+      makeSchemaRow({ key: 'references', type: 'array', widget: 'ImageUrls' }),
+      makeSchemaRow({ key: 'settings', type: 'object', children: [makeSchemaRow({ key: 'clips', type: 'array', widget: 'VideoUrls' })] }),
+      makeSchemaRow({ key: 'prompt', type: 'string', widget: 'PromptTextArea' }),
+    ])).toEqual(['cover', 'references', 'settings.clips'])
+  })
+  it('round-trips reference fields and exposes them to the playground', () => {
+    const stored = rowsToMap([makeSchemaRow({
+      key: 'instruction', type: 'string', widget: 'PromptTextArea', textareaRows: 6,
+      referenceFields: ['image_url', 'reference_image_urls'],
+    })]).instruction as Record<string, unknown>
+
+    expect(stored).toMatchObject({
+      widget: 'PromptTextArea', rows: 6,
+      reference_fields: ['image_url', 'reference_image_urls'],
+    })
+    const restored = mapToRows({ instruction: stored })[0]
+    expect(restored.widget).toBe('PromptTextArea')
+    expect(restored.referenceFields).toEqual(['image_url', 'reference_image_urls'])
+    const spec = extractFieldSpecs({ instruction: stored })[0]
+    expect(spec.widget).toBe('PromptTextArea')
+    expect(spec.referenceFields).toEqual(['image_url', 'reference_image_urls'])
   })
 })
 

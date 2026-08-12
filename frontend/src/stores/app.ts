@@ -106,14 +106,15 @@ export const useAppStore = defineStore('app', () => {
    * @param duration - Auto-dismiss duration in ms (undefined = no auto-dismiss)
    * @returns Toast ID for manual dismissal
    */
-  function showToast(type: ToastType, message: string, duration?: number): string {
+  function showToast(type: ToastType, message: string, duration?: number, options?: Pick<Toast, 'title' | 'actionLabel' | 'action'>): string {
     const id = `toast-${++toastIdCounter}`
     const toast: Toast = {
       id,
       type,
       message,
       duration,
-      startTime: duration !== undefined ? Date.now() : undefined
+      startTime: duration !== undefined ? Date.now() : undefined,
+      ...options,
     }
 
     toasts.value.push(toast)
@@ -162,6 +163,10 @@ export const useAppStore = defineStore('app', () => {
    */
   function showWarning(message: string, duration: number = 4000): string {
     return showToast('warning', message, duration)
+  }
+
+  function showWarningAction(title: string, message: string, actionLabel: string, action: () => void, duration: number = 10000): string {
+    return showToast('warning', message, duration, { title, actionLabel, action })
   }
 
   /**
@@ -488,6 +493,7 @@ export const useAppStore = defineStore('app', () => {
     showError,
     showInfo,
     showWarning,
+    showWarningAction,
     hideToast,
     clearAllToasts,
     withLoading,

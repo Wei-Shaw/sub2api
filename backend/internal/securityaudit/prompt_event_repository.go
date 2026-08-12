@@ -317,7 +317,7 @@ func eventColumns(alias string) string {
 		%[1]s.stage,%[1]s.decision,%[1]s.risk_level,%[1]s.action,%[1]s.categories,%[1]s.matched_scanners,
 		%[1]s.scanner_scores,%[1]s.scanner_evidence,%[1]s.scanner_backend,%[1]s.scanner_version,
 		%[1]s.guard_endpoint_id,%[1]s.policy_id,%[1]s.policy_version,%[1]s.config_version,
-		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.created_at`, alias)
+		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.created_at,%[1]s.audit_metadata`, alias)
 }
 
 // eventDetailColumns adds the full prompt, which can be large, so it is only
@@ -329,7 +329,7 @@ func eventDetailColumns(alias string) string {
 func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 	event := &Event{}
 	var userID, apiKeyID, groupID sql.NullInt64
-	var categories, matched, scores, evidence []byte
+	var categories, matched, scores, evidence, metadata []byte
 	dest := []any{&event.ID, &event.JobID, &event.Snapshot.RequestID, &userID,
 		&event.Snapshot.UsernameSnapshot, &event.Snapshot.UserEmailSnapshot, &apiKeyID,
 		&event.Snapshot.APIKeyNameSnapshot, &groupID, &event.Snapshot.GroupName,
@@ -337,7 +337,7 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 		&event.Snapshot.PromptHash, &event.Snapshot.RedactedPreview, &event.Snapshot.Stage, &event.Decision,
 		&event.RiskLevel, &event.Action, &categories, &matched, &scores, &evidence, &event.ScannerBackend,
 		&event.ScannerVersion, &event.GuardEndpointID, &event.PolicyID, &event.PolicyVersion,
-		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CreatedAt}
+		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CreatedAt, &metadata}
 	if len(withFullPrompt) > 0 && withFullPrompt[0] {
 		dest = append(dest, &event.Snapshot.FullPrompt)
 	}
@@ -352,6 +352,9 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 	_ = json.Unmarshal(matched, &event.MatchedScanners)
 	_ = json.Unmarshal(scores, &event.ScannerScores)
 	_ = json.Unmarshal(evidence, &event.ScannerEvidence)
+	var auditMetadata eventMetadata
+	_ = json.Unmarshal(metadata, &auditMetadata)
+	auditMetadata.apply(event)
 	result := NormalizedResult{Decision: event.Decision, RiskLevel: event.RiskLevel, Action: event.Action,
 		Categories: event.Categories, MatchedScanners: event.MatchedScanners, ScannerScores: event.ScannerScores,
 		ScannerEvidence: event.ScannerEvidence}

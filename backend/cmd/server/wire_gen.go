@@ -350,7 +350,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, grokQuotaService, configConfig, securityauditCoordinator)
 	falGatewayHandler := handler.NewFalGatewayHandler(gatewayService, openAIGatewayService, accountService, asyncMediaService, cosImageTransferService, configConfig)
 	asyncVideoTaskRepository := repository.NewAsyncVideoTaskRepository(client, db)
-	asyncVideoService := service.ProvideAsyncVideoService(asyncVideoTaskRepository, userRepository, billingService, deferredService, billingContextResolver, billingCacheService, modelPricingResolver, costCenterService, cosImageTransferService, configConfig)
+	asyncVideoService := service.ProvideAsyncVideoService(asyncVideoTaskRepository, userRepository, billingService, deferredService, billingContextResolver, billingCacheService, modelPricingResolver, costCenterService, cosImageTransferService, opsService, configConfig)
 	falVideoGatewayHandler := handler.NewFalVideoGatewayHandler(gatewayService, accountService, asyncVideoService)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo, notificationEmailService)
 	totpHandler := handler.NewTotpHandler(totpService)

@@ -23,17 +23,60 @@ func (f *fakeLegacyEngine) Check(context.Context, Request) (*LegacyDecision, err
 }
 
 type fakePromptEngine struct {
-	mode      Mode
-	decision  *PromptDecision
-	err       error
-	enqueues  atomic.Int64
-	evaluates atomic.Int64
+	mode                Mode
+	decision            *PromptDecision
+	err                 error
+	enqueues            atomic.Int64
+	evaluates           atomic.Int64
+	policy              PromptPolicy
+	comparison          *ShadowComparison
+	comparisonRequestID string
 }
+
+func (f *fakePromptEngine) Policy(Request) PromptPolicy { return f.policy }
 
 func (f *fakePromptEngine) EffectiveMode() Mode { return f.mode }
 func (f *fakePromptEngine) Enqueue(context.Context, Request) error {
 	f.enqueues.Add(1)
 	return f.err
+}
+func (f *fakePromptEngine) RecordShadowComparison(_ context.Context, requestID string, comparison ShadowComparison) {
+	f.comparisonRequestID, f.comparison = requestID, &comparison
+}
+
+func TestCoordinatorGenericCompositionModes(t *testing.T) {
+	blocked := &LegacyDecision{Blocked: true, StatusCode: http.StatusForbidden, ErrorCode: "keyword_block"}
+	t.Run("keyword first block makes no llm call", func(t *testing.T) {
+		prompt := &fakePromptEngine{mode: ModeBlocking, policy: PromptPolicy{EngineType: EngineGenericLLM, CompositionMode: "keyword_first"}}
+		decision := NewCoordinator(&fakeLegacyEngine{decision: blocked}, prompt).Check(context.Background(), Request{})
+		require.Equal(t, DecisionBlock, decision.Kind)
+		require.Zero(t, prompt.evaluates.Load())
+	})
+	t.Run("llm only skips keyword", func(t *testing.T) {
+		legacy := &fakeLegacyEngine{decision: blocked}
+		prompt := &fakePromptEngine{mode: ModeBlocking, policy: PromptPolicy{EngineType: EngineGenericLLM, CompositionMode: "llm_only"}, decision: &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}}
+		decision := NewCoordinator(legacy, prompt).Check(context.Background(), Request{})
+		require.Equal(t, DecisionAllow, decision.Kind)
+		require.Zero(t, legacy.calls.Load())
+		require.Equal(t, int64(1), prompt.evaluates.Load())
+	})
+	t.Run("combined keeps highest severity", func(t *testing.T) {
+		prompt := &fakePromptEngine{mode: ModeBlocking, policy: PromptPolicy{EngineType: EngineGenericLLM, CompositionMode: "combined"}, decision: &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}}
+		decision := NewCoordinator(&fakeLegacyEngine{decision: blocked}, prompt).Check(context.Background(), Request{})
+		require.Equal(t, DecisionBlock, decision.Kind)
+		require.Equal(t, int64(1), prompt.evaluates.Load())
+	})
+}
+
+func TestCoordinatorRecordsRedactedShadowComparison(t *testing.T) {
+	prompt := &fakePromptEngine{
+		mode: ModeBlocking, policy: PromptPolicy{EngineType: EngineGenericLLM, CompositionMode: "combined"},
+		decision: &PromptDecision{Kind: DecisionAllow, AllowNextStage: true, Result: &NormalizedResult{EngineType: EngineGenericLLM, Stage: "shadow", Action: ActionBlock}},
+	}
+	decision := NewCoordinator(&fakeLegacyEngine{decision: &LegacyDecision{Allowed: true}}, prompt).Check(context.Background(), Request{RequestID: "request-42"})
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.Equal(t, "request-42", prompt.comparisonRequestID)
+	require.Equal(t, &ShadowComparison{CompositionMode: "combined", KeywordDecision: "allow", LLMDecision: DecisionBlock, Agreement: false}, prompt.comparison)
 }
 func (f *fakePromptEngine) Evaluate(context.Context, Request) (*PromptDecision, error) {
 	f.evaluates.Add(1)

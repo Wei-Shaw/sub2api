@@ -32,7 +32,7 @@ func AggregateResults(results []*NormalizedResult, latency time.Duration) (*Norm
 	}
 	aggregated := &NormalizedResult{
 		Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow,
-		ScannerBackend: "qwen3guard-openai", Categories: []string{}, MatchedScanners: []string{},
+		Categories: []string{}, MatchedScanners: []string{},
 		ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}, ChunkTotal: len(results),
 		LatencyMS: int(latency.Milliseconds()),
 	}
@@ -58,6 +58,27 @@ func AggregateResults(results []*NormalizedResult, latency time.Duration) (*Norm
 			aggregated.ScannerVersion = result.ScannerVersion
 			aggregated.PolicyID = result.PolicyID
 			aggregated.PolicyVersion = result.PolicyVersion
+		}
+		if aggregated.EngineType == "" {
+			aggregated.EngineType = result.EngineType
+		}
+		if aggregated.ScannerBackend == "" {
+			aggregated.ScannerBackend = result.ScannerBackend
+		}
+		if aggregated.SchemaVersion == 0 {
+			aggregated.SchemaVersion = result.SchemaVersion
+		}
+		if result.Confidence > aggregated.Confidence {
+			aggregated.Confidence = result.Confidence
+		}
+		aggregated.PromptTokens += result.PromptTokens
+		aggregated.CompletionTokens += result.CompletionTokens
+		aggregated.TotalTokens += result.TotalTokens
+		if aggregated.Stage == "" {
+			aggregated.Stage = result.Stage
+		}
+		if aggregated.FailurePolicy == "" {
+			aggregated.FailurePolicy = result.FailurePolicy
 		}
 		for _, category := range result.Categories {
 			categories[category] = struct{}{}

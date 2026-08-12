@@ -35,14 +35,14 @@ const runtime = (): PromptAuditRuntime => ({
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const RuntimeStub = defineComponent({ props: ['runtime', 'loading', 'error'], emits: ['refresh'], template: '<div data-test="runtime">{{ error }}</div>' })
 const EndpointStub = defineComponent({
-  props: ['endpoints', 'probeResults', 'probingIds'], emits: ['update:endpoints', 'probe'],
-  template: '<div data-test="endpoint"><button data-test="inject-secret" @click="$emit(\'update:endpoints\', endpoints.map((e) => ({ ...e, token: \'PROMPT_AUDIT_CANARY_SECRET_DO_NOT_PERSIST\' })))">secret</button><button data-test="probe" @click="$emit(\'probe\', endpoints[0])">probe</button></div>',
+	props: ['endpoints', 'probeResults', 'probingIds'], emits: ['update:endpoints', 'probe', 'applied'],
+	template: '<div data-test="endpoint"><button data-test="inject-secret" @click="$emit(\'update:endpoints\', endpoints.map((e) => ({ ...e, token: \'PROMPT_AUDIT_CANARY_SECRET_DO_NOT_PERSIST\' })))">secret</button><button data-test="change-timeout" @click="$emit(\'update:endpoints\', endpoints.map((e) => ({ ...e, engine_type: \'generic_llm\', timeout_ms: 15000 }))); $emit(\'applied\')">timeout</button><button data-test="probe" @click="$emit(\'probe\', endpoints[0])">probe</button></div>',
 })
 const PolicyStub = defineComponent({ props: ['draft', 'groups'], emits: ['update:draft'], template: '<div data-test="policy" />' })
 const EventsStub = defineComponent({
   props: ['events', 'filters', 'selectedIds', 'loading', 'error', 'total', 'page', 'pageSize'],
-  emits: ['filters-change', 'search', 'selection', 'page', 'page-size', 'view', 'delete', 'batch-delete', 'preview-delete'],
-  template: '<div data-test="events"><button data-test="preview" @click="$emit(\'preview-delete\')">preview</button><button data-test="change-filter" @click="$emit(\'filters-change\', { ...filters, keyword: \'changed\' })">change</button><button data-test="delete-one" @click="$emit(\'delete\', 5)">delete</button><button data-test="select-batch" @click="$emit(\'selection\', [5, 6])">select</button><button data-test="delete-batch" @click="$emit(\'batch-delete\')">batch</button></div>',
+  emits: ['filters-change', 'search', 'refresh', 'selection', 'page', 'page-size', 'view', 'delete', 'batch-delete', 'preview-delete'],
+  template: '<div data-test="events"><button data-test="refresh-events" @click="$emit(\'refresh\')">refresh</button><button data-test="preview" @click="$emit(\'preview-delete\')">preview</button><button data-test="change-filter" @click="$emit(\'filters-change\', { ...filters, keyword: \'changed\' })">change</button><button data-test="delete-one" @click="$emit(\'delete\', 5)">delete</button><button data-test="select-batch" @click="$emit(\'selection\', [5, 6])">select</button><button data-test="delete-batch" @click="$emit(\'batch-delete\')">batch</button></div>',
 })
 const DetailStub = defineComponent({ props: ['show', 'event', 'loading'], emits: ['close'], template: '<div data-test="detail" />' })
 const ConfirmStub = defineComponent({ props: ['show', 'title', 'message'], emits: ['confirm', 'cancel'], template: '<div v-if="show" data-test="confirm"><button data-test="confirm-action" @click="$emit(\'confirm\')">confirm</button></div>' })
@@ -118,6 +118,15 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
   })
 
+  it('refreshes events from the event filter action row', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    mocks.listEvents.mockClear()
+    await wrapper.get('[data-test="refresh-events"]').trigger('click')
+    await flushPromises()
+    expect(mocks.listEvents).toHaveBeenCalledOnce()
+  })
+
   it('requires confirmation for blocking and disables it when audit is turned off', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -135,7 +144,7 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes()).toHaveProperty('disabled')
   })
 
-  it('clears plaintext token state after a successful save', async () => {
+	it('clears plaintext token state after a successful save', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="tab-config"]').trigger('click')
@@ -147,7 +156,26 @@ describe('PromptAuditView', () => {
     const endpointProps = wrapper.getComponent(EndpointStub).props('endpoints') as Array<{ token: string }>
     expect(endpointProps[0].token).toBe('')
     expect(wrapper.html()).not.toContain('PROMPT_AUDIT_CANARY_SECRET_DO_NOT_PERSIST')
-  })
+	})
+
+	it('persists an endpoint timeout immediately when the endpoint editor is saved', async () => {
+		mocks.updateConfig.mockImplementation(async (payload) => ({
+			...baseConfig(),
+			endpoints: payload.endpoints.map((endpoint: PromptAuditConfig['endpoints'][number]) => ({ ...endpoint, has_token: true, token_status: 'configured' })),
+			config_version: 8,
+		}))
+		const wrapper = mountView()
+		await flushPromises()
+		await wrapper.get('[data-test="tab-config"]').trigger('click')
+		await wrapper.get('[data-test="change-timeout"]').trigger('click')
+		await flushPromises()
+
+		expect(mocks.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+			endpoints: [expect.objectContaining({ engine_type: 'generic_llm', timeout_ms: 15000 })],
+		}))
+		const endpointProps = wrapper.getComponent(EndpointStub).props('endpoints') as Array<{ timeout_ms: number }>
+		expect(endpointProps[0].timeout_ms).toBe(15000)
+	})
 
   it('reports real probe progress/results and invalidates filter confirmation when filters change', async () => {
     const wrapper = mountView()

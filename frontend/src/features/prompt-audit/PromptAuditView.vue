@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-[1600px]" :class="activeTab === 'config' && draft ? 'pb-28' : 'pb-8'">
+    <div :class="activeTab === 'config' && draft ? 'pb-28' : 'pb-8'">
       <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary-600 dark:text-primary-400">{{ t('nav.securityAudit') }}</p>
@@ -48,6 +48,7 @@
                 :probing-ids="probingIds"
                 @update:endpoints="updateEndpoints"
                 @probe="runProbe"
+                @applied="notifyEndpointDraftApplied"
               />
               <div v-if="loadErrors.groups" role="alert" class="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ loadErrors.groups }}</div>
               <PolicyPanel :draft="draft" :groups="groups" @update:draft="replaceDraft" />
@@ -77,6 +78,7 @@
               :error="loadErrors.events"
               @filters-change="handleFiltersChanged"
               @search="applyEventFilters"
+              @refresh="loadEvents"
               @selection="selectedEventIds = $event"
               @page="changePage"
               @page-size="changePageSize"
@@ -91,7 +93,7 @@
     </div>
 
     <div v-if="draft && activeTab === 'config'" class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur dark:border-dark-700/80 dark:bg-dark-900/95 dark:shadow-[0_-12px_35px_rgba(0,0,0,0.35)] lg:left-64">
-      <div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
           <SaveToggle :label="t('admin.promptAudit.saveBar.enabled')" :model-value="draft.enabled" data-test="enabled-toggle" @update:model-value="setEnabled" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.blocking')" :model-value="draft.blocking_enabled" :disabled="!draft.enabled" data-test="blocking-toggle" @update:model-value="setBlocking" />
@@ -144,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, nextTick, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -293,6 +295,12 @@ function replaceDraft(value: PromptAuditDraft) { draft.value = cloneData(value) 
 function updateEndpoints(value: PromptAuditEndpointDraft[]) {
   if (!draft.value) return
   replaceDraft({ ...draft.value, endpoints: value })
+}
+async function notifyEndpointDraftApplied() {
+	// EndpointPool emits the draft update immediately before this event. Wait for
+	// Vue to apply the new prop, then persist the complete configuration.
+	await nextTick()
+	await saveConfig()
 }
 function setEnabled(value: boolean) {
   if (!draft.value) return

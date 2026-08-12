@@ -1035,6 +1035,7 @@ func ProvideAsyncVideoService(
 	pricingResolver *ModelPricingResolver,
 	costCenter *CostCenterService,
 	cosTransfer *COSImageTransferService,
+	opsService *OpsService,
 	cfg *config.Config,
 ) *AsyncVideoService {
 	svc := NewAsyncVideoService(taskRepo, userRepo, billing)
@@ -1044,6 +1045,7 @@ func ProvideAsyncVideoService(
 	svc.SetPricingResolver(pricingResolver)
 	svc.SetCostCenterWriter(costCenter)
 	svc.SetCOSTransferService(cosTransfer)
+	svc.SetOpsService(opsService)
 	if cfg != nil {
 		if cfg.AsyncMedia.PollIntervalSeconds > 0 {
 			svc.SetPollInterval(time.Duration(cfg.AsyncMedia.PollIntervalSeconds) * time.Second)

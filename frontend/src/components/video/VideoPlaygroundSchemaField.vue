@@ -83,14 +83,13 @@
     />
 
     <PromptMediaReferenceInput
-      v-else-if="spec.rawType === 'string' && isPromptField"
+      v-else-if="spec.rawType === 'string' && usePromptTextArea"
       :model-value="modelValue"
-      :references="mediaReferences"
+      :references="promptReferences"
       :disabled="disabled"
       :rows="textareaRowsForRender"
       @update:model-value="onLeafChange"
     />
-
     <!-- string：控件类型由 schema 声明的 spec.widget 决定：
            - widget='textarea' → 多行 <textarea>，行数取 spec.textareaRows（默认 3）
            - widget='input'    → 单行 <input>（但若默认值本身很长或含换行，作为兜底
@@ -185,6 +184,13 @@
         </span>
       </div>
     </div>
+
+    <p
+      v-if="spec.rawType === 'string' && usePromptTextArea && promptReferencesEnabled"
+      class="prompt-reference-hint text-[11px] text-gray-500 dark:text-gray-400"
+    >
+      {{ t('videoModels.playground.promptReferenceHint') }}
+    </p>
   </div>
 </template>
 
@@ -228,7 +234,18 @@ const props = defineProps<{
 }>()
 
 const mediaReferences = computed(() => props.mediaReferences ?? [])
-const isPromptField = computed(() => props.spec.key.trim().toLowerCase() === 'prompt')
+const usePromptTextArea = computed(() => props.spec.widget === 'PromptTextArea')
+const promptReferencesEnabled = computed(() => props.spec.referenceFields.length > 0)
+const promptReferences = computed(() => {
+  const configured = new Set(props.spec.referenceFields.map((field) => field.trim()).filter(Boolean))
+  if (configured.size === 0) return []
+  return mediaReferences.value.filter((reference) => {
+    for (const field of configured) {
+      if (reference.fieldKey === field || reference.fieldKey.startsWith(`${field}.`) || reference.fieldKey.startsWith(`${field}[`)) return true
+    }
+    return false
+  })
+})
 
 const mediaKind = computed(() => {
   const widget = normalizeMediaUrlWidget(props.spec.widget)
@@ -321,7 +338,7 @@ const useTextarea = computed<boolean>(() => {
  * 兜底走的 textarea（widget=input 但被启发式识别为长文本）用默认 3 行。
  */
 const textareaRowsForRender = computed<number>(() => {
-  if (props.spec.widget === 'textarea') {
+  if (props.spec.widget === 'textarea' || props.spec.widget === 'PromptTextArea') {
     const r = Number(props.spec.textareaRows)
     if (Number.isFinite(r) && r > 0) return Math.min(20, Math.max(1, Math.trunc(r)))
   }

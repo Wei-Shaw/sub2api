@@ -21,6 +21,15 @@ const (
 	ErrorCodeRequiresEnabled       = "prompt_guard_requires_audit_enabled"
 
 	DefaultGuardModel = "sileader/qwen3guard:0.6b"
+
+	EngineQwen3Guard = "qwen3_guard"
+	EngineGenericLLM = "generic_llm"
+
+	GenericSchemaVersion          = 1
+	DefaultConfidenceThreshold    = 0.75
+	DefaultGenericMaxOutputTokens = 512
+	MaxGenericMaxOutputTokens     = 32768
+	MaxGenericSystemGuidanceRunes = 4000
 )
 
 type Mode string
@@ -47,6 +56,7 @@ const (
 	EventPass     EventDecision = "pass"
 	EventFlag     EventDecision = "flag"
 	EventCritical EventDecision = "critical"
+	EventFailed   EventDecision = "failed"
 )
 
 type RiskLevel string
@@ -56,6 +66,7 @@ const (
 	RiskMedium   RiskLevel = "medium"
 	RiskHigh     RiskLevel = "high"
 	RiskCritical RiskLevel = "critical"
+	RiskUnknown  RiskLevel = "unknown"
 )
 
 type Action string
@@ -64,6 +75,7 @@ const (
 	ActionAllow Action = "Allow"
 	ActionWarn  Action = "Warn"
 	ActionBlock Action = "Block"
+	ActionError Action = "Error"
 )
 
 type Request struct {
@@ -137,6 +149,17 @@ type NormalizedResult struct {
 	ChunkTotal        int                `json:"chunk_total"`
 	LatencyMS         int                `json:"latency_ms"`
 	UnknownCategories []string           `json:"unknown_categories,omitempty"`
+	EngineType        string             `json:"engine_type,omitempty"`
+	SchemaVersion     int                `json:"schema_version,omitempty"`
+	Confidence        float64            `json:"confidence,omitempty"`
+	PromptTokens      int                `json:"prompt_tokens,omitempty"`
+	CompletionTokens  int                `json:"completion_tokens,omitempty"`
+	TotalTokens       int                `json:"total_tokens,omitempty"`
+	Stage             string             `json:"stage,omitempty"`
+	FailurePolicy     string             `json:"failure_policy,omitempty"`
+	OutboundURL       string             `json:"-"`
+	HTTPStatus        int                `json:"-"`
+	OutboundResponse  string             `json:"-"`
 }
 
 type PromptDecision struct {
@@ -144,6 +167,13 @@ type PromptDecision struct {
 	ErrorCode      string            `json:"error_code,omitempty"`
 	Result         *NormalizedResult `json:"result,omitempty"`
 	AllowNextStage bool              `json:"allow_next_stage"`
+}
+
+type ShadowComparison struct {
+	CompositionMode string       `json:"composition_mode,omitempty"`
+	KeywordDecision string       `json:"keyword_decision"`
+	LLMDecision     DecisionKind `json:"llm_decision"`
+	Agreement       bool         `json:"agreement"`
 }
 
 type LegacyDecision struct {
@@ -184,34 +214,50 @@ type IssueSummary struct {
 }
 
 type ProbeResult struct {
-	OK           bool      `json:"ok"`
-	Status       string    `json:"status"`
-	ErrorCode    string    `json:"error_code,omitempty"`
-	Message      string    `json:"message"`
-	LatencyMS    int       `json:"latency_ms"`
-	HTTPStatus   int       `json:"http_status"`
-	Retryable    bool      `json:"retryable"`
-	CheckedAt    time.Time `json:"checked_at"`
-	TokenApplied bool      `json:"token_applied"`
+	OK             bool      `json:"ok"`
+	Status         string    `json:"status"`
+	ErrorCode      string    `json:"error_code,omitempty"`
+	Message        string    `json:"message"`
+	LatencyMS      int       `json:"latency_ms"`
+	HTTPStatus     int       `json:"http_status"`
+	Retryable      bool      `json:"retryable"`
+	CheckedAt      time.Time `json:"checked_at"`
+	TokenApplied   bool      `json:"token_applied"`
+	EngineType     string    `json:"engine_type,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	SchemaVersion  int       `json:"schema_version,omitempty"`
+	BenignDecision string    `json:"benign_decision,omitempty"`
+	UnsafeDecision string    `json:"unsafe_decision,omitempty"`
 }
 
 type GuardMetricsSnapshot struct {
-	Total        int64 `json:"total"`
-	Allowed      int64 `json:"allowed"`
-	Flagged      int64 `json:"flagged"`
-	Blocked      int64 `json:"blocked"`
-	Unavailable  int64 `json:"unavailable"`
-	Invalid      int64 `json:"invalid"`
-	Timeouts     int64 `json:"timeouts"`
-	Failovers    int64 `json:"failovers"`
-	BulkheadFull int64 `json:"bulkhead_full"`
-	RecordFailed int64 `json:"record_failed"`
-	LatencyCount int64 `json:"latency_count"`
-	LatencyAvgMS int64 `json:"latency_avg_ms"`
-	LatencyP50MS int64 `json:"latency_p50_ms"`
-	LatencyP95MS int64 `json:"latency_p95_ms"`
-	LatencyP99MS int64 `json:"latency_p99_ms"`
-	LatencyMaxMS int64 `json:"latency_max_ms"`
+	Total                   int64 `json:"total"`
+	Allowed                 int64 `json:"allowed"`
+	Flagged                 int64 `json:"flagged"`
+	Blocked                 int64 `json:"blocked"`
+	Unavailable             int64 `json:"unavailable"`
+	Invalid                 int64 `json:"invalid"`
+	Timeouts                int64 `json:"timeouts"`
+	Failovers               int64 `json:"failovers"`
+	BulkheadFull            int64 `json:"bulkhead_full"`
+	RecordFailed            int64 `json:"record_failed"`
+	LatencyCount            int64 `json:"latency_count"`
+	LatencyAvgMS            int64 `json:"latency_avg_ms"`
+	LatencyP50MS            int64 `json:"latency_p50_ms"`
+	LatencyP95MS            int64 `json:"latency_p95_ms"`
+	LatencyP99MS            int64 `json:"latency_p99_ms"`
+	LatencyMaxMS            int64 `json:"latency_max_ms"`
+	GenericRequests         int64 `json:"generic_requests"`
+	GenericSampledOut       int64 `json:"generic_sampled_out"`
+	GenericSchemaFailures   int64 `json:"generic_schema_failures"`
+	GenericFailOpen         int64 `json:"generic_fail_open"`
+	GenericFailClosed       int64 `json:"generic_fail_closed"`
+	GenericPromptTokens     int64 `json:"generic_prompt_tokens"`
+	GenericCompletionTokens int64 `json:"generic_completion_tokens"`
+	GenericTotalTokens      int64 `json:"generic_total_tokens"`
+	GenericLatencyCount     int64 `json:"generic_latency_count"`
+	GenericLatencyAvgMS     int64 `json:"generic_latency_avg_ms"`
+	GenericLatencyMaxMS     int64 `json:"generic_latency_max_ms"`
 }
 
 type AuditMetricsSnapshot struct {
@@ -272,6 +318,11 @@ type Metrics interface {
 	IncFailover()
 	IncBulkheadFull()
 	IncRecordFailed()
+	IncGenericSampledOut()
+	IncGenericSchemaFailure()
+	IncGenericFailOpen()
+	IncGenericFailClosed()
+	ObserveGeneric(*NormalizedResult, time.Duration)
 }
 
 type PromptScanner interface {

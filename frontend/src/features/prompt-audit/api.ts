@@ -38,6 +38,16 @@ export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise
       timeout_ms: endpoint.timeout_ms,
       input_limit: endpoint.input_limit,
       enabled: endpoint.enabled,
+		engine_type: endpoint.engine_type,
+		schema_version: endpoint.schema_version,
+		system_guidance: endpoint.system_guidance,
+		confidence_threshold: endpoint.confidence_threshold,
+		json_output_mode: endpoint.json_output_mode,
+		sample_rate: endpoint.sample_rate,
+		max_output_tokens: endpoint.max_output_tokens,
+		stage: endpoint.stage,
+		failure_policy: endpoint.failure_policy,
+		composition_mode: endpoint.composition_mode,
     },
   })
   return data
