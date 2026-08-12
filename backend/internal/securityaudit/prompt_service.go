@@ -50,23 +50,47 @@ func NewPromptService(
 }
 
 func (s *PromptService) Start(ctx context.Context) error {
-	if s == nil || s.config == nil || s.runner == nil {
-		return errors.New("prompt audit service unavailable")
+	return errors.Join(s.StartConfig(ctx), s.StartRunner(ctx))
+}
+
+func (s *PromptService) StartConfig(ctx context.Context) error {
+	if s == nil || s.config == nil {
+		return errors.New("prompt audit config unavailable")
 	}
-	s.lifecycleMu.Lock()
-	if s.cancel != nil {
-		s.lifecycleMu.Unlock()
-		return nil
+	return s.config.Start(s.startBackground(ctx))
+}
+
+func (s *PromptService) StartRunner(ctx context.Context) error {
+	if s == nil || s.runner == nil {
+		return errors.New("prompt audit runner unavailable")
 	}
-	background, cancel := context.WithCancel(ctx)
-	s.background, s.cancel = background, cancel
-	s.lifecycleMu.Unlock()
+	background := s.startBackground(ctx)
 	configErr := s.config.Start(background)
-	workerErr := s.runner.Start(background)
-	return errors.Join(configErr, workerErr)
+	runnerErr := s.runner.Start(background)
+	return errors.Join(configErr, runnerErr)
+}
+
+func (s *PromptService) startBackground(ctx context.Context) context.Context {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.cancel == nil {
+		s.background, s.cancel = context.WithCancel(ctx)
+	}
+	return s.background
 }
 
 func (s *PromptService) Shutdown(ctx context.Context) error {
+	return errors.Join(s.ShutdownRunner(ctx), s.ShutdownConfig(ctx))
+}
+
+func (s *PromptService) ShutdownRunner(ctx context.Context) error {
+	if s == nil || s.runner == nil {
+		return nil
+	}
+	return s.runner.Shutdown(ctx)
+}
+
+func (s *PromptService) ShutdownConfig(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
@@ -77,27 +101,17 @@ func (s *PromptService) Shutdown(ctx context.Context) error {
 	if cancel != nil {
 		cancel()
 	}
-	var workerErr error
-	if s.runner != nil {
-		workerErr = s.runner.Shutdown(ctx)
-	}
 	done := make(chan struct{})
 	go func() { s.enqueueWG.Wait(); close(done) }()
 	select {
 	case <-done:
 	case <-ctx.Done():
-		if workerErr == nil {
-			workerErr = ctx.Err()
-		}
+		return ctx.Err()
 	}
-	var configErr error
-	if s.config != nil {
-		configErr = s.config.Shutdown(ctx)
+	if s.config == nil {
+		return nil
 	}
-	if workerErr != nil {
-		return workerErr
-	}
-	return configErr
+	return s.config.Shutdown(ctx)
 }
 
 func (s *PromptService) EffectiveMode() Mode {

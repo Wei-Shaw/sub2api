@@ -47,6 +47,8 @@ type ErrorPassthroughService struct {
 	// 本地内存缓存，用于快速匹配
 	localCache   []*cachedPassthroughRule
 	localCacheMu sync.RWMutex
+	runtimeStart sync.Once
+	runtimeStop  context.CancelFunc
 }
 
 // cachedPassthroughRule 预计算的规则缓存，避免运行时重复 ToLower
@@ -69,25 +71,36 @@ func NewErrorPassthroughService(
 		cache: cache,
 	}
 
-	// 启动时加载规则到本地缓存
-	ctx := context.Background()
-	if err := svc.reloadRulesFromDB(ctx); err != nil {
-		logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from DB on startup: %v", err)
-		if fallbackErr := svc.refreshLocalCache(ctx); fallbackErr != nil {
-			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from cache fallback on startup: %v", fallbackErr)
-		}
-	}
-
-	// 订阅缓存更新通知
-	if cache != nil {
-		cache.SubscribeUpdates(ctx, func() {
-			if err := svc.refreshLocalCache(context.Background()); err != nil {
-				logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to refresh cache on notification: %v", err)
-			}
-		})
-	}
-
 	return svc
+}
+
+func (s *ErrorPassthroughService) Start() {
+	if s == nil {
+		return
+	}
+	s.runtimeStart.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.runtimeStop = cancel
+		if err := s.reloadRulesFromDB(ctx); err != nil {
+			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from DB on startup: %v", err)
+			if fallbackErr := s.refreshLocalCache(ctx); fallbackErr != nil {
+				logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from cache fallback on startup: %v", fallbackErr)
+			}
+		}
+		if s.cache != nil {
+			s.cache.SubscribeUpdates(ctx, func() {
+				if err := s.refreshLocalCache(context.Background()); err != nil {
+					logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to refresh cache on notification: %v", err)
+				}
+			})
+		}
+	})
+}
+
+func (s *ErrorPassthroughService) Stop() {
+	if s != nil && s.runtimeStop != nil {
+		s.runtimeStop()
+	}
 }
 
 // List 获取所有规则

@@ -562,19 +562,12 @@ func getEnvIntOrDefault(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// AutoSetupFromEnv performs automatic setup using environment variables
-// This is designed for Docker deployment where all config is passed via env vars
-func AutoSetupFromEnv() error {
-	logger.LegacyPrintf("setup", "%s", "Auto setup enabled, configuring from environment variables...")
-	logger.LegacyPrintf("setup", "Data directory: %s", GetDataDir())
-
-	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
+func setupConfigFromEnv() (*SetupConfig, error) {
 	tz := getEnvOrDefault("TZ", "")
 	if tz == "" {
 		tz = getEnvOrDefault("TIMEZONE", "Asia/Shanghai")
 	}
 
-	// Build config from environment variables
 	cfg := &SetupConfig{
 		Database: DatabaseConfig{
 			Host:     getEnvOrDefault("DATABASE_HOST", "localhost"),
@@ -608,15 +601,46 @@ func AutoSetupFromEnv() error {
 		Timezone:                tz,
 		MigrationTimeoutSeconds: getEnvIntOrDefault("SETUP_MIGRATION_TIMEOUT_SECONDS", 0),
 	}
-
-	// Generate JWT secret if not provided
 	if cfg.JWT.Secret == "" {
 		secret, err := generateSecret(32)
 		if err != nil {
-			return fmt.Errorf("failed to generate jwt secret: %w", err)
+			return nil, fmt.Errorf("generate jwt secret: %w", err)
 		}
 		cfg.JWT.Secret = secret
-		logger.LegacyPrintf("setup", "%s", "Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
+	}
+	return cfg, nil
+}
+
+// BootstrapFromEnv finalizes a migrated installation without applying migrations.
+func BootstrapFromEnv() error {
+	cfg, err := setupConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if err := TestRedisConnection(&cfg.Redis); err != nil {
+		return fmt.Errorf("redis connection failed: %w", err)
+	}
+	if _, _, err := createAdminUser(cfg); err != nil {
+		return fmt.Errorf("admin user creation failed: %w", err)
+	}
+	if err := writeConfigFile(cfg); err != nil {
+		return fmt.Errorf("config file creation failed: %w", err)
+	}
+	if err := createInstallLock(); err != nil {
+		return fmt.Errorf("create install lock: %w", err)
+	}
+	return nil
+}
+
+// AutoSetupFromEnv performs automatic setup using environment variables
+// This is designed for Docker deployment where all config is passed via env vars
+func AutoSetupFromEnv() error {
+	logger.LegacyPrintf("setup", "%s", "Auto setup enabled, configuring from environment variables...")
+	logger.LegacyPrintf("setup", "Data directory: %s", GetDataDir())
+
+	cfg, err := setupConfigFromEnv()
+	if err != nil {
+		return err
 	}
 
 	// Test database connection

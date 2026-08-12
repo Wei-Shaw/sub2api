@@ -21,7 +21,8 @@ func TestStartSlotCleanupWorker_UsesCacheWideCleanupWithoutAccountRepo(t *testin
 	cache := &slotCleanupCache{}
 	svc := NewConcurrencyService(cache)
 
-	svc.StartSlotCleanupWorker(nil, time.Hour)
+	svc.StartSlotCleanupWorker(time.Hour)
+	t.Cleanup(svc.StopSlotCleanupWorker)
 
 	deadline := time.After(time.Second)
 	ticker := time.NewTicker(10 * time.Millisecond)

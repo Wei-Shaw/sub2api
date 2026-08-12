@@ -10,6 +10,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUsageRecordWorkerPoolConstructionIsPassive(t *testing.T) {
+	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        config.UsageRecordOverflowPolicyDrop,
+		OverflowSamplePercent: 0,
+	})
+	defer pool.Stop()
+
+	require.Nil(t, pool.pool)
+	require.Equal(t, UsageRecordSubmitModeDroppedStopped, pool.Submit(func(context.Context) {}))
+
+	pool.Start()
+	require.NotNil(t, pool.pool)
+}
+
 func TestUsageRecordWorkerPool_SubmitEnqueued(t *testing.T) {
 	pool := NewUsageRecordWorkerPoolWithOptions(UsageRecordWorkerPoolOptions{
 		WorkerCount:           1,
@@ -18,6 +35,7 @@ func TestUsageRecordWorkerPool_SubmitEnqueued(t *testing.T) {
 		OverflowPolicy:        config.UsageRecordOverflowPolicyDrop,
 		OverflowSamplePercent: 0,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	done := make(chan struct{})
@@ -46,6 +64,7 @@ func TestUsageRecordWorkerPool_OverflowDrop(t *testing.T) {
 		OverflowPolicy:        config.UsageRecordOverflowPolicyDrop,
 		OverflowSamplePercent: 0,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	block := make(chan struct{})
@@ -83,6 +102,7 @@ func TestUsageRecordWorkerPool_OverflowSync(t *testing.T) {
 		OverflowPolicy:        config.UsageRecordOverflowPolicySync,
 		OverflowSamplePercent: 0,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	block := make(chan struct{})
@@ -126,6 +146,7 @@ func TestUsageRecordWorkerPool_OverflowSample(t *testing.T) {
 		OverflowPolicy:        config.UsageRecordOverflowPolicySample,
 		OverflowSamplePercent: 1,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	block := make(chan struct{})
@@ -201,6 +222,7 @@ func TestUsageRecordWorkerPool_AutoScaleUpAndDown(t *testing.T) {
 		AutoScaleInterval:     20 * time.Millisecond,
 		AutoScaleCooldown:     20 * time.Millisecond,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	block := make(chan struct{})
@@ -244,6 +266,7 @@ func TestUsageRecordWorkerPool_AutoScaleDownRequiresLowRunningUtilization(t *tes
 		AutoScaleInterval:     20 * time.Millisecond,
 		AutoScaleCooldown:     20 * time.Millisecond,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	block := make(chan struct{})
@@ -275,6 +298,7 @@ func TestUsageRecordWorkerPool_SubmitNilReceiverAndNilTask(t *testing.T) {
 		OverflowSamplePercent: 0,
 		AutoScaleEnabled:      false,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	require.Equal(t, UsageRecordSubmitModeDropped, pool.Submit(nil))
@@ -297,6 +321,7 @@ func TestUsageRecordWorkerPool_AutoScaleDisabledKeepsFixedConcurrency(t *testing
 		AutoScaleInterval:     10 * time.Millisecond,
 		AutoScaleCooldown:     10 * time.Millisecond,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	require.Equal(t, 2, pool.Stats().MaxConcurrency)
@@ -348,6 +373,7 @@ func TestNewUsageRecordWorkerPool_FromConfig(t *testing.T) {
 	cfg.Gateway.UsageRecord.AutoScaleEnabled = false
 
 	pool := NewUsageRecordWorkerPool(cfg)
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	stats := pool.Stats()
@@ -478,6 +504,7 @@ func TestUsageRecordWorkerPool_ResizeAndLogDropBranches(t *testing.T) {
 		OverflowPolicy:   config.UsageRecordOverflowPolicyDrop,
 		AutoScaleEnabled: false,
 	})
+	pool.Start()
 	t.Cleanup(pool.Stop)
 
 	// 目标值与当前值相同，应该直接返回。
