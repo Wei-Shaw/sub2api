@@ -324,6 +324,12 @@ export default {
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
       antigravityProjectIdHint:
         'standard-tier 且未自动返回 project_id 的 Antigravity 账号需要填写用户自带 GCP project。',
+      accountSchedulingThresholdOverride: '账号自动停调阈值覆盖',
+      accountSchedulingThresholdOverrideHint:
+        '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
+      accountSchedulingThresholdOverrideValue: '账号阈值百分比',
+      accountSchedulingThresholdOverrideDisabledHint:
+        '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
       status: {
         active: '正常',
         inactive: '停用',
@@ -334,10 +340,6 @@ export default {
         rateLimited: '限流中',
         overloaded: '过载中',
         tempUnschedulable: '临时不可调度',
-      accountSchedulingThresholdOverride: '账号自动停调阈值覆盖',
-      accountSchedulingThresholdOverrideHint: '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
-      accountSchedulingThresholdOverrideValue: '账号阈值百分比',
-      accountSchedulingThresholdOverrideDisabledHint: '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
         quotaExceeded: '配额超限',
         unschedulable: '不可调度',
         rateLimitedUntil: '限流中，当前不参与调度，预计 {time} 自动恢复',
