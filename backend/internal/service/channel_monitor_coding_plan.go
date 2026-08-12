@@ -65,11 +65,11 @@ func runCodingPlanCheck(ctx context.Context, provider, endpoint, apiKey, model s
 	)
 	switch provider {
 	case MonitorProviderDeepseek:
-		snapshot, errMsg, authErr = queryDeepseekBalance(ctx, endpoint, apiKey)
+		snapshot, errMsg, authErr = queryDeepseekBalance(ctx, monitorHTTPClient, endpoint, apiKey)
 	case MonitorProviderGLM:
-		snapshot, errMsg, authErr = queryGLMQuota(ctx, endpoint, apiKey)
+		snapshot, errMsg, authErr = queryGLMQuota(ctx, monitorHTTPClient, endpoint, apiKey)
 	case MonitorProviderKimi:
-		snapshot, errMsg, authErr = queryKimiUsage(ctx, endpoint, apiKey)
+		snapshot, errMsg, authErr = queryKimiUsage(ctx, monitorHTTPClient, endpoint, apiKey)
 	default:
 		res.Message = truncateMessage(fmt.Sprintf("unsupported coding plan provider %q", provider))
 		return res
@@ -89,6 +89,22 @@ func runCodingPlanCheck(ctx context.Context, provider, endpoint, apiKey, model s
 	res.Status = MonitorStatusOperational
 	res.Message = truncateMessage(codingPlanSummary(provider, snapshot))
 	return res
+}
+
+// QueryCodingPlanQuota 查询指定 coding-plan provider 的配额/余额快照。
+// 供 account 配额刷新服务复用：client 由调用方提供（支持 per-account proxy）。
+// 返回 (snapshot, errMsg, authErr)：errMsg 非空表示查询失败，authErr 表示鉴权失败。
+func QueryCodingPlanQuota(ctx context.Context, client *http.Client, provider, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
+	switch provider {
+	case MonitorProviderDeepseek:
+		return queryDeepseekBalance(ctx, client, endpoint, apiKey)
+	case MonitorProviderGLM:
+		return queryGLMQuota(ctx, client, endpoint, apiKey)
+	case MonitorProviderKimi:
+		return queryKimiUsage(ctx, client, endpoint, apiKey)
+	default:
+		return nil, fmt.Sprintf("unsupported coding plan provider %q", provider), false
+	}
 }
 
 // codingPlanSummary 生成一行简短文本存入 history.message（配额 JSON 另存 quota 列）。
@@ -119,8 +135,9 @@ func codingPlanSummary(provider string, s *MonitorQuotaSnapshot) string {
 }
 
 // doCodingPlanGet 发起一次 GET 查询并读取响应体（限制大小），返回 body 与 HTTP status。
-// authScheme 为 "bearer" 时带 Authorization: ****** "raw" 时带裸 key（智谱）。
-func doCodingPlanGet(ctx context.Context, endpoint, path, apiKey, authScheme string) ([]byte, int, error) {
+// authScheme 为 "bearer" 时带 Authorization: Bearer "raw" 时带裸 key（智谱）。
+// client 由调用方提供：monitor 路径传 monitorHTTPClient，account 配额刷新传 per-account client。
+func doCodingPlanGet(ctx context.Context, client *http.Client, endpoint, path, apiKey, authScheme string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, joinURL(endpoint, path), nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("build request: %w", err)
@@ -133,7 +150,7 @@ func doCodingPlanGet(ctx context.Context, endpoint, path, apiKey, authScheme str
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := monitorHTTPClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("do request: %w", err)
 	}
@@ -188,8 +205,8 @@ func balanceTierFromInfo(info gjson.Result) *MonitorQuotaTier {
 	return tier
 }
 
-func queryDeepseekBalance(ctx context.Context, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
-	body, status, err := doCodingPlanGet(ctx, endpoint, codingPlanDeepseekBalancePath, apiKey, "bearer")
+func queryDeepseekBalance(ctx context.Context, client *http.Client, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
+	body, status, err := doCodingPlanGet(ctx, client, endpoint, codingPlanDeepseekBalancePath, apiKey, "bearer")
 	if msg, auth := classifyCodingPlanHTTP(status, body, err); msg != "" {
 		return nil, msg, auth
 	}
@@ -229,8 +246,8 @@ func classifyGLMWindow(unit int64) string {
 	}
 }
 
-func queryGLMQuota(ctx context.Context, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
-	body, status, err := doCodingPlanGet(ctx, endpoint, codingPlanGLMQuotaPath, apiKey, "raw")
+func queryGLMQuota(ctx context.Context, client *http.Client, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
+	body, status, err := doCodingPlanGet(ctx, client, endpoint, codingPlanGLMQuotaPath, apiKey, "raw")
 	if msg, auth := classifyCodingPlanHTTP(status, body, err); msg != "" {
 		return nil, msg, auth
 	}
@@ -293,8 +310,8 @@ func queryGLMQuota(ctx context.Context, endpoint, apiKey string) (*MonitorQuotaS
 
 // ── Kimi For Coding ────────────────────────────────────────
 
-func queryKimiUsage(ctx context.Context, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
-	body, status, err := doCodingPlanGet(ctx, endpoint, codingPlanKimiUsagesPath, apiKey, "bearer")
+func queryKimiUsage(ctx context.Context, client *http.Client, endpoint, apiKey string) (*MonitorQuotaSnapshot, string, bool) {
+	body, status, err := doCodingPlanGet(ctx, client, endpoint, codingPlanKimiUsagesPath, apiKey, "bearer")
 	if msg, auth := classifyCodingPlanHTTP(status, body, err); msg != "" {
 		return nil, msg, auth
 	}

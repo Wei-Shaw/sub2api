@@ -53,6 +53,23 @@
             @select="editBaseUrl = $event"
           />
         </div>
+
+        <!-- 国产 coding-plan 厂商（仅 openai apikey）：标记后启用 5h/周限额监控与耗尽自动冷却 -->
+        <div v-if="account.platform === 'openai'">
+          <label class="input-label">{{ t('admin.accounts.codingPlan.provider') }}</label>
+          <select
+            v-model="editCodingPlanProvider"
+            class="input"
+            data-testid="edit-coding-plan-provider"
+            @change="onEditCodingPlanProviderChange"
+          >
+            <option value="">{{ t('admin.accounts.codingPlan.none') }}</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="glm">{{ t('admin.accounts.codingPlan.glm') }}</option>
+            <option value="kimi">Kimi</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.codingPlan.hint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
@@ -2777,6 +2794,24 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+// 国产 coding-plan 厂商（编辑现有 openai apikey 账号时读写 extra.coding_plan_provider）
+const editCodingPlanProvider = ref<'' | 'deepseek' | 'glm' | 'kimi'>('')
+const editCodingPlanDefaultBaseURL: Record<'deepseek' | 'glm' | 'kimi', string> = {
+  deepseek: 'https://api.deepseek.com',
+  glm: 'https://open.bigmodel.cn',
+  kimi: 'https://api.kimi.com',
+}
+const onEditCodingPlanProviderChange = () => {
+  const p = editCodingPlanProvider.value
+  const isVendorOrDefault = (u: string) =>
+    u === '' ||
+    u === 'https://api.openai.com' ||
+    u === 'https://api.anthropic.com' ||
+    Object.values(editCodingPlanDefaultBaseURL).includes(u)
+  if (p && isVendorOrDefault(editBaseUrl.value.trim())) {
+    editBaseUrl.value = editCodingPlanDefaultBaseURL[p]
+  }
+}
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3555,6 +3590,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+
+    // Load coding-plan provider tag (openai apikey 充当国产 coding-plan 账号时)
+    const cpExtra = (newAccount.extra as Record<string, unknown>) || {}
+    const cpv = cpExtra.coding_plan_provider
+    editCodingPlanProvider.value =
+      cpv === 'deepseek' || cpv === 'glm' || cpv === 'kimi' ? cpv : ''
 
     // Load model mappings and detect mode
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4761,6 +4802,21 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    // Sync coding-plan provider tag (openai apikey 充当国产 coding-plan 账号时)。
+    if (props.account.platform === 'openai' && props.account.type === 'apikey') {
+      const baseExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
+      const mergedExtra: Record<string, unknown> = { ...baseExtra }
+      if (editCodingPlanProvider.value) {
+        mergedExtra.coding_plan_provider = editCodingPlanProvider.value
+      } else {
+        delete mergedExtra.coding_plan_provider
+      }
+      updatePayload.extra = mergedExtra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

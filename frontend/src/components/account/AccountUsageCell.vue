@@ -194,6 +194,65 @@
       </div>
     </template>
 
+    <!-- 国产 coding-plan 账号（openai apikey + coding_plan_provider 标记）：展示 5h/周窗口与余额 -->
+    <template v-else-if="isCodingPlanAccount">
+      <div class="space-y-1">
+        <div v-if="loading" class="space-y-1.5">
+          <div class="flex items-center gap-1">
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+            <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          </div>
+        </div>
+        <template v-else-if="usageInfo">
+          <!-- 套餐等级 + 厂商 -->
+          <div v-if="usageInfo.coding_plan_plan_level || usageInfo.coding_plan_provider" class="mb-0.5 flex items-center gap-1">
+            <span
+              v-if="usageInfo.coding_plan_provider"
+              class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+            >
+              {{ codingPlanProviderLabel }}
+            </span>
+            <span
+              v-if="usageInfo.coding_plan_plan_level"
+              class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            >
+              {{ usageInfo.coding_plan_plan_level }}
+            </span>
+          </div>
+          <!-- 5h 窗口（GLM/Kimi） -->
+          <UsageProgressBar
+            v-if="usageInfo.five_hour"
+            label="5h"
+            :utilization="usageInfo.five_hour.utilization"
+            :resets-at="usageInfo.five_hour.resets_at"
+            :show-now-when-idle="true"
+            color="indigo"
+          />
+          <!-- 周窗口（GLM/Kimi） -->
+          <UsageProgressBar
+            v-if="usageInfo.seven_day"
+            label="7d"
+            :utilization="usageInfo.seven_day.utilization"
+            :resets-at="usageInfo.seven_day.resets_at"
+            :show-now-when-idle="true"
+            color="emerald"
+          />
+          <!-- 余额（DeepSeek 等） -->
+          <div
+            v-if="usageInfo.coding_plan_balance"
+            class="flex items-center gap-1 text-[11px]"
+            :class="usageInfo.coding_plan_balance.available ? 'text-gray-600 dark:text-gray-300' : 'text-red-500'"
+          >
+            <span class="font-mono">{{ usageInfo.coding_plan_balance.balance }}</span>
+            <span v-if="usageInfo.coding_plan_balance.currency" class="text-gray-400">{{ usageInfo.coding_plan_balance.currency }}</span>
+            <span v-if="!usageInfo.coding_plan_balance.available" class="text-[10px]">· {{ t('admin.accounts.codingPlan.depleted') }}</span>
+          </div>
+        </template>
+        <div v-else class="text-xs text-gray-400">-</div>
+      </div>
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -688,9 +747,13 @@ let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = nul
 let visibilityObserver: IntersectionObserver | null = null
 
 // Show usage windows for OAuth and Setup Token accounts
+const isCodingPlanAccount = computed(() => !!props.account.extra?.coding_plan_provider)
+
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
+  // 国产 coding-plan 账号（openai apikey + coding_plan_provider 标记）：展示配额窗口/余额。
+  if (isCodingPlanAccount.value) return true
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
@@ -708,7 +771,7 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   if (props.account.platform === 'openai') {
-    return props.account.type === 'oauth'
+    return props.account.type === 'oauth' || isCodingPlanAccount.value
   }
   return false
 })
@@ -731,6 +794,24 @@ const geminiUsageAvailable = computed(() => {
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+})
+
+const codingPlanProviderLabel = computed(() => {
+  const provider =
+    usageInfo.value?.coding_plan_provider ||
+    (typeof props.account.extra?.coding_plan_provider === 'string'
+      ? props.account.extra.coding_plan_provider
+      : '')
+  switch (provider) {
+    case 'deepseek':
+      return 'DeepSeek'
+    case 'glm':
+      return 'GLM'
+    case 'kimi':
+      return 'Kimi'
+    default:
+      return ''
+  }
 })
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))

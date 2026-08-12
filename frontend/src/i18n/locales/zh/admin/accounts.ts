@@ -565,6 +565,14 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
+      // Coding-plan 厂商（DeepSeek/GLM/Kimi，经 OpenAI 兼容 apikey 账号接入）
+      codingPlan: {
+        provider: 'Coding Plan 厂商',
+        none: '未启用（普通 OpenAI API Key）',
+        glm: '智谱 GLM',
+        depleted: '已耗尽',
+        hint: '选择后将预填对应厂商 base_url，并启用 5 小时/周限额监控与耗尽自动冷却。',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',

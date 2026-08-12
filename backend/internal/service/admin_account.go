@@ -144,6 +144,18 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"codex_7d_reset_after_seconds":           {},
 	"codex_7d_window_minutes":                {},
 	"codex_7d_reset_at":                      {},
+	// coding-plan 配额快照（deepseek/glm/kimi）——复制账号时丢弃，避免新账号继承旧配额。
+	"coding_plan_provider":          {},
+	"coding_plan_5h_used_percent":   {},
+	"coding_plan_5h_reset_at":       {},
+	"coding_plan_weekly_used_percent": {},
+	"coding_plan_weekly_reset_at":   {},
+	"coding_plan_balance":           {},
+	"coding_plan_currency":          {},
+	"coding_plan_available":         {},
+	"coding_plan_plan_level":        {},
+	"coding_plan_exhausted":         {},
+	"coding_plan_usage_updated_at":  {},
 }
 
 func duplicateAccountExtra(value map[string]any) (map[string]any, error) {

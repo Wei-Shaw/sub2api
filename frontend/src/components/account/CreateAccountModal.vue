@@ -1137,6 +1137,23 @@
             @select="apiKeyBaseUrl = $event"
           />
         </div>
+
+        <!-- 国产 coding-plan 厂商（仅 openai apikey）：标记后可监控套餐配额并自动冷却 -->
+        <div v-if="form.platform === 'openai'">
+          <label class="input-label">{{ t('admin.accounts.codingPlan.provider') }}</label>
+          <select
+            v-model="codingPlanProvider"
+            class="input"
+            data-testid="coding-plan-provider"
+            @change="applyCodingPlanProvider(codingPlanProvider)"
+          >
+            <option value="">{{ t('admin.accounts.codingPlan.none') }}</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="glm">{{ t('admin.accounts.codingPlan.glm') }}</option>
+            <option value="kimi">Kimi</option>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.codingPlan.hint') }}</p>
+        </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
@@ -3732,6 +3749,20 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+// 国产 coding-plan 厂商：platform=openai + type=apikey 时可选，写入 extra.coding_plan_provider
+// 并预填厂商默认 base_url，使账号同时具备路由与配额监控/冷却能力。
+const codingPlanProvider = ref<'' | 'deepseek' | 'glm' | 'kimi'>('')
+const codingPlanDefaultBaseURL: Record<'deepseek' | 'glm' | 'kimi', string> = {
+  deepseek: 'https://api.deepseek.com',
+  glm: 'https://open.bigmodel.cn',
+  kimi: 'https://api.kimi.com',
+}
+const applyCodingPlanProvider = (provider: '' | 'deepseek' | 'glm' | 'kimi') => {
+  codingPlanProvider.value = provider
+  if (provider && (apiKeyBaseUrl.value === '' || apiKeyBaseUrl.value === 'https://api.openai.com' || apiKeyBaseUrl.value === 'https://api.anthropic.com')) {
+    apiKeyBaseUrl.value = codingPlanDefaultBaseURL[provider]
+  }
+}
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4670,6 +4701,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  codingPlanProvider.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5273,6 +5305,9 @@ const createAccountAndFinish = async (
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)
+      if (codingPlanProvider.value) {
+        finalExtra = { ...(finalExtra || {}), coding_plan_provider: codingPlanProvider.value }
+      }
     }
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {

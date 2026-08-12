@@ -494,6 +494,14 @@ export default {
       apiKeyRequired: 'API Key *',
       apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
+      // Coding-plan provider (DeepSeek/GLM/Kimi via OpenAI-compatible apikey account)
+      codingPlan: {
+        provider: 'Coding Plan provider',
+        none: 'Disabled (standard OpenAI API Key)',
+        glm: 'Zhipu GLM',
+        depleted: 'depleted',
+        hint: 'Selecting a provider prefills its base URL and enables 5-hour/weekly quota monitoring with auto-cooldown on exhaustion.',
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

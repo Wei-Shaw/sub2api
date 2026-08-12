@@ -1321,6 +1321,15 @@ export interface AccountUsageInfo {
   error_code?: string
 
   error?: string            // usage 获取失败时的错误信息
+
+  // 国产 coding-plan 配额（deepseek/glm/kimi，后台刷新服务写入 Extra，GetUsage 读取）
+  coding_plan_provider?: string         // "deepseek" | "glm" | "kimi"
+  coding_plan_plan_level?: string
+  coding_plan_balance?: {
+    balance?: string
+    currency?: string
+    available: boolean
+  } | null
 }
 
 // OpenAI Codex usage snapshot (from response headers)

@@ -332,6 +332,18 @@ func (a *Account) GetCredential(key string) string {
 	}
 }
 
+// CodingPlanProvider 返回账号的国产 coding-plan 厂商标记（"deepseek"/"glm"/"kimi"）。
+// 值来自 Extra["coding_plan_provider"]，由账号创建时写入。这类账号实际形态是
+// platform=openai + type=apikey + credentials.base_url=厂商 URL，经 OpenAI-compat
+// raw 路径转发；此标记用于驱动配额探针、账号页展示与配额耗尽冷却。
+// 空串表示非 coding-plan 账号。
+func (a *Account) CodingPlanProvider() string {
+	if a == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.getExtraString("coding_plan_provider"))
+}
+
 // GetCredentialAsTime 解析凭证中的时间戳字段，支持多种格式
 // 兼容以下格式：
 //   - RFC3339 字符串: "2025-01-01T00:00:00Z"

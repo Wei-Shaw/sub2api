@@ -243,6 +243,19 @@ type UsageInfo struct {
 
 	// 获取 usage 时的错误信息（降级返回，而非 500）
 	Error string `json:"error,omitempty"`
+
+	// 国产 coding-plan 配额（deepseek/glm/kimi，由后台刷新服务写入 account.Extra）。
+	// FiveHour/SevenDay 复用上面的通用窗口字段；这里仅放余额/厂商标识等额外信息。
+	CodingPlanProvider string                `json:"coding_plan_provider,omitempty"` // deepseek/glm/kimi
+	CodingPlanPlanLevel string               `json:"coding_plan_plan_level,omitempty"`
+	CodingPlanBalance   *CodingPlanBalanceInfo `json:"coding_plan_balance,omitempty"`
+}
+
+// CodingPlanBalanceInfo 国产 coding-plan 账号的余额信息（主要 DeepSeek）。
+type CodingPlanBalanceInfo struct {
+	Balance   string `json:"balance,omitempty"`
+	Currency  string `json:"currency,omitempty"`
+	Available bool   `json:"available"` // false 表示余额耗尽
 }
 
 // ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
@@ -350,6 +363,12 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	// passive snapshot that the account table loads on mount.
 	if account.IsSyntheticUITest() && account.IsAnthropicOAuthOrSetupToken() {
 		return s.GetPassiveUsage(ctx, accountID)
+	}
+
+	// 国产 coding-plan 账号（platform=openai apikey + coding_plan_provider 标记）：
+	// 配额快照由后台 AccountCodingPlanQuotaService 定期写入 Extra，这里直接读取展示。
+	if account.CodingPlanProvider() != "" {
+		return s.getCodingPlanUsage(account), nil
 	}
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
@@ -1358,6 +1377,72 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 	}
+}
+
+// getCodingPlanUsage 从 account.Extra 读取 coding-plan 配额快照构建 UsageInfo。
+// 不发探针——快照由后台 AccountCodingPlanQuotaService 定期写入。
+func (s *AccountUsageService) getCodingPlanUsage(account *Account) *UsageInfo {
+	now := time.Now()
+	usage := &UsageInfo{Source: "passive", UpdatedAt: &now, CodingPlanProvider: account.CodingPlanProvider()}
+	extra := account.Extra
+	if len(extra) == 0 {
+		return usage
+	}
+	if p := buildCodingPlanUsageProgressFromExtra(extra, "5h", now); p != nil {
+		usage.FiveHour = p
+	}
+	if p := buildCodingPlanUsageProgressFromExtra(extra, "weekly", now); p != nil {
+		usage.SevenDay = p // 周窗口复用 seven_day 渲染
+	}
+	if lvl, ok := extra["coding_plan_plan_level"].(string); ok {
+		usage.CodingPlanPlanLevel = lvl
+	}
+	if b, ok := extra["coding_plan_balance"].(string); ok && b != "" {
+		cur, _ := extra["coding_plan_currency"].(string)
+		available := true
+		if a, ok := extra["coding_plan_available"].(bool); ok {
+			available = a
+		}
+		usage.CodingPlanBalance = &CodingPlanBalanceInfo{Balance: b, Currency: cur, Available: available}
+	}
+	return usage
+}
+
+// buildCodingPlanUsageProgressFromExtra 从 coding_plan_* Extra 键构建窗口进度（镜像
+// buildCodexUsageProgressFromExtra，但读取后台刷新服务写入的键）。window: "5h"/"weekly"。
+func buildCodingPlanUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
+	if len(extra) == 0 {
+		return nil
+	}
+	var usedPercentKey, resetAtKey string
+	switch window {
+	case "5h":
+		usedPercentKey = "coding_plan_5h_used_percent"
+		resetAtKey = "coding_plan_5h_reset_at"
+	case "weekly":
+		usedPercentKey = "coding_plan_weekly_used_percent"
+		resetAtKey = "coding_plan_weekly_reset_at"
+	default:
+		return nil
+	}
+	usedRaw, ok := extra[usedPercentKey]
+	if !ok {
+		return nil
+	}
+	progress := &UsageProgress{Utilization: parseExtraFloat64(usedRaw)}
+	if resetAtRaw, ok := extra[resetAtKey]; ok {
+		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			if progress.RemainingSeconds < 0 {
+				progress.RemainingSeconds = 0
+			}
+		}
+	}
+	if progress.ResetsAt != nil && !now.Before(*progress.ResetsAt) {
+		progress.Utilization = 0
+	}
+	return progress
 }
 
 func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {

@@ -77,6 +77,13 @@ func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache se
 	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
 }
 
+// NewCodingPlanQuotaAccountStore 暴露 account 仓储的 coding-plan 配额刷新子集
+// （依赖倒置：service.AccountCodingPlanQuotaService 只需这 3 个方法，不必依赖完整
+// AccountRepository 接口）。返回与 NewAccountRepository 相同底层实现。
+func NewCodingPlanQuotaAccountStore(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.CodingPlanQuotaAccountStore {
+	return newAccountRepositoryWithSQL(client, sqlDB, schedulerCache)
+}
+
 // NewAdminAccountRepository exposes the account repository's atomic duplication capability
 // as an explicit dependency of the admin service.
 func NewAdminAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AdminAccountRepository {
@@ -1997,6 +2004,40 @@ func (r *accountRepository) ListSchedulableByGroupIDAndPlatform(ctx context.Cont
 		schedulable: true,
 		platforms:   []string{platform},
 	})
+}
+
+// ListCodingPlanQuotaAccounts 返回所有带 coding_plan_provider 标记的 active 账号，
+// 供后台配额刷新服务定期探针使用。不排除处于冷却/限流窗口的账号（冷却中的账号仍需
+// 探针以判定窗口何时重置）。先用 SQL 筛出 ID（extra ? 'coding_plan_provider'），
+// 再用 GetByIDs 批量加载完整账号（含凭据/代理）。
+func (r *accountRepository) ListCodingPlanQuotaAccounts(ctx context.Context) ([]*service.Account, error) {
+	const query = `
+		SELECT id
+		FROM accounts
+		WHERE deleted_at IS NULL
+			AND status = 'active'
+			AND extra ? 'coding_plan_provider'`
+	rows, err := r.sql.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []*service.Account{}, nil
+	}
+	return r.GetByIDs(ctx, ids)
 }
 
 func (r *accountRepository) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {

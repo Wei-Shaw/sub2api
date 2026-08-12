@@ -313,6 +313,14 @@ func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpirySe
 	return svc
 }
 
+// ProvideAccountCodingPlanQuotaService creates and starts AccountCodingPlanQuotaService.
+// 定期为带 coding_plan_provider 标记的账号探针套餐配额，回写 Extra 并在耗尽时冷却。
+func ProvideAccountCodingPlanQuotaService(store CodingPlanQuotaAccountStore) *AccountCodingPlanQuotaService {
+	svc := NewAccountCodingPlanQuotaService(store, time.Minute)
+	svc.Start()
+	return svc
+}
+
 // ProvideOpenAICodexVersionSyncService creates and starts OpenAICodexVersionSyncService.
 // 出站 Codex 身份的版本号靠它跟随官方发布，无需为了跟版本而发新版本；面板可关闭。
 func ProvideOpenAICodexVersionSyncService(
@@ -814,6 +822,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTokenRefreshService,
 	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
+	ProvideAccountCodingPlanQuotaService,
 	ProvideOpenAICodexVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
