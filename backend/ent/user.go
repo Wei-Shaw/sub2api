@@ -99,11 +99,17 @@ type UserEdges struct {
 	PendingAuthSessions []*PendingAuthSession `json:"pending_auth_sessions,omitempty"`
 	// PlatformQuotas holds the value of the platform_quotas edge.
 	PlatformQuotas []*UserPlatformQuota `json:"platform_quotas,omitempty"`
+	// CustomDomains holds the value of the custom_domains edge.
+	CustomDomains []*CustomDomain `json:"custom_domains,omitempty"`
+	// AuthorizedCustomDomains holds the value of the authorized_custom_domains edge.
+	AuthorizedCustomDomains []*CustomDomain `json:"authorized_custom_domains,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
+	// CustomDomainUsers holds the value of the custom_domain_users edge.
+	CustomDomainUsers []*CustomDomainUser `json:"custom_domain_users,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [14]bool
+	loadedTypes [17]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -223,13 +229,40 @@ func (e UserEdges) PlatformQuotasOrErr() ([]*UserPlatformQuota, error) {
 	return nil, &NotLoadedError{edge: "platform_quotas"}
 }
 
+// CustomDomainsOrErr returns the CustomDomains value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) CustomDomainsOrErr() ([]*CustomDomain, error) {
+	if e.loadedTypes[13] {
+		return e.CustomDomains, nil
+	}
+	return nil, &NotLoadedError{edge: "custom_domains"}
+}
+
+// AuthorizedCustomDomainsOrErr returns the AuthorizedCustomDomains value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) AuthorizedCustomDomainsOrErr() ([]*CustomDomain, error) {
+	if e.loadedTypes[14] {
+		return e.AuthorizedCustomDomains, nil
+	}
+	return nil, &NotLoadedError{edge: "authorized_custom_domains"}
+}
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[13] {
+	if e.loadedTypes[15] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
+}
+
+// CustomDomainUsersOrErr returns the CustomDomainUsers value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) CustomDomainUsersOrErr() ([]*CustomDomainUser, error) {
+	if e.loadedTypes[16] {
+		return e.CustomDomainUsers, nil
+	}
+	return nil, &NotLoadedError{edge: "custom_domain_users"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -496,9 +529,24 @@ func (_m *User) QueryPlatformQuotas() *UserPlatformQuotaQuery {
 	return NewUserClient(_m.config).QueryPlatformQuotas(_m)
 }
 
+// QueryCustomDomains queries the "custom_domains" edge of the User entity.
+func (_m *User) QueryCustomDomains() *CustomDomainQuery {
+	return NewUserClient(_m.config).QueryCustomDomains(_m)
+}
+
+// QueryAuthorizedCustomDomains queries the "authorized_custom_domains" edge of the User entity.
+func (_m *User) QueryAuthorizedCustomDomains() *CustomDomainQuery {
+	return NewUserClient(_m.config).QueryAuthorizedCustomDomains(_m)
+}
+
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.
 func (_m *User) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	return NewUserClient(_m.config).QueryUserAllowedGroups(_m)
+}
+
+// QueryCustomDomainUsers queries the "custom_domain_users" edge of the User entity.
+func (_m *User) QueryCustomDomainUsers() *CustomDomainUserQuery {
+	return NewUserClient(_m.config).QueryCustomDomainUsers(_m)
 }
 
 // Update returns a builder for updating this User.

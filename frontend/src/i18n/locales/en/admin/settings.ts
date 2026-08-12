@@ -49,6 +49,13 @@ export default {
           priceDescription: 'Pricing notes (Markdown)',
           priceDescriptionHint: 'Rendered at the top of the plaza page. Use it for billing rules, exchange rates, promotions, etc.',
         },
+        customDomains: {
+          title: 'Custom Domains',
+          description: 'Allow verified hostnames to serve as API base URLs. Disabled by default.',
+          configureLink: 'Manage hostnames in Custom Domains',
+          enabled: 'Enable Custom Domains',
+          enabledHint: 'When off, custom-domain routes are rejected and sidebar entries are hidden.',
+        },
         riskControl: {
           title: 'Risk Control',
           description: 'Enable the content moderation menu and gateway audit entry point. Disabled by default.',

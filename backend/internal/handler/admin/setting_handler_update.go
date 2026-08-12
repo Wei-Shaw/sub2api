@@ -2233,6 +2233,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                                   updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                                        dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
+		CustomDomainsEnabled:                                   updatedSettings.CustomDomainsEnabled,
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
