@@ -25,6 +25,24 @@ func NewChannelHandler(channelService *service.ChannelService, billingService *s
 	return &ChannelHandler{channelService: channelService, billingService: billingService, pricingService: pricingService}
 }
 
+// InvalidateRuntimeCache clears the process-local channel routing snapshot.
+// The server calls this when another replica broadcasts a configuration write.
+func (h *ChannelHandler) InvalidateRuntimeCache() {
+	if h == nil || h.channelService == nil {
+		return
+	}
+	h.channelService.InvalidateRuntimeCache()
+}
+
+// SetOnUpdateCallback connects channel CRUD writes to the server's
+// cross-replica configuration invalidation broadcaster.
+func (h *ChannelHandler) SetOnUpdateCallback(callback func()) {
+	if h == nil || h.channelService == nil {
+		return
+	}
+	h.channelService.SetOnUpdateCallback(callback)
+}
+
 // --- Request / Response types ---
 
 type createChannelRequest struct {
