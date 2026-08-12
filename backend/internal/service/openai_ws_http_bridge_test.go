@@ -41,7 +41,7 @@ func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
 	require.Equal(t, "hi", gjson.GetBytes(body, "input").String())
 }
 
-func TestOpenAIWSHTTPBridgeDecisionKeepsSmallFramesOnWS(t *testing.T) {
+func TestOpenAIWSHTTPBridgeDecision(t *testing.T) {
 	svc := &OpenAIGatewayService{
 		cfg: &config.Config{
 			Gateway: config.GatewayConfig{
@@ -53,9 +53,15 @@ func TestOpenAIWSHTTPBridgeDecisionKeepsSmallFramesOnWS(t *testing.T) {
 		},
 	}
 
-	require.False(t, svc.shouldBridgeOpenAIWSHTTP(nil, 99, ""))
-	require.True(t, svc.shouldBridgeOpenAIWSHTTP(nil, 100, ""))
-	require.False(t, svc.shouldBridgeOpenAIWSHTTP(nil, 1000, "resp_existing"))
+	t.Run("small first frame stays on websocket", func(t *testing.T) {
+		require.False(t, svc.shouldBridgeOpenAIWSHTTP(nil, 99, ""))
+	})
+	t.Run("oversized first frame without previous response uses bridge", func(t *testing.T) {
+		require.True(t, svc.shouldBridgeOpenAIWSHTTP(nil, 100, ""))
+	})
+	t.Run("previous response keeps websocket continuation", func(t *testing.T) {
+		require.False(t, svc.shouldBridgeOpenAIWSHTTP(nil, 1000, "resp_existing"))
+	})
 
 	svc.cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = false
 	require.False(t, svc.shouldBridgeOpenAIWSHTTP(nil, 1000, ""))
@@ -760,7 +766,7 @@ func TestProxyResponsesWebSocketFromClientForGrokUsesXAIHTTPBridgeAndPreservesMa
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_retention").Exists())
 }
 
-func TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB(t *testing.T) {
+func TestOpenAIWSHTTPBridgeAcceptsOversizedPassthroughFirstFrame(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	sseBody := strings.Join([]string{
@@ -784,16 +790,21 @@ func TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB(t *testing.T) {
 				Enabled:                  true,
 				APIKeyEnabled:            true,
 				ResponsesWebsocketsV2:    true,
+				ModeRouterV2Enabled:      true,
+				IngressModeDefault:       OpenAIWSIngressModeCtxPool,
 				ClientReadLimitBytes:     64 * 1024 * 1024,
 				HTTPBridgeEnabled:        true,
 				HTTPBridgeThresholdBytes: 15 * 1024 * 1024,
 			},
 		},
 	}
+	passthroughDialer := &openAIWSCaptureDialer{conn: &openAIWSCaptureConn{}}
 	svc := &OpenAIGatewayService{
-		cfg:           cfg,
-		httpUpstream:  upstream,
-		toolCorrector: NewCodexToolCorrector(),
+		cfg:                       cfg,
+		httpUpstream:              upstream,
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		openaiWSPassthroughDialer: passthroughDialer,
 	}
 	account := &Account{
 		ID:          9,
@@ -802,7 +813,7 @@ func TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Credentials: map[string]any{"api_key": "sk-upstream"},
 		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
 		},
 		Concurrency: 1,
 		Status:      StatusActive,
@@ -890,6 +901,7 @@ func TestOpenAIWSHTTPBridgeAcceptsFirstFrameAboveLegacy16MiB(t *testing.T) {
 	require.False(t, gjson.GetBytes(upstream.lastBody, "generate").Exists())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.Equal(t, "gpt-5", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, 0, passthroughDialer.DialCount(), "oversized passthrough first frame must not open an upstream websocket")
 }
 
 func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseID(t *testing.T) {
