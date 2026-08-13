@@ -1,37 +1,41 @@
 <template>
-  <div :class="props.embedded ? 'space-y-4' : 'card'">
-    <div
-      v-if="!props.embedded"
-      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-    >
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div :class="props.embedded ? 'space-y-4' : 'rounded border border-line bg-surface'">
+    <div v-if="!props.embedded" class="border-b border-line px-4 py-3">
+      <h2 class="text-sm font-semibold text-ink">
         {{ t('profile.editProfile') }}
       </h2>
     </div>
-    <div :class="props.embedded ? '' : 'px-6 py-6'">
-      <form @submit.prevent="handleUpdateProfile" class="space-y-4">
-        <div v-if="props.embedded">
-          <p class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.editProfile') }}
-          </p>
-        </div>
-        <div>
-          <label for="username" class="input-label">
-            {{ t('profile.username') }}
-          </label>
-          <input
-            id="username"
-            v-model="username"
-            type="text"
-            class="input"
-            :placeholder="t('profile.enterUsername')"
-          />
-        </div>
+    <div :class="props.embedded ? '' : 'px-4 py-4'">
+      <form class="space-y-3" @submit.prevent="handleUpdateProfile">
+        <p v-if="props.embedded" class="text-sm font-semibold text-ink">
+          {{ t('profile.editProfile') }}
+        </p>
 
-        <div class="flex justify-end pt-4">
-          <button type="submit" :disabled="loading" class="btn btn-primary">
-            {{ loading ? t('profile.updating') : t('profile.updateProfile') }}
-          </button>
+        <!--
+          `usernameRequired` used to exist only as a toast: the field that was
+          wrong got no marking at all, and the message vanished on a timer. It
+          is an inline error now, and the toast stays for the case where the
+          form is scrolled out of view.
+        -->
+        <FormField id="username" :label="t('profile.username')" :error="usernameError">
+          <template #default="{ describedBy, invalid }">
+            <input
+              id="username"
+              v-model="username"
+              type="text"
+              class="input"
+              :class="{ 'input-error': usernameError }"
+              :aria-describedby="describedBy"
+              :aria-invalid="invalid || undefined"
+              :placeholder="t('profile.enterUsername')"
+            />
+          </template>
+        </FormField>
+
+        <div class="flex justify-end">
+          <Button type="submit" tone="accent" variant="solid" size="md" :loading="loading">
+            {{ t('profile.updateProfile') }}
+          </Button>
         </div>
       </form>
     </div>
@@ -41,6 +45,8 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { userAPI } from '@/api'
@@ -57,18 +63,25 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 const username = ref(props.initialUsername)
+const usernameError = ref('')
 const loading = ref(false)
 
 watch(() => props.initialUsername, (val) => {
   username.value = val
 })
 
+watch(username, () => {
+  usernameError.value = ''
+})
+
 const handleUpdateProfile = async () => {
   if (!username.value.trim()) {
-    appStore.showError(t('profile.usernameRequired'))
+    usernameError.value = t('profile.usernameRequired')
+    appStore.showError(usernameError.value)
     return
   }
 
+  usernameError.value = ''
   loading.value = true
   try {
     const updatedUser = await userAPI.updateProfile({
@@ -76,8 +89,9 @@ const handleUpdateProfile = async () => {
     })
     authStore.user = updatedUser
     appStore.showSuccess(t('profile.updateSuccess'))
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('profile.updateFailed'))
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+    appStore.showError(detail || t('profile.updateFailed'))
   } finally {
     loading.value = false
   }

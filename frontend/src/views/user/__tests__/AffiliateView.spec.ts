@@ -37,6 +37,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return {
     ...actual,
     useI18n: () => ({
+      // `Metric` and `NumCell` read `locale` to pick an `Intl.NumberFormat`.
+      // A mock returning only `t` no longer satisfies the composable.
+      locale: { value: 'en' },
       t: (key: string) => key,
     }),
   }

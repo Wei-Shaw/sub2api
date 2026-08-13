@@ -162,7 +162,9 @@ describe('AvailableChannelsTable responsive surfaces', () => {
     expect(mobile.text()).toContain('Fallback channel')
     expect(mobile.text()).toContain('openai')
     expect(mobile.text()).toContain('No models')
-    expect(mobile.findAll('dd')[0].text()).toBe('-')
+    // En dash, not a hyphen: "no value" is rendered the same way `NumCell`
+    // renders it everywhere else in the system.
+    expect(mobile.findAll('dd')[0].text()).toBe('–')
   })
 
   it('provides loading and empty states on both responsive surfaces', async () => {

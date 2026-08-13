@@ -2,10 +2,19 @@
   <AppLayout>
     <div class="custom-page-layout">
       <div class="card flex-1 min-h-0 overflow-hidden">
-        <div v-if="loading" class="flex h-full items-center justify-center py-12">
-          <div
-            class="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
-          ></div>
+        <!--
+          HOST CHROME ONLY. Everything below styles the frame around the
+          embedded page: the loading state, the two "nothing to show" states,
+          the table of contents, and the open-in-new-tab control. What the
+          iframe renders, and the sanitised markdown pipeline in the script,
+          are not this pass's business — `DOMPurify`, the relative-asset
+          rewriter and the `http(s)`-only `isValidUrl` gate are a security
+          surface, not a visual one, and are untouched.
+        -->
+        <div v-if="loading" class="h-full space-y-3 p-6">
+          <div class="skeleton h-3 w-40"></div>
+          <div class="skeleton h-3 w-full"></div>
+          <div class="skeleton h-3 w-4/5"></div>
         </div>
 
         <div
@@ -13,15 +22,11 @@
           class="flex h-full items-center justify-center p-10 text-center"
         >
           <div class="max-w-md">
-            <div
-              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
-            >
-              <Icon name="link" size="lg" class="text-gray-400" />
-            </div>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            <Icon name="link" size="lg" class="mx-auto mb-3 text-ink-disabled" />
+            <h3 class="text-sm font-medium text-ink">
               {{ t('customPage.notFoundTitle') }}
             </h3>
-            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-xs text-ink-tertiary">
               {{ t('customPage.notFoundDesc') }}
             </p>
           </div>
@@ -36,8 +41,15 @@
           >
             <div class="toc-header">
               <span class="toc-title">{{ t('customPage.tableOfContents') }}</span>
-              <button class="toc-close-btn" @click="tocVisible = false">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              <!-- Icon-only, so it needs an accessible name of its own. -->
+              <button
+                type="button"
+                class="toc-close-btn"
+                :aria-label="t('common.close')"
+                :title="t('common.close')"
+                @click="tocVisible = false"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
             </div>
             <nav class="toc-nav">
@@ -60,11 +72,12 @@
           <!-- TOC Toggle Button (when collapsed) -->
           <button
             v-show="!tocVisible && tocItems.length > 0"
+            type="button"
             class="toc-toggle-btn"
             @click="tocVisible = true"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-            <span class="ml-1 text-xs">{{ t('customPage.tableOfContents') }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            <span class="ml-1.5">{{ t('customPage.tableOfContents') }}</span>
           </button>
 
           <!-- Content -->
@@ -79,15 +92,11 @@
         <!-- URL not configured -->
         <div v-else-if="!isValidUrl" class="flex h-full items-center justify-center p-10 text-center">
           <div class="max-w-md">
-            <div
-              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
-            >
-              <Icon name="link" size="lg" class="text-gray-400" />
-            </div>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            <Icon name="link" size="lg" class="mx-auto mb-3 text-ink-disabled" />
+            <h3 class="text-sm font-medium text-ink">
               {{ t('customPage.notConfiguredTitle') }}
             </h3>
-            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+            <p class="mt-1 text-xs text-ink-tertiary">
               {{ t('customPage.notConfiguredDesc') }}
             </p>
           </div>
@@ -95,13 +104,19 @@
 
         <!-- Iframe embed mode -->
         <div v-else class="custom-embed-shell">
+          <!--
+            The sweep pass deleted this control's `backdrop-blur`, which left it
+            translucent over whatever the embedded page happened to render
+            underneath. It sits on an opaque surface with a hairline now — a
+            floating control has to be readable against content it does not own.
+          -->
           <a
             :href="embeddedUrl"
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-secondary btn-sm custom-open-fab"
           >
-            <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
+            <Icon name="externalLink" size="xs" class="mr-1.5" :stroke-width="2" />
             {{ t('customPage.openInNewTab') }}
           </a>
           <iframe
@@ -230,7 +245,7 @@ async function fetchAndRenderMarkdown(slug: string) {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
     if (!resp.ok) {
-      renderedHtml.value = `<p class="text-red-500">${t('common.pageNotFound')}</p>`
+      renderedHtml.value = `<p class="text-danger">${t('common.pageNotFound')}</p>`
       return
     }
     let raw = await resp.text()
@@ -263,7 +278,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    renderedHtml.value = `<p class="text-danger">${t('common.error')}</p>`
   } finally {
     loading.value = false
     await nextTick()
@@ -374,13 +389,20 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* Header height and page padding were magic numbers; they are tokens now, so
+   changing either does not silently mis-size this page by the difference. */
 .custom-page-layout {
   @apply flex flex-col;
-  height: calc(100vh - 64px - 4rem);
+  height: calc(100vh - var(--ds-app-header-h) - (2 * var(--ds-page-pad)));
 }
 
+/*
+ * Every rule below was a hardcoded `gray-*` / `dark-*` pair. They are Family B
+ * tokens now, which flip on their own — so none of them carries a `dark:`
+ * variant, and re-adding one would double-apply.
+ */
 .toc-sidebar {
-  @apply flex flex-col h-full border-r border-gray-200 dark:border-dark-600 bg-gray-50 dark:bg-dark-800;
+  @apply flex h-full flex-col border-r border-line bg-surface-sunken;
   width: min(240px, 30%);
   min-width: 160px;
   max-width: 280px;
@@ -396,33 +418,38 @@ onUnmounted(() => {
     width: 70%;
     max-width: 240px;
     height: 100%;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    /* A drawer genuinely floats over the content, so it keeps an elevation —
+       the popover token, not an ad-hoc rgba blur. */
+    box-shadow: var(--ds-shadow-popover);
   }
 }
 
 .toc-header {
-  @apply flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-dark-600;
+  @apply flex items-center justify-between gap-2 border-b border-line px-3 py-2;
 }
 
 .toc-title {
-  @apply text-sm font-semibold text-gray-700 dark:text-dark-200;
+  @apply text-2xs font-medium uppercase text-ink-tertiary;
+  letter-spacing: var(--ds-tr-2xs);
 }
 
 .toc-close-btn {
-  @apply p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-dark-200 hover:bg-gray-200 dark:hover:bg-dark-600 transition-colors;
+  @apply rounded p-1 text-ink-tertiary transition-colors duration-fast hover:bg-surface-hover hover:text-ink;
 }
 
 .toc-nav {
-  @apply flex-1 overflow-y-auto py-2 px-2;
+  @apply flex-1 overflow-y-auto px-2 py-2;
 }
 
 .toc-item {
-  @apply block px-2 py-1.5 text-sm rounded transition-colors truncate;
-  @apply text-gray-600 dark:text-dark-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-600;
+  @apply block truncate rounded px-2 py-1 text-xs text-ink-secondary;
+  @apply transition-colors duration-fast hover:bg-surface-hover hover:text-ink;
 }
 
+/* Selection — the one thing on this page the accent is allowed to mark. */
 .toc-item.toc-active {
-  @apply text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 font-medium;
+  @apply bg-accent-tint font-medium text-accent;
+  box-shadow: inset 2px 0 0 0 rgb(var(--ds-accent));
 }
 
 .toc-level-1 { padding-left: 8px; }
@@ -431,22 +458,18 @@ onUnmounted(() => {
 .toc-level-4 { padding-left: 44px; }
 
 .toc-toggle-btn {
-  @apply absolute left-2 top-2 z-10 flex items-center px-2 py-1.5 rounded-md text-sm;
-  @apply bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500;
-  @apply text-gray-600 dark:text-dark-300 hover:bg-gray-100 dark:hover:bg-dark-600;
-  @apply shadow-sm transition-colors cursor-pointer;
+  @apply absolute left-2 top-2 z-10 flex cursor-pointer items-center rounded px-2 text-xs font-medium;
+  @apply h-7 border border-line bg-surface text-ink-secondary;
+  @apply transition-colors duration-fast hover:border-line-strong hover:bg-surface-hover hover:text-ink;
 }
 
+/* Flat host frame. Was a 16px-radius well with a vertical gradient. */
 .custom-embed-shell {
-  @apply relative;
-  @apply h-full w-full overflow-hidden rounded-2xl;
-  @apply bg-gradient-to-b from-gray-50 to-white dark:from-dark-900 dark:to-dark-950;
-  @apply p-0;
+  @apply relative h-full w-full overflow-hidden bg-surface p-0;
 }
 
 .custom-open-fab {
   @apply absolute right-3 top-3 z-10;
-  @apply shadow-sm;
 }
 
 .custom-embed-frame {
@@ -466,40 +489,54 @@ onUnmounted(() => {
   line-height: 1.7;
   color: inherit;
 }
-.markdown-page-content h1 { @apply text-3xl font-bold mt-8 mb-4 pb-2 border-b border-gray-200 dark:border-dark-600; }
-.markdown-page-content h2 { @apply text-2xl font-bold mt-6 mb-3; }
-.markdown-page-content h3 { @apply text-xl font-semibold mt-5 mb-2; }
-.markdown-page-content h4 { @apply text-lg font-semibold mt-4 mb-2; }
-.markdown-page-content p { @apply mb-4; }
-.markdown-page-content ul { @apply list-disc pl-6 mb-4; }
-.markdown-page-content ol { @apply list-decimal pl-6 mb-4; }
+/*
+ * Typography for the rendered markdown. The document body is authored
+ * elsewhere; this is the house style applied to it, and like the chrome above
+ * it now runs entirely on Family B tokens with no `dark:` pairs.
+ */
+.markdown-page-content h1 { @apply mb-4 mt-8 border-b border-line pb-2 text-2xl font-semibold text-ink; }
+.markdown-page-content h2 { @apply mb-3 mt-6 text-xl font-semibold text-ink; }
+.markdown-page-content h3 { @apply mb-2 mt-5 text-lg font-semibold text-ink; }
+.markdown-page-content h4 { @apply mb-2 mt-4 text-md font-semibold text-ink; }
+.markdown-page-content p { @apply mb-4 text-ink-secondary; }
+.markdown-page-content ul { @apply mb-4 list-disc pl-6 text-ink-secondary; }
+.markdown-page-content ol { @apply mb-4 list-decimal pl-6 text-ink-secondary; }
 .markdown-page-content li { @apply mb-1; }
-.markdown-page-content a { @apply text-primary-500 hover:text-primary-600 underline; }
-.markdown-page-content blockquote { @apply border-l-4 border-gray-300 dark:border-dark-500 pl-4 italic text-gray-600 dark:text-dark-300 my-4; }
-.markdown-page-content img { @apply max-w-full h-auto rounded-lg my-4; }
-.markdown-page-content table { @apply w-full border-collapse my-4; }
-.markdown-page-content th { @apply border border-gray-300 dark:border-dark-500 px-3 py-2 bg-gray-50 dark:bg-dark-700 font-semibold text-left; }
-.markdown-page-content td { @apply border border-gray-300 dark:border-dark-500 px-3 py-2; }
-.markdown-page-content code { @apply bg-gray-100 dark:bg-dark-700 px-1.5 py-0.5 rounded text-sm font-mono; }
-.markdown-page-content pre { @apply bg-gray-900 dark:bg-dark-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4 relative; }
-.markdown-page-content pre code { @apply bg-transparent p-0 text-inherit; }
-.markdown-page-content hr { @apply my-6 border-gray-200 dark:border-dark-600; }
+.markdown-page-content a { @apply text-accent underline underline-offset-2 hover:text-accent-hover; }
+.markdown-page-content blockquote { @apply my-4 border-l-2 border-line-strong pl-4 text-ink-secondary; }
+.markdown-page-content img { @apply my-4 h-auto max-w-full rounded; }
+.markdown-page-content table { @apply my-4 w-full border-collapse text-sm; }
+.markdown-page-content th { @apply border-b border-line-strong bg-surface-sunken px-3 py-2 text-left font-medium text-ink; }
+.markdown-page-content td { @apply border-b border-line-subtle px-3 py-2 text-ink-secondary; }
+.markdown-page-content code { @apply rounded-sm border border-line bg-surface-sunken px-1 py-0.5 text-xs text-ink; font-family: var(--ds-font-mono); }
+.markdown-page-content pre { @apply relative my-4 overflow-x-auto rounded border border-line bg-surface-sunken p-3 text-xs text-ink; font-family: var(--ds-font-mono); }
+.markdown-page-content pre code { @apply border-0 bg-transparent p-0 text-inherit; }
+.markdown-page-content hr { @apply my-6 border-line; }
 
+/*
+ * Injected imperatively by `injectCopyButtons`, so it cannot use the `Button`
+ * component — but it can use the same tokens. It was hardcoded white-on-alpha
+ * for a code block that is no longer near-black.
+ */
 .copy-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.15);
-  color: #e2e8f0;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  top: 6px;
+  right: 6px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--ds-text-2xs);
+  font-family: inherit;
+  border-radius: var(--ds-radius);
+  background: rgb(var(--ds-surface));
+  color: rgb(var(--ds-ink-secondary));
+  border: 1px solid rgb(var(--ds-line));
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s, background 0.2s;
-  font-family: inherit;
+  transition:
+    opacity var(--ds-dur-fast) var(--ds-ease-std),
+    background-color var(--ds-dur-fast) var(--ds-ease-std);
 }
-.copy-btn:hover { background: rgba(255, 255, 255, 0.25); }
-pre:hover .copy-btn { opacity: 1; }
+.copy-btn:hover { background: rgb(var(--ds-surface-hover)); }
+pre:hover .copy-btn,
+.copy-btn:focus-visible { opacity: 1; }
 </style>

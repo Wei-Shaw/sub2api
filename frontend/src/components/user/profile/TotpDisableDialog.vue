@@ -1,83 +1,94 @@
 <template>
-  <div class="fixed inset-0 z-50 overflow-y-auto" @click.self="$emit('close')">
-    <div class="flex min-h-full items-center justify-center p-4">
-      <div class="fixed inset-0 bg-black/50 transition-opacity" @click="$emit('close')"></div>
+  <div class="modal-overlay" @click.self="$emit('close')">
+    <div class="modal-content max-w-md" role="dialog" aria-modal="true">
+      <!--
+        The warning used to open with a 48px red circle holding a 24px glyph,
+        centred above a centred title. Destructive intent is carried by the
+        words and by the one danger-filled control at the bottom; a decorative
+        red disc spends the signal budget before the user reaches the button.
+      -->
+      <div class="modal-header">
+        <h3 class="modal-title">{{ t('profile.totp.disableTitle') }}</h3>
+      </div>
 
-      <div class="relative w-full max-w-md transform rounded-xl bg-white p-6 shadow-xl transition-all dark:bg-dark-800">
-        <!-- Header -->
-        <div class="mb-6">
-          <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-            <svg class="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-          </div>
-          <h3 class="mt-4 text-center text-xl font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.totp.disableTitle') }}
-          </h3>
-          <p class="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.totp.disableWarning') }}
-          </p>
-        </div>
+      <div v-if="methodLoading" class="modal-body space-y-2">
+        <div class="skeleton h-3 w-32"></div>
+        <div class="skeleton h-9 w-full"></div>
+      </div>
 
-        <!-- Loading verification method -->
-        <div v-if="methodLoading" class="flex items-center justify-center py-8">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-        </div>
+      <form v-else @submit.prevent="handleDisable">
+        <div class="modal-body space-y-3">
+          <p class="text-sm text-ink-secondary">{{ t('profile.totp.disableWarning') }}</p>
 
-        <form v-else @submit.prevent="handleDisable" class="space-y-4">
           <!-- Email verification -->
-          <div v-if="verificationMethod === 'email'">
-            <label class="input-label">{{ t('profile.totp.emailCode') }}</label>
-            <div class="flex gap-2">
-              <input
-                v-model="form.emailCode"
-                type="text"
-                maxlength="6"
-                inputmode="numeric"
-                class="input flex-1"
-                :placeholder="t('profile.totp.enterEmailCode')"
-              />
-              <button
-                type="button"
-                class="btn btn-secondary whitespace-nowrap"
-                :disabled="sendingCode || codeCooldown > 0"
-                @click="handleSendCode"
-              >
-                {{ codeCooldown > 0 ? `${codeCooldown}s` : (sendingCode ? t('common.sending') : t('profile.totp.sendCode')) }}
-              </button>
-            </div>
-          </div>
+          <FormField v-if="verificationMethod === 'email'" :label="t('profile.totp.emailCode')">
+            <template #default="{ id, describedBy }">
+              <div class="flex items-start gap-2">
+                <input
+                  :id="id"
+                  v-model="form.emailCode"
+                  type="text"
+                  maxlength="6"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  class="input min-w-0 flex-1 font-mono tabular-nums"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('profile.totp.enterEmailCode')"
+                />
+                <!--
+                  The label stays put: it used to swap to "sending…" and then to
+                  a countdown, so the control changed width twice per press.
+                  The countdown is a trailing readout instead.
+                -->
+                <Button
+                  size="md"
+                  class="h-9 shrink-0"
+                  :loading="sendingCode"
+                  :disabled="codeCooldown > 0"
+                  @click="handleSendCode"
+                >
+                  {{ t('profile.totp.sendCode') }}
+                  <template v-if="codeCooldown > 0" #trailing>
+                    <span class="font-mono tabular-nums text-ink-tertiary">{{ codeCooldown }}s</span>
+                  </template>
+                </Button>
+              </div>
+            </template>
+          </FormField>
 
           <!-- Password verification -->
-          <div v-else>
-            <label for="password" class="input-label">
-              {{ t('profile.currentPassword') }}
-            </label>
-            <input
-              id="password"
-              v-model="form.password"
-              type="password"
-              autocomplete="current-password"
-              class="input"
-              :placeholder="t('profile.totp.enterPassword')"
-            />
-          </div>
+          <FormField v-else id="password" :label="t('profile.currentPassword')">
+            <template #default="{ describedBy }">
+              <input
+                id="password"
+                v-model="form.password"
+                type="password"
+                autocomplete="current-password"
+                class="input"
+                :aria-describedby="describedBy"
+                :placeholder="t('profile.totp.enterPassword')"
+              />
+            </template>
+          </FormField>
+        </div>
 
-          <!-- Actions -->
-          <div class="flex justify-end gap-3 pt-4">
-            <button type="button" class="btn btn-secondary" @click="$emit('close')">
-              {{ t('common.cancel') }}
-            </button>
-            <button
-              type="submit"
-              class="btn btn-danger"
-              :disabled="loading || !canSubmit"
-            >
-              {{ loading ? t('common.processing') : t('profile.totp.confirmDisable') }}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div class="modal-footer">
+          <Button size="md" @click="$emit('close')">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button
+            type="submit"
+            tone="danger"
+            variant="solid"
+            size="md"
+            data-testid="totp-disable-confirm"
+            :loading="loading"
+            :disabled="!canSubmit"
+          >
+            {{ t('profile.totp.confirmDisable') }}
+          </Button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -85,6 +96,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
 import { useAppStore } from '@/stores/app'
 import { totpAPI } from '@/api'
 

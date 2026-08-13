@@ -1,82 +1,85 @@
 <template>
-  <div :class="props.embedded ? 'space-y-4' : 'card overflow-hidden'">
-    <div
-      v-if="!props.embedded"
-      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-    >
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div :class="props.embedded ? '' : 'rounded border border-line bg-surface'">
+    <div class="border-b border-line px-4 py-3">
+      <h2 class="text-sm font-semibold text-ink">
         {{ t('profile.authBindings.title') }}
       </h2>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-0.5 text-xs text-ink-tertiary">
         {{ t('profile.authBindings.description') }}
       </p>
     </div>
 
-    <div :class="props.embedded ? 'space-y-4' : 'divide-y divide-gray-100 dark:divide-dark-700'">
-      <div v-if="props.embedded">
-        <p class="text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('profile.authBindings.title') }}
-        </p>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ t('profile.authBindings.description') }}
-        </p>
-      </div>
-
-      <div
-        v-for="item in providerItems"
-        :key="item.provider"
-        :class="rowClass"
-      >
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div class="flex min-w-0 flex-1 items-start gap-4">
-            <div
-              :class="providerIconClass(item.provider)"
-              class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold"
+    <!--
+      One hairline per provider. The rows used to be rounded-2xl cards nested
+      inside a rounded card inside a rounded panel; the separator is the design
+      now, and nothing here has a background of its own.
+    -->
+    <div class="divide-y divide-line-subtle">
+      <div v-for="item in providerItems" :key="item.provider" class="px-4 py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div class="flex min-w-0 flex-1 items-start gap-3">
+            <!--
+              A squared mark carrying the PROVIDER's own colour — the same
+              decision LoginView made for its five OAuth sections. A pill tinted
+              from the semantic palette would read as "this provider is
+              healthy", which is not a claim a binding row makes. Email and a
+              generic OIDC issuer have no brand colour we know, so they stay
+              neutral rather than borrowing the accent.
+            -->
+            <span
+              :class="[
+                'flex h-6 w-6 shrink-0 items-center justify-center font-mono text-2xs font-semibold',
+                providerMarkClass(item.provider),
+              ]"
+              aria-hidden="true"
             >
-              <Icon
-                v-if="item.provider === 'email'"
-                name="mail"
-                size="sm"
-                class="text-current"
-              />
-              <span v-else>{{ providerInitial(item.provider) }}</span>
-            </div>
+              <Icon v-if="item.provider === 'email'" name="mail" size="xs" />
+              <template v-else>{{ providerInitial(item.provider) }}</template>
+            </span>
 
-            <div class="min-w-0 flex-1 space-y-3">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="font-medium text-gray-900 dark:text-white">
+            <div class="min-w-0 flex-1 space-y-2">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h3 class="text-sm font-medium text-ink">
                   {{ item.label }}
                 </h3>
-                <span
+                <!--
+                  Bound state gets a 6px dot plus the word. Both labels stay in
+                  tertiary ink: a screen listing five providers, most of them
+                  connected, must not be five green words.
+                -->
+                <StatusDot
                   :data-testid="`profile-binding-${item.provider}-status`"
-                  :class="['badge', item.bound ? 'badge-success' : 'badge-gray']"
-                >
-                  {{
+                  :tone="item.bound ? 'success' : 'neutral'"
+                  :label="
                     item.bound
                       ? t('profile.authBindings.status.bound')
                       : t('profile.authBindings.status.notBound')
-                  }}
-                </span>
+                  "
+                  muted
+                />
               </div>
 
               <p
                 v-if="providerSummary(item.provider)"
-                class="text-sm text-gray-600 dark:text-gray-300"
+                class="truncate text-sm text-ink-secondary"
               >
                 {{ providerSummary(item.provider) }}
               </p>
 
               <div
                 v-if="hasBindingDetails(item.provider, item.details)"
-                class="grid gap-1 text-sm text-gray-500 dark:text-gray-400"
+                class="grid gap-0.5 text-xs text-ink-tertiary"
               >
                 <p
                   v-if="item.provider !== 'email' && item.details?.display_name"
-                  class="font-medium text-gray-700 dark:text-gray-200"
+                  class="font-medium text-ink-secondary"
                 >
                   {{ item.details.display_name }}
                 </p>
-                <p v-if="item.provider !== 'email' && item.details?.subject_hint">
+                <p
+                  v-if="item.provider !== 'email' && item.details?.subject_hint"
+                  class="font-mono tabular-nums"
+                >
                   {{ item.details.subject_hint }}
                 </p>
                 <p v-if="bindingCountLabel(item.details)">
@@ -87,73 +90,107 @@
                 </p>
               </div>
 
+              <!--
+                Every field is wrapped in FormField now. These four validations
+                ("email required", "invalid email", "code required", "password
+                too short") previously existed ONLY as a toast: the offending
+                control was never marked and the message expired on a timer.
+              -->
               <div
                 v-if="item.provider === 'email' && showEmailForm"
                 data-testid="profile-binding-email-form"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_auto]"
+                class="max-w-md space-y-1 pt-1"
               >
-                <input
-                  v-model.trim="emailBindingForm.email"
-                  data-testid="profile-binding-email-input"
-                  type="email"
-                  class="input"
-                  :placeholder="t('profile.authBindings.emailPlaceholder')"
-                  :disabled="isSendingEmailCode || isBindingEmail"
-                />
-                <button
-                  data-testid="profile-binding-email-send-code"
-                  type="button"
-                  class="btn btn-secondary btn-sm"
-                  :disabled="isSendingEmailCode || isBindingEmail"
-                  @click="sendEmailCode"
+                <FormField :label="t('auth.emailLabel')" :error="emailErrors.email">
+                  <template #default="{ id, describedBy, invalid }">
+                    <div class="flex items-start gap-2">
+                      <input
+                        :id="id"
+                        v-model.trim="emailBindingForm.email"
+                        data-testid="profile-binding-email-input"
+                        type="email"
+                        autocomplete="email"
+                        class="input min-w-0 flex-1"
+                        :class="{ 'input-error': emailErrors.email }"
+                        :aria-describedby="describedBy"
+                        :aria-invalid="invalid || undefined"
+                        :placeholder="t('profile.authBindings.emailPlaceholder')"
+                        :disabled="isSendingEmailCode || isBindingEmail"
+                      />
+                      <Button
+                        data-testid="profile-binding-email-send-code"
+                        size="md"
+                        class="h-9 shrink-0"
+                        :loading="isSendingEmailCode"
+                        :disabled="isBindingEmail"
+                        @click="sendEmailCode"
+                      >
+                        {{ t('profile.authBindings.sendCodeAction') }}
+                      </Button>
+                    </div>
+                  </template>
+                </FormField>
+
+                <FormField
+                  :label="t('auth.verificationCode')"
+                  :error="emailErrors.verifyCode"
                 >
-                  {{
-                    isSendingEmailCode
-                      ? t('common.loading')
-                      : t('profile.authBindings.sendCodeAction')
-                  }}
-                </button>
-                <input
-                  v-model.trim="emailBindingForm.verifyCode"
-                  data-testid="profile-binding-email-code-input"
-                  type="text"
-                  inputmode="numeric"
-                  maxlength="6"
-                  class="input"
-                  :placeholder="t('profile.authBindings.codePlaceholder')"
-                  :disabled="isBindingEmail"
-                />
-                <input
-                  v-model="emailBindingForm.password"
-                  data-testid="profile-binding-email-password-input"
-                  type="password"
-                  class="input"
-                  :placeholder="emailPasswordPlaceholder"
-                  :disabled="isBindingEmail"
-                />
-                <button
+                  <template #default="{ id, describedBy, invalid }">
+                    <input
+                      :id="id"
+                      v-model.trim="emailBindingForm.verifyCode"
+                      data-testid="profile-binding-email-code-input"
+                      type="text"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
+                      maxlength="6"
+                      class="input font-mono tabular-nums"
+                      :class="{ 'input-error': emailErrors.verifyCode }"
+                      :aria-describedby="describedBy"
+                      :aria-invalid="invalid || undefined"
+                      :placeholder="t('profile.authBindings.codePlaceholder')"
+                      :disabled="isBindingEmail"
+                    />
+                  </template>
+                </FormField>
+
+                <FormField :label="emailPasswordLabel" :error="emailErrors.password">
+                  <template #default="{ id, describedBy, invalid }">
+                    <input
+                      :id="id"
+                      v-model="emailBindingForm.password"
+                      data-testid="profile-binding-email-password-input"
+                      type="password"
+                      :autocomplete="emailBound ? 'current-password' : 'new-password'"
+                      class="input"
+                      :class="{ 'input-error': emailErrors.password }"
+                      :aria-describedby="describedBy"
+                      :aria-invalid="invalid || undefined"
+                      :placeholder="emailPasswordPlaceholder"
+                      :disabled="isBindingEmail"
+                    />
+                  </template>
+                </FormField>
+
+                <Button
                   data-testid="profile-binding-email-submit"
-                  type="button"
-                  class="btn btn-primary btn-sm sm:col-span-2"
-                  :disabled="isBindingEmail"
+                  tone="accent"
+                  variant="solid"
+                  size="md"
+                  block
+                  :loading="isBindingEmail"
                   @click="bindEmail"
                 >
-                  {{
-                    isBindingEmail
-                      ? t('common.loading')
-                      : emailSubmitActionLabel
-                  }}
-                </button>
+                  {{ emailSubmitActionLabel }}
+                </Button>
               </div>
             </div>
           </div>
 
-          <div class="flex shrink-0 flex-wrap items-center gap-3">
-            <button
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
               v-if="item.provider === 'email' && compact"
               data-testid="profile-binding-email-toggle"
-              type="button"
-              class="btn btn-secondary btn-sm"
               @click="toggleEmailForm"
             >
               {{
@@ -161,30 +198,29 @@
                   ? t('profile.authBindings.hideEmailFormAction')
                   : t('profile.authBindings.manageEmailAction')
               }}
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="item.canBind"
               :data-testid="`profile-binding-${item.provider}-action`"
-              type="button"
-              class="btn btn-primary btn-sm"
+              tone="accent"
+              variant="solid"
               @click="startBinding(item.provider)"
             >
               {{ t('profile.authBindings.bindAction', { providerName: item.label }) }}
-            </button>
-            <button
+            </Button>
+            <!--
+              The label no longer swaps to "loading…" while the request is in
+              flight; `Button` overlays a spinner on the reserved label box, so
+              the control keeps its width and gains `aria-busy`.
+            -->
+            <Button
               v-if="item.canUnbind"
               :data-testid="`profile-binding-${item.provider}-unbind`"
-              type="button"
-              class="btn btn-secondary btn-sm"
-              :disabled="unbindingProvider === item.provider"
+              :loading="unbindingProvider === item.provider"
               @click="handleUnbindForItem(item.provider, item.label)"
             >
-              {{
-                unbindingProvider === item.provider
-                  ? t('common.loading')
-                  : t('profile.authBindings.unbindAction')
-              }}
-            </button>
+              {{ t('profile.authBindings.unbindAction') }}
+            </Button>
           </div>
         </div>
       </div>
@@ -207,6 +243,9 @@ import {
   startOAuthBinding,
   unbindAuthIdentity,
 } from '@/api/user'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider } from '@/types'
@@ -254,6 +293,22 @@ const emailBindingForm = reactive({
   verifyCode: '',
   password: '',
 })
+/**
+ * Inline counterparts to the four validation toasts below. The toast is kept —
+ * this form can be scrolled out of view inside the profile page — but the
+ * message now also lands on the control that is actually wrong.
+ */
+const emailErrors = reactive({
+  email: '',
+  verifyCode: '',
+  password: '',
+})
+
+function clearEmailErrors(): void {
+  emailErrors.email = ''
+  emailErrors.verifyCode = ''
+  emailErrors.password = ''
+}
 
 watch(
   () => props.user,
@@ -281,19 +336,16 @@ watch(
 
 const currentUser = computed(() => localUser.value ?? props.user)
 const compact = computed(() => props.compact)
-const rowClass = computed(() =>
-  props.embedded
-    ? compact.value
-      ? 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/40'
-      : 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
-    : 'px-6 py-5'
-)
 const emailBound = computed(() => getBindingStatus('email'))
 const showEmailForm = computed(() => !compact.value || isEmailFormExpanded.value)
 const emailPasswordPlaceholder = computed(() =>
   emailBound.value
     ? t('profile.authBindings.replaceEmailPasswordPlaceholder')
     : t('profile.authBindings.passwordPlaceholder')
+)
+/** Replacing a bound address asks for the CURRENT password; a first bind sets one. */
+const emailPasswordLabel = computed(() =>
+  emailBound.value ? t('profile.currentPassword') : t('auth.newPassword')
 )
 const emailSubmitActionLabel = computed(() =>
   emailBound.value
@@ -488,20 +540,24 @@ function providerInitial(provider: UserAuthProvider): string {
   return 'E'
 }
 
-function providerIconClass(provider: UserAuthProvider): string {
+/**
+ * Provider marks carry the PROVIDER's colour, not a tone from the semantic
+ * palette — the same call LoginView makes for its OAuth buttons. The two
+ * providers with no brand of their own (the account's own email, and an OIDC
+ * issuer whose identity is configured per-deployment) stay neutral: the accent
+ * means interactive or selected and cannot be spent on branding.
+ */
+function providerMarkClass(provider: UserAuthProvider): string {
   if (provider === 'linuxdo') {
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-300'
+    return 'bg-[#FEB005] text-[#1D1D1F]'
   }
   if (provider === 'dingtalk') {
-    return 'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300'
+    return 'bg-[#1677FF] text-white'
   }
   if (provider === 'wechat') {
-    return 'bg-green-100 text-green-600 dark:bg-green-900/20 dark:text-green-300'
+    return 'bg-[#07C160] text-white'
   }
-  if (provider === 'oidc') {
-    return 'bg-sky-100 text-sky-600 dark:bg-sky-900/20 dark:text-sky-300'
-  }
-  return 'bg-primary-100 text-primary-600 dark:bg-primary-900/20 dark:text-primary-300'
+  return 'border border-line bg-surface text-ink-secondary'
 }
 
 function providerSummary(provider: UserAuthProvider): string {
@@ -587,26 +643,29 @@ function handleUnbindForItem(provider: UserAuthProvider, providerLabel: string):
   void handleUnbind(provider, providerLabel)
 }
 
+function failEmailValidation(field: keyof typeof emailErrors, message: string): false {
+  emailErrors[field] = message
+  appStore.showError(message)
+  return false
+}
+
 function validateEmailBindingForm(requireCode: boolean): boolean {
+  clearEmailErrors()
+
   if (!emailBindingForm.email) {
-    appStore.showError(t('auth.emailRequired'))
-    return false
+    return failEmailValidation('email', t('auth.emailRequired'))
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailBindingForm.email)) {
-    appStore.showError(t('auth.invalidEmail'))
-    return false
+    return failEmailValidation('email', t('auth.invalidEmail'))
   }
   if (requireCode && !emailBindingForm.verifyCode) {
-    appStore.showError(t('auth.codeRequired'))
-    return false
+    return failEmailValidation('verifyCode', t('auth.codeRequired'))
   }
   if (requireCode && !emailBindingForm.password) {
-    appStore.showError(t('auth.passwordRequired'))
-    return false
+    return failEmailValidation('password', t('auth.passwordRequired'))
   }
   if (requireCode && !emailBound.value && emailBindingForm.password.length < 6) {
-    appStore.showError(t('auth.passwordMinLength'))
-    return false
+    return failEmailValidation('password', t('auth.passwordMinLength'))
   }
   return true
 }
@@ -643,6 +702,7 @@ async function bindEmail(): Promise<void> {
     applyUpdatedUser(user)
     emailBindingForm.verifyCode = ''
     emailBindingForm.password = ''
+    clearEmailErrors()
     if (compact.value) {
       isEmailFormExpanded.value = false
     }

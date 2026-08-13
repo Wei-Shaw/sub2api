@@ -1,153 +1,232 @@
 <template>
-  <div class="card">
-    <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div class="rounded border border-line bg-surface">
+    <div class="border-b border-line px-4 py-3">
+      <h2 class="text-sm font-semibold text-ink">
         {{ t('profile.balanceNotify.title') }}
       </h2>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-0.5 text-xs text-ink-tertiary">
         {{ t('profile.balanceNotify.description') }}
       </p>
     </div>
-    <div class="px-6 py-6 space-y-6">
-      <!-- Enable toggle -->
-      <div class="flex items-center justify-between">
-        <label class="input-label mb-0">{{ t('profile.balanceNotify.enabled') }}</label>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" v-model="notifyEnabled" @change="handleToggle" class="sr-only peer" />
-          <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:after:border-gray-600 peer-checked:bg-primary-600"></div>
-        </label>
+    <div class="space-y-5 px-4 py-4">
+      <!--
+        Enable. Was a peer-checkbox pill built from fourteen utilities and two
+        hardcoded `dark:` grays; `.switch` is the tokenized 2px-radius track.
+      -->
+      <div class="flex items-center justify-between gap-4">
+        <span id="balance-notify-enabled-label" class="text-xs font-medium text-ink-secondary">
+          {{ t('profile.balanceNotify.enabled') }}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          class="switch"
+          :class="{ 'switch-active': notifyEnabled }"
+          :aria-checked="notifyEnabled"
+          aria-labelledby="balance-notify-enabled-label"
+          @click="toggleNotifyEnabled"
+        >
+          <span class="switch-thumb" aria-hidden="true"></span>
+        </button>
       </div>
 
       <template v-if="notifyEnabled">
         <!-- Custom threshold with save button -->
-        <div>
-          <label class="input-label">
-            {{ t('profile.balanceNotify.threshold') }}
-            <span class="text-xs text-gray-400 ml-2">{{ t('profile.balanceNotify.thresholdHint') }}</span>
-          </label>
-          <div class="flex items-center gap-2">
-            <span class="text-gray-500">$</span>
-            <input
-              v-model.number="customThreshold"
-              type="number"
-              min="0"
-              step="0.01"
-              class="input flex-1"
-              :placeholder="systemDefaultThreshold > 0 ? `${t('profile.balanceNotify.systemDefault')} $${systemDefaultThreshold}` : t('profile.balanceNotify.thresholdPlaceholder')"
-            />
-            <button
-              @click="handleThresholdUpdate"
-              :disabled="savingThreshold"
-              class="btn btn-primary btn-sm whitespace-nowrap"
-            >
-              {{ savingThreshold ? t('common.saving') : t('common.save') }}
-            </button>
-          </div>
-        </div>
+        <FormField
+          id="balance-notify-threshold"
+          :label="t('profile.balanceNotify.threshold')"
+          :hint="t('profile.balanceNotify.thresholdHint')"
+        >
+          <template #default="{ describedBy }">
+            <div class="flex items-start gap-2">
+              <div class="relative min-w-0 flex-1">
+                <span
+                  class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 font-mono text-xs text-ink-tertiary"
+                  aria-hidden="true"
+                >
+                  $
+                </span>
+                <input
+                  id="balance-notify-threshold"
+                  v-model.number="customThreshold"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="input pl-7 font-mono tabular-nums"
+                  :aria-describedby="describedBy"
+                  :placeholder="thresholdPlaceholder"
+                />
+              </div>
+              <Button
+                tone="accent"
+                variant="solid"
+                size="md"
+                class="h-9 shrink-0"
+                :loading="savingThreshold"
+                @click="handleThresholdUpdate"
+              >
+                {{ t('common.save') }}
+              </Button>
+            </div>
+          </template>
+        </FormField>
 
         <!-- Email list with toggles -->
         <div>
-          <label class="input-label">{{ t('profile.balanceNotify.extraEmails') }}</label>
-          <p class="mb-2 text-xs text-yellow-600 dark:text-yellow-400">{{ t('profile.balanceNotify.extraEmailsHint') }}</p>
+          <p class="text-xs font-medium text-ink-secondary">
+            {{ t('profile.balanceNotify.extraEmails') }}
+          </p>
+          <p class="mt-1 text-2xs text-ink-tertiary">
+            {{ t('profile.balanceNotify.extraEmailsHint') }}
+          </p>
 
           <!-- Saved email entries -->
-          <div v-if="emailEntries.length > 0" class="space-y-2 mb-3">
-            <div v-for="(entry, idx) in emailEntries" :key="idx"
-              class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg">
-              <div class="flex items-center gap-2 min-w-0 flex-1">
-                <label class="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input type="checkbox" :checked="!entry.disabled" @change="handleEmailToggle(entry)" class="sr-only peer" />
-                  <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"></div>
-                </label>
-                <span class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ entry.email }}</span>
+          <div v-if="emailEntries.length > 0" class="mt-3 divide-y divide-line-subtle border-y border-line-subtle">
+            <div
+              v-for="(entry, idx) in emailEntries"
+              :key="idx"
+              class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2"
+            >
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  role="switch"
+                  class="switch h-4 w-8 shrink-0"
+                  :class="{ 'switch-active': !entry.disabled }"
+                  :aria-checked="!entry.disabled"
+                  :aria-label="entry.email"
+                  @click="handleEmailToggle(entry)"
+                >
+                  <span class="switch-thumb h-2.5 w-2.5" aria-hidden="true"></span>
+                </button>
+                <span class="truncate text-sm text-ink">{{ entry.email }}</span>
               </div>
-              <div class="flex items-center gap-2 shrink-0">
+              <div class="flex shrink-0 items-center gap-2">
                 <template v-if="!entry.verified">
                   <!-- Inline verify flow for saved unverified emails -->
                   <template v-if="verifyingEmail === entry.email">
                     <input
                       v-model="verifyCode"
                       type="text"
+                      inputmode="numeric"
                       maxlength="6"
-                      class="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-dark-500 dark:bg-dark-700"
+                      class="input h-7 w-20 px-2 font-mono text-xs tabular-nums"
+                      :aria-label="t('profile.balanceNotify.codePlaceholder')"
                       :placeholder="t('profile.balanceNotify.codePlaceholder')"
                     />
-                    <button @click="verifySavedEmail(entry.email)" :disabled="!verifyCode || verifyCode.length !== 6 || verifyingSaved" class="text-xs text-primary-600 hover:text-primary-700">
+                    <Button
+                      size="xs"
+                      :disabled="!verifyCode || verifyCode.length !== 6"
+                      :loading="verifyingSaved"
+                      @click="verifySavedEmail(entry.email)"
+                    >
                       {{ t('profile.balanceNotify.verify') }}
-                    </button>
-                    <span v-if="verifyCountdown > 0" class="text-xs text-gray-400">{{ verifyCountdown }}s</span>
-                    <button v-else @click="sendCodeForSaved(entry.email)" :disabled="sendingSavedCode" class="text-xs text-gray-500 hover:text-gray-700">
+                    </Button>
+                    <span
+                      v-if="verifyCountdown > 0"
+                      class="font-mono text-2xs tabular-nums text-ink-tertiary"
+                    >
+                      {{ verifyCountdown }}s
+                    </span>
+                    <Button
+                      v-else
+                      size="xs"
+                      variant="quiet"
+                      :loading="sendingSavedCode"
+                      @click="sendCodeForSaved(entry.email)"
+                    >
                       {{ t('profile.balanceNotify.resend') }}
-                    </button>
-                    <button @click="verifyingEmail = ''" class="text-xs text-gray-400 hover:text-gray-600">
+                    </Button>
+                    <Button size="xs" variant="quiet" @click="verifyingEmail = ''">
                       {{ t('common.cancel') }}
-                    </button>
+                    </Button>
                   </template>
                   <template v-else>
-                    <button @click="sendCodeForSaved(entry.email)" :disabled="sendingSavedCode" class="text-xs text-primary-600 hover:text-primary-700">
+                    <StatusDot tone="warn" :label="t('profile.balanceNotify.unverified')" />
+                    <Button
+                      size="xs"
+                      :loading="sendingSavedCode"
+                      @click="sendCodeForSaved(entry.email)"
+                    >
                       {{ t('profile.balanceNotify.verify') }}
-                    </button>
-                    <span class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') }}</span>
+                    </Button>
                   </template>
                 </template>
-                <span v-else class="text-xs text-green-500">{{ t('profile.balanceNotify.verified') }}</span>
-                <button @click="handleRemoveEmail(entry.email)" class="text-red-500 hover:text-red-700 text-xs">
+                <StatusDot
+                  v-else
+                  tone="success"
+                  muted
+                  :label="t('profile.balanceNotify.verified')"
+                />
+                <Button size="xs" variant="quiet" tone="danger" @click="handleRemoveEmail(entry.email)">
                   {{ t('profile.balanceNotify.removeEmail') }}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           <!-- Pending (unverified) emails in verification flow -->
-          <div v-if="pendingEmails.length > 0" class="space-y-2 mb-3">
-            <div v-for="(pe, idx) in pendingEmails" :key="pe.email"
-              class="flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg border border-yellow-200 dark:border-yellow-800">
-              <span class="flex-1 text-sm text-gray-700 dark:text-gray-300">{{ pe.email }}</span>
-              <div v-if="!pe.codeSent" class="flex items-center gap-1">
-                <button @click="sendCodeFor(idx)" :disabled="pe.sending" class="text-xs text-primary-600 hover:text-primary-700">
+          <div v-if="pendingEmails.length > 0" class="mt-3 space-y-2">
+            <div
+              v-for="(pe, idx) in pendingEmails"
+              :key="pe.email"
+              class="flex flex-wrap items-center gap-x-2 gap-y-2 border border-line bg-surface-sunken px-3 py-2"
+            >
+              <span class="min-w-0 flex-1 truncate text-sm text-ink">{{ pe.email }}</span>
+              <div v-if="!pe.codeSent" class="flex shrink-0 items-center gap-2">
+                <Button size="xs" :loading="pe.sending" @click="sendCodeFor(idx)">
                   {{ t('profile.balanceNotify.sendCode') }}
-                </button>
-                <button @click="pendingEmails.splice(idx, 1)" class="text-xs text-red-500 hover:text-red-700 ml-1">
+                </Button>
+                <Button size="xs" variant="quiet" tone="danger" @click="pendingEmails.splice(idx, 1)">
                   {{ t('profile.balanceNotify.removeEmail') }}
-                </button>
+                </Button>
               </div>
-              <div v-else class="flex items-center gap-1">
+              <div v-else class="flex shrink-0 items-center gap-2">
                 <input
                   v-model="pe.code"
                   type="text"
+                  inputmode="numeric"
                   maxlength="6"
-                  class="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-dark-500 dark:bg-dark-700"
+                  class="input h-7 w-20 px-2 font-mono text-xs tabular-nums"
+                  :aria-label="t('profile.balanceNotify.codePlaceholder')"
                   :placeholder="t('profile.balanceNotify.codePlaceholder')"
                 />
-                <button @click="verifyPending(idx)" :disabled="!pe.code || pe.code.length !== 6 || pe.verifying" class="text-xs text-primary-600 hover:text-primary-700">
+                <Button
+                  size="xs"
+                  :disabled="!pe.code || pe.code.length !== 6"
+                  :loading="pe.verifying"
+                  @click="verifyPending(idx)"
+                >
                   {{ t('profile.balanceNotify.verify') }}
-                </button>
-                <span v-if="pe.countdown > 0" class="text-xs text-gray-400">{{ pe.countdown }}s</span>
-                <button v-else @click="sendCodeFor(idx)" :disabled="pe.sending" class="text-xs text-gray-500 hover:text-gray-700">
+                </Button>
+                <span
+                  v-if="pe.countdown > 0"
+                  class="font-mono text-2xs tabular-nums text-ink-tertiary"
+                >
+                  {{ pe.countdown }}s
+                </span>
+                <Button v-else size="xs" variant="quiet" :loading="pe.sending" @click="sendCodeFor(idx)">
                   {{ t('profile.balanceNotify.resend') }}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           <!-- Add new email input (hidden when at limit) -->
-          <div v-if="canAddMore" class="flex gap-2">
+          <div v-if="canAddMore" class="mt-3 flex items-start gap-2">
             <input
               v-model="newEmail"
               type="email"
-              class="input flex-1"
+              class="input min-w-0 flex-1"
+              :aria-label="t('profile.balanceNotify.emailPlaceholder')"
               :placeholder="t('profile.balanceNotify.emailPlaceholder')"
               @keyup.enter="addPendingEmail"
             />
-            <button
-              @click="addPendingEmail"
-              :disabled="!newEmail"
-              class="btn btn-secondary whitespace-nowrap"
-            >
+            <Button size="md" class="h-9 shrink-0" :disabled="!newEmail" @click="addPendingEmail">
               {{ t('common.add') }}
-            </button>
+            </Button>
           </div>
-          <p v-else class="text-xs text-gray-400">
+          <p v-else class="mt-3 text-xs text-ink-tertiary">
             {{ t('profile.balanceNotify.maxEmailsReached') }}
           </p>
         </div>
@@ -159,6 +238,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { userAPI } from '@/api'
@@ -208,6 +290,12 @@ const canAddMore = computed(() => {
   return emailEntries.value.length + pendingEmails.value.length < maxTotalEmails
 })
 
+const thresholdPlaceholder = computed(() =>
+  props.systemDefaultThreshold > 0
+    ? `${t('profile.balanceNotify.systemDefault')} $${props.systemDefaultThreshold}`
+    : t('profile.balanceNotify.thresholdPlaceholder')
+)
+
 watch(() => props.enabled, (val) => { notifyEnabled.value = val })
 watch(() => props.threshold, (val) => { customThreshold.value = val })
 watch(() => props.extraEmails, (val) => { emailEntries.value = [...val] })
@@ -225,6 +313,16 @@ onUnmounted(() => {
   }
   if (verifyTimer) clearInterval(verifyTimer)
 })
+
+/**
+ * The switch is a `role="switch"` button now rather than a hidden checkbox, so
+ * the flip is explicit instead of riding `v-model` + `@change`. The optimistic
+ * write and its rollback are unchanged.
+ */
+const toggleNotifyEnabled = async () => {
+  notifyEnabled.value = !notifyEnabled.value
+  await handleToggle()
+}
 
 const handleToggle = async () => {
   try {

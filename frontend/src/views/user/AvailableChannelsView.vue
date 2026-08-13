@@ -2,33 +2,36 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <div class="relative w-full sm:w-80">
-              <Icon
-                name="search"
-                size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-              />
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="t('availableChannels.searchPlaceholder')"
-                class="input pl-10"
-              />
-            </div>
+        <div class="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+          <div class="relative w-full sm:w-80">
+            <Icon
+              name="search"
+              size="sm"
+              class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary"
+              aria-hidden="true"
+            />
+            <input
+              v-model="searchQuery"
+              type="search"
+              :aria-label="t('availableChannels.searchPlaceholder')"
+              :placeholder="t('availableChannels.searchPlaceholder')"
+              class="input pl-9"
+            />
           </div>
 
-          <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
-            <button
-              @click="loadChannels"
-              :disabled="loading"
-              class="btn btn-secondary"
-              :title="t('common.refresh', 'Refresh')"
-            >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-          </div>
+          <!-- Icon-only control, so it carries both a title and an aria-label. -->
+          <Button
+            size="md"
+            class="h-9 shrink-0 self-end lg:self-auto"
+            :loading="loading"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="loadChannels"
+          >
+            <template #icon>
+              <Icon name="refresh" size="xs" />
+            </template>
+          </Button>
         </div>
       </template>
 
@@ -53,6 +56,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+import Button from '@/components/common/Button.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'

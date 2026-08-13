@@ -1,22 +1,30 @@
 <template>
-  <div :class="props.embedded ? 'space-y-4' : 'card'">
-    <div
-      v-if="!props.embedded"
-      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-    >
-      <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div :class="props.embedded ? 'space-y-4' : 'rounded border border-line bg-surface'">
+    <div v-if="!props.embedded" class="border-b border-line px-4 py-3">
+      <h2 class="text-sm font-semibold text-ink">
         {{ t('profile.avatar.title') }}
       </h2>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-0.5 text-xs text-ink-tertiary">
         {{ t('profile.avatar.description') }}
       </p>
     </div>
 
-    <div :class="props.embedded ? 'space-y-3' : 'flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start'">
+    <div
+      :class="props.embedded
+        ? 'flex items-start gap-4'
+        : 'flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start'"
+    >
+      <!--
+        The avatar keeps `rounded-full` — it is one of the two elements in the
+        system allowed to. What it loses is the gradient fill and the coloured
+        drop shadow; an empty avatar is now a hairline circle on a sunken
+        ground with the initial in secondary ink.
+      -->
       <div
-        :class="props.embedded
-          ? 'flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-xl font-bold text-white shadow-lg shadow-primary-500/20'
-          : 'flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-3xl font-bold text-white shadow-lg shadow-primary-500/20'"
+        :class="[
+          'flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-surface-sunken font-semibold text-ink-secondary',
+          props.embedded ? 'h-12 w-12 text-sm' : 'h-16 w-16 text-md',
+        ]"
       >
         <img
           v-if="avatarPreviewUrl"
@@ -25,53 +33,56 @@
           :alt="displayName"
           class="h-full w-full object-cover"
         >
-        <span v-else>{{ avatarInitial }}</span>
+        <span v-else aria-hidden="true">{{ avatarInitial }}</span>
       </div>
 
-      <div :class="props.embedded ? 'space-y-3' : 'min-w-0 flex-1 space-y-4'">
-        <div class="space-y-1">
-          <p v-if="props.embedded" class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.avatar.title') }}
+      <div class="min-w-0 flex-1 space-y-3">
+        <div class="space-y-0.5">
+          <p class="truncate text-sm font-semibold text-ink">
+            {{ props.embedded ? t('profile.avatar.title') : displayName }}
           </p>
-          <p v-else class="text-sm font-medium text-gray-900 dark:text-white">
-            {{ displayName }}
-          </p>
-          <p class="text-sm text-gray-500 dark:text-gray-400">
+          <p class="text-xs text-ink-tertiary">
             {{ t('profile.avatar.uploadHint') }}
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3">
-          <label class="btn btn-secondary btn-sm cursor-pointer">
+        <div class="flex flex-wrap items-center gap-2">
+          <!--
+            A `<label>` rather than a Button, because it has to own the hidden
+            file input. It carries the outline treatment by hand so it matches
+            the two real buttons beside it.
+          -->
+          <label
+            class="inline-flex h-7 cursor-pointer items-center justify-center whitespace-nowrap rounded border border-line bg-surface px-2.5 text-xs font-medium text-ink transition-colors duration-fast ease-out hover:border-line-strong hover:bg-surface-hover"
+          >
             <input
               data-testid="profile-avatar-file-input"
               type="file"
               accept="image/*"
-              class="hidden"
+              class="sr-only"
               @change="handleAvatarFileChange"
             >
             {{ t('profile.avatar.uploadAction') }}
           </label>
 
-          <button
+          <Button
             data-testid="profile-avatar-save"
-            type="button"
-            class="btn btn-primary btn-sm"
-            :disabled="avatarSaving || !avatarDraft"
+            tone="accent"
+            variant="solid"
+            :loading="avatarSaving"
+            :disabled="!avatarDraft"
             @click="handleAvatarSave"
           >
             {{ t('common.save') }}
-          </button>
+          </Button>
 
-          <button
+          <Button
             data-testid="profile-avatar-delete"
-            type="button"
-            class="btn btn-secondary btn-sm"
             :disabled="avatarSaving"
             @click="handleAvatarDelete"
           >
             {{ t('common.delete') }}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -82,6 +93,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { userAPI } from '@/api'
+import Button from '@/components/common/Button.vue'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import type { User } from '@/types'

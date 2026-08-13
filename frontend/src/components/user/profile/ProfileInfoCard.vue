@@ -1,141 +1,117 @@
 <template>
   <div class="space-y-6">
+    <!--
+      Account overview. This was a gradient hero (primary → white → amber) with
+      a 20px-radius avatar tile, pill "source" chips on a translucent ground and
+      three rounded-2xl metric wells stacked on top of the gradient — five
+      surface treatments for one block of facts. It is now one bordered block:
+      identity on top, quantities in a hairline strip beneath, and the only
+      round thing left is the avatar.
+    -->
     <section
       data-testid="profile-overview-hero"
-      class="card overflow-hidden border border-primary-100/80 bg-gradient-to-br from-primary-50 via-white to-amber-50/70 dark:border-primary-900/40 dark:from-primary-950/40 dark:via-dark-900 dark:to-dark-950"
+      class="rounded border border-line bg-surface"
     >
-      <div class="px-6 py-6 md:px-8">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
-          <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
+      <div class="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:gap-5">
+        <!-- Avatar: the second and last sanctioned `rounded-full` in the system. -->
+        <div
+          class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-surface-sunken text-md font-semibold text-ink-secondary"
+        >
+          <img
+            v-if="avatarUrl"
+            :src="avatarUrl"
+            :alt="displayName"
+            class="h-full w-full object-cover"
           >
-            <img
-              v-if="avatarUrl"
-              :src="avatarUrl"
-              :alt="displayName"
-              class="h-full w-full object-cover"
-            >
-            <span v-else>{{ avatarInitial }}</span>
+          <span v-else aria-hidden="true">{{ avatarInitial }}</span>
+        </div>
+
+        <div class="min-w-0 flex-1 space-y-2">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 class="min-w-0 truncate text-lg font-semibold text-ink">
+              {{ displayName }}
+            </h2>
+            <!--
+              Role is a CATEGORY, not a state, so it stays neutral — the accent
+              only ever means interactive or selected. Account state is the one
+              thing here that gets a tone, and it carries its own word.
+            -->
+            <Badge caps>
+              {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
+            </Badge>
+            <StatusDot
+              :tone="user?.status === 'active' ? 'success' : 'danger'"
+              :label="user?.status === 'active' ? t('common.active') : t('common.disabled')"
+            />
           </div>
 
-          <div class="min-w-0 flex-1 space-y-5">
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="truncate text-2xl font-semibold text-gray-900 dark:text-white">
-                  {{ displayName }}
-                </h2>
-                <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
-                  {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
-                </span>
-                <span
-                  :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"
-                >
-                  {{
-                    user?.status === 'active'
-                      ? t('common.active')
-                      : t('common.disabled')
-                  }}
-                </span>
-              </div>
-
-              <div class="space-y-1">
-                <p class="truncate text-sm text-gray-600 dark:text-gray-300">
-                  {{ primaryEmailDisplay }}
-                </p>
-                <div
-                  v-if="sourceHints.length"
-                  class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
-                >
-                  <span
-                    v-for="hint in sourceHints"
-                    :key="hint.key"
-                    class="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 ring-1 ring-primary-100 dark:bg-dark-900/70 dark:ring-primary-900/40"
-                  >
-                    <Icon name="link" size="sm" />
-                    {{ hint.text }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                data-testid="profile-overview-metric-balance"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.accountBalance') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
-                </p>
-              </div>
-              <div
-                data-testid="profile-overview-metric-concurrency"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.concurrencyLimit') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ user?.concurrency || 0 }}
-                </p>
-              </div>
-              <div
-                data-testid="profile-overview-metric-member-since"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.memberSince') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ memberSinceLabel }}
-                </p>
-              </div>
-            </div>
-          </div>
+          <!--
+            The synced-from-provider hints used to be rendered twice: as pill
+            chips here and again as a panel below. One screen, one place.
+          -->
+          <p v-if="primaryEmailDisplay" class="truncate text-sm text-ink-secondary">
+            {{ primaryEmailDisplay }}
+          </p>
         </div>
       </div>
+
+      <!--
+        Quantities. Mono tabular through `NumCell`, so balance and concurrency
+        align on the decimal and a missing user reads as an en dash rather than
+        as a confident zero.
+      -->
+      <dl class="grid grid-cols-1 gap-px border-t border-line bg-line-subtle sm:grid-cols-3">
+        <div data-testid="profile-overview-metric-balance" class="bg-surface px-4 py-3">
+          <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('profile.accountBalance') }}
+          </dt>
+          <dd class="mt-1">
+            <NumCell :value="balanceValue" :precision="2" unit="USD" />
+          </dd>
+        </div>
+        <div data-testid="profile-overview-metric-concurrency" class="bg-surface px-4 py-3">
+          <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('profile.concurrencyLimit') }}
+          </dt>
+          <dd class="mt-1">
+            <NumCell :value="concurrencyValue" />
+          </dd>
+        </div>
+        <div data-testid="profile-overview-metric-member-since" class="bg-surface px-4 py-3">
+          <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('profile.memberSince') }}
+          </dt>
+          <dd class="mt-1 font-mono text-sm tabular-nums text-ink">
+            {{ memberSinceLabel }}
+          </dd>
+        </div>
+      </dl>
     </section>
 
     <div class="space-y-6">
       <div data-testid="profile-main-column" class="space-y-6">
-        <section
+        <Surface
           data-testid="profile-basics-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          :title="t('profile.basicsTitle')"
+          :description="t('profile.basicsDescription')"
+          flush
         >
-          <div class="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t('profile.basicsTitle') }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('profile.basicsDescription') }}
-              </p>
+          <!--
+            One hairline between the two halves instead of two nested rounded
+            wells inside a third rounded panel. The gutter IS the separator.
+          -->
+          <div class="grid gap-px bg-line-subtle md:grid-cols-2">
+            <div class="bg-surface p-4">
+              <ProfileAvatarCard :user="user" embedded />
+            </div>
+
+            <div class="bg-surface p-4">
+              <ProfileEditForm :initial-username="user?.username || ''" embedded />
             </div>
           </div>
+        </Surface>
 
-          <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
-              <ProfileAvatarCard
-                :user="user"
-                embedded
-              />
-            </div>
-
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
-              <ProfileEditForm
-                :initial-username="user?.username || ''"
-                embedded
-              />
-            </div>
-          </div>
-        </section>
-
-        <section
-          data-testid="profile-auth-bindings-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
-        >
+        <Surface data-testid="profile-auth-bindings-panel" flush>
           <ProfileIdentityBindingsSection
             :user="user"
             :linuxdo-enabled="linuxdoEnabled"
@@ -148,32 +124,27 @@
             embedded
             compact
           />
-        </section>
+        </Surface>
       </div>
 
       <div data-testid="profile-side-column" class="space-y-6">
-        <section
+        <Surface
           v-if="sourceHints.length"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          :title="t('profile.linkedProfileSources')"
+          :description="t('profile.linkedProfileSourcesDescription')"
+          flush
         >
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.linkedProfileSources') }}
-          </h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.linkedProfileSourcesDescription') }}
-          </p>
-
-          <div class="mt-5 grid gap-3">
-            <div
+          <ul class="divide-y divide-line-subtle">
+            <li
               v-for="hint in sourceHints"
               :key="hint.key"
-              class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-300"
+              class="flex items-start gap-2 px-4 py-2.5 text-sm text-ink-secondary"
             >
-              <Icon name="link" size="sm" class="mt-0.5 text-gray-400 dark:text-gray-500" />
-              <span>{{ hint.text }}</span>
-            </div>
-          </div>
-        </section>
+              <Icon name="link" size="xs" class="mt-1 shrink-0 text-ink-tertiary" />
+              <span class="min-w-0">{{ hint.text }}</span>
+            </li>
+          </ul>
+        </Surface>
       </div>
     </div>
   </div>
@@ -182,6 +153,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Badge from '@/components/common/Badge.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
+import Surface from '@/components/common/Surface.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
@@ -245,15 +220,28 @@ const primaryEmailDisplay = computed(() => {
   return email
 })
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
+
+/*
+ * `null` when there is no user, NOT `0`. A missing account and an account with
+ * an empty wallet are different facts; `NumCell` renders the former as an en
+ * dash instead of asserting a balance nobody measured.
+ */
+const balanceValue = computed<number | null>(() =>
+  props.user?.balance == null ? null : Number(props.user.balance)
+)
+const concurrencyValue = computed<number | null>(() =>
+  props.user?.concurrency == null ? null : Number(props.user.concurrency)
+)
+
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
   if (!raw) {
-    return '-'
+    return '–'
   }
 
   const date = new Date(raw)
   if (Number.isNaN(date.getTime())) {
-    return '-'
+    return '–'
   }
 
   return new Intl.DateTimeFormat(undefined, {
@@ -271,10 +259,6 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   github: 'GitHub',
   google: 'Google'
 }))
-
-function formatCurrency(value: number): string {
-  return `$${value.toFixed(2)}`
-}
 
 function normalizeProvider(value: string): UserAuthProvider | null {
   const normalized = value.trim().toLowerCase()
