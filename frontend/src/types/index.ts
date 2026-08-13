@@ -1189,7 +1189,10 @@ export interface OpenCodeGoUsageState {
 
 export interface OpenCodeGoUsageSettings {
   enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
   interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
+  debounce_minutes: number
 }
 
 export interface Account {
