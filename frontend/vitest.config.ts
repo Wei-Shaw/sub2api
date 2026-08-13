@@ -27,13 +27,18 @@ export default defineConfig({
         'src/**/*.test.ts',
         'src/main.ts'
       ],
+      // Vitest 2 reads threshold keys at the top level of `thresholds`. The
+      // previous shape nested them under `global`, which Vitest 2 treats as a
+      // per-glob threshold group for files matching the literal glob "global" —
+      // zero files matched, so the gate passed at any coverage. Measured floor
+      // when this was fixed: 69.34 statements / 70 branches / 43.94 functions /
+      // 69.34 lines. The numbers below sit just under measured so ordinary
+      // churn does not flap the build; raise them at the end of each tier.
       thresholds: {
-        global: {
-          statements: 80,
-          branches: 80,
-          functions: 80,
-          lines: 80
-        }
+        statements: 69,
+        branches: 69,
+        functions: 43,
+        lines: 69
       }
     }
   }
