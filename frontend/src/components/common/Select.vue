@@ -8,7 +8,8 @@
       :aria-expanded="isOpen"
       :aria-haspopup="true"
       :id="id"
-      :aria-label="ariaLabel ?? 'Select option'"
+      :aria-label="resolvedAriaLabel"
+      :aria-labelledby="resolvedAriaLabelledby"
       :aria-describedby="ariaDescribedby"
       :class="[
         'select-trigger',
@@ -29,7 +30,7 @@
         class="select-clear"
         role="button"
         tabindex="-1"
-        aria-label="Clear selection"
+        :aria-label="t('common.clear')"
         @click.stop="clearSelection"
         @mousedown.stop
         @keydown.enter.stop.prevent="clearSelection"
@@ -121,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, useAttrs } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -186,6 +187,43 @@ const dropdownPosition = ref<'bottom' | 'top'>('bottom')
 const triggerRect = ref<DOMRect | null>(null)
 const dropdownViewportPadding = 8
 const dropdownMinimumWidth = 200
+
+const attrs = useAttrs()
+
+/**
+ * The accessible name of the trigger.
+ *
+ * A control must not invent a name for itself. `aria-label` outranks every other
+ * naming source in the accessible-name algorithm, so the hardcoded English
+ * default that used to live here did two things at once: it read out in English
+ * on a zh build, and — worse — it *replaced* the real field label whenever a
+ * consumer wrapped this Select in `FormField` (which owns the `for`/`id` pairing
+ * and renders the actual `<label>`). Every consumer that passed an explicit
+ * `aria-label` was working around that, not asking for it.
+ *
+ * Precedence:
+ *   1. `aria-label` supplied by the consumer   -> render it verbatim
+ *   2. `aria-labelledby` supplied by the consumer -> forward it to the trigger,
+ *      which is the element that needs the name (it is not a declared prop, so
+ *      without this it would land on the wrapper `<div>` and name nothing)
+ *   3. a `<label for>` linked through the `id` prop -> nothing to do
+ *   4. no naming source at all -> still nothing: the trigger names itself from
+ *      its own content, i.e. the selected option's label or the localized
+ *      placeholder. That is already translated and strictly more informative
+ *      than any generic string we could substitute.
+ *
+ * Cases 3 and 4 need no detection *because* the answer to both is "do not set
+ * `aria-label`" — which is why there is no DOM probing for `label[for]` here.
+ */
+const resolvedAriaLabel = computed(() => {
+  const label = props.ariaLabel?.trim()
+  return label ? label : undefined
+})
+
+const resolvedAriaLabelledby = computed(() => {
+  const labelledby = attrs['aria-labelledby']
+  return typeof labelledby === 'string' && labelledby.trim() ? labelledby : undefined
+})
 
 // i18n placeholders
 const placeholderText = computed(() => props.placeholder ?? t('common.selectOption'))
