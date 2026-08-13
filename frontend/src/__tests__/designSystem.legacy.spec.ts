@@ -103,23 +103,19 @@ const ALLOWED: Record<string, string[]> = {
     'composables/useChannelMonitorFormat.ts',
     'views/NotFoundView.vue',
     'views/admin/SubscriptionsView.vue',
-    'views/setup/SetupWizardView.vue',
     'views/user/ChannelStatusV2View.vue',
     'views/user/CustomPageView.vue',
     'views/user/RedeemView.vue',
     'views/user/StripePaymentView.vue',
     'views/user/SubscriptionsView.vue',
   ],
-  // These are already INERT — the backdropBlur scale is zeroed in the config,
-  // so `backdrop-blur-xl` compiles to `blur(0)`. They are listed only so the
-  // dead classes get deleted rather than left to confuse the next reader.
-  'backdrop-blur': ['components/auth/LoginAgreementPrompt.vue', 'views/KeyUsageView.vue'],
+  'backdrop-blur': [],
   'named-gradient': [],
   'glow-shadow': [],
   'glass-class': [],
   'text-gradient': [],
   'raw-teal': [],
-  'hover-lift': ['components/auth/LoginAgreementPrompt.vue', 'views/KeyUsageView.vue'],
+  'hover-lift': [],
   'bare-dark-color': [],
 }
 

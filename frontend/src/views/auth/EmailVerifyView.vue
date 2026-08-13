@@ -1,76 +1,84 @@
 <template>
   <AuthLayout>
     <div class="space-y-6">
-      <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <!-- Title. The brand lockup lives in AuthLayout, so this is the page h1. -->
+      <div>
+        <h1 class="text-lg font-semibold text-ink">
           {{ t('auth.verifyYourEmail') }}
-        </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        </h1>
+        <p class="mt-1 text-sm text-ink-tertiary">
           {{ t('auth.sendCodeDesc') }}
-          <span class="font-medium text-gray-700 dark:text-gray-300">{{ email }}</span>
+          <!-- The address is data the user must be able to proof-read. Mono. -->
+          <span class="font-mono text-ink">{{ email }}</span>
         </p>
       </div>
 
-      <!-- No Data Warning -->
-      <div
-        v-if="!hasRegisterData"
-        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex-shrink-0">
-            <Icon name="exclamationCircle" size="md" class="text-amber-500" />
-          </div>
-          <div class="text-sm text-amber-700 dark:text-amber-400">
-            <p class="font-medium">{{ t('auth.sessionExpired') }}</p>
-            <p class="mt-1">{{ t('auth.sessionExpiredDesc') }}</p>
-          </div>
+      <!--
+        Expired session. Was an amber `rounded-xl` tinted card with a 20px glyph,
+        which read louder than the form it replaces. Now a hairline-ruled row:
+        the warn tone is carried by the glyph alone, the copy stays in ink.
+      -->
+      <div v-if="!hasRegisterData" class="flex items-start gap-2 border border-line p-3">
+        <Icon name="exclamationCircle" size="sm" class="mt-px shrink-0 text-warn" />
+        <div>
+          <p class="text-sm font-medium text-ink">{{ t('auth.sessionExpired') }}</p>
+          <p class="mt-1 text-sm text-ink-secondary">{{ t('auth.sessionExpiredDesc') }}</p>
         </div>
       </div>
 
       <!-- Verification Form -->
-      <form v-else @submit.prevent="handleVerify" class="space-y-5">
-        <!-- Verification Code Input -->
-        <div>
-          <label for="code" class="input-label text-center">
-            {{ t('auth.verificationCode') }}
-          </label>
-          <input
-            id="code"
-            v-model="verifyCode"
-            type="text"
-            required
-            autocomplete="one-time-code"
-            inputmode="numeric"
-            maxlength="6"
-            :disabled="isLoading"
-            class="input py-3 text-center font-mono text-xl tracking-[0.5em]"
-            :class="{ 'input-error': errors.code }"
-            placeholder="000000"
-          />
-          <p class="input-hint text-center">{{ t('auth.verificationCodeHint') }}</p>
-        </div>
-
-        <!-- Code Status -->
-        <div
-          v-if="codeSent"
-          class="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800/50 dark:bg-green-900/20"
+      <form v-else @submit.prevent="handleVerify" class="space-y-4">
+        <!--
+          `errors.code` ("code required" / "not a 6-digit code") previously had
+          nowhere to render: the field was a bare `<input>` with a centred
+          `.input-label`, and the message only ever reached the user as a toast.
+          The submit button is disabled on an empty code, but the form's implicit
+          submit (Enter in the field) walks straight past that, so this was
+          reachable. `FormField` gives it a home and reserves the row, so showing
+          it does not push the submit button out from under the cursor.
+        -->
+        <!--
+          `hint` is passed even though `#message` overrides what is rendered:
+          `FormField` only advertises `aria-describedby` when it has hint or
+          error text, so without it the message row would be invisible to a
+          screen reader.
+        -->
+        <FormField
+          id="code"
+          :label="t('auth.verificationCode')"
+          :error="errors.code"
+          :hint="t('auth.verificationCodeHint')"
         >
-          <div class="flex items-start gap-3">
-            <div class="flex-shrink-0">
-              <Icon name="checkCircle" size="md" class="text-green-500" />
-            </div>
-            <p class="text-sm text-green-700 dark:text-green-400">
-              {{ t('auth.codeSentSuccess') }}
-            </p>
-          </div>
-        </div>
+          <template #default="{ describedBy, invalid }">
+            <input
+              id="code"
+              v-model="verifyCode"
+              type="text"
+              required
+              autofocus
+              autocomplete="one-time-code"
+              inputmode="numeric"
+              maxlength="6"
+              :disabled="isLoading"
+              :aria-describedby="describedBy"
+              :aria-invalid="invalid || undefined"
+              class="input text-center font-mono text-md tabular-nums tracking-[0.28em]"
+              :class="{ 'input-error': errors.code }"
+              placeholder="000000"
+              @input="errors.code = ''"
+            />
+          </template>
+          <template #message>
+            <span v-if="errors.code">{{ errors.code }}</span>
+            <span v-else-if="codeSent" class="text-success">{{ t('auth.codeSentSuccess') }}</span>
+            <span v-else>{{ t('auth.verificationCodeHint') }}</span>
+          </template>
+        </FormField>
 
         <!-- Turnstile Widget for Resend -->
         <div v-if="actionCaptchaEnabled || (turnstileEnabled && showResendTurnstile)">
           <TurnstileWidget
             ref="turnstileRef"
-            :site-key="turnstileSiteKey"
             :turnstile-enabled="turnstileEnabled"
             :turnstile-site-key="turnstileSiteKey"
             :tencent-enabled="tencentCaptchaEnabled"
@@ -86,10 +94,9 @@
           />
         </div>
 
-        <div v-if="pendingOAuthCreateCaptchaEnabled" class="space-y-2">
+        <div v-if="pendingOAuthCreateCaptchaEnabled">
           <TurnstileWidget
             ref="createAccountTurnstileRef"
-            :site-key="turnstileSiteKey"
             :turnstile-enabled="turnstileEnabled"
             :turnstile-site-key="turnstileSiteKey"
             :tencent-enabled="tencentCaptchaEnabled"
@@ -105,74 +112,69 @@
           />
         </div>
 
-        <!-- Submit Button -->
-        <button
+        <!--
+          The label stays put while loading. It used to swap to "Verifying…" —
+          a different-length string — so the button changed width at exactly the
+          moment the user was watching it; `Button` overlays the spinner on a
+          reserved label box and sets `aria-busy` instead of hand-rolling an
+          `<svg>`. The leading check glyph went with it: it decorated the primary
+          action of the page, which needs no help being found.
+        -->
+        <Button
           type="submit"
-          :disabled="isLoading || !verifyCode || (pendingOAuthCreateTurnstileRequired && !createAccountTurnstileToken)"
-          class="btn btn-primary w-full"
+          tone="accent"
+          variant="solid"
+          size="md"
+          block
+          :loading="isLoading"
+          :disabled="
+            isLoading ||
+            !verifyCode ||
+            (pendingOAuthCreateTurnstileRequired && !createAccountTurnstileToken)
+          "
+          data-testid="email-verify-submit"
         >
-          <svg
-            v-if="isLoading"
-            class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <Icon v-else name="checkCircle" size="md" class="mr-2" />
-          {{ isLoading ? t('auth.verifying') : t('auth.verifyAndCreate') }}
-        </button>
+          {{ t('auth.verifyAndCreate') }}
+        </Button>
 
-        <!-- Resend Code -->
-        <div class="text-center">
-          <button
-            v-if="countdown > 0"
-            type="button"
-            disabled
-            class="cursor-not-allowed text-sm text-gray-400 dark:text-dark-500"
-          >
-            {{ t('auth.resendCountdown', { countdown }) }}
-          </button>
-          <button
-            v-else
-            type="button"
+        <!--
+          Resend. This was two mutually exclusive buttons — a disabled one
+          carrying the countdown and a live one carrying the label — so the
+          control was replaced wholesale every time the timer hit zero. It is
+          one button now: only its label and disabled state change, and the
+          digits are tabular so the countdown does not jitter as it ticks.
+        -->
+        <div class="flex justify-center border-t border-line pt-3">
+          <Button
+            variant="quiet"
+            tone="accent"
+            size="sm"
+            class="tabular-nums"
+            :loading="isSendingCode"
+            :disabled="resendDisabled"
+            data-testid="resend-code"
             @click="handleResendCode"
-            :disabled="
-              isSendingCode || (turnstileEnabled && showResendTurnstile && !resendTurnstileToken)
-            "
-            class="text-sm text-primary-600 transition-colors hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:text-primary-300"
           >
-            <span v-if="isSendingCode">{{ t('auth.sendingCode') }}</span>
-            <span v-else-if="captchaEnabled && !showResendTurnstile">
-              {{ t('auth.clickToResend') }}
-            </span>
-            <span v-else>{{ t('auth.resendCode') }}</span>
-          </button>
+            {{ resendLabel }}
+          </Button>
         </div>
       </form>
     </div>
 
     <!-- Footer -->
     <template #footer>
-      <button
+      <Button
+        variant="quiet"
+        tone="neutral"
+        size="sm"
+        data-testid="back-to-registration"
         @click="handleBack"
-        class="flex items-center gap-2 text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-gray-300"
       >
-        <Icon name="arrowLeft" size="sm" />
+        <template #icon>
+          <Icon name="arrowLeft" size="sm" />
+        </template>
         {{ t('auth.backToRegistration') }}
-      </button>
+      </Button>
     </template>
   </AuthLayout>
 </template>
@@ -182,6 +184,11 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+// By path, not through `components/common/index.ts`: the barrel re-exports
+// LocaleSwitcher, which pulls `createI18n` into the graph and breaks the specs
+// that mock `vue-i18n` with a partial factory.
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore } from '@/stores'
@@ -313,6 +320,28 @@ const pendingOAuthCreateTurnstileRequired = computed(
 )
 const pendingOAuthCreateCaptchaEnabled = computed(
   () => isPendingOAuthFlow() && captchaEnabled.value
+)
+
+/*
+ * One resend control, three labels. `clickToResend` is the staged-captcha case:
+ * the first press reveals the widget rather than sending, so the label has to
+ * say that. `isSendingCode` is NOT a label state — `Button` handles it by
+ * overlaying a spinner on the label's own box.
+ */
+const resendLabel = computed(() => {
+  if (countdown.value > 0) {
+    return t('auth.resendCountdown', { countdown: countdown.value })
+  }
+  return captchaEnabled.value && !showResendTurnstile.value
+    ? t('auth.clickToResend')
+    : t('auth.resendCode')
+})
+
+const resendDisabled = computed(
+  () =>
+    countdown.value > 0 ||
+    isSendingCode.value ||
+    (turnstileEnabled.value && showResendTurnstile.value && !resendTurnstileToken.value)
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -790,15 +819,8 @@ function buildRegistrationErrorMessage(error: unknown, fallback: string): string
 }
 </script>
 
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-</style>
+<!--
+  The `<style scoped>` block held `.fade-*` classes for a `<transition
+  name="fade">` this template never had — dead CSS carrying a banned
+  `transition: all`.
+-->

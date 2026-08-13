@@ -148,6 +148,15 @@ export default {
     // Status
     quotaMode: 'Key 限额模式',
     walletBalance: '钱包余额',
+    // The key's own state. Was a hardcoded English map inside KeyUsageView, so
+    // the zh build printed English here — on the one surface that needs no
+    // login, which is exactly where a stranger meets this product.
+    status: {
+      active: '正常',
+      quotaExhausted: '额度已用尽',
+      expired: '已过期',
+      unknown: '未知',
+    },
     // Ring card titles
     totalQuota: '总额度',
     limit5h: '5 小时限额',

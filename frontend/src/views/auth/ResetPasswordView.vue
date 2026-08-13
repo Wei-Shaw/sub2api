@@ -1,196 +1,163 @@
 <template>
   <AuthLayout>
     <div class="space-y-6">
-      <!-- Title -->
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
+      <!-- Title. The brand lockup lives in AuthLayout, so this is the page h1. -->
+      <div>
+        <h1 class="text-lg font-semibold text-ink">
           {{ t('auth.resetPasswordTitle') }}
-        </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+        </h1>
+        <p class="mt-1 text-sm text-ink-tertiary">
           {{ t('auth.resetPasswordHint') }}
         </p>
       </div>
 
-      <!-- Invalid Link State -->
-      <div v-if="isInvalidLink" class="space-y-6">
-        <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800/50 dark:bg-amber-900/20">
-          <div class="flex flex-col items-center gap-4 text-center">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-800/50">
-              <Icon name="exclamationCircle" size="lg" class="text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold text-amber-800 dark:text-amber-200">
-                {{ t('auth.invalidResetLink') }}
-              </h3>
-              <p class="mt-2 text-sm text-amber-700 dark:text-amber-300">
-                {{ t('auth.invalidResetLinkHint') }}
-              </p>
-            </div>
-          </div>
+      <!--
+        Both terminal states — expired link and success — were centred pastel
+        panels with a glyph in a 48px circle. They are now typographic status
+        blocks: an eyebrow carrying the status tone, one line of ink, and a
+        hairline. The tint is gone; the words are the state.
+      -->
+      <div v-if="isInvalidLink" class="space-y-4 border-t border-line pt-5">
+        <div>
+          <p class="text-2xs uppercase tracking-[0.08em] text-warn">
+            {{ t('auth.invalidResetLink') }}
+          </p>
+          <p class="mt-2 text-sm text-ink">
+            {{ t('auth.invalidResetLinkHint') }}
+          </p>
         </div>
 
-        <div class="text-center">
-          <router-link
-            to="/forgot-password"
-            class="inline-flex items-center gap-2 font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
-          >
-            {{ t('auth.requestNewResetLink') }}
-          </router-link>
-        </div>
+        <router-link
+          to="/forgot-password"
+          class="inline-block text-sm text-accent underline-offset-2 transition-colors duration-fast hover:text-accent-hover hover:underline"
+        >
+          {{ t('auth.requestNewResetLink') }}
+        </router-link>
       </div>
 
       <!-- Success State -->
-      <div v-else-if="isSuccess" class="space-y-6">
-        <div class="rounded-xl border border-green-200 bg-green-50 p-6 dark:border-green-800/50 dark:bg-green-900/20">
-          <div class="flex flex-col items-center gap-4 text-center">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-800/50">
-              <Icon name="checkCircle" size="lg" class="text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <h3 class="text-lg font-semibold text-green-800 dark:text-green-200">
-                {{ t('auth.passwordResetSuccess') }}
-              </h3>
-              <p class="mt-2 text-sm text-green-700 dark:text-green-300">
-                {{ t('auth.passwordResetSuccessHint') }}
-              </p>
-            </div>
-          </div>
+      <div v-else-if="isSuccess" class="space-y-5 border-t border-line pt-5">
+        <div>
+          <p class="text-2xs uppercase tracking-[0.08em] text-success">
+            {{ t('auth.passwordResetSuccess') }}
+          </p>
+          <p class="mt-2 text-sm text-ink">
+            {{ t('auth.passwordResetSuccessHint') }}
+          </p>
         </div>
 
-        <div class="text-center">
-          <router-link
-            to="/login"
-            class="btn btn-primary inline-flex items-center gap-2"
-          >
-            <Icon name="login" size="md" />
-            {{ t('auth.signIn') }}
-          </router-link>
-        </div>
+        <Button to="/login" tone="accent" variant="solid" size="md" block>
+          {{ t('auth.signIn') }}
+        </Button>
       </div>
 
       <!-- Form State -->
-      <form v-else @submit.prevent="handleSubmit" class="space-y-5">
-        <!-- Email (readonly) -->
-        <div>
-          <label for="email" class="input-label">
-            {{ t('auth.emailLabel') }}
-          </label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
-            </div>
-            <input
-              id="email"
-              :value="email"
-              type="email"
-              readonly
-              disabled
-              class="input pl-11 bg-gray-50 dark:bg-dark-700"
-            />
-          </div>
-        </div>
+      <form v-else @submit.prevent="handleSubmit" class="space-y-4">
+        <!--
+          The leading mail/lock glyphs are gone: they labelled fields that
+          already carry a text label. The readonly email no longer paints its
+          own gray ground either — `.input:disabled` already sunkens it.
+        -->
+        <FormField id="email" :label="t('auth.emailLabel')">
+          <template #default>
+            <input id="email" :value="email" type="email" readonly disabled class="input" />
+          </template>
+        </FormField>
 
-        <!-- New Password Input -->
-        <div>
-          <label for="password" class="input-label">
-            {{ t('auth.newPassword') }}
-          </label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+        <FormField id="password" :label="t('auth.newPassword')" :error="errors.password">
+          <template #default="{ describedBy, invalid }">
+            <div class="relative">
+              <input
+                id="password"
+                v-model="formData.password"
+                :type="showPassword ? 'text' : 'password'"
+                required
+                autocomplete="new-password"
+                :disabled="isLoading"
+                :aria-describedby="describedBy"
+                :aria-invalid="invalid || undefined"
+                class="input pr-10"
+                :class="{ 'input-error': errors.password }"
+                :placeholder="t('auth.newPasswordPlaceholder')"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                :disabled="isLoading"
+                :aria-label="showPassword ? t('common.hidePassword') : t('common.showPassword')"
+                class="absolute inset-y-0 right-0 flex items-center px-3 text-ink-tertiary transition-colors duration-fast hover:text-ink"
+              >
+                <Icon v-if="showPassword" name="eyeOff" size="sm" />
+                <Icon v-else name="eye" size="sm" />
+              </button>
             </div>
-            <input
-              id="password"
-              v-model="formData.password"
-              :type="showPassword ? 'text' : 'password'"
-              required
-              autocomplete="new-password"
-              :disabled="isLoading"
-              class="input pl-11 pr-11"
-              :class="{ 'input-error': errors.password }"
-              :placeholder="t('auth.newPasswordPlaceholder')"
-            />
-            <button
-              type="button"
-              @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
-            >
-              <Icon v-if="showPassword" name="eyeOff" size="md" />
-              <Icon v-else name="eye" size="md" />
-            </button>
-          </div>
-        </div>
+          </template>
+        </FormField>
 
-        <!-- Confirm Password Input -->
-        <div>
-          <label for="confirmPassword" class="input-label">
-            {{ t('auth.confirmPassword') }}
-          </label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
-            </div>
-            <input
-              id="confirmPassword"
-              v-model="formData.confirmPassword"
-              :type="showConfirmPassword ? 'text' : 'password'"
-              required
-              autocomplete="new-password"
-              :disabled="isLoading"
-              class="input pl-11 pr-11"
-              :class="{ 'input-error': errors.confirmPassword }"
-              :placeholder="t('auth.confirmPasswordPlaceholder')"
-            />
-            <button
-              type="button"
-              @click="showConfirmPassword = !showConfirmPassword"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
-            >
-              <Icon v-if="showConfirmPassword" name="eyeOff" size="md" />
-              <Icon v-else name="eye" size="md" />
-            </button>
-          </div>
-        </div>
-
-        <!-- Submit Button -->
-        <button
-          type="submit"
-          :disabled="isLoading"
-          class="btn btn-primary w-full"
+        <FormField
+          id="confirmPassword"
+          :label="t('auth.confirmPassword')"
+          :error="errors.confirmPassword"
         >
-          <svg
-            v-if="isLoading"
-            class="-ml-1 mr-2 h-4 w-4 animate-spin text-white"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <Icon v-else name="checkCircle" size="md" class="mr-2" />
-          {{ isLoading ? t('auth.resettingPassword') : t('auth.resetPassword') }}
-        </button>
+          <template #default="{ describedBy, invalid }">
+            <div class="relative">
+              <input
+                id="confirmPassword"
+                v-model="formData.confirmPassword"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                required
+                autocomplete="new-password"
+                :disabled="isLoading"
+                :aria-describedby="describedBy"
+                :aria-invalid="invalid || undefined"
+                class="input pr-10"
+                :class="{ 'input-error': errors.confirmPassword }"
+                :placeholder="t('auth.confirmPasswordPlaceholder')"
+              />
+              <button
+                type="button"
+                @click="showConfirmPassword = !showConfirmPassword"
+                :disabled="isLoading"
+                :aria-label="
+                  showConfirmPassword ? t('common.hidePassword') : t('common.showPassword')
+                "
+                class="absolute inset-y-0 right-0 flex items-center px-3 text-ink-tertiary transition-colors duration-fast hover:text-ink"
+              >
+                <Icon v-if="showConfirmPassword" name="eyeOff" size="sm" />
+                <Icon v-else name="eye" size="sm" />
+              </button>
+            </div>
+          </template>
+        </FormField>
+
+        <!--
+          The label stays put while loading. It used to swap to "Resetting…",
+          which changed the button's width at exactly the moment the user was
+          watching it; `Button` overlays the spinner on a reserved label box
+          and sets `aria-busy` instead of hand-rolling an `<svg>` spinner.
+        -->
+        <Button
+          type="submit"
+          tone="accent"
+          variant="solid"
+          size="md"
+          block
+          :loading="isLoading"
+          :disabled="isLoading"
+          data-testid="reset-password-submit"
+        >
+          {{ t('auth.resetPassword') }}
+        </Button>
       </form>
     </div>
 
     <!-- Footer -->
     <template #footer>
-      <p class="text-gray-500 dark:text-dark-400">
+      <p class="text-sm text-ink-tertiary">
         {{ t('auth.rememberedPassword') }}
         <router-link
           to="/login"
-          class="font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+          class="text-accent underline-offset-2 transition-colors duration-fast hover:text-accent-hover hover:underline"
         >
           {{ t('auth.signIn') }}
         </router-link>
@@ -204,6 +171,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import { resetPassword } from '@/api/auth'
@@ -332,15 +301,8 @@ async function handleSubmit(): Promise<void> {
 }
 </script>
 
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-</style>
+<!--
+  The `<style scoped>` block held `.fade-*` classes for a `<transition
+  name="fade">` this template never had — dead CSS carrying a banned
+  `transition: all`.
+-->
