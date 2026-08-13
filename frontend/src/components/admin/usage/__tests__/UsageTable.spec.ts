@@ -14,7 +14,7 @@ vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 
 import UsageTable from '../UsageTable.vue'
 
@@ -72,8 +72,11 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
+    // `locale` is required now that numeric cells format through `Intl`: a
+    // `t`-only mock makes NumCell throw on `locale.value` during render.
     useI18n: () => ({
       t: (key: string) => messages[key] ?? key,
+      locale: ref('en'),
     }),
   }
 })

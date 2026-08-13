@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { ref } from 'vue'
 
 import UsageStatsCards from '../UsageStatsCards.vue'
 
@@ -23,8 +24,12 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
+    // `locale` is part of the mock because the card now formats its numbers
+    // through `Intl` in NumCell/Metric; a `t`-only mock makes those children
+    // throw on `locale.value`.
     useI18n: () => ({
       t: (key: string) => messages[key] ?? key,
+      locale: ref('en'),
     }),
   }
 })
@@ -44,24 +49,29 @@ const stats = {
 }
 
 describe('UsageStatsCards', () => {
+  // The breakdown is no longer inside a hover tooltip, so this asserts the
+  // numbers are present in the rendered rows rather than that a popover exists.
   it('shows cache token breakdown values', () => {
     const wrapper = mount(UsageStatsCards, {
       props: {
         stats,
       },
-      global: {
-        stubs: {
-          Icon: true,
-        },
-      },
     })
 
     const text = wrapper.text()
-    expect(text).toContain('Cache: 34')
-    expect(text).toContain('Cache Token Breakdown')
+    expect(text).toContain('Cache')
+    expect(text).toContain('34')
     expect(text).toContain('Cache Creation')
     expect(text).toContain('12')
     expect(text).toContain('Cache Read')
     expect(text).toContain('22')
+  })
+
+  it('renders a missing measurement as an en dash rather than as zero', () => {
+    const wrapper = mount(UsageStatsCards, {
+      props: { stats: { ...stats, total_cache_read_tokens: undefined } as never },
+    })
+
+    expect(wrapper.text()).toContain('–')
   })
 })

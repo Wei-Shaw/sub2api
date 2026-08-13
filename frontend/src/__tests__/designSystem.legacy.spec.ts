@@ -90,7 +90,6 @@ const ALLOWED: Record<string, string[]> = {
     'components/admin/account/AccountStatsModal.vue',
     'components/admin/account/AccountTestModal.vue',
     'components/admin/account/ReAuthAccountModal.vue',
-    'components/admin/usage/UsageTable.vue',
     'components/admin/user/UserAllowedGroupsModal.vue',
     'components/common/AnnouncementBell.vue',
     'components/common/AnnouncementPopup.vue',
