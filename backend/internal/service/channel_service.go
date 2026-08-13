@@ -659,7 +659,7 @@ func validatePricingBillingMode(pricing []ChannelModelPricing) error {
 }
 
 func checkBillingModeRequirements(p ChannelModelPricing) error {
-	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
+	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage || p.BillingMode == BillingModeVideo {
 		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
 			return infraerrors.BadRequest(
 				"BILLING_MODE_MISSING_PRICE",
@@ -962,10 +962,26 @@ func conflictsBetween(a, b modelEntry) bool {
 	}
 }
 
-// toModelEntry 将模型名转换为 modelEntry
+// toModelEntry 将模型名转换为 modelEntry（用于模型映射的冲突检测）。
+// 归一化必须与 expandMappingToCache 写缓存键的方式一致：映射缓存只做 strings.ToLower。
 func toModelEntry(pattern string) modelEntry {
 	prefix, isWild := splitWildcardSuffix(strings.ToLower(pattern))
 	return modelEntry{pattern: pattern, prefix: prefix, wildcard: isWild}
+}
+
+// toPricingModelEntry 将模型名转换为 modelEntry（用于模型定价的冲突检测）。
+//
+// 与 toModelEntry 的区别：定价缓存的键走 normalizeChannelPricingModelName
+// （额外做 TrimSpace，并把 claude-* 的 "." 换成 "-"），冲突检测必须用同一套归一化，
+// 否则两个校验时看着不同、写进缓存后键相同的定价会互相静默覆盖。
+func toPricingModelEntry(pattern string) modelEntry {
+	// 先剥通配符再归一化，与 expandPricingToCache 的处理顺序保持一致
+	prefix, isWild := splitWildcardSuffix(pattern)
+	return modelEntry{
+		pattern:  pattern,
+		prefix:   normalizeChannelPricingModelName(prefix),
+		wildcard: isWild,
+	}
 }
 
 // validateNoConflictingModels 检查定价列表中是否有冲突模型模式（同一平台下）。
@@ -974,7 +990,7 @@ func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
 	byPlatform := make(map[string][]modelEntry)
 	for _, p := range pricingList {
 		for _, model := range p.Models {
-			byPlatform[p.Platform] = append(byPlatform[p.Platform], toModelEntry(model))
+			byPlatform[p.Platform] = append(byPlatform[p.Platform], toPricingModelEntry(model))
 		}
 	}
 	for platform, entries := range byPlatform {
