@@ -8,10 +8,15 @@ import OrderTable from '@/components/payment/OrderTable.vue'
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  // `locale` is part of the composer contract: `NumCell` reads it to pick the
+  // `Intl.NumberFormat` locale, so a mock that only supplies `t` blows up as
+  // soon as a table renders a real number cell.
+  const { ref } = await import('vue')
   return {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      locale: ref('en'),
     }),
   }
 })
@@ -109,12 +114,8 @@ describe('admin order currency display', () => {
         loading: false,
         showUser: true,
       },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          OrderStatusBadge: true,
-        },
-      },
+      // No stubs: `OrderTable` renders its own `.table` now, so the amount
+      // cells under test are the real ones.
     })
 
     const text = wrapper.text()

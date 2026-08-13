@@ -99,7 +99,8 @@ describe("SubscriptionPlanCard", () => {
     expect(title.attributes("title")).toBe(name);
     expect(title.classes()).toEqual(expect.arrayContaining([
       "min-w-0",
-      "h-12",
+      // Two lines of `sm` type (18px line box), not two lines of `base`.
+      "h-9",
       "break-words",
       "line-clamp-2",
       "[overflow-wrap:anywhere]",
@@ -140,7 +141,7 @@ describe("SubscriptionPlanCard", () => {
 
     expect(title.text()).toBe("Pro");
     expect(title.attributes("title")).toBe("Pro");
-    expect(title.classes()).toEqual(expect.arrayContaining(["text-base", "font-bold", "h-12"]));
+    expect(title.classes()).toEqual(expect.arrayContaining(["text-sm", "font-medium", "h-9"]));
     expect([...(badge?.element.parentElement?.classList ?? [])]).toEqual(expect.arrayContaining([
       "flex",
       "items-center",
