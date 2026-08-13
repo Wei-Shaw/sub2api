@@ -47,6 +47,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if normalized {
 		body = normalizedBody
 	}
+	// Responses requires a forced function name at the top level of tool_choice,
+	// but some Chat-compatible clients send it under function.name. Normalize at
+	// the common ingress before passthrough and account-specific transforms split.
+	normalizedBody, normalized, err = normalizeOpenAIResponsesFunctionToolChoiceBody(body)
+	if err != nil {
+		return nil, err
+	}
+	if normalized {
+		body = normalizedBody
+	}
 	// 在分流到 passthrough / Codex transform / 原生 ChatCompletions 之前统一修正
 	// 显式为 null 的工具 Schema type，否则 upstream 的 400 会被归一成可重试的 502，
 	// 同一份坏定义在账号池里反复重放。
