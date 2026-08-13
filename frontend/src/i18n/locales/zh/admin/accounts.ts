@@ -333,6 +333,10 @@ export default {
       status: {
         active: '正常',
         inactive: '停用',
+        // ProxiesView 通过 `t('admin.accounts.status.' + value)` 渲染
+        // Proxy['status']，其中包含静态扫描看不到的 'expired'。
+        // 该联合类型的每个取值都需要在此命名空间下有对应文案。
+        expired: '已过期',
         error: '错误',
         cooldown: '冷却中',
         paused: '暂停',
@@ -758,6 +762,9 @@ export default {
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',
       actualModel: '实际模型',
+      // 模型映射「from → to」两个输入框的占位文案。
+      fromModel: '请求模型',
+      toModel: '实际模型',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -956,6 +963,10 @@ export default {
       updating: '更新中...',
       accountCreated: '账号创建成功',
       accountUpdated: '账号更新成功',
+      // CreateAccountModal 使用嵌套路径，需与上方扁平的 accountCreated 保持一致。
+      messages: {
+        accountCreated: '账号创建成功',
+      },
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
       pleaseSelectStatus: '请选择有效的账号状态',

@@ -494,6 +494,7 @@ export default {
       leaveEmptyToKeep: 'Leave empty to keep current password',
       generatePassword: 'Generate random password',
       copyPassword: 'Copy password',
+      passwordCopied: 'Password copied to clipboard',
       creating: 'Creating...',
       updating: 'Updating...',
       form: {

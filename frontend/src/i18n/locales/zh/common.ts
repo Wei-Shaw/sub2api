@@ -14,7 +14,9 @@ export default {
     create: '创建',
     update: '更新',
     confirm: '确认',
+    apply: '应用',
     reset: '重置',
+    clear: '清除',
     search: '搜索',
     filter: '筛选',
     export: '导出',
@@ -73,7 +75,12 @@ export default {
     noOptionsFound: '无匹配选项',
     noGroupsAvailable: '无可用分组',
     unknownError: '发生未知错误',
+    tryAgain: '操作失败，请重试',
+    // 句子片段：拼接在字段名之后，例如“名称 不能为空”。
+    required: '不能为空',
     saving: '保存中...',
+    creating: '创建中...',
+    sending: '发送中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
     autoRefresh: {

@@ -4,6 +4,7 @@ export default {
     welcomeMessage: "Welcome back! Here's an overview of your account.",
     balance: 'Balance',
     apiKeys: 'API Keys',
+    apiKey: 'API Key',
     todayRequests: 'Today Requests',
     todayCost: 'Today Cost',
     todayTokens: 'Today Tokens',

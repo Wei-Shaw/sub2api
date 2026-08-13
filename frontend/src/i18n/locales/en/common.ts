@@ -14,7 +14,9 @@ export default {
     create: 'Create',
     update: 'Update',
     confirm: 'Confirm',
+    apply: 'Apply',
     reset: 'Reset',
+    clear: 'Clear',
     search: 'Search',
     filter: 'Filter',
     export: 'Export',
@@ -73,7 +75,12 @@ export default {
     noOptionsFound: 'No options found',
     noGroupsAvailable: 'No groups available',
     unknownError: 'Unknown error occurred',
+    tryAgain: 'Something went wrong, please try again',
+    // Sentence fragment: appended after a field label, e.g. "Name is required".
+    required: 'is required',
     saving: 'Saving...',
+    creating: 'Creating...',
+    sending: 'Sending...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
     autoRefresh: {

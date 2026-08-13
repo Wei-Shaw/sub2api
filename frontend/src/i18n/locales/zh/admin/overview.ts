@@ -494,6 +494,7 @@ export default {
       leaveEmptyToKeep: '留空则保持原密码不变',
       generatePassword: '生成随机密码',
       copyPassword: '复制密码',
+      passwordCopied: '密码已复制到剪贴板',
       creating: '创建中...',
       updating: '更新中...',
       columns: {

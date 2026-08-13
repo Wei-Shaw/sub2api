@@ -4,6 +4,7 @@ export default {
     welcomeMessage: '欢迎回来！这是您账户的概览。',
     balance: '余额',
     apiKeys: 'API 密钥',
+    apiKey: 'API 密钥',
     todayRequests: '今日请求',
     todayCost: '今日消费',
     todayTokens: '今日 Token',

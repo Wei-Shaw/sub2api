@@ -130,6 +130,10 @@ export default {
       status: {
         active: 'Active',
         inactive: 'Inactive',
+        // ProxiesView renders `t('admin.accounts.status.' + value)` over
+        // Proxy['status'], which includes 'expired' — a member no static scan
+        // can see. Keep this namespace covering every member of that union.
+        expired: 'Expired',
         error: 'Error',
         cooldown: 'Cooldown',
         paused: 'Paused',
@@ -690,6 +694,9 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      // Placeholders for the two inputs of a "from → to" model mapping row.
+      fromModel: 'Request model',
+      toModel: 'Actual model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -892,6 +899,11 @@ export default {
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
       accountUpdated: 'Account updated successfully',
+      // CreateAccountModal reaches for the nested path; keep it in step with
+      // the flat `accountCreated` above.
+      messages: {
+        accountCreated: 'Account created successfully',
+      },
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
       pleaseSelectStatus: 'Please select a valid account status',
