@@ -1,32 +1,28 @@
 <template>
-  <div class="mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60">
-    <div
-      class="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2"
-    >
-      <span>{{ t('monitorCommon.history60pts', { n: length }) }}</span>
-      <span class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
+  <div class="mt-3 border-t border-line-subtle pt-2.5">
+    <div class="mb-1.5 flex justify-between gap-2 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+      <span class="truncate">{{ t('monitorCommon.history60pts', { n: length }) }}</span>
+      <span class="shrink-0 font-mono tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
     </div>
 
     <div
       v-if="maintenance"
-      class="flex h-5 w-full items-center justify-center rounded border border-dashed border-gray-300 dark:border-dark-600 text-[10px] uppercase tracking-widest text-gray-400"
+      class="flex h-5 w-full items-center justify-center border border-dashed border-line text-2xs uppercase tracking-[0.04em] text-ink-tertiary"
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="flex items-end gap-[2px] h-5 w-full">
+    <div v-else class="flex h-5 w-full items-end gap-px">
       <div
         v-for="(bar, idx) in displayBars"
         :key="idx"
-        class="flex-1 min-w-0 rounded-sm"
+        class="min-w-0 flex-1"
         :class="bar.colorClass"
         :style="{ height: bar.heightPct + '%' }"
         :title="bar.title"
       ></div>
     </div>
 
-    <div
-      class="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-gray-400"
-    >
+    <div class="mt-1 flex justify-between text-2xs uppercase tracking-[0.04em] text-ink-tertiary">
       <span>{{ t('monitorCommon.past') }}</span>
       <span>{{ t('monitorCommon.now') }}</span>
     </div>
@@ -59,8 +55,9 @@ interface Bar {
   title: string
 }
 
-// 4 级高度 + 颜色双重编码：高=好+绿，短=坏+红，灰=未测试。
-// 长绿(正常) > 中黄(降级) > 短红(失败/系统错误) > 很短灰(未测试)。
+// Height is the primary encoding and it is redundant with the colour: tall =
+// good, short = bad, shortest = never tested. Every bar also carries a `title`
+// naming its status, so the strip reads without colour at all.
 const STATUS_HEIGHT: Record<string, number> = {
   operational: 100,
   degraded: 65,
@@ -69,12 +66,20 @@ const STATUS_HEIGHT: Record<string, number> = {
   empty: 15,
 }
 
+/**
+ * Operational is a neutral hairline grey, not green.
+ *
+ * On a healthy channel this strip is sixty bars of "fine". Painting all sixty
+ * emerald spends the entire colour budget on the state that needs no attention,
+ * and the one amber bar in the middle has nothing to stand out against. Only
+ * the exceptions are tinted.
+ */
 const STATUS_COLOR: Record<string, string> = {
-  operational: 'bg-emerald-500',
-  degraded: 'bg-amber-500',
-  failed: 'bg-red-500',
-  error: 'bg-red-500',
-  empty: 'bg-gray-300 dark:bg-dark-600',
+  operational: 'bg-line-strong',
+  degraded: 'bg-warn',
+  failed: 'bg-danger',
+  error: 'bg-danger',
+  empty: 'bg-line-subtle',
 }
 
 const displayBars = computed<Bar[]>(() => {

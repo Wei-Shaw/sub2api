@@ -1,43 +1,43 @@
 <template>
-  <section
-    class="card flex min-h-[360px] flex-col overflow-hidden !rounded-3xl !border-0 !p-6 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700"
-  >
-    <div class="card-header mb-4 flex shrink-0 flex-wrap items-start justify-between gap-3 !border-0 !p-0">
+  <section class="flex min-h-[320px] min-w-0 flex-col rounded border border-line bg-surface">
+    <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-4 py-3">
       <div class="min-w-0">
-        <h2 class="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
-          <span class="inline-flex h-4 w-4 text-sky-500" aria-hidden="true">
-            <Icon name="chart" size="sm" />
-          </span>
+        <h2 class="truncate text-sm font-semibold text-ink">
           {{ t('channelMonitorV2.chart.title') }}
         </h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
+        <p class="mt-0.5 text-xs text-ink-tertiary">
           {{ t('channelMonitorV2.chart.description') }}
         </p>
       </div>
-      <div class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400 sm:w-auto">
-        <span class="flex shrink-0 items-center gap-1">
-          <span class="h-2 w-2 rounded-full bg-red-500"></span>{{ t('channelMonitorV2.chart.errorLegend') }}
-        </span>
-        <span class="flex shrink-0 items-center gap-1">
-          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>{{ t('channelMonitorV2.chart.cacheLegend') }}
-        </span>
-        <span class="flex shrink-0 items-center gap-1">
-          <span class="h-2 w-2 rounded-full bg-sky-500"></span>{{ t('channelMonitorV2.chart.ttftLegend') }}
-        </span>
-        <span class="badge badge-gray shrink-0">{{ bucketLabel }}</span>
-        <button
-          type="button"
-          class="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="!zoomed"
-          @click="resetChartZoom"
+      <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <!--
+          Series swatches are 8px squares, matching the chart.js legend box that
+          `applyChartDefaults()` sets. Each carries its own text label, so the
+          colour is never the only channel.
+        -->
+        <span
+          v-for="entry in legend"
+          :key="entry.label"
+          class="inline-flex shrink-0 items-center gap-1.5 text-2xs text-ink-tertiary"
         >
+          <span
+            class="h-2 w-2 shrink-0"
+            :style="{ backgroundColor: entry.color }"
+            aria-hidden="true"
+          ></span>
+          {{ entry.label }}
+        </span>
+        <Badge class="shrink-0">{{ bucketLabel }}</Badge>
+        <Button size="xs" class="shrink-0" :disabled="!zoomed" @click="resetChartZoom">
           {{ t('channelMonitorV2.chart.resetZoom') }}
-        </button>
+        </Button>
       </div>
-    </div>
-    <div class="card-body min-h-0 flex-1 !p-0">
-      <div v-if="loading" class="flex h-[280px] items-center justify-center sm:h-[300px]">
-        <div class="animate-pulse text-sm text-gray-400">{{ t('common.loading') }}</div>
+    </header>
+
+    <div class="min-h-0 flex-1 p-4">
+      <!-- Flat hairline placeholders. No shimmer sweep, no spinner. -->
+      <div v-if="loading" class="flex h-[280px] flex-col justify-end gap-3 sm:h-[300px]">
+        <div v-for="i in 5" :key="i" class="skeleton h-3" :style="{ width: `${34 + i * 13}%` }"></div>
       </div>
       <div
         v-else-if="chartData"
@@ -45,7 +45,7 @@
         class="h-[280px] sm:h-[300px]"
         @wheel="onChartWheel"
       >
-        <Line :data="chartData" :options="chartOptions" />
+        <Line ref="lineRef" :data="chartData" :options="chartOptions" />
       </div>
       <div v-else class="flex h-[280px] items-center justify-center sm:h-[300px]">
         <EmptyState
@@ -60,7 +60,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
-import { useTheme } from '@/composables/useTheme'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -70,11 +69,13 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler,
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
+
+import { useThemedChart } from '@/components/charts/chartTheme'
+import Badge from '@/components/common/Badge.vue'
+import Button from '@/components/common/Button.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import Icon from '@/components/icons/Icon.vue'
 import type { MonitorCoverage, MonitorMetric, MonitorHealth } from '@/api/channelMonitorV2'
 import { formatMonitorMs, formatMonitorPercent } from '@/features/channel-monitor-v2/monitorFormat'
 import {
@@ -86,7 +87,7 @@ import {
   type ZoomState,
 } from '@/features/channel-monitor-v2/monitorZoom'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 const { t, locale } = useI18n()
 
 const props = defineProps<{
@@ -99,9 +100,31 @@ const chartRef = ref<HTMLElement | null>(null)
 const zoom = ref<ZoomState>(resetZoom())
 const zoomed = computed(() => isZoomed(zoom.value))
 
-// Was a `computed` reading `documentElement.classList` with no reactive
-// dependency, so it cached forever and this chart never re-themed on toggle.
-const { isDark } = useTheme()
+/**
+ * The chart palette used to be three hardcoded hexes plus five theme-branched
+ * `isDark ? … : …` pairs, so it had no relationship to the design tokens and
+ * the axis/tooltip colours were maintained twice.
+ *
+ * `useThemedChart` is reactive on the theme AND pushes `update('none')` on a
+ * flip — `'none'` because animating a theme change reads as a glitch. Axis,
+ * grid, tooltip, font, point radius and legend box are all set globally by
+ * `applyChartDefaults()`; nothing below re-declares them.
+ */
+type ChartInstance = { chart?: { update: (mode?: string) => void } } | null
+const lineRef = ref<ChartInstance>(null)
+const chartTheme = useThemedChart(lineRef)
+
+/** Error · cache · TTFT, in the categorical series order. Never the status hues. */
+const seriesColors = computed(() => {
+  const palette = chartTheme.value.series
+  return { error: palette[0], cache: palette[1], ttft: palette[2] }
+})
+
+const legend = computed(() => [
+  { color: seriesColors.value.error, label: t('channelMonitorV2.chart.errorLegend') },
+  { color: seriesColors.value.cache, label: t('channelMonitorV2.chart.cacheLegend') },
+  { color: seriesColors.value.ttft, label: t('channelMonitorV2.chart.ttftLegend') },
+])
 
 const bucketLabel = computed(() => {
   const seconds = props.coverage?.bucket_seconds || 60
@@ -123,53 +146,44 @@ const chartData = computed(() => {
       minute: '2-digit',
     }).format(new Date(p.bucket_start))
   )
-  const errorRates = smoothTrend(points.map((p) => (p.metrics.error_rate || 0) * 100))
-  const cacheRates = smoothTrend(points.map((p) => (p.metrics.cache_rate || 0) * 100))
-  const ttftP50 = smoothTrend(points.map((p) => p.metrics.ttft?.p50_ms ?? null))
+  /*
+   * Plotted values are the measured values.
+   *
+   * These three series used to be pushed through a 3-point moving average and
+   * then drawn with `tension: 0.4` + monotone interpolation. Both invent data:
+   * the average halves a single-bucket latency spike or error burst — exactly
+   * the event this page exists to surface — and the bezier then invents further
+   * values between the samples it was given. The tooltip reported the smoothed
+   * number as if it had been measured. `applyChartDefaults()` sets
+   * `elements.line.tension = 0` for this reason; nothing here overrides it.
+   */
   return {
     labels,
     datasets: [
       {
         label: t('channelMonitorV2.chart.errorDataset'),
-        data: errorRates,
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 67, 67, 0.10)',
+        data: points.map((p) => (p.metrics.error_rate || 0) * 100),
+        borderColor: seriesColors.value.error,
+        backgroundColor: seriesColors.value.error,
         yAxisID: 'yPct',
-        tension: 0.4,
-        cubicInterpolationMode: 'monotone' as const,
-        fill: 'origin' as const,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointHitRadius: 10,
-        borderWidth: 2,
+        fill: false,
       },
       {
         label: t('channelMonitorV2.chart.cacheDataset'),
-        data: cacheRates,
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        data: points.map((p) => (p.metrics.cache_rate || 0) * 100),
+        borderColor: seriesColors.value.cache,
+        backgroundColor: seriesColors.value.cache,
         yAxisID: 'yPct',
-        tension: 0.4,
-        cubicInterpolationMode: 'monotone' as const,
         fill: false,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointHitRadius: 10,
-        borderWidth: 2,
       },
       {
         label: t('channelMonitorV2.chart.ttftDataset'),
-        data: ttftP50,
-        borderColor: '#0ea5e9',
-        backgroundColor: 'rgba(14, 165, 233, 0.08)',
+        // `?? null` keeps "not measured" distinct from "measured 0ms".
+        data: points.map((p) => p.metrics.ttft?.p50_ms ?? null),
+        borderColor: seriesColors.value.ttft,
+        backgroundColor: seriesColors.value.ttft,
         yAxisID: 'yTtft',
-        tension: 0.4,
-        cubicInterpolationMode: 'monotone' as const,
         fill: false,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-        pointHitRadius: 10,
-        borderWidth: 2,
         spanGaps: true,
       },
     ],
@@ -194,23 +208,8 @@ watch(() => props.trend, () => {
   zoom.value = resetZoom()
 })
 
-function smoothTrend(values: Array<number | null>): Array<number | null> {
-  if (values.length <= 2) return values
-  return values.map((value, index) => {
-    if (value == null) return null
-    const neighbors = values.slice(Math.max(0, index - 1), Math.min(values.length, index + 2))
-      .filter((item): item is number => item != null)
-    if (!neighbors.length) return value
-    return neighbors.reduce((sum, item) => sum + item, 0) / neighbors.length
-  })
-}
-
 const chartOptions = computed(() => {
-  const text = isDark.value ? '#9ca3af' : '#6b7280'
-  const grid = isDark.value ? '#374151' : '#f3f4f6'
-  const tooltipBg = isDark.value ? '#1f2937' : '#ffffff'
-  const tooltipTitle = isDark.value ? '#f3f4f6' : '#111827'
-  const tooltipBody = isDark.value ? '#d1d5db' : '#4b5563'
+  const theme = chartTheme.value
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -218,19 +217,15 @@ const chartOptions = computed(() => {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: tooltipBg,
-        titleColor: tooltipTitle,
-        bodyColor: tooltipBody,
-        borderColor: grid,
-        borderWidth: 1,
-        padding: 10,
-        displayColors: true,
         callbacks: {
           label(ctx: { dataset: { label?: string }; parsed: { y: number | null } }) {
             const label = ctx.dataset.label || ''
             const y = ctx.parsed.y
-            if (y == null) return `${label}: -`
-            if (label === t('channelMonitorV2.chart.errorDataset') || label === t('channelMonitorV2.chart.cacheDataset')) {
+            if (y == null) return `${label}: –`
+            if (
+              label === t('channelMonitorV2.chart.errorDataset') ||
+              label === t('channelMonitorV2.chart.cacheDataset')
+            ) {
               return `${label}: ${formatMonitorPercent(y / 100)}`
             }
             return `${label}: ${formatMonitorMs(y)}`
@@ -240,7 +235,7 @@ const chartOptions = computed(() => {
     },
     scales: {
       x: {
-        ticks: { color: text, maxRotation: 0, autoSkip: true, maxTicksLimit: 8, autoSkipPadding: 10, font: { size: 10 } },
+        ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, autoSkipPadding: 10 },
         grid: { display: false },
       },
       yPct: {
@@ -248,25 +243,28 @@ const chartOptions = computed(() => {
         position: 'left' as const,
         min: 0,
         suggestedMax: 100,
-        ticks: {
-          color: text,
-          font: { size: 10 },
-          callback: (v: string | number) => `${v}%`,
+        ticks: { callback: (v: string | number) => `${v}%` },
+        grid: { color: theme.grid },
+        title: {
+          display: true,
+          text: t('channelMonitorV2.chart.percentAxis'),
+          color: theme.axisTitle,
         },
-        grid: { color: grid, borderDash: [4, 4] },
-        title: { display: true, text: t('channelMonitorV2.chart.percentAxis'), color: text, font: { size: 11 } },
       },
       yTtft: {
         type: 'linear' as const,
         position: 'right' as const,
         min: 0,
         ticks: {
-          color: '#0ea5e9',
-          font: { size: 10 },
+          color: seriesColors.value.ttft,
           callback: (v: string | number) => formatMonitorMs(Number(v)),
         },
         grid: { display: false },
-        title: { display: true, text: t('channelMonitorV2.metrics.ttftP50'), color: '#0ea5e9', font: { size: 11 } },
+        title: {
+          display: true,
+          text: t('channelMonitorV2.metrics.ttftP50'),
+          color: seriesColors.value.ttft,
+        },
       },
     },
   }

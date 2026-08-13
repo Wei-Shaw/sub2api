@@ -98,7 +98,6 @@ const ALLOWED: Record<string, string[]> = {
     'components/payment/StripePaymentInline.vue',
     'composables/useChannelMonitorFormat.ts',
     'views/admin/SubscriptionsView.vue',
-    'views/user/ChannelStatusV2View.vue',
     'views/user/StripePaymentView.vue',
   ],
   'backdrop-blur': [],

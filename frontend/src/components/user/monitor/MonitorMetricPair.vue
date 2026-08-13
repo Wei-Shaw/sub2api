@@ -1,44 +1,49 @@
 <template>
-  <div class="mt-5 grid grid-cols-2 gap-2">
-    <div
-      class="rounded-xl p-3 bg-gray-50/80 dark:bg-dark-900/40 border border-gray-100 dark:border-dark-700/50"
-    >
-      <div
-        class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400"
-      >
+  <!--
+    Two measurements, separated by a hairline rather than boxed in two tinted
+    `rounded-xl` wells. A well inside a card inside a grid is three nested boxes
+    for two numbers.
+  -->
+  <dl class="mt-3 grid grid-cols-2 gap-px border-y border-line-subtle bg-line-subtle">
+    <div class="bg-surface py-2 pr-3">
+      <dt class="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
         <Icon :name="primaryIcon" size="xs" />
-        <span>{{ primaryLabel }}</span>
-      </div>
-      <div class="mt-1.5 text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
-        {{ primaryValue }}<span class="text-xs font-normal text-gray-400 ml-0.5">{{ primaryUnit }}</span>
-      </div>
+        <span class="truncate">{{ primaryLabel }}</span>
+      </dt>
+      <dd class="mt-0.5 flex justify-start">
+        <NumCell :value="primaryValue" :unit="primaryUnit" :precision="0" />
+      </dd>
     </div>
-    <div
-      class="rounded-xl p-3 bg-gray-50/80 dark:bg-dark-900/40 border border-gray-100 dark:border-dark-700/50"
-    >
-      <div
-        class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400"
-      >
+    <div class="bg-surface py-2 pl-3">
+      <dt class="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
         <Icon :name="secondaryIcon" size="xs" />
-        <span>{{ secondaryLabel }}</span>
-      </div>
-      <div class="mt-1.5 text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
-        {{ secondaryValue }}<span class="text-xs font-normal text-gray-400 ml-0.5">{{ secondaryUnit }}</span>
-      </div>
+        <span class="truncate">{{ secondaryLabel }}</span>
+      </dt>
+      <dd class="mt-0.5 flex justify-start">
+        <NumCell :value="secondaryValue" :unit="secondaryUnit" :precision="0" />
+      </dd>
     </div>
-  </div>
+  </dl>
 </template>
 
 <script setup lang="ts">
+import NumCell from '@/components/common/NumCell.vue'
 import Icon from '@/components/icons/Icon.vue'
 
+/**
+ * `primaryValue` / `secondaryValue` are `number | null`, not pre-formatted
+ * strings. `NumCell` needs the number to group it by locale, keep the unit a
+ * step down, expose the unrounded value on hover, and — the one that matters on
+ * a monitor — render an en dash when there is no measurement at all, which a
+ * formatted `"0"` would have hidden.
+ */
 defineProps<{
   primaryLabel: string
-  primaryValue: string
+  primaryValue: number | null
   primaryUnit: string
   primaryIcon: 'bolt' | 'globe' | 'clock' | 'link'
   secondaryLabel: string
-  secondaryValue: string
+  secondaryValue: number | null
   secondaryUnit: string
   secondaryIcon: 'bolt' | 'globe' | 'clock' | 'link'
 }>()

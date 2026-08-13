@@ -7,10 +7,10 @@
     <button
       ref="triggerRef"
       type="button"
-      class="select-trigger flex cursor-pointer list-none items-center justify-between gap-1.5 text-left"
+      class="select-trigger flex w-full cursor-pointer list-none items-center justify-between gap-1.5 rounded border bg-surface px-2 text-left text-ink transition-colors duration-fast ease-out hover:border-line-strong"
       :class="[
-        isOpen ? 'select-trigger-open' : '',
-        compact ? 'h-8 rounded-lg !px-2 !py-1 text-xs' : 'h-[42px]',
+        isOpen ? 'border-accent' : 'border-line',
+        compact ? 'h-7 text-xs' : 'h-9 px-3 text-sm',
       ]"
       :aria-expanded="isOpen"
       aria-haspopup="listbox"
@@ -23,7 +23,10 @@
       >
         {{ t('channelMonitorV2.filters.labelValue', { label, value: selectionLabel }) }}
       </span>
-      <span class="select-icon shrink-0 text-gray-400 transition-transform" :class="isOpen ? 'rotate-180' : ''">
+      <span
+        class="select-icon shrink-0 text-ink-tertiary transition-transform duration-fast"
+        :class="isOpen ? 'rotate-180' : ''"
+      >
         <Icon name="chevronDown" size="sm" />
       </span>
     </button>
@@ -41,13 +44,15 @@
           @click.stop
           @mousedown.stop
         >
+          <!-- Accent marks SELECTION here and nothing else — never a status. -->
           <button
             type="button"
-            class="dropdown-item select-option select-option-group flex w-full items-center justify-between border-b border-gray-100 px-4 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-700 dark:text-gray-300 dark:hover:bg-dark-700"
+            class="dropdown-item select-option select-option-group w-full justify-between border-b border-line font-medium"
+            :class="modelValue.length === 0 ? 'text-accent' : ''"
             @click="clear"
           >
-            <span>{{ allLabel }}</span>
-            <Icon v-if="modelValue.length === 0" name="check" size="sm" class="text-primary-500" />
+            <span class="truncate">{{ allLabel }}</span>
+            <Icon v-if="modelValue.length === 0" name="check" size="xs" class="shrink-0" />
           </button>
 
           <button
@@ -55,23 +60,27 @@
             :key="option.value"
             type="button"
             role="option"
-            class="dropdown-item select-option flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
-            :class="modelValue.includes(option.value) ? 'select-option-selected' : ''"
+            class="dropdown-item select-option w-full justify-between gap-3"
+            :class="modelValue.includes(option.value) ? 'select-option-selected text-accent' : ''"
             :aria-selected="modelValue.includes(option.value)"
             @click="toggle(option.value)"
           >
             <span class="flex min-w-0 flex-1 items-center gap-2">
               <span
-                class="checkbox flex h-4 w-4 items-center justify-center rounded border border-gray-300 bg-white text-primary-500 dark:border-dark-600 dark:bg-dark-900"
-                :class="modelValue.includes(option.value) ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30' : ''"
+                class="checkbox flex h-3.5 w-3.5 items-center justify-center rounded-sm border"
+                :class="modelValue.includes(option.value)
+                  ? 'border-accent-solid bg-accent-solid text-accent-on'
+                  : 'border-line bg-surface'"
               >
-                <Icon v-if="modelValue.includes(option.value)" name="check" size="sm" class="text-primary-500" />
+                <Icon v-if="modelValue.includes(option.value)" name="check" size="xs" />
               </span>
               <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
             </span>
-            <small v-if="option.count != null" class="text-xs text-gray-400">{{ formatCount(option.count) }}</small>
+            <NumCell v-if="option.count != null" :value="option.count" compact />
           </button>
-          <p v-if="options.length === 0" class="px-4 py-3 text-center text-xs text-gray-400">{{ t('channelMonitorV2.filters.empty') }}</p>
+          <p v-if="options.length === 0" class="px-3 py-3 text-center text-xs text-ink-tertiary">
+            {{ t('channelMonitorV2.filters.empty') }}
+          </p>
         </div>
       </Transition>
     </Teleport>
@@ -82,8 +91,8 @@
 import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import NumCell from '@/components/common/NumCell.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { monitorIntlLocale } from '@/features/channel-monitor-v2/monitorFormat'
 
 interface FilterOption {
   value: string
@@ -104,7 +113,7 @@ const props = withDefaults(
   { compact: false },
 )
 const emit = defineEmits<{ 'update:modelValue': [value: string[]] }>()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 
 const containerRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
@@ -183,12 +192,6 @@ function positionDropdown() {
   dropdown.style.maxWidth = `${availableWidth}px`
 }
 
-function formatCount(value: number) {
-  return Intl.NumberFormat(locale.value || monitorIntlLocale(), {
-    notation: value >= 10000 ? 'compact' : 'standard',
-  }).format(value)
-}
-
 function onDocumentMouseDown(event: MouseEvent) {
   if (!isOpen.value) return
   const target = event.target as Node | null
@@ -231,32 +234,22 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.select-trigger {
-  @apply flex w-full items-center justify-between gap-2;
-  @apply rounded-xl px-4 py-2.5 text-sm;
-  @apply bg-white dark:bg-dark-800;
-  @apply border border-gray-200 dark:border-dark-600;
-  @apply text-gray-900 dark:text-gray-100;
-  @apply transition-all duration-200;
-  @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-  @apply hover:border-gray-300 dark:hover:border-dark-500;
-  @apply cursor-pointer;
-}
-
-.select-trigger-open {
-  @apply border-primary-500 ring-2 ring-primary-500/30;
-}
-
+/*
+ * The trigger chrome moved into the template so it reads as tokens rather than
+ * an `@apply` block that duplicated `.input`. What went away with it: a
+ * `focus:ring-2 ring-primary-500/30` (focus is the global `outline` in
+ * style.css, which an `overflow: hidden` ancestor cannot clip), a
+ * `transition: all`, and five hand-written `dark:` pairs.
+ *
+ * `.dropdown` in style.css already supplies the surface, hairline and popover
+ * elevation.
+ */
 .filter-menu summary::-webkit-details-marker {
   display: none;
 }
 
 .filter-dropdown {
-  @apply w-max min-w-[200px] max-h-[min(50vh,360px)] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800;
-}
-
-.dropdown-item {
-  @apply cursor-pointer;
+  @apply max-h-[min(50vh,360px)] w-max min-w-[200px] overflow-y-auto;
 }
 
 .checkbox {
