@@ -121,8 +121,12 @@ export default {
       qualityCheck: 'Quality Check',
       batchQualityCheck: 'Batch Quality Check',
       batchTest: 'Test All Proxies',
+      // Status chip on a proxy row.
       testFailed: 'Failed',
       latencyFailed: 'Connection failed',
+      // Fallback sentence when a test request fails and the API returns no detail.
+      // Distinct from `testFailed` (a status label) on purpose.
+      testFailedMessage: 'Proxy test failed',
       batchTestEmpty: 'No proxies available for testing',
       batchTestDone: 'Batch test completed for {count} proxies',
       batchTestFailed: 'Batch test failed',

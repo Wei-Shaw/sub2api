@@ -37,6 +37,8 @@ export default {
     none: '无',
     selectAll: '全选',
     noData: '暂无数据',
+    // 无数值单元格的读屏标签。既不是「0」也不是「空」：缺少数值与数值为零是两件事。
+    noValue: '无数值',
     expand: '展开',
     collapse: '收起',
     success: '成功',

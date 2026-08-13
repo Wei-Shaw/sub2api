@@ -884,6 +884,8 @@ export default {
 
   // Pagination
   pagination: {
+    // 分页导航地标的可访问名称。
+    label: '分页导航',
     showing: '显示',
     to: '至',
     of: '共',

@@ -3,7 +3,7 @@
     class="inline-flex items-baseline justify-end gap-1 font-mono tabular-nums"
     :class="toneClass"
   >
-    <span v-if="isBlank" class="text-ink-disabled" aria-label="no value">–</span>
+    <span v-if="isBlank" class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
     <template v-else>
       <span :title="title">{{ formatted }}</span>
       <!-- The unit sits a step down so it never competes with the number. -->
@@ -50,7 +50,7 @@ const props = withDefaults(
   { tone: 'neutral' }
 )
 
-const { locale } = useI18n()
+const { locale, t } = useI18n()
 
 const numeric = computed(() => {
   if (props.value === null || props.value === undefined || props.value === '') return null

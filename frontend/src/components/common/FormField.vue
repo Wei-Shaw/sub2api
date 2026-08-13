@@ -9,7 +9,7 @@
       <slot name="label">{{ label }}</slot>
       <span v-if="required" class="ml-0.5 text-danger" aria-hidden="true">*</span>
       <span v-else-if="optional" class="ml-1 font-normal text-ink-disabled">
-        {{ optionalText }}
+        {{ resolvedOptionalText }}
       </span>
     </label>
 
@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, useId } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 /**
  * The composition root for a labelled control.
@@ -73,8 +74,16 @@ const props = withDefaults(
      */
     hideMessage?: boolean
   }>(),
-  { labelPosition: 'top', optionalText: 'optional' }
+  // `optionalText` deliberately has no literal default: the fallback is
+  // translated and `t()` is not callable at prop-declaration scope. It stays
+  // `undefined` here and is resolved below, so the prop remains optional and
+  // fully overridable by the caller.
+  { labelPosition: 'top', optionalText: undefined }
 )
+
+const { t } = useI18n()
+
+const resolvedOptionalText = computed(() => props.optionalText ?? t('common.optional'))
 
 const generated = useId()
 

@@ -138,8 +138,11 @@ export default {
       qualityCheck: '质量检测',
       batchQualityCheck: '批量质量检测',
       batchTest: '批量测试',
+      // 代理行上的状态标签。
       testFailed: '失败',
       latencyFailed: '链接失败',
+      // 测试请求失败且接口未返回详情时的兜底文案，与状态标签 `testFailed` 有意区分。
+      testFailedMessage: '代理测试失败',
       batchTestEmpty: '暂无可测试的代理',
       batchTestDone: '批量测试完成，共测试 {count} 个代理',
       batchTestFailed: '批量测试失败',

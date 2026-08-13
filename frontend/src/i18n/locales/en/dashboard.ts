@@ -879,6 +879,8 @@ export default {
 
   // Pagination
   pagination: {
+    // Accessible name for the page-number <nav> landmark.
+    label: 'Pagination',
     showing: 'Showing',
     to: 'to',
     of: 'of',

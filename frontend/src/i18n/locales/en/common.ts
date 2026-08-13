@@ -37,6 +37,10 @@ export default {
     none: 'None',
     selectAll: 'Select all',
     noData: 'No data',
+    // Screen-reader label for a cell that carries no measurement at all. Not
+    // "zero" and not "empty": the cell renders an en dash precisely because a
+    // missing measurement is a different fact from a measurement of zero.
+    noValue: 'No value',
     expand: 'Expand',
     collapse: 'Collapse',
     success: 'Success',

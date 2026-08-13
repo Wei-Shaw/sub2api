@@ -301,7 +301,7 @@
                 {{ t('keys.resetUsage') }}
               </Button>
             </div>
-            <span v-else class="text-ink-disabled" aria-label="no value">–</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-expires_at="{ value }">
@@ -332,19 +332,19 @@
             <span v-if="value" class="font-mono text-xs tabular-nums text-ink-secondary">
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-ink-disabled" aria-label="no value">–</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-last_used_ip="{ value }">
             <span v-if="value" class="font-mono text-xs text-ink-secondary">{{ value }}</span>
-            <span v-else class="text-ink-disabled" aria-label="no value">–</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-created_at="{ value }">
             <span v-if="value" class="font-mono text-xs tabular-nums text-ink-secondary">
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-ink-disabled" aria-label="no value">–</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-actions="{ row }">
