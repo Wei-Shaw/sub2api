@@ -331,6 +331,10 @@ type GrokSSOToOAuthRequest struct {
 	RateMultiplier     *float64       `json:"rate_multiplier"`
 	ExpiresAt          *int64         `json:"expires_at"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	// SkipRiskFlagged checks grok.com botFlagSource before converting SSO.
+	// Flagged accounts are not imported. Check failures (network/Cloudflare)
+	// do not block import.
+	SkipRiskFlagged bool `json:"skip_risk_flagged"`
 }
 
 type GrokSSOToOAuthItemResult struct {
@@ -421,6 +425,20 @@ func (h *GrokOAuthHandler) safeCreateAccountFromSSOToken(ctx context.Context, re
 }
 
 func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req GrokSSOToOAuthRequest, token string, index, total int) grokSSOImportWorkerResult {
+	var liveState xai.GrokAccountState
+	if req.SkipRiskFlagged && h.grokOAuthService != nil {
+		liveState = h.grokOAuthService.InspectSSOAccountState(ctx, token, req.ProxyID)
+		if xai.ClassifyGrokAccountState(liveState) == xai.GrokRiskFlagged {
+			email := service.GrokRiskEmailFromSSO(token)
+			kind := xai.GrokFlagKind(liveState.BotFlagDetails)
+			return grokSSOImportWorkerResult{item: GrokSSOToOAuthItemResult{
+				Index: index,
+				Email: email,
+				Error: grokSSORiskFlaggedMessage(liveState, kind),
+			}}
+		}
+	}
+
 	tokenInfo, err := h.grokOAuthService.ConvertFromSSO(ctx, token, req.ProxyID)
 	if err != nil {
 		return grokSSOImportWorkerResult{item: GrokSSOToOAuthItemResult{Index: index, Error: grokSSOImportErrorMessage(err)}}
@@ -429,13 +447,34 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 	credentials := grokSSOImportCredentials(h.grokOAuthService.BuildAccountCredentials(tokenInfo), req.Credentials)
 	name := grokSSOImportAccountName(req.Name, tokenInfo, index, total)
 	expiresAt, autoPauseOnExpired := grokSSOImportExpiry(req.ExpiresAt, req.AutoPauseOnExpired, tokenInfo)
+	extra := cloneGrokSSOMap(req.Extra)
+	if extra == nil {
+		extra = map[string]any{}
+	}
+	jwtReport := service.GrokRiskReport{
+		Email:     tokenInfo.Email,
+		HasBFS:    tokenInfo.HasBFS,
+		BFS:       tokenInfo.BFS,
+		Source:    "jwt",
+		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if tokenInfo.BotFlagSource != nil {
+		jwtReport.BotFlagSource = tokenInfo.BotFlagSource
+	}
+	if tokenInfo.HasBFS || (tokenInfo.BotFlagSource != nil && *tokenInfo.BotFlagSource == 1) {
+		jwtReport.Verdict = xai.GrokRiskFlagged
+		jwtReport.Kind = xai.GrokRiskKindJWT
+	} else {
+		jwtReport.Verdict = xai.GrokRiskClean
+	}
+	extra[service.GrokRiskExtraKey] = service.GrokRiskSnapshotMap(service.MergeGrokRiskReports(liveState, jwtReport))
 	account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 		Name:               name,
 		Notes:              req.Notes,
 		Platform:           service.PlatformGrok,
 		Type:               service.AccountTypeOAuth,
 		Credentials:        credentials,
-		Extra:              cloneGrokSSOMap(req.Extra),
+		Extra:              extra,
 		ProxyID:            req.ProxyID,
 		Concurrency:        req.Concurrency,
 		LoadFactor:         req.LoadFactor,
@@ -549,7 +588,7 @@ func normalizeSSOImportTokens(tokens []string, single string) []string {
 	for _, item := range items {
 		parts := strings.Split(strings.NewReplacer(",", "\n", "\r", "\n").Replace(item), "\n")
 		for _, token := range parts {
-			if token = xai.NormalizeSSOToken(token); token == "" {
+			if token = xai.ExtractSSOTokenFromLine(token); token == "" {
 				continue
 			}
 			if _, ok := seen[token]; ok {
@@ -574,6 +613,21 @@ func grokSSOImportAccountName(base string, tokenInfo *service.GrokTokenInfo, ind
 		return base + " #" + strconv.Itoa(index)
 	}
 	return base
+}
+
+func grokSSORiskFlaggedMessage(state xai.GrokAccountState, kind string) string {
+	source := "unknown"
+	if state.BotFlagSource != nil {
+		source = strconv.FormatInt(*state.BotFlagSource, 10)
+	}
+	details := strings.TrimSpace(state.BotFlagDetails)
+	if details == "" {
+		details = "policy=" + state.Policy
+	}
+	if kind == "" {
+		kind = xai.GrokFlagKind(state.BotFlagDetails)
+	}
+	return "GROK_SSO_RISK_FLAGGED: kind=" + kind + " botFlagSource=" + source + " " + details
 }
 
 func grokSSOImportErrorMessage(err error) string {
@@ -625,4 +679,255 @@ func (h *GrokOAuthHandler) ResetQuota(c *gin.Context) {
 
 func (h *GrokOAuthHandler) RuntimeSanity(c *gin.Context) {
 	response.Success(c, xai.RuntimeSanity())
+}
+
+type GrokSSOCheckStateRequest struct {
+	SSOTokens []string `json:"sso_tokens"`
+	SSOToken  string   `json:"sso_token"`
+	ProxyID   *int64   `json:"proxy_id"`
+}
+
+type GrokSSOCheckStateItem struct {
+	Index         int      `json:"index"`
+	Email         string   `json:"email,omitempty"`
+	Verdict       string   `json:"verdict"`
+	Kind          string   `json:"kind,omitempty"`
+	BotFlagSource *int64   `json:"bot_flag_source,omitempty"`
+	Details       string   `json:"details,omitempty"`
+	Policy        string   `json:"policy,omitempty"`
+	Risk          *float64 `json:"risk,omitempty"`
+	Event         string   `json:"event,omitempty"`
+	Denied        bool     `json:"denied,omitempty"`
+	StatusCode    int      `json:"status_code,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+type GrokSSOCheckStateResponse struct {
+	Total   int                     `json:"total"`
+	Flagged int                     `json:"flagged"`
+	IP      int                     `json:"ip"`
+	Account int                     `json:"account"`
+	Clean   int                     `json:"clean"`
+	Unknown int                     `json:"unknown"`
+	Error   int                     `json:"error"`
+	Items   []GrokSSOCheckStateItem `json:"items"`
+}
+
+func (h *GrokOAuthHandler) CheckSSOState(c *gin.Context) {
+	var req GrokSSOCheckStateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	tokens := normalizeSSOImportTokens(req.SSOTokens, req.SSOToken)
+	if len(tokens) == 0 {
+		response.BadRequest(c, "sso_tokens is required")
+		return
+	}
+	if len(tokens) > service.GrokRiskMaxSSOTokens {
+		response.BadRequest(c, fmt.Sprintf("sso_tokens exceeds limit of %d", service.GrokRiskMaxSSOTokens))
+		return
+	}
+	if h.grokOAuthService == nil {
+		response.BadRequest(c, "grok oauth service is not enabled")
+		return
+	}
+
+	ctx := c.Request.Context()
+	workerCount := grokSSOImportConcurrency
+	if len(tokens) < workerCount {
+		workerCount = len(tokens)
+	}
+	type job struct {
+		index int
+		token string
+	}
+	jobs := make(chan job)
+	items := make([]GrokSSOCheckStateItem, len(tokens))
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for next := range jobs {
+				state := h.grokOAuthService.InspectSSOAccountState(ctx, next.token, req.ProxyID)
+				verdict := xai.ClassifyGrokAccountState(state)
+				item := GrokSSOCheckStateItem{
+					Index:         next.index + 1,
+					Email:         service.GrokRiskEmailFromSSO(next.token),
+					Verdict:       verdict,
+					BotFlagSource: state.BotFlagSource,
+					Details:       state.BotFlagDetails,
+					Policy:        state.Policy,
+					Risk:          state.Risk,
+					Event:         state.Event,
+					Denied:        state.Denied,
+					StatusCode:    state.StatusCode,
+					Error:         state.Error,
+				}
+				if verdict == xai.GrokRiskFlagged {
+					item.Kind = xai.GrokFlagKind(state.BotFlagDetails)
+				}
+				items[next.index] = item
+			}
+		}()
+	}
+	for i, token := range tokens {
+		jobs <- job{index: i, token: token}
+	}
+	close(jobs)
+	wg.Wait()
+
+	out := GrokSSOCheckStateResponse{Items: items, Total: len(items)}
+	for _, item := range items {
+		switch item.Verdict {
+		case xai.GrokRiskFlagged:
+			out.Flagged++
+			if item.Kind == xai.GrokRiskKindIP {
+				out.IP++
+			} else {
+				out.Account++
+			}
+		case xai.GrokRiskClean:
+			out.Clean++
+		case xai.GrokRiskUnknown:
+			out.Unknown++
+		default:
+			out.Error++
+		}
+	}
+	response.Success(c, out)
+}
+
+type GrokCheckRiskRequest struct {
+	AccountIDs []int64 `json:"account_ids"`
+}
+
+type GrokCheckRiskItem struct {
+	AccountID int64          `json:"account_id"`
+	Name      string         `json:"name,omitempty"`
+	Email     string         `json:"email,omitempty"`
+	Verdict   string         `json:"verdict"`
+	Kind      string         `json:"kind,omitempty"`
+	Report    map[string]any `json:"report,omitempty"`
+	Error     string         `json:"error,omitempty"`
+}
+
+type GrokCheckRiskResponse struct {
+	Total   int                 `json:"total"`
+	Flagged int                 `json:"flagged"`
+	Clean   int                 `json:"clean"`
+	Error   int                 `json:"error"`
+	Skipped int                 `json:"skipped"`
+	Items   []GrokCheckRiskItem `json:"items"`
+}
+
+func (h *GrokOAuthHandler) CheckAccountsRisk(c *gin.Context) {
+	var req GrokCheckRiskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+	if len(req.AccountIDs) > service.GrokRiskMaxBatchIDs {
+		response.BadRequest(c, fmt.Sprintf("account_ids exceeds limit of %d", service.GrokRiskMaxBatchIDs))
+		return
+	}
+	if h.adminService == nil {
+		response.BadRequest(c, "admin service is not enabled")
+		return
+	}
+	accounts, err := h.adminService.GetAccountsByIDs(c.Request.Context(), req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	byID := make(map[int64]*service.Account, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			byID[account.ID] = account
+		}
+	}
+	out := GrokCheckRiskResponse{Items: make([]GrokCheckRiskItem, 0, len(req.AccountIDs))}
+	for _, id := range req.AccountIDs {
+		item := GrokCheckRiskItem{AccountID: id}
+		account := byID[id]
+		if account == nil {
+			item.Verdict = xai.GrokRiskError
+			item.Error = "account not found"
+			out.Error++
+			out.Items = append(out.Items, item)
+			continue
+		}
+		item.Name = account.Name
+		if !account.IsGrok() {
+			item.Verdict = xai.GrokRiskError
+			item.Error = "not a grok account"
+			out.Skipped++
+			out.Items = append(out.Items, item)
+			continue
+		}
+		report := service.InspectAccountTokenRisk(account)
+		item.Email = strings.TrimSpace(account.GetCredential("email"))
+		item.Verdict = report.Verdict
+		item.Kind = report.Kind
+		snapshot := service.GrokRiskSnapshotMap(report)
+		item.Report = snapshot
+		if err := h.adminService.UpdateAccountExtra(c.Request.Context(), account.ID, map[string]any{
+			service.GrokRiskExtraKey: snapshot,
+		}); err != nil {
+			item.Error = err.Error()
+		}
+		switch report.Verdict {
+		case xai.GrokRiskFlagged:
+			out.Flagged++
+		case xai.GrokRiskClean:
+			out.Clean++
+		default:
+			out.Error++
+		}
+		out.Items = append(out.Items, item)
+	}
+	out.Total = len(out.Items)
+	response.Success(c, out)
+}
+
+func (h *GrokOAuthHandler) CheckAccountRisk(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.adminService == nil {
+		response.BadRequest(c, "admin service is not enabled")
+		return
+	}
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if account == nil || !account.IsGrok() {
+		response.BadRequest(c, "not a grok account")
+		return
+	}
+	report := service.InspectAccountTokenRisk(account)
+	snapshot := service.GrokRiskSnapshotMap(report)
+	if extraErr := h.adminService.UpdateAccountExtra(c.Request.Context(), account.ID, map[string]any{
+		service.GrokRiskExtraKey: snapshot,
+	}); extraErr != nil {
+		response.ErrorFrom(c, extraErr)
+		return
+	}
+	response.Success(c, GrokCheckRiskItem{
+		AccountID: account.ID,
+		Name:      account.Name,
+		Email:     strings.TrimSpace(account.GetCredential("email")),
+		Verdict:   report.Verdict,
+		Kind:      report.Kind,
+		Report:    snapshot,
+	})
 }

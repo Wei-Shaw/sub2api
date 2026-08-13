@@ -8,7 +8,7 @@ vi.mock('@/api/client', () => ({
   apiClient: { post },
 }))
 
-import { authorizePassword, createFromSSO, getGrokSSOImportTimeout } from '@/api/admin/grok'
+import { authorizePassword, checkSSOState, createFromSSO, getGrokSSOImportTimeout } from '@/api/admin/grok'
 
 describe('admin Grok SSO import API', () => {
   beforeEach(() => {
@@ -32,6 +32,20 @@ describe('admin Grok SSO import API', () => {
       '/admin/grok/sso-to-oauth',
       expect.objectContaining({ sso_tokens: expect.any(Array) }),
       { timeout: expectedTimeout },
+    )
+  })
+
+  it('posts SSO risk checks without requiring import', async () => {
+    post.mockResolvedValueOnce({
+      data: { total: 1, flagged: 0, clean: 1, unknown: 0, error: 0, items: [] }
+    })
+
+    await checkSSOState({ sso_tokens: ['sso-1', 'sso-2'], proxy_id: 3 })
+
+    expect(post).toHaveBeenCalledWith(
+      '/admin/grok/sso-check-state',
+      { sso_tokens: ['sso-1', 'sso-2'], proxy_id: 3 },
+      { timeout: getGrokSSOImportTimeout(2) },
     )
   })
 

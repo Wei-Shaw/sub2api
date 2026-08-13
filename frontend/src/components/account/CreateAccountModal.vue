@@ -3243,6 +3243,7 @@
         @import-codex-session="handleOpenAIImportCodexSession"
         @import-codex-pat="handleOpenAIImportCodexPAT"
         @import-sso="handleGrokImportSSO"
+        @check-sso="handleGrokCheckSSO"
         @authorize-password="handleGrokAuthorizePassword"
       />
 
@@ -3644,6 +3645,7 @@ interface OAuthFlowExposed {
   codexSession: string
   codexPAT: string
   ssoCookie: string
+  skipRiskFlagged?: boolean
   inputMethod: AuthInputMethod
   reset: () => void
 }
@@ -5440,6 +5442,8 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
   }
 }
 
+const resolveGrokSkipRiskFlagged = () => oauthFlowRef.value?.skipRiskFlagged !== false
+
 const handleGrokImportSSO = async (ssoInput: string) => {
   // Align with OpenAI/Grok RT batch import: one token per line, no client-side dedupe.
   const ssoTokens = ssoInput
@@ -5476,7 +5480,8 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       priority: form.priority,
       rate_multiplier: form.rate_multiplier,
       expires_at: form.expires_at,
-      auto_pause_on_expired: autoPauseOnExpired.value
+      auto_pause_on_expired: autoPauseOnExpired.value,
+      skip_risk_flagged: resolveGrokSkipRiskFlagged()
     })
 
     const successCount = result.created?.length || 0
@@ -5516,6 +5521,49 @@ const handleGrokImportSSO = async (ssoInput: string) => {
  * Grok password login: each line is email----password.
  * Password is only used for the authorize API call; buildCredentials never stores it.
  */
+const handleGrokCheckSSO = async (ssoInput: string) => {
+  const ssoTokens = ssoInput
+    .split('\n')
+    .map((token) => token.trim())
+    .filter((token) => token)
+  if (ssoTokens.length === 0) return
+
+  grokOAuth.loading.value = true
+  grokOAuth.error.value = ''
+  try {
+    const result = await adminAPI.grok.checkSSOState({
+      sso_tokens: ssoTokens,
+      proxy_id: form.proxy_id
+    })
+    const lines = (result.items || []).map((item) => {
+      const email = item.email || `#${item.index}`
+      const details = item.details || item.error || '-'
+      return `${email}  ${item.verdict}${item.kind ? '/' + item.kind : ''}  ${details}`
+    })
+    grokOAuth.error.value = [
+      t('admin.accounts.oauth.grok.checkSSOSummary', {
+        total: result.total,
+        flagged: result.flagged,
+        clean: result.clean,
+        unknown: result.unknown,
+        error: result.error
+      }),
+      ...lines
+    ].join('\n')
+    if (result.flagged > 0) {
+      appStore.showWarning(t('admin.accounts.oauth.grok.checkSSOFlagged', { count: result.flagged }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.oauth.grok.checkSSODone'))
+    }
+  } catch (error: any) {
+    grokOAuth.error.value =
+      error.response?.data?.detail || error.message || t('admin.accounts.oauth.grok.failedToCheckSSO')
+    appStore.showError(grokOAuth.error.value)
+  } finally {
+    grokOAuth.loading.value = false
+  }
+}
+
 const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
   if (!emailPasswordInput.trim()) return
   if (!validateGrokOAuthUpstreamConfig()) return

@@ -52,6 +52,10 @@ export interface GrokTokenInfo {
   team_id?: string
   subscription_tier?: string
   entitlement_status?: string
+  /** xAI access-token claim; 1 means risk-control marking that degrades media. */
+  bot_flag_source?: number
+  has_bfs?: boolean
+  bfs?: unknown
   [key: string]: unknown
 }
 
@@ -69,6 +73,7 @@ export interface GrokSSOToOAuthRequest {
   rate_multiplier?: number
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  skip_risk_flagged?: boolean
 }
 
 export interface GrokSSOToOAuthItemResult {
@@ -172,6 +177,68 @@ export async function resetQuota(id: number): Promise<GrokQuotaResetResult> {
   return data
 }
 
+export interface GrokRiskReport {
+  verdict: string
+  kind?: string
+  bot_flag_source?: number
+  has_bfs?: boolean
+  bfs?: unknown
+  policy?: string
+  risk?: number
+  event?: string
+  details?: string
+  denied?: boolean
+  source?: string
+  error?: string
+  email?: string
+  checked_at?: string
+}
+
+export interface GrokSSOCheckStateItem {
+  index: number
+  email?: string
+  verdict: string
+  kind?: string
+  bot_flag_source?: number
+  details?: string
+  policy?: string
+  risk?: number
+  event?: string
+  denied?: boolean
+  status_code?: number
+  error?: string
+}
+
+export interface GrokSSOCheckStateResponse {
+  total: number
+  flagged: number
+  ip: number
+  account: number
+  clean: number
+  unknown: number
+  error: number
+  items: GrokSSOCheckStateItem[]
+}
+
+export interface GrokCheckRiskItem {
+  account_id: number
+  name?: string
+  email?: string
+  verdict: string
+  kind?: string
+  report?: GrokRiskReport
+  error?: string
+}
+
+export interface GrokCheckRiskResponse {
+  total: number
+  flagged: number
+  clean: number
+  error: number
+  skipped: number
+  items: GrokCheckRiskItem[]
+}
+
 export async function createFromSSO(payload: GrokSSOToOAuthRequest): Promise<GrokSSOToOAuthResponse> {
   const { data } = await apiClient.post<GrokSSOToOAuthResponse>(
     '/admin/grok/sso-to-oauth',
@@ -215,6 +282,30 @@ export async function authorizePassword(
   return data
 }
 
+export async function checkSSOState(payload: {
+  sso_tokens: string[]
+  proxy_id?: number | null
+}): Promise<GrokSSOCheckStateResponse> {
+  const { data } = await apiClient.post<GrokSSOCheckStateResponse>(
+    '/admin/grok/sso-check-state',
+    payload,
+    { timeout: getGrokSSOImportTimeout(payload.sso_tokens.length) }
+  )
+  return data
+}
+
+export async function checkAccountsRisk(accountIds: number[]): Promise<GrokCheckRiskResponse> {
+  const { data } = await apiClient.post<GrokCheckRiskResponse>('/admin/grok/accounts/check-risk', {
+    account_ids: accountIds
+  })
+  return data
+}
+
+export async function checkAccountRisk(id: number): Promise<GrokCheckRiskItem> {
+  const { data } = await apiClient.post<GrokCheckRiskItem>(`/admin/grok/accounts/${id}/check-risk`)
+  return data
+}
+
 export default {
   generateAuthUrl,
   getCapabilities,
@@ -223,6 +314,9 @@ export default {
   queryQuota,
   resetQuota,
   createFromSSO,
+  checkSSOState,
+  checkAccountsRisk,
+  checkAccountRisk,
   validateSSOToken,
   authorizePassword,
 }

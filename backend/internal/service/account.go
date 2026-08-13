@@ -1560,7 +1560,56 @@ func (a *Account) GrokMediaGenerationEligibility() (bool, string) {
 	if !grokBillingHasAuthoritativeQuota(billing) {
 		return false, "billing_inconclusive"
 	}
+	if isGrokOAuthBotFlagged(a) {
+		return false, "token_bot_flagged"
+	}
 	return true, "eligible"
+}
+
+// isGrokOAuthBotFlagged reports whether the account's current access token (or
+// last-persisted bot_flag_source credential) indicates xAI risk-control marking.
+func isGrokOAuthBotFlagged(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if token := strings.TrimSpace(account.GetCredential("access_token")); token != "" {
+		if xai.IsRiskFlaggedToken(token) {
+			return true
+		}
+		if claims := xai.DecodeJWTClaims(token); claims != nil {
+			return false
+		}
+	}
+	if account.Credentials == nil {
+		return false
+	}
+	if raw, exists := account.Credentials["bfs"]; exists && isTruthyCredential(raw) {
+		return true
+	}
+	raw, exists := account.Credentials["bot_flag_source"]
+	if !exists || raw == nil {
+		return false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return int64(value) == 1
+	case float32:
+		return int64(value) == 1
+	case int64:
+		return value == 1
+	case int:
+		return value == 1
+	case int32:
+		return int64(value) == 1
+	case json.Number:
+		parsed, err := value.Int64()
+		return err == nil && parsed == 1
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		return err == nil && parsed == 1
+	default:
+		return false
+	}
 }
 
 func grokMediaEligibilityOverride(extra map[string]any) (bool, bool) {

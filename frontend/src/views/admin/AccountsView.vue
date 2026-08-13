@@ -184,6 +184,7 @@
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @probe-upstream-billing="handleBulkProbeUpstreamBilling"
+          @check-grok-risk="handleBulkCheckGrokRisk"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
           @clear="clearSelection"
@@ -263,6 +264,13 @@
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
                   :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                <span
+                  v-if="grokRiskBadge(row)"
+                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', grokRiskBadge(row)?.className]"
+                  :title="grokRiskBadge(row)?.title"
+                >
+                  {{ grokRiskBadge(row)?.label }}
+                </span>
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -1499,6 +1507,48 @@ function normalizeGrokPlanKey(value: unknown): string {
     .replace(/[\s_-]+/g, '')
 }
 
+function grokRiskBadge(row: any): { label: string; className: string; title: string } | null {
+  if (row?.platform !== 'grok') return null
+  const risk = row?.extra?.grok_risk
+  if (!risk || typeof risk !== 'object') return null
+  const verdict = String(risk.verdict || '')
+  const kind = String(risk.kind || '')
+  const titleParts = [
+    verdict,
+    kind,
+    risk.details || risk.error || '',
+    risk.checked_at || ''
+  ].filter(Boolean)
+  if (verdict === 'flagged') {
+    const label =
+      kind === 'ip'
+        ? t('admin.accounts.oauth.grok.riskIP')
+        : kind === 'jwt'
+          ? t('admin.accounts.oauth.grok.riskJWT')
+          : t('admin.accounts.oauth.grok.riskFlagged')
+    return {
+      label,
+      className: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+      title: titleParts.join(' · ')
+    }
+  }
+  if (verdict === 'clean') {
+    return {
+      label: t('admin.accounts.oauth.grok.riskClean'),
+      className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+      title: titleParts.join(' · ')
+    }
+  }
+  if (verdict === 'error' || verdict === 'unknown') {
+    return {
+      label: t('admin.accounts.oauth.grok.riskUnknown'),
+      className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+      title: titleParts.join(' · ')
+    }
+  }
+  return null
+}
+
 function grokPersistedQuotaSnapshot(extra: Record<string, any>): Record<string, any> | undefined {
   const usage = extra.grok_usage_snapshot
   if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
@@ -1838,6 +1888,22 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+const handleBulkCheckGrokRisk = async () => {
+  const accountIds = [...selIds.value]
+  if (accountIds.length === 0) return
+  try {
+    const result = await adminAPI.grok.checkAccountsRisk(accountIds)
+    appStore.showSuccess(t('admin.accounts.bulkActions.checkGrokRiskSuccess', {
+      flagged: result.flagged,
+      clean: result.clean,
+      error: result.error
+    }))
+    reload()
+  } catch (error) {
+    appStore.showError(String(error))
+  }
+}
+
 const handleBulkProbeUpstreamBilling = async () => {
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {
