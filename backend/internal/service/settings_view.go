@@ -12,34 +12,34 @@ func firstNonEmpty(values ...string) string {
 }
 
 type SystemSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	FrontendURL                      string
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
-	PasskeyEnabled                   bool // Passkey 登录
-	SessionBindingEnabled            bool // 会话 IP/UA 绑定（变更即失效）
-	StepUpEnabled                    bool // 敏感操作 step-up 2FA 门控
-	CompanyUpgradeChargeEnabled      bool // 企业升级是否收费/冻结资金（默认开启）
-	CompanyUpgradeFee                float64
-	CompanyApplicationsEnabled       bool // 企业升级申请开关（配置文件默认，系统设置覆盖）
-	CompanyIAMEnabled                bool // 企业 IAM 开关（配置文件默认，系统设置覆盖）
-	CompanyPublicIDsFinalized        bool // 公共 ID 就绪开关（配置文件默认，系统设置覆盖）
-	CompanyBillingIntegrationEnabled bool // 企业计费链路就绪开关（配置文件默认，系统设置覆盖）
-	CompanyDocumentationURL          string
-	AuditLogRetentionDays            int // 审计日志保留天数（<=0 永久保留）
-
+	RegistrationEnabled                 bool
+	EmailVerifyEnabled                  bool
+	RegistrationEmailSuffixWhitelist    []string
+	RegistrationEmailDomainQuotaEnabled bool // 白名单非空时放行非白名单域名限量注册（默认关闭）
+	PromoCodeEnabled                    bool
+	PasswordResetEnabled                bool
+	FrontendURL                         string
+	InvitationCodeEnabled               bool
+	TotpEnabled                         bool // TOTP 双因素认证
+	PasskeyEnabled                      bool // Passkey 登录
+	SessionBindingEnabled               bool // 会话 IP/UA 绑定（变更即失效）
+	StepUpEnabled                       bool // 敏感操作 step-up 2FA 门控
+	AuditLogRetentionDays               int  // 审计日志保留天数（<=0 永久保留）
+	LoginAgreementEnabled               bool
+	LoginAgreementMode                  string
+	LoginAgreementUpdatedAt             string
+	LoginAgreementDocuments             []LoginAgreementDocument
+	CompanyUpgradeChargeEnabled         bool // 企业升级是否收费/冻结资金（默认开启）
+	CompanyUpgradeFee                   float64
+	CompanyApplicationsEnabled          bool // 企业升级申请开关（配置文件默认，系统设置覆盖）
+	CompanyIAMEnabled                   bool // 企业 IAM 开关（配置文件默认，系统设置覆盖）
+	CompanyPublicIDsFinalized           bool // 公共 ID 就绪开关（配置文件默认，系统设置覆盖）
+	CompanyBillingIntegrationEnabled    bool // 企业计费链路就绪开关（配置文件默认，系统设置覆盖）
+	CompanyDocumentationURL             string
 	// 可信代理动态拉取（switch-trusted-proxies-dynamic）
 	TrustedProxiesDynamicEnabled    bool                        // 总开关
 	TrustedProxiesDynamicSources    []TrustedProxyDynamicSource // 拉取源列表
 	TrustedProxiesDynamicExtraCIDRs []string                    // admin 固定 CIDR
-	LoginAgreementEnabled           bool
-	LoginAgreementMode              string
-	LoginAgreementUpdatedAt         string
-	LoginAgreementDocuments         []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int
@@ -74,9 +74,25 @@ type SystemSettings struct {
 	//   - Turnstile / hCaptcha: enabled, site_key（secret_key 已剥除）
 	//   - Tencent: enabled, captcha_app_id（app_secret_key / secret_id / secret_key 三项均已剥除）
 	// 前端不应依赖此 map 中的密钥真值；若需展示是否已配置，使用上面的 *Configured 字段。
-	CaptchaConfig             map[string]string
-	APIKeyACLTrustForwardedIP bool
-	ForwardedClientIPHeaders  []string
+	CaptchaConfig                          map[string]string
+	TencentCaptchaEnabled                  bool
+	TencentCaptchaAppID                    string
+	TencentCaptchaAppSecretKey             string
+	TencentCaptchaAppSecretKeyConfigured   bool
+	TencentCaptchaCloudSecretID            string
+	TencentCaptchaCloudSecretIDConfigured  bool
+	TencentCaptchaCloudSecretKey           string
+	TencentCaptchaCloudSecretKeyConfigured bool
+	TencentCaptchaRegion                   string
+	AliyunCaptchaEnabled                   bool
+	AliyunCaptchaAccessKeyID               string
+	AliyunCaptchaAccessKeySecret           string
+	AliyunCaptchaAccessKeySecretConfigured bool
+	AliyunCaptchaSceneID                   string
+	AliyunCaptchaPrefix                    string
+	AliyunCaptchaRegion                    string
+	APIKeyACLTrustForwardedIP              bool
+	ForwardedClientIPHeaders               []string
 
 	// LinuxDo Connect OAuth 登录
 	LinuxDoConnectEnabled                bool
@@ -216,8 +232,15 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int
 
 	// Channel Monitor feature
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
+	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
+	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
+
+	// Grok model mapping policy (admin settings; empty mapping falls back to these).
+	GrokDefaultTextModel           string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
@@ -249,7 +272,10 @@ type SystemSettings struct {
 	EnableClientDatelineNormalization      bool   // 是否对 Anthropic OAuth/SetupToken 请求体做客户端 dateline 归一化（默认 true）
 	RewriteMessageCacheControl             bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
 	AntigravityUserAgentVersion            string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
-	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
+	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值由 Codex 客户端版本号拼出标准 TUI UA
+	OpenAICodexClientVersion               string // 出站声明的 Codex 客户端版本号（管理员覆写）；空值跟随自动同步值
+	OpenAICodexClientVersionSynced         string // 自动同步到的官方最新稳定版版本号（只读展示）
+	OpenAICodexVersionAutoSyncEnabled      bool   // 是否启用 Codex 客户端版本号自动同步（默认 true）
 	MinCodexVersion                        string // codex_cli_only 最低 Codex 引擎版本；空=不检查
 	MaxCodexVersion                        string // codex_cli_only 最高 Codex 引擎版本；空=不检查
 	CodexCLIOnlyBlacklist                  string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
@@ -309,6 +335,9 @@ type SystemSettings struct {
 
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
 	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+
+	// 系统全局账号自动停调阈值（key = platform，100 = disabled）
+	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
 
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
@@ -373,35 +402,43 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	ForceEmailOnThirdPartySignup     bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
-	PasskeyEnabled                   bool
-	LoginAgreementEnabled            bool
-	LoginAgreementMode               string
-	LoginAgreementUpdatedAt          string
-	LoginAgreementRevision           string
-	LoginAgreementDocuments          []LoginAgreementDocument
-	TurnstileEnabled                 bool
-	TurnstileSiteKey                 string
-	CaptchaProvider                  string
-	CaptchaEnabled                   bool
-	CaptchaSiteKey                   string
-	SiteName                         string
-	SiteLogo                         string
-	SiteSubtitle                     string
-	APIBaseURL                       string
-	ContactInfo                      string
-	DocURL                           string
-	HomeContent                      string
-	HomeProductMenuItems             string // JSON array of homepage product menu items
-	CompactHomeEnabled               bool
-	HideCcsImportButton              bool
+	RegistrationEnabled                 bool
+	EmailVerifyEnabled                  bool
+	ForceEmailOnThirdPartySignup        bool
+	RegistrationEmailSuffixWhitelist    []string
+	RegistrationEmailDomainQuotaEnabled bool
+	PromoCodeEnabled                    bool
+	PasswordResetEnabled                bool
+	InvitationCodeEnabled               bool
+	TotpEnabled                         bool // TOTP 双因素认证
+	PasskeyEnabled                      bool
+	LoginAgreementEnabled               bool
+	LoginAgreementMode                  string
+	LoginAgreementUpdatedAt             string
+	LoginAgreementRevision              string
+	LoginAgreementDocuments             []LoginAgreementDocument
+	TurnstileEnabled                    bool
+	TurnstileSiteKey                    string
+	CaptchaProvider                     string
+	CaptchaEnabled                      bool
+	CaptchaSiteKey                      string
+	TencentCaptchaEnabled               bool
+	TencentCaptchaAppID                 string
+	TencentCaptchaRegion                string
+	AliyunCaptchaEnabled                bool
+	AliyunCaptchaSceneID                string
+	AliyunCaptchaPrefix                 string
+	AliyunCaptchaRegion                 string
+	SiteName                            string
+	SiteLogo                            string
+	SiteSubtitle                        string
+	APIBaseURL                          string
+	ContactInfo                         string
+	DocURL                              string
+	HomeContent                         string
+	CompactHomeEnabled                  bool
+	HideCcsImportButton                 bool
+	HomeProductMenuItems                string // JSON array of homepage product menu items
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -435,8 +472,15 @@ type PublicSettings struct {
 	BalanceLowNotifyRechargeURL string
 
 	// Channel Monitor feature
-	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
+	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
+	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
+
+	// Grok model mapping policy (admin settings).
+	GrokDefaultTextModel           string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`

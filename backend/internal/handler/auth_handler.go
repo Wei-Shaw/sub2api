@@ -71,27 +71,23 @@ func (h *AuthHandler) issueSsoSession(c *gin.Context, userID int64) {
 
 // RegisterRequest represents the registration request payload
 type RegisterRequest struct {
-	Email      string `json:"email" binding:"required,email"`
-	Password   string `json:"password" binding:"required,min=6"`
-	VerifyCode string `json:"verify_code"`
-	// CaptchaPayload 是 captcha_payload 协议下的结构化客户端凭证（design.md D2）。
-	// 优先于 CaptchaToken/TurnstileToken；后两者保留作为兼容窗口字段，下个版本将移除。
-	//   - turnstile / hcaptcha: {"token": "..."}
-	//   - tencent_captcha: {"ticket": "...", "randstr": "..."}
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
-	PromoCode      string            `json:"promo_code"`      // 注册优惠码
-	InvitationCode string            `json:"invitation_code"` // 邀请码
-	AffCode        string            `json:"aff_code"`        // 邀请返利码
+	Email                 string `json:"email" binding:"required,email"`
+	Password              string `json:"password" binding:"required,min=6"`
+	VerifyCode            string `json:"verify_code"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+	PromoCode             string `json:"promo_code"`      // 注册优惠码
+	InvitationCode        string `json:"invitation_code"` // 邀请码
+	AffCode               string `json:"aff_code"`        // 邀请返利码
 }
 
 // SendVerifyCodeRequest 发送验证码请求
 type SendVerifyCodeRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 }
 
 // SendVerifyCodeResponse 发送验证码响应
@@ -102,11 +98,19 @@ type SendVerifyCodeResponse struct {
 
 // LoginRequest represents the login request payload
 type LoginRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	Password       string            `json:"password" binding:"required"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	Password              string `json:"password" binding:"required"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
+}
+
+func captchaProof(turnstileToken, tencentTicket, tencentRandstr string) service.CaptchaProof {
+	return service.CaptchaProof{
+		TurnstileToken: turnstileToken,
+		TencentTicket:  tencentTicket,
+		TencentRandstr: tencentRandstr,
+	}
 }
 
 // AuthResponse 认证响应格式（匹配前端期望）
@@ -126,34 +130,6 @@ func ensureLoginUserActive(user *service.User) error {
 		return service.ErrUserNotActive
 	}
 	return nil
-}
-
-// extractCaptchaPayload 把请求 DTO 中的三层 captcha 客户端字段归一为统一的结构化 payload（design.md D2）。
-//
-// 优先级：
-//  1. captcha_payload（首选；新协议；前端 §5/§6 改造完成后通用）
-//  2. captcha_token / turnstile_token（兼容窗口字段）→ 包成 {"token": "..."}
-//
-// 三者全空时返回空 map，由 captcha_service 走"空凭证"分支统一报错（避免 handler 层重复判定）。
-//
-// 不直接修改入参；调用方传切片/map 也不会被本函数改动。
-func extractCaptchaPayload(captchaPayload map[string]string, captchaToken, turnstileToken string) map[string]string {
-	if len(captchaPayload) > 0 {
-		// 拷贝避免下游误修改入参 map。
-		out := make(map[string]string, len(captchaPayload))
-		for k, v := range captchaPayload {
-			out[k] = strings.TrimSpace(v)
-		}
-		return out
-	}
-	token := strings.TrimSpace(captchaToken)
-	if token == "" {
-		token = strings.TrimSpace(turnstileToken)
-	}
-	if token == "" {
-		return map[string]string{}
-	}
-	return map[string]string{"token": token}
 }
 
 // respondWithTokenPair 生成 Token 对并返回认证响应
@@ -232,8 +208,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证（邮箱验证码注册场景避免重复校验一次性 token）
-	if err := h.authService.VerifyCaptchaPayloadForRegister(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c), req.VerifyCode); err != nil {
+	// 验证当前启用的验证码（邮箱验证码注册场景避免重复校验一次性票据）
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptchaForRegister(c.Request.Context(), proof, ip.GetClientIP(c), req.VerifyCode); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -264,8 +241,8 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -291,8 +268,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -650,10 +627,10 @@ func (h *AuthHandler) ValidateInvitationCode(c *gin.Context) {
 
 // ForgotPasswordRequest 忘记密码请求
 type ForgotPasswordRequest struct {
-	Email          string            `json:"email" binding:"required,email"`
-	CaptchaPayload map[string]string `json:"captcha_payload"`
-	CaptchaToken   string            `json:"captcha_token"`
-	TurnstileToken string            `json:"turnstile_token"`
+	Email                 string `json:"email" binding:"required,email"`
+	TurnstileToken        string `json:"turnstile_token"`
+	TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+	TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 }
 
 // ForgotPasswordResponse 忘记密码响应
@@ -670,8 +647,8 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Captcha 验证
-	if err := h.authService.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	proof := captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr)
+	if err := h.authService.VerifyCaptcha(c.Request.Context(), proof, ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

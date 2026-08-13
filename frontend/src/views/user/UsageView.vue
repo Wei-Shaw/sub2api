@@ -239,7 +239,7 @@ import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue
 import VideoTaskDetailModal from '@/components/user/VideoTaskDetailModal.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
-import { BILLING_MODE_IMAGE, BILLING_MODE_VIDEO, getBillingModeLabel } from '@/utils/billingMode'
+import { BILLING_MODE_VIDEO, getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode } from '@/utils/billingMode'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import type {
   ApiKey,
@@ -623,10 +623,8 @@ const getDisplayBillingMode = (
   row: Pick<UsageLog, 'billing_mode' | 'image_count' | 'video_count'> | null | undefined
 ): string | null | undefined => {
   // 显式 billing_mode 优先，避免视频行（image_count 可能为 0）被回落成 image。
-  if (row?.billing_mode) return row.billing_mode
-  if ((row?.video_count ?? 0) > 0) return BILLING_MODE_VIDEO
-  if ((row?.image_count ?? 0) > 0) return BILLING_MODE_IMAGE
-  return row?.billing_mode
+  if ((row?.video_count ?? 0) > 0 && !row?.billing_mode) return BILLING_MODE_VIDEO
+  return resolveDisplayBillingMode(row)
 }
 
 const escapeCSVValue = (value: unknown): string => {

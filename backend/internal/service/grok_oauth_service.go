@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
@@ -18,14 +19,44 @@ type GrokOAuthService struct {
 	sessionStore *xai.SessionStore
 	proxyRepo    ProxyRepository
 	oauthClient  GrokOAuthClient
+	config       *config.Config
 }
 
-func NewGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient) *GrokOAuthService {
-	return &GrokOAuthService{
+func NewGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, configs ...*config.Config) *GrokOAuthService {
+	service := &GrokOAuthService{
 		sessionStore: xai.NewSessionStore(),
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 	}
+	if len(configs) > 0 {
+		service.config = configs[0]
+	}
+	return service
+}
+
+// WithSessionStore replaces the in-memory OAuth session store (e.g. Redis-backed
+// for cross-instance single-use callbacks). Redis wiring stays in Wire providers
+// so this service package does not import go-redis (depguard).
+func (s *GrokOAuthService) WithSessionStore(store *xai.SessionStore) *GrokOAuthService {
+	if s != nil && store != nil {
+		if s.sessionStore != nil {
+			s.sessionStore.Stop()
+		}
+		s.sessionStore = store
+	}
+	return s
+}
+
+type GrokOAuthCapabilities struct {
+	PasswordAuthEnabled bool `json:"password_auth_enabled"`
+}
+
+func (s *GrokOAuthService) GetCapabilities() GrokOAuthCapabilities {
+	return GrokOAuthCapabilities{PasswordAuthEnabled: s.passwordAuthEnabled()}
+}
+
+func (s *GrokOAuthService) passwordAuthEnabled() bool {
+	return s.config != nil && s.config.Gateway.Grok.PasswordAuthEnabled
 }
 
 type GrokAuthURLResult struct {
@@ -106,6 +137,13 @@ type GrokTokenInfo struct {
 	EntitlementStatus string `json:"entitlement_status,omitempty"`
 }
 
+// GrokPasswordLoginResult is an ephemeral password-login outcome.
+// SSOToken is never persisted and must only feed ConvertSSOToBuild.
+type GrokPasswordLoginResult struct {
+	Email    string `json:"email,omitempty"`
+	SSOToken string `json:"sso_token"`
+}
+
 func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchangeCodeInput) (*GrokTokenInfo, error) {
 	if input == nil {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_INPUT", "input is required")
@@ -114,7 +152,6 @@ func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchange
 	if !ok {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_SESSION_NOT_FOUND", "session not found or expired")
 	}
-	defer s.sessionStore.Delete(input.SessionID)
 
 	parsed := xai.ParseAuthorizationInput(input.Code)
 	code := strings.TrimSpace(parsed.Code)
@@ -125,11 +162,15 @@ func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchange
 	if state == "" {
 		state = strings.TrimSpace(parsed.State)
 	}
-	if parsed.RequiresState && state == "" {
-		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_STATE_REQUIRED", "oauth state is required for callback URLs")
+	if state == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_STATE_REQUIRED", "oauth state is required")
 	}
-	if state != "" && subtle.ConstantTimeCompare([]byte(state), []byte(session.State)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(state), []byte(session.State)) != 1 {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_INVALID_STATE", "invalid oauth state")
+	}
+	if redirectURI := strings.TrimSpace(input.RedirectURI); redirectURI != "" &&
+		redirectURI != strings.TrimSpace(session.RedirectURI) {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_REDIRECT_URI_MISMATCH", "redirect_uri does not match the OAuth session")
 	}
 
 	proxyURL := session.ProxyURL
@@ -140,16 +181,28 @@ func (s *GrokOAuthService) ExchangeCode(ctx context.Context, input *GrokExchange
 			return nil, err
 		}
 	}
-	redirectURI := session.RedirectURI
-	if strings.TrimSpace(input.RedirectURI) != "" {
-		redirectURI = input.RedirectURI
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
 	}
-
-	tokenResp, err := s.oauthClient.ExchangeCode(ctx, code, session.CodeVerifier, redirectURI, proxyURL, session.ClientID)
+	if !s.sessionStore.TryConsumeSession(input.SessionID) {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_SESSION_ALREADY_USED", "oauth session has already been used")
+	}
+	defer s.sessionStore.Delete(input.SessionID)
+	tokenResp, err := s.oauthClient.ExchangeCode(ctx, code, session.CodeVerifier, session.RedirectURI, proxyURL, session.ClientID)
 	if err != nil {
 		return nil, err
 	}
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
+		return nil, err
+	}
 	return s.tokenInfoFromResponse(tokenResp, session.ClientID, nil), nil
+}
+
+func (s *GrokOAuthService) requireOAuthClient() error {
+	if s == nil || s.oauthClient == nil {
+		return infraerrors.New(http.StatusInternalServerError, "GROK_OAUTH_CLIENT_NOT_CONFIGURED", "oauth client is not configured")
+	}
+	return nil
 }
 
 func (s *GrokOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL, clientID string) (*GrokTokenInfo, error) {
@@ -157,8 +210,14 @@ func (s *GrokOAuthService) RefreshToken(ctx context.Context, refreshToken, proxy
 	if refreshToken == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_REFRESH_TOKEN", "refresh_token is required")
 	}
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
+	}
 	tokenResp, err := s.oauthClient.RefreshToken(ctx, refreshToken, proxyURL, clientID)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
 		return nil, err
 	}
 	tokenInfo := s.tokenInfoFromResponse(tokenResp, clientID, nil)
@@ -176,7 +235,16 @@ func (s *GrokOAuthService) ValidateRefreshToken(ctx context.Context, refreshToke
 	return s.RefreshToken(ctx, refreshToken, proxyURL, xai.EffectiveClientID())
 }
 
-func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+// ValidateSSOToken converts a Web SSO cookie into Build OAuth tokens.
+// The raw sso_token is never stored on GrokTokenInfo or account credentials.
+func (s *GrokOAuthService) ValidateSSOToken(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	ssoToken = strings.TrimSpace(ssoToken)
+	if ssoToken == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_NO_SSO_TOKEN", "sso_token is required")
+	}
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
+	}
 	proxyURL, err := s.proxyURL(ctx, proxyID)
 	if err != nil {
 		return nil, err
@@ -185,7 +253,59 @@ func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, 
 	if err != nil {
 		return nil, err
 	}
+	if err := validateGrokTokenResponse(tokenResp); err != nil {
+		return nil, err
+	}
 	return s.tokenInfoFromResponse(tokenResp, xai.DefaultClientID, nil), nil
+}
+
+// ConvertFromSSO is the batch-import entry point; same semantics as ValidateSSOToken.
+func (s *GrokOAuthService) ConvertFromSSO(ctx context.Context, ssoToken string, proxyID *int64) (*GrokTokenInfo, error) {
+	return s.ValidateSSOToken(ctx, ssoToken, proxyID)
+}
+
+// AuthorizePassword logs in with email/password, converts the resulting SSO cookie
+// to Build OAuth, and returns OAuth tokens only. Password and raw SSO are never persisted.
+func (s *GrokOAuthService) AuthorizePassword(ctx context.Context, email, password string, proxyID *int64) (*GrokTokenInfo, error) {
+	if !s.passwordAuthEnabled() {
+		return nil, infraerrors.New(http.StatusForbidden, "GROK_OAUTH_PASSWORD_AUTH_DISABLED", "Grok password authorization is disabled")
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_EMAIL_REQUIRED", "email is required")
+	}
+	if strings.TrimSpace(password) == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "GROK_OAUTH_PASSWORD_REQUIRED", "password is required")
+	}
+	if err := s.requireOAuthClient(); err != nil {
+		return nil, err
+	}
+	proxyURL, err := s.proxyURL(ctx, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	loginResult, err := s.oauthClient.LoginWithPassword(ctx, email, password, proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	if loginResult == nil || strings.TrimSpace(loginResult.SSOToken) == "" {
+		return nil, infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_PASSWORD_LOGIN_FAILED", "grok password login did not return sso_token")
+	}
+	info, err := s.ValidateSSOToken(ctx, loginResult.SSOToken, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(info.Email) == "" {
+		info.Email = loginResult.Email
+	}
+	return info, nil
+}
+
+func validateGrokTokenResponse(tokenResp *xai.TokenResponse) error {
+	if tokenResp == nil || strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return infraerrors.New(http.StatusBadGateway, "GROK_OAUTH_INVALID_TOKEN_RESPONSE", "grok oauth token response missing access_token")
+	}
+	return nil
 }
 
 func (s *GrokOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*GrokTokenInfo, error) {

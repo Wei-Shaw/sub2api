@@ -39,7 +39,9 @@ function randomIdempotencyKey(): string {
 export interface IAMLoginRequest {
   principal: string
   password: string
-  captcha_payload?: Record<string, string>
+  turnstile_token?: string
+  tencent_captcha_ticket?: string
+  tencent_captcha_randstr?: string
 }
 
 export interface IAMLoginResponse extends AuthResponse {

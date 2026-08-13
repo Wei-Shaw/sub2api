@@ -70,26 +70,27 @@ type Handlers struct {
 	Subscription              *SubscriptionHandler
 	Announcement              *AnnouncementHandler
 	ChannelMonitor            *ChannelMonitorUserHandler
+	ChannelMonitorV2          *ChannelMonitorV2Handler
 	Admin                     *AdminHandlers
 	Gateway                   *GatewayHandler
 	OpenAIGateway             *OpenAIGatewayHandler
-	FalGateway                *FalGatewayHandler
-	FalVideoGateway           *FalVideoGatewayHandler
 	Setting                   *SettingHandler
 	Totp                      *TotpHandler
 	Passkey                   *PasskeyHandler
 	Payment                   *PaymentHandler
 	PaymentWebhook            *PaymentWebhookHandler
 	AvailableChannel          *AvailableChannelHandler
-	Plaza                     *PlazaHandler
 	ModelPlaza                *ModelPlazaHandler
+	AsyncImage                *AsyncImageHandler
+	BatchImage                *BatchImageHandler
+	FalGateway                *FalGatewayHandler
+	FalVideoGateway           *FalVideoGatewayHandler
+	Plaza                     *PlazaHandler
 	SupportTicket             *SupportTicketHandler
 	SupportTicketAttachment   *SupportTicketAttachmentHandler
 	SupportTicketNotification *SupportTicketNotificationHandler
 	SupportChat               *SupportChatHandler
 	OidcProvider              *OidcProviderHandler
-	AsyncImage                *AsyncImageHandler
-	BatchImage                *BatchImageHandler
 	Organization              *OrganizationHandler
 	VideoModel                *VideoModelHandler
 	UserMaterial              *UserMaterialHandler

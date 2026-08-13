@@ -9,12 +9,9 @@ import (
 )
 
 var (
-	ErrTurnstileVerificationFailed = infraerrors.BadRequest("TURNSTILE_VERIFICATION_FAILED", "turnstile verification failed")
-	ErrTurnstileNotConfigured      = infraerrors.ServiceUnavailable("TURNSTILE_NOT_CONFIGURED", "turnstile not configured")
-	ErrTurnstileInvalidSecretKey   = infraerrors.BadRequest("TURNSTILE_INVALID_SECRET_KEY", "invalid turnstile secret key")
-	ErrCaptchaVerificationFailed   = infraerrors.BadRequest("CAPTCHA_VERIFICATION_FAILED", "captcha verification failed")
-	ErrCaptchaNotConfigured        = infraerrors.ServiceUnavailable("CAPTCHA_NOT_CONFIGURED", "captcha not configured")
-	ErrCaptchaInvalidSecretKey     = infraerrors.BadRequest("CAPTCHA_INVALID_SECRET_KEY", "invalid captcha secret key")
+	ErrCaptchaVerificationFailed = infraerrors.BadRequest("CAPTCHA_VERIFICATION_FAILED", "captcha verification failed")
+	ErrCaptchaNotConfigured      = infraerrors.ServiceUnavailable("CAPTCHA_NOT_CONFIGURED", "captcha not configured")
+	ErrCaptchaInvalidSecretKey   = infraerrors.BadRequest("CAPTCHA_INVALID_SECRET_KEY", "invalid captcha secret key")
 )
 
 const (

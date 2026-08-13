@@ -156,3 +156,6 @@ output/
 __pycache__/
 *.pyc
 .agent
+
+# Vitest / Vite cache at repo root
+.vite/

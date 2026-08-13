@@ -203,18 +203,22 @@
           </transition>
         </div>
 
-        <!-- Captcha Widget -->
-        <div
-          v-if="captchaEnabled && captchaSiteKey"
-          :data-testid="captchaProvider === 'turnstile' ? 'registration-turnstile' : undefined"
-        >
-          <CaptchaWidget
-            ref="captchaRef"
-            :provider="captchaProvider"
-            :site-key="captchaSiteKey"
-            @verify="onCaptchaVerify"
-            @expire="onCaptchaExpire"
-            @error="onCaptchaError"
+        <!-- Turnstile Widget -->
+        <div v-if="captchaEnabled" data-testid="registration-turnstile">
+          <TurnstileWidget
+            ref="turnstileRef"
+            :turnstile-enabled="turnstileEnabled"
+            :turnstile-site-key="turnstileSiteKey"
+            :tencent-enabled="tencentCaptchaEnabled"
+            :tencent-app-id="tencentCaptchaAppId"
+            :tencent-region="tencentCaptchaRegion"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
+            @verify="onTurnstileVerify"
+            @expire="onTurnstileExpire"
+            @error="onTurnstileError"
           />
         </div>
 
@@ -233,7 +237,7 @@
         <!-- Submit Button -->
         <button
           type="submit"
-          :disabled="registrationActionDisabled || (captchaEnabled && captchaProvider !== 'tencent_captcha' && !captchaToken)"
+          :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
           class="btn btn-primary w-full"
         >
           <svg
@@ -283,6 +287,7 @@
           :github-enabled="githubOAuthEnabled"
           :google-enabled="googleOAuthEnabled"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
 
         <LinuxDoOAuthSection
@@ -290,12 +295,14 @@
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
@@ -303,6 +310,7 @@
           :provider-name="oidcOAuthProviderName"
           :aff-code="formData.aff_code"
           :show-divider="false"
+          @start="handleOAuthStart"
         />
       </div>
     </div>
@@ -333,16 +341,19 @@ import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import LoginAgreementPrompt from '@/components/auth/LoginAgreementPrompt.vue'
 import Icon from '@/components/icons/Icon.vue'
-import CaptchaWidget from '@/components/CaptchaWidget.vue'
-import { useCaptchaSubmit, type CaptchaSubmitError } from '@/composables/useCaptchaSubmit'
+import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { useAuthStore, useAppStore } from '@/stores'
 import {
+  buildOAuthLoginStartURL,
   getPublicSettings,
   isWeChatWebOAuthEnabled,
+  startOAuthLogin,
+  type OAuthLoginStart,
   validatePromoCode,
   validateInvitationCode
 } from '@/api/auth'
 import { buildAuthErrorMessage } from '@/utils/authError'
+import { extractApiErrorCode, extractI18nErrorMessage } from '@/utils/apiError'
 import {
   formatRegistrationEmailSuffixWhitelistForMessage,
   isRegistrationEmailSuffixAllowed,
@@ -377,10 +388,16 @@ const registrationEnabled = ref<boolean>(true)
 const emailVerifyEnabled = ref<boolean>(false)
 const promoCodeEnabled = ref<boolean>(true)
 const invitationCodeEnabled = ref<boolean>(false)
-const captchaEnabled = ref<boolean>(false)
-const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
-const captchaSiteKey = ref<string>('')
 const affiliateEnabled = ref<boolean>(false)
+const turnstileEnabled = ref<boolean>(false)
+const turnstileSiteKey = ref<string>('')
+const tencentCaptchaEnabled = ref<boolean>(false)
+const tencentCaptchaAppId = ref<string>('')
+const tencentCaptchaRegion = ref<string>('cn')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
@@ -389,6 +406,8 @@ const oidcOAuthProviderName = ref<string>('OIDC')
 const githubOAuthEnabled = ref<boolean>(false)
 const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
+// 域名限量注册开关：开启时非白名单域名可注册 1 个账户（由后端判定），前端不做白名单预检。
+const emailDomainQuotaEnabled = ref<boolean>(false)
 const loginAgreementEnabled = ref<boolean>(false)
 const loginAgreementMode = ref<'modal' | 'checkbox' | string>('modal')
 const loginAgreementUpdatedAt = ref<string>('')
@@ -397,9 +416,26 @@ const loginAgreementDocuments = ref<LoginAgreementDocument[]>([])
 const agreementAccepted = ref<boolean>(false)
 const showAgreementModal = ref<boolean>(false)
 
-// Captcha
-const captchaRef = ref<InstanceType<typeof CaptchaWidget> | null>(null)
-const captchaToken = ref<string>('')
+// Turnstile
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const turnstileToken = ref<string>('')
+const tencentCaptchaRandstr = ref<string>('')
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：提交、OAuth 启动时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
+const captchaEnabled = computed(
+  () =>
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
+)
 
 // Promo code validation
 const promoValidating = ref<boolean>(false)
@@ -431,7 +467,7 @@ const formData = reactive({
 const errors = reactive({
   email: '',
   password: '',
-  captcha: '',
+  turnstile: '',
   invitation_code: ''
 })
 
@@ -441,7 +477,7 @@ const validationToastMessage = computed(() =>
   (invitationValidation.invalid ? invitationValidation.message : '') ||
   errors.invitation_code ||
   (promoValidation.invalid ? promoValidation.message : '') ||
-  errors.captcha ||
+  errors.turnstile ||
   ''
 )
 
@@ -487,15 +523,16 @@ onMounted(async () => {
     emailVerifyEnabled.value = settings.email_verify_enabled
     promoCodeEnabled.value = settings.promo_code_enabled
     invitationCodeEnabled.value = settings.invitation_code_enabled
-    captchaEnabled.value = settings.captcha_enabled ?? settings.turnstile_enabled
-    captchaProvider.value =
-      settings.captcha_provider === 'hcaptcha'
-        ? 'hcaptcha'
-        : settings.captcha_provider === 'tencent_captcha'
-          ? 'tencent_captcha'
-          : 'turnstile'
-    captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
     affiliateEnabled.value = settings.affiliate_enabled
+    turnstileEnabled.value = settings.turnstile_enabled
+    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
@@ -506,6 +543,7 @@ onMounted(async () => {
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )
+    emailDomainQuotaEnabled.value = settings.registration_email_domain_quota_enabled === true
     applyLoginAgreementSettings(settings)
 
     // Read promo code from URL parameter only if promo code is enabled
@@ -744,19 +782,77 @@ function getInvitationErrorMessage(errorCode?: string): string {
 
 // ==================== Captcha Handlers ====================
 
-function onCaptchaVerify(token: string): void {
-  captchaToken.value = token
-  errors.captcha = ''
+function onTurnstileVerify(token: string, randstr = ''): void {
+  turnstileToken.value = token
+  tencentCaptchaRandstr.value = randstr
+  errors.turnstile = ''
 }
 
-function onCaptchaExpire(): void {
-  captchaToken.value = ''
-  errors.captcha = t('auth.captchaExpired')
+function onTurnstileExpire(): void {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  errors.turnstile = t('auth.turnstileExpired')
 }
 
-function onCaptchaError(): void {
-  captchaToken.value = ''
-  errors.captcha = t('auth.captchaFailed')
+function onTurnstileError(): void {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  errors.turnstile = t('auth.turnstileFailed')
+}
+
+function resetCaptchaProof(): void {
+  turnstileRef.value?.reset()
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  errors.turnstile = ''
+}
+
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
+
+  const proof = await turnstileRef.value?.verifyAction()
+  if (!proof) return false
+
+  turnstileToken.value = proof.token
+  tencentCaptchaRandstr.value = proof.randstr
+  return true
+}
+
+async function handleOAuthStart(request: OAuthLoginStart): Promise<void> {
+  if (registrationActionDisabled.value) return
+
+  if (!actionCaptchaEnabled.value) {
+    window.location.href = buildOAuthLoginStartURL(request)
+    return
+  }
+
+  isLoading.value = true
+  try {
+    const proof = await turnstileRef.value?.verifyAction()
+    if (!proof) return
+
+    const result = await startOAuthLogin(
+      request,
+      tencentCaptchaEnabled.value
+        ? {
+            tencent_captcha_ticket: proof.token,
+            tencent_captcha_randstr: proof.randstr
+          }
+        : { turnstile_token: proof.token }
+    )
+    window.location.href = result.authorize_url
+  } catch (error: unknown) {
+    errorMessage.value = extractI18nErrorMessage(
+      error,
+      t,
+      'auth.errors',
+      t('auth.turnstileFailed')
+    )
+    appStore.showError(errorMessage.value)
+  } finally {
+    resetCaptchaProof()
+    isLoading.value = false
+  }
 }
 
 // ==================== Validation ====================
@@ -786,7 +882,7 @@ function validateForm(): boolean {
   // Reset errors
   errors.email = ''
   errors.password = ''
-  errors.captcha = ''
+  errors.turnstile = ''
   errors.invitation_code = ''
 
   let isValid = true
@@ -807,8 +903,10 @@ function validateForm(): boolean {
     errors.email = t('auth.invalidEmail')
     isValid = false
   } else if (
+    !emailDomainQuotaEnabled.value &&
     !isRegistrationEmailSuffixAllowed(formData.email, registrationEmailSuffixWhitelist.value)
   ) {
+    // 域名限量注册关闭时保持严格白名单预检；开启时交给后端按域名额度判定
     errors.email = buildEmailSuffixNotAllowedMessage()
     isValid = false
   }
@@ -833,8 +931,8 @@ function validateForm(): boolean {
   // Captcha validation
   // 天御 (tencent_captcha) 是 popup 形态：用户点提交后才弹挑战，没有"先验证后提交"概念，
   // 所以这里只对声明式 widget（turnstile / hcaptcha）做 token 缺失拦截。
-  if (captchaEnabled.value && captchaProvider.value !== 'tencent_captcha' && !captchaToken.value) {
-    errors.captcha = t('auth.completeCaptchaVerification')
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    errors.turnstile = t('auth.completeVerification')
     isValid = false
   }
 
@@ -842,61 +940,6 @@ function validateForm(): boolean {
 }
 
 // ==================== Form Handlers ====================
-
-// captchaSubmit: 抽离的 captcha-gated submit 状态机（design.md D5 / spec "前端层 fallback 重试 1 次"）。
-// 注意 RegisterView 有两条出口：
-//   1. emailVerifyEnabled → 把 captcha_payload 暂存到 sessionStorage，然后跳到 EmailVerifyView 完成最终注册
-//   2. 直接走 authStore.register（无邮箱验证流程）
-// 两条路径在 submitFn 内部分发。
-const captchaSubmit = useCaptchaSubmit({
-  captchaRef,
-  captchaEnabled: () => captchaEnabled.value,
-  getCachedToken: () => captchaToken.value,
-  submitFn: async (payload) => {
-    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
-    if (affCode) {
-      formData.aff_code = affCode
-    }
-
-    // If email verification is enabled, redirect to verification page
-    if (emailVerifyEnabled.value) {
-      sessionStorage.setItem(
-        'register_data',
-        JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-          // captcha_payload 是新协议字段，captcha_token 留作兼容窗口（EmailVerifyView 在最终注册时回传，
-          // 后端 extractCaptchaPayload helper 优先取 captcha_payload）。
-          captcha_payload: captchaEnabled.value ? payload : undefined,
-          captcha_token: captchaToken.value,
-          promo_code: formData.promo_code || undefined,
-          invitation_code: formData.invitation_code || undefined,
-          ...(affCode ? { aff_code: affCode } : {})
-        })
-      )
-
-      await router.push('/email-verify')
-      return
-    }
-
-    // Otherwise, directly register
-    await authStore.register({
-      email: formData.email,
-      password: formData.password,
-      captcha_payload: captchaEnabled.value ? payload : undefined,
-      promo_code: formData.promo_code || undefined,
-      invitation_code: formData.invitation_code || undefined,
-      ...(affCode ? { aff_code: affCode } : {})
-    })
-    clearAffiliateReferralCode()
-
-    // Show success toast
-    appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
-
-    // Redirect to dashboard
-    await router.push('/dashboard')
-  }
-})
 
 async function handleRegister(): Promise<void> {
   // Clear previous error
@@ -945,32 +988,79 @@ async function handleRegister(): Promise<void> {
     }
   }
 
+  if (!(await acquireActionProof())) {
+    return
+  }
+
   isLoading.value = true
 
   try {
-    await captchaSubmit.submit()
-  } catch (error: unknown) {
-    const captchaErr = error as CaptchaSubmitError
-    // Reset Captcha on error
-    if (captchaRef.value) {
-      captchaRef.value.reset()
-      captchaToken.value = ''
+    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+    if (affCode) {
+      formData.aff_code = affCode
     }
 
-    if (captchaErr.reason === 'cancelled') {
-      errorMessage.value = t('auth.captchaFailed')
-    } else {
-      const cause = (captchaErr as Error & { cause?: unknown }).cause ?? error
-      errorMessage.value = buildAuthErrorMessage(cause, {
-        fallback: t('auth.registrationFailed')
-      })
+    // If email verification is enabled, redirect to verification page
+    if (emailVerifyEnabled.value) {
+      // Store registration data in sessionStorage
+      sessionStorage.setItem(
+        'register_data',
+        JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          turnstile_token:
+            turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+          tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+          tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
+          promo_code: formData.promo_code || undefined,
+          invitation_code: formData.invitation_code || undefined,
+          ...(affCode ? { aff_code: affCode } : {})
+        })
+      )
+
+      // Navigate to email verification page
+      await router.push('/email-verify')
+      return
     }
+
+    // Otherwise, directly register
+    await authStore.register({
+      email: formData.email,
+      password: formData.password,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined,
+      promo_code: formData.promo_code || undefined,
+      invitation_code: formData.invitation_code || undefined,
+      ...(affCode ? { aff_code: affCode } : {})
+    })
+    clearAffiliateReferralCode()
+
+    // Show success toast
+    appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
+
+    // Redirect to dashboard
+    await router.push('/dashboard')
+  } catch (error: unknown) {
+    // Handle registration error
+    errorMessage.value = buildRegistrationErrorMessage(error, t('auth.registrationFailed'))
 
     // Also show error toast
     appStore.showError(errorMessage.value)
   } finally {
+    if (captchaEnabled.value) {
+      resetCaptchaProof()
+    }
     isLoading.value = false
   }
+}
+
+function buildRegistrationErrorMessage(error: unknown, fallback: string): string {
+  if (extractApiErrorCode(error) === 'EMAIL_DOMAIN_REGISTRATION_LIMIT') {
+    return t('auth.emailDomainRegistrationLimit')
+  }
+  return buildAuthErrorMessage(error, { fallback })
 }
 </script>
 

@@ -401,17 +401,17 @@ func (h *OrganizationHandler) VerifyRecoveryEmail(c *gin.Context) {
 
 func (h *OrganizationHandler) IAMLogin(c *gin.Context) {
 	var req struct {
-		Principal      string            `json:"principal" binding:"required"`
-		Password       string            `json:"password" binding:"required"`
-		CaptchaPayload map[string]string `json:"captcha_payload"`
-		CaptchaToken   string            `json:"captcha_token"`
-		TurnstileToken string            `json:"turnstile_token"`
+		Principal             string `json:"principal" binding:"required"`
+		Password              string `json:"password" binding:"required"`
+		TurnstileToken        string `json:"turnstile_token"`
+		TencentCaptchaTicket  string `json:"tencent_captcha_ticket"`
+		TencentCaptchaRandstr string `json:"tencent_captcha_randstr"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, service.ErrInvalidCredentials)
 		return
 	}
-	if err := h.auth.VerifyCaptchaPayload(c.Request.Context(), extractCaptchaPayload(req.CaptchaPayload, req.CaptchaToken, req.TurnstileToken), ip.GetClientIP(c)); err != nil {
+	if err := h.auth.VerifyCaptcha(c.Request.Context(), captchaProof(req.TurnstileToken, req.TencentCaptchaTicket, req.TencentCaptchaRandstr), ip.GetClientIP(c)); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

@@ -28,19 +28,19 @@ func (s *iamLoginSettingRepositoryStub) GetMultiple(_ context.Context, keys []st
 	return values, nil
 }
 
+func (s *iamLoginSettingRepositoryStub) GetValue(_ context.Context, key string) (string, error) {
+	return s.values[key], nil
+}
+
 type iamLoginCaptchaVerifierSpy struct {
-	called  int
-	payload map[string]string
+	called int
+	token  string
 }
 
-func (s *iamLoginCaptchaVerifierSpy) Verify(_ context.Context, req service.VerifyRequest) (*service.VerifyResult, error) {
+func (s *iamLoginCaptchaVerifierSpy) VerifyToken(_ context.Context, _, token, _ string) (*service.TurnstileVerifyResponse, error) {
 	s.called++
-	s.payload = req.Payload
-	return &service.VerifyResult{Success: true}, nil
-}
-
-func (s *iamLoginCaptchaVerifierSpy) ValidateProviderConfig(_ context.Context, _ string, _ map[string]string) error {
-	return nil
+	s.token = token
+	return &service.TurnstileVerifyResponse{Success: true}, nil
 }
 
 type iamLoginOrganizationRepositoryStub struct {
@@ -56,18 +56,19 @@ func (s *iamLoginOrganizationRepositoryStub) FindIAMByPrincipal(_ context.Contex
 func newIAMLoginHandlerForCaptchaTest(t *testing.T) (*OrganizationHandler, *iamLoginCaptchaVerifierSpy, *iamLoginOrganizationRepositoryStub) {
 	t.Helper()
 	cfg := &config.Config{
-		Server:  config.ServerConfig{Mode: "release"},
-		Captcha: config.CaptchaConfig{Required: true},
-		Company: config.CompanyConfig{IAMEnabled: true},
+		Server:    config.ServerConfig{Mode: "release"},
+		Turnstile: config.TurnstileConfig{Required: true},
+		Company:   config.CompanyConfig{IAMEnabled: true},
 	}
 	settings := service.NewSettingService(&iamLoginSettingRepositoryStub{values: map[string]string{
-		service.SettingKeyCaptchaProvider: "turnstile",
-		service.SettingKeyCaptchaConfig:   `{"enabled":"true","site_key":"site-key","secret_key":"secret-key"}`,
+		service.SettingKeyTurnstileEnabled:   "true",
+		service.SettingKeyTurnstileSiteKey:   "site-key",
+		service.SettingKeyTurnstileSecretKey: "secret-key",
 	}}, cfg)
 	verifier := &iamLoginCaptchaVerifierSpy{}
 	authService := service.NewAuthService(
 		nil, nil, nil, nil, cfg, settings, nil,
-		service.NewCaptchaService(settings, verifier),
+		service.NewTurnstileService(settings, verifier),
 		nil, nil, nil, nil, nil,
 	)
 	organizationRepo := &iamLoginOrganizationRepositoryStub{}
@@ -100,10 +101,10 @@ func TestIAMLoginPassesCaptchaPayloadBeforeAccountAuthentication(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, verifier, organizationRepo := newIAMLoginHandlerForCaptchaTest(t)
 
-	response := performIAMLogin(handler, `{"principal":"reader@c123456789012345.opentk.ai","password":"secret-password","captcha_payload":{"token":"captcha-token"}}`)
+	response := performIAMLogin(handler, `{"principal":"reader@c123456789012345.opentk.ai","password":"secret-password","turnstile_token":"captcha-token"}`)
 
 	require.NotEqual(t, http.StatusOK, response.Code)
 	require.Equal(t, 1, verifier.called)
-	require.Equal(t, map[string]string{"token": "captcha-token"}, verifier.payload)
+	require.Equal(t, "captcha-token", verifier.token)
 	require.Equal(t, 1, organizationRepo.findCalled)
 }

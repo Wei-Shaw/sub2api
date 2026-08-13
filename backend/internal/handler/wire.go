@@ -213,9 +213,10 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 }
 
 // ProvideAdminSettingHandler creates admin.SettingHandler with notification template APIs.
-func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, captchaService *service.CaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService) *admin.SettingHandler {
+func ProvideAdminSettingHandler(settingService *service.SettingService, emailService *service.EmailService, captchaService *service.CaptchaService, aliyunCaptchaService *service.AliyunCaptchaService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, userAttributeService *service.UserAttributeService, notificationEmailService *service.NotificationEmailService, totpService *service.TotpService, userService *service.UserService) *admin.SettingHandler {
 	h := admin.NewSettingHandler(settingService, emailService, captchaService, opsService, paymentConfigService, paymentService, userAttributeService)
 	h.SetNotificationEmailService(notificationEmailService)
+	h.SetAliyunCaptchaService(aliyunCaptchaService)
 	h.SetStepUpDeps(totpService, userService)
 	return h
 }
@@ -230,6 +231,7 @@ func ProvideHandlers(
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
 	channelMonitorUserHandler *ChannelMonitorUserHandler,
+	channelMonitorV2Handler *ChannelMonitorV2Handler,
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
@@ -265,26 +267,27 @@ func ProvideHandlers(
 		Subscription:              subscriptionHandler,
 		Announcement:              announcementHandler,
 		ChannelMonitor:            channelMonitorUserHandler,
+		ChannelMonitorV2:          channelMonitorV2Handler,
 		Admin:                     adminHandlers,
 		Gateway:                   gatewayHandler,
 		OpenAIGateway:             openaiGatewayHandler,
-		FalGateway:                falGatewayHandler,
-		FalVideoGateway:           falVideoGatewayHandler,
 		Setting:                   settingHandler,
 		Totp:                      totpHandler,
 		Passkey:                   passkeyHandler,
 		Payment:                   paymentHandler,
 		PaymentWebhook:            paymentWebhookHandler,
 		AvailableChannel:          availableChannelHandler,
-		Plaza:                     plazaHandler,
 		ModelPlaza:                modelPlazaHandler,
+		AsyncImage:                asyncImageHandler,
+		BatchImage:                batchImageHandler,
+		FalGateway:                falGatewayHandler,
+		FalVideoGateway:           falVideoGatewayHandler,
+		Plaza:                     plazaHandler,
 		SupportTicket:             supportTicketHandler,
 		SupportTicketAttachment:   supportTicketAttachmentHandler,
 		SupportTicketNotification: supportTicketNotificationHandler,
 		SupportChat:               supportChatHandler,
 		OidcProvider:              oidcProviderHandler,
-		AsyncImage:                asyncImageHandler,
-		BatchImage:                batchImageHandler,
 		Organization:              organizationHandler,
 		VideoModel:                videoModelHandler,
 		UserMaterial:              userMaterialHandler,
@@ -302,6 +305,7 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
 	NewChannelMonitorUserHandler,
+	NewChannelMonitorV2Handler,
 	ProvideGatewayHandler,
 	ProvideOpenAIGatewayHandler,
 	NewFalGatewayHandler,

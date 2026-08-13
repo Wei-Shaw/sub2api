@@ -82,34 +82,18 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 }
 
-func TestSettingHandler_GetPublicSettingsExposesVideoFeature(t *testing.T) {
+func TestSettingHandler_GetPublicSettings_ExposesTencentCaptchaConfiguration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	repo := &settingHandlerPublicRepoStub{values: map[string]string{
-		service.SettingKeyVideoFeatureEnabled: "true",
-	}}
-	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
-	h.GetPublicSettings(c)
 
-	var resp struct {
-		Data struct {
-			VideoFeatureEnabled bool `json:"video_feature_enabled"`
-		} `json:"data"`
+	repo := &settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyTencentCaptchaEnabled: "true",
+			service.SettingKeyTencentCaptchaAppID:   "123456789",
+			service.SettingKeyTencentCaptchaRegion:  service.TencentCaptchaRegionINTL,
+		},
 	}
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
-	require.True(t, resp.Data.VideoFeatureEnabled)
-}
-
-func TestSettingHandler_GetPublicSettings_ExposesCompanyDocumentationURL(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	repo := &settingHandlerPublicRepoStub{values: map[string]string{
-		service.SettingKeyCompanyApplicationsEnabled: "true",
-		service.SettingKeyCompanyIAMEnabled:          "true",
-		service.SettingKeyCompanyDocumentationURL:    "https://docs.example.com/company",
-	}}
 	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
@@ -117,17 +101,20 @@ func TestSettingHandler_GetPublicSettings_ExposesCompanyDocumentationURL(t *test
 	h.GetPublicSettings(c)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
+
 	var resp struct {
+		Code int `json:"code"`
 		Data struct {
-			ApplicationsEnabled bool   `json:"company_applications_enabled"`
-			IAMEnabled          bool   `json:"company_iam_enabled"`
-			DocumentationURL    string `json:"company_documentation_url"`
+			TencentCaptchaEnabled bool   `json:"tencent_captcha_enabled"`
+			TencentCaptchaAppID   string `json:"tencent_captcha_app_id"`
+			TencentCaptchaRegion  string `json:"tencent_captcha_region"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
-	require.True(t, resp.Data.ApplicationsEnabled)
-	require.True(t, resp.Data.IAMEnabled)
-	require.Equal(t, "https://docs.example.com/company", resp.Data.DocumentationURL)
+	require.Equal(t, 0, resp.Code)
+	require.True(t, resp.Data.TencentCaptchaEnabled)
+	require.Equal(t, "123456789", resp.Data.TencentCaptchaAppID)
+	require.Equal(t, service.TencentCaptchaRegionINTL, resp.Data.TencentCaptchaRegion)
 }
 
 func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
@@ -210,4 +197,52 @@ func TestSettingHandler_GetPublicSettings_ExposesSupportChatPublicFields(t *test
 	require.True(t, resp.Data.SupportChatEnabled, "support_chat_enabled must be exposed via /api/v1/settings/public so the floating widget keeps rendering after a public-settings refresh")
 	require.True(t, resp.Data.SupportChatAnonymousLLM)
 	require.ElementsMatch(t, []string{"/payment", "/admin/*"}, resp.Data.SupportChatExcludedRoutes)
+}
+
+func TestSettingHandler_GetPublicSettingsExposesVideoFeature(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerPublicRepoStub{values: map[string]string{
+		service.SettingKeyVideoFeatureEnabled: "true",
+	}}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+	h.GetPublicSettings(c)
+
+	var resp struct {
+		Data struct {
+			VideoFeatureEnabled bool `json:"video_feature_enabled"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Data.VideoFeatureEnabled)
+}
+
+func TestSettingHandler_GetPublicSettings_ExposesCompanyDocumentationURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerPublicRepoStub{values: map[string]string{
+		service.SettingKeyCompanyApplicationsEnabled: "true",
+		service.SettingKeyCompanyIAMEnabled:          "true",
+		service.SettingKeyCompanyDocumentationURL:    "https://docs.example.com/company",
+	}}
+	h := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), "test-version")
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Data struct {
+			ApplicationsEnabled bool   `json:"company_applications_enabled"`
+			IAMEnabled          bool   `json:"company_iam_enabled"`
+			DocumentationURL    string `json:"company_documentation_url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Data.ApplicationsEnabled)
+	require.True(t, resp.Data.IAMEnabled)
+	require.Equal(t, "https://docs.example.com/company", resp.Data.DocumentationURL)
 }

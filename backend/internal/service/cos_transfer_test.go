@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -60,6 +61,18 @@ func (s *fakeObjectStore) Upload(_ context.Context, _ string, body io.Reader, _ 
 	}
 	data, _ := io.ReadAll(body)
 	return int64(len(data)), nil
+}
+
+func (s *fakeObjectStore) UploadFile(_ context.Context, _ string, filePath string, _ string) (int64, error) {
+	n := atomic.AddInt32(&s.uploads, 1)
+	if n <= atomic.LoadInt32(&s.failUploads) {
+		return 0, io.ErrClosedPipe
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }
 
 func (s *fakeObjectStore) Download(context.Context, string) (io.ReadCloser, error) { return nil, nil }

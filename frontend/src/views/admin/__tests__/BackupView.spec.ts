@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
@@ -6,6 +6,9 @@ const apiMocks = vi.hoisted(() => ({
   getS3Config: vi.fn(),
   updateS3Config: vi.fn(),
   testS3Connection: vi.fn(),
+  getImageStorageConfig: vi.fn(),
+  updateImageStorageConfig: vi.fn(),
+  testImageStorageConnection: vi.fn(),
   getSchedule: vi.fn(),
   updateSchedule: vi.fn(),
   listBackups: vi.fn(),
@@ -32,15 +35,19 @@ vi.mock('@/stores', () => ({
   useAppStore: () => storeMocks,
 }))
 
-vi.mock('vue-i18n', async () => {
-  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
-  return {
-    ...actual,
-    useI18n: () => ({
-      t: (key: string) => key,
-    }),
-  }
-})
+vi.mock('@/composables/useStepUp', () => ({
+  useStepUp: () => ({ run: (fn: () => unknown) => fn() }),
+  isStepUpBlocked: () => false,
+  isStepUpCancelled: () => false,
+  stepUpBlockReason: () => '',
+}))
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, unknown>) =>
+      params?.index === undefined ? key : `${key}:${params.index}`,
+  }),
+}))
 
 vi.mock('@/components/common/ConfirmDialog.vue', () => ({
   default: defineComponent({
@@ -134,36 +141,47 @@ const backupRecord = {
   started_at: '2026-01-01T00:00:00Z',
 }
 
+function mountBackupView() {
+  return mount(BackupView, {
+    global: {
+      stubs: {
+        TotpStepUpDialog: true,
+      },
+    },
+  })
+}
+
 async function mountLoadedView() {
-  const wrapper = mount(BackupView)
+  const wrapper = mountBackupView()
   await flushPromises()
   return wrapper
 }
 
-beforeEach(() => {
-  vi.clearAllMocks()
-  apiMocks.getS3Config.mockResolvedValue({
-    endpoint: '',
-    region: 'auto',
-    bucket: '',
-    access_key_id: '',
-    prefix: 'backups/',
-    force_path_style: false,
-  })
-  apiMocks.getSchedule.mockResolvedValue({
-    enabled: false,
-    cron_expr: '0 2 * * *',
-    retain_days: 14,
-    retain_count: 10,
-  })
-  apiMocks.listBackups.mockResolvedValue({ items: [backupRecord] })
-  apiMocks.restoreBackup.mockResolvedValue({
-    ...backupRecord,
-    restore_status: 'running',
-  })
-})
-
 describe('BackupView', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiMocks.getS3Config.mockResolvedValue({
+      endpoint: '',
+      region: 'auto',
+      bucket: '',
+      access_key_id: '',
+      prefix: 'backups/',
+      force_path_style: false,
+    })
+    apiMocks.getImageStorageConfig.mockResolvedValue({ config: {}, secret_configured: false })
+    apiMocks.getSchedule.mockResolvedValue({
+      enabled: false,
+      cron_expr: '0 2 * * *',
+      retain_days: 14,
+      retain_count: 10,
+    })
+    apiMocks.listBackups.mockResolvedValue({ items: [backupRecord] })
+    apiMocks.restoreBackup.mockResolvedValue({
+      ...backupRecord,
+      restore_status: 'running',
+    })
+  })
+
   it('恢复备份使用统一密码输入弹框而不是 window.prompt', async () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('native-password')
     const wrapper = await mountLoadedView()
@@ -201,5 +219,88 @@ describe('BackupView', () => {
 
     expect(apiMocks.restoreBackup).toHaveBeenCalledWith('backup-1', 'restore-password')
     promptSpy.mockRestore()
+  })
+})
+
+const baseRecord = (id: string, parts?: unknown[]) => ({
+  id,
+  status: 'completed',
+  backup_type: 'postgres',
+  file_name: `${id}.sql.gz`,
+  s3_key: `backups/${id}.sql.gz`,
+  parts,
+  size_bytes: 10,
+  triggered_by: 'manual',
+  started_at: '2026-08-09T00:00:00Z',
+})
+
+describe('admin BackupView 分卷备份', () => {
+  beforeEach(() => {
+    apiMocks.getS3Config.mockResolvedValue({})
+    apiMocks.getImageStorageConfig.mockResolvedValue({ config: {}, secret_configured: false })
+    apiMocks.getSchedule.mockResolvedValue({ enabled: false, cron_expr: '', retain_days: 14, retain_count: 10 })
+    apiMocks.getDownloadURL.mockReset()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    document.body.innerHTML = ''
+  })
+
+  it('显示分卷数并在下载时列出每个分卷链接', async () => {
+    apiMocks.listBackups.mockResolvedValue({
+      items: [baseRecord('split', [{ index: 1 }, { index: 2 }, { index: 3 }])],
+    })
+    apiMocks.getDownloadURL.mockResolvedValue({
+      parts: [
+        { index: 1, size_bytes: 5, url: 'https://example.test/part-1' },
+        { index: 2, size_bytes: 6, url: 'https://example.test/part-2' },
+        { index: 3, size_bytes: 7, url: 'https://example.test/part-3' },
+      ],
+    })
+
+    const wrapper = mountBackupView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('3')
+    const downloadButton = wrapper.findAll('button').find(button =>
+      button.text().includes('admin.backup.actions.download'),
+    )
+    expect(downloadButton).toBeDefined()
+    await downloadButton!.trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('admin.backup.actions.partLabel:1')
+    expect(document.body.textContent).toContain('admin.backup.actions.partLabel:3')
+    expect(document.body.querySelector('a[href="https://example.test/part-2"]')).not.toBeNull()
+  })
+
+  it('旧单文件记录仍使用单个下载地址', async () => {
+    apiMocks.listBackups.mockResolvedValue({ items: [baseRecord('legacy')] })
+    apiMocks.getDownloadURL.mockResolvedValue({ url: 'https://example.test/legacy.sql.gz' })
+
+    const wrapper = mountBackupView()
+    await flushPromises()
+    const downloadButton = wrapper.findAll('button').find(button =>
+      button.text().includes('admin.backup.actions.download'),
+    )
+    await downloadButton!.trigger('click')
+    await flushPromises()
+
+    expect(apiMocks.getDownloadURL).toHaveBeenCalledWith('legacy')
+    expect(document.body.textContent).not.toContain('admin.backup.actions.downloadParts')
+  })
+
+  it('运行中的备份不显示删除入口', async () => {
+    apiMocks.listBackups.mockResolvedValue({
+      items: [{ ...baseRecord('running'), status: 'running', progress: 'uploading' }],
+    })
+
+    const wrapper = mountBackupView()
+    await flushPromises()
+
+    expect(wrapper.find('tbody tr td:nth-child(5)').text()).toBe('-')
+    expect(wrapper.findAll('button').some(button => button.text() === 'common.delete')).toBe(false)
   })
 })

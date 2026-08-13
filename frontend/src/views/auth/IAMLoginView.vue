@@ -33,20 +33,27 @@
           <label class="input-label" for="iam-password">{{ t('auth.passwordLabel') }}</label>
           <input id="iam-password" v-model="form.password" class="input" required type="password" autocomplete="current-password" :disabled="authActionDisabled" />
         </div>
-        <div v-if="captchaEnabled && captchaSiteKey">
-          <CaptchaWidget
-            ref="captchaRef"
-            :provider="captchaProvider"
-            :site-key="captchaSiteKey"
-            @verify="onCaptchaVerify"
-            @expire="onCaptchaExpire"
-            @error="onCaptchaError"
+        <div v-if="captchaEnabled">
+          <TurnstileWidget
+            ref="turnstileRef"
+            :turnstile-enabled="turnstileEnabled"
+            :turnstile-site-key="turnstileSiteKey"
+            :tencent-enabled="tencentCaptchaEnabled"
+            :tencent-app-id="tencentCaptchaAppId"
+            :tencent-region="tencentCaptchaRegion"
+            :aliyun-enabled="aliyunCaptchaEnabled"
+            :aliyun-scene-id="aliyunCaptchaSceneId"
+            :aliyun-prefix="aliyunCaptchaPrefix"
+            :aliyun-region="aliyunCaptchaRegion"
+            @verify="onTurnstileVerify"
+            @expire="onTurnstileExpire"
+            @error="onTurnstileError"
           />
         </div>
         <button
           class="btn btn-primary w-full"
           type="submit"
-          :disabled="authActionDisabled || (captchaEnabled && captchaProvider !== 'tencent_captcha' && !captchaToken)"
+          :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
         >
           {{ loading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
@@ -60,8 +67,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AuthLayout from '@/components/layout/AuthLayout.vue'
-import CaptchaWidget from '@/components/CaptchaWidget.vue'
-import { useCaptchaSubmit, type CaptchaSubmitError } from '@/composables/useCaptchaSubmit'
+import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { getPublicSettings } from '@/api/auth'
 import { useAppStore, useAuthStore } from '@/stores'
 import { extractI18nErrorMessage } from '@/utils/apiError'
@@ -72,24 +78,52 @@ const auth = useAuthStore()
 const appStore = useAppStore()
 const loading = ref(false)
 const publicSettingsLoaded = ref(false)
-const captchaEnabled = ref(false)
-const captchaProvider = ref<'turnstile' | 'hcaptcha' | 'tencent_captcha'>('turnstile')
-const captchaSiteKey = ref('')
-const captchaToken = ref('')
-const captchaRef = ref<InstanceType<typeof CaptchaWidget> | null>(null)
+
+// Public settings
+const turnstileEnabled = ref<boolean>(false)
+const turnstileSiteKey = ref<string>('')
+const tencentCaptchaEnabled = ref<boolean>(false)
+const tencentCaptchaAppId = ref<string>('')
+const tencentCaptchaRegion = ref<string>('cn')
+const aliyunCaptchaEnabled = ref<boolean>(false)
+const aliyunCaptchaSceneId = ref<string>('')
+const aliyunCaptchaPrefix = ref<string>('')
+const aliyunCaptchaRegion = ref<string>('cn')
+
+// Captcha proof state
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const turnstileToken = ref<string>('')
+const tencentCaptchaRandstr = ref<string>('')
+
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：提交时弹窗验证
+const actionCaptchaEnabled = computed(
+  () => (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) || aliyunCaptchaReady.value
+)
+const captchaEnabled = computed(
+  () => (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
+)
+
 const form = reactive({ principal: '', password: '' })
 const authActionDisabled = computed(() => loading.value || !publicSettingsLoaded.value)
 
 onMounted(async () => {
   try {
     const settings = await getPublicSettings()
-    captchaEnabled.value = settings.captcha_enabled ?? settings.turnstile_enabled
-    captchaProvider.value = settings.captcha_provider === 'hcaptcha'
-      ? 'hcaptcha'
-      : settings.captcha_provider === 'tencent_captcha'
-        ? 'tencent_captcha'
-        : 'turnstile'
-    captchaSiteKey.value = settings.captcha_site_key || settings.turnstile_site_key || ''
+    turnstileEnabled.value = settings.turnstile_enabled
+    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
   } catch (error) {
     console.error('Failed to load public settings:', error)
   } finally {
@@ -97,52 +131,72 @@ onMounted(async () => {
   }
 })
 
-function onCaptchaVerify(token: string): void {
-  captchaToken.value = token
+// ==================== Captcha Handlers ====================
+
+function onTurnstileVerify(token: string, randstr = ''): void {
+  turnstileToken.value = token
+  tencentCaptchaRandstr.value = randstr
 }
 
-function onCaptchaExpire(): void {
-  captchaToken.value = ''
-  appStore.showError(t('auth.captchaExpired'))
+function onTurnstileExpire(): void {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  appStore.showError(t('auth.turnstileExpired'))
 }
 
-function onCaptchaError(): void {
-  captchaToken.value = ''
-  appStore.showError(t('auth.captchaFailed'))
+function onTurnstileError(): void {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  appStore.showError(t('auth.turnstileFailed'))
 }
 
-const captchaSubmit = useCaptchaSubmit({
-  captchaRef,
-  captchaEnabled: () => captchaEnabled.value,
-  getCachedToken: () => captchaToken.value,
-  submitFn: async (payload) => {
-    const response = await auth.loginIAM({
-      ...form,
-      captcha_payload: captchaEnabled.value ? payload : undefined,
-    })
-    await router.replace(response.user.must_change_password ? '/organization/change-password' : '/dashboard')
-  },
-})
+function resetCaptchaProof(): void {
+  turnstileRef.value?.reset()
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+}
 
-async function submit() {
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
+
+  const proof = await turnstileRef.value?.verifyAction()
+  if (!proof) return false
+
+  turnstileToken.value = proof.token
+  tencentCaptchaRandstr.value = proof.randstr
+  return true
+}
+
+async function submit(): Promise<void> {
   if (authActionDisabled.value) return
-  if (captchaEnabled.value && captchaProvider.value !== 'tencent_captcha' && !captchaToken.value) {
-    appStore.showError(t('auth.completeCaptchaVerification'))
+
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    appStore.showError(t('auth.completeVerification'))
     return
   }
+
+  if (!(await acquireActionProof())) {
+    return
+  }
+
   loading.value = true
   try {
-    await captchaSubmit.submit()
+    const response = await auth.loginIAM({
+      ...form,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
+    })
+    await router.replace(
+      response.user.must_change_password ? '/organization/change-password' : '/dashboard'
+    )
   } catch (error: unknown) {
-    captchaRef.value?.reset()
-    captchaToken.value = ''
-    const captchaError = error as CaptchaSubmitError
-    const cause = (captchaError as Error & { cause?: unknown }).cause ?? error
-    const message = captchaError.reason === 'cancelled'
-      ? t('auth.captchaFailed')
-      : extractI18nErrorMessage(cause, t, 'auth.errors', t('auth.loginFailed'))
-    appStore.showError(message)
+    appStore.showError(extractI18nErrorMessage(error, t, 'auth.errors', t('auth.loginFailed')))
   } finally {
+    if (captchaEnabled.value) {
+      resetCaptchaProof()
+    }
     loading.value = false
   }
 }

@@ -51,17 +51,6 @@ func parseCaptchaConfig(raw string) map[string]string {
 	return cfg
 }
 
-func encodeCaptchaConfig(cfg map[string]string) string {
-	if cfg == nil {
-		cfg = map[string]string{}
-	}
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
-}
-
 func cloneStringMap(src map[string]string) map[string]string {
 	if src == nil {
 		return map[string]string{}

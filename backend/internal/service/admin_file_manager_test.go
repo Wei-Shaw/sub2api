@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -20,6 +21,16 @@ func (s *adminFileStoreStub) Upload(_ context.Context, _ string, body io.Reader,
 	s.uploads++
 	data, err := io.ReadAll(body)
 	return int64(len(data)), err
+}
+func (s *adminFileStoreStub) UploadFile(
+	_ context.Context, _ string, filePath string, _ string,
+) (int64, error) {
+	s.uploads++
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }
 func (s *adminFileStoreStub) Download(context.Context, string) (io.ReadCloser, error) {
 	return nil, nil
