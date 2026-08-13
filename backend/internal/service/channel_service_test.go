@@ -414,6 +414,44 @@ REDACTED{
 			wantErr:     true,
 			errContains: "conflict",
 	REDACTED,
+		// 以下三例：冲突检测必须与 normalizeChannelPricingModelName 用同一套归一化，
+		// 否则校验放行、写进缓存后键相同，后写的定价会静默覆盖前一条。
+		{
+			name: "claude_dot_and_hyphen_spelling_conflict",
+			pricingList: []ChannelModelPricing{
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4.5"REDACTEDREDACTED,
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4-5"REDACTEDREDACTED,
+		REDACTED,
+			wantErr:     true,
+			errContains: "conflict",
+	REDACTED,
+		{
+			name: "claude_dot_and_hyphen_spelling_conflict_wildcard",
+			pricingList: []ChannelModelPricing{
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4.5*"REDACTEDREDACTED,
+				{Platform: "anthropic", Models: []string{"claude-sonnet-4-5-x"REDACTEDREDACTED,
+		REDACTED,
+			wantErr:     true,
+			errContains: "conflict",
+	REDACTED,
+		{
+			name: "surrounding_whitespace_conflict",
+			pricingList: []ChannelModelPricing{
+				{Platform: "openai", Models: []string{"gpt-5.6"REDACTEDREDACTED,
+				{Platform: "openai", Models: []string{" gpt-5.6 "REDACTEDREDACTED,
+		REDACTED,
+			wantErr:     true,
+			errContains: "conflict",
+	REDACTED,
+		{
+			// 只有 claude-* 前缀才做 "." → "-"，别把其它平台也一起归一化了
+			name: "non_claude_dot_spelling_is_not_normalized",
+			pricingList: []ChannelModelPricing{
+				{Platform: "openai", Models: []string{"gpt-5.6"REDACTEDREDACTED,
+				{Platform: "openai", Models: []string{"gpt-5-6"REDACTEDREDACTED,
+		REDACTED,
+			wantErr: false,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -468,6 +506,16 @@ REDACTED{
 		REDACTED,
 			wantErr:     true,
 			errContains: "conflict",
+	REDACTED,
+		{
+			// 映射缓存（expandMappingToCache）只做 strings.ToLower，不做定价那套
+			// "." → "-"，所以这两个源模式在缓存里是两个不同的键、并不冲突。
+			// 这条用来卡住：定价侧的归一化修复不能顺手套到映射侧，否则会误报冲突。
+			name: "mapping keeps dot and hyphen spelling separate",
+			mapping: map[string]map[string]string{
+				"anthropic": {"claude-sonnet-4.5": "a", "claude-sonnet-4-5": "b"REDACTED,
+		REDACTED,
+			wantErr: false,
 	REDACTED,
 		{
 			name: "wildcard vs exact conflict",
