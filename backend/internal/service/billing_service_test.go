@@ -1221,6 +1221,14 @@ func TestGetModelPricing_UnknownGrokTextFallsBackToGrok45(t *testing.T) {
 		require.InDelta(t, baseline.CacheReadPricePerToken, pricing.CacheReadPricePerToken, 1e-12, model)
 	}
 
+	// Per-unit media ids must not inherit the text card just because they carry
+	// a version number; they are billed by the image/video/audio paths instead.
+	for _, model := range []string{"grok-2-image-1212", "grok-2-audio", "grok-5-video", "x-ai/grok-6-image"} {
+		require.False(t, isGrokUnknownTextFamilyModel(model), "model %s", model)
+	}
+	// Multimodal chat models stay token billed.
+	require.True(t, isGrokUnknownTextFamilyModel("grok-2-vision-1212"))
+
 	for _, model := range []string{
 		"grok-imagine-image-3.0",
 		"grok-imagine-video-2",

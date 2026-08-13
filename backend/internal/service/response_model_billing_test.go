@@ -372,6 +372,12 @@ func TestBillingServiceHasIdentifiedTokenPricing_RejectsFamilyGuesses(t *testing
 	}
 	require.False(t, billing.HasIdentifiedTokenPricing(""))
 	require.False(t, billing.HasIdentifiedTokenPricing("zz-unpriced-response-model"))
+	// Versioned media ids may inherit a text card via GetModelPricing; the
+	// identified-token gate must still reject them so response-model billing
+	// cannot adopt grok-4.5 rates for image/audio/video ids.
+	require.False(t, billing.HasIdentifiedTokenPricing("grok-2-image-1212"))
+	require.False(t, billing.HasIdentifiedTokenPricing("grok-2-audio"))
+	require.False(t, billing.HasIdentifiedTokenPricing("grok-5-video"))
 }
 
 func TestGatewayServiceRecordUsage_ResponseModelRejectsUnidentifiedFamilyName(t *testing.T) {
