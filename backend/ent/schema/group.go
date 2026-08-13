@@ -188,8 +188,8 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
 			Comment("STT 每小时价格（USD）"),
 		field.Bool("long_context_pricing_enabled").
-			Default(false).
-			Comment("是否按上下文长度应用模型阶梯价格"),
+			Default(true).
+			Comment("是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价"),
 		field.JSON("model_pricing", json.RawMessage{REDACTED).
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).

@@ -640,6 +640,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
 			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier,
 			ServiceTier: serviceTier, Resolver: s.resolver,
+			LongContextBillingEnabled: &longContextBillingEnabled,
 	REDACTED)
 REDACTED
 	return s.billingService.calculateCostWithServiceTierPolicy(

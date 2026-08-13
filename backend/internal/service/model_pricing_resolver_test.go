@@ -850,24 +850,35 @@ REDACTEDREDACTEDREDACTED
 	require.InDelta(t, 2e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
 REDACTED
 
-func TestResolve_GroupLongContextToggleControlsIntervals(t *testing.T) {
-	r := NewModelPricingResolver(nil, newTestBillingServiceForResolver())
+func TestResolve_GroupLongContextUsesPresetNotCustomIntervals(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["claude-sonnet-4"].LongContextInputThreshold = 200000
+	bs.fallbackPrices["claude-sonnet-4"].LongContextThresholdInclusive = true
+	bs.fallbackPrices["claude-sonnet-4"].LongContextInputMultiplier = 2
+	bs.fallbackPrices["claude-sonnet-4"].LongContextOutputMultiplier = 2
+	r := NewModelPricingResolver(nil, bs)
 	group := &Group{ID: 100, ModelPricing: []ChannelModelPricing{{
 		Models: []string{"claude-sonnet-4"REDACTED, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(1e-6), OutputPrice: testPtrFloat64(2e-6),
 		Intervals: []PricingInterval{
-			{MinTokens: 0, MaxTokens: testPtrInt(200000), InputPrice: testPtrFloat64(1e-6)REDACTED,
-			{MinTokens: 200000, InputPrice: testPtrFloat64(2e-6)REDACTED,
+			{MinTokens: 0, MaxTokens: testPtrInt(200000), InputPrice: testPtrFloat64(9e-6)REDACTED,
+			{MinTokens: 200000, InputPrice: testPtrFloat64(18e-6)REDACTED,
 	REDACTED,
 REDACTEDREDACTEDREDACTED
 
 	resolved := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: groupREDACTED)
-	require.Empty(t, resolved.Intervals)
+	require.False(t, resolved.longContextPricingEnabled)
+	require.Empty(t, resolved.Intervals, "group token intervals are not a user-facing long-context ladder")
 	require.InDelta(t, 1e-6, r.GetIntervalPricing(resolved, 300000).InputPricePerToken, 1e-12)
+	require.Equal(t, 200000, resolved.BasePricing.LongContextInputThreshold)
 
 	group.LongContextPricingEnabled = true
 	resolved = r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: groupREDACTED)
-	require.Len(t, resolved.Intervals, 2)
-	require.InDelta(t, 2e-6, r.GetIntervalPricing(resolved, 300000).InputPricePerToken, 1e-12)
+	require.True(t, resolved.longContextPricingEnabled)
+	require.Empty(t, resolved.Intervals)
+	require.InDelta(t, 1e-6, r.GetIntervalPricing(resolved, 300000).InputPricePerToken, 1e-12)
+	require.Equal(t, 200000, resolved.BasePricing.LongContextInputThreshold)
+	require.InDelta(t, 2.0, resolved.BasePricing.LongContextInputMultiplier, 1e-12)
 REDACTED
 
 func TestCalculateCostUnified_UsesContinuousMediaUnits(t *testing.T) {

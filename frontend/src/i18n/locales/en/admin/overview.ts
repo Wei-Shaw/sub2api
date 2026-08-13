@@ -1007,9 +1007,9 @@ export default {
       REDACTED,
       modelPricing: {
         title: 'Per-model group pricing',
-        description: 'Overrides channel and built-in prices for matching models. Use per-request tiers such as realtime, tts, and stt for audio.',
+        description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',
         longContext: 'Enable long-context tier pricing',
-        longContextHint: 'When disabled, token models always use the lowest configured tier.',
+        longContextHint: 'When checked, official/preset long-context tiers apply. When unchecked, token models stay on the first-tier base rate.',
         add: 'Add model price'
       REDACTED,
       voicePricing: {

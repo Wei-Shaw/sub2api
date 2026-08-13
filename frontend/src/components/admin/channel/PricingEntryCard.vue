@@ -134,8 +134,8 @@
             </div>
           </div>
 
-          <!-- Token intervals -->
-          <div class="mt-3">
+          <!-- Token intervals (channel-only; group long-context uses official presets) -->
+          <div v-if="!hideTokenIntervals" class="mt-3">
             <div class="flex items-center justify-between">
               <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('admin.channels.form.intervals') REDACTEDREDACTED
@@ -245,10 +245,13 @@ import channelsAPI from '@/api/admin/channels'
 
 const { t REDACTED = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   entry: PricingFormEntry
   platform?: string
-REDACTED>()
+  hideTokenIntervals?: boolean
+REDACTED>(), {
+  hideTokenIntervals: false,
+REDACTED)
 
 const emit = defineEmits<{
   update: [entry: PricingFormEntry]

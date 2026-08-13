@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -951,7 +952,11 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 REDACTED
 	var modelPricing []service.ChannelModelPricing
 	if len(g.ModelPricing) > 0 {
-		_ = json.Unmarshal(g.ModelPricing, &modelPricing)
+		if err := json.Unmarshal(g.ModelPricing, &modelPricing); err != nil {
+			slog.Warn("group model_pricing unmarshal failed; falling back to channel/builtin pricing",
+				"group_id", g.ID, "error", err)
+			modelPricing = nil
+	REDACTED
 REDACTED
 	return &service.Group{
 		ID:                              g.ID,

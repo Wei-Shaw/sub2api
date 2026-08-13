@@ -1004,9 +1004,9 @@ export default {
       REDACTED,
       modelPricing: {
         title: '分组逐模型定价',
-        description: '匹配模型后覆盖渠道和内置价格。音频可用按次层级配置 realtime、tts、stt。',
+        description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
         longContext: '启用长上下文阶梯定价',
-        longContextHint: '关闭时，Token 模型始终只使用配置的最低档。',
+        longContextHint: '勾选后按官方/预设阶梯计费；关闭则始终按第一档基础价。',
         add: '添加模型价格'
       REDACTED,
       voicePricing: {
