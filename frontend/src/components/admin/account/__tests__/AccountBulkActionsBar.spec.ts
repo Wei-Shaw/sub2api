@@ -29,6 +29,25 @@ describe('AccountBulkActionsBar', () => {
     expect(wrapper.emitted('select-all-results')).toHaveLength(1)
   })
 
+  it('emits check-grok-risk for selected accounts', async () => {
+    const wrapper = mount(AccountBulkActionsBar, {
+      props: {
+        selectedIds: [1],
+        totalResults: 45,
+        selectingAll: false,
+        allResultsSelected: false
+      }
+    })
+
+    const button = wrapper.findAll('button').find(item =>
+      item.text().includes('admin.accounts.bulkActions.checkGrokRisk')
+    )
+
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    expect(wrapper.emitted('check-grok-risk')).toHaveLength(1)
+  })
+
   it('preserves the upstream billing probe action from v0.1.166', async () => {
     const wrapper = mount(AccountBulkActionsBar, {
       props: {
