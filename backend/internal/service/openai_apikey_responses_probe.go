@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -23,6 +24,11 @@ const openaiResponsesProbeTimeout = 15 * time.Second
 
 // responsesProbeMaxBodyBytes 限制读取探测响应体的字节数,够判定 output 项类型即可。
 const responsesProbeMaxBodyBytes = 256 * 1024
+
+// openaiResponsesProbeMaxOutputTokens 是探测请求的输出预算。
+// 推理型模型可能把预算全烧在 reasoning 上,还没轮到 function_call 就被截断——
+// 那种响应不能用来判定工具能力,见 responsesProbeVerdictIsConclusive。
+const openaiResponsesProbeMaxOutputTokens = 512
 
 // openaiResponsesProbePayload 构造探测用的 Responses 请求体。
 //
@@ -61,7 +67,7 @@ func openaiResponsesProbePayload(modelID string) []byte {
 			},
 		},
 		"tool_choice":       "required",
-		"max_output_tokens": 512,
+		"max_output_tokens": openaiResponsesProbeMaxOutputTokens,
 		"stream":            false,
 	})
 	return body
@@ -175,6 +181,20 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 
+	// 本次响应不足以下结论时保持 unknown，与网络层失败、响应体读取失败一致：
+	// 标记一旦写成 false 就会一直粘住（只有下次账号创建/更新才重探），网关会静默
+	// 改走 /v1/chat/completions —— 对 Codex 客户端意味着 prompt 缓存前缀被打散。
+	// 宁可不写，让请求继续走既有的 Responses 路径。
+	if !responsesProbeVerdictIsConclusive(resp.StatusCode, bodyBytes) {
+		logger.LegacyPrintf("service.openai_probe",
+			"probe_inconclusive_keep_unknown: account_id=%d base_url=%s probe_model=%s status=%d response_status=%s reason=%s",
+			accountID, normalizedBaseURL, probeModel, resp.StatusCode,
+			gjson.GetBytes(bodyBytes, "status").String(),
+			gjson.GetBytes(bodyBytes, "incomplete_details.reason").String(),
+		)
+		return
+	}
+
 	supported := decideResponsesProbeSupport(resp.StatusCode, bodyBytes)
 
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
@@ -184,10 +204,53 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 
+	if !supported {
+		// 落标为不支持等于把该账号长期钉在 /v1/chat/completions 上，成本与缓存命中率
+		// 都会变化，且不会自动恢复。这条必须能被运维看到（#5371）。
+		slog.Warn(
+			"openai_responses_probe_marked_unsupported",
+			"account_id", accountID,
+			"account_name", account.Name,
+			"base_url", normalizedBaseURL,
+			"probe_model", probeModel,
+			"upstream_status", resp.StatusCode,
+		)
+	}
+
 	logger.LegacyPrintf("service.openai_probe",
 		"probe_done: account_id=%d base_url=%s probe_model=%s status=%d supported=%v",
 		accountID, normalizedBaseURL, probeModel, resp.StatusCode, supported,
 	)
+}
+
+// responsesProbeVerdictIsConclusive 判断本次探测响应是否足以对「上游是否支持带工具的
+// Responses 调用」下结论。
+//
+// 2xx 分支靠「output 里有没有 function_call」下结论，但这只在响应真的跑完时成立：
+//
+//   - status=incomplete 且 incomplete_details.reason=max_output_tokens：探测请求自己
+//     只给了 openaiResponsesProbeMaxOutputTokens 的预算，推理型模型可能把预算全烧在
+//     reasoning 上，还没轮到 function_call 就被截断。此时「没有 function_call」是探测
+//     预算不足造成的，不是上游能力缺失。
+//   - status=failed：HTTP 200 携带的失败响应（上游瞬时故障）同样不构成能力证据。
+//
+// 其余 2xx 一律可下结论——尤其 status=completed 却只回 reasoning 的上游（火山方舟
+// coding/v3 × kimi-k2.6），仍按原逻辑判为不支持。
+//
+// 非 2xx 的结论只看状态码、不依赖响应内容，恒可下结论。
+// 缺少 status 字段的响应体（含非 JSON）也按可下结论处理，保持既有行为。
+func responsesProbeVerdictIsConclusive(status int, body []byte) bool {
+	if status < 200 || status >= 300 {
+		return true
+	}
+	switch strings.TrimSpace(gjson.GetBytes(body, "status").String()) {
+	case "failed":
+		return false
+	case "incomplete":
+		return strings.TrimSpace(gjson.GetBytes(body, "incomplete_details.reason").String()) != "max_output_tokens"
+	default:
+		return true
+	}
 }
 
 // isResponsesEndpointSupportedByStatus 根据探测响应的 HTTP 状态码判定上游

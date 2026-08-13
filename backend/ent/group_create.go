@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -483,6 +484,12 @@ func (_c *GroupCreate) SetNillableVideoPrice1080p(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (_c *GroupCreate) SetVideoModelPrices(v map[string]map[string]float64) *GroupCreate {
+	_c.mutation.SetVideoModelPrices(v)
+	return _c
+}
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (_c *GroupCreate) SetWebSearchPricePerCall(v float64) *GroupCreate {
 	_c.mutation.SetWebSearchPricePerCall(v)
@@ -494,6 +501,82 @@ func (_c *GroupCreate) SetNillableWebSearchPricePerCall(v *float64) *GroupCreate
 	if v != nil {
 		_c.SetWebSearchPricePerCall(*v)
 	}
+	return _c
+}
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (_c *GroupCreate) SetSearchPricePer1k(v float64) *GroupCreate {
+	_c.mutation.SetSearchPricePer1k(v)
+	return _c
+}
+
+// SetNillableSearchPricePer1k sets the "search_price_per_1k" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSearchPricePer1k(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetSearchPricePer1k(*v)
+	}
+	return _c
+}
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (_c *GroupCreate) SetAudioRealtimePricePerMin(v float64) *GroupCreate {
+	_c.mutation.SetAudioRealtimePricePerMin(v)
+	return _c
+}
+
+// SetNillableAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioRealtimePricePerMin(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioRealtimePricePerMin(*v)
+	}
+	return _c
+}
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (_c *GroupCreate) SetAudioTtsPricePerMillionChars(v float64) *GroupCreate {
+	_c.mutation.SetAudioTtsPricePerMillionChars(v)
+	return _c
+}
+
+// SetNillableAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioTtsPricePerMillionChars(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioTtsPricePerMillionChars(*v)
+	}
+	return _c
+}
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (_c *GroupCreate) SetAudioSttPricePerHour(v float64) *GroupCreate {
+	_c.mutation.SetAudioSttPricePerHour(v)
+	return _c
+}
+
+// SetNillableAudioSttPricePerHour sets the "audio_stt_price_per_hour" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAudioSttPricePerHour(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetAudioSttPricePerHour(*v)
+	}
+	return _c
+}
+
+// SetLongContextPricingEnabled sets the "long_context_pricing_enabled" field.
+func (_c *GroupCreate) SetLongContextPricingEnabled(v bool) *GroupCreate {
+	_c.mutation.SetLongContextPricingEnabled(v)
+	return _c
+}
+
+// SetNillableLongContextPricingEnabled sets the "long_context_pricing_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableLongContextPricingEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetLongContextPricingEnabled(*v)
+	}
+	return _c
+}
+
+// SetModelPricing sets the "model_pricing" field.
+func (_c *GroupCreate) SetModelPricing(v json.RawMessage) *GroupCreate {
+	_c.mutation.SetModelPricing(v)
 	return _c
 }
 
@@ -980,6 +1063,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultVideoRateMultiplier
 		_c.mutation.SetVideoRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.LongContextPricingEnabled(); !ok {
+		v := group.DefaultLongContextPricingEnabled
+		_c.mutation.SetLongContextPricingEnabled(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -1154,6 +1241,29 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.VideoRateMultiplier(); !ok {
 		return &ValidationError{Name: "video_rate_multiplier", err: errors.New(`ent: missing required field "Group.video_rate_multiplier"`)}
+	}
+	if v, ok := _c.mutation.SearchPricePer1k(); ok {
+		if err := group.SearchPricePer1kValidator(v); err != nil {
+			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.AudioRealtimePricePerMin(); ok {
+		if err := group.AudioRealtimePricePerMinValidator(v); err != nil {
+			return &ValidationError{Name: "audio_realtime_price_per_min", err: fmt.Errorf(`ent: validator failed for field "Group.audio_realtime_price_per_min": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.AudioTtsPricePerMillionChars(); ok {
+		if err := group.AudioTtsPricePerMillionCharsValidator(v); err != nil {
+			return &ValidationError{Name: "audio_tts_price_per_million_chars", err: fmt.Errorf(`ent: validator failed for field "Group.audio_tts_price_per_million_chars": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.AudioSttPricePerHour(); ok {
+		if err := group.AudioSttPricePerHourValidator(v); err != nil {
+			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.LongContextPricingEnabled(); !ok {
+		return &ValidationError{Name: "long_context_pricing_enabled", err: errors.New(`ent: missing required field "Group.long_context_pricing_enabled"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -1378,9 +1488,37 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
 		_node.VideoPrice1080p = &value
 	}
+	if value, ok := _c.mutation.VideoModelPrices(); ok {
+		_spec.SetField(group.FieldVideoModelPrices, field.TypeJSON, value)
+		_node.VideoModelPrices = value
+	}
 	if value, ok := _c.mutation.WebSearchPricePerCall(); ok {
 		_spec.SetField(group.FieldWebSearchPricePerCall, field.TypeFloat64, value)
 		_node.WebSearchPricePerCall = &value
+	}
+	if value, ok := _c.mutation.SearchPricePer1k(); ok {
+		_spec.SetField(group.FieldSearchPricePer1k, field.TypeFloat64, value)
+		_node.SearchPricePer1k = &value
+	}
+	if value, ok := _c.mutation.AudioRealtimePricePerMin(); ok {
+		_spec.SetField(group.FieldAudioRealtimePricePerMin, field.TypeFloat64, value)
+		_node.AudioRealtimePricePerMin = &value
+	}
+	if value, ok := _c.mutation.AudioTtsPricePerMillionChars(); ok {
+		_spec.SetField(group.FieldAudioTtsPricePerMillionChars, field.TypeFloat64, value)
+		_node.AudioTtsPricePerMillionChars = &value
+	}
+	if value, ok := _c.mutation.AudioSttPricePerHour(); ok {
+		_spec.SetField(group.FieldAudioSttPricePerHour, field.TypeFloat64, value)
+		_node.AudioSttPricePerHour = &value
+	}
+	if value, ok := _c.mutation.LongContextPricingEnabled(); ok {
+		_spec.SetField(group.FieldLongContextPricingEnabled, field.TypeBool, value)
+		_node.LongContextPricingEnabled = value
+	}
+	if value, ok := _c.mutation.ModelPricing(); ok {
+		_spec.SetField(group.FieldModelPricing, field.TypeJSON, value)
+		_node.ModelPricing = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -2156,6 +2294,24 @@ func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
 	return u
 }
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsert) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsert {
+	u.Set(group.FieldVideoModelPrices, v)
+	return u
+}
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateVideoModelPrices() *GroupUpsert {
+	u.SetExcluded(group.FieldVideoModelPrices)
+	return u
+}
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsert) ClearVideoModelPrices() *GroupUpsert {
+	u.SetNull(group.FieldVideoModelPrices)
+	return u
+}
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsert) SetWebSearchPricePerCall(v float64) *GroupUpsert {
 	u.Set(group.FieldWebSearchPricePerCall, v)
@@ -2177,6 +2333,132 @@ func (u *GroupUpsert) AddWebSearchPricePerCall(v float64) *GroupUpsert {
 // ClearWebSearchPricePerCall clears the value of the "web_search_price_per_call" field.
 func (u *GroupUpsert) ClearWebSearchPricePerCall() *GroupUpsert {
 	u.SetNull(group.FieldWebSearchPricePerCall)
+	return u
+}
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsert) SetSearchPricePer1k(v float64) *GroupUpsert {
+	u.Set(group.FieldSearchPricePer1k, v)
+	return u
+}
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSearchPricePer1k() *GroupUpsert {
+	u.SetExcluded(group.FieldSearchPricePer1k)
+	return u
+}
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsert) AddSearchPricePer1k(v float64) *GroupUpsert {
+	u.Add(group.FieldSearchPricePer1k, v)
+	return u
+}
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsert) ClearSearchPricePer1k() *GroupUpsert {
+	u.SetNull(group.FieldSearchPricePer1k)
+	return u
+}
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) SetAudioRealtimePricePerMin(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioRealtimePricePerMin, v)
+	return u
+}
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioRealtimePricePerMin() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioRealtimePricePerMin)
+	return u
+}
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) AddAudioRealtimePricePerMin(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioRealtimePricePerMin, v)
+	return u
+}
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsert) ClearAudioRealtimePricePerMin() *GroupUpsert {
+	u.SetNull(group.FieldAudioRealtimePricePerMin)
+	return u
+}
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioTtsPricePerMillionChars, v)
+	return u
+}
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioTtsPricePerMillionChars() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioTtsPricePerMillionChars)
+	return u
+}
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioTtsPricePerMillionChars, v)
+	return u
+}
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsert) ClearAudioTtsPricePerMillionChars() *GroupUpsert {
+	u.SetNull(group.FieldAudioTtsPricePerMillionChars)
+	return u
+}
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) SetAudioSttPricePerHour(v float64) *GroupUpsert {
+	u.Set(group.FieldAudioSttPricePerHour, v)
+	return u
+}
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAudioSttPricePerHour() *GroupUpsert {
+	u.SetExcluded(group.FieldAudioSttPricePerHour)
+	return u
+}
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) AddAudioSttPricePerHour(v float64) *GroupUpsert {
+	u.Add(group.FieldAudioSttPricePerHour, v)
+	return u
+}
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsert) ClearAudioSttPricePerHour() *GroupUpsert {
+	u.SetNull(group.FieldAudioSttPricePerHour)
+	return u
+}
+
+// SetLongContextPricingEnabled sets the "long_context_pricing_enabled" field.
+func (u *GroupUpsert) SetLongContextPricingEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldLongContextPricingEnabled, v)
+	return u
+}
+
+// UpdateLongContextPricingEnabled sets the "long_context_pricing_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateLongContextPricingEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldLongContextPricingEnabled)
+	return u
+}
+
+// SetModelPricing sets the "model_pricing" field.
+func (u *GroupUpsert) SetModelPricing(v json.RawMessage) *GroupUpsert {
+	u.Set(group.FieldModelPricing, v)
+	return u
+}
+
+// UpdateModelPricing sets the "model_pricing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelPricing() *GroupUpsert {
+	u.SetExcluded(group.FieldModelPricing)
+	return u
+}
+
+// ClearModelPricing clears the value of the "model_pricing" field.
+func (u *GroupUpsert) ClearModelPricing() *GroupUpsert {
+	u.SetNull(group.FieldModelPricing)
 	return u
 }
 
@@ -3157,6 +3439,27 @@ func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
 	})
 }
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsertOne) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoModelPrices(v)
+	})
+}
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateVideoModelPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoModelPrices()
+	})
+}
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsertOne) ClearVideoModelPrices() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoModelPrices()
+	})
+}
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsertOne) SetWebSearchPricePerCall(v float64) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3182,6 +3485,153 @@ func (u *GroupUpsertOne) UpdateWebSearchPricePerCall() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearWebSearchPricePerCall() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearWebSearchPricePerCall()
+	})
+}
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsertOne) SetSearchPricePer1k(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSearchPricePer1k(v)
+	})
+}
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsertOne) AddSearchPricePer1k(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSearchPricePer1k(v)
+	})
+}
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSearchPricePer1k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSearchPricePer1k()
+	})
+}
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsertOne) ClearSearchPricePer1k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSearchPricePer1k()
+	})
+}
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) SetAudioRealtimePricePerMin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioRealtimePricePerMin(v)
+	})
+}
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) AddAudioRealtimePricePerMin(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioRealtimePricePerMin(v)
+	})
+}
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioRealtimePricePerMin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioRealtimePricePerMin()
+	})
+}
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertOne) ClearAudioRealtimePricePerMin() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioRealtimePricePerMin()
+	})
+}
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioTtsPricePerMillionChars(v)
+	})
+}
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioTtsPricePerMillionChars(v)
+	})
+}
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioTtsPricePerMillionChars() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioTtsPricePerMillionChars()
+	})
+}
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertOne) ClearAudioTtsPricePerMillionChars() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioTtsPricePerMillionChars()
+	})
+}
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) SetAudioSttPricePerHour(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioSttPricePerHour(v)
+	})
+}
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) AddAudioSttPricePerHour(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioSttPricePerHour(v)
+	})
+}
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAudioSttPricePerHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioSttPricePerHour()
+	})
+}
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertOne) ClearAudioSttPricePerHour() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioSttPricePerHour()
+	})
+}
+
+// SetLongContextPricingEnabled sets the "long_context_pricing_enabled" field.
+func (u *GroupUpsertOne) SetLongContextPricingEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetLongContextPricingEnabled(v)
+	})
+}
+
+// UpdateLongContextPricingEnabled sets the "long_context_pricing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateLongContextPricingEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateLongContextPricingEnabled()
+	})
+}
+
+// SetModelPricing sets the "model_pricing" field.
+func (u *GroupUpsertOne) SetModelPricing(v json.RawMessage) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelPricing(v)
+	})
+}
+
+// UpdateModelPricing sets the "model_pricing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelPricing() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelPricing()
+	})
+}
+
+// ClearModelPricing clears the value of the "model_pricing" field.
+func (u *GroupUpsertOne) ClearModelPricing() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearModelPricing()
 	})
 }
 
@@ -4379,6 +4829,27 @@ func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
 	})
 }
 
+// SetVideoModelPrices sets the "video_model_prices" field.
+func (u *GroupUpsertBulk) SetVideoModelPrices(v map[string]map[string]float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetVideoModelPrices(v)
+	})
+}
+
+// UpdateVideoModelPrices sets the "video_model_prices" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateVideoModelPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateVideoModelPrices()
+	})
+}
+
+// ClearVideoModelPrices clears the value of the "video_model_prices" field.
+func (u *GroupUpsertBulk) ClearVideoModelPrices() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearVideoModelPrices()
+	})
+}
+
 // SetWebSearchPricePerCall sets the "web_search_price_per_call" field.
 func (u *GroupUpsertBulk) SetWebSearchPricePerCall(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4404,6 +4875,153 @@ func (u *GroupUpsertBulk) UpdateWebSearchPricePerCall() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearWebSearchPricePerCall() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearWebSearchPricePerCall()
+	})
+}
+
+// SetSearchPricePer1k sets the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) SetSearchPricePer1k(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSearchPricePer1k(v)
+	})
+}
+
+// AddSearchPricePer1k adds v to the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) AddSearchPricePer1k(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSearchPricePer1k(v)
+	})
+}
+
+// UpdateSearchPricePer1k sets the "search_price_per_1k" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSearchPricePer1k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSearchPricePer1k()
+	})
+}
+
+// ClearSearchPricePer1k clears the value of the "search_price_per_1k" field.
+func (u *GroupUpsertBulk) ClearSearchPricePer1k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearSearchPricePer1k()
+	})
+}
+
+// SetAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) SetAudioRealtimePricePerMin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioRealtimePricePerMin(v)
+	})
+}
+
+// AddAudioRealtimePricePerMin adds v to the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) AddAudioRealtimePricePerMin(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioRealtimePricePerMin(v)
+	})
+}
+
+// UpdateAudioRealtimePricePerMin sets the "audio_realtime_price_per_min" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioRealtimePricePerMin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioRealtimePricePerMin()
+	})
+}
+
+// ClearAudioRealtimePricePerMin clears the value of the "audio_realtime_price_per_min" field.
+func (u *GroupUpsertBulk) ClearAudioRealtimePricePerMin() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioRealtimePricePerMin()
+	})
+}
+
+// SetAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) SetAudioTtsPricePerMillionChars(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioTtsPricePerMillionChars(v)
+	})
+}
+
+// AddAudioTtsPricePerMillionChars adds v to the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) AddAudioTtsPricePerMillionChars(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioTtsPricePerMillionChars(v)
+	})
+}
+
+// UpdateAudioTtsPricePerMillionChars sets the "audio_tts_price_per_million_chars" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioTtsPricePerMillionChars() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioTtsPricePerMillionChars()
+	})
+}
+
+// ClearAudioTtsPricePerMillionChars clears the value of the "audio_tts_price_per_million_chars" field.
+func (u *GroupUpsertBulk) ClearAudioTtsPricePerMillionChars() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioTtsPricePerMillionChars()
+	})
+}
+
+// SetAudioSttPricePerHour sets the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) SetAudioSttPricePerHour(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAudioSttPricePerHour(v)
+	})
+}
+
+// AddAudioSttPricePerHour adds v to the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) AddAudioSttPricePerHour(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddAudioSttPricePerHour(v)
+	})
+}
+
+// UpdateAudioSttPricePerHour sets the "audio_stt_price_per_hour" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAudioSttPricePerHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAudioSttPricePerHour()
+	})
+}
+
+// ClearAudioSttPricePerHour clears the value of the "audio_stt_price_per_hour" field.
+func (u *GroupUpsertBulk) ClearAudioSttPricePerHour() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearAudioSttPricePerHour()
+	})
+}
+
+// SetLongContextPricingEnabled sets the "long_context_pricing_enabled" field.
+func (u *GroupUpsertBulk) SetLongContextPricingEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetLongContextPricingEnabled(v)
+	})
+}
+
+// UpdateLongContextPricingEnabled sets the "long_context_pricing_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateLongContextPricingEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateLongContextPricingEnabled()
+	})
+}
+
+// SetModelPricing sets the "model_pricing" field.
+func (u *GroupUpsertBulk) SetModelPricing(v json.RawMessage) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelPricing(v)
+	})
+}
+
+// UpdateModelPricing sets the "model_pricing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelPricing() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelPricing()
+	})
+}
+
+// ClearModelPricing clears the value of the "model_pricing" field.
+func (u *GroupUpsertBulk) ClearModelPricing() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearModelPricing()
 	})
 }
 

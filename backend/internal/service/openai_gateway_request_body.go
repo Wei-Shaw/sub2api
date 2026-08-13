@@ -308,6 +308,7 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 		"tools",
 		"parallel_tool_calls",
 		"reasoning",
+		"service_tier",
 		"text",
 		"previous_response_id",
 	} {
