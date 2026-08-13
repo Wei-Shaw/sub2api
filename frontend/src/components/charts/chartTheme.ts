@@ -167,7 +167,22 @@ export interface ChartTheme {
   accent: string
 }
 
-function buildTheme(dark: boolean): ChartTheme {
+/*
+ * Everything here resolves against the document, including `series`.
+ *
+ * This used to take a `dark` flag, which read as though it could build a theme
+ * for either mode. It could not: `rawToken` uses that flag only as a cache key
+ * and as the fallback table to reach for, while the value itself always comes
+ * from `getComputedStyle(document.documentElement)`. So `buildTheme(true)` on a
+ * light document returned light axis, grid and tooltip colours next to a dark
+ * series palette — a half-flipped theme, and no type would have caught it.
+ *
+ * One source of truth is the honest shape: CSS custom properties live on the
+ * document, so the document decides. `useChartTheme` still depends on the
+ * `isDark` ref for reactivity, and `setTheme` writes the ref and the class
+ * together, so the two never disagree.
+ */
+function buildTheme(): ChartTheme {
   return {
     axis: token('ink-tertiary'),
     axisTitle: token('ink-secondary'),
@@ -177,7 +192,7 @@ function buildTheme(dark: boolean): ChartTheme {
     tooltipFg: token('ink'),
     tooltipMuted: token('ink-secondary'),
     tooltipBorder: token('line'),
-    series: seriesPalette(dark),
+    series: seriesPalette(),
     fontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 11,
     success: token('success'),
@@ -214,7 +229,7 @@ function prefersReducedMotion(): boolean {
  *                          keeps them hoverable anyway.
  *   `bar.borderRadius`  — 0, same reason every other radius is ~0.
  */
-export function applyChartDefaults(theme: ChartTheme = buildTheme(isDarkNow())): void {
+export function applyChartDefaults(theme: ChartTheme = buildTheme()): void {
   ChartJS.defaults.font.family = theme.fontFamily
   ChartJS.defaults.font.size = theme.fontSize
   ChartJS.defaults.color = theme.axis
@@ -269,11 +284,12 @@ export function useChartTheme(): ComputedRef<ChartTheme> {
   const { isDark } = useTheme()
 
   return computed(() => {
-    // Depend on the ref explicitly, and drop the memo so the new theme's
-    // values are read rather than the previous theme's cached ones.
-    const dark = isDark.value
+    // Touch the ref so this actually recomputes, and drop the memo so the new
+    // theme's values are read rather than the previous theme's cached ones. The
+    // value itself comes from the document — see `buildTheme`.
+    void isDark.value
     cache.clear()
-    const theme = buildTheme(dark)
+    const theme = buildTheme()
     applyChartDefaults(theme)
     return theme
   })
