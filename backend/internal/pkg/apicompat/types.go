@@ -302,7 +302,7 @@ REDACTED
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "local_shell" etc.
+	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "x_search" | "local_shell" etc.
 	Name        string          `json:"name,omitempty"`
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
@@ -311,6 +311,14 @@ type ResponsesTool struct {
 	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
 	Tools    []ResponsesTool `json:"tools,omitempty"`
 	Children []ResponsesTool `json:"children,omitempty"`
+
+	// type=x_search
+	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
+	ExcludedXHandles         []string `json:"excluded_x_handles,omitempty"`
+	FromDate                 string   `json:"from_date,omitempty"`
+	ToDate                   string   `json:"to_date,omitempty"`
+	EnableImageUnderstanding *bool    `json:"enable_image_understanding,omitempty"`
+	EnableVideoUnderstanding *bool    `json:"enable_video_understanding,omitempty"`
 REDACTED
 
 // UnmarshalJSON 容忍字符串形式的工具声明：codex 会以 "name" 简写声明 custom 工具，
@@ -675,8 +683,16 @@ REDACTED
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function"
+	Type     string        `json:"type"` // "function" | "x_search"
 	Function *ChatFunction `json:"function,omitempty"`
+
+	// type=x_search
+	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
+	ExcludedXHandles         []string `json:"excluded_x_handles,omitempty"`
+	FromDate                 string   `json:"from_date,omitempty"`
+	ToDate                   string   `json:"to_date,omitempty"`
+	EnableImageUnderstanding *bool    `json:"enable_image_understanding,omitempty"`
+	EnableVideoUnderstanding *bool    `json:"enable_video_understanding,omitempty"`
 REDACTED
 
 // ChatFunction describes a function tool definition.

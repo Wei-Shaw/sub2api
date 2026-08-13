@@ -56,6 +56,8 @@ REDACTED{
 		{name: "composer legacy alias", upstreamModel: "composer-2.5"REDACTED,
 		{name: "provider-prefixed composer", upstreamModel: "xai/grok-composer-2.5-fast"REDACTED,
 		{name: "grok 4.5", upstreamModel: "grok-4.5", wantReasoning: trueREDACTED,
+		{name: "grok 4.6", upstreamModel: "grok-4.6", wantReasoning: trueREDACTED,
+		{name: "grok 4.6 latest", upstreamModel: "grok-4.6-latest", wantReasoning: trueREDACTED,
 REDACTED
 
 	bodyTemplate := []byte(`{

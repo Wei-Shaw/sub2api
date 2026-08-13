@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strings"
 )
 
 // PricingSource 定价来源标识
 const (
+	PricingSourceGroup    = "group"
 	PricingSourceChannel  = "channel"
 	PricingSourceLiteLLM  = "litellm"
 	PricingSourceFallback = "fallback"
@@ -37,10 +39,12 @@ type ResolvedPricing struct {
 
 	// 渠道定价原始配置（用于区间模式下获取 ImageOutputPrice）
 	channelPricing *ChannelModelPricing
+
+	longContextPricingEnabled bool
 REDACTED
 
 // ModelPricingResolver 统一模型定价解析器。
-// 解析链：Channel → LiteLLM → Fallback。
+// 解析链：Group → Channel → LiteLLM → Fallback。
 type ModelPricingResolver struct {
 	channelService *ChannelService
 	billingService *BillingService
@@ -58,12 +62,27 @@ REDACTED
 type PricingInput struct {
 	Model   string
 	GroupID *int64 // nil 表示不检查渠道
+	Group   *Group
 REDACTED
 
 // Resolve 解析模型定价。
 // 1. 获取基础定价（LiteLLM → Fallback）
 // 2. 如果指定了 GroupID，查找渠道定价并覆盖
 func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) *ResolvedPricing {
+	longContextPricingEnabled := input.Group == nil || input.Group.LongContextPricingEnabled
+	if groupPricing := matchGroupModelPricing(input.Group, input.Model); groupPricing != nil {
+		// Group token cards only override the first-tier / flat rates.
+		// Long-context ladders come from official presets, gated by the checkbox.
+		if groupPricing.BillingMode == "" || groupPricing.BillingMode == BillingModeToken {
+			stripped := groupPricing.Clone()
+			stripped.Intervals = nil
+			groupPricing = &stripped
+	REDACTED
+		resolved := r.resolveConfiguredPricing(groupPricing, input.Model, PricingSourceGroup)
+		resolved.longContextPricingEnabled = longContextPricingEnabled
+		return resolved
+REDACTED
+
 	var chPricing *ChannelModelPricing
 	if input.GroupID != nil && r.channelService != nil {
 		chPricing = r.channelService.GetChannelModelPricing(ctx, *input.GroupID, input.Model)
@@ -72,12 +91,13 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 			if mode == "" {
 				mode = BillingModeToken
 		REDACTED
-			if mode == BillingModePerRequest || mode == BillingModeImage {
+			if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
 				resolved := &ResolvedPricing{
 					Mode:           mode,
 					Source:         PricingSourceChannel,
 					channelPricing: chPricing,
 			REDACTED
+				resolved.longContextPricingEnabled = longContextPricingEnabled
 				r.applyRequestTierOverrides(chPricing, resolved)
 				return resolved
 		REDACTED
@@ -93,17 +113,77 @@ REDACTED
 		Source:                 source,
 		SupportsCacheBreakdown: basePricing != nil && basePricing.SupportsCacheBreakdown,
 REDACTED
+	resolved.longContextPricingEnabled = longContextPricingEnabled
 
 	// 2. 如果有 GroupID，尝试渠道覆盖
 	if chPricing != nil {
 		resolved.Source = PricingSourceChannel
 		resolved.channelPricing = chPricing
 		r.applyTokenOverrides(chPricing, resolved)
-REDACTED else if input.GroupID != nil {
+		if !longContextPricingEnabled {
+			r.applyFirstTokenTier(resolved, chPricing)
+	REDACTED
+REDACTED else if input.GroupID != nil && r.channelService != nil {
 		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
+		if resolved.Source == PricingSourceChannel && !longContextPricingEnabled {
+			r.applyFirstTokenTier(resolved, resolved.channelPricing)
+	REDACTED
 REDACTED
 
 	return resolved
+REDACTED
+
+func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPricing, model, source string) *ResolvedPricing {
+	mode := config.BillingMode
+	if mode == "" {
+		mode = BillingModeToken
+REDACTED
+	resolved := &ResolvedPricing{Mode: mode, Source: source, channelPricing: configREDACTED
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+		r.applyRequestTierOverrides(config, resolved)
+		return resolved
+REDACTED
+	resolved.BasePricing, _ = r.resolveBasePricing(model)
+	resolved.SupportsCacheBreakdown = resolved.BasePricing != nil && resolved.BasePricing.SupportsCacheBreakdown
+	r.applyTokenOverrides(config, resolved)
+	return resolved
+REDACTED
+
+func matchGroupModelPricing(group *Group, model string) *ChannelModelPricing {
+	if group == nil {
+		return nil
+REDACTED
+	model = normalizeChannelPricingModelName(model)
+	var wildcard *ChannelModelPricing
+	for i := range group.ModelPricing {
+		entry := &group.ModelPricing[i]
+		for _, pattern := range entry.Models {
+			normalized := normalizeChannelPricingModelName(pattern)
+			if normalized == model {
+				cp := entry.Clone()
+				return &cp
+		REDACTED
+			if strings.HasSuffix(normalized, "*") && strings.HasPrefix(model, strings.TrimSuffix(normalized, "*")) && wildcard == nil {
+				cp := entry.Clone()
+				wildcard = &cp
+		REDACTED
+	REDACTED
+REDACTED
+	return wildcard
+REDACTED
+
+func (r *ModelPricingResolver) applyFirstTokenTier(resolved *ResolvedPricing, config *ChannelModelPricing) {
+	if resolved == nil || len(resolved.Intervals) == 0 {
+		return
+REDACTED
+	first := resolved.Intervals[0]
+	for _, interval := range resolved.Intervals[1:] {
+		if interval.MinTokens < first.MinTokens {
+			first = interval
+	REDACTED
+REDACTED
+	resolved.BasePricing = intervalToModelPricing(&first, resolved.SupportsCacheBreakdown, config)
+	resolved.Intervals = nil
 REDACTED
 
 // resolveBasePricing 从 LiteLLM 或 Fallback 获取基础定价
@@ -134,7 +214,7 @@ REDACTED
 	switch resolved.Mode {
 	case BillingModeToken:
 		r.applyTokenOverrides(chPricing, resolved)
-	case BillingModePerRequest, BillingModeImage:
+	case BillingModePerRequest, BillingModeImage, BillingModeVideo:
 		r.applyRequestTierOverrides(chPricing, resolved)
 REDACTED
 REDACTED

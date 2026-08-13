@@ -934,6 +934,8 @@ REDACTED
 		{Name: "audio_realtime_price_per_min", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "audio_tts_price_per_million_chars", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "audio_stt_price_per_hour", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "long_context_pricing_enabled", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "model_pricing", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 		{Name: "claude_code_only", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: trueREDACTED,
@@ -990,7 +992,7 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[47]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[49]REDACTED,
 		REDACTED,
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",
