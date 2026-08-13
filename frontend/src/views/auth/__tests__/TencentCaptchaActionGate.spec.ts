@@ -205,7 +205,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('button.btn-secondary.w-full').trigger('click')
+    await wrapper.get('[data-testid="passkey-login"]').trigger('click')
     await flushPromises()
 
     expect(verifyActionMock).toHaveBeenCalledOnce()
@@ -221,7 +221,7 @@ describe('Tencent captcha action gate', () => {
     const wrapper = mountLogin()
     await flushPromises()
 
-    await wrapper.get('button.btn-secondary.w-full').trigger('click')
+    await wrapper.get('[data-testid="passkey-login"]').trigger('click')
     await flushPromises()
 
     expect(loginWithPasskeyMock).not.toHaveBeenCalled()

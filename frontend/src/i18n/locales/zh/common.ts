@@ -23,6 +23,8 @@ export default {
     status: '状态',
     name: '名称',
     email: '邮箱',
+    showPassword: '显示密码',
+    hidePassword: '隐藏密码',
     password: '密码',
     submit: '提交',
     back: '返回',

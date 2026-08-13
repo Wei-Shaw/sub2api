@@ -23,6 +23,8 @@ export default {
     status: 'Status',
     name: 'Name',
     email: 'Email',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     password: 'Password',
     submit: 'Submit',
     back: 'Back',

@@ -1,26 +1,34 @@
 <template>
   <div v-if="hasProviders" class="space-y-4">
     <div v-if="showDivider" class="flex items-center gap-3">
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-      <span class="text-xs text-gray-500 dark:text-dark-400">
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
+      <span class="text-2xs uppercase tracking-[0.08em] text-ink-tertiary">
         {{ t('auth.oauthOrContinue') }}
       </span>
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
     </div>
 
     <div :class="providerGridClass">
-      <button
+      <!--
+        These were 48px tall — 12px taller than every other control on the page,
+        including the primary action they sit under. A federated sign-in is not
+        more important than signing in.
+      -->
+      <Button
         v-for="provider in visibleProviders"
         :key="provider"
-        type="button"
+        variant="outline"
+        size="md"
+        block
         :disabled="disabled"
-        class="btn btn-secondary h-12 w-full justify-center gap-2"
         @click="startLogin(provider)"
       >
-        <GitHubMark v-if="provider === 'github'" class="h-5 w-5 text-gray-800 dark:text-gray-100" />
-        <GoogleMark v-else class="h-5 w-5" />
-        <span class="font-medium">{{ providerLabel(provider) }}</span>
-      </button>
+        <template #icon>
+          <GitHubMark v-if="provider === 'github'" class="h-4 w-4 text-ink" />
+          <GoogleMark v-else class="h-4 w-4" />
+        </template>
+        {{ providerLabel(provider) }}
+      </Button>
     </div>
   </div>
 </template>
@@ -31,6 +39,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GitHubMark from './GitHubMark.vue'
 import GoogleMark from './GoogleMark.vue'
+import Button from '@/components/common/Button.vue'
 import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 
