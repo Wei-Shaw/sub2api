@@ -295,6 +295,7 @@ type APIKeyService struct {
 	authCacheL1               *ristretto.Cache
 	authNegativeCacheL1       *ristretto.Cache
 	authCfg                   apiKeyAuthCacheConfig
+	authCacheStart            sync.Once
 	authGroup                 singleflight.Group
 	authLookupSlots           chan struct{}
 	authLookupTotal           atomic.Uint64
@@ -349,7 +350,7 @@ func NewAPIKeyService(
 		cache:             cache,
 		cfg:               cfg,
 	}
-	svc.initAuthCache(cfg)
+	svc.authCfg = newAPIKeyAuthCacheConfig(cfg)
 	lookupConcurrency := defaultAuthLookupConcurrency
 	if cfg != nil && cfg.APIKeyAuth.LookupConcurrency > 0 {
 		lookupConcurrency = cfg.APIKeyAuth.LookupConcurrency

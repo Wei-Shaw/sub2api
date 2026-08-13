@@ -3,6 +3,7 @@ package service
 import (
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	gocache "github.com/patrickmn/go-cache"
@@ -20,13 +21,14 @@ type sessionEntry struct {
 // DigestSessionStore 内存摘要会话存储（flat cache 实现）
 // key: "{groupID}:{prefixHash}|{digestChain}" → *sessionEntry
 type DigestSessionStore struct {
-	cache *gocache.Cache
+	cache  *gocache.Cache
+	writes atomic.Uint64
 }
 
 // NewDigestSessionStore 创建内存摘要会话存储
 func NewDigestSessionStore() *DigestSessionStore {
 	return &DigestSessionStore{
-		cache: gocache.New(digestSessionTTL, time.Minute),
+		cache: gocache.NewFrom(digestSessionTTL, 0, map[string]gocache.Item{}),
 	}
 }
 
@@ -36,7 +38,7 @@ func (s *DigestSessionStore) Save(groupID int64, prefixHash, digestChain, uuid s
 		return
 	}
 	ns := buildNS(groupID, prefixHash)
-	s.cache.Set(ns+digestChain, &sessionEntry{uuid: uuid, accountID: accountID}, gocache.DefaultExpiration)
+	setPassiveCache(s.cache, ns+digestChain, &sessionEntry{uuid: uuid, accountID: accountID}, gocache.DefaultExpiration, &s.writes)
 	if oldDigestChain != "" && oldDigestChain != digestChain {
 		s.cache.Delete(ns + oldDigestChain)
 	}

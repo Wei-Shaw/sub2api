@@ -53,6 +53,7 @@ func TestGatewayHandlerSubmitUsageRecordTask_DropPolicyOverflowStillDrops(t *tes
 		OverflowPolicy: config.UsageRecordOverflowPolicyDrop,
 	})
 	t.Cleanup(pool.Stop)
+	pool.Start()
 	h := &GatewayHandler{usageRecordWorkerPool: pool}
 
 	started := make(chan struct{})

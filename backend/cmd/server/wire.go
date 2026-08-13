@@ -26,37 +26,80 @@ type Application struct {
 	Cleanup   func()
 }
 
-func initializeApplication(buildInfo handler.BuildInfo, role runtime.Role) (*Application, error) {
-	wire.Build(
-		// Infrastructure layer ProviderSets
-		config.ProviderSet,
-
-		// Business layer ProviderSets
-		repository.ProviderSet,
-		service.ProviderSet,
-		securityaudit.ProviderSet,
-		payment.ProviderSet,
-		middleware.ProviderSet,
-		handler.ProviderSet,
-
-		// Server layer ProviderSet
-		server.ProviderSet,
-
-		// Privacy client factory for OpenAI training opt-out
-		providePrivacyClientFactory,
-
-		// BuildInfo provider
-		provideServiceBuildInfo,
-
-		provideLifecycle,
-		newHTTPServerComponent,
-		provideCleanup,
-
-		// Application struct
-		wire.Struct(new(Application), "Lifecycle", "Cleanup"),
-	)
+func initializeAllApplication(buildInfo handler.BuildInfo) (*Application, error) {
+	wire.Build(allApplicationProviderSet, wire.Value(runtime.RoleAll))
 	return nil, nil
 }
+
+func initializeAPIApplication(buildInfo handler.BuildInfo) (*Application, error) {
+	wire.Build(apiApplicationProviderSet, wire.Value(runtime.RoleAPI))
+	return nil, nil
+}
+
+func initializeWorkerApplication(buildInfo handler.BuildInfo) (*Application, error) {
+	wire.Build(workerApplicationProviderSet, wire.Value(runtime.RoleWorker))
+	return nil, nil
+}
+
+func initializeSchedulerApplication(buildInfo handler.BuildInfo) (*Application, error) {
+	wire.Build(schedulerApplicationProviderSet, wire.Value(runtime.RoleScheduler))
+	return nil, nil
+}
+
+var infrastructureProviderSet = wire.NewSet(
+	config.ProviderSet,
+	repository.ProviderSet,
+	provideCleanup,
+)
+
+var allApplicationProviderSet = wire.NewSet(
+	infrastructureProviderSet,
+	service.ProviderSet,
+	securityaudit.ProviderSet,
+	payment.ProviderSet,
+	middleware.ProviderSet,
+	handler.ProviderSet,
+	server.ProviderSet,
+	providePrivacyClientFactory,
+	provideServiceBuildInfo,
+	provideAllLifecycle,
+	newHTTPServerComponent,
+	wire.Struct(new(Application), "Lifecycle", "Cleanup"),
+)
+
+var apiApplicationProviderSet = wire.NewSet(
+	infrastructureProviderSet,
+	service.ProviderSet,
+	securityaudit.ProviderSet,
+	payment.ProviderSet,
+	middleware.ProviderSet,
+	handler.ProviderSet,
+	server.ProviderSet,
+	providePrivacyClientFactory,
+	provideServiceBuildInfo,
+	provideAPILifecycle,
+	newHTTPServerComponent,
+	wire.Struct(new(Application), "Lifecycle", "Cleanup"),
+)
+
+var workerApplicationProviderSet = wire.NewSet(
+	infrastructureProviderSet,
+	service.ProviderSet,
+	securityaudit.ProviderSet,
+	providePrivacyClientFactory,
+	provideWorkerLifecycle,
+	wire.Struct(new(Application), "Lifecycle", "Cleanup"),
+)
+
+var schedulerApplicationProviderSet = wire.NewSet(
+	infrastructureProviderSet,
+	service.ProviderSet,
+	payment.ProviderSet,
+	providePrivacyClientFactory,
+	provideServiceBuildInfo,
+	provideSchedulerLifecycle,
+	wire.Struct(new(Application), "Lifecycle", "Cleanup"),
+)
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {
 	return repository.CreatePrivacyReqClient

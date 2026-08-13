@@ -51,21 +51,24 @@ type OAuthSession struct {
 
 // SessionStore manages OAuth sessions in memory
 type SessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]*OAuthSession
-	stopOnce sync.Once
-	stopCh   chan struct{}
+	mu        sync.RWMutex
+	sessions  map[string]*OAuthSession
+	startOnce sync.Once
+	stopOnce  sync.Once
+	stopCh    chan struct{}
 }
 
 // NewSessionStore creates a new session store
 func NewSessionStore() *SessionStore {
-	store := &SessionStore{
+	return &SessionStore{
 		sessions: make(map[string]*OAuthSession),
 		stopCh:   make(chan struct{}),
 	}
-	// Start cleanup goroutine
-	go store.cleanup()
-	return store
+}
+
+// Start starts periodic expired-session cleanup.
+func (s *SessionStore) Start() {
+	s.startOnce.Do(func() { go s.cleanup() })
 }
 
 // Set stores a session

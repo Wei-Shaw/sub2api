@@ -17,11 +17,11 @@ func TestProvideTimingWheelService_ReturnsError(t *testing.T) {
 	}
 
 	svc, err := ProvideTimingWheelService()
-	if err == nil {
-		t.Fatalf("期望返回 error，但得到 nil")
+	if err != nil {
+		t.Fatalf("构造不应初始化 timing wheel: %v", err)
 	}
-	if svc != nil {
-		t.Fatalf("期望返回 nil svc，但得到非空")
+	if err := svc.Start(); err == nil {
+		t.Fatalf("期望 Start 返回 error，但得到 nil")
 	}
 }
 
@@ -32,6 +32,9 @@ func TestProvideTimingWheelService_Success(t *testing.T) {
 	}
 	if svc == nil {
 		t.Fatalf("期望 svc 非空，但得到 nil")
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	svc.Stop()
 }

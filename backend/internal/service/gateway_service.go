@@ -752,6 +752,7 @@ type GatewayService struct {
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
+	modelsListCacheWrites atomic.Uint64
 	settingService        *SettingService
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
@@ -821,9 +822,9 @@ func NewGatewayService(
 		claudeTokenProvider:   claudeTokenProvider,
 		sessionLimitCache:     sessionLimitCache,
 		rpmCache:              rpmCache,
-		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
+		userGroupRateCache:    gocache.NewFrom(userGroupRateTTL, 0, map[string]gocache.Item{}),
 		settingService:        settingService,
-		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
+		modelsListCache:       gocache.NewFrom(modelsListTTL, 0, map[string]gocache.Item{}),
 		modelsListCacheTTL:    modelsListTTL,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:   tlsFPProfileService,
@@ -1391,7 +1392,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
 		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
+			setPassiveCache(s.modelsListCache, cacheKey, []string(nil), s.modelsListCacheTTL, &s.modelsListCacheWrites)
 			modelsListCacheStoreTotal.Add(1)
 		}
 		return nil
@@ -1405,7 +1406,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	sort.Strings(models)
 
 	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
+		setPassiveCache(s.modelsListCache, cacheKey, cloneStringSlice(models), s.modelsListCacheTTL, &s.modelsListCacheWrites)
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
