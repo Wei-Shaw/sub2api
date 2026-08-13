@@ -525,7 +525,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds REDACTED from '@/utils/accountSelection'
-import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
+import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey REDACTED from '@/utils/proxyExpiry'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
@@ -1300,7 +1300,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
-    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next)
+    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 REDACTED
 
@@ -1484,11 +1485,30 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useInterva
 const GROK_QUOTA_SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const GROK_QUOTA_SIGNAL_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
 
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => (
+    typeof value === 'string' && value.trim().length > 0
+  ))
+REDACTED
+
 function normalizeGrokPlanKey(value: unknown): string {
-  return String(value ?? '')
+  if (typeof value !== 'string') return ''
+  return value
     .trim()
     .toLowerCase()
     .replace(/[\s_-]+/g, '')
+REDACTED
+
+function grokPersistedQuotaSnapshot(extra: Record<string, any>): Record<string, any> | undefined {
+  const usage = extra.grok_usage_snapshot
+  if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
+    return usage as Record<string, any>
+  REDACTED
+  const legacy = extra.grok_quota_snapshot
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    return legacy as Record<string, any>
+  REDACTED
+  return undefined
 REDACTED
 
 function isGrokQuotaTimestampFresh(raw: unknown): boolean {
@@ -1536,8 +1556,10 @@ function getAccountPlanType(row: any): string | undefined {
   if (row.platform === 'grok') {
     const extra = (row.extra || {REDACTED) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
-    const quota = (extra.grok_quota_snapshot || extra.grok_usage_snapshot) as Record<string, any> | undefined
-    const cred = row.credentials?.subscription_tier
+    const usage = extra.grok_usage_snapshot as Record<string, any> | undefined
+    const legacyQuota = extra.grok_quota_snapshot as Record<string, any> | undefined
+    const quota = grokPersistedQuotaSnapshot(extra)
+    const cred = firstNonBlankString(row.credentials?.subscription_tier)
     const credKey = normalizeGrokPlanKey(cred)
     if (credKey && credKey !== 'supergrokpro') {
       return cred
@@ -1551,18 +1573,18 @@ function getAccountPlanType(row: any): string | undefined {
       return 'SuperGrok Heavy'
     REDACTED
     if (credKey === 'supergrokpro') {
-      return billing?.plan || 'SuperGrok'
+      return firstNonBlankString(billing?.plan) || 'SuperGrok'
     REDACTED
-    return (
-      billing?.plan ||
-      quota?.subscription_tier ||
-      extra.subscription_tier ||
-      row.credentials?.plan_type ||
-      row.parent_plan_type ||
-      undefined
+    return firstNonBlankString(
+      billing?.plan,
+      usage?.subscription_tier,
+      legacyQuota?.subscription_tier,
+      extra.subscription_tier,
+      row.credentials?.plan_type,
+      row.parent_plan_type
     )
   REDACTED
-  return row.credentials?.plan_type || row.parent_plan_type || undefined
+  return firstNonBlankString(row.credentials?.plan_type, row.parent_plan_type)
 REDACTED
 
 function getOpenAIAuthMode(row: any): string | undefined {
@@ -2418,6 +2440,7 @@ REDACTED
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
+    loadSavedAutoRefresh()
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {

@@ -1306,6 +1306,9 @@ REDACTED
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 REDACTED
+	// Account pointers on the request path are per-request copies (Redis/DB decode),
+	// not a shared in-process cache. Mutating Extra here matches token refresh /
+	// rate-limit writers; do not reuse the same *Account across goroutines.
 	if account.Extra == nil {
 		account.Extra = map[string]any{REDACTED
 REDACTED
