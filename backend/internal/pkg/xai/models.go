@@ -83,6 +83,7 @@ func (o ModelMappingOptions) defaultText() string {
 
 var defaultModels = []Model{
 	// Text
+	{ID: "grok-4.6", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.6"},
 	{ID: "grok-4.5", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.5"},
 	{ID: "grok-4.3", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.3"},
 	{ID: "grok-3-mini", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 3 Mini"},
@@ -106,6 +107,8 @@ var defaultModels = []Model{
 var grokTextResponsesModelAliases = map[string]string{
 	"grok":                         DefaultTextModel,
 	"grok-latest":                  DefaultTextModel,
+	"grok-4.6":                     "grok-4.6",
+	"grok-4.6-latest":              "grok-4.6",
 	"grok-4.5":                     DefaultTextModel,
 	"grok-4.5-latest":              DefaultTextModel,
 	"grok-4.3":                     "grok-4.3",

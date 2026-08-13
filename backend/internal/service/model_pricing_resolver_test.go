@@ -833,3 +833,66 @@ func TestApplyTokenOverrides_IntervalDoesNotPolluteFallbackPrices(t *testing.T) 
 	require.InDelta(t, 15e-6, fp.OutputPricePerToken, 1e-12, "fallback OutputPricePerToken polluted")
 	require.False(t, fp.ImageOutputPriceExplicit, "fallback ImageOutputPriceExplicit polluted")
 }
+
+func TestResolve_GroupPricingOverridesChannel(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform: "anthropic", Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(20e-6),
+	}})
+	group := &Group{ID: 100, ModelPricing: []ChannelModelPricing{{
+		Models: []string{"claude-sonnet-*"}, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(1e-6), OutputPrice: testPtrFloat64(2e-6),
+	}}}
+	resolved := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: groupIDPtr(), Group: group})
+
+	require.Equal(t, PricingSourceGroup, resolved.Source)
+	require.InDelta(t, 1e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 2e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_GroupLongContextUsesPresetNotCustomIntervals(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	bs.fallbackPrices["claude-sonnet-4"].LongContextInputThreshold = 200000
+	bs.fallbackPrices["claude-sonnet-4"].LongContextThresholdInclusive = true
+	bs.fallbackPrices["claude-sonnet-4"].LongContextInputMultiplier = 2
+	bs.fallbackPrices["claude-sonnet-4"].LongContextOutputMultiplier = 2
+	r := NewModelPricingResolver(nil, bs)
+	group := &Group{ID: 100, ModelPricing: []ChannelModelPricing{{
+		Models: []string{"claude-sonnet-4"}, BillingMode: BillingModeToken,
+		InputPrice: testPtrFloat64(1e-6), OutputPrice: testPtrFloat64(2e-6),
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(200000), InputPrice: testPtrFloat64(9e-6)},
+			{MinTokens: 200000, InputPrice: testPtrFloat64(18e-6)},
+		},
+	}}}
+
+	resolved := r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: group})
+	require.False(t, resolved.longContextPricingEnabled)
+	require.Empty(t, resolved.Intervals, "group token intervals are not a user-facing long-context ladder")
+	require.InDelta(t, 1e-6, r.GetIntervalPricing(resolved, 300000).InputPricePerToken, 1e-12)
+	require.Equal(t, 200000, resolved.BasePricing.LongContextInputThreshold)
+
+	group.LongContextPricingEnabled = true
+	resolved = r.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: group})
+	require.True(t, resolved.longContextPricingEnabled)
+	require.Empty(t, resolved.Intervals)
+	require.InDelta(t, 1e-6, r.GetIntervalPricing(resolved, 300000).InputPricePerToken, 1e-12)
+	require.Equal(t, 200000, resolved.BasePricing.LongContextInputThreshold)
+	require.InDelta(t, 2.0, resolved.BasePricing.LongContextInputMultiplier, 1e-12)
+}
+
+func TestCalculateCostUnified_UsesContinuousMediaUnits(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	r := NewModelPricingResolver(nil, bs)
+	price := 0.08
+	group := &Group{ModelPricing: []ChannelModelPricing{{
+		Models: []string{"grok-voice-think-fast-2.0"}, BillingMode: BillingModePerRequest,
+		PerRequestPrice: &price,
+	}}}
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "grok-voice-think-fast-2.0", Group: group,
+		UsageUnits: 1.5, RateMultiplier: 1, Resolver: r,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 0.12, cost.TotalCost, 1e-12)
+}
