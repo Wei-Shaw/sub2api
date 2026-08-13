@@ -133,6 +133,17 @@ type Group struct {
 	RateLimitedAccountCount int64
 }
 
+func cloneGroupModelPricing(value []ChannelModelPricing) []ChannelModelPricing {
+	if value == nil {
+		return nil
+	}
+	cloned := make([]ChannelModelPricing, len(value))
+	for i := range value {
+		cloned[i] = value[i].Clone()
+	}
+	return cloned
+}
+
 func (g *Group) IsActive() bool {
 	return g.Status == StatusActive
 }
