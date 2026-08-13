@@ -126,9 +126,10 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		return err
 	}
 
-	// Transport attempt reached the network path; count as Ollama Cloud activity.
+	// Transport attempt reached the network path; count as Ollama Cloud / OpenCode Go activity.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
+		scheduleOpenCodeGoUsageActivity(s.deferredService, account)
 	}
 
 	// 插件已把请求交给上游时，自动切换账号可能造成重复扣费或重复执行。

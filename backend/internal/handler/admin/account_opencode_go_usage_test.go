@@ -32,13 +32,49 @@ func (r *openCodeGoUsageHandlerTestRepo) GetByID(_ context.Context, id int64) (*
 	return nil, service.ErrAccountNotFound
 }
 
+func (r *openCodeGoUsageHandlerTestRepo) ListOpenCodeGoUsageGroupAccounts(_ context.Context, anchors []*service.Account) ([]service.Account, error) {
+	wanted := make(map[string]struct{}, len(anchors))
+	for _, anchor := range anchors {
+		if apiKey, ok := openCodeGoUsageHandlerTestAPIKey(anchor); ok {
+			wanted[apiKey] = struct{}{}
+		}
+	}
+	result := make([]service.Account, 0, len(r.accounts)+1)
+	if r.account != nil {
+		if apiKey, ok := openCodeGoUsageHandlerTestAPIKey(r.account); ok {
+			if _, match := wanted[apiKey]; match {
+				result = append(result, *r.account)
+			}
+		}
+	}
+	for _, account := range r.accounts {
+		if apiKey, ok := openCodeGoUsageHandlerTestAPIKey(account); ok {
+			if _, match := wanted[apiKey]; match {
+				result = append(result, *account)
+			}
+		}
+	}
+	return result, nil
+}
+
+func openCodeGoUsageHandlerTestAPIKey(account *service.Account) (string, bool) {
+	if account == nil || account.Credentials == nil {
+		return "", false
+	}
+	apiKey, ok := account.Credentials["api_key"].(string)
+	return apiKey, ok && apiKey != ""
+}
+
 func (r *openCodeGoUsageHandlerTestRepo) SetOpenCodeGoUsageAutoRefresh(context.Context, *service.Account, bool) error {
 	return nil
 }
 func (r *openCodeGoUsageHandlerTestRepo) UpdateOpenCodeGoUsageSnapshot(context.Context, *service.Account, *service.OpenCodeGoUsageSnapshot) error {
 	return nil
 }
-func (r *openCodeGoUsageHandlerTestRepo) ListDueOpenCodeGoUsageAccounts(context.Context, time.Time, int) ([]service.Account, error) {
+func (r *openCodeGoUsageHandlerTestRepo) DisableOpenCodeGoUsageAutoRefresh(context.Context, *service.Account) error {
+	return nil
+}
+func (r *openCodeGoUsageHandlerTestRepo) ListDueOpenCodeGoUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]service.Account, error) {
 	return nil, nil
 }
 

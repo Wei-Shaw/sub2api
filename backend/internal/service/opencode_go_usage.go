@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -26,12 +29,22 @@ const (
 	OpenCodeGoUsageAutoRefreshExtraKey = "opencode_go_usage_auto_refresh"
 	OpenCodeGoUsageSnapshotExtraKey    = "opencode_go_usage_snapshot"
 
+	// OpenCodeGoUsageMinFetchInterval is the hard floor between two successful
+	// fetches of the same group, mirroring the floor nextOpenCodeGoUsageDelay
+	// applies to next_refresh_at. Activity may bring a refresh forward to this
+	// bound but never past it. Exported so the repository can apply the same
+	// floor inside the SQL due filter.
+	OpenCodeGoUsageMinFetchInterval = opencodeGoUsageMinIntervalMinutes * time.Minute
+
 	opencodeGoUsageAPIURL                 = "https://opencode.ai/zen/go/v1/usage"
 	opencodeGoUsageDefaultIntervalMinutes = 15
 	opencodeGoUsageMinIntervalMinutes     = 5
 	opencodeGoUsageMaxIntervalMinutes     = 24 * 60
+	opencodeGoUsageDefaultDebounceMinutes = 1
+	opencodeGoUsageMinDebounceMinutes     = 1
+	opencodeGoUsageMaxDebounceMinutes     = 60
 	opencodeGoUsageCycleInterval          = time.Minute
-	opencodeGoUsageManualRefreshInterval  = 10 * time.Second
+	opencodeGoUsageManualRefreshInterval  = 30 * time.Second
 	opencodeGoUsageRequestTimeout         = 15 * time.Second
 	opencodeGoUsageMaxBodyBytes           = 512 * 1024
 	opencodeGoUsageMaxPerCycle            = 20
@@ -52,7 +65,7 @@ var (
 		"OPENCODE_GO_USAGE_IDENTITY_CHANGED", "account identity or proxy changed during refresh; retry",
 	)
 	ErrOpenCodeGoUsageRefreshRateLimited = infraerrors.TooManyRequests(
-		"OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED", "OpenCode Go usage can be refreshed manually once every 10 seconds",
+		"OPENCODE_GO_USAGE_REFRESH_RATE_LIMITED", "OpenCode Go usage can be refreshed manually once every 30 seconds",
 	)
 )
 
@@ -62,10 +75,15 @@ const (
 	OpenCodeGoUsageStatusFailed       = "failed"
 )
 
-// OpenCodeGoUsageSettings controls the opt-in periodic refresh runner.
+// OpenCodeGoUsageSettings controls the opt-in request-driven refresh runner.
+//
+// IntervalMinutes is the max-wait bound: when model requests keep arriving and
+// the trailing debounce keeps sliding, a refresh is forced after this long.
+// DebounceMinutes is the quiet period after the latest request in a group.
 type OpenCodeGoUsageSettings struct {
 	Enabled         bool `json:"enabled"`
-	IntervalMinutes int  `json:"interval_minutes"`
+	IntervalMinutes int  `json:"interval_minutes"` // max wait while requests continue
+	DebounceMinutes int  `json:"debounce_minutes"` // trailing quiet period after last request
 }
 
 // OpenCodeGoUsageWindow is a narrow, sanitized view of one official usage window.
@@ -83,6 +101,12 @@ type OpenCodeGoUsageData struct {
 }
 
 // OpenCodeGoUsageSnapshot is the only usage observation persisted in account extra.
+//
+// NextRefreshAt remains a persisted compatibility field. For status=ok it is a
+// max-wait horizon marker only; automatic success refreshes are driven by model
+// request activity (group last_used_at + debounce/max-wait), not by this field
+// alone. For failed/unauthorized snapshots it is the failure not-before time
+// (Retry-After / exponential backoff) and is enforced as max(activityDue, NextRefreshAt).
 type OpenCodeGoUsageSnapshot struct {
 	Status        string               `json:"status"`
 	Data          *OpenCodeGoUsageData `json:"data,omitempty"`
@@ -103,9 +127,11 @@ type OpenCodeGoUsageState struct {
 }
 
 type openCodeGoUsageRepository interface {
+	ListOpenCodeGoUsageGroupAccounts(context.Context, []*Account) ([]Account, error)
 	SetOpenCodeGoUsageAutoRefresh(context.Context, *Account, bool) error
 	UpdateOpenCodeGoUsageSnapshot(context.Context, *Account, *OpenCodeGoUsageSnapshot) error
-	ListDueOpenCodeGoUsageAccounts(context.Context, time.Time, int) ([]Account, error)
+	DisableOpenCodeGoUsageAutoRefresh(context.Context, *Account) error
+	ListDueOpenCodeGoUsageAccounts(context.Context, time.Time, time.Duration, time.Duration, int) ([]Account, error)
 }
 
 // GetOpenCodeGoUsageSettings returns fail-safe defaults when the setting is absent.
@@ -131,6 +157,9 @@ func (s *SettingService) GetOpenCodeGoUsageSettings(ctx context.Context) (*OpenC
 	if settings.IntervalMinutes == 0 {
 		settings.IntervalMinutes = defaults.IntervalMinutes
 	}
+	if settings.DebounceMinutes == 0 {
+		settings.DebounceMinutes = defaults.DebounceMinutes
+	}
 	normalizeOpenCodeGoUsageSettings(&settings)
 	return &settings, nil
 }
@@ -142,10 +171,29 @@ func (s *SettingService) SetOpenCodeGoUsageSettings(ctx context.Context, setting
 	if settings == nil {
 		return infraerrors.BadRequest("INVALID_OPENCODE_GO_USAGE_SETTINGS", "settings cannot be nil")
 	}
+	if settings.DebounceMinutes == 0 {
+		// Legacy clients that omit debounce_minutes keep the fail-safe default.
+		settings.DebounceMinutes = opencodeGoUsageDefaultDebounceMinutes
+	}
 	if settings.IntervalMinutes < opencodeGoUsageMinIntervalMinutes || settings.IntervalMinutes > opencodeGoUsageMaxIntervalMinutes {
 		return infraerrors.BadRequest(
 			"INVALID_OPENCODE_GO_USAGE_INTERVAL",
 			fmt.Sprintf("interval_minutes must be between %d and %d", opencodeGoUsageMinIntervalMinutes, opencodeGoUsageMaxIntervalMinutes),
+		)
+	}
+	if settings.DebounceMinutes < opencodeGoUsageMinDebounceMinutes || settings.DebounceMinutes > opencodeGoUsageMaxDebounceMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OPENCODE_GO_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes must be between %d and %d", opencodeGoUsageMinDebounceMinutes, opencodeGoUsageMaxDebounceMinutes),
+		)
+	}
+	// The due time is min(lastUsed+debounce, fetchedAt+maxWait). Once the debounce
+	// reaches the max wait the debounce term can never win, so the knob would be
+	// silently inert instead of doing what the operator asked for.
+	if settings.DebounceMinutes >= settings.IntervalMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_OPENCODE_GO_USAGE_DEBOUNCE",
+			fmt.Sprintf("debounce_minutes (%d) must be less than interval_minutes (%d)", settings.DebounceMinutes, settings.IntervalMinutes),
 		)
 	}
 	normalizeOpenCodeGoUsageSettings(settings)
@@ -160,6 +208,7 @@ func defaultOpenCodeGoUsageSettings() *OpenCodeGoUsageSettings {
 	return &OpenCodeGoUsageSettings{
 		Enabled:         false,
 		IntervalMinutes: opencodeGoUsageDefaultIntervalMinutes,
+		DebounceMinutes: opencodeGoUsageDefaultDebounceMinutes,
 	}
 }
 
@@ -170,20 +219,125 @@ func normalizeOpenCodeGoUsageSettings(settings *OpenCodeGoUsageSettings) {
 	if settings.IntervalMinutes > opencodeGoUsageMaxIntervalMinutes {
 		settings.IntervalMinutes = opencodeGoUsageMaxIntervalMinutes
 	}
+	if settings.DebounceMinutes <= 0 {
+		settings.DebounceMinutes = opencodeGoUsageDefaultDebounceMinutes
+	}
+	if settings.DebounceMinutes < opencodeGoUsageMinDebounceMinutes {
+		settings.DebounceMinutes = opencodeGoUsageMinDebounceMinutes
+	}
+	if settings.DebounceMinutes > opencodeGoUsageMaxDebounceMinutes {
+		settings.DebounceMinutes = opencodeGoUsageMaxDebounceMinutes
+	}
+}
+
+func openCodeGoUsageDurations(settings *OpenCodeGoUsageSettings) (debounce, maxWait time.Duration) {
+	normalized := defaultOpenCodeGoUsageSettings()
+	if settings != nil {
+		*normalized = *settings
+	}
+	normalizeOpenCodeGoUsageSettings(normalized)
+	return time.Duration(normalized.DebounceMinutes) * time.Minute,
+		time.Duration(normalized.IntervalMinutes) * time.Minute
 }
 
 // openCodeGoUsageIsAutoRefreshDue decides whether a configured auto-refresh
-// account should fetch now. Missing or invalid snapshots fail open to a first
-// fetch; otherwise the next_refresh_at horizon (success interval or failure
-// backoff) decides.
-func openCodeGoUsageIsAutoRefreshDue(snapshot *OpenCodeGoUsageSnapshot, now time.Time) bool {
+// group should fetch now. groupLastUsedAt must be MAX(last_used_at) across the
+// exact api_key group so shared multi-account groups do not miss activity.
+//
+// Success: a request must be newer than fetched_at; dueAt = min(lastUsed+debounce, fetchedAt+maxWait).
+// Failure: a request must be newer than last_attempt_at; activity due uses the same min formula,
+// then dueAt = max(activityDue, next_refresh_at) so Retry-After / exponential backoff win.
+// Missing or invalid snapshots fail open to a first fetch.
+func openCodeGoUsageIsAutoRefreshDue(
+	snapshot *OpenCodeGoUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	now time.Time,
+	debounce, maxWait time.Duration,
+) bool {
+	dueAt, ok := openCodeGoUsageAutoRefreshDueAt(snapshot, groupLastUsedAt, debounce, maxWait)
+	if !ok {
+		return false
+	}
+	return !now.Before(dueAt)
+}
+
+func openCodeGoUsageAutoRefreshDueAt(
+	snapshot *OpenCodeGoUsageSnapshot,
+	groupLastUsedAt *time.Time,
+	debounce, maxWait time.Duration,
+) (time.Time, bool) {
+	if debounce <= 0 {
+		debounce = time.Duration(opencodeGoUsageDefaultDebounceMinutes) * time.Minute
+	}
+	if maxWait <= 0 {
+		maxWait = time.Duration(opencodeGoUsageDefaultIntervalMinutes) * time.Minute
+	}
 	if snapshot == nil {
-		return true
+		return time.Time{}, true
 	}
-	if snapshot.NextRefreshAt.IsZero() {
-		return true
+	switch snapshot.Status {
+	case OpenCodeGoUsageStatusOK:
+		if snapshot.FetchedAt == nil || snapshot.FetchedAt.IsZero() {
+			return time.Time{}, true
+		}
+		fetchedAt := snapshot.FetchedAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(fetchedAt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		dueAt := minTime(lastUsed.Add(debounce), fetchedAt.Add(maxWait))
+		// Keep the pre-existing hard floor between successful fetches. The success
+		// path no longer consults next_refresh_at, which is where
+		// nextOpenCodeGoUsageDelay used to apply opencodeGoUsageMinIntervalMinutes;
+		// without this, request traffic spaced slightly wider than the debounce
+		// drives the group's outbound rate far above the previous minimum.
+		if floor := fetchedAt.Add(OpenCodeGoUsageMinFetchInterval); dueAt.Before(floor) {
+			return floor, true
+		}
+		return dueAt, true
+	case OpenCodeGoUsageStatusFailed, OpenCodeGoUsageStatusUnauthorized:
+		if snapshot.LastAttemptAt.IsZero() {
+			return time.Time{}, true
+		}
+		lastAttempt := snapshot.LastAttemptAt.UTC()
+		if groupLastUsedAt == nil || !groupLastUsedAt.After(lastAttempt) {
+			return time.Time{}, false
+		}
+		lastUsed := groupLastUsedAt.UTC()
+		activityDue := minTime(lastUsed.Add(debounce), lastAttempt.Add(maxWait))
+		if !snapshot.NextRefreshAt.IsZero() && snapshot.NextRefreshAt.UTC().After(activityDue) {
+			return snapshot.NextRefreshAt.UTC(), true
+		}
+		return activityDue, true
+	default:
+		return time.Time{}, true
 	}
-	return !now.Before(snapshot.NextRefreshAt)
+}
+
+// maxOpenCodeGoUsageGroupLastUsed returns the newest last_used_at among group members.
+func maxOpenCodeGoUsageGroupLastUsed(accounts []Account) *time.Time {
+	var latest *time.Time
+	for i := range accounts {
+		candidate := accounts[i].LastUsedAt
+		if candidate == nil || candidate.IsZero() {
+			continue
+		}
+		if latest == nil || candidate.After(*latest) {
+			ts := candidate.UTC()
+			latest = &ts
+		}
+	}
+	return latest
+}
+
+// scheduleOpenCodeGoUsageActivity records that an OpenCode Go API-key account
+// actually attempted an upstream model request (including 429/5xx/transport errors).
+// Local auth/validation failures must not call this. DeferredService dedupes writes.
+func scheduleOpenCodeGoUsageActivity(deferred *DeferredService, account *Account) {
+	if deferred == nil || account == nil || !IsOpenCodeGoUsageAccount(account) {
+		return
+	}
+	deferred.ScheduleLastUsedUpdate(account.ID)
 }
 
 // OpenCodeGoUsageService refreshes the official usage JSON without affecting routing state.
@@ -308,7 +462,94 @@ func (s *OpenCodeGoUsageService) GetState(ctx context.Context, accountID int64) 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ResolveOpenCodeGoUsageAccounts(ctx, []*Account{account}); err != nil {
+		return nil, err
+	}
 	return OpenCodeGoUsageStateFromAccount(account), nil
+}
+
+// ResolveOpenCodeGoUsageAccounts overlays group-owned managed state onto the
+// supplied account objects. The repository resolves all matching siblings in one
+// bounded query, so account-list responses do not issue one query per row.
+func (s *OpenCodeGoUsageService) ResolveOpenCodeGoUsageAccounts(ctx context.Context, accounts []*Account) error {
+	if s == nil || s.accountRepo == nil || len(accounts) == 0 {
+		return nil
+	}
+	writer, ok := s.accountRepo.(openCodeGoUsageRepository)
+	if !ok {
+		return nil
+	}
+	eligible := make([]*Account, 0, len(accounts))
+	for _, account := range accounts {
+		if _, ok := openCodeGoUsageGroupFingerprint(account); ok {
+			eligible = append(eligible, account)
+		}
+	}
+	if len(eligible) == 0 {
+		return nil
+	}
+	siblings, err := writer.ListOpenCodeGoUsageGroupAccounts(ctx, eligible)
+	if err != nil {
+		return fmt.Errorf("resolve OpenCode Go usage groups: %w", err)
+	}
+	sources := make(map[string]*Account)
+	for index := range siblings {
+		candidate := &siblings[index]
+		fingerprint, valid := openCodeGoUsageGroupFingerprint(candidate)
+		if !valid {
+			continue
+		}
+		current := sources[fingerprint]
+		if current == nil || candidate.UpdatedAt.After(current.UpdatedAt) ||
+			(candidate.UpdatedAt.Equal(current.UpdatedAt) && candidate.ID < current.ID) {
+			sources[fingerprint] = candidate
+		}
+	}
+	resolvedSources := make(map[string]*Account, len(sources))
+	for fingerprint, source := range sources {
+		clone := *source
+		clone.Extra = make(map[string]any, len(source.Extra))
+		maps.Copy(clone.Extra, source.Extra)
+		resolvedSources[fingerprint] = &clone
+	}
+	for index := range siblings {
+		candidate := &siblings[index]
+		fingerprint, valid := openCodeGoUsageGroupFingerprint(candidate)
+		source := resolvedSources[fingerprint]
+		if !valid || source == nil {
+			continue
+		}
+		candidateSnapshot := decodeOpenCodeGoUsageSnapshot(candidate.Extra)
+		currentSnapshot := decodeOpenCodeGoUsageSnapshot(source.Extra)
+		if candidateSnapshot != nil && (currentSnapshot == nil || candidateSnapshot.LastAttemptAt.After(currentSnapshot.LastAttemptAt)) {
+			source.Extra[OpenCodeGoUsageSnapshotExtraKey] = candidate.Extra[OpenCodeGoUsageSnapshotExtraKey]
+		}
+	}
+	for _, account := range eligible {
+		fingerprint, _ := openCodeGoUsageGroupFingerprint(account)
+		applyOpenCodeGoUsageManagedExtra(account, resolvedSources[fingerprint])
+	}
+	return nil
+}
+
+func applyOpenCodeGoUsageManagedExtra(target, source *Account) {
+	if target == nil {
+		return
+	}
+	if target.Extra == nil {
+		target.Extra = make(map[string]any)
+	}
+	for _, key := range []string{
+		OpenCodeGoUsageAutoRefreshExtraKey,
+		OpenCodeGoUsageSnapshotExtraKey,
+	} {
+		delete(target.Extra, key)
+		if source != nil && source.Extra != nil {
+			if value, ok := source.Extra[key]; ok {
+				target.Extra[key] = value
+			}
+		}
+	}
 }
 
 func (s *OpenCodeGoUsageService) SetAutoRefresh(ctx context.Context, accountID int64, enabled bool) (*OpenCodeGoUsageState, error) {
@@ -321,6 +562,9 @@ func (s *OpenCodeGoUsageService) SetAutoRefresh(ctx context.Context, accountID i
 	}
 	if !IsOpenCodeGoUsageAccount(account) {
 		return nil, ErrOpenCodeGoUsageAccountInvalid
+	}
+	if err := s.ResolveOpenCodeGoUsageAccounts(ctx, []*Account{account}); err != nil {
+		return nil, err
 	}
 	writer, ok := s.accountRepo.(openCodeGoUsageRepository)
 	if !ok {
@@ -367,23 +611,38 @@ func (s *OpenCodeGoUsageService) RunDue(ctx context.Context) error {
 		return ErrOpenCodeGoUsageUnavailable
 	}
 	now := s.currentTime()
-	accounts, err := writer.ListDueOpenCodeGoUsageAccounts(ctx, now, opencodeGoUsageMaxPerCycle)
+	debounce, maxWait := openCodeGoUsageDurations(settings)
+	accounts, err := writer.ListDueOpenCodeGoUsageAccounts(ctx, now, debounce, maxWait, opencodeGoUsageMaxPerCycle)
 	if err != nil {
 		return fmt.Errorf("list due OpenCode Go usage accounts: %w", err)
 	}
 	var group errgroup.Group
+	seenGroups := make(map[string]struct{}, len(accounts))
 	for index := range accounts {
 		account := accounts[index]
-		if !account.IsActive() || !openCodeGoUsageAutoRefreshEnabled(&account) {
+		fingerprint, valid := openCodeGoUsageGroupFingerprint(&account)
+		if !valid || !account.IsActive() || !openCodeGoUsageAutoRefreshEnabled(&account) {
 			continue
 		}
+		if _, duplicate := seenGroups[fingerprint]; duplicate {
+			continue
+		}
+		seenGroups[fingerprint] = struct{}{}
 		snapshot := decodeOpenCodeGoUsageSnapshot(account.Extra)
-		if !openCodeGoUsageIsAutoRefreshDue(snapshot, now) {
+		// ListDue stamps Account.LastUsedAt with the api_key group MAX(last_used_at).
+		if !openCodeGoUsageIsAutoRefreshDue(snapshot, account.LastUsedAt, now, debounce, maxWait) {
 			continue
 		}
 		accountID := account.ID
+		expected := account
 		group.Go(func() error {
 			if _, refreshErr := s.refreshAccount(ctx, accountID, settings, true); refreshErr != nil {
+				if errors.Is(refreshErr, ErrOpenCodeGoUsageIdentityChanged) {
+					if disableErr := writer.DisableOpenCodeGoUsageAutoRefresh(ctx, &expected); disableErr != nil {
+						logger.LegacyPrintf("service.opencode_go_usage", "disable_auto_refresh_failed: account_id=%d err=%v", accountID, disableErr)
+					}
+					return nil
+				}
 				logger.LegacyPrintf("service.opencode_go_usage", "refresh_due_failed: account_id=%d err=%v", accountID, refreshErr)
 			}
 			return nil
@@ -400,14 +659,15 @@ func (s *OpenCodeGoUsageService) refreshAccount(ctx context.Context, accountID i
 		settings = defaultOpenCodeGoUsageSettings()
 	}
 	intervalMinutes := settings.IntervalMinutes
+	debounce, maxWait := openCodeGoUsageDurations(settings)
 	anchor, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
 	}
-	if !IsOpenCodeGoUsageAccount(anchor) {
+	key, valid := openCodeGoUsageGroupFingerprint(anchor)
+	if !valid {
 		return nil, ErrOpenCodeGoUsageAccountInvalid
 	}
-	key := strconv.FormatInt(accountID, 10)
 	value, err, _ := s.refreshGroup.Do(key, func() (any, error) {
 		select {
 		case s.refreshSlots <- struct{}{}:
@@ -419,8 +679,15 @@ func (s *OpenCodeGoUsageService) refreshAccount(ctx context.Context, accountID i
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		if !IsOpenCodeGoUsageAccount(account) {
+		currentKey, currentValid := openCodeGoUsageGroupFingerprint(account)
+		if !currentValid {
 			return nil, ErrOpenCodeGoUsageAccountInvalid
+		}
+		if currentKey != key {
+			return nil, ErrOpenCodeGoUsageIdentityChanged
+		}
+		if err := s.ResolveOpenCodeGoUsageAccounts(ctx, []*Account{account}); err != nil {
+			return nil, err
 		}
 		if !requireEnabled {
 			if snapshot := decodeOpenCodeGoUsageSnapshot(account.Extra); snapshot != nil && !snapshot.LastAttemptAt.IsZero() {
@@ -438,7 +705,21 @@ func (s *OpenCodeGoUsageService) refreshAccount(ctx context.Context, accountID i
 			if !account.IsActive() || !openCodeGoUsageAutoRefreshEnabled(account) {
 				return nil, nil
 			}
-			if !openCodeGoUsageIsAutoRefreshDue(decodeOpenCodeGoUsageSnapshot(account.Extra), s.currentTime()) {
+			groupLastUsed := account.LastUsedAt
+			if writer, ok := s.accountRepo.(openCodeGoUsageRepository); ok {
+				siblings, listErr := writer.ListOpenCodeGoUsageGroupAccounts(ctx, []*Account{account})
+				if listErr != nil {
+					// Fall back to this account's own last_used_at. That is a narrower
+					// activity signal than the group maximum, so the due check may skip a
+					// refresh it would otherwise have run; surface it rather than
+					// silently changing the due semantics.
+					logger.LegacyPrintf("service.opencode_go_usage",
+						"group_last_used_lookup_failed: account_id=%d err=%v", account.ID, listErr)
+				} else {
+					groupLastUsed = maxOpenCodeGoUsageGroupLastUsed(siblings)
+				}
+			}
+			if !openCodeGoUsageIsAutoRefreshDue(decodeOpenCodeGoUsageSnapshot(account.Extra), groupLastUsed, s.currentTime(), debounce, maxWait) {
 				return nil, nil
 			}
 		}
@@ -616,6 +897,27 @@ func isOpenCodeGoBaseURL(raw string) bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSuffix(parsed.Path, "/"), "/zen/go/v1")
+}
+
+func openCodeGoUsageIdentity(account *Account) map[string]any {
+	if !IsOpenCodeGoUsageAccount(account) {
+		return nil
+	}
+	apiKey, ok := account.Credentials["api_key"].(string)
+	if !ok || apiKey == "" {
+		return nil
+	}
+	return map[string]any{"host": "opencode.ai", "api_key": apiKey}
+}
+
+func openCodeGoUsageGroupFingerprint(account *Account) (string, bool) {
+	identity := openCodeGoUsageIdentity(account)
+	if identity == nil {
+		return "", false
+	}
+	apiKey, _ := identity["api_key"].(string)
+	sum := sha256.Sum256([]byte("opencode.ai\x00" + apiKey))
+	return hex.EncodeToString(sum[:]), true
 }
 
 func isExactOpenCodeGoUsageURL(parsed *url.URL) bool {
