@@ -84,24 +84,35 @@ const isMobile = useMediaQuery('(max-width: 1023.98px)')
   @apply bg-surface-sunken;
 }
 
-.table-scroll-container :deep(th) {
+/*
+ * These rules dress a hand-written `<table>` handed in through the `table`
+ * slot. They must NOT reach DataTable, which owns its own cell geometry and
+ * marks its cells `ds-header-cell` / `ds-row-cell`.
+ *
+ * Without the exclusion they did reach it, at (0,2,1) — enough to beat the
+ * utility classes DataTable emits — so `px-3` here silently overrode
+ * `getAdaptivePaddingClass()`, and this cell colour overrode its own. Adaptive
+ * padding was therefore inert on every page wrapped in this layout, which is
+ * most of the tables in the app.
+ */
+.table-scroll-container :deep(th:not(.ds-header-cell)) {
   @apply border-b border-line-strong px-3 text-left text-2xs font-medium uppercase text-ink-tertiary;
   height: var(--ds-header-h);
   letter-spacing: var(--ds-tr-2xs);
 }
 
-.table-scroll-container :deep(td) {
+.table-scroll-container :deep(td:not(.ds-row-cell)) {
   @apply border-b border-line-subtle px-3 text-sm text-ink-secondary;
   height: var(--ds-row-h);
 }
 
-.table-scroll-container :deep(th:first-child),
-.table-scroll-container :deep(td:first-child) {
+.table-scroll-container :deep(th:not(.ds-header-cell):first-child),
+.table-scroll-container :deep(td:not(.ds-row-cell):first-child) {
   @apply pl-4;
 }
 
-.table-scroll-container :deep(th:last-child),
-.table-scroll-container :deep(td:last-child) {
+.table-scroll-container :deep(th:not(.ds-header-cell):last-child),
+.table-scroll-container :deep(td:not(.ds-row-cell):last-child) {
   @apply pr-4;
 }
 
@@ -120,8 +131,9 @@ const isMobile = useMediaQuery('(max-width: 1023.98px)')
   min-width: 100%;
 }
 
-/* Touch target floor for row hit areas. */
-.table-page-layout.mobile-mode .table-scroll-container :deep(td) {
+/* Touch target floor for row hit areas. DataTable declares its own at the same
+ * breakpoint, so this covers only hand-written tables. */
+.table-page-layout.mobile-mode .table-scroll-container :deep(td:not(.ds-row-cell)) {
   height: var(--ds-row-h-touch);
 }
 </style>
