@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 // 在多实例部署场景下，该锁确保同一时间只有一个实例执行迁移。
 // 任何稳定的 int64 值都可以，只要不与同一数据库中的其他锁冲突即可。
 const migrationsAdvisoryLockID int64 = 694208311321144027
+const bootstrapAdvisoryLockID int64 = 694208311321144028
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
@@ -557,20 +558,27 @@ type advisoryLockConnection interface {
 }
 
 func pgAdvisoryLock(ctx context.Context, db advisoryLockConnection) error {
+	if err := pgAdvisoryLockWithID(ctx, db, migrationsAdvisoryLockID); err != nil {
+		return fmt.Errorf("acquire migrations lock: %w", err)
+	}
+	return nil
+}
+
+func pgAdvisoryLockWithID(ctx context.Context, db advisoryLockConnection, lockID int64) error {
 	ticker := time.NewTicker(migrationsLockRetryInterval)
 	defer ticker.Stop()
 
 	for {
 		var locked bool
-		if err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationsAdvisoryLockID).Scan(&locked); err != nil {
-			return fmt.Errorf("acquire migrations lock: %w", err)
+		if err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&locked); err != nil {
+			return fmt.Errorf("acquire advisory lock: %w", err)
 		}
 		if locked {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("acquire migrations lock: %w", ctx.Err())
+			return fmt.Errorf("acquire advisory lock: %w", ctx.Err())
 		case <-ticker.C:
 		}
 	}
@@ -579,9 +587,16 @@ func pgAdvisoryLock(ctx context.Context, db advisoryLockConnection) error {
 // pgAdvisoryUnlock 释放 PostgreSQL Advisory Lock。
 // 必须在获取锁后确保释放，否则会阻塞其他实例的迁移操作。
 func pgAdvisoryUnlock(ctx context.Context, db advisoryLockConnection) error {
-	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationsAdvisoryLockID)
-	if err != nil {
+	if err := pgAdvisoryUnlockWithID(ctx, db, migrationsAdvisoryLockID); err != nil {
 		return fmt.Errorf("release migrations lock: %w", err)
+	}
+	return nil
+}
+
+func pgAdvisoryUnlockWithID(ctx context.Context, db advisoryLockConnection, lockID int64) error {
+	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", lockID)
+	if err != nil {
+		return fmt.Errorf("release advisory lock: %w", err)
 	}
 	return nil
 }

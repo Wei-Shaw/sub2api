@@ -613,6 +613,13 @@ func setupConfigFromEnv() (*SetupConfig, error) {
 
 // BootstrapFromEnv finalizes a migrated installation without applying migrations.
 func BootstrapFromEnv() error {
+	if err := PrepareBootstrapFromEnv(); err != nil {
+		return err
+	}
+	return FinalizeBootstrapFromEnv()
+}
+
+func PrepareBootstrapFromEnv() error {
 	cfg, err := setupConfigFromEnv()
 	if err != nil {
 		return err
@@ -620,11 +627,19 @@ func BootstrapFromEnv() error {
 	if err := TestRedisConnection(&cfg.Redis); err != nil {
 		return fmt.Errorf("redis connection failed: %w", err)
 	}
-	if _, _, err := createAdminUser(cfg); err != nil {
-		return fmt.Errorf("admin user creation failed: %w", err)
-	}
 	if err := writeConfigFile(cfg); err != nil {
 		return fmt.Errorf("config file creation failed: %w", err)
+	}
+	return nil
+}
+
+func FinalizeBootstrapFromEnv() error {
+	cfg, err := setupConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	if _, _, err := createAdminUser(cfg); err != nil {
+		return fmt.Errorf("admin user creation failed: %w", err)
 	}
 	if err := createInstallLock(); err != nil {
 		return fmt.Errorf("create install lock: %w", err)

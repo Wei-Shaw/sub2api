@@ -95,7 +95,7 @@ func InitEntWithOptions(cfg *config.Config, options EntInitOptions) (*ent.Client
 
 	bootstrapCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := BootstrapEnt(bootstrapCtx, client, cfg); err != nil {
+	if err := BootstrapInstallation(bootstrapCtx, drv.DB(), client, cfg); err != nil {
 		_ = client.Close()
 		return nil, nil, err
 	}

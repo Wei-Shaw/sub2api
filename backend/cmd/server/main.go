@@ -155,22 +155,43 @@ func runBootstrap() error {
 	if !setup.AutoSetupEnabled() {
 		return errors.New("bootstrap role requires environment-driven setup")
 	}
-	if err := setup.BootstrapFromEnv(); err != nil {
+	if err := setup.PrepareBootstrapFromEnv(); err != nil {
 		return err
 	}
 	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	client, _, err := repository.OpenEnt(cfg)
+	client, db, err := repository.OpenEnt(cfg)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer client.Close()
-	return repository.BootstrapEnt(context.Background(), client, cfg)
+	return repository.BootstrapInstallationWithFinalizer(context.Background(), db, client, cfg, setup.FinalizeBootstrapFromEnv)
+}
+
+func requireResidentBootstrap() residentAdmission {
+	return func(ctx context.Context) error {
+		cfg, err := config.LoadForBootstrap()
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		client, db, err := repository.OpenEnt(cfg)
+		if err != nil {
+			return fmt.Errorf("open database: %w", err)
+		}
+		defer client.Close()
+		if err := repository.RequireMigrationsApplied(ctx, db); err != nil {
+			return err
+		}
+		return repository.RequireBootstrapComplete(ctx, db)
+	}
 }
 
 func runMainServer(role runtime.Role) error {
+	if err := admitResidentRole(role, requireResidentBootstrap()); err != nil {
+		return fmt.Errorf("admit resident role: %w", err)
+	}
 	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
