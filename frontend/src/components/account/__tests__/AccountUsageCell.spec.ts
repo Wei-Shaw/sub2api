@@ -903,6 +903,81 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('250.0K')
   })
 
+  it('Grok JWT free tier shows 24h bar even when leftover Heavy billing metrics remain', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 500_000,
+      subscription_tier: 'free',
+      grok_billing: {
+        plan: 'SuperGrok Heavy',
+        monthly_limit_cents: 150_000,
+        usage_percent: 10,
+        used_percent: 5
+      },
+      grok_local_usage_24h: {
+        requests: 2,
+        tokens: 250_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4404, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('24h|')
+    expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.text()).not.toContain('30d|')
+  })
+
+  it('Grok SuperGrok Lite stays on paid 7d bar, not free 24h', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'supergrok_lite',
+      grok_billing: {
+        period_type: 'weekly',
+        plan: 'SuperGrok',
+        usage_percent: 20
+      },
+      grok_local_usage_24h: {
+        requests: 1,
+        tokens: 100,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4405, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('7d|')
+    expect(wrapper.text()).not.toContain('24h|')
+  })
+
   it('Grok credential Free tier keeps the 1M fallback when billing is unavailable', async () => {
     getUsage.mockResolvedValue({
       grok_free_token_limit: 1_000_000,
