@@ -95,8 +95,6 @@ const ALLOWED: Record<string, string[]> = {
     'components/common/AnnouncementBell.vue',
     'components/common/AnnouncementPopup.vue',
     'components/common/SubscriptionProgressMini.vue',
-    'components/modelPlaza/PlazaFilterBar.vue',
-    'components/modelPlaza/PlazaNavBar.vue',
     'components/payment/StripePaymentInline.vue',
     'components/user/profile/ProfileAvatarCard.vue',
     'components/user/profile/ProfileInfoCard.vue',

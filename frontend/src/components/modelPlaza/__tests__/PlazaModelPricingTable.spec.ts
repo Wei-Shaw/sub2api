@@ -3,12 +3,19 @@ import { mount } from '@vue/test-utils'
 import PlazaModelPricingTable from '../PlazaModelPricingTable.vue'
 import type { PlazaModel } from '@/api/modelPlaza'
 
+/*
+ * `locale` is part of this mock because the table renders every quantity
+ * through `NumCell`, which formats with `Intl.NumberFormat(locale.value)`.
+ * Pinning it to `en` also pins the group separator, so the assertions below
+ * do not depend on the machine's locale.
+ */
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string) => key,
+      locale: { value: 'en' }
     })
   }
 })
@@ -51,14 +58,16 @@ function mountTable(
 }
 
 describe('PlazaModelPricingTable', () => {
-  it('倍率为 1 时展示渠道单价原值($/1M),价格保底 2 位小数', () => {
+  it('倍率为 1 时展示渠道单价原值(/1M),价格保底 2 位小数', () => {
     const wrapper = mountTable([tokenModel()], 1)
     const text = wrapper.text()
-    expect(text).toContain('$3.00')
-    expect(text).toContain('$15.00')
+    expect(text).toContain('3.00')
+    expect(text).toContain('15.00')
     // 缓存写 / 读(超过 2 位小数原样保留)
-    expect(text).toContain('$3.75')
-    expect(text).toContain('$0.30')
+    expect(text).toContain('3.75')
+    expect(text).toContain('0.30')
+    // 单位($ / 1M)只在列头出现一次,不重复进每个单元格
+    expect(text).toContain('modelPlaza.table.unitPerMillion')
     // 倍率列
     expect(text).toContain('1x')
   })
@@ -67,11 +76,11 @@ describe('PlazaModelPricingTable', () => {
     const wrapper = mountTable([tokenModel()], 0.5)
     const text = wrapper.text()
     // 实付 = 3 × 0.5 / 15 × 0.5
-    expect(text).toContain('$1.50')
-    expect(text).toContain('$7.50')
+    expect(text).toContain('1.50')
+    expect(text).toContain('7.50')
     // 官方价原值仍在(官方列不乘倍率)
-    expect(text).toContain('$3.00')
-    expect(text).toContain('$15.00')
+    expect(text).toContain('3.00')
+    expect(text).toContain('15.00')
     expect(text).toContain('0.5x')
   })
 
@@ -79,13 +88,13 @@ describe('PlazaModelPricingTable', () => {
     const wrapper = mountTable([tokenModel()], 1, 0.8)
     const text = wrapper.text()
     // 实付按 0.8:3 × 0.8 = 2.4
-    expect(text).toContain('$2.40')
-    expect(text).toContain('$12.00')
+    expect(text).toContain('2.40')
+    expect(text).toContain('12.00')
     // 倍率列:原倍率划线 + 专属倍率
-    const struck = wrapper.find('td .line-through')
+    const struck = wrapper.find('[data-testid="plaza-rate-original"]')
     expect(struck.exists()).toBe(true)
     expect(struck.text()).toBe('1x')
-    expect(text).toContain('0.8x')
+    expect(wrapper.find('[data-testid="plaza-rate-effective"]').text()).toBe('0.8x')
   })
 
   it('模型按官方输出价从高到低排序,无官方价的排最后', () => {
@@ -186,17 +195,18 @@ describe('PlazaModelPricingTable', () => {
     expect(wrapper.findAll('tbody td')).toHaveLength(8)
   })
 
-  it('官方价包含 1h 缓存写入价;official_pricing 为 null 时官方三列显示 -', () => {
+  it('官方价包含 1h 缓存写入价;official_pricing 为 null 时官方三列显示空值破折号', () => {
     const withOfficial = mountTable([tokenModel()], 1)
-    expect(withOfficial.text()).toContain('$6.00')
-    expect(withOfficial.text()).toContain('(1h')
+    // 1h 写入价自成一行(标签 + 数值),不再内联进括号里
+    expect(withOfficial.text()).toContain('1h')
+    expect(withOfficial.text()).toContain('6.00')
 
     const withoutOfficial = mountTable([tokenModel({ official_pricing: null })], 1)
     const cells = withoutOfficial.findAll('tbody td')
-    // 官方 输入/输出/缓存 三列均为 -
-    expect(cells[4].text().trim()).toBe('-')
-    expect(cells[5].text().trim()).toBe('-')
-    expect(cells[6].text().trim()).toBe('-')
+    // 官方 输入/输出/缓存 三列均为 NumCell 的空值破折号(en dash,不是 0)
+    expect(cells[4].text().trim()).toBe('–')
+    expect(cells[5].text().trim()).toBe('–')
+    expect(cells[6].text().trim()).toBe('–')
   })
 
   it('per_request 模型按单次价 × 倍率展示,官方价列显示 -', () => {
@@ -218,7 +228,7 @@ describe('PlazaModelPricingTable', () => {
     const wrapper = mountTable([model], 0.5)
     const text = wrapper.text()
     // 0.04 × 0.5 = 0.02,scale=1
-    expect(text).toContain('$0.02')
+    expect(text).toContain('0.02')
     expect(text).toContain('modelPlaza.table.perRequest')
     // 单位后缀跟在价格后(按次 → / 次)
     expect(text).toContain('modelPlaza.table.perUnitRequest')
@@ -265,9 +275,9 @@ describe('PlazaModelPricingTable', () => {
     expect(text).toContain('≤200K')
     expect(text).toContain('>200K')
     // 折后:输入 1.5 / 3,输出 7.5 / 15
-    expect(text).toContain('$1.50')
-    expect(text).toContain('$7.50')
-    expect(text).toContain('$15.00')
+    expect(text).toContain('1.50')
+    expect(text).toContain('7.50')
+    expect(text).toContain('15.00')
   })
 
   it('生图独立倍率开启时,按图价格 × 独立倍率,不乘分组倍率;倍率列展示独立倍率', () => {
@@ -303,8 +313,8 @@ describe('PlazaModelPricingTable', () => {
     })
     const text = wrapper.text()
     // 0.02 × 1(独立倍率),而非 0.02 × 0.1
-    expect(text).toContain('$0.02')
-    expect(text).not.toContain('$0.002')
+    expect(text).toContain('0.02')
+    expect(text).not.toContain('0.002')
     // 倍率列展示独立倍率 1x,而非分组倍率 0.1x
     const rateCell = wrapper.findAll('tbody tr td').at(-1)!
     expect(rateCell.text()).toBe('1x')
@@ -328,7 +338,7 @@ describe('PlazaModelPricingTable', () => {
     })
     const wrapper = mountTable([model], 0.1, null, { imageRateIndependent: false })
     const text = wrapper.text()
-    expect(text).toContain('$0.02')
+    expect(text).toContain('0.02')
     const rateCell = wrapper.findAll('tbody tr td').at(-1)!
     expect(rateCell.text()).toBe('0.1x')
   })
@@ -374,14 +384,14 @@ describe('PlazaModelPricingTable', () => {
     const wrapper = mountTable([model], 0.1)
     const text = wrapper.text()
     expect(text).toContain('modelPlaza.table.perImage')
-    // 芯片:1K $0.001 / 2K $0.002,单位后缀内嵌(按图 → / 张)
+    // 阶梯行:1K 0.001 / 2K 0.002,单位后缀跟在数值后(按图 → / 张)
     expect(text).toContain('1K')
-    expect(text).toContain('$0.001')
+    expect(text).toContain('0.001')
     expect(text).toContain('2K')
-    expect(text).toContain('$0.002')
+    expect(text).toContain('0.002')
     expect(text).toContain('modelPlaza.table.perUnitImage')
     // 旧 bug:image_output_price × 0.1 = 0.000003 被当按次价
-    expect(text).not.toContain('$0.000003')
+    expect(text).not.toContain('0.000003')
   })
 
   it('Composite 分组中相同模型名按具体平台分别展示徽章', () => {
