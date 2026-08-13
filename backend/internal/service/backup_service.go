@@ -125,6 +125,7 @@ type BackupRecord struct {
 	FileName      string       `json:"file_name"`
 	S3Key         string       `json:"s3_key"`
 	Parts         []BackupPart `json:"parts,omitempty"`
+	SHA256        string       `json:"sha256,omitempty"` // 单文件备份的完整性校验值；旧记录为空
 	SizeBytes     int64        `json:"size_bytes"`
 	TriggeredBy   string       `json:"triggered_by"` // manual, scheduled
 	ErrorMsg      string       `json:"error_message,omitempty"`
@@ -806,6 +807,10 @@ func (s *BackupService) uploadBackupArchive(ctx context.Context, record *BackupR
 		partSize = defaultBackupPartSizeBytes
 	}
 	if info.Size() <= partSize {
+		sum, err := fileSHA256(archivePath)
+		if err != nil {
+			return fmt.Errorf("hash backup archive: %w", err)
+		}
 		if _, err := objectStore.UploadFile(ctx, record.S3Key, archivePath, "application/gzip"); err != nil {
 			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), backupObjectCleanupTimeout)
 			cleanupErr := deleteBackupObjectKeys(cleanupCtx, objectStore, record)
@@ -813,6 +818,7 @@ func (s *BackupService) uploadBackupArchive(ctx context.Context, record *BackupR
 			return errors.Join(fmt.Errorf("backup upload: %w", err), cleanupErr)
 		}
 		record.Parts = nil
+		record.SHA256 = sum
 		return nil
 	}
 
@@ -903,26 +909,8 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 		return s.restoreArchive(ctx, archivePath)
 	}
 
-	// 旧记录从 S3 流式下载
-	body, err := objectStore.Download(ctx, record.S3Key)
-	if err != nil {
-		return fmt.Errorf("S3 download failed: %w", err)
-	}
-	defer func() { _ = body.Close() }()
-
-	// 流式解压 gzip -> psql（不将全部数据加载到内存）
-	gzReader, err := gzip.NewReader(body)
-	if err != nil {
-		return fmt.Errorf("gzip reader: %w", err)
-	}
-	defer func() { _ = gzReader.Close() }()
-
-	// 流式恢复
-	if err := s.dumper.Restore(ctx, gzReader); err != nil {
-		return fmt.Errorf("pg restore: %w", err)
-	}
-
-	return nil
+	// 单文件记录：先校验完整性再恢复
+	return s.restoreSingleFileBackup(ctx, record, objectStore)
 }
 
 // StartRestore 异步恢复备份，立即返回
@@ -1022,25 +1010,7 @@ func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupO
 		return
 	}
 
-	body, err := objectStore.Download(ctx, record.S3Key)
-	if err != nil {
-		record.RestoreStatus = "failed"
-		record.RestoreError = fmt.Sprintf("S3 download failed: %v", err)
-		_ = s.saveRecord(context.Background(), record)
-		return
-	}
-	defer func() { _ = body.Close() }()
-
-	gzReader, err := gzip.NewReader(body)
-	if err != nil {
-		record.RestoreStatus = "failed"
-		record.RestoreError = fmt.Sprintf("gzip reader: %v", err)
-		_ = s.saveRecord(context.Background(), record)
-		return
-	}
-	defer func() { _ = gzReader.Close() }()
-
-	if err := s.dumper.Restore(ctx, gzReader); err != nil {
+	if err := s.restoreSingleFileBackup(ctx, record, objectStore); err != nil {
 		record.RestoreStatus = "failed"
 		record.RestoreError = fmt.Sprintf("pg restore: %v", err)
 		_ = s.saveRecord(context.Background(), record)
@@ -1061,7 +1031,7 @@ func (s *BackupService) downloadBackupParts(ctx context.Context, objectStore Bac
 	ordered := append([]BackupPart(nil), parts...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 	for i, part := range ordered {
-		if part.Index != i+1 || part.S3Key == "" || part.SizeBytes <= 0 {
+		if part.Index != i+1 || part.S3Key == "" || part.SizeBytes <= 0 || part.SHA256 == "" {
 			return "", fmt.Errorf("invalid backup part metadata at index %d", i+1)
 		}
 	}
@@ -1097,7 +1067,7 @@ func (s *BackupService) downloadBackupParts(ctx context.Context, objectStore Bac
 			cleanup()
 			return "", fmt.Errorf("backup part %d size mismatch: got %d, want %d", part.Index, written, part.SizeBytes)
 		}
-		if part.SHA256 != "" && !strings.EqualFold(part.SHA256, hex.EncodeToString(hash.Sum(nil))) {
+		if !strings.EqualFold(part.SHA256, hex.EncodeToString(hash.Sum(nil))) {
 			cleanup()
 			return "", fmt.Errorf("backup part %d checksum mismatch", part.Index)
 		}
@@ -1125,6 +1095,43 @@ func (s *BackupService) restoreArchive(ctx context.Context, archivePath string) 
 		return fmt.Errorf("pg restore: %w", err)
 	}
 	return nil
+}
+
+// restoreSingleFileBackup 下载单文件备份并恢复。
+// 仅恢复带 SHA256 校验值的新记录，避免对象存储内容被替换后直接执行。
+func (s *BackupService) restoreSingleFileBackup(ctx context.Context, record *BackupRecord, objectStore BackupObjectStore) error {
+	if record.SHA256 == "" {
+		return errors.New("backup integrity metadata is missing; legacy backup cannot be restored automatically")
+	}
+	body, err := objectStore.Download(ctx, record.S3Key)
+	if err != nil {
+		return fmt.Errorf("S3 download failed: %w", err)
+	}
+	defer func() { _ = body.Close() }()
+	return s.restoreSingleFileBody(ctx, record, body)
+}
+
+// restoreSingleFileBody 处理已下载的单文件备份流，校验通过后再恢复。
+func (s *BackupService) restoreSingleFileBody(ctx context.Context, record *BackupRecord, body io.Reader) error {
+	tmp, err := os.CreateTemp("", "sub2api-restore-*.sql.gz")
+	if err != nil {
+		return fmt.Errorf("create restore temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() { _ = cleanupBackupFiles(tmpPath) }()
+
+	hash := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmp, hash), body); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("download backup: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close restore temp file: %w", err)
+	}
+	if !strings.EqualFold(record.SHA256, hex.EncodeToString(hash.Sum(nil))) {
+		return fmt.Errorf("backup checksum mismatch: stored SHA256 does not match downloaded object")
+	}
+	return s.restoreArchive(ctx, tmpPath)
 }
 
 // ─── 备份记录管理 ───

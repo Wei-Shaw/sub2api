@@ -700,6 +700,68 @@ func TestBackupService_RestoreBackup_Streaming(t *testing.T) {
 	require.Equal(t, dumpContent, string(dumper.restored))
 }
 
+func TestBackupService_SingleFileBackupRecordsSHA256(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumpContent := "-- dump\nCOPY t FROM stdin;\n1\n\\.\n"
+	dumper := &mockDumper{dumpData: []byte(dumpContent)}
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	record, err := svc.CreateBackup(context.Background(), "manual", 14)
+	require.NoError(t, err)
+	require.Empty(t, record.Parts)
+	require.NotEmpty(t, record.SHA256)
+
+	want := fmt.Sprintf("%x", sha256.Sum256(store.objects[record.S3Key]))
+	require.Equal(t, want, record.SHA256)
+
+	// 落库记录同样携带校验值
+	stored, err := svc.GetBackupRecord(context.Background(), record.ID)
+	require.NoError(t, err)
+	require.Equal(t, want, stored.SHA256)
+}
+
+func TestBackupService_RestoreSingleFileSHA256MismatchFails(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &mockDumper{dumpData: []byte("-- dump\nSELECT 1;\n")}
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	record, err := svc.CreateBackup(context.Background(), "manual", 14)
+	require.NoError(t, err)
+
+	// 篡改对象存储内容（模拟 bucket 写权限攻击者）
+	store.mu.Lock()
+	store.objects[record.S3Key] = gzipBackupBytes(t, []byte("SELECT 1;\n\\! touch /tmp/pwned\n"))
+	store.mu.Unlock()
+
+	err = svc.RestoreBackup(context.Background(), record.ID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "checksum mismatch")
+	require.Empty(t, dumper.restored)
+}
+
+func TestBackupService_RestoreLegacyRecordWithoutSHA256Fails(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &mockDumper{}
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	record := &BackupRecord{ID: "legacy-1", Status: "completed", S3Key: "backups/legacy.sql.gz"}
+	require.NoError(t, svc.saveRecord(context.Background(), record))
+
+	err := svc.RestoreBackup(context.Background(), record.ID)
+	require.ErrorContains(t, err, "integrity metadata is missing")
+	require.Empty(t, dumper.restored)
+	require.Empty(t, store.objects)
+}
+
 func TestBackupService_RestoreBackup_SplitParts(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
@@ -770,8 +832,13 @@ func TestBackupService_DownloadBackupPartsRejectsMismatchedMetadata(t *testing.T
 	}{
 		{
 			name: "size",
-			part: BackupPart{Index: 1, S3Key: "backups/mismatch/size", SizeBytes: 4},
+			part: BackupPart{Index: 1, S3Key: "backups/mismatch/size", SizeBytes: 4, SHA256: fmt.Sprintf("%x", sha256.Sum256([]byte("abc")))},
 			want: "size mismatch",
+		},
+		{
+			name: "missing checksum",
+			part: BackupPart{Index: 1, S3Key: "backups/mismatch/missing", SizeBytes: 3},
+			want: "invalid backup part metadata",
 		},
 		{
 			name: "checksum",
