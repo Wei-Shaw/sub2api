@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 // APIKeyRateLimitCacheData holds rate limit usage data cached in Redis.
@@ -843,7 +844,37 @@ REDACTED
 		return s.fallbackPrices["grok-build-0.1"]
 REDACTED
 
+	// Unknown Grok text IDs (grok-5, dated snapshots, provider-prefixed) inherit
+	// the current default text card so a new model cannot ship unbilled.
+	if pricing := s.grokUnknownTextFamilyFallback(modelLower); pricing != nil {
+		return pricing
+REDACTED
+
 	return nil
+REDACTED
+
+func (s *BillingService) grokUnknownTextFamilyFallback(model string) *ModelPricing {
+	if s == nil || !isGrokUnknownTextFamilyModel(model) {
+		return nil
+REDACTED
+	return s.fallbackPrices["grok-4.5"]
+REDACTED
+
+func isGrokUnknownTextFamilyModel(model string) bool {
+	native := strings.ToLower(strings.TrimSpace(xai.StripGrokProviderPrefix(model)))
+	switch {
+	case native == "grok", native == "grok-latest":
+		return true
+	case strings.HasPrefix(native, "grok-build"),
+		strings.HasPrefix(native, "grok-composer"),
+		strings.HasPrefix(native, "composer-"):
+		return true
+	case len(native) > 5 && strings.HasPrefix(native, "grok-"):
+		rest := native[len("grok-"):]
+		return rest[0] >= '0' && rest[0] <= '9'
+	default:
+		return false
+REDACTED
 REDACTED
 
 // HasIdentifiedTokenPricing 判断模型能否在价格表中被"确定性识别"出 token 价格。
