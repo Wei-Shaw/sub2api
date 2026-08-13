@@ -36,7 +36,7 @@ REDACTED
 		1.0,
 		UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED,
 		"",
-		false,
+		boolPtr(false),
 	)
 REDACTED
 	require.NotNil(t, cost)
@@ -66,7 +66,7 @@ REDACTED
 		1.0,
 		UsageTokens{REDACTED,
 		"",
-		false,
+		boolPtr(false),
 	)
 REDACTED
 	require.NotNil(t, cost)
@@ -111,7 +111,7 @@ REDACTED
 		1.0,
 		UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED,
 		"",
-		false,
+		boolPtr(false),
 	)
 REDACTED
 	require.Nil(t, cost)

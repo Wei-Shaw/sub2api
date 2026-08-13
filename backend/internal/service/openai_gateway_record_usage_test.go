@@ -1210,6 +1210,58 @@ REDACTED)
 REDACTED)
 REDACTED
 
+// openai_long_context_billing_enabled is an OpenAI-only account setting, so it
+// must not veto the official Grok >=200k ladder: a Grok account has no way to
+// ever set that flag, which would make the group toggle unreachable.
+func TestOpenAIGatewayServiceRecordUsage_GrokLongContextFollowsGroupToggleOnly(t *testing.T) {
+	baseInput := 250000 * 2e-6
+	baseOutput := 1000 * 6e-6
+
+	grokAccount := func(id int64) *Account {
+	REDACTEDID: id, Platform: PlatformGrok, Type: AccountTypeOAuthREDACTED
+REDACTED
+
+	t.Run("group on applies the official ladder", func(t *testing.T) {
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+		svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: "resp_grok_longctx_on",
+				Usage:     OpenAIUsage{InputTokens: 250000, OutputTokens: 1000REDACTED,
+				Model:     "grok-4.5",
+				Duration:  time.Second,
+		REDACTED,
+			APIKey:  openAIRecordUsageAPIKeyWithGroup(svc, 1030, true),
+			User:    &User{ID: 2030REDACTED,
+			Account: grokAccount(3030),
+	REDACTED)
+	REDACTED
+		require.True(t, usageRepo.lastLog.LongContextBillingApplied)
+		require.InDelta(t, baseInput*2, usageRepo.lastLog.InputCost, 1e-10)
+		require.InDelta(t, baseOutput*2, usageRepo.lastLog.OutputCost, 1e-10)
+REDACTED)
+
+	t.Run("group off keeps the base card", func(t *testing.T) {
+		usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+		svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+		err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: "resp_grok_longctx_off",
+				Usage:     OpenAIUsage{InputTokens: 250000, OutputTokens: 1000REDACTED,
+				Model:     "grok-4.5",
+				Duration:  time.Second,
+		REDACTED,
+			APIKey:  openAIRecordUsageAPIKeyWithGroup(svc, 1031, false),
+			User:    &User{ID: 2031REDACTED,
+			Account: grokAccount(3031),
+	REDACTED)
+	REDACTED
+		require.False(t, usageRepo.lastLog.LongContextBillingApplied)
+		require.InDelta(t, baseInput, usageRepo.lastLog.InputCost, 1e-10)
+		require.InDelta(t, baseOutput, usageRepo.lastLog.OutputCost, 1e-10)
+REDACTED)
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_SparkShadowUsesCurrentParentBillingSetting(t *testing.T) {
 	tests := []struct {
 		name          string
