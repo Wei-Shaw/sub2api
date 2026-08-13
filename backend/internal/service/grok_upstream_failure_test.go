@@ -133,6 +133,22 @@ func TestHandleGrokAccountUpstreamError_EmptyOutputCoolsAccount(t *testing.T) {
 	require.WithinDuration(t, before.Add(4*time.Minute), repo.lastTempUnschedUntil, time.Second)
 }
 
+func TestHandleGrokAccountUpstreamError_MultiAgentCapacityBlocksOnlyThatModel(t *testing.T) {
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	account := &Account{ID: 9120, Platform: PlatformGrok, Type: AccountTypeOAuth}
+	ctx := withGrokTeamRateLimitModel(context.Background(), "grok-4.20-multi-agent-0309")
+
+	svc.handleGrokAccountUpstreamError(
+		ctx, account, http.StatusBadGateway, nil,
+		[]byte(`{"error":{"message":"engine_overloaded"}}`),
+	)
+
+	require.Zero(t, repo.tempUnschedCalls)
+	require.True(t, isGrokModelQuotaBlocked(account.ID, "grok-4.20-multi-agent-0309", time.Now()))
+	require.False(t, isGrokModelQuotaBlocked(account.ID, "grok-4.5", time.Now()))
+}
+
 func TestHandleGrokAccountUpstreamError_FreeUsageDoesNotCoolPoolMode(t *testing.T) {
 	repo := &grokQuotaAccountRepo{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
