@@ -574,8 +574,12 @@ func ProvideBackupService(
 	encryptor SecretEncryptor,
 	storeFactory BackupObjectStoreFactory,
 	dumper DBDumper,
+	lockCache LeaderLockCache,
+	db *sql.DB,
 ) *BackupService {
-	return NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
+	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
+	svc.SetLeaderLock(lockCache, db)
+	return svc
 }
 
 // ProvideOpsService constructs OpsService and wires the SettingService-backed quota
@@ -797,6 +801,7 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,
+	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
