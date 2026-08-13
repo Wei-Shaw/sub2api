@@ -5,7 +5,7 @@
       v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
-      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+      <div class="flex items-center gap-1.5 text-[9px] text-ink-secondary">
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
@@ -48,7 +48,7 @@
       </span>
 
       <!-- Reset time -->
-      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
+      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-ink-tertiary">
         {{ formatResetTime }}
       </span>
     </div>
@@ -112,18 +112,18 @@ const labelClass = computed(() => {
 const barClass = computed(() => {
   if (props.remainingCapacity) {
     if (props.utilization <= 20) {
-      return 'bg-red-500'
+      return 'bg-danger'
     } else if (props.utilization <= 50) {
-      return 'bg-amber-500'
+      return 'bg-warn'
     }
-    return 'bg-green-500'
+    return 'bg-success'
   }
   if (props.utilization >= 100) {
-    return 'bg-red-500'
+    return 'bg-danger'
   } else if (props.utilization >= 80) {
-    return 'bg-amber-500'
+    return 'bg-warn'
   } else {
-    return 'bg-green-500'
+    return 'bg-success'
   }
 })
 
@@ -131,18 +131,18 @@ const barClass = computed(() => {
 const textClass = computed(() => {
   if (props.remainingCapacity) {
     if (props.utilization <= 20) {
-      return 'text-red-600 dark:text-red-400'
+      return 'text-danger'
     } else if (props.utilization <= 50) {
-      return 'text-amber-600 dark:text-amber-400'
+      return 'text-warn'
     }
-    return 'text-gray-600 dark:text-gray-400'
+    return 'text-ink-secondary'
   }
   if (props.utilization >= 100) {
-    return 'text-red-600 dark:text-red-400'
+    return 'text-danger'
   } else if (props.utilization >= 80) {
-    return 'text-amber-600 dark:text-amber-400'
+    return 'text-warn'
   } else {
-    return 'text-gray-600 dark:text-gray-400'
+    return 'text-ink-secondary'
   }
 })
 

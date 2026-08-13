@@ -6,7 +6,7 @@
     @close="emit('close')"
   >
     <form id="bulk-edit-user-limits-form" class="space-y-5" @submit.prevent="handleSubmit">
-      <p class="text-sm font-medium text-gray-700 dark:text-gray-300">
+      <p class="text-sm font-medium text-ink-secondary">
         {{ t('admin.users.bulkLimits.selectedCount', { count: selectedIds.length }) }}
       </p>
 
@@ -62,10 +62,10 @@
         </div>
       </div>
 
-      <p v-if="hasInvalidValue" class="text-sm text-red-600 dark:text-red-400">
+      <p v-if="hasInvalidValue" class="text-sm text-danger">
         {{ t('admin.users.bulkLimits.nonNegativeInteger') }}
       </p>
-      <p v-if="selectionTooLarge" class="text-sm text-red-600 dark:text-red-400">
+      <p v-if="selectionTooLarge" class="text-sm text-danger">
         {{ t('admin.users.bulkLimits.selectionLimit', { max: MAX_BATCH_USER_IDS }) }}
       </p>
     </form>

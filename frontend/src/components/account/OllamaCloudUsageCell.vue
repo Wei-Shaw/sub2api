@@ -21,7 +21,7 @@
       data-testid="ollama-cloud-seven-day"
     />
   </div>
-  <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+  <span v-else class="text-sm text-ink-tertiary">-</span>
 </template>
 
 <script setup lang="ts">

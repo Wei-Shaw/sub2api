@@ -2,10 +2,10 @@
   <section v-if="state?.eligible" class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600" data-testid="ollama-cloud-usage-settings">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+        <h3 class="text-sm font-semibold text-ink">
           {{ t('admin.accounts.ollamaCloud.title') }}
         </h3>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p class="mt-1 text-xs text-ink-secondary">
           {{ t('admin.accounts.ollamaCloud.sessionSecurityHint') }}
         </p>
       </div>
@@ -13,13 +13,13 @@
         class="whitespace-nowrap rounded px-2 py-1 text-xs font-medium"
         :class="state.configured
           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-          : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'"
+          : 'bg-gray-100 text-ink-secondary dark:bg-dark-700 dark:text-gray-300'"
       >
         {{ state.configured ? t('admin.accounts.ollamaCloud.configured') : t('admin.accounts.ollamaCloud.notConfigured') }}
       </span>
     </div>
 
-    <div v-if="loading" class="flex h-20 items-center justify-center text-gray-400">
+    <div v-if="loading" class="flex h-20 items-center justify-center text-ink-tertiary">
       <Icon name="refresh" size="sm" class="animate-spin" />
     </div>
     <template v-else>
@@ -33,20 +33,20 @@
         data-testid="ollama-cloud-usage-details"
       >
         <div class="grid grid-cols-[minmax(4rem,auto)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.plan') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.plan || '-' }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.five_hour) }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ windowSummary(snapshot.data?.seven_day) }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.balance') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ snapshot.data?.balance || '-' }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.models') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ modelSummary }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.status') }}</span>
-          <span class="break-words font-medium text-gray-900 dark:text-white">{{ statusLabel }}</span>
-          <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.ollamaCloud.updatedAt') }}</span>
-          <span class="break-words text-gray-900 dark:text-white">{{ formatDate(snapshot.fetched_at || snapshot.last_attempt_at) }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.plan') }}</span>
+          <span class="break-words text-ink">{{ snapshot.data?.plan || '-' }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.fiveHour') }}</span>
+          <span class="break-words text-ink">{{ windowSummary(snapshot.data?.five_hour) }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.sevenDay') }}</span>
+          <span class="break-words text-ink">{{ windowSummary(snapshot.data?.seven_day) }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.balance') }}</span>
+          <span class="break-words text-ink">{{ snapshot.data?.balance || '-' }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.models') }}</span>
+          <span class="break-words text-ink">{{ modelSummary }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.status') }}</span>
+          <span class="break-words font-medium text-ink">{{ statusLabel }}</span>
+          <span class="text-ink-secondary">{{ t('admin.accounts.ollamaCloud.updatedAt') }}</span>
+          <span class="break-words text-ink">{{ formatDate(snapshot.fetched_at || snapshot.last_attempt_at) }}</span>
         </div>
         <p v-if="snapshot.last_error" class="mt-2 break-words border-t border-gray-100 pt-2 text-xs text-amber-700 dark:border-dark-700 dark:text-amber-300">
           {{ t(`admin.accounts.ollamaCloud.errors.${snapshot.last_error}`, snapshot.last_error) }}
@@ -83,7 +83,7 @@
         <button
           v-if="state.configured"
           type="button"
-          class="btn btn-secondary btn-sm text-red-600 dark:text-red-400"
+          class="btn btn-secondary btn-sm text-danger"
           :disabled="saving"
           data-testid="ollama-cloud-session-delete"
           @click="showDeleteConfirm = true"
@@ -106,10 +106,10 @@
 
       <div v-if="state.configured" class="flex items-center justify-between gap-4 border-t border-gray-100 pt-4 dark:border-dark-700">
         <div>
-          <label class="text-sm font-medium text-gray-900 dark:text-white">
+          <label class="text-sm font-medium text-ink">
             {{ t('admin.accounts.ollamaCloud.autoRefresh') }}
           </label>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          <p class="mt-1 text-xs text-ink-secondary">
             {{ t('admin.accounts.ollamaCloud.autoRefreshHint') }}
           </p>
         </div>

@@ -84,13 +84,6 @@ const BANNED: Array<{ id: string; pattern: RegExp; why: string }> = [
 const ALLOWED: Record<string, string[]> = {
   // Tier 2-5 debt. Baseline measured at the end of Tier 0.
   'gradient-fill': [
-    'components/account/AccountStatsModal.vue',
-    'components/account/AccountTestModal.vue',
-    'components/account/ReAuthAccountModal.vue',
-    'components/admin/account/AccountStatsModal.vue',
-    'components/admin/account/AccountTestModal.vue',
-    'components/admin/account/ReAuthAccountModal.vue',
-    'components/admin/user/UserAllowedGroupsModal.vue',
     'components/common/AnnouncementBell.vue',
     'components/common/AnnouncementPopup.vue',
     'components/common/SubscriptionProgressMini.vue',

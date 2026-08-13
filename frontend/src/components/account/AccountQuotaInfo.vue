@@ -8,7 +8,7 @@
     </div>
 
     <!-- Usage status: unlimited flow or rate limit -->
-    <div class="text-xs text-gray-400 dark:text-gray-500">
+    <div class="text-xs text-ink-tertiary">
       <span v-if="!isRateLimited">
         {{ t('admin.accounts.gemini.rateLimit.unlimited') }}
       </span>
@@ -17,8 +17,8 @@
         :class="[
           'font-medium',
           isUrgent
-            ? 'text-red-600 dark:text-red-400 animate-pulse'
-            : 'text-amber-600 dark:text-amber-400'
+            ? 'text-danger animate-pulse'
+            : 'text-warn'
         ]"
       >
         {{ t('admin.accounts.gemini.rateLimit.limited', { time: resetCountdown }) }}
@@ -113,18 +113,18 @@ const tierBadgeClass = computed(() => {
     const tier = (creds?.tier_id || '').toString().trim().toLowerCase()
     if (tier === 'google_ai_ultra') return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
     if (tier === 'google_ai_pro') return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
-    if (tier === 'google_one_free') return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    if (tier === 'google_one_free') return 'bg-gray-100 text-ink-secondary dark:bg-gray-700 dark:text-gray-300'
     // Backward compatibility
     const upper = (creds?.tier_id || '').toString().trim().toUpperCase()
     if (upper === 'GOOGLE_ONE_UNLIMITED') return 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-300'
     if (upper === 'AI_PREMIUM') return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
-    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+    return 'bg-gray-100 text-ink-secondary dark:bg-gray-700 dark:text-gray-300'
   }
 
   // AI Studio 默认样式：蓝色
   const tier = (creds?.tier_id || '').toString().trim().toLowerCase()
   if (tier === 'aistudio_paid') return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
-  if (tier === 'aistudio_free') return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+  if (tier === 'aistudio_free') return 'bg-gray-100 text-ink-secondary dark:bg-gray-700 dark:text-gray-300'
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
 })
 

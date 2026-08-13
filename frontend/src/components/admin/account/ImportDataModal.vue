@@ -7,7 +7,7 @@
     @close="handleClose"
   >
     <form id="import-data-form" class="space-y-4" @submit.prevent="handleImport">
-      <div class="text-sm text-gray-600 dark:text-dark-300">
+      <div class="text-sm text-ink-secondary">
         {{ t('admin.accounts.dataImportHint') }}
       </div>
       <div
@@ -29,10 +29,10 @@
           @drop.prevent="handleDrop"
         >
           <div class="min-w-0">
-            <div class="truncate text-sm text-gray-700 dark:text-dark-200" :title="fileListTitle">
+            <div class="truncate text-sm text-ink-secondary" :title="fileListTitle">
               {{ selectedFilesLabel || t('admin.accounts.dataImportSelectFile') }}
             </div>
-            <div class="text-xs text-gray-500 dark:text-dark-400">
+            <div class="text-xs text-ink-secondary">
               JSON (.json)
               <span v-if="files.length > 1"> · {{ fileListTitle }}</span>
             </div>
@@ -55,15 +55,15 @@
         v-if="result"
         class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
       >
-        <div class="text-sm font-medium text-gray-900 dark:text-white">
+        <div class="text-sm font-medium text-ink">
           {{ t('admin.accounts.dataImportResult') }}
         </div>
-        <div class="text-sm text-gray-700 dark:text-dark-300">
+        <div class="text-sm text-ink-secondary">
           {{ t('admin.accounts.dataImportResultSummary', result) }}
         </div>
 
         <div v-if="errorItems.length" class="mt-2">
-          <div class="text-sm font-medium text-red-600 dark:text-red-400">
+          <div class="text-sm font-medium text-danger">
             {{ t('admin.accounts.dataImportErrors') }}
           </div>
           <div

@@ -10,7 +10,7 @@
         @change="noop"
       />
 
-      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-warn/10 dark:text-amber-200">
         {{ t('admin.usage.cleanup.warning') }}
       </div>
 
@@ -205,9 +205,9 @@ const statusLabel = (status: string) => {
 
 const statusClass = (status: string) => {
   const map: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
+    pending: 'bg-amber-100 text-amber-700 dark:bg-warn/20 dark:text-amber-200',
     running: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
-    succeeded: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
+    succeeded: 'bg-emerald-100 text-emerald-700 dark:bg-success/20 dark:text-emerald-200',
     failed: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
     canceled: 'bg-gray-200 text-ink-secondary dark:bg-dark-600 dark:text-gray-300'
   }

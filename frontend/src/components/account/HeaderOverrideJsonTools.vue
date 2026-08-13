@@ -33,13 +33,13 @@
       </button>
       <button
         type="button"
-        class="rounded-lg bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
+        class="rounded-lg bg-gray-100 px-3 py-1 text-xs text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500"
         @click="closeImportPanel"
       >
         {{ t('admin.accounts.headerOverride.importJsonCancel') }}
       </button>
     </div>
-    <p class="text-xs text-gray-500 dark:text-gray-400">
+    <p class="text-xs text-ink-secondary">
       {{ t('admin.accounts.headerOverride.importJsonHint') }}
     </p>
   </div>
