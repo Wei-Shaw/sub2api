@@ -45,7 +45,7 @@
           </span>
         </div>
 
-        <div class="mb-4 grid grid-cols-2 gap-3 text-xs text-gray-600 dark:text-dark-300">
+        <div class="mb-4 grid grid-cols-2 gap-3 text-xs text-gray-600 sm:grid-cols-3 dark:text-dark-300">
           <div>
             <div class="text-[10px] uppercase tracking-wider text-gray-400">
               {{ t('plaza.plans.validity') }}
@@ -59,6 +59,12 @@
               {{ t('plaza.plans.group') }}
             </div>
             <div class="font-medium text-gray-900 dark:text-white">{{ card.group_name }}</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-gray-400">
+              {{ t('plaza.plans.rate') }}
+            </div>
+            <div class="font-medium text-gray-900 dark:text-white">{{ card.rate_multiplier }}x</div>
           </div>
         </div>
 

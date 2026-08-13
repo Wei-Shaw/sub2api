@@ -104,6 +104,7 @@ type PlazaPlanCard struct {
 	GroupID        int64    `json:"group_id"`
 	GroupName      string   `json:"group_name"`
 	Platform       string   `json:"platform"`
+	RateMultiplier float64  `json:"rate_multiplier"`
 	Models         []string `json:"models"`
 	ModelsOverflow int      `json:"models_overflow"` // 超出 Models 截断（cap=50）的剩余数量
 }
@@ -573,17 +574,18 @@ func buildGroupModelNamesFromAccounts(accounts []Account, groupByID map[int64]*G
 // planToCard 把 ent 套餐映射到展示 DTO；models 截断到 plazaPlanModelsCap。
 func planToCard(p *dbent.SubscriptionPlan, g *Group, models []string) PlazaPlanCard {
 	card := PlazaPlanCard{
-		ID:            int64(p.ID),
-		Name:          p.Name,
-		Description:   p.Description,
-		Price:         p.Price,
-		OriginalPrice: p.OriginalPrice,
-		ValidityDays:  p.ValidityDays,
-		ValidityUnit:  p.ValidityUnit,
-		Features:      p.Features,
-		GroupID:       p.GroupID,
-		GroupName:     g.Name,
-		Platform:      g.Platform,
+		ID:             int64(p.ID),
+		Name:           p.Name,
+		Description:    p.Description,
+		Price:          p.Price,
+		OriginalPrice:  p.OriginalPrice,
+		ValidityDays:   p.ValidityDays,
+		ValidityUnit:   p.ValidityUnit,
+		Features:       p.Features,
+		GroupID:        p.GroupID,
+		GroupName:      g.Name,
+		Platform:       g.Platform,
+		RateMultiplier: g.RateMultiplier,
 	}
 	if len(models) > plazaPlanModelsCap {
 		card.Models = append([]string(nil), models[:plazaPlanModelsCap]...)

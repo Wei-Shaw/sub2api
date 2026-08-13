@@ -479,7 +479,29 @@
             :placeholder="t('keys.orgSubscriptionNone')"
             :searchable="true"
             :clearable="true"
-          />
+          >
+            <template #selected="{ option }">
+              <GroupBadge
+                v-if="option"
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                subscription-type="subscription"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :always-show-rate="true"
+              />
+              <span v-else class="text-gray-400">{{ t('keys.orgSubscriptionNone') }}</span>
+            </template>
+            <template #option="{ option, selected }">
+              <GroupOptionItem
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                subscription-type="subscription"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
+              />
+            </template>
+          </Select>
           <p class="input-hint">{{ t('keys.orgSubscriptionHint') }}</p>
         </div>
 
@@ -1396,7 +1418,7 @@ const columns = computed<Column[]>(() =>
 
 const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
-// 当前用户（作为组织成员）可绑定的活跃公司订阅，用于创建企业 API Key
+// 当前用户（作为组织成员）可绑定的活跃企业订阅，用于创建企业 API Key
 const orgSubscriptions = ref<OrganizationSubscription[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -1633,7 +1655,7 @@ watch(() => formData.value.organization_subscription_id, organizationSubscriptio
   }
 })
 
-// 公司订阅下拉选项：选中后创建的 API Key 将消耗对应公司订阅额度，
+// 企业订阅下拉选项：选中后创建的 API Key 将消耗对应企业订阅额度，
 // 并强制绑定订阅所属分组（无需再单独选择个人分组）。
 const orgSubscriptionOptions = computed(() => {
   const typeLabels: Record<string, string> = {
@@ -1643,14 +1665,13 @@ const orgSubscriptionOptions = computed(() => {
   }
   return orgSubscriptions.value.map((sub) => {
     const typeLabel = typeLabels[sub.subscription_type] || sub.subscription_type
-    const group = groups.value.find(item => item.id === sub.group_id)
     return {
       value: sub.id,
       label: `${sub.group_name} · ${typeLabel}`,
       description: sub.notes || undefined,
-      rate: group?.rate_multiplier ?? 1,
-      platform: group?.platform || 'composite',
-      userRate: userGroupRates.value[sub.group_id] ?? null,
+      rate: sub.rate_multiplier,
+      platform: sub.platform || 'composite',
+      userRate: null,
     }
   })
 })
@@ -1760,7 +1781,7 @@ const loadGroups = async () => {
   }
 }
 
-// 加载当前用户可绑定的公司订阅（作为组织成员）。失败时静默降级为空列表，
+// 加载当前用户可绑定的企业订阅（作为组织成员）。失败时静默降级为空列表，
 // 不影响个人 API Key 的正常创建。
 const loadOrgSubscriptions = async () => {
   try {
@@ -1934,7 +1955,7 @@ const confirmDelete = (key: ApiKey) => {
 
 const handleSubmit = async () => {
   const orgSubscriptionId = formData.value.organization_subscription_id
-  // 未绑定公司订阅时，个人分组为必填；绑定公司订阅时分组由订阅决定，无需校验。
+  // 未绑定企业订阅时，个人分组为必填；绑定企业订阅时分组由订阅决定，无需校验。
   if (!orgSubscriptionId && formData.value.group_id === null) {
     appStore.showError(t('keys.groupRequired'))
     return
@@ -1992,7 +2013,7 @@ const handleSubmit = async () => {
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
-        // 绑定公司订阅时由后端强制关联订阅分组；否则更新个人分组并清除公司订阅绑定。
+        // 绑定企业订阅时由后端强制关联订阅分组；否则更新个人分组并清除企业订阅绑定。
         ...(orgSubscriptionId
           ? { organization_subscription_id: orgSubscriptionId, fallback_group_ids: [] }
           : {

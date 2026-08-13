@@ -376,6 +376,7 @@
           <thead class="bg-gray-50 text-left dark:bg-dark-800">
             <tr>
               <th class="p-3">{{ t('organization.subscriptions.group') }}</th>
+              <th class="p-3">{{ t('organization.subscriptions.rate') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.status') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.usage') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.expiresAt') }}</th>
@@ -388,6 +389,7 @@
                 <div class="font-medium">{{ item.group_name }}</div>
                 <div class="text-xs text-gray-500">{{ item.platform }} · {{ item.subscription_type }}</div>
               </td>
+              <td class="p-3 whitespace-nowrap">{{ item.rate_multiplier }}x</td>
               <td class="p-3"><span :class="subscriptionStatusClass(item.status)">{{ t(`organization.subscriptions.statuses.${item.status}`) }}</span></td>
               <td class="p-3 text-xs">
                 <div>{{ t('organization.subscriptions.daily') }}: {{ formatMoney(item.daily_usage_usd) }}<template v-if="item.daily_limit_usd"> / {{ formatMoney(item.daily_limit_usd) }}</template></div>
@@ -1225,14 +1227,27 @@ async function loadSubscriptions() {
   }
 }
 
-// 企业订阅套餐展示复用首页/广场的订阅卡片 UI（PlanPlazaCards），视觉更精致。
+// 企业订阅套餐复用广场套餐，并用同一份订阅分组数据补齐分组属性。
 // 卡片以 emit-select 模式运行：点击「立即购买」不跳转 /purchase，而是弹出内嵌
 // PaymentView（企业嵌入模式）完成下单，下单主体为公司。
 async function loadPlans() {
   plansLoading.value = true
   try {
-    const resp = await plazaAPI.listPlans()
-    planCards.value = resp.cards
+    const [resp, groups] = await Promise.all([
+      plazaAPI.listPlans(),
+      organizationAPI.listSubscriptionGroups(),
+    ])
+    const groupsByID = new Map(groups.map(group => [group.id, group]))
+    planCards.value = resp.cards.flatMap((card) => {
+      const group = groupsByID.get(card.group_id)
+      if (!group) return []
+      return [{
+        ...card,
+        group_name: group.name,
+        platform: group.platform,
+        rate_multiplier: group.rate_multiplier,
+      }]
+    })
   } catch (cause) {
     error.value = errorMessage(cause)
   } finally {

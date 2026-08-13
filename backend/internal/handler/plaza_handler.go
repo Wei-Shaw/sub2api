@@ -162,6 +162,7 @@ func plazaPlanCardsToDTO(cards []service.PlazaPlanCard) []dto.PlazaPlanCardDTO {
 			GroupID:        c.GroupID,
 			GroupName:      c.GroupName,
 			Platform:       c.Platform,
+			RateMultiplier: c.RateMultiplier,
 			Models:         c.Models,
 			ModelsOverflow: c.ModelsOverflow,
 		}

@@ -65,6 +65,10 @@ const messages: Record<string, string> = {
   'keys.selectFallbackGroup': 'Add fallback',
   'keys.fallbackGroupsSelectPrimary': 'Select a primary group first',
   'keys.fallbackGroupsEmpty': 'No same-platform fallback groups',
+  'keys.orgSubscriptionLabel': 'Enterprise Subscription',
+  'keys.orgSubscriptionNone': 'None (use personal group)',
+  'keys.orgSubscriptionHint': 'Enterprise subscription hint',
+  'keys.orgSubscriptionType.monthly': 'Monthly',
 }
 
 vi.mock('@/api', () => ({
@@ -636,7 +640,7 @@ describe('user KeysView column settings', () => {
     expect(updateKey).toHaveBeenCalledWith(1, expect.objectContaining({ fallback_group_ids: [2, 3] }))
   })
 
-  it('clears fallback groups when an enterprise subscription is selected', async () => {
+  it('shows the enterprise subscription rate and clears fallback groups when selected', async () => {
     const primary = createGroup({ id: 1, name: 'Primary' })
     const fallback = createGroup({ id: 2, name: 'Fallback' })
     getAvailableGroups.mockResolvedValue([primary, fallback])
@@ -644,20 +648,29 @@ describe('user KeysView column settings', () => {
       id: 90,
       organization_id: 8,
       organization_name: 'Company',
-      group_id: 1,
-      group_name: 'Primary',
+      group_id: 99,
+      group_name: 'Enterprise 0.2x',
+      platform: 'openai',
       subscription_type: 'monthly',
+      rate_multiplier: 0.2,
       status: 'active',
     }])
     const wrapper = await mountView()
     await openCreateForm(wrapper, 1)
     await addFallbackFromSelect(wrapper, 2)
 
+    expect(wrapper.get('[data-test="base-dialog"]').text()).toContain('Enterprise Subscription')
+
     const selects = wrapper.findAllComponents({ name: 'Select' })
     const organizationSelect = selects.find(select =>
       (select.props('options') as Array<{ value: number }>).some(option => option.value === 90)
     )
     expect(organizationSelect).toBeDefined()
+    expect(organizationSelect!.props('options')).toContainEqual(expect.objectContaining({
+      value: 90,
+      rate: 0.2,
+      platform: 'openai',
+    }))
     await organizationSelect!.vm.$emit('update:modelValue', 90)
     await nextTick()
 

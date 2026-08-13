@@ -66,6 +66,7 @@ function makeCard(id: number): PlazaPlanCard {
     group_id: 1,
     group_name: 'Default',
     platform: 'claude',
+    rate_multiplier: 1,
     models: ['claude-3-5-sonnet'],
     models_overflow: 0,
   }

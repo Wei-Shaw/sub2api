@@ -8356,6 +8356,7 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
       empty: 'No subscription plans for sale.',
       validity: 'Validity',
       group: 'Group',
+      rate: 'Rate',
       days: 'days',
       includedModels: 'Included models',
       more: 'more',

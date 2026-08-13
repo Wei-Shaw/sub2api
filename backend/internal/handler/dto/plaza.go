@@ -71,6 +71,7 @@ type PlazaPlanCardDTO struct {
 	GroupID        int64    `json:"group_id"`
 	GroupName      string   `json:"group_name"`
 	Platform       string   `json:"platform"`
+	RateMultiplier float64  `json:"rate_multiplier"`
 	Models         []string `json:"models"`
 	ModelsOverflow int      `json:"models_overflow"`
 }

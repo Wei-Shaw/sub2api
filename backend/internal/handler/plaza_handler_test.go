@@ -148,7 +148,7 @@ func TestPlazaHandler_ListPlans_Anonymous(t *testing.T) {
 	fake := &fakePlazaService{
 		cards: []service.PlazaPlanCard{{
 			ID: 1, Name: "Plan A", Price: 99, OriginalPrice: &op, ValidityDays: 30, ValidityUnit: "day",
-			GroupID: 10, GroupName: "Alpha", Platform: "anthropic", Models: []string{"claude-3-5-sonnet"},
+			GroupID: 10, GroupName: "Alpha", Platform: "anthropic", RateMultiplier: 0.2, Models: []string{"claude-3-5-sonnet"},
 		}},
 		meta: service.PlazaCurrencyMeta{BalanceRechargeMultiplier: 0.14, ModelNative: "USD", PlanNative: "CNY"},
 	}
@@ -167,5 +167,6 @@ func TestPlazaHandler_ListPlans_Anonymous(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
 	require.Len(t, resp.Data.Cards, 1)
+	require.Equal(t, 0.2, resp.Data.Cards[0]["rate_multiplier"])
 	require.Equal(t, "CNY", resp.Data.CurrencyMeta["plan_native"])
 }

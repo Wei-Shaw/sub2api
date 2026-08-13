@@ -548,7 +548,7 @@ func createOrgSubscriptionGroup(t *testing.T, defaultValidityDays int, dailyLimi
 	t.Helper()
 	var groupID int64
 	require.NoError(t, integrationDB.QueryRowContext(context.Background(),
-		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd) VALUES($1,'active','codex','plan',$2,$3::numeric) RETURNING id`,
+		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd,rate_multiplier) VALUES($1,'active','codex','plan',$2,$3::numeric,0.2) RETURNING id`,
 		"orgsub-"+uuid.NewString(), defaultValidityDays, dailyLimit).Scan(&groupID))
 	return groupID
 }
@@ -566,6 +566,7 @@ func TestOrganizationSubscriptionLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "active", created.Status)
 	require.Equal(t, groupID, created.GroupID)
+	require.Equal(t, 0.2, created.RateMultiplier)
 	require.NotNil(t, created.DailyLimitUSD)
 	require.Equal(t, 45, int(created.ExpiresAt.Sub(created.StartsAt).Hours()/24+0.5))
 
@@ -587,6 +588,7 @@ func TestOrganizationSubscriptionLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, created.ID, list[0].ID)
+	require.Equal(t, 0.2, list[0].RateMultiplier)
 
 	// Cancelling soft-deletes the subscription and frees the group for re-provisioning.
 	require.NoError(t, repo.CancelOrganizationSubscription(ctx, owner.ID, created.ID))
@@ -609,7 +611,7 @@ func TestAdminCreateOrganizationSubscription(t *testing.T) {
 	organizationID := createActiveOrganization(t, owner, 20)
 	var groupID int64
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd) VALUES($1,'active','codex','subscription',30,10) RETURNING id`,
+		`INSERT INTO groups(name,status,platform,subscription_type,default_validity_days,daily_limit_usd,rate_multiplier) VALUES($1,'active','codex','subscription',30,10,0.2) RETURNING id`,
 		"admin-orgsub-"+uuid.NewString()).Scan(&groupID))
 
 	created, err := repo.AdminCreateOrganizationSubscription(ctx, admin.ID, organizationID, groupID, 30, "admin grant")
@@ -617,6 +619,7 @@ func TestAdminCreateOrganizationSubscription(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, organizationID, created.OrganizationID)
 	require.Equal(t, groupID, created.GroupID)
+	require.Equal(t, 0.2, created.RateMultiplier)
 	require.Equal(t, "admin grant", created.Notes)
 	require.NotNil(t, created.AssignedBy)
 	require.Equal(t, admin.ID, *created.AssignedBy)
@@ -626,6 +629,7 @@ func TestAdminCreateOrganizationSubscription(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, items, 1)
 	require.Equal(t, organizationID, items[0].OrganizationID)
+	require.Equal(t, 0.2, items[0].RateMultiplier)
 	require.NotEmpty(t, items[0].OrganizationName)
 }
 

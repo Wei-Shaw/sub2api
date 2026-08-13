@@ -8537,6 +8537,7 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
       empty: '暂无在售订阅套餐。',
       validity: '有效期',
       group: '分组',
+      rate: '倍率',
       days: '天',
       includedModels: '包含模型',
       more: '更多',

@@ -27,6 +27,7 @@ function makeCard(over: Partial<PlazaPlanCard> = {}): PlazaPlanCard {
     group_id: 1,
     group_name: 'Default',
     platform: 'claude',
+    rate_multiplier: 1,
     models: ['claude-3-5-sonnet'],
     models_overflow: 0,
     ...over,
@@ -69,6 +70,12 @@ beforeEach(() => {
 })
 
 describe('PlanPlazaCards', () => {
+  it('展示套餐关联分组的倍率', () => {
+    const wrapper = mountCards([makeCard({ rate_multiplier: 0.2 })])
+    expect(wrapper.text()).toContain('plaza.plans.rate')
+    expect(wrapper.text()).toContain('0.2x')
+  })
+
   it('显示折扣徽章并划掉 original_price，当 original_price > price', () => {
     const wrapper = mountCards([
       makeCard({ price: 80, original_price: 100 }),

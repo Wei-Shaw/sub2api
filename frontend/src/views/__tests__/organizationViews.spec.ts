@@ -17,7 +17,7 @@ const api = vi.hoisted(() => ({
   getUsageStats: vi.fn(), getUsageCharts: vi.fn(), getDashboard: vi.fn(),
   getDashboardSpendingRanking: vi.fn(), getDashboardUserBreakdown: vi.fn(),
   getDashboardUsersTrend: vi.fn(),
-  listSubscriptions: vi.fn(),
+  listSubscriptions: vi.fn(), listSubscriptionGroups: vi.fn(),
   listSpendLimits: vi.fn(), getSpendLimitUsage: vi.fn(), upsertSpendLimits: vi.fn(), deleteSpendLimit: vi.fn(),
   getUpgradeEligibility: vi.fn(), getCurrentApplication: vi.fn(),
   listApplications: vi.fn(), listNameChanges: vi.fn(), getApplication: vi.fn(),
@@ -68,6 +68,7 @@ describe('organization views', () => {
     api.getDashboardUserBreakdown.mockResolvedValue({ users: [] })
     api.getDashboardUsersTrend.mockResolvedValue([])
     api.listSubscriptions.mockResolvedValue([])
+    api.listSubscriptionGroups.mockResolvedValue([])
     api.listSpendLimits.mockResolvedValue([])
     api.getSpendLimitUsage.mockResolvedValue([])
     api.upsertSpendLimits.mockResolvedValue([])
@@ -89,6 +90,76 @@ describe('organization views', () => {
     await wrapper.get('#organization-tab-subscriptions').trigger('click')
     await flushPromises()
     expect(router.currentRoute.value.query.tab).toBe('subscriptions')
+  })
+
+  it('shows the enterprise subscription rate in subscription details', async () => {
+    await router.replace('/organization?tab=subscriptions')
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.listSubscriptions.mockResolvedValue([{
+      id: 9,
+      organization_id: 1,
+      group_id: 7,
+      group_name: 'Enterprise 0.2x',
+      platform: 'openai',
+      subscription_type: 'monthly',
+      rate_multiplier: 0.2,
+      starts_at: '2026-01-01T00:00:00Z',
+      expires_at: '2027-01-01T00:00:00Z',
+      status: 'active',
+      daily_usage_usd: '0',
+      weekly_usage_usd: '0',
+      monthly_usage_usd: '0',
+      assigned_at: '2026-01-01T00:00:00Z',
+      created_at: '2026-01-01T00:00:00Z',
+    }])
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('organization.subscriptions.rate')
+    expect(wrapper.text()).toContain('0.2x')
+  })
+
+  it('uses the shared subscription group rate for enterprise plan cards', async () => {
+    await router.replace('/organization?tab=subscriptions')
+    api.getContext.mockResolvedValue({
+      organization: { organization_id: 1, account_id: '1719905235756637', company_name: 'Example', organization_status: 'active', membership_status: 'active', role: 'owner', actions: [] },
+      finance: { balance_source: 'self', available: '100', frozen: '0', total: '100' },
+    })
+    api.listSubscriptionGroups.mockResolvedValue([{
+      id: 7,
+      name: 'Shared 0.2x Group',
+      platform: 'openai',
+      rate_multiplier: 0.2,
+    }])
+    plaza.listPlans.mockResolvedValue({
+      cards: [{
+        id: 11,
+        name: 'Monthly Plan',
+        description: '',
+        price: 99,
+        validity_days: 30,
+        validity_unit: 'days',
+        features: '',
+        group_id: 7,
+        group_name: 'Stale Group Name',
+        platform: 'openai',
+        rate_multiplier: 0,
+        models: [],
+        models_overflow: 0,
+      }],
+    })
+
+    const wrapper = mount(OrganizationConsoleView, mountOptions)
+    await flushPromises()
+
+    expect(api.listSubscriptionGroups).toHaveBeenCalledOnce()
+    expect(wrapper.text()).toContain('Shared 0.2x Group')
+    expect(wrapper.text()).toContain('0.2x')
+    expect(wrapper.text()).not.toContain('Stale Group Name')
   })
 
   it('shows the console to IAM users while limiting finance and member data by permission', async () => {

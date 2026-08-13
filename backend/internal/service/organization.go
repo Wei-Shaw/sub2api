@@ -290,6 +290,7 @@ type OrganizationSubscription struct {
 	GroupName        string    `json:"group_name"`
 	Platform         string    `json:"platform"`
 	SubscriptionType string    `json:"subscription_type"`
+	RateMultiplier   float64   `json:"rate_multiplier"`
 	StartsAt         time.Time `json:"starts_at"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	Status           string    `json:"status"`

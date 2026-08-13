@@ -399,7 +399,7 @@ func TestPlazaService_ListModelRows_WildcardKeysSkipped(t *testing.T) {
 
 func TestPlazaService_ListPlanCards_BasicAndFilters(t *testing.T) {
 	groups := []Group{
-		{ID: 40, Name: "Alpha", Platform: PlatformAnthropic, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 1},
+		{ID: 40, Name: "Alpha", Platform: PlatformAnthropic, Status: StatusActive, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 0.2},
 		// Beta 不活跃 → 关联的套餐应被剔除
 		{ID: 41, Name: "Beta Inactive", Platform: PlatformAnthropic, Status: StatusDisabled, SubscriptionType: SubscriptionTypeStandard, RateMultiplier: 1},
 	}
@@ -421,6 +421,7 @@ func TestPlazaService_ListPlanCards_BasicAndFilters(t *testing.T) {
 	require.Equal(t, "Plan A", c.Name)
 	require.Equal(t, int64(40), c.GroupID)
 	require.Equal(t, "Alpha", c.GroupName)
+	require.Equal(t, 0.2, c.RateMultiplier)
 	// account 给该分组贡献了两个模型
 	sort.Strings(c.Models)
 	require.Equal(t, []string{"claude-3-5-haiku", "claude-3-5-sonnet"}, c.Models)

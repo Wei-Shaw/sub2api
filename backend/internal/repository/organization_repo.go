@@ -1265,10 +1265,11 @@ func (r *organizationRepository) CreateOrganizationSubscription(ctx context.Cont
 	var (
 		groupStatus, groupName, platform, subscriptionType string
 		groupDefaultValidity                               int
+		rateMultiplier                                     float64
 		dailyLimit, weeklyLimit, monthlyLimit              sql.NullString
 	)
-	if err := tx.QueryRowContext(ctx, `SELECT status,name,platform,subscription_type,default_validity_days,daily_limit_usd::text,weekly_limit_usd::text,monthly_limit_usd::text FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).
-		Scan(&groupStatus, &groupName, &platform, &subscriptionType, &groupDefaultValidity, &dailyLimit, &weeklyLimit, &monthlyLimit); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT status,name,platform,subscription_type,default_validity_days,rate_multiplier,daily_limit_usd::text,weekly_limit_usd::text,monthly_limit_usd::text FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).
+		Scan(&groupStatus, &groupName, &platform, &subscriptionType, &groupDefaultValidity, &rateMultiplier, &dailyLimit, &weeklyLimit, &monthlyLimit); errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrSubscriptionGroupInvalid
 	} else if err != nil {
 		return nil, err
@@ -1308,6 +1309,7 @@ func (r *organizationRepository) CreateOrganizationSubscription(ctx context.Cont
 		GroupName:        groupName,
 		Platform:         platform,
 		SubscriptionType: subscriptionType,
+		RateMultiplier:   rateMultiplier,
 		StartsAt:         startsAt,
 		ExpiresAt:        expiresAt,
 		Status:           status,
@@ -1344,10 +1346,11 @@ func (r *organizationRepository) AdminCreateOrganizationSubscription(ctx context
 	}
 	var (
 		groupStatus, groupName, platform, subscriptionType string
+		rateMultiplier                                     float64
 		dailyLimit, weeklyLimit, monthlyLimit              sql.NullString
 	)
-	if err := tx.QueryRowContext(ctx, `SELECT status,name,platform,subscription_type,daily_limit_usd::text,weekly_limit_usd::text,monthly_limit_usd::text FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).
-		Scan(&groupStatus, &groupName, &platform, &subscriptionType, &dailyLimit, &weeklyLimit, &monthlyLimit); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT status,name,platform,subscription_type,rate_multiplier,daily_limit_usd::text,weekly_limit_usd::text,monthly_limit_usd::text FROM groups WHERE id=$1 AND deleted_at IS NULL`, groupID).
+		Scan(&groupStatus, &groupName, &platform, &subscriptionType, &rateMultiplier, &dailyLimit, &weeklyLimit, &monthlyLimit); errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrSubscriptionGroupInvalid
 	} else if err != nil {
 		return nil, err
@@ -1376,7 +1379,7 @@ func (r *organizationRepository) AdminCreateOrganizationSubscription(ctx context
 	assignedBy := actorID
 	return &service.OrganizationSubscription{
 		ID: id, OrganizationID: organizationID, GroupID: groupID, GroupName: groupName, Platform: platform,
-		SubscriptionType: subscriptionType, StartsAt: startsAt, ExpiresAt: expiresAt, Status: status,
+		SubscriptionType: subscriptionType, RateMultiplier: rateMultiplier, StartsAt: startsAt, ExpiresAt: expiresAt, Status: status,
 		DailyLimitUSD: organizationNullStringPtr(dailyLimit), WeeklyLimitUSD: organizationNullStringPtr(weeklyLimit), MonthlyLimitUSD: organizationNullStringPtr(monthlyLimit),
 		DailyUsageUSD: "0", WeeklyUsageUSD: "0", MonthlyUsageUSD: "0", Notes: notes,
 		AssignedBy: &assignedBy, AssignedAt: assignedAt, CreatedAt: createdAt,
@@ -1428,7 +1431,7 @@ func (r *organizationRepository) AdminListOrganizationSubscriptions(ctx context.
 		direction = "ASC"
 	}
 	args = append(args, pageSize, (page-1)*pageSize)
-	query := `SELECT s.id,s.organization_id,o.name,COALESCE(o.company_id,''),s.group_id,g.name,g.platform,g.subscription_type,
+	query := `SELECT s.id,s.organization_id,o.name,COALESCE(o.company_id,''),s.group_id,g.name,g.platform,g.subscription_type,g.rate_multiplier,
 		s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,
 		s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at
 		FROM organization_subscriptions s JOIN organizations o ON o.id=s.organization_id JOIN groups g ON g.id=s.group_id` + where +
@@ -1443,7 +1446,7 @@ func (r *organizationRepository) AdminListOrganizationSubscriptions(ctx context.
 		var item service.OrganizationSubscription
 		var dailyLimit, weeklyLimit, monthlyLimit sql.NullString
 		if err := rows.Scan(&item.ID, &item.OrganizationID, &item.OrganizationName, &item.CompanyID, &item.GroupID, &item.GroupName, &item.Platform, &item.SubscriptionType,
-			&item.StartsAt, &item.ExpiresAt, &item.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &item.DailyUsageUSD, &item.WeeklyUsageUSD, &item.MonthlyUsageUSD,
+			&item.RateMultiplier, &item.StartsAt, &item.ExpiresAt, &item.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &item.DailyUsageUSD, &item.WeeklyUsageUSD, &item.MonthlyUsageUSD,
 			&item.Notes, &item.AssignedBy, &item.AssignedAt, &item.CreatedAt); err != nil {
 			return nil, 0, err
 		}
@@ -1612,27 +1615,16 @@ func (r *organizationRepository) ListOrganizationSubscriptions(ctx context.Conte
 	if !org.Owner() && !org.HasAction(service.ActionFinanceBalanceRead) {
 		return nil, service.ErrOrganizationPermission
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT s.id,s.organization_id,s.group_id,g.name,g.platform,g.subscription_type,s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.organization_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC`, org.OrganizationID)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+organizationSubscriptionSelectColumns+` FROM organization_subscriptions s JOIN groups g ON g.id=s.group_id WHERE s.organization_id=$1 AND s.deleted_at IS NULL ORDER BY s.created_at DESC`, org.OrganizationID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	subscriptions := make([]service.OrganizationSubscription, 0)
 	for rows.Next() {
-		var (
-			s                                     service.OrganizationSubscription
-			dailyLimit, weeklyLimit, monthlyLimit sql.NullString
-			assignedBy                            sql.NullInt64
-		)
-		if err := rows.Scan(&s.ID, &s.OrganizationID, &s.GroupID, &s.GroupName, &s.Platform, &s.SubscriptionType, &s.StartsAt, &s.ExpiresAt, &s.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &s.DailyUsageUSD, &s.WeeklyUsageUSD, &s.MonthlyUsageUSD, &s.Notes, &assignedBy, &s.AssignedAt, &s.CreatedAt); err != nil {
+		s, err := scanOrganizationSubscription(rows.Scan)
+		if err != nil {
 			return nil, err
-		}
-		s.DailyLimitUSD = organizationNullStringPtr(dailyLimit)
-		s.WeeklyLimitUSD = organizationNullStringPtr(weeklyLimit)
-		s.MonthlyLimitUSD = organizationNullStringPtr(monthlyLimit)
-		if assignedBy.Valid {
-			by := assignedBy.Int64
-			s.AssignedBy = &by
 		}
 		subscriptions = append(subscriptions, s)
 	}
@@ -1664,7 +1656,7 @@ func (r *organizationRepository) CancelOrganizationSubscription(ctx context.Cont
 	return tx.Commit()
 }
 
-const organizationSubscriptionSelectColumns = `s.id,s.organization_id,s.group_id,g.name,g.platform,g.subscription_type,s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at`
+const organizationSubscriptionSelectColumns = `s.id,s.organization_id,s.group_id,g.name,g.platform,g.subscription_type,g.rate_multiplier,s.starts_at,s.expires_at,s.status,g.daily_limit_usd::text,g.weekly_limit_usd::text,g.monthly_limit_usd::text,s.daily_usage_usd::text,s.weekly_usage_usd::text,s.monthly_usage_usd::text,COALESCE(s.notes,''),s.assigned_by,s.assigned_at,s.created_at`
 
 func scanOrganizationSubscription(scan func(dest ...any) error) (service.OrganizationSubscription, error) {
 	var (
@@ -1672,7 +1664,7 @@ func scanOrganizationSubscription(scan func(dest ...any) error) (service.Organiz
 		dailyLimit, weeklyLimit, monthlyLimit sql.NullString
 		assignedBy                            sql.NullInt64
 	)
-	if err := scan(&s.ID, &s.OrganizationID, &s.GroupID, &s.GroupName, &s.Platform, &s.SubscriptionType, &s.StartsAt, &s.ExpiresAt, &s.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &s.DailyUsageUSD, &s.WeeklyUsageUSD, &s.MonthlyUsageUSD, &s.Notes, &assignedBy, &s.AssignedAt, &s.CreatedAt); err != nil {
+	if err := scan(&s.ID, &s.OrganizationID, &s.GroupID, &s.GroupName, &s.Platform, &s.SubscriptionType, &s.RateMultiplier, &s.StartsAt, &s.ExpiresAt, &s.Status, &dailyLimit, &weeklyLimit, &monthlyLimit, &s.DailyUsageUSD, &s.WeeklyUsageUSD, &s.MonthlyUsageUSD, &s.Notes, &assignedBy, &s.AssignedAt, &s.CreatedAt); err != nil {
 		return service.OrganizationSubscription{}, err
 	}
 	s.DailyLimitUSD = organizationNullStringPtr(dailyLimit)

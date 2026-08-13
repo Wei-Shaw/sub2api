@@ -138,6 +138,7 @@ export interface OrganizationSubscription {
   group_name: string
   platform: string
   subscription_type: string
+  rate_multiplier: number
   starts_at: string
   expires_at: string
   status: 'active' | 'expired' | 'cancelled' | 'suspended'

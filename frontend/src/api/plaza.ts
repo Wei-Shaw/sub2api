@@ -79,6 +79,8 @@ export interface PlazaPlanCard {
   group_id: number
   group_name: string
   platform: string
+  /** Current default multiplier of the associated group. */
+  rate_multiplier: number
   /** Up to 50 model names; if more exist, exposed via `models_overflow`. */
   models: string[]
   models_overflow: number
