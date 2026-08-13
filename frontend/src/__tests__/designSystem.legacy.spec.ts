@@ -88,7 +88,6 @@ const ALLOWED: Record<string, string[]> = {
     'components/common/AnnouncementPopup.vue',
     'components/common/SubscriptionProgressMini.vue',
     'composables/useChannelMonitorFormat.ts',
-    'views/admin/SubscriptionsView.vue',
   ],
   'backdrop-blur': [],
   'named-gradient': [],
