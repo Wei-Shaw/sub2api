@@ -53,14 +53,14 @@ var (
 		SupportsPromptCaching:               true,
 	}
 	openAIGPT56TerraFallbackPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   2.5e-06,
-		InputCostPerTokenPriority:           5e-06,
-		OutputCostPerToken:                  1.5e-05,
-		OutputCostPerTokenPriority:          3e-05,
-		CacheCreationInputTokenCost:         3.125e-06,
-		CacheCreationInputTokenCostPriority: 6.25e-06,
-		CacheReadInputTokenCost:             2.5e-07,
-		CacheReadInputTokenCostPriority:     5e-07,
+		InputCostPerToken:                   2e-06,
+		InputCostPerTokenPriority:           4e-06,
+		OutputCostPerToken:                  1.2e-05,
+		OutputCostPerTokenPriority:          2.4e-05,
+		CacheCreationInputTokenCost:         2.5e-06,
+		CacheCreationInputTokenCostPriority: 5e-06,
+		CacheReadInputTokenCost:             2e-07,
+		CacheReadInputTokenCostPriority:     4e-07,
 		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
 		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
 		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
@@ -70,14 +70,14 @@ var (
 		SupportsPromptCaching:               true,
 	}
 	openAIGPT56LunaFallbackPricing = &LiteLLMModelPricing{
-		InputCostPerToken:                   1e-06,
-		InputCostPerTokenPriority:           2e-06,
-		OutputCostPerToken:                  6e-06,
-		OutputCostPerTokenPriority:          1.2e-05,
-		CacheCreationInputTokenCost:         1.25e-06,
-		CacheCreationInputTokenCostPriority: 2.5e-06,
-		CacheReadInputTokenCost:             1e-07,
-		CacheReadInputTokenCostPriority:     2e-07,
+		InputCostPerToken:                   2e-07,
+		InputCostPerTokenPriority:           4e-07,
+		OutputCostPerToken:                  1.2e-06,
+		OutputCostPerTokenPriority:          2.4e-06,
+		CacheCreationInputTokenCost:         2.5e-07,
+		CacheCreationInputTokenCostPriority: 5e-07,
+		CacheReadInputTokenCost:             2e-08,
+		CacheReadInputTokenCostPriority:     4e-08,
 		LongContextInputTokenThreshold:      openAIGPT54LongContextInputThreshold,
 		LongContextInputCostMultiplier:      openAIGPT54LongContextInputMultiplier,
 		LongContextOutputCostMultiplier:     openAIGPT54LongContextOutputMultiplier,
@@ -652,6 +652,33 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 	modelLower := strings.ToLower(strings.TrimSpace(modelName))
 	lookupCandidates := s.buildModelLookupCandidates(modelLower)
 
+	// 1~3. 确定性识别（精确名 / 已知拼写变体 / 去掉日期版本后缀）
+	if pricing := s.lookupIdentifiedModelPricingLocked(lookupCandidates); pricing != nil {
+		return pricing
+	}
+
+	// 4. 基于模型系列匹配（Claude）
+	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
+		return pricing
+	}
+
+	// 5. OpenAI 模型回退策略
+	if strings.HasPrefix(lookupCandidates[0], "gpt-") {
+		return s.matchOpenAIModel(lookupCandidates[0])
+	}
+
+	return nil
+}
+
+// lookupIdentifiedModelPricingLocked 只做"确定性识别"的三步查找：精确键、已知拼写
+// 变体、去掉日期/版本后缀后的同名条目。它刻意不包含 matchByModelFamily /
+// matchOpenAIModel 这类按子串猜系列的兜底——那些兜底会给任意名字都返回一个价格。
+// 调用方必须持有 s.mu 读锁。
+func (s *PricingService) lookupIdentifiedModelPricingLocked(lookupCandidates []string) *LiteLLMModelPricing {
+	if len(lookupCandidates) == 0 {
+		return nil
+	}
+
 	// 1. 精确匹配
 	for _, candidate := range lookupCandidates {
 		if candidate == "" {
@@ -681,30 +708,45 @@ func (s *PricingService) GetModelPricing(modelName string) *LiteLLMModelPricing 
 		}
 	}
 
-	// 4. 基于模型系列匹配（Claude）
-	if pricing := s.matchByModelFamily(lookupCandidates[0]); pricing != nil {
-		return pricing
-	}
-
-	// 5. OpenAI 模型回退策略
-	if strings.HasPrefix(lookupCandidates[0], "gpt-") {
-		return s.matchOpenAIModel(lookupCandidates[0])
-	}
-
 	return nil
 }
 
-func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
-	// Prefer canonical model name first (this also improves billing compatibility with "models/xxx").
-	candidates := []string{
-		normalizeModelNameForPricing(modelLower),
-		modelLower,
+// GetIdentifiedModelPricing 在价格表中确定性地识别模型，识别不到时返回 nil。
+// 与 GetModelPricing 的区别：不会退化成按 "opus"/"haiku" 之类子串猜出的系列兜底价。
+// 用于必须区分"这是价格表里已知的模型"和"这只是名字里带某个关键词"的场景。
+func (s *PricingService) GetIdentifiedModelPricing(modelName string) *LiteLLMModelPricing {
+	if s == nil {
+		return nil
 	}
-	candidates = append(candidates,
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	modelLower := strings.ToLower(strings.TrimSpace(modelName))
+	if modelLower == "" {
+		return nil
+	}
+	return s.lookupIdentifiedModelPricingLocked(s.buildModelLookupCandidates(modelLower))
+}
+
+func (s *PricingService) buildModelLookupCandidates(modelLower string) []string {
+	rawCandidates := []string{
+		modelLower,
 		strings.TrimPrefix(modelLower, "models/"),
 		lastSegment(modelLower),
 		lastSegment(strings.TrimPrefix(modelLower, "models/")),
-	)
+	}
+	normalized := normalizeModelNameForPricing(modelLower)
+
+	// A tier-specific entry should take precedence when the pricing catalog gains
+	// one later. Today Antigravity's Gemini 3.6 Flash tiers share the base rate,
+	// so the normalized base remains the fallback after the exact aliases.
+	candidates := rawCandidates
+	if normalizeGeminiThinkingTierAlias(lastSegment(modelLower)) != lastSegment(modelLower) {
+		candidates = append(candidates, normalized)
+	} else {
+		// Prefer canonical model names for all other aliases (including models/xxx).
+		candidates = append([]string{normalized}, candidates...)
+	}
 
 	seen := make(map[string]struct{}, len(candidates))
 	out := make([]string, 0, len(candidates))
@@ -751,6 +793,20 @@ func normalizeModelNameForPricing(model string) string {
 			return "gpt-5.6-sol"
 		}
 		return canonical
+	}
+	return normalizeGeminiThinkingTierAlias(model)
+}
+
+// normalizeGeminiThinkingTierAlias maps Antigravity's Gemini 3.6 Flash
+// thinking-tier model IDs to the public base model. The tier controls reasoning
+// behavior, not the published token rate, so this keeps -high/-low/-medium and
+// -tiered requests on the same price card as gemini-3.6-flash.
+func normalizeGeminiThinkingTierAlias(model string) string {
+	const baseModel = "gemini-3.6-flash"
+	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
+		if model == baseModel+tier {
+			return baseModel
+		}
 	}
 	return model
 }

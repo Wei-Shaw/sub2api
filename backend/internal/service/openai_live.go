@@ -28,8 +28,12 @@ const (
 	liveRedisOperationTimeout     = 3 * time.Second
 	liveClosedRecordTTL           = 24 * time.Hour
 	liveObserverPollInterval      = 250 * time.Millisecond
+	liveObserverStoreRetryLimit   = 5
 	liveUpstreamBodyLimit         = 2 << 20
 )
+
+// liveObserverStoreRetryInterval 是 var 以便测试缩短 store 报错的重试等待。
+var liveObserverStoreRetryInterval = time.Second
 
 var (
 	chatGPTLiveCallsURL        = "https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas"
@@ -140,6 +144,9 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	}
 
 	excluded := make(map[int64]struct{})
+	// Live 按通话时长计费，不属于 token 利润门的语义范围：显式豁免，避免
+	// 防御性装门按文本 D 过滤 Live 账号池且门与计费时刻不同源。
+	ctx = WithOpenAIProfitControlSuppressed(ctx)
 	var lastErr error
 	for attempt := 0; attempt <= 3; attempt++ {
 		selection, _, selectErr := s.SelectAccountWithSchedulerForCapability(
@@ -229,7 +236,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			return nil, fmt.Errorf("save live call mapping: %w", saveErr)
 		}
 		created.Account = account
-		go s.observeLiveCall(record.CallHash)
+		go s.observeLiveCall(record)
 		return created, nil
 	}
 	if lastErr != nil {
@@ -508,7 +515,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	upstream, err := s.dialLiveSideband(ctx, record)
 	if err != nil {
 		_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
-		go s.observeLiveCall(record.CallHash)
+		go s.observeLiveCall(record)
 		return err
 	}
 	defer func() { _ = upstream.Close() }()
@@ -558,7 +565,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 		s.finalizeLiveCall(record)
 		return runErr
 	}
-	go s.observeLiveCall(record.CallHash)
+	go s.observeLiveCall(record)
 	return runErr
 }
 
@@ -603,19 +610,47 @@ func (s *OpenAIGatewayService) runLiveController(
 	}
 }
 
-func (s *OpenAIGatewayService) observeLiveCall(callHash string) {
+func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
+	if record == nil {
+		return
+	}
 	store, err := s.liveStore()
 	if err != nil {
 		return
 	}
 	owner := uuid.NewString()
-	claimed, err := store.ClaimLiveController(context.Background(), callHash, LiveControllerObserver, owner)
-	if err != nil || !claimed {
+	claimed, claimErr := store.ClaimLiveController(context.Background(), record.CallHash, LiveControllerObserver, owner)
+	if claimErr != nil {
+		// store 报错时无法确认控制权归属，不能静默退出：若 claim 实际已生效而
+		// observer 消失，租约与 usage log 都会丢。兜底 finalize 是幂等的，即使
+		// 控制权在他人手上也只会在到期后落一次库。
+		s.finalizeLiveCallAfterExpiry(record)
 		return
 	}
+	if !claimed {
+		return
+	}
+	storeErrStreak := 0
 	for {
-		record, getErr := store.GetLiveCall(context.Background(), callHash)
-		if getErr != nil || record.Controller != LiveControllerObserver {
+		latest, getErr := store.GetLiveCall(context.Background(), record.CallHash)
+		if getErr != nil {
+			// 记录已被清理（closed TTL 到期）不是故障，直接退出。
+			if errors.Is(getErr, ErrLiveCallNotFound) {
+				return
+			}
+			// store 抖动不等于控制权被接管：有限次重试；仍失败则按
+			// record.ExpiresAt 兜底 finalize，保证 usage log 与租约释放不丢。
+			storeErrStreak++
+			if storeErrStreak >= liveObserverStoreRetryLimit {
+				s.finalizeLiveCallAfterExpiry(record)
+				return
+			}
+			time.Sleep(liveObserverStoreRetryInterval)
+			continue
+		}
+		storeErrStreak = 0
+		record = latest
+		if record.Controller != LiveControllerObserver {
 			return
 		}
 		if !time.Now().Before(record.ExpiresAt) {
@@ -713,10 +748,29 @@ func (s *OpenAIGatewayService) waitForLiveObserverRetry(record *LiveCallRecord) 
 	if err != nil {
 		return false
 	}
-	controller, err := store.GetLiveController(context.Background(), record.CallHash)
+	controller, getErr := store.GetLiveController(context.Background(), record.CallHash)
+	if getErr != nil && !errors.Is(getErr, ErrLiveCallNotFound) {
+		// store 报错不等于控制权被接管：返回 true 交回 observeLiveCall 循环顶部，
+		// 由它对 store 故障做有限次重试与 ExpiresAt 兜底 finalize。在这里返回
+		// false 会让 Redis 抖动时会话静默结束、不留记录。
+		return true
+	}
 	// 过期不在此处判定：返回 true 让调用方回到循环顶部的过期分支，由它 finalize
 	// （写 usage log + 释放租约）。在这里直接返回 false 会让会话静默结束、不留记录。
-	return err == nil && controller == LiveControllerObserver
+	return getErr == nil && controller == LiveControllerObserver
+}
+
+// finalizeLiveCallAfterExpiry 是 store 持续报错、observer 无法继续观察时的兜底：
+// 等到会话最长时限 ExpiresAt 再 finalize，保证 usage log 与租约释放最迟在会话到期
+// 时完成。MarkLiveCallClosed 的 first 语义保证与其他恢复路径不会重复落库。
+func (s *OpenAIGatewayService) finalizeLiveCallAfterExpiry(record *LiveCallRecord) {
+	if record == nil {
+		return
+	}
+	if wait := time.Until(record.ExpiresAt); wait > 0 {
+		time.Sleep(wait)
+	}
+	s.finalizeLiveCall(record)
 }
 
 func (s *OpenAIGatewayService) refreshLiveLease(record *LiveCallRecord) bool {
@@ -770,7 +824,15 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	if record.SubscriptionID > 0 {
 		billingType = BillingTypeSubscription
 	}
-	_, _ = s.usageLogRepo.Create(context.Background(), &UsageLog{
+	// TODO(billing): Live 会话目前不计费：TotalCost/ActualCost 恒为 0，完全绕过
+	// recordUsageCore/applyUsageBilling，余额模式下极低余额也能反复开启最长
+	// liveMaxSessionDuration 的会话。若确认按时长计费，应在此接入计费管道；
+	// 若确认有意免费，删除本注释即可（零值行为由
+	// TestFinalizeLiveCallIsIdempotentAndWritesZeroUsage 锁定）。
+	//
+	// 这是该会话唯一一次落库机会（MarkLiveCallClosed 已标记 first），失败即永久
+	// 丢失，因此走带日志与同步兜底的 writeUsageLogBestEffort（issue #3656）。
+	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, &UsageLog{
 		UserID:           record.UserID,
 		APIKeyID:         record.APIKeyID,
 		AccountID:        record.AccountID,
@@ -788,5 +850,5 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 		InboundEndpoint:  &inboundEndpoint,
 		UpstreamEndpoint: &upstreamEndpoint,
 		CreatedAt:        record.CreatedAt,
-	})
+	}, "service.openai_live")
 }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -231,6 +232,116 @@ func TestForwardAsAnthropic_NormalizesRoutingAndEffortForGpt54XHigh(t *testing.T
 	require.Equal(t, "ok", gjson.GetBytes(rec.Body.Bytes(), "content.0.text").String())
 	t.Logf("upstream body: %s", string(upstream.lastBody))
 	t.Logf("response body: %s", rec.Body.String())
+}
+
+func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name          string
+		account       *Account
+		model         string
+		defaultMapped string
+		effort        string
+		wantModel     string
+		wantEffort    string
+	}{
+		{
+			name:          "API Key mapping wins and keeps Luna max",
+			account:       rawGPT56ResponsesAPIKeyAccount("luna", "gpt-5.6-luna"),
+			model:         "luna",
+			defaultMapped: "gpt-5.6-sol",
+			effort:        "max",
+			wantModel:     "gpt-5.6-luna",
+			wantEffort:    "max",
+		},
+		{
+			name:          "OAuth mapping wins and keeps Sol max",
+			account:       rawGPT56ResponsesOAuthAccount("sol", "gpt-5.6-sol"),
+			model:         "sol",
+			defaultMapped: "gpt-5.6-terra",
+			effort:        "max",
+			wantModel:     "gpt-5.6-sol",
+			wantEffort:    "max",
+		},
+		{
+			name:       "old model still maps max to xhigh",
+			account:    rawGPT56ResponsesAPIKeyAccount("gpt-5.5", "gpt-5.5"),
+			model:      "gpt-5.5",
+			effort:     "max",
+			wantModel:  "gpt-5.5",
+			wantEffort: "xhigh",
+		},
+		{
+			name:       "GPT56 default remains medium",
+			account:    rawGPT56ResponsesAPIKeyAccount("gpt-5.6-sol", "gpt-5.6-sol"),
+			model:      "gpt-5.6-sol",
+			wantModel:  "gpt-5.6-sol",
+			wantEffort: "medium",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			body := `{"model":"` + tt.model + `","max_tokens":16,"messages":[{"role":"user","content":"hello"}`
+			if tt.effort != "" {
+				body += `],"output_config":{"effort":"` + tt.effort + `"},"stream":false}`
+			} else {
+				body += `],"stream":false}`
+			}
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_gpt56_"+tt.name, tt.wantModel)}
+			svc := &OpenAIGatewayService{
+				httpUpstream: upstream,
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+			}
+
+			result, err := svc.ForwardAsAnthropic(context.Background(), c, tt.account, []byte(body), "", tt.defaultMapped)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tt.wantModel, result.UpstreamModel)
+			require.Equal(t, tt.wantModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
+			require.NotNil(t, result.ReasoningEffort)
+			require.Equal(t, tt.wantEffort, *result.ReasoningEffort)
+		})
+	}
+}
+
+func rawGPT56ResponsesAPIKeyAccount(requestedModel, mappedModel string) *Account {
+	return &Account{
+		ID:          501,
+		Name:        "gpt56-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":       "sk-test",
+			"base_url":      "https://api.example.com/v1",
+			"model_mapping": map[string]any{requestedModel: mappedModel},
+		},
+		Extra: map[string]any{"use_responses_api": true},
+	}
+}
+
+func rawGPT56ResponsesOAuthAccount(requestedModel, mappedModel string) *Account {
+	return &Account{
+		ID:          502,
+		Name:        "gpt56-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+			"model_mapping":      map[string]any{requestedModel: mappedModel},
+		},
+	}
 }
 
 func TestForwardAsAnthropic_MappedClaudeModelAcceptsChatUsageShape(t *testing.T) {
@@ -887,7 +998,7 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, firstResult)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}],"stream":false}`)
 	secondRec := httptest.NewRecorder()
@@ -901,7 +1012,7 @@ func TestForwardAsAnthropic_ReusesOAuthCodexTurnState(t *testing.T) {
 	require.Equal(t, "turn_state_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(0, "stable-cache-key")), upstream.requests[1].Header.Get("session_id"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -910,27 +1021,16 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const tuiUA = "codex-tui/9.9.9 (Mac OS X 14.0; arm64) iTerm (codex-tui; 9.9.9)"
+	const vscodeUA = "codex_vscode/9.9.9 (Mac OS X 14.0; arm64) vscode (codex_vscode; 9.9.9)"
+	// messages 桥接路径同样强制统一出站身份：三类客户端身份都收敛到规范身份。
 	tests := []struct {
-		name           string
-		userAgent      string
-		originator     string
-		wantUserAgent  string
-		wantOriginator string
+		name       string
+		userAgent  string
+		originator string
 	}{
-		{
-			name:           "官方UA逐字保留并重新配对",
-			userAgent:      tuiUA,
-			originator:     "opencode",
-			wantUserAgent:  tuiUA,
-			wantOriginator: "codex-tui",
-		},
-		{
-			name:           "第三方UA回退为默认Codex身份",
-			userAgent:      "third-party-client/1.0.0",
-			originator:     "opencode",
-			wantUserAgent:  codexCLIUserAgent,
-			wantOriginator: "codex_cli_rs",
-		},
+		{name: "官方vscode身份", userAgent: vscodeUA, originator: "opencode"},
+		{name: "TUI身份", userAgent: tuiUA, originator: "opencode"},
+		{name: "第三方UA", userAgent: "third-party-client/1.0.0", originator: "opencode"},
 	}
 
 	for _, tt := range tests {
@@ -963,7 +1063,7 @@ func TestForwardAsAnthropic_OAuthRestoresCodexIdentityHeaders(t *testing.T) {
 			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.4")
 			require.NoError(t, err)
 			require.NotNil(t, result)
-			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, tt.wantUserAgent, tt.wantOriginator)
+			requireOpenAIMessagesCodexIdentity(t, upstream.lastReq, codexCLIUserAgent, openai.CodexDefaultOriginator)
 		})
 	}
 }
@@ -1006,7 +1106,7 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	firstSessionID := upstream.requests[0].Header.Get("session_id")
 	require.NotEmpty(t, firstSessionID)
 	require.Empty(t, upstream.requests[0].Header.Get("x-codex-turn-state"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "prompt_cache_key").Exists())
 
 	secondBody := []byte(`{"model":"claude-sonnet-4-5","max_tokens":16,"messages":[{"role":"user","content":"first"},{"role":"assistant","content":"ok"},{"role":"user","content":"second"}],"stream":false}`)
@@ -1021,7 +1121,7 @@ func TestForwardAsAnthropic_OAuthDigestFallbackReusesTurnStateWithoutExplicitKey
 	require.Equal(t, firstSessionID, upstream.requests[1].Header.Get("session_id"))
 	require.Equal(t, "turn_state_digest_first", upstream.requests[1].Header.Get("x-codex-turn-state"))
 	require.Empty(t, upstream.requests[1].Header.Get("conversation_id"))
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[1], codexCLIUserAgent, openai.CodexDefaultOriginator)
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").Exists())
 	require.False(t, gjson.GetBytes(upstream.bodies[1], "previous_response_id").Exists())
 }
@@ -1176,7 +1276,7 @@ func TestForwardAsAnthropic_OAuthKeepsSystemAsDeveloperInput(t *testing.T) {
 	instructions := gjson.GetBytes(upstream.lastBody, "instructions")
 	require.True(t, instructions.Exists())
 	require.Empty(t, instructions.String())
-	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, "codex_cli_rs")
+	requireOpenAIMessagesCodexIdentity(t, upstream.requests[0], codexCLIUserAgent, openai.CodexDefaultOriginator)
 }
 
 func TestForwardAsAnthropic_OAuthAddsClaudeCodeTodoGuardForCompatModel(t *testing.T) {

@@ -144,6 +144,20 @@ func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Conte
 	return nil
 }
 
+func (s *stickyGatewayCacheHotpathStub) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (s *stickyGatewayCacheHotpathStub) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (s *stickyGatewayCacheHotpathStub) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (s *stickyGatewayCacheHotpathStub) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)
 	if s.err != nil {
@@ -219,7 +233,15 @@ func TestGetUserGroupRateMultiplier_UsesCacheAndSingleflight(t *testing.T) {
 	}
 
 	close(start)
-	time.Sleep(20 * time.Millisecond)
+	// Wait for every caller to have recorded its cache miss before releasing the
+	// loader. A fixed sleep raced here: a goroutine that reached the cache after
+	// the singleflight load had already finished got a hit instead of a miss, and
+	// the miss assertion below saw 11 of 12. The miss counter is the observable
+	// that says "all callers are now inside the singleflight group".
+	require.Eventually(t, func() bool {
+		_, miss, _, _, _ := GatewayUserGroupRateCacheStats()
+		return miss == int64(concurrent)
+	}, 5*time.Second, time.Millisecond, "all callers must miss the cache before the loader is released")
 	close(unblock)
 	wg.Wait()
 

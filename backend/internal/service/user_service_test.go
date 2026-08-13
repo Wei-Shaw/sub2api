@@ -23,25 +23,27 @@ import (
 // --- mock: UserRepository ---
 
 type mockUserRepo struct {
-	updateBalanceErr        error
-	updateBalanceFn         func(ctx context.Context, id int64, amount float64) error
-	deductBalanceFn         func(ctx context.Context, id int64, amount float64) error
-	getByIDUser             *User
-	getByIDErr              error
-	identities              []UserAuthIdentityRecord
-	unbindIdentityErr       error
-	unboundProviders        []string
-	updateLastActiveErr     error
-	updateLastActiveUserIDs []int64
-	updateLastActiveAt      []time.Time
-	updateFn                func(ctx context.Context, user *User) error
-	updateCalls             int
-	upsertAvatarFn          func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
-	upsertAvatarArgs        []UpsertUserAvatarInput
-	deleteAvatarFn          func(ctx context.Context, userID int64) error
-	deleteAvatarIDs         []int64
-	getAvatarFn             func(ctx context.Context, userID int64) (*UserAvatar, error)
-	txCalls                 int
+	updateBalanceErr         error
+	updateBalanceFn          func(ctx context.Context, id int64, amount float64) error
+	deductBalanceFn          func(ctx context.Context, id int64, amount float64) error
+	deductAvailableBalanceFn func(ctx context.Context, id int64, amount float64) (float64, error)
+	getByIDUser              *User
+	getByIDErr               error
+	identities               []UserAuthIdentityRecord
+	unbindIdentityErr        error
+	unboundProviders         []string
+	updateLastActiveErr      error
+	updateLastActiveUserIDs  []int64
+	updateLastActiveAt       []time.Time
+	updateFn                 func(ctx context.Context, user *User) error
+	updateCalls              int
+	updateFields             []UserUpdateFields
+	upsertAvatarFn           func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
+	upsertAvatarArgs         []UpsertUserAvatarInput
+	deleteAvatarFn           func(ctx context.Context, userID int64) error
+	deleteAvatarIDs          []int64
+	getAvatarFn              func(ctx context.Context, userID int64) (*UserAvatar, error)
+	txCalls                  int
 }
 
 type mockUserRepoTxKey struct{}
@@ -108,8 +110,9 @@ func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 }
 func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{}, nil }
 func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{}, nil }
-func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
+func (m *mockUserRepo) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	m.updateCalls++
+	m.updateFields = append(m.updateFields, fields)
 	if m.updateFn != nil {
 		return m.updateFn(ctx, user)
 	}
@@ -200,6 +203,21 @@ func (m *mockUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 		return m.deductBalanceFn(ctx, id, amount)
 	}
 	return nil
+}
+
+func (m *mockUserRepo) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (float64, error) {
+	if m.deductAvailableBalanceFn != nil {
+		return m.deductAvailableBalanceFn(ctx, id, amount)
+	}
+	return amount, nil
+}
+
+func (m *mockUserRepo) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (m *mockUserRepo) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil }
 func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }

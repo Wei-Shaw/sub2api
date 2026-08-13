@@ -13,21 +13,45 @@ import (
 )
 
 type userRepoStub struct {
-	user           *User
-	getErr         error
-	createErr      error
-	deleteErr      error
-	exists         bool
-	existsErr      error
-	aliasExists    bool
-	aliasErr       error
-	guardedCreates int
-	nextID         int64
-	created        []*User
-	updated        []*User
-	deletedIDs     []int64
-	usersByEmail   map[string]*User
-	getByEmailErr  error
+	user                 *User
+	usersByID            map[int64]*User
+	getErr               error
+	createErr            error
+	deleteErr            error
+	exists               bool
+	existsErr            error
+	aliasExists          bool
+	aliasErr             error
+	guardedCreates       int
+	nextID               int64
+	created              []*User
+	updated              []*User
+	deletedIDs           []int64
+	usersByEmail         map[string]*User
+	getByEmailErr        error
+	getByEmailMisses     int
+	domainCounts         map[string]int
+	domainCountErr       error
+	domainLimitErr       error
+	domainLimitedCreates int
+}
+
+func (s *userRepoStub) CountUsersByEmailDomain(_ context.Context, domain string) (int, error) {
+	if s.domainCountErr != nil {
+		return 0, s.domainCountErr
+	}
+	return s.domainCounts[domain], nil
+}
+
+func (s *userRepoStub) CreateWithEmailAliasGuardAndDomainLimit(ctx context.Context, user *User, domain string) error {
+	s.domainLimitedCreates++
+	if s.domainLimitErr != nil {
+		return s.domainLimitErr
+	}
+	if s.domainCounts[domain] > 0 {
+		return ErrEmailDomainRegistrationLimit
+	}
+	return s.CreateWithEmailAliasGuard(ctx, user)
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -61,6 +85,12 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
+	if s.usersByID != nil {
+		if user, ok := s.usersByID[id]; ok {
+			return user, nil
+		}
+		return nil, ErrUserNotFound
+	}
 	if s.user == nil {
 		return nil, ErrUserNotFound
 	}
@@ -70,6 +100,10 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 func (s *userRepoStub) GetByEmail(ctx context.Context, email string) (*User, error) {
 	if s.getByEmailErr != nil {
 		return nil, s.getByEmailErr
+	}
+	if s.getByEmailMisses > 0 {
+		s.getByEmailMisses--
+		return nil, ErrUserNotFound
 	}
 	if s.usersByEmail != nil {
 		if user, ok := s.usersByEmail[email]; ok {
@@ -86,7 +120,7 @@ func (s *userRepoStub) GetFirstAdmin(ctx context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
 
-func (s *userRepoStub) Update(ctx context.Context, user *User) error {
+func (s *userRepoStub) Update(ctx context.Context, user *User, fields UserUpdateFields) error {
 	s.updated = append(s.updated, user)
 	if s.usersByEmail == nil {
 		s.usersByEmail = make(map[string]*User)
@@ -139,6 +173,14 @@ func (s *userRepoStub) UpdateBalance(ctx context.Context, id int64, amount float
 
 func (s *userRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	panic("unexpected DeductBalance call")
+}
+
+func (s *userRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userRepoStub) SetBalance(ctx context.Context, id int64, value float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 
 func (s *userRepoStub) UpdateConcurrency(ctx context.Context, id int64, amount int) error {

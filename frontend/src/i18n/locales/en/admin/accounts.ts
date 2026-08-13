@@ -121,6 +121,12 @@ export default {
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
       antigravityProjectIdHint:
         'Antigravity standard-tier accounts that do not receive an automatic project_id need a user-owned GCP project.',
+      accountSchedulingThresholdOverride: 'Account Auto-Pause Threshold Override',
+      accountSchedulingThresholdOverrideHint:
+        'Override the platform auto-pause threshold for this account only. Disable to use platform settings.',
+      accountSchedulingThresholdOverrideValue: 'Account threshold percent',
+      accountSchedulingThresholdOverrideDisabledHint:
+        'Use 1-100. The account becomes temporarily unschedulable after reaching this usage percent; 100 disables it for this account.',
       status: {
         active: 'Active',
         inactive: 'Inactive',
@@ -140,7 +146,8 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
-        viewTempUnschedDetails: 'View temp unschedulable details'
+        viewTempUnschedDetails: 'View temp unschedulable details',
+        tempUnschedulableUntil: 'Resumes {time}'
       },
       columns: {
         name: 'Name',
@@ -225,7 +232,11 @@ export default {
       upstreamBilling: {
         trustWarning: 'This rate is declared by the upstream site for the current API key. Sub2API cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.',
         autoProbe: 'Automatically probe upstream declared rate',
-        autoProbeHint: 'Probe this account\'s upstream declared rate on the global interval when global probing is enabled.',
+        autoProbeHint: 'Refresh the upstream declared rate on the global interval. This switch alone does not change the account rate.',
+        syncRate: 'Sync upstream declared rate',
+        syncRateHint: 'Update the account rate after each successful probe, using the base rate excluding peak hours. Failed probes or declarations outside the allowed range leave it unchanged. Enabling this also turns on "Automatically probe upstream declared rate".',
+        syncRateManagedHint: 'The current rate is maintained automatically from the upstream declared base rate (excluding peak hours).',
+        syncedRateTooltip: 'This account rate is synchronized from the upstream declared base rate (excluding peak hours)',
         manualProbe: 'Probe upstream rate now',
         stale: 'Stale',
         unsupported: 'Unsupported',
@@ -250,7 +261,7 @@ export default {
         enabled: 'On',
         disabled: 'Off',
         probeFailed: 'Failed to probe upstream rate',
-        noEligibleAccounts: 'Select OpenAI API key accounts',
+        noEligibleAccounts: 'Select API key accounts',
         batchLimit: 'A batch can probe at most 20 accounts',
         batchCompleted: 'Probed {count} account(s)',
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
@@ -300,6 +311,10 @@ export default {
         notice: 'Rules are evaluated in order and require both error code and keyword match.',
         addRule: 'Add Rule',
         ruleOrder: 'Rule Order',
+        multipleErrorTrigger: '{count} matching errors in {minutes} minutes reached the trigger threshold ({threshold}).',
+        multipleErrorTriggerNoWindow: '{count} matching errors reached the trigger threshold ({threshold}).',
+        multipleErrorCountInWindow: '{count} matching errors occurred within {minutes} minutes.',
+        multipleErrorCount: '{count} matching errors contributed to this block.',
         ruleIndex: 'Rule #{index}',
         errorCode: 'Error Code',
         errorCodePlaceholder: 'e.g. 429',
@@ -388,10 +403,16 @@ export default {
       bulkSchedulableResultUnknown: 'Bulk scheduling result incomplete. Please retry or refresh.',
       bulkActions: {
         selected: '{count} account(s) selected',
+        selectedAll: 'All {count} account(s) selected',
         selectCurrentPage: 'Select this page',
+        selectAllResults: 'Select all results ({count})',
+        selectingAll: 'Selecting all results...',
+        selectAllFailed: 'Failed to load all accounts. The previous selection was kept.',
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
+        confirmDelete: 'Delete the selected {count} account(s)? This action cannot be undone.',
+        deleteSuccess: 'Deleted {count} account(s)',
         enableScheduling: 'Enable Scheduling',
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
@@ -414,6 +435,8 @@ export default {
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
         noFieldsSelected: 'Select at least one field to update',
+        rateSyncWarning: 'Accounts with upstream rate sync enabled cannot be changed in bulk. Disable sync in the account editor first.',
+        rateSyncConflict: 'Cannot change account rates: {count} target account(s) have upstream rate sync enabled.',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
       },
       bulkDeleteTitle: 'Bulk Delete Accounts',
@@ -489,6 +512,9 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
+        flattenNamespacesDesc:
+          'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
@@ -547,6 +573,12 @@ export default {
         codexCLIOnlyAppServer: 'Allow Codex app-server clients',
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
+        codexFingerprintMode: 'Codex fingerprint convergence',
+        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values to reduce upstream-visible device and session count. Off = pass through client identifiers as-is.',
+        codexFingerprintOff: 'Off (passthrough)',
+        codexFingerprintDevice: 'Device only',
+        codexFingerprintSession: 'Device + Session (recommended)',
+        codexFingerprintFull: 'Full convergence',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',
@@ -583,7 +615,55 @@ export default {
       },
       grok: {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
-        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.',
+        // Account connectivity test modal
+        testMode: 'Test mode',
+        testModeHint:
+          'Text / image / video use the selected model. Web search, TTS, STT and Realtime hit standalone endpoints (not free-form chat tools).',
+        testModeText: 'Text (Responses)',
+        testModeImage: 'Image (/images/generations)',
+        testModeVideo: 'Video (/videos/generations)',
+        testModeSearch: 'Web search (/web_search)',
+        testModeTTS: 'TTS (/tts)',
+        testModeSTT: 'STT (/stt)',
+        testModeRealtime: 'Realtime (WS /realtime)',
+        textTestMode: 'Mode: Text (Responses)',
+        searchTestMode: 'Mode: Web search (/web_search)',
+        ttsTestMode: 'Mode: TTS (/tts)',
+        sttTestMode: 'Mode: STT (/stt)',
+        realtimeTestMode: 'Mode: Realtime (WS /realtime)',
+        searchQueryLabel: 'Search query',
+        searchQueryPlaceholder: 'Example: xAI Grok',
+        searchQueryDefault: 'xAI Grok',
+        searchTestHint:
+          'Standalone web_search probe (same as gateway /v1/web_search). Not a free-form chat with tools.',
+        ttsTextLabel: 'TTS text',
+        ttsTextPlaceholder: 'Example: Hello from Sub2API connectivity test.',
+        ttsTextDefault: 'Hello from Sub2API account connectivity test.',
+        ttsTestHint: 'Standalone /v1/tts with language=en; success reports audio byte size.',
+        sttTestHint: 'Standalone /v1/stt with a synthetic silent WAV; success means the endpoint is reachable.',
+        realtimeTestHint:
+          'Standalone WebSocket dial to /v1/realtime (model=grok-voice-latest). Handshake success = connectivity OK; may also show the first server event.',
+        sendingSearchRequest: 'Sending standalone web_search request...',
+        sendingTTSRequest: 'Sending standalone /tts request...',
+        sendingSTTRequest: 'Sending standalone /stt request...',
+        sendingRealtimeRequest: 'Dialing standalone /realtime WebSocket...',
+        selectedTestMode: 'Test mode: {mode}',
+        imageUploadLabel: 'Source image (optional, for edits)',
+        videoFirstFrameLabel: 'First-frame / reference image (optional)',
+        imageUploadHint:
+          'PNG/JPEG recommended, both sides ≥ 8 px, under ~4 MB for edits. Uploading a source image switches to /images/edits (image-to-image). Leave empty for text-to-image /images/generations.',
+        videoFirstFrameHint:
+          'Optional first-frame / reference image for image-to-video. PNG/JPEG recommended, both sides ≥ 8 px.',
+        audioUploadLabel: 'Audio file (optional for STT)',
+        audioUploadHint:
+          'Upload a real audio clip to transcribe. Without a file, a silent WAV is used for connectivity only.',
+        mediaTooLarge: 'File is too large (max ~6 MB for admin test uploads).',
+        chooseImageFile: 'Choose image',
+        chooseAudioFile: 'Choose audio',
+        uploadPreviewAlt: 'Upload preview',
+        fileReadFailed: 'Failed to read the selected file',
+        noResponseBody: 'No response body from server'
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -994,6 +1074,17 @@ export default {
           ssoCookieLabel: 'Grok Web SSO Key',
           ssoCookiePlaceholder: 'One SSO key per line\nSupports multiple, one per line',
           ssoCookieHint: 'One SSO key per line. Multiple keys are imported with 3-way concurrency; expect about 90 seconds per batch. Use a matching-region proxy if needed.',
+          emailPasswordAuth: 'Email + password',
+          emailPasswordDesc:
+            'Sign in with a Grok web email and password. The server uses the password only to obtain an ephemeral SSO cookie, then converts it to Build OAuth credentials. Neither the password nor raw SSO is stored on the account.',
+          emailPasswordInputLabel: 'email----password',
+          emailPasswordPlaceholder: "user{'@'}example.com----your-password\nMultiple lines supported",
+          emailPasswordHint:
+            'Format: email----password (password may contain -). Requires YesCaptcha keys; use a matching-region proxy when needed.',
+          pleaseEnterPassword: 'Please enter email----password (one per line)',
+          pleaseEnterSSOToken: 'Please enter an SSO token',
+          failedToValidateSSO: 'Failed to validate Grok SSO',
+          failedToAuthorizePassword: 'Grok password authorization failed',
           convertingSSO: 'Converting...',
           convertSSOAndCreate: 'Convert & Create Account',
           validating: 'Validating...',
@@ -1257,6 +1348,9 @@ export default {
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
       testAccountConnection: 'Test Account Connection',
+      errorPrefix: 'Error: {message}',
+      imagePreviewAlt: 'Test image {index}',
+      imageLightboxAlt: 'Image preview',
       account: 'Account',
       readyToTest: 'Ready to test. Click "Start Test" to begin...',
       connectingToApi: 'Connecting to API...',
@@ -1280,10 +1374,22 @@ export default {
       imagePromptLabel: 'Image prompt',
       imagePromptPlaceholder: 'Example: Generate an orange cat astronaut sticker in pixel-art style on a solid background.',
       imagePromptDefault: 'Generate a cute orange cat astronaut sticker on a clean pastel background.',
-      imageTestHint: 'When an image model is selected, this test sends a real image-generation request and previews the returned image below.',
+      imageTestHint:
+        'Calls standalone /v1/images/generations and shows the returned image below.',
       imageTestMode: 'Mode: Image generation test',
+      videoPromptLabel: 'Video prompt',
+      videoPromptPlaceholder: 'Example: A red ball bouncing once on a white floor, short simple motion.',
+      videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
+      videoTestHint:
+        'Calls standalone /v1/videos/generations, polls until done, then downloads the finished video for on-page preview.',
+      videoTestMode: 'Mode: Video generation test',
+      sendingVideoRequest: 'Sending video generation request...',
       imagePreview: 'Generated images:',
       imageReceived: 'Received test image #{count}',
+      audioPreview: 'Generated audio:',
+      audioReceived: 'Received test audio #{count}',
+      videoPreview: 'Generated video:',
+      videoReceived: 'Received test video #{count}',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
@@ -1331,6 +1437,12 @@ export default {
         grokTokens: 'Tok',
         grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limit} limit)',
         grokWeeklyUsage: 'Weekly {percent}%',
+        grokUsed: 'Used $',
+        grokBalance: 'Bal $',
+        grokPrepaid: 'Prepaid balance',
+        grokMonthlyLimit: 'Monthly used / limit (USD)',
+        grokOverage: 'Overage onDemandUsed/onDemandCap',
+        grokOverageShort: 'OD $',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {time}',
         grokProbe: 'Probe',
@@ -1359,7 +1471,11 @@ export default {
         collapseExpirations: 'Collapse reset credit expirations',
         expirationDetails: 'Reset credit expiration details',
         noCreditsAvailable: 'No reset credits available',
-        resetSuccess: 'Reset {windows} window(s)',
+        resetSuccess: 'Reset {windows} window(s); credits and account state updated',
+        resetCacheRefreshFailed: 'The window was reset and account state recovered, but the reset-credit count could not be read back. Query it again.',
+        resetAccountRecoveryFailed: 'The window was reset, but account state recovery failed. Recover the account state manually.',
+        resetAccountRefreshFailed: 'The window, account state, and reset-credit cache were updated, but the latest account display could not be loaded.',
+        refreshCachePersistFailed: 'Showing the live count, but its expiration details were unavailable, so the cached details were kept.',
         confirmTitle: 'Confirm Weekly Limit Reset',
         confirmMessage: 'This will consume 1 reset credit to immediately restore the current window ({count} remaining). This action cannot be undone. Continue?'
       },

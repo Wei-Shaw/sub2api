@@ -46,7 +46,7 @@ func (s *authRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIKey
 	return s.getByKeyForAuth(ctx, key)
 }
 
-func (s *authRepoStub) Update(ctx context.Context, key *APIKey) error {
+func (s *authRepoStub) Update(ctx context.Context, key *APIKey, _ APIKeyUpdateFields) error {
 	panic("unexpected Update call")
 }
 
@@ -296,8 +296,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 		},
 		Group: &Group{
 			ID:                 groupID,
-			Name:               "openai",
-			Platform:           PlatformOpenAI,
+			Name:               "composite",
+			Platform:           PlatformComposite,
 			Status:             StatusActive,
 			SubscriptionType:   SubscriptionTypeStandard,
 			RateMultiplier:     1,
@@ -313,6 +313,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesReasoningEffortPolicy(t *testi
 
 	require.NotNil(t, roundTrip)
 	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, PlatformComposite, roundTrip.Group.Platform)
 	require.Equal(t, "medium", roundTrip.Group.MaxReasoningEffort)
 	require.Equal(t, apiKey.Group.ReasoningEffortMappings, roundTrip.Group.ReasoningEffortMappings)
 }

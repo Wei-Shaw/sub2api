@@ -138,6 +138,97 @@ func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) 
 	s.runtimeBlocker.ClearAccountSchedulingBlock(accountID)
 }
 
+// ApplyAccountSchedulingThreshold evaluates admin-configured per-platform
+// utilization thresholds and, when breached, parks the account as temp-
+// unschedulable until the winning window resets. Returns true when the account
+// is blocked (either newly or already paused for the same threshold reason).
+func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, account *Account) bool {
+	if s == nil || s.settingService == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if !account.IsActive() || !account.Schedulable {
+		return false
+	}
+
+	now := time.Now().UTC()
+	thresholds := s.settingService.GetAccountSchedulingThresholds(ctx)
+	decision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
+	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
+		return false
+	}
+
+	reason := BuildDetailedAccountSchedulingThresholdReason(AccountSchedulingThresholdReasonInput{
+		Platform:         decision.Platform,
+		Window:           decision.Window,
+		Scope:            decision.Scope,
+		ThresholdPercent: decision.ThresholdPercent,
+		UsedPercent:      decision.UsedPercent,
+		Until:            *decision.Until,
+		Now:              now,
+	})
+
+	if accountHasSameSchedulingThresholdPause(account, *decision.Until, reason) {
+		return true
+	}
+	if !account.IsSchedulable() {
+		return false
+	}
+
+	account.TempUnschedulableUntil = cloneTimePtr(decision.Until)
+	account.TempUnschedulableReason = reason
+	s.notifyAccountSchedulingBlocked(account, *decision.Until, "account_scheduling_threshold")
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *decision.Until, reason); err != nil {
+		slog.Warn("account_scheduling_threshold_set_temp_unsched_failed",
+			"account_id", account.ID,
+			"platform", decision.Platform,
+			"window", decision.Window,
+			"scope", decision.Scope,
+			"threshold_percent", decision.ThresholdPercent,
+			"used_percent", decision.UsedPercent,
+			"until", decision.Until.UTC(),
+			"error", err)
+	} else if s.tempUnschedCache != nil {
+		if state := tempUnschedStateFromStoredReason(reason, decision.Until.Unix()); state != nil {
+			if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+				slog.Warn("account_scheduling_threshold_cache_set_failed", "account_id", account.ID, "error", err)
+			}
+		}
+	}
+
+	slog.Info("account_scheduling_threshold_temp_unschedulable",
+		"account_id", account.ID,
+		"platform", decision.Platform,
+		"window", decision.Window,
+		"scope", decision.Scope,
+		"threshold_percent", decision.ThresholdPercent,
+		"used_percent", decision.UsedPercent,
+		"until", decision.Until.UTC())
+	return true
+}
+
+func accountHasSameSchedulingThresholdPause(account *Account, until time.Time, reason string) bool {
+	if account == nil || account.TempUnschedulableUntil == nil {
+		return false
+	}
+	if account.TempUnschedulableUntil.UTC().Unix() != until.UTC().Unix() {
+		return false
+	}
+
+	existing, ok := parseTempUnschedReasonPayload(account.TempUnschedulableReason)
+	if !ok || existing.Source != AccountSchedulingThresholdReasonSource {
+		return false
+	}
+	next, ok := parseTempUnschedReasonPayload(reason)
+	if !ok || next.Source != AccountSchedulingThresholdReasonSource {
+		return false
+	}
+
+	existing.TriggeredAtUnix = 0
+	next.TriggeredAtUnix = 0
+	return existing == next
+}
+
 // ErrorPolicyResult 表示错误策略检查的结果
 type ErrorPolicyResult int
 
@@ -823,6 +914,28 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 }
 
 func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	// 上游代理 / CDN 在请求到达 OpenAI API 之前就拦下时，回的是 HTML 403 页面而不是
+	// {"error":{...}} 结构化错误。这类响应描述的是「这条链路 / 这个端点被挡了」，
+	// 不构成账号凭据或权限失效的证据——例如无效的 /v1/responses 子路径（#5334）。
+	//
+	// 据此写账号状态会把请求级错误放大成账号级处罚：首次即 temp-unschedulable，
+	// 连续 openAI403DisableThreshold 次直接永久禁用；而 403 又在 failover 状态集里，
+	// 同一个坏请求会被逐个账号重放，足以把整组账号打下线。
+	//
+	// 与既有口径一致：count_tokens 路径的 isOpenAIOAuthInputTokensUnsupported 已把
+	// 「HTML 403 page without a structured error」按端点级响应处理；
+	// shouldApplyOpenAIAlphaSearchAccountErrorSideEffects 的不变式也是端点级错误
+	// 只换号、不写账号错误状态。这里只跳过账号处罚，不改变 failover 行为——
+	// 换个走不同代理的账号仍有可能成功。
+	if isHTMLResponse(responseBody) {
+		slog.Warn(
+			"openai_403_html_body_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
@@ -2055,6 +2168,9 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	if modelKey == "" {
 		return false
 	}
+	if shouldSkipCodexPlanGatedImageModelCooldown(ctx, reason, requestedModel, modelKey) {
+		return true
+	}
 	resetAt := time.Now().Add(cooldown)
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, reason); err != nil {
 		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "reason", reason, "error", err)
@@ -2062,6 +2178,29 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	}
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+// shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否
+// 属于"图片模型被文本端点拒绝"。
+//
+// 这类错误是确定性的端点错配，不是账号能力缺失：同一账号通过 /v1/images/* 依然
+// 能出图。在这里写 per-model 冷却，会让一次用错端点的请求把整个号池对正确的生图
+// 端点下线（#4828）。
+//
+// 但请求本身就从 /v1/images/* 入站时不适用——那种情况下被拒说明账号确实不具备
+// 该模型能力，冷却是必要的刹车：没有它，每个生图请求都会完整走一遍号池，对上游
+// 形成无上界的 400 放大。
+//
+// 请求模型与最终冷却键都要判：冷却键走的是 account.GetMappedModel，账号可能把
+// 文本别名映射到 gpt-image-*，只判请求模型会漏掉这种形态。
+func shouldSkipCodexPlanGatedImageModelCooldown(ctx context.Context, reason, requestedModel, modelKey string) bool {
+	if reason != upstreamCodexPlanGatedModelReason {
+		return false
+	}
+	if OpenAIImagesEndpointFromContext(ctx) {
+		return false
+	}
+	return IsGPTImageGenerationModel(requestedModel) || IsGPTImageGenerationModel(modelKey)
 }
 
 func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {

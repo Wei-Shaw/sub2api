@@ -6,6 +6,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"sort"
 	"strconv"
@@ -71,6 +72,7 @@ type Account struct {
 	modelMappingCacheRawPtr         uintptr
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
+	modelMappingCacheRuntimeVersion uint64
 
 	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
 	headerOverrideCache               map[string]string
@@ -134,6 +136,18 @@ type TempUnschedulableRule struct {
 
 func (a *Account) IsActive() bool {
 	return a.Status == StatusActive
+}
+
+// IsSyntheticUITest reports whether the account belongs to an isolated UI load-test
+// dataset. Production accounts never receive this marker. It lets the dedicated
+// test instance exercise interactive quota and connection-test controls without
+// sending fake credentials to an upstream provider.
+func (a *Account) IsSyntheticUITest() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["synthetic_ui_test"].(bool)
+	return ok && enabled
 }
 
 // BillingRateMultiplier 返回账号计费倍率。
@@ -541,6 +555,7 @@ func stringMappingFromRaw(raw any) map[string]string {
 }
 
 func (a *Account) GetModelMapping() map[string]string {
+	runtimeVersion := xai.RuntimeModelMappingVersion()
 	credentialsPtr := mapPtr(a.Credentials)
 	rawMapping, _ := a.Credentials["model_mapping"].(map[string]any)
 	rawPtr := mapPtr(rawMapping)
@@ -551,7 +566,8 @@ func (a *Account) GetModelMapping() map[string]string {
 	if a.modelMappingCacheReady &&
 		a.modelMappingCacheCredentialsPtr == credentialsPtr &&
 		a.modelMappingCacheRawPtr == rawPtr &&
-		a.modelMappingCacheRawLen == rawLen {
+		a.modelMappingCacheRawLen == rawLen &&
+		a.modelMappingCacheRuntimeVersion == runtimeVersion {
 		rawSig = modelMappingSignature(rawMapping)
 		rawSigReady = true
 		if a.modelMappingCacheRawSig == rawSig {
@@ -570,6 +586,7 @@ func (a *Account) GetModelMapping() map[string]string {
 	a.modelMappingCacheRawPtr = rawPtr
 	a.modelMappingCacheRawLen = rawLen
 	a.modelMappingCacheRawSig = rawSig
+	a.modelMappingCacheRuntimeVersion = runtimeVersion
 	return mapping
 }
 
@@ -608,6 +625,11 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 				"gemini-3-flash",
 				"gemini-3.1-pro-high",
 				"gemini-3.1-pro-low",
+				"gemini-3.6-flash",
+				"gemini-3.6-flash-high",
+				"gemini-3.6-flash-low",
+				"gemini-3.6-flash-medium",
+				"gemini-3.6-flash-tiered",
 			})
 			applyAntigravityGemini31ProAliases(result)
 		}
@@ -779,9 +801,16 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
 // 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
+	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
+	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
+	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
+	if a.IsOpenAIPassthroughEnabled() {
+		return true
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
-		if a.IsOpenAIOAuth() && !a.IsOpenAIPassthroughEnabled() {
+		if a.IsOpenAIOAuth() {
 			return isOpenAIOAuthServableModel(requestedModel)
 		}
 		return true // 无映射 = 允许所有
@@ -1287,25 +1316,47 @@ func (a *Account) GetOpenAIRefreshToken() string {
 // traffic (OAuth authorization and token refresh) always uses the official
 // auth endpoints regardless of this value.
 func (a *Account) GetGrokBaseURL() string {
-	if !a.IsGrok() {
+	if a == nil || !a.IsGrok() {
 		return ""
 	}
-	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
 	if a.IsGrokOAuth() {
-		// Operators switch subscription traffic between the official CLI
-		// gateway, the official/regional API hosts and third-party relays
-		// (individual endpoints go down from time to time), so a stored
-		// value is always honored as-is. Only empty or unparseable values
-		// fall back to the default CLI gateway.
-		if baseURL == "" || !xai.IsParseableBaseURL(baseURL) {
-			return xai.DefaultCLIBaseURL
+		return a.GetGrokBaseURLOr(xai.DefaultCLIBaseURL)
+	}
+	return a.GetGrokBaseURLOr(xai.DefaultBaseURL)
+}
+
+// GetGrokBaseURLOr resolves an explicit account endpoint, falling back to the
+// supplied default. Official OAuth endpoints are normalized here; custom
+// endpoints are retained for the request builder's operator URL policy.
+func (a *Account) GetGrokBaseURLOr(defaultBaseURL string) string {
+	if a == nil || !a.IsGrok() {
+		return ""
+	}
+	defaultBaseURL = strings.TrimRight(strings.TrimSpace(defaultBaseURL), "/")
+	if defaultBaseURL == "" {
+		if a.IsGrokOAuth() {
+			defaultBaseURL = xai.DefaultCLIBaseURL
+		} else {
+			defaultBaseURL = xai.DefaultBaseURL
 		}
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return defaultBaseURL
+	}
+	if !a.IsGrokOAuth() {
 		return baseURL
 	}
-	if baseURL != "" {
-		return baseURL
+	// Explicit regional/API or custom values remain pinned. Custom endpoints are checked by the
+	// operator URL policy at the request builder, which has access to config.
+	if validated, err := xai.ValidateTrustedBaseURL(baseURL); err == nil {
+		return validated
 	}
-	return xai.DefaultBaseURL
+	if parsed, err := url.Parse(baseURL); err == nil && parsed.Scheme != "" && parsed.Host != "" &&
+		parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == "" {
+		return strings.TrimRight(baseURL, "/")
+	}
+	return defaultBaseURL
 }
 
 // GetGrokMediaBaseURL selects the upstream used by Grok Imagine APIs.
@@ -1822,6 +1873,22 @@ func (a *Account) IsOpenAIWSForceHTTPEnabled() bool {
 		return false
 	}
 	enabled, ok := a.Extra["openai_ws_force_http"].(bool)
+	return ok && enabled
+}
+
+// IsOpenAIResponsesFlattenNamespacesEnabled 返回账号级"摊平 Codex namespace 工具"开关。
+// 字段：accounts.extra.openai_responses_flatten_namespaces，缺省 false（原样保留）。
+//
+// namespace 是 Codex 后端定义的私有扩展，OAuth 出口恒为 chatgpt.com/backend-api/codex
+// （buildUpstreamRequest 只对 API Key 账号取 base_url），即定义方本身，因此默认保留。
+// 该开关只为把流量转发到不认识 namespace 的兼容上游的部署保留退路：打开后恢复
+// 0.1.166 及更早版本的摊平行为。仅对 OpenAI OAuth 账号有效——API Key 走 chat
+// completions 回退桥时由桥自行摊平，Grok/Anthropic 出口有各自的适配链路。
+func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_responses_flatten_namespaces"].(bool)
 	return ok && enabled
 }
 

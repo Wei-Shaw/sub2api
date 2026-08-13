@@ -169,16 +169,24 @@ export default {
         note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       },
       grok: {
-        description: 'Configure Grok Build, Claude Code, Codex, or OpenCode to send requests through your Sub2API Grok group.',
+        description:
+          'Configure Grok CLI, Claude Code, Codex, or OpenCode to send requests through your Sub2API Grok group. Text models use Responses; image/video use Imagine model IDs on media endpoints.',
         claudeDescription: 'Configure Claude Code to send Messages API traffic through your Sub2API Grok group.',
         codexDescription: 'Configure Codex to send Responses API traffic through your Sub2API Grok group.',
-        configTomlHint: 'Back up an existing config.toml before merging this model entry. Run grok inspect after saving to verify the effective configuration.',
-        codexConfigTomlHint: 'Back up an existing config.toml before merging this provider configuration.',
-        note: 'Save the file as ~/.grok/config.toml, then run grok inspect and select grok from /model.',
-        noteWindows: 'Save the file as %USERPROFILE%\\.grok\\config.toml, then run grok inspect and select grok from /model.',
-        claudeNote: 'Choose one method: run the terminal commands for the current session, or save settings.json for user-level persistent configuration.',
-        codexNote: 'Save config.toml under ~/.codex and set SUB2API_API_KEY before starting Codex.',
-        codexNoteWindows: 'Save config.toml under %USERPROFILE%\\.codex and set SUB2API_API_KEY in PowerShell before starting Codex.',
+        configTomlHint:
+          'Official path: ~/.grok/config.toml (or $GROK_HOME). Fill [endpoints] (models_base_url / models_list_url / xai_api_base_url / cli_chat_proxy_base_url), [auth] preferred_method=api_key, [models], [session], and [features] image/video overrides. Prefer env_key over api_key; every text model needs api_backend=responses. Back up before merge, then run grok inspect.',
+        codexConfigTomlHint:
+          'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
+        note:
+          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml (endpoints/auth/models/session/features) as ~/.grok/config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+        noteWindows:
+          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+        claudeNote:
+          'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
+        codexNote:
+          'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
+        codexNoteWindows:
+          'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
       },
       opencode: {
         title: 'OpenCode Example',
@@ -295,6 +303,11 @@ export default {
     model: 'Model',
     requestedModel: 'Requested',
     upstreamModel: 'Upstream',
+	  sentUpstreamModel: 'Sent upstream',
+	  upstreamResponseModel: 'Upstream response',
+	  upstreamModelMismatch: 'Response model mismatch',
+	  modelVariant: 'Possible version variant',
+	  modelMismatch: 'Different model',
     reasoningEffort: 'Reasoning Effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
@@ -520,6 +533,54 @@ export default {
     }
   },
 
+  // Model Plaza (public group/model pricing showcase)
+  modelPlaza: {
+    title: 'Model Plaza',
+    description: 'Browse available models and pricing by group',
+    loading: 'Loading...',
+    empty: 'No groups to display',
+    loadFailed: 'Failed to load model plaza',
+    noSearchResult: 'No matching models',
+    anonymousHint: 'Sign in to see your exclusive groups and personal rates',
+    filters: {
+      platformLabel: 'Platform',
+      groupLabel: 'Group',
+      rateLabel: 'Rate',
+      modelLabel: 'Model',
+      searchPlaceholder: 'Search models',
+      all: 'All'
+    },
+    badges: {
+      exclusive: 'Exclusive',
+      subscription: 'Subscription'
+    },
+    detail: {
+      noModels: 'No models configured for this group',
+      noPricing: 'Pricing not configured',
+      peakNote: 'Peak hours {window}: billing rate ×{multiplier}'
+    },
+    table: {
+      model: 'Model',
+      input: 'Input',
+      output: 'Output',
+      cache: 'Cache',
+      cacheWrite: 'Write',
+      cacheRead: 'Read',
+      paidPrice: 'Your Price (Discounted)',
+      officialPrice: 'Official Price',
+      rate: 'Rate',
+      unitPerMillion: '$ / 1M tokens',
+      perUnitRequest: '/ request',
+      perUnitImage: '/ image',
+      perRequest: 'Per request',
+      perImage: 'Per image'
+    },
+    nav: {
+      login: 'Sign In',
+      backToDashboard: 'Back to Console'
+    }
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
@@ -689,6 +750,31 @@ export default {
       sendCode: 'Send Code',
       codeSent: 'Verification code sent to your email',
       sendCodeFailed: 'Failed to send verification code'
+    },
+    passkey: {
+      title: 'Passkeys',
+      description: 'Use Face ID, Touch ID, Windows Hello, or a security key to sign in without a password.',
+      add: 'Add passkey',
+      continue: 'Create passkey',
+      name: 'Passkey name',
+      namePlaceholder: 'For example, MacBook Touch ID',
+      passwordPlaceholder: 'Enter your current password to confirm',
+      empty: 'No passkeys are registered yet.',
+      synced: 'Synced',
+      createdAt: 'Created {date}',
+      lastUsed: 'Last used {date}',
+      featureDisabled: 'Passkeys have not been configured by the administrator.',
+      unsupported: 'This browser or device does not support passkeys.',
+      loadFailed: 'Failed to load passkeys.',
+      added: 'Passkey added.',
+      addFailed: 'Failed to add passkey.',
+      renamePrompt: 'Enter a new name for this passkey',
+      renamed: 'Passkey renamed.',
+      renameFailed: 'Failed to rename passkey.',
+      deleteTitle: 'Delete passkey',
+      deleteConfirm: 'Delete “{name}”? You will no longer be able to sign in with it.',
+      deleted: 'Passkey deleted.',
+      deleteFailed: 'Failed to delete passkey.'
     },
     balanceNotify: {
       title: 'Balance Low Notification',

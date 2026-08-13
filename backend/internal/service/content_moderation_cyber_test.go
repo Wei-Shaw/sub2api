@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -76,6 +77,7 @@ func TestRecordCyberPolicyEvent_DisabledWhenRiskControlOff(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
@@ -98,6 +100,7 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 			SettingKeyRiskControlEnabled: "true",
 		}},
 		repo,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -154,6 +157,136 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		"Error should mention flagged or cyber_policy")
 }
 
+func TestRecordCyberPolicyEvent_RespectsContentModerationScope(t *testing.T) {
+	groupID := int64(7)
+	tests := []struct {
+		name       string
+		config     string
+		groupID    *int64
+		model      string
+		wantCalls  []bool
+		wantLogs   int
+		wantBanned bool
+	}{
+		{
+			name:     "excluded group",
+			config:   `{"all_groups":false,"group_ids":[8],"ban_threshold":1}`,
+			groupID:  &groupID,
+			model:    "gpt-5",
+			wantLogs: 0,
+		},
+		{
+			name:     "ungrouped excluded by selected groups",
+			config:   `{"all_groups":false,"group_ids":[7],"ban_threshold":1}`,
+			groupID:  nil,
+			model:    "gpt-5",
+			wantLogs: 0,
+		},
+		{
+			name:     "excluded model",
+			config:   `{"all_groups":true,"model_filter":{"type":"include","models":["gpt-4o"]},"ban_threshold":1}`,
+			groupID:  &groupID,
+			model:    "gpt-5",
+			wantLogs: 0,
+		},
+		{
+			name:       "included group and model",
+			config:     `{"enabled":false,"mode":"off","sample_rate":0,"all_groups":false,"group_ids":[7],"model_filter":{"type":"include","models":["gpt-5"]},"ban_threshold":1}`,
+			groupID:    &groupID,
+			model:      "gpt-5",
+			wantCalls:  []bool{false},
+			wantLogs:   1,
+			wantBanned: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &banCountArgsTestRepo{}
+			userRepo := &contentModerationTestUserRepo{user: &User{ID: 1, Role: RoleUser, Status: StatusActive}}
+			svc := NewContentModerationService(
+				&contentModerationTestSettingRepo{values: map[string]string{
+					SettingKeyRiskControlEnabled:      "true",
+					SettingKeyContentModerationConfig: tt.config,
+				}},
+				repo, nil, nil, userRepo, nil, nil, nil,
+			)
+
+			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+				UserID:  1,
+				GroupID: tt.groupID,
+				Model:   tt.model,
+			})
+
+			if tt.wantCalls == nil {
+				require.Empty(t, repo.snapshotCountCalls())
+			} else {
+				require.Equal(t, tt.wantCalls, repo.snapshotCountCalls())
+			}
+			require.Len(t, repo.snapshotLogs(), tt.wantLogs)
+			require.Equal(t, tt.wantBanned, userRepo.user.Status == StatusDisabled)
+			if tt.wantBanned {
+				require.Len(t, userRepo.updated, 1)
+			} else {
+				require.Empty(t, userRepo.updated)
+			}
+		})
+	}
+}
+
+func TestRecordCyberPolicyEvent_InitialRuntimeSnapshotLoadFailureSkipsEvent(t *testing.T) {
+	repo := &banCountArgsTestRepo{}
+	settingRepo := &contentModerationRuntimeSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: `{invalid`,
+	}}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil, nil)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID: 1,
+		Model:  "gpt-5",
+	})
+
+	require.Empty(t, repo.snapshotCountCalls())
+	require.Empty(t, repo.snapshotLogs())
+	getValue, getMultiple := settingRepo.calls()
+	require.Zero(t, getValue)
+	require.GreaterOrEqual(t, getMultiple, 1)
+}
+
+func TestRecordCyberPolicyEvent_RuntimeSnapshotRefreshFailureKeepsStaleScope(t *testing.T) {
+	repo := &banCountArgsTestRepo{}
+	settingRepo := &contentModerationRuntimeSettingRepo{values: map[string]string{
+		SettingKeyRiskControlEnabled:      "true",
+		SettingKeyContentModerationConfig: `{"all_groups":true,"model_filter":{"type":"include","models":["gpt-5"]}}`,
+	}}
+	svc := NewContentModerationService(settingRepo, repo, nil, nil, nil, nil, nil, nil)
+	svc.runtimeCacheTTL = time.Minute
+
+	_, err := svc.loadRuntimeSnapshot(context.Background())
+	require.NoError(t, err)
+	current := svc.runtimeSnapshot.Load()
+	require.NotNil(t, current)
+	expired := *current
+	expired.loadedAt = time.Now().Add(-2 * time.Minute)
+	svc.runtimeSnapshot.Store(&expired)
+	settingRepo.failMultiple(errors.New("database unavailable"))
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		UserID: 1,
+		Model:  "gpt-5",
+	})
+
+	require.Len(t, repo.snapshotLogs(), 1)
+	require.Eventually(t, func() bool {
+		_, calls := settingRepo.calls()
+		return calls == 2
+	}, time.Second, time.Millisecond)
+	getValue, getMultiple := settingRepo.calls()
+	require.Zero(t, getValue)
+	require.Equal(t, 2, getMultiple)
+}
+
 // TestRecordCyberPolicyEvent_CreateLogBeforeEmail verifies F7: the moderation
 // log is persisted BEFORE email delivery, and EmailSent is patched afterwards —
 // SMTP hangs can no longer swallow the audit record.
@@ -175,6 +308,7 @@ func TestRecordCyberPolicyEvent_CreateLogBeforeEmail(t *testing.T) {
 			SettingKeyRiskControlEnabled: "true",
 		}},
 		repo,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -233,7 +367,7 @@ func TestApplyFlaggedAccountSideEffects_PassesExcludeCyberFlag(t *testing.T) {
 	repo := &banCountArgsTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 	userID := int64(42)
 
@@ -255,7 +389,7 @@ func TestRecordCyberPolicyEvent_ExcludeFromBanCount_SkipsBanJudgment(t *testing.
 			SettingKeyRiskControlEnabled:      "true",
 			SettingKeyContentModerationConfig: `{"cyber_policy_exclude_from_ban_count":true}`,
 		}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
@@ -282,7 +416,7 @@ func TestRecordCyberPolicyEvent_DefaultCountsTowardBan(t *testing.T) {
 		&contentModerationTestSettingRepo{values: map[string]string{
 			SettingKeyRiskControlEnabled: "true",
 		}},
-		repo, nil, nil, nil, nil, nil,
+		repo, nil, nil, nil, nil, nil, nil,
 	)
 
 	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{

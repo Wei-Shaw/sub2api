@@ -118,7 +118,12 @@ func normalizeCompositeRouteInput(input CompositeRouteInput) CompositeRouteInput
 	input.TargetPlatform = strings.TrimSpace(input.TargetPlatform)
 	input.UpstreamModel = strings.TrimSpace(input.UpstreamModel)
 	input.Endpoint = normalizeCompositeRouteEndpoint(input.Endpoint)
-	if input.UpstreamModel == "" {
+	// 仅对 exact 路由把空 upstream_model 回填成 public_model：exact 命中时请求模型
+	// 恒等于 public_model，回填只影响持久化/后台展示，保留原有契约不变。
+	// prefix 路由留空则不回填——Resolve 会回退到具体请求模型，从而透传原始模型
+	// （否则 public=deepseek-v4 的前缀路由会把 deepseek-v4-flash / deepseek-v4-pro
+	// 都塌缩成固定的 deepseek-v4）。显式填写 upstream_model 时任何模式都原样固定转发。
+	if input.UpstreamModel == "" && input.MatchType == CompositeRouteMatchExact {
 		input.UpstreamModel = input.PublicModel
 	}
 	input.Notes = strings.TrimSpace(input.Notes)

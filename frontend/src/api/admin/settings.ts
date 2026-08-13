@@ -32,6 +32,38 @@ export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuot
 
 const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity", "grok"]
 
+export type SchedulingThresholdPlatformType =
+  | "openai"
+  | "anthropic"
+  | "grok"
+
+export type AccountSchedulingThresholdsMap = Record<SchedulingThresholdPlatformType, number>
+
+export const SCHEDULING_THRESHOLD_PLATFORMS: SchedulingThresholdPlatformType[] = [
+  "openai",
+  "anthropic",
+  "grok",
+]
+
+export function normalizeAccountSchedulingThresholdsMap(
+  input?: Partial<Record<SchedulingThresholdPlatformType, number>> | null,
+): AccountSchedulingThresholdsMap {
+  const result = {} as AccountSchedulingThresholdsMap
+  for (const platform of SCHEDULING_THRESHOLD_PLATFORMS) {
+    const value = input?.[platform]
+    result[platform] = typeof value === "number" && Number.isFinite(value)
+      ? Math.min(100, Math.max(1, Math.trunc(value)))
+      : 100
+  }
+  return result
+}
+
+export function sanitizeAccountSchedulingThresholdsMap(
+  input?: Partial<Record<SchedulingThresholdPlatformType, number>> | null,
+): AccountSchedulingThresholdsMap {
+  return normalizeAccountSchedulingThresholdsMap(input)
+}
+
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
   const result: DefaultPlatformQuotasMap = {}
@@ -360,12 +392,17 @@ export interface SystemSettings {
   registration_enabled: boolean;
   email_verify_enabled: boolean;
   registration_email_suffix_whitelist: string[];
+  registration_email_domain_quota_enabled: boolean;
   promo_code_enabled: boolean;
   password_reset_enabled: boolean;
   frontend_url: string;
   invitation_code_enabled: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
+  passkey_enabled: boolean;
+  passkey_configured: boolean;
+  passkey_rp_id: string;
+  passkey_rp_origins: string[];
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
@@ -436,6 +473,7 @@ export interface SystemSettings {
   contact_info: string;
   doc_url: string;
   home_content: string;
+  compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
@@ -454,6 +492,18 @@ export interface SystemSettings {
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   turnstile_secret_key_configured: boolean;
+  tencent_captcha_enabled: boolean;
+  tencent_captcha_app_id: string;
+  tencent_captcha_app_secret_key_configured: boolean;
+  tencent_captcha_cloud_secret_id_configured: boolean;
+  tencent_captcha_cloud_secret_key_configured: boolean;
+  tencent_captcha_region: string;
+  aliyun_captcha_enabled: boolean;
+  aliyun_captcha_access_key_id: string;
+  aliyun_captcha_access_key_secret_configured: boolean;
+  aliyun_captcha_scene_id: string;
+  aliyun_captcha_prefix: string;
+  aliyun_captcha_region: string;
   api_key_acl_trust_forwarded_ip: boolean;
   forwarded_client_ip_headers: string[];
 
@@ -539,6 +589,12 @@ export interface SystemSettings {
   fallback_model_openai: string;
   fallback_model_gemini: string;
   fallback_model_antigravity: string;
+  grok_default_text_model: string;
+  grok_cross_client_model_map_enabled: boolean;
+  grok_default_base_url_mode: string;
+
+  // Per-platform account auto-pause thresholds (100 = disabled)
+  account_scheduling_thresholds: AccountSchedulingThresholdsMap;
 
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean;
@@ -569,6 +625,9 @@ export interface SystemSettings {
   enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
+  openai_codex_client_version: string;
+  openai_codex_client_version_synced: string;
+  openai_codex_version_auto_sync_enabled: boolean;
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -650,10 +709,17 @@ export interface SystemSettings {
 
   // Channel Monitor feature switch
   channel_monitor_enabled: boolean;
+  channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds: number;
+  channel_monitor_hide_throughput?: boolean;
 
   // Available Channels feature switch
   available_channels_enabled: boolean;
+
+  // Model Plaza feature switches + description
+  model_plaza_enabled: boolean;
+  model_plaza_require_auth: boolean;
+  model_plaza_description: string;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: boolean;
@@ -669,11 +735,13 @@ export interface UpdateSettingsRequest {
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
   registration_email_suffix_whitelist?: string[];
+  registration_email_domain_quota_enabled?: boolean;
   promo_code_enabled?: boolean;
   password_reset_enabled?: boolean;
   frontend_url?: string;
   invitation_code_enabled?: boolean;
   totp_enabled?: boolean; // TOTP 双因素认证
+  passkey_enabled?: boolean;
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
@@ -742,6 +810,7 @@ export interface UpdateSettingsRequest {
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
+  compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];
@@ -758,6 +827,18 @@ export interface UpdateSettingsRequest {
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;
+  tencent_captcha_enabled?: boolean;
+  tencent_captcha_app_id?: string;
+  tencent_captcha_app_secret_key?: string;
+  tencent_captcha_cloud_secret_id?: string;
+  tencent_captcha_cloud_secret_key?: string;
+  tencent_captcha_region?: string;
+  aliyun_captcha_enabled?: boolean;
+  aliyun_captcha_access_key_id?: string;
+  aliyun_captcha_access_key_secret?: string;
+  aliyun_captcha_scene_id?: string;
+  aliyun_captcha_prefix?: string;
+  aliyun_captcha_region?: string;
   api_key_acl_trust_forwarded_ip?: boolean;
   forwarded_client_ip_headers?: string[];
   linuxdo_connect_enabled?: boolean;
@@ -833,6 +914,10 @@ export interface UpdateSettingsRequest {
   fallback_model_openai?: string;
   fallback_model_gemini?: string;
   fallback_model_antigravity?: string;
+  grok_default_text_model?: string;
+  grok_cross_client_model_map_enabled?: boolean;
+  grok_default_base_url_mode?: string;
+  account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
   enable_identity_patch?: boolean;
   identity_patch_prompt?: string;
   ops_monitoring_enabled?: boolean;
@@ -853,6 +938,8 @@ export interface UpdateSettingsRequest {
   enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
+  openai_codex_client_version?: string;
+  openai_codex_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;
@@ -920,10 +1007,17 @@ export interface UpdateSettingsRequest {
 
   // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;
+  channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds?: number;
+  channel_monitor_hide_throughput?: boolean;
 
   // Available Channels feature switch
   available_channels_enabled?: boolean;
+
+  // Model Plaza feature switches + description
+  model_plaza_enabled?: boolean;
+  model_plaza_require_auth?: boolean;
+  model_plaza_description?: string;
 
   // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
@@ -1206,6 +1300,38 @@ export async function updateRateLimit429CooldownSettings(
   return data;
 }
 
+// ==================== Panel Rate Limit Settings ====================
+
+/**
+ * Panel API rate limit settings.
+ * Authenticated panel endpoints are limited per user account (reverse-proxy
+ * safe); public endpoints are limited per publicly routable client IP.
+ */
+export interface PanelRateLimitSettings {
+  enabled: boolean;
+  user_rpm: number;
+  heavy_rpm: number;
+  exempt_admin: boolean;
+  public_ip_rpm: number;
+}
+
+export async function getPanelRateLimitSettings(): Promise<PanelRateLimitSettings> {
+  const { data } = await apiClient.get<PanelRateLimitSettings>(
+    "/admin/settings/panel-rate-limit",
+  );
+  return data;
+}
+
+export async function updatePanelRateLimitSettings(
+  settings: PanelRateLimitSettings,
+): Promise<PanelRateLimitSettings> {
+  const { data } = await apiClient.put<PanelRateLimitSettings>(
+    "/admin/settings/panel-rate-limit",
+    settings,
+  );
+  return data;
+}
+
 // ==================== Stream Timeout Settings ====================
 
 /**
@@ -1433,6 +1559,8 @@ export const settingsAPI = {
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
+  getPanelRateLimitSettings,
+  updatePanelRateLimitSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,
