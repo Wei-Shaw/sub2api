@@ -1,57 +1,95 @@
 <template>
-  <div class="card">
-    <div class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('dashboard.recentUsage') }}</h2>
-      <span class="badge badge-gray">{{ t('dashboard.last7Days') }}</span>
-    </div>
-    <div class="p-6">
-      <div v-if="loading" class="flex items-center justify-center py-12">
-        <LoadingSpinner size="lg" />
-      </div>
-      <div v-else-if="data.length === 0" class="py-8">
-        <EmptyState :title="t('dashboard.noUsageRecords')" :description="t('dashboard.startUsingApi')" />
-      </div>
-      <div v-else class="space-y-3">
-        <div v-for="log in data" :key="log.id" class="flex items-center justify-between rounded-xl bg-gray-50 p-4 transition-colors hover:bg-gray-100 dark:bg-dark-800/50 dark:hover:bg-dark-800">
-          <div class="flex items-center gap-4">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30">
-              <Icon name="beaker" size="md" class="text-primary-600 dark:text-primary-400" />
-            </div>
-            <div>
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ log.model }}</p>
-              <p class="text-xs text-gray-500 dark:text-dark-400">{{ formatDateTime(log.created_at) }}</p>
-            </div>
-          </div>
-          <div class="text-right">
-            <p class="text-sm font-semibold">
-              <span class="text-green-600 dark:text-green-400" :title="t('dashboard.actual')">${{ formatCost(log.actual_cost) }}</span>
-              <span class="font-normal text-gray-400 dark:text-gray-500" :title="t('dashboard.standard')"> / ${{ formatCost(log.total_cost) }}</span>
-            </p>
-            <p class="text-xs text-gray-500 dark:text-dark-400">{{ (log.input_tokens + log.output_tokens).toLocaleString() }} tokens</p>
-          </div>
-        </div>
+  <Surface :title="t('dashboard.recentUsage')" flush data-testid="dashboard-recent-usage">
+    <template #actions>
+      <Badge tone="neutral">{{ t('dashboard.last7Days') }}</Badge>
+    </template>
 
-        <router-link to="/usage" class="flex items-center justify-center gap-2 py-3 text-sm font-medium text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
-          {{ t('dashboard.viewAllUsage') }}
-          <Icon name="arrowRight" size="sm" />
-        </router-link>
-      </div>
+    <!-- Flat hairline placeholder. No shimmer sweep, no spinner jump. -->
+    <div v-if="loading" class="space-y-3 p-4" data-testid="dashboard-recent-usage-loading">
+      <div class="skeleton h-3 w-full"></div>
+      <div class="skeleton h-3 w-4/5"></div>
+      <div class="skeleton h-3 w-2/3"></div>
     </div>
-  </div>
+
+    <div v-else-if="data.length === 0" class="py-4">
+      <EmptyState :title="t('dashboard.noUsageRecords')" :description="t('dashboard.startUsingApi')" />
+    </div>
+
+    <div v-else class="overflow-x-auto">
+      <table class="table min-w-[36rem]" data-testid="dashboard-recent-usage-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t('dashboard.model') }}</th>
+            <th scope="col">{{ t('usage.time') }}</th>
+            <th scope="col" class="is-numeric">{{ t('dashboard.tokens') }}</th>
+            <th scope="col" class="is-numeric">{{ t('dashboard.actual') }}</th>
+            <th scope="col" class="is-numeric">{{ t('dashboard.standard') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="log in data" :key="log.id">
+            <th scope="row" class="max-w-[12rem] text-left font-normal text-ink">
+              <span class="block truncate text-xs" :title="log.model">{{ log.model }}</span>
+            </th>
+            <td class="whitespace-nowrap font-mono text-xs tabular-nums">
+              {{ formatDateTime(log.created_at) }}
+            </td>
+            <td class="is-numeric"><NumCell :value="totalTokens(log)" /></td>
+            <td class="is-numeric"><NumCell :value="numOrNull(log.actual_cost)" :precision="4" /></td>
+            <td class="is-numeric"><NumCell :value="numOrNull(log.total_cost)" :precision="4" /></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <template v-if="!loading && data.length > 0" #footer>
+      <router-link
+        to="/usage"
+        class="inline-flex items-center gap-1.5 text-xs font-medium text-accent underline-offset-2 transition-colors duration-fast hover:underline"
+      >
+        {{ t('dashboard.viewAllUsage') }}
+        <Icon name="arrowRight" size="xs" />
+      </router-link>
+    </template>
+  </Surface>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+
+import Badge from '@/components/common/Badge.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import Surface from '@/components/common/Surface.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 import type { UsageLog } from '@/types'
 
+/**
+ * Five rows of usage. Previously rendered as a list of rounded tinted blocks,
+ * each with a 40px pastel icon tile and its costs in green — five quantities
+ * that could not be compared to each other because none of them shared a
+ * column. It is a table now: one row per request, numbers in mono tabular
+ * figures, right aligned.
+ */
 defineProps<{
   data: UsageLog[]
   loading: boolean
 }>()
+
 const { t } = useI18n()
-const formatCost = (c: number) => c.toFixed(4)
+
+function numOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Input + output only, matching what the row used to print. */
+function totalTokens(log: UsageLog): number | null {
+  const input = numOrNull(log.input_tokens)
+  const output = numOrNull(log.output_tokens)
+  if (input === null && output === null) return null
+  return (input ?? 0) + (output ?? 0)
+}
 </script>
