@@ -97,7 +97,9 @@ describe('HomeView compact mode', () => {
     const wrapper = mountHome(settings)
 
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
-    expect(wrapper.find('.terminal-container').exists()).toBe(true)
+    // Anchored on a testid rather than a style class: the default landing gets
+    // restyled, and the old `.terminal-container` selector pinned decoration.
+    expect(wrapper.find('[data-testid="default-home"]').exists()).toBe(true)
   })
 
   it('links unauthenticated visitors to login', () => {
