@@ -592,6 +592,13 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	// 与用户自建号路径一致：凭证里已有 plan 时同步 upstream_plan（列表 SuperGrok 角标 / 共享池匹配）
+	if err := ApplyProbedPlanFromCredentials(ctx, s.accountRepo, s.accountGroupRecomputer, account); err != nil {
+		slog.Warn("create_account_apply_probed_plan_failed", "account_id", account.ID, "error", err)
+	} else if refreshed, loadErr := s.accountRepo.GetByID(ctx, account.ID); loadErr == nil && refreshed != nil {
+		account = refreshed
+	}
+
 	return account, nil
 }
 

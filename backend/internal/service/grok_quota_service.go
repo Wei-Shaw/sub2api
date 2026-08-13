@@ -294,6 +294,18 @@ func (s *GrokQuotaService) probeBilling(ctx context.Context, accountID int64) (*
 	if persistErr != nil {
 		slog.Warn("grok_billing_persist_failed", "account_id", account.ID, "error", persistErr)
 	}
+	// 同步列表角标 / 共享池匹配：billing.plan → credentials.subscription_tier + upstream_plan
+	// （OAuth JWT 通常不含档位，仅靠 billing 探测才能识别 SuperGrok）
+	if plan := strings.TrimSpace(billing.Plan); plan != "" && s.accountRepo != nil {
+		// 刷新内存态 extra，便于 ExtractProbedPlanRaw 读到刚写入的快照
+		if account.Extra == nil {
+			account.Extra = map[string]any{}
+		}
+		account.Extra[grokBillingExtraKey] = billing
+		if err := ApplyProbedPlan(ctx, s.accountRepo, nil, account, plan); err != nil {
+			slog.Warn("grok_billing_plan_sync_failed", "account_id", account.ID, "plan", plan, "error", err)
+		}
+	}
 	now := time.Now().UTC()
 	localUsage24h, localUsage7d, localUsageMonthly := grokLocalUsageForQuota(ctx, s.usageLogRepo, account.ID, billing, now)
 	return &GrokQuotaProbeResult{

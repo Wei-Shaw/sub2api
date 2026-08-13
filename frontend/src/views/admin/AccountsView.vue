@@ -1454,15 +1454,21 @@ function getAccountPlanType(row: any): string | undefined {
     const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
     const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
-    return (
-      billing?.plan ||
-      quota?.subscription_tier ||
-      row.credentials?.subscription_tier ||
-      extra.subscription_tier ||
-      row.credentials?.plan_type ||
-      row.parent_plan_type ||
-      undefined
-    )
+    // 优先 billing/quota 快照（探测权威），再 credentials，最后 upstream_plan 列
+    // （admin 创建 OAuth 时常只有列上的 code，JWT 不带 subscription_tier）
+    const candidates = [
+      billing?.plan,
+      quota?.subscription_tier,
+      row.credentials?.subscription_tier,
+      extra.subscription_tier,
+      row.credentials?.plan_type,
+      row.upstream_plan,
+      row.parent_plan_type
+    ]
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim()
+    }
+    return undefined
   }
   // Antigravity：plan_type / tier_id / load_code_assist / upstream_plan 均可，PlatformTypeBadge 会映射为 Pro 等友好名
   if (row.platform === 'antigravity') {

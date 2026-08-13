@@ -400,6 +400,15 @@ describe('admin AccountsView — 账号行展示', () => {
         type: 'oauth',
         credentials: { plan_type: 'SuperGrok' },
       },
+      {
+        id: 206,
+        name: 'upstream-plan-only',
+        platform: 'grok',
+        type: 'oauth',
+        credentials: {},
+        extra: {},
+        upstream_plan: 'supergrok',
+      },
     ]
 
     listAccounts.mockResolvedValue({
@@ -420,6 +429,7 @@ describe('admin AccountsView — 账号行展示', () => {
       'SuperGrok',
       'BASIC',
       'SuperGrok',
+      'supergrok',
     ])
 
     wrapper.unmount()
