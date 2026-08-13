@@ -206,7 +206,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -417,9 +417,18 @@ const handleClose = () => {
 }
 
 const handleClickOutside = () => { showDropdown.value = false }
-if (typeof document !== 'undefined') {
-  document.addEventListener('click', handleClickOutside)
-}
+
+onMounted(() => {
+  if (typeof document !== 'undefined') {
+    document.addEventListener('click', handleClickOutside)
+  }
+})
+
+onUnmounted(() => {
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('click', handleClickOutside)
+  }
+})
 </script>
 
 <style scoped>

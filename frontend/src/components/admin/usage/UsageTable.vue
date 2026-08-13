@@ -497,7 +497,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort } from '@/utils/format'
@@ -581,8 +581,6 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const copiedRequestId = ref<string | null>(null)
-const showAccountBilling = props.showAccountBilling
-const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
@@ -630,18 +628,29 @@ const handleBatchFetchIpGeo = async () => {
   }
 }
 
+let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
+
 const copyRequestId = async (requestId: string) => {
   try {
     await navigator.clipboard.writeText(requestId)
     copiedRequestId.value = requestId
     appStore.showSuccess(t('admin.usage.requestIdCopied'))
-    window.setTimeout(() => {
+    if (copiedResetTimer !== null) clearTimeout(copiedResetTimer)
+    copiedResetTimer = setTimeout(() => {
+      copiedResetTimer = null
       if (copiedRequestId.value === requestId) copiedRequestId.value = null
     }, 2000)
   } catch {
     appStore.showError(t('common.copyFailed'))
   }
 }
+
+onUnmounted(() => {
+  if (copiedResetTimer !== null) {
+    clearTimeout(copiedResetTimer)
+    copiedResetTimer = null
+  }
+})
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)

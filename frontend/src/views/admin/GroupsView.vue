@@ -6801,6 +6801,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener("click", handleClickOutside);
+  clearTimeout(searchTimeout);
+  abortController?.abort();
   accountSearchRunner.clearAll();
   clearAllAccountSearchState();
 });
