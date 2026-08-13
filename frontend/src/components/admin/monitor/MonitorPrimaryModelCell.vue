@@ -1,6 +1,6 @@
 <template>
   <div class="flex items-center gap-2">
-    <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
+    <span class="text-sm text-ink">{{ row.primary_model }}</span>
     <HelpTooltip>
       <template #trigger>
         <span
@@ -24,12 +24,12 @@
           {{ t('monitorCommon.extraModelsEmpty') }}
         </div>
         <div v-else class="space-y-1">
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
             {{ t('monitorCommon.extraModelsHeader') }}
           </div>
           <table class="w-full text-left text-[11px]">
             <thead>
-              <tr class="text-gray-400">
+              <tr class="text-ink-tertiary">
                 <th class="py-0.5 pr-2 font-medium">{{ t('admin.channelMonitor.columns.primaryModel') }}</th>
                 <th class="py-0.5 pr-2 font-medium">{{ t('admin.channelMonitor.columns.actions') }}</th>
                 <th class="py-0.5 font-medium">{{ t('admin.channelMonitor.columns.latency') }}</th>

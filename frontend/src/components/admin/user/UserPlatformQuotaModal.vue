@@ -8,7 +8,7 @@
     <div v-if="user" class="space-y-4">
       <div
         v-if="hasActiveSubscription"
-        class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-warn/10 dark:text-amber-200"
+        class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-warn dark:border-amber-500/30 dark:bg-warn/10"
       >
         {{ t('admin.users.platformQuota.subscriptionWarning') }}
       </div>
@@ -19,7 +19,7 @@
       <div v-else class="overflow-x-auto">
         <table class="min-w-full text-sm">
           <thead>
-            <tr class="border-b border-gray-200 text-ink-secondary dark:border-dark-700 dark:text-gray-300">
+            <tr class="border-b border-line text-ink-secondary">
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.platform') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.daily') }}</th>
               <th class="px-3 py-2 text-left font-medium">{{ t('admin.users.platformQuota.columns.weekly') }}</th>

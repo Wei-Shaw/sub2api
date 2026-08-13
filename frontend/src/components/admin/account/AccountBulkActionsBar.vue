@@ -1,5 +1,5 @@
 <template>
-  <div class="mb-4 flex items-center justify-between rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
+  <div class="mb-4 flex items-center justify-between rounded-lg border border-accent/40 bg-accent-tint p-3">
     <div class="flex flex-wrap items-center gap-2">
       <span v-if="allResultsSelected" class="text-sm font-medium text-primary-900 dark:text-primary-100">
         {{ t('admin.accounts.bulkActions.selectedAll', { count: selectedIds.length }) }}
@@ -13,7 +13,7 @@
       <template v-if="selectedIds.length > 0">
         <button
           @click="$emit('select-page')"
-          class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          class="text-xs font-medium text-accent hover:text-primary-800 dark:hover:text-primary-200"
         >
           {{ t('admin.accounts.bulkActions.selectCurrentPage') }}
         </button>
@@ -23,7 +23,7 @@
         <button
           :disabled="selectingAll"
           @click="$emit('select-all-results')"
-          class="text-xs font-medium text-primary-700 hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-primary-300 dark:hover:text-primary-200"
+          class="text-xs font-medium text-accent hover:text-primary-800 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:text-primary-200"
         >
           {{
             selectingAll
@@ -36,7 +36,7 @@
         <span class="text-gray-300 dark:text-primary-800">•</span>
         <button
           @click="$emit('clear')"
-          class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          class="text-xs font-medium text-accent hover:text-primary-800 dark:hover:text-primary-200"
         >
           {{ t('admin.accounts.bulkActions.clear') }}
         </button>

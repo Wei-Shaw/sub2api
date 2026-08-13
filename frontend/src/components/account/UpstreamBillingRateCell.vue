@@ -3,7 +3,7 @@
     <HelpTooltip class="-ml-1" width-class="w-max max-w-[calc(100vw-2rem)]" data-testid="upstream-billing-details">
       <template #trigger>
         <span
-          class="cursor-help border-b border-dotted border-gray-300 text-sm font-medium dark:border-dark-600"
+          class="cursor-help border-b border-dotted border-line text-sm font-medium"
           :class="hasEffectiveRate ? 'font-mono text-ink' : statusClass || 'text-ink-tertiary'"
           data-testid="upstream-billing-rate"
         >

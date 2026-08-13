@@ -7,7 +7,7 @@
       </p>
 
       <!-- 当前分组 -->
-      <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800">
+      <div class="rounded-lg border border-line bg-surface-sunken p-3">
         <div class="flex items-center gap-2">
           <Icon name="shield" size="sm" class="text-purple-500" />
           <span class="font-medium text-ink">{{ oldGroup.name }}</span>
@@ -26,7 +26,7 @@
           :key="group.id"
           class="flex cursor-pointer items-center gap-3 rounded-lg border-2 p-3 transition-all"
           :class="selectedGroupId === group.id
-            ? 'border-primary-400 bg-primary-50/50 dark:border-primary-500 dark:bg-primary-900/20'
+            ? 'border-primary-400 border border-accent/40 bg-accent-tint/50 dark:border-primary-500'
             : 'border-gray-200 hover:border-line dark:hover:border-dark-500'"
         >
           <input

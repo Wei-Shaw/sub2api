@@ -23,7 +23,7 @@
       <!-- Add Plan Form -->
       <div
         v-if="showAddForm"
-        class="rounded-xl border border-primary-200 bg-primary-50/50 p-4 dark:border-primary-800 dark:bg-primary-900/20"
+        class="rounded-xl border border-primary-200 border border-accent/40 bg-accent-tint/50 p-4 dark:border-primary-800"
       >
         <div class="mb-3 text-sm font-medium text-ink-secondary">
           {{ t('admin.scheduledTests.addPlan') }}
@@ -111,7 +111,7 @@
         <div class="mt-3 flex justify-end gap-2">
           <button
             @click="showAddForm = false; resetNewPlan()"
-            class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+            class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:hover:bg-dark-500"
           >
             {{ t('common.cancel') }}
           </button>
@@ -135,7 +135,7 @@
       <!-- Empty State -->
       <div
         v-else-if="plans.length === 0"
-        class="rounded-xl border border-dashed border-gray-300 py-10 text-center dark:border-dark-600"
+        class="rounded-xl border border-dashed border-line py-10 text-center"
       >
         <Icon name="calendar" size="lg" class="mx-auto mb-2 text-ink-tertiary" :stroke-width="1.5" />
         <p class="text-sm text-ink-secondary">
@@ -148,7 +148,7 @@
         <div
           v-for="plan in plans"
           :key="plan.id"
-          class="rounded-xl border border-gray-200 bg-white transition-all dark:border-dark-600 dark:bg-dark-800"
+          class="rounded-xl border border-line bg-surface transition-all"
         >
           <!-- Plan Header -->
           <div
@@ -232,7 +232,7 @@
           <!-- Edit Form -->
           <div
             v-if="editingPlanId === plan.id"
-            class="border-t border-blue-100 bg-blue-50/50 px-4 py-3 dark:border-blue-900 dark:bg-blue-900/10"
+            class="border-t border-blue-100 border border-info/40 bg-info-tint/50 px-4 py-3 dark:border-blue-900"
             @click.stop
           >
             <div class="mb-2 text-xs font-medium text-ink-secondary">
@@ -321,7 +321,7 @@
             <div class="mt-3 flex justify-end gap-2">
               <button
                 @click="cancelEdit"
-                class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+                class="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:hover:bg-dark-500"
               >
                 {{ t('common.cancel') }}
               </button>
@@ -339,7 +339,7 @@
           <!-- Expanded Results Section -->
           <div
             v-if="expandedPlanId === plan.id"
-            class="border-t border-gray-100 px-4 py-3 dark:border-dark-700"
+            class="border-t border-line-subtle px-4 py-3"
           >
             <div class="mb-2 text-xs font-medium text-ink-secondary">
               {{ t('admin.scheduledTests.results') }}
@@ -364,7 +364,7 @@
               <div
                 v-for="result in results"
                 :key="result.id"
-                class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900"
+                class="rounded-lg border border-line-subtle bg-gray-50 p-3 dark:bg-dark-900"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
@@ -418,7 +418,7 @@
                   </div>
                   <pre
                     v-if="expandedResultIds.has(result.id)"
-                    class="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-900/20 dark:text-red-300"
+                    class="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded border border-danger/40 bg-danger-tint p-2 text-xs text-danger"
                   >{{ result.error_message }}</pre>
                 </div>
                 <div v-else-if="result.response_text" class="mt-2">
@@ -438,7 +438,7 @@
                   </div>
                   <pre
                     v-if="expandedResultIds.has(result.id)"
-                    class="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-gray-100 p-2 text-xs text-ink-secondary dark:bg-dark-800 dark:text-gray-300"
+                    class="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-gray-100 p-2 text-xs text-ink-secondary dark:bg-dark-800"
                   >{{ result.response_text }}</pre>
                 </div>
               </div>

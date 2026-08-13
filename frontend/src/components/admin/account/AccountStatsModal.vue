@@ -356,7 +356,7 @@
       <div class="flex justify-end">
         <button
           @click="handleClose"
-          class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
+          class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-ink-secondary transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:hover:bg-dark-500"
         >
           {{ t('common.close') }}
         </button>

@@ -2,7 +2,7 @@
   <div :class="flat ? '' : 'card overflow-hidden'">
     <div
       v-if="showIpGeoToolbar"
-      class="flex items-center justify-end gap-2 border-b border-gray-200 px-4 py-2 dark:border-dark-700"
+      class="flex items-center justify-end gap-2 border-b border-line px-4 py-2"
     >
       <span v-if="pendingIpCount > 0" class="text-xs text-ink-secondary">
         {{ t('usage.ipGeo.pending', { count: pendingIpCount }) }}
@@ -81,7 +81,7 @@
               <span
                 class="ml-1 inline-flex rounded px-1 py-px text-[10px] font-medium ring-1 ring-inset"
                 :class="isLikelyModelVariant(row)
-                  ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-warn/10 dark:text-amber-300 dark:ring-amber-500/30'
+                  ? 'bg-amber-50 text-warn ring-amber-200 dark:bg-warn/10 dark:ring-amber-500/30'
                   : 'bg-orange-50 text-orange-700 ring-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:ring-orange-500/30'"
               >
                 {{ isLikelyModelVariant(row) ? t('usage.modelVariant') : t('usage.modelMismatch') }}
@@ -110,7 +110,7 @@
         </template>
 
         <template #cell-group="{ row }">
-          <span v-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200">
+          <span v-if="row.group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-indigo-100 text-accent dark:bg-indigo-900">
             {{ row.group.name }}
           </span>
           <span v-else class="text-sm text-ink-tertiary">-</span>
@@ -260,7 +260,7 @@
             </span>
             <button
               type="button"
-              class="shrink-0 rounded p-0.5 text-ink-tertiary transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+              class="shrink-0 rounded p-0.5 text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-gray-600 dark:hover:text-gray-300"
               :class="copiedRequestId === row.request_id ? 'text-green-500 hover:text-green-500' : ''"
               :title="copiedRequestId === row.request_id ? t('keys.copied') : t('keys.copyToClipboard')"
               @click="copyRequestId(row.request_id)"
@@ -742,12 +742,12 @@ const getRequestTypeLabel = (row: AdminUsageLog): string => {
 
 const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(row)
-  if (requestType === 'cyber') return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-  if (requestType === 'live') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+  if (requestType === 'cyber') return 'bg-red-100 text-danger dark:bg-red-900'
+  if (requestType === 'live') return 'bg-emerald-100 text-success dark:bg-emerald-900'
   if (requestType === 'ws_v2') return 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200'
-  if (requestType === 'stream') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  if (requestType === 'stream') return 'bg-blue-100 text-info dark:bg-blue-900'
   if (requestType === 'sync') return 'bg-gray-100 text-ink dark:bg-gray-700 dark:text-gray-200'
-  return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+  return 'bg-amber-100 text-warn dark:bg-amber-900'
 }
 
 

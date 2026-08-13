@@ -17,7 +17,7 @@
       <p class="input-hint">{{ t("admin.groups.form.maxReasoningEffortHint") }}</p>
     </div>
 
-    <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+    <div class="border-t border-line pt-4">
       <div class="mb-3 flex items-center justify-between gap-3">
         <label class="input-label mb-0">
           {{ t("admin.groups.form.reasoningEffortMappings") }}
@@ -36,7 +36,7 @@
         <div
           v-for="row in mappings"
           :key="row.id"
-          class="rounded-lg border border-gray-200 bg-gray-50/40 p-3 dark:border-dark-600 dark:bg-dark-800/40"
+          class="rounded-lg border border-line bg-gray-50/40 p-3 dark:bg-dark-800/40"
         >
           <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] md:items-start">
             <div>
@@ -57,14 +57,14 @@
               <p
                 v-if="showValidation && validationErrors[row.id]?.from"
                 :id="`${idPrefix}-${row.id}-from-error`"
-                class="mt-1 text-xs text-red-600 dark:text-red-400"
+                class="mt-1 text-xs text-danger"
                 role="alert"
               >
                 {{ mappingErrorText(validationErrors[row.id]?.from) }}
               </p>
             </div>
 
-            <div class="hidden pt-8 text-gray-400 md:block dark:text-dark-400">
+            <div class="hidden pt-8 text-ink-tertiary md:block dark:text-dark-400">
               <Icon name="arrowRight" size="sm" />
             </div>
 
@@ -86,7 +86,7 @@
               <p
                 v-if="showValidation && validationErrors[row.id]?.to"
                 :id="`${idPrefix}-${row.id}-to-error`"
-                class="mt-1 text-xs text-red-600 dark:text-red-400"
+                class="mt-1 text-xs text-danger"
                 role="alert"
               >
                 {{ mappingErrorText(validationErrors[row.id]?.to) }}
@@ -95,7 +95,7 @@
 
             <button
               type="button"
-              class="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 md:mt-6 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              class="flex h-11 w-11 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/30 md:mt-6 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               :title="t('admin.groups.form.removeReasoningEffortMapping')"
               :aria-label="t('admin.groups.form.removeReasoningEffortMapping')"
               @click="removeMapping(row.id)"

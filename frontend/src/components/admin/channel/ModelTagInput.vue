@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- Tags display -->
-    <div class="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-800 min-h-[2.5rem]">
+    <div class="flex flex-wrap gap-1.5 rounded-lg border border-line bg-surface p-2 min-h-[2.5rem]">
       <span
         v-for="(model, idx) in models"
         :key="idx"

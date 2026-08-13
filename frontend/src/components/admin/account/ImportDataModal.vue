@@ -11,7 +11,7 @@
         {{ t('admin.accounts.dataImportHint') }}
       </div>
       <div
-        class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-600 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400"
+        class="rounded-lg border border-amber-200 border border-warn/40 bg-warn-tint p-3 text-xs text-amber-600 dark:border-amber-800 dark:text-amber-400"
       >
         {{ t('admin.accounts.dataImportWarning') }}
       </div>
@@ -21,7 +21,7 @@
         <div
           class="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 transition-colors"
           :class="dragActive
-            ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
+            ? 'border-primary-400 border border-accent/40 bg-accent-tint/70 dark:border-primary-500'
             : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
           @dragenter.prevent="handleDragEnter"
           @dragover.prevent
@@ -53,7 +53,7 @@
 
       <div
         v-if="result"
-        class="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-dark-700"
+        class="space-y-2 rounded-xl border border-line p-4"
       >
         <div class="text-sm font-medium text-ink">
           {{ t('admin.accounts.dataImportResult') }}
@@ -67,7 +67,7 @@
             {{ t('admin.accounts.dataImportErrors') }}
           </div>
           <div
-            class="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-50 p-3 font-mono text-xs dark:bg-dark-800"
+            class="mt-2 max-h-48 overflow-auto rounded-lg bg-surface-sunken p-3 font-mono text-xs"
           >
             <div v-for="(item, idx) in errorItems" :key="idx" class="whitespace-pre-wrap">
               {{ item.kind }} {{ item.name || item.proxy_key || '-' }} — {{ item.message }}
