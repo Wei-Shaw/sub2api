@@ -256,7 +256,7 @@ func InspectSSOAccountState(ctx context.Context, ssoToken string, client SSODevi
 		state.Error = err.Error()
 		return state
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	state.StatusCode = resp.StatusCode
 	if resp.Request != nil && resp.Request.URL != nil {
 		state.URL = resp.Request.URL.String()
