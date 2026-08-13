@@ -36,7 +36,8 @@ const (
 const codexFingerprintModeExtraKey = "codex_fingerprint_mode"
 
 // GetCodexFingerprintMode 从账号 extra JSON 读取指纹收敛模式。
-// 未设置时默认 session（设备+会话收敛），显式设为 "off" 才关闭。
+// 未设置或配置无效时默认 off，保持升级前的客户端标识透传行为。
+// 指纹收敛会改变发送给上游的设备/会话身份，必须由管理员显式开启。
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	if a == nil || !a.IsOpenAIOAuth() {
 		return codexFingerprintOff
@@ -46,7 +47,7 @@ func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
 		return codexFingerprintMode(raw)
 	default:
-		return codexFingerprintSession
+		return codexFingerprintOff
 	}
 }
 

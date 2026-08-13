@@ -644,10 +644,10 @@ export default {
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
         codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
         codexFingerprintMode: 'Codex 指纹收敛',
-        codexFingerprintModeDesc: '多人共享同一 OAuth 账号时，将各用户的设备/会话标识收敛为账号级恒定值，减少上游可见的设备数和会话数。关闭时原样透传客户端标识。',
+        codexFingerprintModeDesc: '默认关闭并原样透传客户端标识。启用后会将多人共享 OAuth 账号的设备/会话标识改为账号级恒定值；请仅在明确需要时开启。',
         codexFingerprintOff: '关闭（透传）',
         codexFingerprintDevice: '仅设备',
-        codexFingerprintSession: '设备+会话（推荐）',
+        codexFingerprintSession: '设备+会话',
         codexFingerprintFull: '完全收敛',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:

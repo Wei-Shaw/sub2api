@@ -84,6 +84,32 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
+const SelectStub = defineComponent({
+  name: 'SelectStub',
+  props: {
+    modelValue: {
+      type: [String, Number, Boolean, null],
+      default: ''
+    },
+    options: {
+      type: Array,
+      default: () => []
+    }
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <select
+      v-bind="$attrs"
+      :value="modelValue"
+      @change="$emit('update:modelValue', $event.target.value)"
+    >
+      <option v-for="option in options" :key="option.value" :value="option.value">
+        {{ option.label }}
+      </option>
+    </select>
+  `
+})
+
 function mountModal() {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups: [] },
@@ -92,7 +118,7 @@ function mountModal() {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         PlatformIcon: true,
         ProxySelector: true,
@@ -134,9 +160,15 @@ async function submitApiKeyAccount(
   return wrapper
 }
 
-async function openCodexImportStep(toggleClicks = 0) {
+async function openCodexImportStep(
+  toggleClicks = 0,
+  fingerprintMode?: 'off' | 'device' | 'session' | 'full'
+) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, 'OpenAI')
+  if (fingerprintMode) {
+    await wrapper.get('[data-testid="create-codex-fingerprint-mode-select"]').setValue(fingerprintMode)
+  }
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -296,6 +328,20 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty(
+      'codex_fingerprint_mode'
+    )
+  })
+
+  it('persists Codex fingerprint convergence only after explicit opt-in', async () => {
+    const wrapper = await openCodexImportStep(0, 'session')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.codex_fingerprint_mode).toBe(
+      'session'
+    )
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {
