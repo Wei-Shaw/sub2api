@@ -1250,6 +1250,8 @@ var (
 		{Name: "audio_realtime_price_per_min", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "audio_tts_price_per_million_chars", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "audio_stt_price_per_hour", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "long_context_pricing_enabled", Type: field.TypeBool, Default: true},
+		{Name: "model_pricing", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "claude_code_only", Type: field.TypeBool, Default: false},
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: true},
@@ -1311,7 +1313,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[51]},
+				Columns: []*schema.Column{GroupsColumns[53]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",
@@ -2842,7 +2844,7 @@ var (
 			{
 				Name:    "usagelog_organization_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[1], UsageLogsColumns[48]},
+				Columns: []*schema.Column{UsageLogsColumns[1], UsageLogsColumns[50]},
 			},
 			{
 				Name:    "usagelog_user_id",

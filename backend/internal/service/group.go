@@ -91,6 +91,11 @@ type Group struct {
 	// false（默认）保持现状（不放大）。
 	ImageUpscaleOnRsp bool
 
+	// ModelPricing overrides channel and built-in prices for matching models.
+	// Token intervals are selected only when LongContextPricingEnabled is true.
+	LongContextPricingEnabled bool
+	ModelPricing              []ChannelModelPricing
+
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
 	FallbackGroupID *int64

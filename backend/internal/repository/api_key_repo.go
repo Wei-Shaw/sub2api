@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -15,9 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
-	"go.uber.org/zap"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 
 	"entgo.io/ent/dialect"
@@ -206,6 +206,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldAudioRealtimePricePerMin,
 				group.FieldAudioTtsPricePerMillionChars,
 				group.FieldAudioSttPricePerHour,
+				group.FieldLongContextPricingEnabled,
+				group.FieldModelPricing,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -974,13 +976,14 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 	if g == nil {
 		return nil
 	}
-	// === DEBUG: 看 ent.Group 转换时 ImageDecodeSizeOnRsp / Platform 的实时取值 ===
-	logger.L().Info("[debug] repo.group_entity_to_service",
-		zap.Int64("group_id", int64(g.ID)),
-		zap.String("platform", g.Platform),
-		zap.Bool("image_decode_size_on_rsp", g.ImageDecodeSizeOnRsp),
-		zap.Bool("image_prefer_fal", g.ImagePreferFal),
-	)
+	var modelPricing []service.ChannelModelPricing
+	if len(g.ModelPricing) > 0 {
+		if err := json.Unmarshal(g.ModelPricing, &modelPricing); err != nil {
+			slog.Warn("group model_pricing unmarshal failed; falling back to channel/builtin pricing",
+				"group_id", g.ID, "error", err)
+			modelPricing = nil
+		}
+	}
 	out := &service.Group{
 		ID:                              g.ID,
 		Name:                            g.Name,
@@ -1019,6 +1022,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,
 		AudioTTSPricePerMillionChars:    g.AudioTtsPricePerMillionChars,
 		AudioSTTPricePerHour:            g.AudioSttPricePerHour,
+		LongContextPricingEnabled:       g.LongContextPricingEnabled,
+		ModelPricing:                    modelPricing,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
