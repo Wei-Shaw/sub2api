@@ -30,10 +30,11 @@ const stepsSource = readFileSync(resolve(SRC, 'components/Guide/steps.ts'), 'utf
  * not a regression, so it does not fail the build — but it is enumerated so it
  * cannot be mistaken for "fine". Fix the anchor, delete the entry.
  *
- * `accounts-create-btn` → add `data-tour="accounts-create-btn"` to the create
- * button in `views/admin/AccountsView.vue`, then remove it from this list.
+ * Currently empty: `accounts-create-btn` now lives on the create button in
+ * `components/admin/account/AccountTableActions.vue`, the component
+ * `views/admin/AccountsView.vue` renders for that toolbar.
  */
-const KNOWN_BROKEN = new Set(['[data-tour="accounts-create-btn"]'])
+const KNOWN_BROKEN = new Set<string>([])
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

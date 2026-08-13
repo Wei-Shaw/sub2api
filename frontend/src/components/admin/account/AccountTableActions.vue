@@ -6,7 +6,7 @@
     </button>
     <slot name="after"></slot>
     <slot name="beforeCreate"></slot>
-    <button @click="$emit('create')" class="btn btn-primary">{{ t('admin.accounts.createAccount') }}</button>
+    <button @click="$emit('create')" class="btn btn-primary" data-tour="accounts-create-btn">{{ t('admin.accounts.createAccount') }}</button>
     <slot name="afterCreate"></slot>
   </div>
 </template>
