@@ -124,7 +124,16 @@ api.example.com {
 			roll_keep 10
 			roll_keep_for 720h
 		}
-		format json
+		# Caddy only redacts Authorization and Cookie by default. Admin and SSO
+		# credentials ride in other headers and would otherwise be written to
+		# disk in cleartext and kept for the whole roll_keep_for window.
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Admin-Key delete
+				request>headers>Cf-Access-Jwt-Assertion delete
+			}
+		}
 		level INFO
 	}
 
