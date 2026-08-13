@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Yêu cầu bị chặn</title>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --panel: #15181d;
+    --line: #23272e;
+    --text: #e7e9ec;
+    --muted: #8b929c;
+    --accent: #d97757;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 400 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .wrap { width: 100%; max-width: 560px; }
+  .mark {
+    display: inline-block;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 28px;
+  }
+  h1 {
+    margin: 0 0 12px;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+  }
+  p { margin: 0 0 16px; color: var(--muted); }
+  p.lead { color: var(--text); }
+  ul { margin: 0 0 24px; padding-left: 20px; color: var(--muted); }
+  li { margin-bottom: 6px; }
+  .panel {
+    margin-top: 28px;
+    padding: 16px 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font: 400 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--muted);
+    overflow-x: auto;
+  }
+  .panel h2 {
+    margin: 0 0 10px;
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+  .foot { margin-top: 28px; font-size: 13px; color: #5f6670; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #fbfbfa; --panel: #fff; --line: #e5e3df; --text: #1a1c1f; --muted: #61666e; }
+    .panel h2 { color: #8b929c; }
+    .foot { color: #8b929c; }
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="mark">lamtung.dev</span>
+    <h1>Yêu cầu bị chặn</h1>
+    <p class="lead">Bộ lọc bảo mật đã chặn yêu cầu này. Nếu bạn là người dùng hợp lệ, nhiều khả năng đây là báo nhầm.</p>
+    <ul>
+      <li>Prompt chứa đoạn mã SQL, shell hoặc JavaScript thường bị bắt nhầm.</li>
+      <li>Đang dùng VPN hoặc proxy dùng chung: thử tắt rồi gửi lại.</li>
+      <li>Cần mở chặn: gửi admin mã bên dưới, không cần gửi lại nội dung prompt.</li>
+    </ul>
+    <div class="panel">
+      <h2>Mã tra cứu</h2>
+      ::CLOUDFLARE_ERROR_1000S_BOX::
+    </div>
+    <p class="foot">Admin tra mã này trong Security Events để gỡ đúng rule đã chặn bạn.</p>
+  </main>
+</body>
+</html>

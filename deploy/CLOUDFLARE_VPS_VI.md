@@ -109,9 +109,17 @@ Sau khi tắt, chỉ `SERVER_TRUSTED_PROXIES` quyết định — Caddy đã ghi
 Docker chèn rule DNAT vào chain `DOCKER-USER`, chạy **trước** chain của ufw. `ufw deny 443` sẽ không có tác dụng gì với port đã publish. Phải viết rule vào `DOCKER-USER`.
 
 ```bash
+Chain `DOCKER-USER` nằm trong `FORWARD`, nên nó thấy **cả hai chiều**: gói tin từ Internet đi vào container, lẫn gói tin container đi ra Internet. Vì vậy mọi rule chặn phải khoá theo interface vào (`-i "$WAN"`), nếu không rule `DROP ... --dports 80,443` sẽ chặn luôn request HTTPS mà container gửi ra ngoài (gọi API upstream, tải pricing...) và biểu hiện là `dial tcp ...:443: i/o timeout` trong log app.
+
+```bash
 sudo tee /usr/local/bin/cf-docker-firewall.sh >/dev/null <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Interface ra Internet. Rule chan chi ap dung cho traffic di VAO tu day,
+# khong dung cho traffic container gui RA (vao chain qua bridge br-*).
+WAN=$(ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1); exit}')
+[ -n "$WAN" ] || { echo "khong xac dinh duoc interface WAN"; exit 1; }
 
 v4=$(curl -fsSL https://www.cloudflare.com/ips-v4)
 v6=$(curl -fsSL https://www.cloudflare.com/ips-v6)
@@ -120,17 +128,17 @@ v6=$(curl -fsSL https://www.cloudflare.com/ips-v6)
 iptables -F DOCKER-USER
 iptables -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 for ip in $v4; do
-  iptables -A DOCKER-USER -s "$ip" -p tcp -m multiport --dports 80,443 -j RETURN
+  iptables -A DOCKER-USER -i "$WAN" -s "$ip" -p tcp -m multiport --dports 80,443 -j RETURN
 done
-iptables -A DOCKER-USER -p tcp -m multiport --dports 80,443 -j DROP
+iptables -A DOCKER-USER -i "$WAN" -p tcp -m multiport --dports 80,443 -j DROP
 iptables -A DOCKER-USER -j RETURN
 
 ip6tables -F DOCKER-USER
 ip6tables -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
 for ip in $v6; do
-  ip6tables -A DOCKER-USER -s "$ip" -p tcp -m multiport --dports 80,443 -j RETURN
+  ip6tables -A DOCKER-USER -i "$WAN" -s "$ip" -p tcp -m multiport --dports 80,443 -j RETURN
 done
-ip6tables -A DOCKER-USER -p tcp -m multiport --dports 80,443 -j DROP
+ip6tables -A DOCKER-USER -i "$WAN" -p tcp -m multiport --dports 80,443 -j DROP
 ip6tables -A DOCKER-USER -j RETURN
 
 netfilter-persistent save
@@ -141,6 +149,17 @@ sudo /usr/local/bin/cf-docker-firewall.sh
 ```
 
 > **Cảnh báo:** script `iptables -F DOCKER-USER` xoá sạch rule hiện có trong chain đó. Xem trước bằng `sudo iptables -L DOCKER-USER -n --line-numbers`. Rule chỉ đụng tới TCP 80/443 nên SSH cổng 22 không bị ảnh hưởng, nhưng vẫn nên giữ phiên SSH hiện tại tới khi mở được phiên thứ hai để xác nhận.
+>
+> **Chạy nguyên script, đừng copy từng dòng vào shell.** `v4`/`v6` chỉ tồn tại bên trong script; nếu dán thủ công thì vòng `for` chạy rỗng, không có rule RETURN nào cho Cloudflare, và rule `DROP` cuối chặn sạch traffic vào — site tắt ngay.
+
+Kiểm tra sau khi chạy — phải thấy khoảng 15 rule RETURN kèm `-i eth0`, và container vẫn gọi ra ngoài được:
+
+```bash
+sudo iptables -L DOCKER-USER -n -v | head -5
+docker compose exec -T sub2api sh -c 'wget -qO- -T5 https://api.anthropic.com/v1/models 2>&1 | head -c 60; echo'
+```
+
+Body `authentication_error` nghĩa là egress OK. `download timed out` nghĩa là rule chặn vẫn còn bắt nhầm chiều ra.
 
 Ufw vẫn nên bật cho traffic tới chính host (SSH):
 
@@ -195,7 +214,11 @@ Chỉ đặt trên đường login, đừng đặt lên `/v1/*`:
 - Rule 2 (tuỳ chọn): path bắt đầu `/assets/` → Cache Everything, Edge TTL 1 năm (asset Vite có hash trong tên)
 
 ### Compression Rules
-- `http.response.content_type contains "text/event-stream"` → **Compression: off**. Bảo hiểm thêm cho SSE.
+- `http.response.content_type.media_type eq "text/event-stream"` → **Compression: off**. Bảo hiểm thêm cho SSE.
+
+> Field phải là `http.response.content_type.media_type`, không phải `http.response.content_type` (không tồn tại → editor báo `unknown identifier`). `media_type` chỉ chứa phần media type, đã bỏ `charset`, nên dùng `eq` là đủ, không cần `contains`.
+>
+> Nhóm field `http.response.*` chỉ dùng được ở phase có response: Compression Rules, Response Header Transform Rules. Ở Cache Rules / Configuration Rules / WAF thì không có — chỗ đó phải match theo request, ví dụ `starts_with(http.request.uri.path, "/v1/")`.
 
 ---
 
