@@ -118,6 +118,12 @@ func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) stri
 	if seed == "" {
 		seed = strings.TrimSpace(explicitKey)
 	}
+	// previous_response_id is last-resort: multi-turn Responses without an
+	// explicit session still share one cache identity (model is already in the
+	// isolated seed). Message ids are rejected by the seed helper.
+	if seed == "" && len(body) > 0 {
+		seed = grokPreviousResponseSessionSeed(body)
+	}
 	return seed
 }
 
@@ -298,9 +304,17 @@ func applyGrokFreeToolCacheRoute(body, intentSourceBody []byte, account *Account
 	return appendGrokFreeCacheNativeToolsWithPolicy(body, allowPureClientTools, allowFunctionSearch)
 }
 
+// isKnownGrokFreeAccount recognizes free-tier Grok accounts, used for
+// Free cache routing / media free_tier blocks (broader than soft-gate).
+// Soft-gate uses isExplicitGrokFreeOAuthAccount (exact "free" only).
 func isKnownGrokFreeAccount(account *Account) bool {
 	if account == nil || !account.IsGrokOAuth() {
 		return false
+	}
+	// Live access-token JWT wins over stale billing/credential snapshots
+	// so a downgrade to free is visible as soon as the AT is refreshed.
+	if jwtTier := xai.SubscriptionTierFromJWT(account.GetCredential("access_token")); jwtTier != "" {
+		return isGrokFreeSubscriptionTier(jwtTier)
 	}
 	freeSignal := false
 	paidSignal := false
@@ -313,14 +327,12 @@ func isKnownGrokFreeAccount(account *Account) bool {
 				paidSignal = true
 			}
 		}
+		// Usage % or a monthly dollar cap is evidence of a paid plan.
 		if billing.UsagePercent != nil || billing.UsedPercent != nil ||
 			(billing.MonthlyLimitCents != nil && *billing.MonthlyLimitCents > 0) {
 			paidSignal = true
 		}
-		// xAI deliberately reports an empty plan for Free accounts; only paid
-		// subscriptions receive a SuperGrok plan/monthly limit. A successful
-		// monthly billing observation with no paid signal is therefore positive
-		// Free evidence, not an unknown tier. Keep partial probes fail-closed.
+		// Empty plan + successful monthly observation → inferred free (no paid plan/limit).
 		if strings.TrimSpace(billing.MonthlyUpdatedAt) != "" ||
 			(billing.StatusCode >= http.StatusOK && billing.StatusCode < http.StatusMultipleChoices &&
 				!billing.Partial && len(billing.FailedWindows) == 0) {
@@ -340,6 +352,7 @@ func isKnownGrokFreeAccount(account *Account) bool {
 			inferredFreeSignal = true
 		}
 	}
+	// Only credentials subscription_tier is authoritative here (not plan_type / extra keys).
 	if tier := strings.TrimSpace(account.GetCredential("subscription_tier")); tier != "" {
 		if isGrokFreeSubscriptionTier(tier) {
 			freeSignal = true
@@ -347,15 +360,13 @@ func isKnownGrokFreeAccount(account *Account) bool {
 			paidSignal = true
 		}
 	}
-	// Explicit paid evidence always wins over an inferred Free signal. This
-	// protects upgraded/stale accounts whose previous quota snapshot still
-	// carries the historical 2M Free token limit.
+	// Explicit paid evidence always wins over an inferred Free signal.
 	return !paidSignal && (freeSignal || inferredFreeSignal)
 }
 
 func isGrokFreeSubscriptionTier(tier string) bool {
-	switch strings.ToLower(strings.TrimSpace(tier)) {
-	case "free", "grok-free", "grok_free", "free-tier", "free_tier", "basic", "grok-basic", "grok_basic":
+	switch xai.NormalizeSubscriptionTier(tier) {
+	case "free", "x_basic":
 		return true
 	default:
 		return false

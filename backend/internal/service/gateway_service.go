@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,10 +21,12 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -472,6 +475,17 @@ type GatewayCache interface {
 	// DeleteSessionAccountID 删除粘性会话绑定，用于账号不可用时主动清理
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
+
+	// Grok async video billing snapshot (create → status success).
+	// SetGrokVideoPendingBilling stores create-time model/duration/resolution for status billing.
+	SetGrokVideoPendingBilling(ctx context.Context, key string, payload []byte, ttl time.Duration) error
+	// GetGrokVideoPendingBilling returns the create-time billing snapshot; miss → nil, nil.
+	GetGrokVideoPendingBilling(ctx context.Context, key string) ([]byte, error)
+	// ClaimGrokVideoBilled atomically marks a video request as billed (SetNX).
+	// Returns true when this caller won the claim; false when already billed or claim unavailable.
+	ClaimGrokVideoBilled(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	// ReleaseGrokVideoBilled clears a claim so a failed RecordUsage can retry billing.
+	ReleaseGrokVideoBilled(ctx context.Context, key string) error
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -570,18 +584,27 @@ type ClaudeUsage struct {
 }
 
 // ForwardResult 转发结果
+type AudioUsage struct {
+	Mode            string  // realtime | tts | stt
+	DurationOrUnits float64 // minutes / million-chars / hours
+}
+
 type ForwardResult struct {
 	RequestID string
 	Usage     ClaudeUsage
 	Model     string
 	// UpstreamModel is the actual upstream model after mapping.
 	// Prefer empty when it is identical to Model; persistence normalizes equal values away as no-op mappings.
-	UpstreamModel    string
-	Stream           bool
-	Duration         time.Duration
-	FirstTokenMs     *int // 首字时间（流式请求）
-	ClientDisconnect bool // 客户端是否在流式传输过程中断开
-	ReasoningEffort  *string
+	UpstreamModel string
+	// UpstreamResponseModel is captured from the raw successful upstream
+	// response before any client-facing rewrite or protocol conversion.
+	UpstreamResponseModel         string
+	UpstreamResponseModelConflict bool
+	Stream                        bool
+	Duration                      time.Duration
+	FirstTokenMs                  *int // 首字时间（流式请求）
+	ClientDisconnect              bool // 客户端是否在流式传输过程中断开
+	ReasoningEffort               *string
 
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量
@@ -591,6 +614,8 @@ type ForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	SearchCount        int
+	AudioUsage         *AudioUsage
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -1221,6 +1246,15 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 		return accessToken, "oauth", nil
 	}
 
+	// Grok OAuth: prefer access_token from credentials (background refresher keeps it warm).
+	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth {
+		accessToken := account.GetGrokAccessToken()
+		if accessToken == "" {
+			return "", "", errors.New("grok access_token not found in credentials")
+		}
+		return accessToken, "oauth", nil
+	}
+
 	// 其他情况（Gemini 有自己的 TokenProvider，setup-token 类型等）直接从账号读取
 	accessToken := account.GetCredential("access_token")
 	if accessToken == "" {
@@ -1232,6 +1266,78 @@ func (s *GatewayService) getOAuthToken(ctx context.Context, account *Account) (s
 
 // GetAvailableModels returns the list of models available for a group
 // It aggregates model_mapping keys from all schedulable accounts in the group
+
+// DoGrokNativeResponsesJSON POSTs a non-streaming Responses body to the account's
+// Grok upstream and returns the raw JSON body. Used by /v1/web_search.
+// Gin-free: UA is always the pinned Grok CLI identity (resolveGrokUpstreamUserAgent ignores inbound).
+func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account *Account, body []byte) ([]byte, error) {
+	if s == nil || s.httpUpstream == nil {
+		return nil, errors.New("http upstream not configured")
+	}
+	if account == nil {
+		return nil, errors.New("account is required")
+	}
+	if !account.IsGrok() {
+		return nil, errors.New("grok account required")
+	}
+	token, _, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		// Credential/token failures should try the next Grok account in the pool.
+		return nil, &UpstreamFailoverError{
+			StatusCode: http.StatusUnauthorized,
+			Reason:     GatewayFailureReason("grok_search_token"),
+		}
+	}
+	targetURL, err := buildGrokResponsesURL(account, nil, s.settingService)
+	if err != nil {
+		return nil, err
+	}
+	if json.Valid(body) {
+		if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model == "" {
+			if patched, patchErr := sjson.SetBytes(body, "model", xai.DefaultTextModel); patchErr == nil {
+				body = patched
+			}
+		}
+	}
+	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build grok responses request: %w", err)
+	}
+	upstreamReq.Header.Set("Authorization", "Bearer "+token)
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Accept", "application/json")
+	upstreamReq.Header.Set("User-Agent", defaultGrokUpstreamUserAgent())
+	applyGrokCLIHeaders(upstreamReq.Header)
+	account.ApplyHeaderOverrides(upstreamReq.Header)
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, &UpstreamFailoverError{StatusCode: http.StatusBadGateway, Reason: GatewayFailureReason("grok_search_transport")}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if readErr != nil {
+		return nil, &UpstreamFailoverError{
+			StatusCode: http.StatusBadGateway,
+			Reason:     GatewayFailureReason("grok_search_read"),
+		}
+	}
+	if resp.StatusCode >= 400 {
+		msg := string(respBytes)
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBytes}
+		}
+		return nil, fmt.Errorf("grok upstream %d: %s", resp.StatusCode, msg)
+	}
+	return respBytes, nil
+}
+
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {

@@ -1249,7 +1249,7 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {
 	switch strings.ToLower(strings.TrimSpace(modelID)) {
-	case "grok-4.5", "grok-4.5-latest", "grok", "grok-latest", "grok-build", "grok-build-latest", "grok-build-0.1":
+	case "grok-4.6", "grok-4.6-latest", "grok-4.5", "grok-4.5-latest", "grok", "grok-latest", "grok-build", "grok-build-latest", "grok-build-0.1":
 		return true
 	default:
 		return false
@@ -2409,6 +2409,33 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 		if recovered := recover(); recovered != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.messages"),
+				zap.Any("panic", recovered),
+			).Error("gateway.usage_record_task_panic_recovered")
+		}
+	}()
+	task(ctx)
+}
+
+// submitMandatoryUsageRecordTask never silently drops billing work on pool overflow.
+func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
+	if task == nil {
+		return
+	}
+	task = wrapUsageRecordTaskContext(parent, task)
+	if h.usageRecordWorkerPool != nil {
+		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
+			return
+		}
+		logger.L().With(
+			zap.String("component", "handler.gateway.usage"),
+		).Warn("gateway.usage_record_task_mandatory_sync_fallback")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.L().With(
+				zap.String("component", "handler.gateway.usage"),
 				zap.Any("panic", recovered),
 			).Error("gateway.usage_record_task_panic_recovered")
 		}

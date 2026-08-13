@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"encoding/json"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -148,11 +150,50 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.JSON("video_model_prices", map[string]map[string]float64{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按模型族和分辨率覆盖视频每秒价格"),
 		field.Float("web_search_price_per_call").
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Comment("Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）"),
+
+		// 搜索/工具调用显式定价（per 1k calls），用于 Grok web_search 等。
+		field.Float("search_price_per_1k").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("搜索工具价格 per 1000 calls（web_search 等）"),
+
+		// Grok Voice 显式定价（realtime / TTS / STT），不按文本 RateMultiplier。
+		field.Float("audio_realtime_price_per_min").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("Voice realtime 每分钟价格（USD）"),
+		field.Float("audio_tts_price_per_million_chars").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("TTS 每百万字符价格（USD）"),
+		field.Float("audio_stt_price_per_hour").
+			Optional().
+			Nillable().
+			Min(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Comment("STT 每小时价格（USD）"),
+		field.Bool("long_context_pricing_enabled").
+			Default(true).
+			Comment("是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价"),
+		field.JSON("model_pricing", json.RawMessage{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("分组逐模型定价；优先级高于渠道和内置定价"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
