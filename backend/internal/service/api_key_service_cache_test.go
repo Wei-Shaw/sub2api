@@ -576,6 +576,15 @@ func TestAPIKeyService_GetByKey_CachesNegativeOnRepoMiss(t *testing.T) {
 		},
 	}
 	svc := NewAPIKeyService(repo, nil, nil, nil, nil, cache, cfg)
+	svc.startAuthCache()
+	t.Cleanup(func() {
+		if svc.authCacheL1 != nil {
+			svc.authCacheL1.Close()
+		}
+		if svc.authNegativeCacheL1 != nil {
+			svc.authNegativeCacheL1.Close()
+		}
+	})
 	cache.getAuthCache = func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error) {
 		return nil, redis.Nil
 	}
