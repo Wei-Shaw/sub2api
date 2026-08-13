@@ -25,8 +25,11 @@ services:
       nofile:
         soft: 100000
         hard: 100000
-    ports:
-      - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+    # When fronted by the caddy service below, keep this commented out: Caddy
+    # reaches the app over the compose network and nothing is exposed on the
+    # host. Uncomment only for a direct-access deployment.
+    # ports:
+    #   - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
@@ -49,6 +52,12 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
+      # Proxies allowed to set forwarded client-IP headers. Behind the caddy
+      # service this must cover the compose network subnet, NOT 127.0.0.1 —
+      # the peer the app sees is Caddy's container address. Only takes effect
+      # once security.trust_forwarded_ip_for_api_key_acl is disabled in the
+      # admin security settings. See CLOUDFLARE_VPS_VI.md and EDGE_SECURITY.md.
+      - SERVER_TRUSTED_PROXIES=${SERVER_TRUSTED_PROXIES:-}
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
@@ -200,6 +209,36 @@ services:
       start_period: 30s
 
   # ===========================================================================
+  # Caddy Reverse Proxy (TLS termination, edge hardening)
+  # ===========================================================================
+  # Only needed for an Internet-facing deployment. Requires:
+  #   - ./Caddyfile.cloudflare  (edit the domain first)
+  #   - ./certs/origin.pem, ./certs/origin.key, ./certs/cf-origin-pull-ca.pem
+  # See CLOUDFLARE_VPS_VI.md for the full walkthrough, EDGE_SECURITY.md for the
+  # rationale behind the trusted-proxy and compression settings.
+  caddy:
+    image: caddy:2-alpine
+    container_name: sub2api-caddy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.cloudflare:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      sub2api:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+
+  # ===========================================================================
   # PostgreSQL Database
   # ===========================================================================
   postgres:
@@ -288,6 +327,12 @@ services:
 # =============================================================================
 volumes:
   sub2api_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  caddy_logs:
     driver: local
   postgres_data:
     driver: local

@@ -1,0 +1,134 @@
+# =============================================================================
+# Caddy behind Cloudflare (CDN deployment)
+# =============================================================================
+# The bundled ./Caddyfile is the direct-to-Caddy baseline. This file is its
+# CDN variant: client IPs are parsed from CF-Connecting-IP instead of the TCP
+# peer, and TLS uses a Cloudflare Origin CA certificate with Authenticated
+# Origin Pulls. See CLOUDFLARE_VPS_VI.md for the full setup, EDGE_SECURITY.md
+# for the rationale.
+#
+# Before starting:
+#   1. Replace api.example.com below with your domain.
+#   2. Place origin.pem / origin.key / cf-origin-pull-ca.pem in ./certs/.
+#   3. Set SERVER_TRUSTED_PROXIES in .env to the compose network subnet.
+#   4. Disable "Trust forwarded IP for API Key ACL" in the admin security
+#      settings, otherwise raw headers take over and the chain below is bypassed.
+# =============================================================================
+
+{
+	servers {
+		max_header_size 64KB
+		timeouts {
+			read_header 10s
+			idle 2m
+		}
+		# Trust only Cloudflare egress ranges as proxies, so {client_ip} resolves
+		# to the real visitor. Refresh from https://www.cloudflare.com/ips-v4 and
+		# https://www.cloudflare.com/ips-v6 whenever the firewall list is updated.
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		trusted_proxies_strict
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+# 修改为你的域名 / Replace with your domain
+api.example.com {
+	# =========================================================================
+	# TLS: Cloudflare Origin CA certificate + Authenticated Origin Pulls
+	# =========================================================================
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key {
+		protocols tls1.2 tls1.3
+		# Reject any client certificate that is not Cloudflare's. Requires
+		# "Authenticated Origin Pulls" to be enabled in the Cloudflare dashboard.
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy/certs/cf-origin-pull-ca.pem
+		}
+	}
+
+	# =========================================================================
+	# Reverse proxy to the sub2api service on the compose network
+	# =========================================================================
+	reverse_proxy sub2api:8080 {
+		health_uri /health
+		health_interval 30s
+		health_timeout 10s
+		health_status 200
+
+		lb_policy round_robin
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
+		# Derive forwarded headers from Caddy's parsed {client_ip}. Using
+		# {remote_host} here would attribute every request to a Cloudflare
+		# egress address, collapsing the invalid-auth limiter and API key IP
+		# ACLs onto unrelated users.
+		header_up X-Real-IP {client_ip}
+		header_up X-Forwarded-For {client_ip}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		transport http {
+			keepalive 120s
+			keepalive_idle_conns 256
+			read_buffer 16KB
+			write_buffer 16KB
+			compression off
+		}
+
+		fail_duration 30s
+		max_fails 3
+		unhealthy_status 500 502 503 504
+	}
+
+	# =========================================================================
+	# Compression
+	# =========================================================================
+	# Explicit content-type list on purpose: text/* or the bare "encode gzip zstd"
+	# shorthand also match text/event-stream and buffer SSE until the response ends.
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/css*
+			header Content-Type text/csv*
+			header Content-Type text/html*
+			header Content-Type text/javascript*
+			header Content-Type text/markdown*
+			header Content-Type text/plain*
+			header Content-Type text/xml*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# =========================================================================
+	# Request size limit
+	# =========================================================================
+	# Cloudflare caps uploads well below this (100 MB on Free/Pro, 200 MB on
+	# Business), so this is only the absolute origin-side safety net.
+	request_body {
+		max_size 256MB
+	}
+
+	# =========================================================================
+	# Logging
+	# =========================================================================
+	log {
+		output file /var/log/caddy/sub2api.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}
