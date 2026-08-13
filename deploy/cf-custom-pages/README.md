@@ -3,13 +3,25 @@
 Trang lỗi thay cho trang mặc định của Cloudflare. Mục tiêu: giữ nhận diện của mình,
 không để user thấy trang lạ khi origin chết hoặc WAF chặn nhầm.
 
-| File | Loại page trong dashboard | Token bắt buộc |
+| File | Dùng ở đâu | Token |
 |---|---|---|
-| `500s.html` | 500 Class Errors | `::CLOUDFLARE_ERROR_500S_BOX::` |
-| `waf-block.html` | WAF Block / 1000 Class Errors | `::CLOUDFLARE_ERROR_1000S_BOX::` |
+| `500s.html` | Custom Pages → **5XX Errors** | `::CLOUDFLARE_ERROR_500S_BOX::` (bắt buộc) |
+| `1000s.html` | Custom Pages → **1XXX Errors** | `::CLOUDFLARE_ERROR_1000S_BOX::` (bắt buộc) |
+| `waf-block.html` | **WAF custom rule → Block → custom response** | `::RAY_ID::`, `::CLIENT_IP::` (tuỳ chọn) |
 
-> Dashboard hiện đúng token yêu cầu ngay khi chọn loại page, và **từ chối lưu nếu
-> thiếu token**. Nếu tên token khác bảng trên, lấy theo dashboard — đừng sửa mò.
+> **Trang chặn của WAF không phải lỗi 1XXX.** Token `::CLOUDFLARE_ERROR_1000S_BOX::`
+> chỉ được thay ở slot *1XXX Errors*; dán nó vào response của WAF custom rule thì
+> nó hiện nguyên chữ trên trang. Ở đó chỉ dùng được token tuỳ chọn: `::RAY_ID::`,
+> `::CLIENT_IP::`, `::GEO::`.
+>
+> Danh sách token chuẩn:
+> <https://developers.cloudflare.com/rules/custom-errors/reference/error-tokens/>
+
+Token bắt buộc theo doc: `::CAPTCHA_BOX::` (Interactive / Country / Managed
+Challenge, I'm Under Attack), `::IM_UNDER_ATTACK_BOX::` (Non-Interactive
+Challenge), `::CLOUDFLARE_ERROR_500S_BOX::` (5XX), `::CLOUDFLARE_ERROR_1000S_BOX::`
+(1XXX). Ba token tuỳ chọn `::CLIENT_IP::`, `::RAY_ID::`, `::GEO::` dùng được ở
+mọi trang lỗi, custom asset và inline response.
 
 ## Giới hạn: không giấu được hoàn toàn
 
