@@ -168,6 +168,7 @@ export default {
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     accounts: '账号管理',
+    upstreamBalance: '上游余额',
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     ops: '运维监控',

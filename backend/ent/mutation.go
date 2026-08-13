@@ -44,6 +44,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/Wei-Shaw/sub2api/ent/upstreambalancemonitor"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -95,6 +96,7 @@ const (
 	TypeSetting                       = "Setting"
 	TypeSubscriptionPlan              = "SubscriptionPlan"
 	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
+	TypeUpstreamBalanceMonitor        = "UpstreamBalanceMonitor"
 	TypeUsageCleanupTask              = "UsageCleanupTask"
 	TypeUsageLog                      = "UsageLog"
 	TypeUser                          = "User"
@@ -42033,6 +42035,1337 @@ func (m *TLSFingerprintProfileMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *TLSFingerprintProfileMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown TLSFingerprintProfile edge %s", name)
+}
+
+// UpstreamBalanceMonitorMutation represents an operation that mutates the UpstreamBalanceMonitor nodes in the graph.
+type UpstreamBalanceMonitorMutation struct {
+	config
+	op                           Op
+	typ                          string
+	id                           *int64
+	created_at                   *time.Time
+	updated_at                   *time.Time
+	name                         *string
+	_type                        *upstreambalancemonitor.Type
+	base_url                     *string
+	api_key_encrypted            *string
+	enabled                      *bool
+	display_order                *int
+	adddisplay_order             *int
+	probe_interval_minutes       *int
+	addprobe_interval_minutes    *int
+	low_balance_threshold_usd    *float64
+	addlow_balance_threshold_usd *float64
+	last_probe_at                *time.Time
+	last_probe_status            *string
+	last_probe_error             *string
+	snapshot_data                *map[string]interface{}
+	next_probe_at                *time.Time
+	failure_count                *int
+	addfailure_count             *int
+	clearedFields                map[string]struct{}
+	done                         bool
+	oldValue                     func(context.Context) (*UpstreamBalanceMonitor, error)
+	predicates                   []predicate.UpstreamBalanceMonitor
+}
+
+var _ ent.Mutation = (*UpstreamBalanceMonitorMutation)(nil)
+
+// upstreambalancemonitorOption allows management of the mutation configuration using functional options.
+type upstreambalancemonitorOption func(*UpstreamBalanceMonitorMutation)
+
+// newUpstreamBalanceMonitorMutation creates new mutation for the UpstreamBalanceMonitor entity.
+func newUpstreamBalanceMonitorMutation(c config, op Op, opts ...upstreambalancemonitorOption) *UpstreamBalanceMonitorMutation {
+	m := &UpstreamBalanceMonitorMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeUpstreamBalanceMonitor,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withUpstreamBalanceMonitorID sets the ID field of the mutation.
+func withUpstreamBalanceMonitorID(id int64) upstreambalancemonitorOption {
+	return func(m *UpstreamBalanceMonitorMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *UpstreamBalanceMonitor
+		)
+		m.oldValue = func(ctx context.Context) (*UpstreamBalanceMonitor, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().UpstreamBalanceMonitor.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withUpstreamBalanceMonitor sets the old UpstreamBalanceMonitor of the mutation.
+func withUpstreamBalanceMonitor(node *UpstreamBalanceMonitor) upstreambalancemonitorOption {
+	return func(m *UpstreamBalanceMonitorMutation) {
+		m.oldValue = func(context.Context) (*UpstreamBalanceMonitor, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m UpstreamBalanceMonitorMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m UpstreamBalanceMonitorMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *UpstreamBalanceMonitorMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *UpstreamBalanceMonitorMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().UpstreamBalanceMonitor.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *UpstreamBalanceMonitorMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *UpstreamBalanceMonitorMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *UpstreamBalanceMonitorMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *UpstreamBalanceMonitorMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetName sets the "name" field.
+func (m *UpstreamBalanceMonitorMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *UpstreamBalanceMonitorMutation) ResetName() {
+	m.name = nil
+}
+
+// SetType sets the "type" field.
+func (m *UpstreamBalanceMonitorMutation) SetType(u upstreambalancemonitor.Type) {
+	m._type = &u
+}
+
+// GetType returns the value of the "type" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) GetType() (r upstreambalancemonitor.Type, exists bool) {
+	v := m._type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldType returns the old "type" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldType(ctx context.Context) (v upstreambalancemonitor.Type, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldType: %w", err)
+	}
+	return oldValue.Type, nil
+}
+
+// ResetType resets all changes to the "type" field.
+func (m *UpstreamBalanceMonitorMutation) ResetType() {
+	m._type = nil
+}
+
+// SetBaseURL sets the "base_url" field.
+func (m *UpstreamBalanceMonitorMutation) SetBaseURL(s string) {
+	m.base_url = &s
+}
+
+// BaseURL returns the value of the "base_url" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) BaseURL() (r string, exists bool) {
+	v := m.base_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseURL returns the old "base_url" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldBaseURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseURL: %w", err)
+	}
+	return oldValue.BaseURL, nil
+}
+
+// ResetBaseURL resets all changes to the "base_url" field.
+func (m *UpstreamBalanceMonitorMutation) ResetBaseURL() {
+	m.base_url = nil
+}
+
+// SetAPIKeyEncrypted sets the "api_key_encrypted" field.
+func (m *UpstreamBalanceMonitorMutation) SetAPIKeyEncrypted(s string) {
+	m.api_key_encrypted = &s
+}
+
+// APIKeyEncrypted returns the value of the "api_key_encrypted" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) APIKeyEncrypted() (r string, exists bool) {
+	v := m.api_key_encrypted
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyEncrypted returns the old "api_key_encrypted" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldAPIKeyEncrypted(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyEncrypted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyEncrypted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyEncrypted: %w", err)
+	}
+	return oldValue.APIKeyEncrypted, nil
+}
+
+// ResetAPIKeyEncrypted resets all changes to the "api_key_encrypted" field.
+func (m *UpstreamBalanceMonitorMutation) ResetAPIKeyEncrypted() {
+	m.api_key_encrypted = nil
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *UpstreamBalanceMonitorMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *UpstreamBalanceMonitorMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetDisplayOrder sets the "display_order" field.
+func (m *UpstreamBalanceMonitorMutation) SetDisplayOrder(i int) {
+	m.display_order = &i
+	m.adddisplay_order = nil
+}
+
+// DisplayOrder returns the value of the "display_order" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) DisplayOrder() (r int, exists bool) {
+	v := m.display_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDisplayOrder returns the old "display_order" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldDisplayOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDisplayOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDisplayOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDisplayOrder: %w", err)
+	}
+	return oldValue.DisplayOrder, nil
+}
+
+// AddDisplayOrder adds i to the "display_order" field.
+func (m *UpstreamBalanceMonitorMutation) AddDisplayOrder(i int) {
+	if m.adddisplay_order != nil {
+		*m.adddisplay_order += i
+	} else {
+		m.adddisplay_order = &i
+	}
+}
+
+// AddedDisplayOrder returns the value that was added to the "display_order" field in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedDisplayOrder() (r int, exists bool) {
+	v := m.adddisplay_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDisplayOrder resets all changes to the "display_order" field.
+func (m *UpstreamBalanceMonitorMutation) ResetDisplayOrder() {
+	m.display_order = nil
+	m.adddisplay_order = nil
+}
+
+// SetProbeIntervalMinutes sets the "probe_interval_minutes" field.
+func (m *UpstreamBalanceMonitorMutation) SetProbeIntervalMinutes(i int) {
+	m.probe_interval_minutes = &i
+	m.addprobe_interval_minutes = nil
+}
+
+// ProbeIntervalMinutes returns the value of the "probe_interval_minutes" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) ProbeIntervalMinutes() (r int, exists bool) {
+	v := m.probe_interval_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProbeIntervalMinutes returns the old "probe_interval_minutes" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldProbeIntervalMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProbeIntervalMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProbeIntervalMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProbeIntervalMinutes: %w", err)
+	}
+	return oldValue.ProbeIntervalMinutes, nil
+}
+
+// AddProbeIntervalMinutes adds i to the "probe_interval_minutes" field.
+func (m *UpstreamBalanceMonitorMutation) AddProbeIntervalMinutes(i int) {
+	if m.addprobe_interval_minutes != nil {
+		*m.addprobe_interval_minutes += i
+	} else {
+		m.addprobe_interval_minutes = &i
+	}
+}
+
+// AddedProbeIntervalMinutes returns the value that was added to the "probe_interval_minutes" field in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedProbeIntervalMinutes() (r int, exists bool) {
+	v := m.addprobe_interval_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProbeIntervalMinutes resets all changes to the "probe_interval_minutes" field.
+func (m *UpstreamBalanceMonitorMutation) ResetProbeIntervalMinutes() {
+	m.probe_interval_minutes = nil
+	m.addprobe_interval_minutes = nil
+}
+
+// SetLowBalanceThresholdUsd sets the "low_balance_threshold_usd" field.
+func (m *UpstreamBalanceMonitorMutation) SetLowBalanceThresholdUsd(f float64) {
+	m.low_balance_threshold_usd = &f
+	m.addlow_balance_threshold_usd = nil
+}
+
+// LowBalanceThresholdUsd returns the value of the "low_balance_threshold_usd" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) LowBalanceThresholdUsd() (r float64, exists bool) {
+	v := m.low_balance_threshold_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLowBalanceThresholdUsd returns the old "low_balance_threshold_usd" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldLowBalanceThresholdUsd(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLowBalanceThresholdUsd is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLowBalanceThresholdUsd requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLowBalanceThresholdUsd: %w", err)
+	}
+	return oldValue.LowBalanceThresholdUsd, nil
+}
+
+// AddLowBalanceThresholdUsd adds f to the "low_balance_threshold_usd" field.
+func (m *UpstreamBalanceMonitorMutation) AddLowBalanceThresholdUsd(f float64) {
+	if m.addlow_balance_threshold_usd != nil {
+		*m.addlow_balance_threshold_usd += f
+	} else {
+		m.addlow_balance_threshold_usd = &f
+	}
+}
+
+// AddedLowBalanceThresholdUsd returns the value that was added to the "low_balance_threshold_usd" field in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedLowBalanceThresholdUsd() (r float64, exists bool) {
+	v := m.addlow_balance_threshold_usd
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetLowBalanceThresholdUsd resets all changes to the "low_balance_threshold_usd" field.
+func (m *UpstreamBalanceMonitorMutation) ResetLowBalanceThresholdUsd() {
+	m.low_balance_threshold_usd = nil
+	m.addlow_balance_threshold_usd = nil
+}
+
+// SetLastProbeAt sets the "last_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) SetLastProbeAt(t time.Time) {
+	m.last_probe_at = &t
+}
+
+// LastProbeAt returns the value of the "last_probe_at" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) LastProbeAt() (r time.Time, exists bool) {
+	v := m.last_probe_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeAt returns the old "last_probe_at" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldLastProbeAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeAt: %w", err)
+	}
+	return oldValue.LastProbeAt, nil
+}
+
+// ClearLastProbeAt clears the value of the "last_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) ClearLastProbeAt() {
+	m.last_probe_at = nil
+	m.clearedFields[upstreambalancemonitor.FieldLastProbeAt] = struct{}{}
+}
+
+// LastProbeAtCleared returns if the "last_probe_at" field was cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) LastProbeAtCleared() bool {
+	_, ok := m.clearedFields[upstreambalancemonitor.FieldLastProbeAt]
+	return ok
+}
+
+// ResetLastProbeAt resets all changes to the "last_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) ResetLastProbeAt() {
+	m.last_probe_at = nil
+	delete(m.clearedFields, upstreambalancemonitor.FieldLastProbeAt)
+}
+
+// SetLastProbeStatus sets the "last_probe_status" field.
+func (m *UpstreamBalanceMonitorMutation) SetLastProbeStatus(s string) {
+	m.last_probe_status = &s
+}
+
+// LastProbeStatus returns the value of the "last_probe_status" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) LastProbeStatus() (r string, exists bool) {
+	v := m.last_probe_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeStatus returns the old "last_probe_status" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldLastProbeStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeStatus: %w", err)
+	}
+	return oldValue.LastProbeStatus, nil
+}
+
+// ResetLastProbeStatus resets all changes to the "last_probe_status" field.
+func (m *UpstreamBalanceMonitorMutation) ResetLastProbeStatus() {
+	m.last_probe_status = nil
+}
+
+// SetLastProbeError sets the "last_probe_error" field.
+func (m *UpstreamBalanceMonitorMutation) SetLastProbeError(s string) {
+	m.last_probe_error = &s
+}
+
+// LastProbeError returns the value of the "last_probe_error" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) LastProbeError() (r string, exists bool) {
+	v := m.last_probe_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeError returns the old "last_probe_error" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldLastProbeError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeError: %w", err)
+	}
+	return oldValue.LastProbeError, nil
+}
+
+// ClearLastProbeError clears the value of the "last_probe_error" field.
+func (m *UpstreamBalanceMonitorMutation) ClearLastProbeError() {
+	m.last_probe_error = nil
+	m.clearedFields[upstreambalancemonitor.FieldLastProbeError] = struct{}{}
+}
+
+// LastProbeErrorCleared returns if the "last_probe_error" field was cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) LastProbeErrorCleared() bool {
+	_, ok := m.clearedFields[upstreambalancemonitor.FieldLastProbeError]
+	return ok
+}
+
+// ResetLastProbeError resets all changes to the "last_probe_error" field.
+func (m *UpstreamBalanceMonitorMutation) ResetLastProbeError() {
+	m.last_probe_error = nil
+	delete(m.clearedFields, upstreambalancemonitor.FieldLastProbeError)
+}
+
+// SetSnapshotData sets the "snapshot_data" field.
+func (m *UpstreamBalanceMonitorMutation) SetSnapshotData(value map[string]interface{}) {
+	m.snapshot_data = &value
+}
+
+// SnapshotData returns the value of the "snapshot_data" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) SnapshotData() (r map[string]interface{}, exists bool) {
+	v := m.snapshot_data
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSnapshotData returns the old "snapshot_data" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldSnapshotData(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSnapshotData is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSnapshotData requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSnapshotData: %w", err)
+	}
+	return oldValue.SnapshotData, nil
+}
+
+// ResetSnapshotData resets all changes to the "snapshot_data" field.
+func (m *UpstreamBalanceMonitorMutation) ResetSnapshotData() {
+	m.snapshot_data = nil
+}
+
+// SetNextProbeAt sets the "next_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) SetNextProbeAt(t time.Time) {
+	m.next_probe_at = &t
+}
+
+// NextProbeAt returns the value of the "next_probe_at" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) NextProbeAt() (r time.Time, exists bool) {
+	v := m.next_probe_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextProbeAt returns the old "next_probe_at" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldNextProbeAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextProbeAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextProbeAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextProbeAt: %w", err)
+	}
+	return oldValue.NextProbeAt, nil
+}
+
+// ClearNextProbeAt clears the value of the "next_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) ClearNextProbeAt() {
+	m.next_probe_at = nil
+	m.clearedFields[upstreambalancemonitor.FieldNextProbeAt] = struct{}{}
+}
+
+// NextProbeAtCleared returns if the "next_probe_at" field was cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) NextProbeAtCleared() bool {
+	_, ok := m.clearedFields[upstreambalancemonitor.FieldNextProbeAt]
+	return ok
+}
+
+// ResetNextProbeAt resets all changes to the "next_probe_at" field.
+func (m *UpstreamBalanceMonitorMutation) ResetNextProbeAt() {
+	m.next_probe_at = nil
+	delete(m.clearedFields, upstreambalancemonitor.FieldNextProbeAt)
+}
+
+// SetFailureCount sets the "failure_count" field.
+func (m *UpstreamBalanceMonitorMutation) SetFailureCount(i int) {
+	m.failure_count = &i
+	m.addfailure_count = nil
+}
+
+// FailureCount returns the value of the "failure_count" field in the mutation.
+func (m *UpstreamBalanceMonitorMutation) FailureCount() (r int, exists bool) {
+	v := m.failure_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailureCount returns the old "failure_count" field's value of the UpstreamBalanceMonitor entity.
+// If the UpstreamBalanceMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UpstreamBalanceMonitorMutation) OldFailureCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailureCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailureCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailureCount: %w", err)
+	}
+	return oldValue.FailureCount, nil
+}
+
+// AddFailureCount adds i to the "failure_count" field.
+func (m *UpstreamBalanceMonitorMutation) AddFailureCount(i int) {
+	if m.addfailure_count != nil {
+		*m.addfailure_count += i
+	} else {
+		m.addfailure_count = &i
+	}
+}
+
+// AddedFailureCount returns the value that was added to the "failure_count" field in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedFailureCount() (r int, exists bool) {
+	v := m.addfailure_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFailureCount resets all changes to the "failure_count" field.
+func (m *UpstreamBalanceMonitorMutation) ResetFailureCount() {
+	m.failure_count = nil
+	m.addfailure_count = nil
+}
+
+// Where appends a list predicates to the UpstreamBalanceMonitorMutation builder.
+func (m *UpstreamBalanceMonitorMutation) Where(ps ...predicate.UpstreamBalanceMonitor) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the UpstreamBalanceMonitorMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *UpstreamBalanceMonitorMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.UpstreamBalanceMonitor, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *UpstreamBalanceMonitorMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *UpstreamBalanceMonitorMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (UpstreamBalanceMonitor).
+func (m *UpstreamBalanceMonitorMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *UpstreamBalanceMonitorMutation) Fields() []string {
+	fields := make([]string, 0, 16)
+	if m.created_at != nil {
+		fields = append(fields, upstreambalancemonitor.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, upstreambalancemonitor.FieldUpdatedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, upstreambalancemonitor.FieldName)
+	}
+	if m._type != nil {
+		fields = append(fields, upstreambalancemonitor.FieldType)
+	}
+	if m.base_url != nil {
+		fields = append(fields, upstreambalancemonitor.FieldBaseURL)
+	}
+	if m.api_key_encrypted != nil {
+		fields = append(fields, upstreambalancemonitor.FieldAPIKeyEncrypted)
+	}
+	if m.enabled != nil {
+		fields = append(fields, upstreambalancemonitor.FieldEnabled)
+	}
+	if m.display_order != nil {
+		fields = append(fields, upstreambalancemonitor.FieldDisplayOrder)
+	}
+	if m.probe_interval_minutes != nil {
+		fields = append(fields, upstreambalancemonitor.FieldProbeIntervalMinutes)
+	}
+	if m.low_balance_threshold_usd != nil {
+		fields = append(fields, upstreambalancemonitor.FieldLowBalanceThresholdUsd)
+	}
+	if m.last_probe_at != nil {
+		fields = append(fields, upstreambalancemonitor.FieldLastProbeAt)
+	}
+	if m.last_probe_status != nil {
+		fields = append(fields, upstreambalancemonitor.FieldLastProbeStatus)
+	}
+	if m.last_probe_error != nil {
+		fields = append(fields, upstreambalancemonitor.FieldLastProbeError)
+	}
+	if m.snapshot_data != nil {
+		fields = append(fields, upstreambalancemonitor.FieldSnapshotData)
+	}
+	if m.next_probe_at != nil {
+		fields = append(fields, upstreambalancemonitor.FieldNextProbeAt)
+	}
+	if m.failure_count != nil {
+		fields = append(fields, upstreambalancemonitor.FieldFailureCount)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *UpstreamBalanceMonitorMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case upstreambalancemonitor.FieldCreatedAt:
+		return m.CreatedAt()
+	case upstreambalancemonitor.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case upstreambalancemonitor.FieldName:
+		return m.Name()
+	case upstreambalancemonitor.FieldType:
+		return m.GetType()
+	case upstreambalancemonitor.FieldBaseURL:
+		return m.BaseURL()
+	case upstreambalancemonitor.FieldAPIKeyEncrypted:
+		return m.APIKeyEncrypted()
+	case upstreambalancemonitor.FieldEnabled:
+		return m.Enabled()
+	case upstreambalancemonitor.FieldDisplayOrder:
+		return m.DisplayOrder()
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		return m.ProbeIntervalMinutes()
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		return m.LowBalanceThresholdUsd()
+	case upstreambalancemonitor.FieldLastProbeAt:
+		return m.LastProbeAt()
+	case upstreambalancemonitor.FieldLastProbeStatus:
+		return m.LastProbeStatus()
+	case upstreambalancemonitor.FieldLastProbeError:
+		return m.LastProbeError()
+	case upstreambalancemonitor.FieldSnapshotData:
+		return m.SnapshotData()
+	case upstreambalancemonitor.FieldNextProbeAt:
+		return m.NextProbeAt()
+	case upstreambalancemonitor.FieldFailureCount:
+		return m.FailureCount()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *UpstreamBalanceMonitorMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case upstreambalancemonitor.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case upstreambalancemonitor.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case upstreambalancemonitor.FieldName:
+		return m.OldName(ctx)
+	case upstreambalancemonitor.FieldType:
+		return m.OldType(ctx)
+	case upstreambalancemonitor.FieldBaseURL:
+		return m.OldBaseURL(ctx)
+	case upstreambalancemonitor.FieldAPIKeyEncrypted:
+		return m.OldAPIKeyEncrypted(ctx)
+	case upstreambalancemonitor.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case upstreambalancemonitor.FieldDisplayOrder:
+		return m.OldDisplayOrder(ctx)
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		return m.OldProbeIntervalMinutes(ctx)
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		return m.OldLowBalanceThresholdUsd(ctx)
+	case upstreambalancemonitor.FieldLastProbeAt:
+		return m.OldLastProbeAt(ctx)
+	case upstreambalancemonitor.FieldLastProbeStatus:
+		return m.OldLastProbeStatus(ctx)
+	case upstreambalancemonitor.FieldLastProbeError:
+		return m.OldLastProbeError(ctx)
+	case upstreambalancemonitor.FieldSnapshotData:
+		return m.OldSnapshotData(ctx)
+	case upstreambalancemonitor.FieldNextProbeAt:
+		return m.OldNextProbeAt(ctx)
+	case upstreambalancemonitor.FieldFailureCount:
+		return m.OldFailureCount(ctx)
+	}
+	return nil, fmt.Errorf("unknown UpstreamBalanceMonitor field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamBalanceMonitorMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case upstreambalancemonitor.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case upstreambalancemonitor.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case upstreambalancemonitor.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case upstreambalancemonitor.FieldType:
+		v, ok := value.(upstreambalancemonitor.Type)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetType(v)
+		return nil
+	case upstreambalancemonitor.FieldBaseURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseURL(v)
+		return nil
+	case upstreambalancemonitor.FieldAPIKeyEncrypted:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyEncrypted(v)
+		return nil
+	case upstreambalancemonitor.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case upstreambalancemonitor.FieldDisplayOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDisplayOrder(v)
+		return nil
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProbeIntervalMinutes(v)
+		return nil
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLowBalanceThresholdUsd(v)
+		return nil
+	case upstreambalancemonitor.FieldLastProbeAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeAt(v)
+		return nil
+	case upstreambalancemonitor.FieldLastProbeStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeStatus(v)
+		return nil
+	case upstreambalancemonitor.FieldLastProbeError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeError(v)
+		return nil
+	case upstreambalancemonitor.FieldSnapshotData:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSnapshotData(v)
+		return nil
+	case upstreambalancemonitor.FieldNextProbeAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextProbeAt(v)
+		return nil
+	case upstreambalancemonitor.FieldFailureCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailureCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamBalanceMonitor field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedFields() []string {
+	var fields []string
+	if m.adddisplay_order != nil {
+		fields = append(fields, upstreambalancemonitor.FieldDisplayOrder)
+	}
+	if m.addprobe_interval_minutes != nil {
+		fields = append(fields, upstreambalancemonitor.FieldProbeIntervalMinutes)
+	}
+	if m.addlow_balance_threshold_usd != nil {
+		fields = append(fields, upstreambalancemonitor.FieldLowBalanceThresholdUsd)
+	}
+	if m.addfailure_count != nil {
+		fields = append(fields, upstreambalancemonitor.FieldFailureCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *UpstreamBalanceMonitorMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case upstreambalancemonitor.FieldDisplayOrder:
+		return m.AddedDisplayOrder()
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		return m.AddedProbeIntervalMinutes()
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		return m.AddedLowBalanceThresholdUsd()
+	case upstreambalancemonitor.FieldFailureCount:
+		return m.AddedFailureCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *UpstreamBalanceMonitorMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case upstreambalancemonitor.FieldDisplayOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDisplayOrder(v)
+		return nil
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProbeIntervalMinutes(v)
+		return nil
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddLowBalanceThresholdUsd(v)
+		return nil
+	case upstreambalancemonitor.FieldFailureCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFailureCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamBalanceMonitor numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *UpstreamBalanceMonitorMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(upstreambalancemonitor.FieldLastProbeAt) {
+		fields = append(fields, upstreambalancemonitor.FieldLastProbeAt)
+	}
+	if m.FieldCleared(upstreambalancemonitor.FieldLastProbeError) {
+		fields = append(fields, upstreambalancemonitor.FieldLastProbeError)
+	}
+	if m.FieldCleared(upstreambalancemonitor.FieldNextProbeAt) {
+		fields = append(fields, upstreambalancemonitor.FieldNextProbeAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *UpstreamBalanceMonitorMutation) ClearField(name string) error {
+	switch name {
+	case upstreambalancemonitor.FieldLastProbeAt:
+		m.ClearLastProbeAt()
+		return nil
+	case upstreambalancemonitor.FieldLastProbeError:
+		m.ClearLastProbeError()
+		return nil
+	case upstreambalancemonitor.FieldNextProbeAt:
+		m.ClearNextProbeAt()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamBalanceMonitor nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *UpstreamBalanceMonitorMutation) ResetField(name string) error {
+	switch name {
+	case upstreambalancemonitor.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case upstreambalancemonitor.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case upstreambalancemonitor.FieldName:
+		m.ResetName()
+		return nil
+	case upstreambalancemonitor.FieldType:
+		m.ResetType()
+		return nil
+	case upstreambalancemonitor.FieldBaseURL:
+		m.ResetBaseURL()
+		return nil
+	case upstreambalancemonitor.FieldAPIKeyEncrypted:
+		m.ResetAPIKeyEncrypted()
+		return nil
+	case upstreambalancemonitor.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case upstreambalancemonitor.FieldDisplayOrder:
+		m.ResetDisplayOrder()
+		return nil
+	case upstreambalancemonitor.FieldProbeIntervalMinutes:
+		m.ResetProbeIntervalMinutes()
+		return nil
+	case upstreambalancemonitor.FieldLowBalanceThresholdUsd:
+		m.ResetLowBalanceThresholdUsd()
+		return nil
+	case upstreambalancemonitor.FieldLastProbeAt:
+		m.ResetLastProbeAt()
+		return nil
+	case upstreambalancemonitor.FieldLastProbeStatus:
+		m.ResetLastProbeStatus()
+		return nil
+	case upstreambalancemonitor.FieldLastProbeError:
+		m.ResetLastProbeError()
+		return nil
+	case upstreambalancemonitor.FieldSnapshotData:
+		m.ResetSnapshotData()
+		return nil
+	case upstreambalancemonitor.FieldNextProbeAt:
+		m.ResetNextProbeAt()
+		return nil
+	case upstreambalancemonitor.FieldFailureCount:
+		m.ResetFailureCount()
+		return nil
+	}
+	return fmt.Errorf("unknown UpstreamBalanceMonitor field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *UpstreamBalanceMonitorMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *UpstreamBalanceMonitorMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *UpstreamBalanceMonitorMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *UpstreamBalanceMonitorMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *UpstreamBalanceMonitorMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown UpstreamBalanceMonitor unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *UpstreamBalanceMonitorMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown UpstreamBalanceMonitor edge %s", name)
 }
 
 // UsageCleanupTaskMutation represents an operation that mutates the UsageCleanupTask nodes in the graph.

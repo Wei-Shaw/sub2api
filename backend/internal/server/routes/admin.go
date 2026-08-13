@@ -105,6 +105,9 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
 
+		// 上游余额监控
+		registerUpstreamBalanceMonitorRoutes(admin, h)
+
 		// 风控中心
 		registerContentModerationRoutes(admin, h)
 
@@ -116,6 +119,18 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerUpstreamBalanceMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	monitors := admin.Group("/upstream-balance-monitors")
+	{
+		monitors.GET("", h.Admin.UpstreamBalance.List)
+		monitors.POST("", h.Admin.UpstreamBalance.Create)
+		monitors.POST("/probe-all", h.Admin.UpstreamBalance.ProbeAll)
+		monitors.PUT("/:id", h.Admin.UpstreamBalance.Update)
+		monitors.DELETE("/:id", h.Admin.UpstreamBalance.Delete)
+		monitors.POST("/:id/probe", h.Admin.UpstreamBalance.Probe)
 	}
 }
 

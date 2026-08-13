@@ -1573,6 +1573,44 @@ var (
 		Columns:    TLSFingerprintProfilesColumns,
 		PrimaryKey: []*schema.Column{TLSFingerprintProfilesColumns[0]},
 	}
+	// UpstreamBalanceMonitorsColumns holds the columns for the "upstream_balance_monitors" table.
+	UpstreamBalanceMonitorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "type", Type: field.TypeEnum, Enums: []string{"sub2api", "newapi"}},
+		{Name: "base_url", Type: field.TypeString, Size: 500},
+		{Name: "api_key_encrypted", Type: field.TypeString},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "display_order", Type: field.TypeInt, Default: 0},
+		{Name: "probe_interval_minutes", Type: field.TypeInt, Default: 30},
+		{Name: "low_balance_threshold_usd", Type: field.TypeFloat64, Default: 10},
+		{Name: "last_probe_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_probe_status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "last_probe_error", Type: field.TypeString, Nullable: true},
+		{Name: "snapshot_data", Type: field.TypeJSON},
+		{Name: "next_probe_at", Type: field.TypeTime, Nullable: true},
+		{Name: "failure_count", Type: field.TypeInt, Default: 0},
+	}
+	// UpstreamBalanceMonitorsTable holds the schema information for the "upstream_balance_monitors" table.
+	UpstreamBalanceMonitorsTable = &schema.Table{
+		Name:       "upstream_balance_monitors",
+		Columns:    UpstreamBalanceMonitorsColumns,
+		PrimaryKey: []*schema.Column{UpstreamBalanceMonitorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "upstreambalancemonitor_enabled_next_probe_at",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamBalanceMonitorsColumns[7], UpstreamBalanceMonitorsColumns[15]},
+			},
+			{
+				Name:    "upstreambalancemonitor_display_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{UpstreamBalanceMonitorsColumns[8], UpstreamBalanceMonitorsColumns[0]},
+			},
+		},
+	}
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2094,6 +2132,7 @@ var (
 		SettingsTable,
 		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
+		UpstreamBalanceMonitorsTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -2221,6 +2260,9 @@ func init() {
 	}
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",
+	}
+	UpstreamBalanceMonitorsTable.Annotation = &entsql.Annotation{
+		Table: "upstream_balance_monitors",
 	}
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

@@ -37,6 +37,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
+	"github.com/Wei-Shaw/sub2api/ent/upstreambalancemonitor"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -1887,6 +1888,97 @@ func init() {
 	tlsfingerprintprofileDescEnableGrease := tlsfingerprintprofileFields[2].Descriptor()
 	// tlsfingerprintprofile.DefaultEnableGrease holds the default value on creation for the enable_grease field.
 	tlsfingerprintprofile.DefaultEnableGrease = tlsfingerprintprofileDescEnableGrease.Default.(bool)
+	upstreambalancemonitorMixin := schema.UpstreamBalanceMonitor{}.Mixin()
+	upstreambalancemonitorMixinFields0 := upstreambalancemonitorMixin[0].Fields()
+	_ = upstreambalancemonitorMixinFields0
+	upstreambalancemonitorFields := schema.UpstreamBalanceMonitor{}.Fields()
+	_ = upstreambalancemonitorFields
+	// upstreambalancemonitorDescCreatedAt is the schema descriptor for created_at field.
+	upstreambalancemonitorDescCreatedAt := upstreambalancemonitorMixinFields0[0].Descriptor()
+	// upstreambalancemonitor.DefaultCreatedAt holds the default value on creation for the created_at field.
+	upstreambalancemonitor.DefaultCreatedAt = upstreambalancemonitorDescCreatedAt.Default.(func() time.Time)
+	// upstreambalancemonitorDescUpdatedAt is the schema descriptor for updated_at field.
+	upstreambalancemonitorDescUpdatedAt := upstreambalancemonitorMixinFields0[1].Descriptor()
+	// upstreambalancemonitor.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	upstreambalancemonitor.DefaultUpdatedAt = upstreambalancemonitorDescUpdatedAt.Default.(func() time.Time)
+	// upstreambalancemonitor.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	upstreambalancemonitor.UpdateDefaultUpdatedAt = upstreambalancemonitorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// upstreambalancemonitorDescName is the schema descriptor for name field.
+	upstreambalancemonitorDescName := upstreambalancemonitorFields[0].Descriptor()
+	// upstreambalancemonitor.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	upstreambalancemonitor.NameValidator = func() func(string) error {
+		validators := upstreambalancemonitorDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreambalancemonitorDescBaseURL is the schema descriptor for base_url field.
+	upstreambalancemonitorDescBaseURL := upstreambalancemonitorFields[2].Descriptor()
+	// upstreambalancemonitor.BaseURLValidator is a validator for the "base_url" field. It is called by the builders before save.
+	upstreambalancemonitor.BaseURLValidator = func() func(string) error {
+		validators := upstreambalancemonitorDescBaseURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(base_url string) error {
+			for _, fn := range fns {
+				if err := fn(base_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// upstreambalancemonitorDescAPIKeyEncrypted is the schema descriptor for api_key_encrypted field.
+	upstreambalancemonitorDescAPIKeyEncrypted := upstreambalancemonitorFields[3].Descriptor()
+	// upstreambalancemonitor.APIKeyEncryptedValidator is a validator for the "api_key_encrypted" field. It is called by the builders before save.
+	upstreambalancemonitor.APIKeyEncryptedValidator = upstreambalancemonitorDescAPIKeyEncrypted.Validators[0].(func(string) error)
+	// upstreambalancemonitorDescEnabled is the schema descriptor for enabled field.
+	upstreambalancemonitorDescEnabled := upstreambalancemonitorFields[4].Descriptor()
+	// upstreambalancemonitor.DefaultEnabled holds the default value on creation for the enabled field.
+	upstreambalancemonitor.DefaultEnabled = upstreambalancemonitorDescEnabled.Default.(bool)
+	// upstreambalancemonitorDescDisplayOrder is the schema descriptor for display_order field.
+	upstreambalancemonitorDescDisplayOrder := upstreambalancemonitorFields[5].Descriptor()
+	// upstreambalancemonitor.DefaultDisplayOrder holds the default value on creation for the display_order field.
+	upstreambalancemonitor.DefaultDisplayOrder = upstreambalancemonitorDescDisplayOrder.Default.(int)
+	// upstreambalancemonitorDescProbeIntervalMinutes is the schema descriptor for probe_interval_minutes field.
+	upstreambalancemonitorDescProbeIntervalMinutes := upstreambalancemonitorFields[6].Descriptor()
+	// upstreambalancemonitor.DefaultProbeIntervalMinutes holds the default value on creation for the probe_interval_minutes field.
+	upstreambalancemonitor.DefaultProbeIntervalMinutes = upstreambalancemonitorDescProbeIntervalMinutes.Default.(int)
+	// upstreambalancemonitor.ProbeIntervalMinutesValidator is a validator for the "probe_interval_minutes" field. It is called by the builders before save.
+	upstreambalancemonitor.ProbeIntervalMinutesValidator = upstreambalancemonitorDescProbeIntervalMinutes.Validators[0].(func(int) error)
+	// upstreambalancemonitorDescLowBalanceThresholdUsd is the schema descriptor for low_balance_threshold_usd field.
+	upstreambalancemonitorDescLowBalanceThresholdUsd := upstreambalancemonitorFields[7].Descriptor()
+	// upstreambalancemonitor.DefaultLowBalanceThresholdUsd holds the default value on creation for the low_balance_threshold_usd field.
+	upstreambalancemonitor.DefaultLowBalanceThresholdUsd = upstreambalancemonitorDescLowBalanceThresholdUsd.Default.(float64)
+	// upstreambalancemonitor.LowBalanceThresholdUsdValidator is a validator for the "low_balance_threshold_usd" field. It is called by the builders before save.
+	upstreambalancemonitor.LowBalanceThresholdUsdValidator = upstreambalancemonitorDescLowBalanceThresholdUsd.Validators[0].(func(float64) error)
+	// upstreambalancemonitorDescLastProbeStatus is the schema descriptor for last_probe_status field.
+	upstreambalancemonitorDescLastProbeStatus := upstreambalancemonitorFields[9].Descriptor()
+	// upstreambalancemonitor.DefaultLastProbeStatus holds the default value on creation for the last_probe_status field.
+	upstreambalancemonitor.DefaultLastProbeStatus = upstreambalancemonitorDescLastProbeStatus.Default.(string)
+	// upstreambalancemonitor.LastProbeStatusValidator is a validator for the "last_probe_status" field. It is called by the builders before save.
+	upstreambalancemonitor.LastProbeStatusValidator = upstreambalancemonitorDescLastProbeStatus.Validators[0].(func(string) error)
+	// upstreambalancemonitorDescSnapshotData is the schema descriptor for snapshot_data field.
+	upstreambalancemonitorDescSnapshotData := upstreambalancemonitorFields[11].Descriptor()
+	// upstreambalancemonitor.DefaultSnapshotData holds the default value on creation for the snapshot_data field.
+	upstreambalancemonitor.DefaultSnapshotData = upstreambalancemonitorDescSnapshotData.Default.(map[string]interface{})
+	// upstreambalancemonitorDescFailureCount is the schema descriptor for failure_count field.
+	upstreambalancemonitorDescFailureCount := upstreambalancemonitorFields[13].Descriptor()
+	// upstreambalancemonitor.DefaultFailureCount holds the default value on creation for the failure_count field.
+	upstreambalancemonitor.DefaultFailureCount = upstreambalancemonitorDescFailureCount.Default.(int)
+	// upstreambalancemonitor.FailureCountValidator is a validator for the "failure_count" field. It is called by the builders before save.
+	upstreambalancemonitor.FailureCountValidator = upstreambalancemonitorDescFailureCount.Validators[0].(func(int) error)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{}.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

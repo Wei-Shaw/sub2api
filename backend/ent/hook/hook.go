@@ -381,6 +381,18 @@ func (f TLSFingerprintProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TLSFingerprintProfileMutation", m)
 }
 
+// The UpstreamBalanceMonitorFunc type is an adapter to allow the use of ordinary
+// function as UpstreamBalanceMonitor mutator.
+type UpstreamBalanceMonitorFunc func(context.Context, *ent.UpstreamBalanceMonitorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UpstreamBalanceMonitorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UpstreamBalanceMonitorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UpstreamBalanceMonitorMutation", m)
+}
+
 // The UsageCleanupTaskFunc type is an adapter to allow the use of ordinary
 // function as UsageCleanupTask mutator.
 type UsageCleanupTaskFunc func(context.Context, *ent.UsageCleanupTaskMutation) (ent.Value, error)
