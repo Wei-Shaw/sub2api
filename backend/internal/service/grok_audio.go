@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	coderws "github.com/coder/websocket"
@@ -117,20 +118,20 @@ REDACTED
 // ProxyGrokRealtime relays JSON Realtime events to xAI's native Voice WS.
 // Audio is carried as base64 inside JSON events, so preserving the JSON bytes
 // is sufficient and avoids translating protocol event types.
-func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Context, client *coderws.Conn, account *Account, token, model string) error {
+func (s *OpenAIGatewayService) ProxyGrokRealtime(ctx context.Context, c *gin.Context, client *coderws.Conn, account *Account, token, model string) (bool, error) {
 	if s == nil || client == nil || account == nil {
-		return fmt.Errorf("realtime service, client, and account are required")
+		return false, fmt.Errorf("realtime service, client, and account are required")
 REDACTED
 	if account.Platform != PlatformGrok {
-		return fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
+		return false, fmt.Errorf("account platform %s is not supported for grok realtime", account.Platform)
 REDACTED
 	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
 	if err != nil {
-		return err
+		return false, err
 REDACTED
 	u, err := url.Parse(base)
 	if err != nil {
-		return err
+		return false, err
 REDACTED
 	u.Scheme = "wss"
 	u.RawQuery = "model=" + url.QueryEscape(firstNonEmpty(model, "grok-voice-latest"))
@@ -150,13 +151,14 @@ REDACTED
 REDACTED
 	upstream, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL)
 	if err != nil {
-		return err
+		return false, err
 REDACTED
 	defer func() { _ = upstream.Close() REDACTED()
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	errCh := make(chan error, 2)
+	var audioObserved atomic.Bool
 
 	// Upstream → client
 	go func() {
@@ -165,6 +167,9 @@ REDACTED
 			if readErr != nil {
 				errCh <- readErr
 				return
+		REDACTED
+			if grokRealtimeEventHasAudio(msg) {
+				audioObserved.Store(true)
 		REDACTED
 			if writeErr := client.Write(ctx, coderws.MessageText, msg); writeErr != nil {
 				errCh <- writeErr
@@ -184,6 +189,9 @@ REDACTED()
 			if kind != coderws.MessageText && kind != coderws.MessageBinary {
 				continue
 		REDACTED
+			if grokRealtimeEventHasAudio(msg) {
+				audioObserved.Store(true)
+		REDACTED
 			var raw json.RawMessage
 			if unmarshalErr := json.Unmarshal(msg, &raw); unmarshalErr != nil {
 				errCh <- fmt.Errorf("invalid realtime event: %w", unmarshalErr)
@@ -196,7 +204,32 @@ REDACTED()
 	REDACTED
 REDACTED()
 
-	return <-errCh
+	return awaitGrokRealtimeAudioObserved(errCh, &audioObserved)
+REDACTED
+
+func awaitGrokRealtimeAudioObserved(errCh <-chan error, audioObserved *atomic.Bool) (bool, error) {
+	err := <-errCh
+	if audioObserved == nil {
+		return false, err
+REDACTED
+	return audioObserved.Load(), err
+REDACTED
+
+func grokRealtimeEventHasAudio(msg []byte) bool {
+	if !gjson.ValidBytes(msg) {
+		return false
+REDACTED
+	eventType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(msg, "type").String()))
+	if !strings.Contains(eventType, "audio") || strings.Contains(eventType, "transcript") {
+		return false
+REDACTED
+	for _, path := range []string{"audio", "delta", "data"REDACTED {
+		value := gjson.GetBytes(msg, path)
+		if value.Type == gjson.String && strings.TrimSpace(value.String()) != "" {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 // estimateGrokVoiceAudioUsage derives billing units from the request/response.
