@@ -113,38 +113,13 @@ const ALLOWED: Record<string, string[]> = {
   // These are already INERT — the backdropBlur scale is zeroed in the config,
   // so `backdrop-blur-xl` compiles to `blur(0)`. They are listed only so the
   // dead classes get deleted rather than left to confuse the next reader.
-  'backdrop-blur': [
-    'components/auth/LoginAgreementPrompt.vue',
-    'components/common/AnnouncementBell.vue',
-    'components/common/AnnouncementPopup.vue',
-    'components/user/dashboard/UserDashboardCharts.vue',
-    'components/user/monitor/MonitorCard.vue',
-    'features/prompt-audit/PromptAuditView.vue',
-    'views/KeyUsageView.vue',
-    'views/admin/SettingsView.vue',
-    'views/user/ChannelStatusV2View.vue',
-    'views/user/CustomPageView.vue',
-    'views/user/PaymentView.vue',
-    'views/user/RedeemView.vue',
-  ],
+  'backdrop-blur': ['components/auth/LoginAgreementPrompt.vue', 'views/KeyUsageView.vue'],
   'named-gradient': [],
-  // Also already inert: these shadow names were deleted from the theme, so the
-  // utilities emit nothing. Delete the classes.
-  'glow-shadow': [
-    'components/modelPlaza/ModelPlazaContent.vue',
-    'components/modelPlaza/PlazaGroupSection.vue',
-    'components/user/monitor/MonitorCard.vue',
-  ],
+  'glow-shadow': [],
   'glass-class': [],
   'text-gradient': [],
   'raw-teal': [],
-  'hover-lift': [
-    'components/auth/LoginAgreementPrompt.vue',
-    'components/modelPlaza/PlazaNavBar.vue',
-    'components/payment/SubscriptionPlanCard.vue',
-    'components/user/monitor/MonitorCard.vue',
-    'views/KeyUsageView.vue',
-  ],
+  'hover-lift': ['components/auth/LoginAgreementPrompt.vue', 'views/KeyUsageView.vue'],
   'bare-dark-color': [],
 }
 

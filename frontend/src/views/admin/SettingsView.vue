@@ -12805,7 +12805,7 @@ watch(
 
 /* ============ 系统设置 Tab 导航 ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white p-1.5;
   top: 4.75rem;
   box-shadow:
     0 12px 28px rgb(15 23 42 / 0.07),
@@ -12905,7 +12905,7 @@ watch(
    rules in the production build, leaving inactive tabs unreadable on dark. */
 .dark .settings-tabs-shell {
   border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
+  background: rgb(15 23 42);
   box-shadow:
     0 16px 36px rgb(0 0 0 / 0.28),
     0 1px 0 rgb(255 255 255 / 0.06) inset;
