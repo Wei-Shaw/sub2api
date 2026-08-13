@@ -8715,7 +8715,6 @@ import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSi
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
-import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
   isRegistrationEmailSuffixDomainValid,
   normalizeRegistrationEmailSuffixDomain,
@@ -12053,11 +12052,8 @@ async function saveBetaPolicySettings() {
 // ==================== Provider Management ====================
 
 const allPaymentTypes = computed(() => [
-  { value: "easypay", label: t("payment.methods.easypay") },
-  { value: "alipay", label: t("payment.methods.alipay") },
-  { value: "wxpay", label: t("payment.methods.wxpay") },
-  { value: "stripe", label: t("payment.methods.stripe") },
-  { value: "airwallex", label: t("payment.methods.airwallex") },
+  { value: "sepay", label: t("payment.methods.sepay") },
+  { value: "nowpayments", label: t("payment.methods.nowpayments") },
 ]);
 
 function isPaymentTypeEnabled(type: string): boolean {
@@ -12158,81 +12154,16 @@ type ProviderEnablementCandidate = Pick<
   "id" | "provider_key" | "supported_types" | "enabled" | "name"
 >;
 
-function getProviderVisibleMethods(
-  provider: ProviderEnablementCandidate,
-): Array<"alipay" | "wxpay"> {
-  if (!provider.enabled) {
-    return [];
-  }
-
-  const supportedTypes = Array.isArray(provider.supported_types)
-    ? provider.supported_types
-    : [];
-  const methods = new Set<"alipay" | "wxpay">();
-  const addMethod = (type: string) => {
-    const method = normalizeVisibleMethod(type);
-    if (method === "alipay" || method === "wxpay") {
-      methods.add(method);
-    }
-  };
-
-  if (provider.provider_key === "alipay") {
-    if (supportedTypes.length === 0) {
-      methods.add("alipay");
-    } else {
-      supportedTypes.forEach((type) => {
-        if (normalizeVisibleMethod(type) === "alipay") {
-          methods.add("alipay");
-        }
-      });
-    }
-  } else if (provider.provider_key === "wxpay") {
-    if (supportedTypes.length === 0) {
-      methods.add("wxpay");
-    } else {
-      supportedTypes.forEach((type) => {
-        if (normalizeVisibleMethod(type) === "wxpay") {
-          methods.add("wxpay");
-        }
-      });
-    }
-  } else if (provider.provider_key === "easypay") {
-    supportedTypes.forEach(addMethod);
-  }
-
-  return Array.from(methods);
-}
-
+// Each provider key backs exactly one user-facing method, so two enabled
+// instances can never claim the same checkout button. Nothing left to detect.
 function findProviderEnablementConflict(
-  candidate: ProviderEnablementCandidate,
-): { method: "alipay" | "wxpay"; conflicting: ProviderInstance } | null {
-  const claimedMethods = getProviderVisibleMethods(candidate);
-  if (claimedMethods.length === 0) {
-    return null;
-  }
-
-  for (const other of providers.value) {
-    if (other.id === candidate.id || !other.enabled) {
-      continue;
-    }
-
-    const otherMethods = getProviderVisibleMethods(other);
-    const matchedMethod = claimedMethods.find((method) =>
-      otherMethods.includes(method),
-    );
-    if (matchedMethod) {
-      return {
-        method: matchedMethod,
-        conflicting: other,
-      };
-    }
-  }
-
+  _candidate: ProviderEnablementCandidate,
+): { method: "sepay" | "nowpayments"; conflicting: ProviderInstance } | null {
   return null;
 }
 
 function showProviderEnablementConflict(
-  conflict: { method: "alipay" | "wxpay"; conflicting: ProviderInstance },
+  conflict: { method: "sepay" | "nowpayments"; conflicting: ProviderInstance },
 ) {
   appStore.showError(
     t("admin.settings.payment.enableConflict", {
@@ -12311,36 +12242,14 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   }
 }
 
+
 async function handleToggleField(
   provider: ProviderInstance,
-  field: "enabled" | "refund_enabled" | "allow_user_refund",
+  field: "enabled",
 ) {
-  let newValue: boolean;
-  if (field === "enabled") newValue = !provider.enabled;
-  else if (field === "refund_enabled") newValue = !provider.refund_enabled;
-  else newValue = !provider.allow_user_refund;
-
-  if (field === "enabled" && newValue) {
-    const conflict = findProviderEnablementConflict({
-      id: provider.id,
-      provider_key: provider.provider_key,
-      supported_types: provider.supported_types,
-      enabled: true,
-      name: provider.name,
-    });
-    if (conflict) {
-      showProviderEnablementConflict(conflict);
-      return;
-    }
-  }
-
-  const payload: Record<string, boolean> = { [field]: newValue };
-  // Cascade: turning off refund_enabled also turns off allow_user_refund
-  if (field === "refund_enabled" && !newValue) {
-    payload.allow_user_refund = false;
-  }
+  const newValue = !provider.enabled;
   try {
-    await adminAPI.payment.updateProvider(provider.id, payload);
+    await adminAPI.payment.updateProvider(provider.id, { [field]: newValue });
     await loadProviders();
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));

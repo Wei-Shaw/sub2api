@@ -56,12 +56,6 @@ const STATUS_I18N_KEY_MAP: Record<string, string> = {
   EXPIRED: 'payment.status.expired',
   CANCELLED: 'payment.status.cancelled',
   FAILED: 'payment.status.failed',
-  REFUND_REQUESTED: 'payment.status.refund_requested',
-  REFUNDING: 'payment.status.refunding',
-  REFUND_PENDING: 'payment.status.refund_pending',
-  PARTIALLY_REFUNDED: 'payment.status.partially_refunded',
-  REFUNDED: 'payment.status.refunded',
-  REFUND_FAILED: 'payment.status.refund_failed',
 }
 
 /** Mirrors `Tone` in `components/common/primitives.ts`, minus `accent`. */

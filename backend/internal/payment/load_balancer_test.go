@@ -98,19 +98,24 @@ func TestInstanceSupportsType(t *testing.T) {
 	}
 }
 
-func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
+func TestGetInstanceChannelLimitsReadsPaymentTypeKey(t *testing.T) {
 	t.Parallel()
 
-	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: 66}))
-	got := getInstanceChannelLimits(inst, TypeAlipay)
+	inst := testInstance(1, TypeSePay, makeLimitsJSON(TypeSePay, ChannelLimits{SingleMax: 66}))
+	got := getInstanceChannelLimits(inst, TypeSePay)
 	if got.SingleMax != 66 {
 		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMax=66", got)
 	}
 
-	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: 8}))
-	wxGot := getInstanceChannelLimits(wxInst, TypeWxpay)
-	if wxGot.SingleMin != 8 {
-		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
+	cryptoInst := testInstance(2, TypeNowPayments, makeLimitsJSON(TypeNowPayments, ChannelLimits{SingleMin: 8}))
+	cryptoGot := getInstanceChannelLimits(cryptoInst, TypeNowPayments)
+	if cryptoGot.SingleMin != 8 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", cryptoGot)
+	}
+
+	// A limits block keyed for another method must not leak across.
+	if leaked := getInstanceChannelLimits(inst, TypeNowPayments); leaked.SingleMax != 0 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want zero limits for a foreign payment type", leaked)
 	}
 }
 

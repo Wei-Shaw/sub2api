@@ -70,11 +70,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { METHOD_ORDER, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from './providerConfig'
-import alipayIcon from '@/assets/icons/alipay.svg'
-import wxpayIcon from '@/assets/icons/wxpay.svg'
-import stripeIcon from '@/assets/icons/stripe.svg'
-import airwallexIcon from '@/assets/icons/airwallex.svg'
+import { METHOD_ORDER } from './providerConfig'
 import paymentIcon from '@/assets/icons/payment.svg'
 
 export interface PaymentMethodOption {
@@ -97,12 +93,11 @@ const { t } = useI18n()
 
 const labelId = `payment-method-${useId()}`
 
+// Neither provider ships a mark we are licensed to redraw here, so both use
+// the generic payment glyph until brand assets are added.
 const METHOD_ICONS: Record<string, string> = {
-  alipay: alipayIcon,
-  wxpay: wxpayIcon,
-  stripe: stripeIcon,
-  airwallex: airwallexIcon,
-  credit_card: paymentIcon,
+  sepay: paymentIcon,
+  nowpayments: paymentIcon,
 }
 
 const sortedMethods = computed(() => {
@@ -114,16 +109,7 @@ const sortedMethods = computed(() => {
   })
 })
 
-/**
- * `isBuiltInAlipayMethod` is a whole-token check, not a substring one: a
- * custom EasyPay method called `card_alipay` is NOT Alipay and must not wear
- * Alipay's mark. That distinction is the reason this goes through the helpers
- * rather than `type.includes('alipay')`.
- */
 function methodIcon(type: string): string {
-  if (isBuiltInAlipayMethod(type)) return METHOD_ICONS.alipay
-  if (isBuiltInWxpayMethod(type)) return METHOD_ICONS.wxpay
-  if (type === 'airwallex') return METHOD_ICONS.airwallex
   return METHOD_ICONS[type] || paymentIcon
 }
 

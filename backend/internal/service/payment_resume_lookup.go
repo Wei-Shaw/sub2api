@@ -42,7 +42,7 @@ func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token 
 	if claims.ProviderKey != "" && !strings.EqualFold(orderProviderKey, claims.ProviderKey) {
 		return nil, invalidResumeTokenMatchError()
 	}
-	if claims.PaymentType != "" && NormalizeVisibleMethod(order.PaymentType) != NormalizeVisibleMethod(claims.PaymentType) {
+	if claims.PaymentType != "" && !strings.EqualFold(strings.TrimSpace(order.PaymentType), strings.TrimSpace(claims.PaymentType)) {
 		return nil, invalidResumeTokenMatchError()
 	}
 	if order.Status == OrderStatusPending || order.Status == OrderStatusExpired {
@@ -60,8 +60,4 @@ func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token 
 
 func invalidResumeTokenMatchError() error {
 	return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token does not match the payment order")
-}
-
-func (s *PaymentService) ParseWeChatPaymentResumeToken(token string) (*WeChatPaymentResumeClaims, error) {
-	return s.paymentResume().ParseWeChatPaymentResumeToken(strings.TrimSpace(token))
 }

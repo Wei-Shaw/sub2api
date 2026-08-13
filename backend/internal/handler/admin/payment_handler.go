@@ -140,13 +140,6 @@ type AdminPaymentOrderResult struct {
 	ProviderInstanceID  *string    `json:"provider_instance_id,omitempty"`
 	ProviderKey         *string    `json:"provider_key,omitempty"`
 	Status              string     `json:"status"`
-	RefundAmount        float64    `json:"refund_amount"`
-	RefundReason        *string    `json:"refund_reason,omitempty"`
-	RefundAt            *time.Time `json:"refund_at,omitempty"`
-	ForceRefund         bool       `json:"force_refund,omitempty"`
-	RefundRequestedAt   *time.Time `json:"refund_requested_at,omitempty"`
-	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
-	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	ExpiresAt           time.Time  `json:"expires_at"`
 	PaidAt              *time.Time `json:"paid_at,omitempty"`
 	CompletedAt         *time.Time `json:"completed_at,omitempty"`
@@ -197,13 +190,6 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPayme
 		ProviderInstanceID:  order.ProviderInstanceID,
 		ProviderKey:         order.ProviderKey,
 		Status:              order.Status,
-		RefundAmount:        order.RefundAmount,
-		RefundReason:        order.RefundReason,
-		RefundAt:            order.RefundAt,
-		ForceRefund:         order.ForceRefund,
-		RefundRequestedAt:   order.RefundRequestedAt,
-		RefundRequestReason: order.RefundRequestReason,
-		RefundRequestedBy:   order.RefundRequestedBy,
 		ExpiresAt:           order.ExpiresAt,
 		PaidAt:              order.PaidAt,
 		CompletedAt:         order.CompletedAt,
@@ -215,62 +201,6 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *AdminPayme
 		CreatedAt:           order.CreatedAt,
 		UpdatedAt:           order.UpdatedAt,
 	}
-}
-
-// AdminProcessRefundRequest is the request body for admin refund processing.
-type AdminProcessRefundRequest struct {
-	Amount        float64 `json:"amount"`
-	Reason        string  `json:"reason"`
-	Force         bool    `json:"force"`
-	DeductBalance bool    `json:"deduct_balance"`
-}
-
-// ProcessRefund processes a refund for an order (admin).
-// POST /api/v1/admin/payment/orders/:id/refund
-func (h *PaymentHandler) ProcessRefund(c *gin.Context) {
-	orderID, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-
-	var req AdminProcessRefundRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-	}
-
-	plan, earlyResult, err := h.paymentService.PrepareRefund(c.Request.Context(), orderID, req.Amount, req.Reason, req.Force, req.DeductBalance)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if earlyResult != nil {
-		response.Success(c, earlyResult)
-		return
-	}
-
-	result, err := h.paymentService.ExecuteRefund(c.Request.Context(), plan)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, result)
-}
-
-// QueryAndFinalizeRefund queries the provider refund status and finalizes a pending refund.
-// POST /api/v1/admin/payment/orders/:id/refund/query
-func (h *PaymentHandler) QueryAndFinalizeRefund(c *gin.Context) {
-	orderID, ok := parseIDParam(c, "id")
-	if !ok {
-		return
-	}
-
-	result, err := h.paymentService.QueryAndFinalizeRefund(c.Request.Context(), orderID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, result)
 }
 
 // --- Subscription Plans ---

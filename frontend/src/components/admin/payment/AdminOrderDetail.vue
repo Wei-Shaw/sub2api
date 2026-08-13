@@ -67,24 +67,6 @@
         </div>
       </div>
 
-      <div
-        v-if="order.refund_amount"
-        class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20"
-      >
-        <h4 class="mb-2 text-sm font-semibold text-red-700 dark:text-red-400">
-          {{ t('payment.admin.refundInfo') }}
-        </h4>
-        <div class="grid grid-cols-2 gap-2 text-sm">
-          <div>
-            <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') }}:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ creditedAmountSymbol }}{{ order.refund_amount.toFixed(2) }}</span>
-          </div>
-          <div v-if="order.refund_reason" class="col-span-2">
-            <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') }}:</span>
-            <span class="ml-1 text-red-700 dark:text-red-300">{{ order.refund_reason }}</span>
-          </div>
-        </div>
-      </div>
 
       <div class="flex items-center justify-end gap-2 border-t border-gray-200 pt-4 dark:border-dark-700">
         <button
@@ -101,13 +83,6 @@
         >
           {{ t('payment.admin.retry') }}
         </button>
-        <button
-          v-if="canRefund(order)"
-          @click="emit('refund', order)"
-          class="btn btn-sm rounded-md bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-        >
-          {{ t('payment.admin.refund') }}
-        </button>
       </div>
     </div>
   </BaseDialog>
@@ -118,7 +93,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
-import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
+import { statusBadgeClass, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
@@ -152,12 +127,7 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'cancel', order: PaymentOrder): void
   (e: 'retry', order: PaymentOrder): void
-  (e: 'refund', order: PaymentOrder): void
 }>()
-
-function canRefund(order: PaymentOrder): boolean {
-  return canRefundStatus(order.status)
-}
 
 function formatDateTime(dateStr: string): string {
   return formatOrderDateTime(dateStr)

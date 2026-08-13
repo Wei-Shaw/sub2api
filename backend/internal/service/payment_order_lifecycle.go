@@ -27,12 +27,8 @@ const (
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
 
-	pendingWxpayReconcileLimit = 20
+	pendingReconcileLimit = 20
 )
-
-type checkPaidOptions struct {
-	cancelIfUnpaid bool
-}
 
 func (s *PaymentService) checkCancelRateLimit(ctx context.Context, userID int64, cfg *PaymentConfig) error {
 	if !cfg.CancelRateLimitEnabled || cfg.CancelRateLimitMax <= 0 {
@@ -142,14 +138,15 @@ func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, 
 }
 
 func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) string {
-	return s.checkPaidWithOptions(ctx, o, checkPaidOptions{cancelIfUnpaid: true})
+	return s.reconcilePaid(ctx, o)
 }
 
+// reconcilePaid asks the provider whether an order was in fact paid.
+//
+// Neither provider can cancel an unpaid payment upstream — a SePay QR is just a
+// transfer instruction and a NOWPayments invoice expires on its own — so this
+// only ever reads state.
 func (s *PaymentService) reconcilePaid(ctx context.Context, o *dbent.PaymentOrder) string {
-	return s.checkPaidWithOptions(ctx, o, checkPaidOptions{})
-}
-
-func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.PaymentOrder, opts checkPaidOptions) string {
 	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
 		return ""
@@ -198,14 +195,6 @@ func (s *PaymentService) checkPaidWithOptions(ctx context.Context, o *dbent.Paym
 		}
 		return checkPaidResultAlreadyPaid
 	}
-	if !opts.cancelIfUnpaid {
-		return ""
-	}
-	if cp, ok := prov.(payment.CancelableProvider); ok {
-		finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
-		_ = cp.CancelPayment(ctx, queryRef)
-		finishProviderCall()
-	}
 	return ""
 }
 
@@ -247,15 +236,15 @@ func paymentOrderQueryReference(order *dbent.PaymentOrder, prov payment.Provider
 		providerKey = strings.TrimSpace(order.PaymentType)
 	}
 
-	switch payment.GetBasePaymentType(providerKey) {
-	case payment.TypeAlipay, payment.TypeEasyPay, payment.TypeWxpay:
-		return strings.TrimSpace(order.OutTradeNo)
-	default:
-		if tradeNo := strings.TrimSpace(order.PaymentTradeNo); tradeNo != "" {
-			return tradeNo
-		}
+	// SePay never issues a trade number up front — the order code carried in the
+	// bank transfer description is the only handle we have on it.
+	if payment.GetBasePaymentType(providerKey) == payment.TypeSePay {
 		return strings.TrimSpace(order.OutTradeNo)
 	}
+	if tradeNo := strings.TrimSpace(order.PaymentTradeNo); tradeNo != "" {
+		return tradeNo
+	}
+	return strings.TrimSpace(order.OutTradeNo)
 }
 
 func paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, currentTradeNo string) bool {
@@ -303,26 +292,24 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	return o, nil
 }
 
-// ReconcilePendingWxpayOrders actively checks recent pending WeChat orders so
-// missed provider notifications do not wait until order expiry to fulfill.
-func (s *PaymentService) ReconcilePendingWxpayOrders(ctx context.Context) (int, error) {
+// ReconcilePendingOrders actively re-checks recent pending orders so a missed
+// provider callback does not leave a paid order unfulfilled until it expires.
+//
+// This matters more than it did for the previous gateways: a SePay payment is
+// an ordinary bank transfer, so the webhook is the only notification, and a
+// dropped delivery has no upstream retry we control.
+func (s *PaymentService) ReconcilePendingOrders(ctx context.Context) (int, error) {
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
 			paymentorder.StatusEQ(OrderStatusPending),
 			paymentorder.ExpiresAtGT(now),
-			paymentorder.Or(
-				paymentorder.PaymentTypeEQ(payment.TypeWxpay),
-				paymentorder.PaymentTypeHasPrefix(payment.TypeWxpay+"_"),
-				paymentorder.ProviderKeyEQ(payment.TypeWxpay),
-				paymentorder.ProviderKeyHasPrefix(payment.TypeWxpay+"_"),
-			),
 		).
 		Order(dbent.Asc(paymentorder.FieldCreatedAt)).
-		Limit(pendingWxpayReconcileLimit).
+		Limit(pendingReconcileLimit).
 		All(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("query pending wxpay orders: %w", err)
+		return 0, fmt.Errorf("query pending orders: %w", err)
 	}
 
 	recovered := 0

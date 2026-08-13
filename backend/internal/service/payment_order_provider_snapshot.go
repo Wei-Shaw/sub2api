@@ -15,7 +15,6 @@ type paymentOrderProviderSnapshot struct {
 	ProviderInstanceID string
 	ProviderKey        string
 	PaymentMode        string
-	MerchantAppID      string
 	MerchantID         string
 	Currency           string
 }
@@ -30,7 +29,6 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 		ProviderInstanceID: psSnapshotStringValue(order.ProviderSnapshot["provider_instance_id"]),
 		ProviderKey:        psSnapshotStringValue(order.ProviderSnapshot["provider_key"]),
 		PaymentMode:        psSnapshotStringValue(order.ProviderSnapshot["payment_mode"]),
-		MerchantAppID:      psSnapshotStringValue(order.ProviderSnapshot["merchant_app_id"]),
 		MerchantID:         psSnapshotStringValue(order.ProviderSnapshot["merchant_id"]),
 		Currency:           psSnapshotStringValue(order.ProviderSnapshot["currency"]),
 	}
@@ -38,7 +36,6 @@ func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSna
 		snapshot.ProviderInstanceID == "" &&
 		snapshot.ProviderKey == "" &&
 		snapshot.PaymentMode == "" &&
-		snapshot.MerchantAppID == "" &&
 		snapshot.MerchantID == "" &&
 		snapshot.Currency == "" {
 		return nil
@@ -126,6 +123,9 @@ func expectedNotificationProviderKeyForOrder(registry *payment.Registry, order *
 	return expectedNotificationProviderKey(registry, order.PaymentType, orderProviderKey, instanceProviderKey)
 }
 
+// validateProviderSnapshotMetadata rejects a notification whose merchant
+// identity does not match the one the order was created against, so a webhook
+// from another account (or a re-pointed instance) cannot fulfil this order.
 func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
 	if order == nil || len(metadata) == 0 {
 		return nil
@@ -137,88 +137,25 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 	}
 
 	switch strings.TrimSpace(providerKey) {
-	case payment.TypeWxpay:
-		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
-			actual := strings.TrimSpace(metadata["appid"])
-			if actual == "" {
-				return fmt.Errorf("wxpay notification missing appid")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay appid mismatch: expected %s, got %s", expected, actual)
-			}
-		}
+	case payment.TypeSePay:
 		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["mchid"])
+			actual := strings.TrimSpace(metadata["merchant_id"])
 			if actual == "" {
-				return fmt.Errorf("wxpay notification missing mchid")
+				return fmt.Errorf("sepay notification missing account number")
 			}
 			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay mchid mismatch: expected %s, got %s", expected, actual)
+				return fmt.Errorf("sepay account number mismatch: expected %s, got %s", expected, actual)
 			}
 		}
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("wxpay notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("wxpay currency mismatch: expected %s, got %s", expected, actual)
-			}
+	}
+
+	if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+		actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+		if actual == "" {
+			return fmt.Errorf("%s notification missing currency", providerKey)
 		}
-		if actual := strings.TrimSpace(metadata["trade_state"]); actual != "" && !strings.EqualFold(actual, "SUCCESS") {
-			return fmt.Errorf("wxpay trade_state mismatch: expected SUCCESS, got %s", actual)
-		}
-	case payment.TypeAlipay:
-		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
-			actual := strings.TrimSpace(metadata["app_id"])
-			if actual == "" {
-				return fmt.Errorf("alipay app_id missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("alipay app_id mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeEasyPay:
-		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["pid"])
-			if actual == "" {
-				return fmt.Errorf("easypay pid missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("easypay pid mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeStripe:
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("stripe notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("stripe currency mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-	case payment.TypeAirwallex:
-		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-			actual := strings.TrimSpace(metadata["account_id"])
-			if actual == "" {
-				return fmt.Errorf("airwallex account_id missing")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("airwallex account_id mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-			if actual == "" {
-				return fmt.Errorf("airwallex notification missing currency")
-			}
-			if !strings.EqualFold(expected, actual) {
-				return fmt.Errorf("airwallex currency mismatch: expected %s, got %s", expected, actual)
-			}
-		}
-		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "SUCCEEDED") {
-			return fmt.Errorf("airwallex status mismatch: expected SUCCEEDED, got %s", actual)
+		if !strings.EqualFold(expected, actual) {
+			return fmt.Errorf("%s currency mismatch: expected %s, got %s", providerKey, expected, actual)
 		}
 	}
 

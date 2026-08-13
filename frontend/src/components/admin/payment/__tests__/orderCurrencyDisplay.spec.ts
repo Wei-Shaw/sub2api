@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { PaymentOrder } from '@/types/payment'
-import AdminOrderDetail from '../AdminOrderDetail.vue'
 import AdminOrderTable from '../AdminOrderTable.vue'
-import AdminRefundDialog from '../AdminRefundDialog.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
 
 vi.mock('vue-i18n', async () => {
@@ -20,11 +18,6 @@ vi.mock('vue-i18n', async () => {
     }),
   }
 })
-
-const BaseDialogStub = {
-  props: ['show'],
-  template: '<div v-if="show"><slot /><slot name="footer" /></div>',
-}
 
 const DataTableStub = {
   props: ['data'],
@@ -45,65 +38,19 @@ function orderFactory(overrides: Partial<PaymentOrder> = {}): PaymentOrder {
     pay_amount: 108,
     currency: 'USD',
     fee_rate: 8,
-    payment_type: 'stripe',
+    payment_type: 'sepay',
     out_trade_no: 'sub2_202606250001',
     status: 'COMPLETED',
     order_type: 'subscription',
     created_at: '2026-06-25T10:00:00Z',
     expires_at: '2026-06-25T10:30:00Z',
-    refund_amount: 25,
     ...overrides,
   }
 }
 
 describe('admin order currency display', () => {
-  it('uses order currency for paid/base/fee amounts and USD for credited/refund amounts', () => {
-    const wrapper = mount(AdminOrderDetail, {
-      props: {
-        show: true,
-        order: orderFactory({ currency: 'CNY' }),
-      },
-      global: {
-        stubs: {
-          BaseDialog: BaseDialogStub,
-        },
-      },
-    })
-
-    const text = wrapper.text()
-    expect(text).toContain('¥100.00')
-    expect(text).toContain('¥8.00')
-    expect(text).toContain('¥108.00')
-    expect(text).toContain('$100.00')
-    expect(text).toContain('$25.00')
-  })
-
-  it('uses order currency for pay_amount and USD for refundable balance amounts', () => {
-    const wrapper = mount(AdminRefundDialog, {
-      props: {
-        show: true,
-        order: orderFactory({
-          currency: 'USD',
-          status: 'PARTIALLY_REFUNDED',
-          refund_amount: 20,
-        }),
-        userBalance: 200,
-      },
-      global: {
-        stubs: {
-          BaseDialog: BaseDialogStub,
-        },
-      },
-    })
-
-    const text = wrapper.text()
-    expect(text).toContain('$108.00')
-    expect(text).toContain('$100.00')
-    expect(text).toContain('$20.00')
-    expect(text).toContain('$80.00')
-    expect(text).toContain('$200.00')
-  })
-
+  
+  
   it('renders payment currency consistently in the shared order table', () => {
     const wrapper = mount(OrderTable, {
       props: {

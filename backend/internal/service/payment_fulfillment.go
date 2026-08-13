@@ -119,7 +119,7 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 func paymentAmountToleranceForCurrency(currency string) float64 {
 	minorUnit := payment.CurrencyMinorUnit(currency)
 	if minorUnit <= 2 {
-		return amountToleranceCNY
+		return amountTolerance
 	}
 	return math.Pow10(-minorUnit) / 2
 }
@@ -192,7 +192,7 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 		return nil
 	}
 	switch cur.Status {
-	case OrderStatusCompleted, OrderStatusRefunded:
+	case OrderStatusCompleted:
 		return nil
 	case OrderStatusFailed, OrderStatusPaid, OrderStatusRecharging:
 		return s.executeFulfillment(ctx, o.ID)
@@ -231,9 +231,6 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 	}
 	if o.Status == OrderStatusCompleted {
 		return nil
-	}
-	if psIsRefundStatus(o.Status) {
-		return infraerrors.BadRequest("INVALID_STATUS", "refund-related order cannot fulfill")
 	}
 	if o.Status != OrderStatusPaid && o.Status != OrderStatusFailed && o.Status != OrderStatusRecharging {
 		return infraerrors.BadRequest("INVALID_STATUS", "order cannot fulfill in status "+o.Status)
@@ -471,9 +468,6 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 	}
 	if o.Status == OrderStatusCompleted {
 		return nil
-	}
-	if psIsRefundStatus(o.Status) {
-		return infraerrors.BadRequest("INVALID_STATUS", "refund-related order cannot fulfill")
 	}
 	if o.Status != OrderStatusPaid && o.Status != OrderStatusFailed && o.Status != OrderStatusRecharging {
 		return infraerrors.BadRequest("INVALID_STATUS", "order cannot fulfill in status "+o.Status)
@@ -830,9 +824,6 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 	}
 	if o.PaidAt == nil {
 		return infraerrors.BadRequest("INVALID_STATUS", "order is not paid")
-	}
-	if psIsRefundStatus(o.Status) {
-		return infraerrors.BadRequest("INVALID_STATUS", "refund-related order cannot retry")
 	}
 	if o.Status == OrderStatusCompleted {
 		return infraerrors.BadRequest("INVALID_STATUS", "order already completed")

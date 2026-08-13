@@ -1351,32 +1351,20 @@ func init() {
 	paymentorder.DefaultStatus = paymentorderDescStatus.Default.(string)
 	// paymentorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	paymentorder.StatusValidator = paymentorderDescStatus.Validators[0].(func(string) error)
-	// paymentorderDescRefundAmount is the schema descriptor for refund_amount field.
-	paymentorderDescRefundAmount := paymentorderFields[22].Descriptor()
-	// paymentorder.DefaultRefundAmount holds the default value on creation for the refund_amount field.
-	paymentorder.DefaultRefundAmount = paymentorderDescRefundAmount.Default.(float64)
-	// paymentorderDescForceRefund is the schema descriptor for force_refund field.
-	paymentorderDescForceRefund := paymentorderFields[25].Descriptor()
-	// paymentorder.DefaultForceRefund holds the default value on creation for the force_refund field.
-	paymentorder.DefaultForceRefund = paymentorderDescForceRefund.Default.(bool)
-	// paymentorderDescRefundRequestedBy is the schema descriptor for refund_requested_by field.
-	paymentorderDescRefundRequestedBy := paymentorderFields[28].Descriptor()
-	// paymentorder.RefundRequestedByValidator is a validator for the "refund_requested_by" field. It is called by the builders before save.
-	paymentorder.RefundRequestedByValidator = paymentorderDescRefundRequestedBy.Validators[0].(func(string) error)
 	// paymentorderDescClientIP is the schema descriptor for client_ip field.
-	paymentorderDescClientIP := paymentorderFields[34].Descriptor()
+	paymentorderDescClientIP := paymentorderFields[27].Descriptor()
 	// paymentorder.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	paymentorder.ClientIPValidator = paymentorderDescClientIP.Validators[0].(func(string) error)
 	// paymentorderDescSrcHost is the schema descriptor for src_host field.
-	paymentorderDescSrcHost := paymentorderFields[35].Descriptor()
+	paymentorderDescSrcHost := paymentorderFields[28].Descriptor()
 	// paymentorder.SrcHostValidator is a validator for the "src_host" field. It is called by the builders before save.
 	paymentorder.SrcHostValidator = paymentorderDescSrcHost.Validators[0].(func(string) error)
 	// paymentorderDescCreatedAt is the schema descriptor for created_at field.
-	paymentorderDescCreatedAt := paymentorderFields[37].Descriptor()
+	paymentorderDescCreatedAt := paymentorderFields[30].Descriptor()
 	// paymentorder.DefaultCreatedAt holds the default value on creation for the created_at field.
 	paymentorder.DefaultCreatedAt = paymentorderDescCreatedAt.Default.(func() time.Time)
 	// paymentorderDescUpdatedAt is the schema descriptor for updated_at field.
-	paymentorderDescUpdatedAt := paymentorderFields[38].Descriptor()
+	paymentorderDescUpdatedAt := paymentorderFields[31].Descriptor()
 	// paymentorder.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	paymentorder.DefaultUpdatedAt = paymentorderDescUpdatedAt.Default.(func() time.Time)
 	// paymentorder.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1431,20 +1419,12 @@ func init() {
 	paymentproviderinstanceDescLimits := paymentproviderinstanceFields[7].Descriptor()
 	// paymentproviderinstance.DefaultLimits holds the default value on creation for the limits field.
 	paymentproviderinstance.DefaultLimits = paymentproviderinstanceDescLimits.Default.(string)
-	// paymentproviderinstanceDescRefundEnabled is the schema descriptor for refund_enabled field.
-	paymentproviderinstanceDescRefundEnabled := paymentproviderinstanceFields[8].Descriptor()
-	// paymentproviderinstance.DefaultRefundEnabled holds the default value on creation for the refund_enabled field.
-	paymentproviderinstance.DefaultRefundEnabled = paymentproviderinstanceDescRefundEnabled.Default.(bool)
-	// paymentproviderinstanceDescAllowUserRefund is the schema descriptor for allow_user_refund field.
-	paymentproviderinstanceDescAllowUserRefund := paymentproviderinstanceFields[9].Descriptor()
-	// paymentproviderinstance.DefaultAllowUserRefund holds the default value on creation for the allow_user_refund field.
-	paymentproviderinstance.DefaultAllowUserRefund = paymentproviderinstanceDescAllowUserRefund.Default.(bool)
 	// paymentproviderinstanceDescCreatedAt is the schema descriptor for created_at field.
-	paymentproviderinstanceDescCreatedAt := paymentproviderinstanceFields[10].Descriptor()
+	paymentproviderinstanceDescCreatedAt := paymentproviderinstanceFields[8].Descriptor()
 	// paymentproviderinstance.DefaultCreatedAt holds the default value on creation for the created_at field.
 	paymentproviderinstance.DefaultCreatedAt = paymentproviderinstanceDescCreatedAt.Default.(func() time.Time)
 	// paymentproviderinstanceDescUpdatedAt is the schema descriptor for updated_at field.
-	paymentproviderinstanceDescUpdatedAt := paymentproviderinstanceFields[11].Descriptor()
+	paymentproviderinstanceDescUpdatedAt := paymentproviderinstanceFields[9].Descriptor()
 	// paymentproviderinstance.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	paymentproviderinstance.DefaultUpdatedAt = paymentproviderinstanceDescUpdatedAt.Default.(func() time.Time)
 	// paymentproviderinstance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

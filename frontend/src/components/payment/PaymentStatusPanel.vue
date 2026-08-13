@@ -90,106 +90,6 @@
       </section>
     </template>
 
-    <!-- ═══ Mobile Alipay app handoff. QR fallback stays hidden until timeout. ═══ -->
-    <template v-else-if="isMobileAlipayDeepLink && !deepLinkFallbackVisible">
-      <section class="rounded border border-line bg-surface p-5">
-        <div aria-live="polite">
-          <p class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em] text-ink-tertiary">
-            <span
-              v-if="deepLinkState === 'launching'"
-              class="spinner h-3 w-3 shrink-0"
-              aria-hidden="true"
-            />
-            {{ t('payment.methods.alipay') }}
-          </p>
-          <h2 class="mt-2 text-lg font-semibold text-ink">
-            {{ deepLinkState === 'backgrounded' ? t('payment.qr.alipayContinueInApp') : t('payment.qr.alipayOpening') }}
-          </h2>
-          <p class="mt-1 text-sm text-ink-tertiary">{{ t('payment.qr.alipayWaitingHint') }}</p>
-        </div>
-        <!--
-          `.btn-alipay` keeps Alipay's #00AEEF. That colour is how the user
-          recognises which app is about to open, and it is the one sanctioned
-          exception to the single-accent rule — minus the gradient, the glow and
-          the press-scale it used to carry.
-        -->
-        <button
-          v-if="deepLinkState === 'backgrounded'"
-          data-test="reopen-alipay"
-          class="btn btn-alipay btn-sm mt-5"
-          @click="reopenAlipay"
-        >
-          <Icon name="externalLink" size="sm" />
-          {{ t('payment.qr.reopenAlipay') }}
-        </button>
-      </section>
-
-      <CountdownPanel
-        :label="t('payment.qr.expiresIn')"
-        :value="countdownDisplay"
-        :caption="t('payment.qr.waitingPayment')"
-      />
-    </template>
-
-    <!-- ═══ Alipay handoff failed: show the QR so the user can still pay ═══ -->
-    <template v-else-if="isMobileAlipayDeepLink && deepLinkFallbackVisible">
-      <section data-test="alipay-qr-fallback" class="rounded border border-line bg-surface p-5">
-        <div>
-          <p class="text-2xs font-medium uppercase tracking-[0.08em] text-warn">
-            {{ t('payment.methods.alipay') }}
-          </p>
-          <h2 class="mt-2 text-lg font-semibold text-ink">{{ t('payment.qr.alipayFallbackTitle') }}</h2>
-          <p class="mt-1 text-sm text-ink-tertiary">{{ t('payment.qr.alipayFallbackHint') }}</p>
-        </div>
-
-        <dl class="mt-5 divide-y divide-line-subtle border-y border-line-subtle text-xs">
-          <div class="flex items-baseline justify-between gap-4 py-1.5">
-            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.payAmount') }}</dt>
-            <dd class="inline-flex items-baseline justify-end gap-0.5">
-              <span class="text-2xs text-ink-tertiary">{{ paymentCurrencySymbol }}</span>
-              <NumCell :value="displayPaymentAmount" :precision="paymentPrecision" />
-            </dd>
-          </div>
-          <div class="flex items-baseline justify-between gap-4 py-1.5">
-            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.orderNo') }}</dt>
-            <dd class="min-w-0 break-all text-right font-mono text-2xs slashed-zero text-ink">
-              {{ displayOrderNumber }}
-            </dd>
-          </div>
-          <div class="flex items-baseline justify-between gap-4 py-1.5">
-            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.qr.expiresIn') }}</dt>
-            <dd class="font-mono tabular-nums slashed-zero text-ink">{{ countdownDisplay }}</dd>
-          </div>
-        </dl>
-
-        <div class="mt-5 flex flex-col items-center gap-3">
-          <QrFrame :tone="qrTone" :logo="qrLogoIcon">
-            <canvas ref="qrCanvas" class="mx-auto block"></canvas>
-          </QrFrame>
-          <p class="text-center text-xs text-ink-secondary">
-            {{ t('payment.qr.alipaySaveAndScanHint') }}
-          </p>
-        </div>
-
-        <div class="mt-5 grid gap-2 sm:grid-cols-2">
-          <button data-test="reopen-alipay" class="btn btn-alipay btn-sm" @click="reopenAlipay">
-            <Icon name="externalLink" size="sm" />
-            {{ t('payment.qr.reopenAlipay') }}
-          </button>
-          <Button data-test="save-alipay-qr" variant="outline" size="md" @click="saveQRCode">
-            <template #icon>
-              <Icon name="download" size="sm" />
-            </template>
-            {{ t('payment.qr.saveQRCode') }}
-          </Button>
-        </div>
-
-        <Button class="mt-2" variant="ghost" size="md" block @click="handleDone">
-          {{ t('payment.result.backToRecharge') }}
-        </Button>
-      </section>
-    </template>
-
     <!-- ═══ QR code ═══ -->
     <template v-else-if="showQRCode">
       <section class="rounded border border-line bg-surface p-5">
@@ -255,13 +155,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import {
   currencySymbol,
   normalizePaymentCurrency,
@@ -275,17 +174,10 @@ import Button from '@/components/common/Button.vue'
 import NumCell from '@/components/common/NumCell.vue'
 import CountdownPanel from '@/components/payment/CountdownPanel.vue'
 import QrFrame from '@/components/payment/QrFrame.vue'
-import Icon from '@/components/icons/Icon.vue'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import paymentIcon from '@/assets/icons/payment.svg'
-import {
-  createAlipayDeepLinkLauncher,
-  type AlipayDeepLinkLauncher,
-  type AlipayDeepLinkState,
-} from './alipayDeepLink'
-
 const props = defineProps<{
   orderId: number
   amount?: number
@@ -297,7 +189,6 @@ const props = defineProps<{
   orderType?: string
   currency?: string
   outTradeNo?: string
-  mobileAlipayDeepLink?: boolean
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
@@ -313,12 +204,8 @@ const qrUrl = ref('')
 const remainingSeconds = ref(0)
 const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
-const deepLinkState = ref<AlipayDeepLinkState>('idle')
-const deepLinkFallbackVisible = ref(false)
 const paymentCurrency = computed(() => normalizePaymentCurrency(props.currency))
 const creditedAmountSymbol = currencySymbol('USD')
-const paymentCurrencySymbol = computed(() => currencySymbol(paymentCurrency.value))
-const paymentPrecision = computed(() => paymentCurrencyFractionDigits(paymentCurrency.value))
 const paidOrderCurrencySymbol = computed(() =>
   currencySymbol(paidOrder.value?.currency || paymentCurrency.value)
 )
@@ -345,15 +232,13 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 let verifyAttempts = 0
 let lastVerifyAt = 0
-let alipayLauncher: AlipayDeepLinkLauncher | null = null
 
 const VERIFY_RETRY_INTERVAL_MS = 15000
 const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(props.paymentType))
-const isWxpay = computed(() => isBuiltInWxpayMethod(props.paymentType))
-const isMobileAlipayDeepLink = computed(() => props.mobileAlipayDeepLink === true && isAlipay.value && !!qrUrl.value)
-const showQRCode = computed(() => !!qrUrl.value && (!isMobileAlipayDeepLink.value || deepLinkFallbackVisible.value))
+const isAlipay = computed(() => false)
+const isWxpay = computed(() => false)
+const showQRCode = computed(() => !!qrUrl.value)
 
 /** `''` means "no provider brand" — QrFrame then falls back to a hairline. */
 const qrTone = computed<'alipay' | 'wxpay' | ''>(() => {
@@ -408,8 +293,6 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
-const displayPaymentAmount = computed(() => props.payAmount || props.amount || 0)
-const displayOrderNumber = computed(() => props.outTradeNo || `#${props.orderId}`)
 
 function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
@@ -417,7 +300,7 @@ function isSuccessStatus(status: string | null | undefined): boolean {
 
 function reopenPopup() {
   if (props.payUrl) {
-    const win = window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    const win = window.open(props.payUrl, '_blank', 'noopener,noreferrer')
     if (!win || win.closed) {
       window.location.href = props.payUrl
     }
@@ -439,33 +322,11 @@ async function renderQR() {
   })
 }
 
-function updateDeepLinkState(state: AlipayDeepLinkState) {
-  deepLinkState.value = state
-  if (state === 'fallback') {
-    deepLinkFallbackVisible.value = true
-    renderQR()
-  } else if (state === 'backgrounded') {
-    deepLinkFallbackVisible.value = false
-  }
-}
 
-function reopenAlipay() {
-  alipayLauncher?.launch()
-}
-
-function saveQRCode() {
-  const canvas = qrCanvas.value
-  if (!canvas) return
-  const link = document.createElement('a')
-  link.href = canvas.toDataURL('image/png')
-  link.download = `alipay-${props.outTradeNo || props.orderId}.png`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-}
-
+// A SePay order is only ever confirmed by its webhook, so a browser returning
+// from the banking app can legitimately be ahead of our own state. Asking the
+// server to re-check upstream is the only way to close that gap.
 async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder> {
-  if (!isWxpay.value && !isMobileAlipayDeepLink.value) return order
   const outTradeNo = String(order.out_trade_no || '').trim()
   if (!outTradeNo) return order
   const normalizedStatus = String(order.status || '').trim().toUpperCase()
@@ -543,8 +404,6 @@ function handleDone() { cleanup(); emit('done') }
 function cleanup() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
-  alipayLauncher?.dispose()
-  alipayLauncher = null
 }
 
 // Initialize on mount
@@ -560,17 +419,5 @@ pollTimer = setInterval(pollStatus, 3000)
 renderQR()
 
 watch([() => qrUrl.value, showQRCode], () => renderQR())
-onMounted(() => {
-  if (!isMobileAlipayDeepLink.value) return
-  alipayLauncher = createAlipayDeepLinkLauncher({
-    qrCode: qrUrl.value,
-    document,
-    lifecycleTarget: window,
-    userAgent: window.navigator.userAgent,
-    assignLocation: (url) => window.location.assign(url),
-    onStateChange: updateDeepLinkState,
-  })
-  alipayLauncher.launch()
-})
 onUnmounted(() => cleanup())
 </script>

@@ -21,19 +21,13 @@ import (
 // --- Order Status Constants ---
 
 const (
-	OrderStatusPending           = payment.OrderStatusPending
-	OrderStatusPaid              = payment.OrderStatusPaid
-	OrderStatusRecharging        = payment.OrderStatusRecharging
-	OrderStatusCompleted         = payment.OrderStatusCompleted
-	OrderStatusExpired           = payment.OrderStatusExpired
-	OrderStatusCancelled         = payment.OrderStatusCancelled
-	OrderStatusFailed            = payment.OrderStatusFailed
-	OrderStatusRefundRequested   = payment.OrderStatusRefundRequested
-	OrderStatusRefunding         = payment.OrderStatusRefunding
-	OrderStatusRefundPending     = payment.OrderStatusRefundPending
-	OrderStatusPartiallyRefunded = payment.OrderStatusPartiallyRefunded
-	OrderStatusRefunded          = payment.OrderStatusRefunded
-	OrderStatusRefundFailed      = payment.OrderStatusRefundFailed
+	OrderStatusPending    = payment.OrderStatusPending
+	OrderStatusPaid       = payment.OrderStatusPaid
+	OrderStatusRecharging = payment.OrderStatusRecharging
+	OrderStatusCompleted  = payment.OrderStatusCompleted
+	OrderStatusExpired    = payment.OrderStatusExpired
+	OrderStatusCancelled  = payment.OrderStatusCancelled
+	OrderStatusFailed     = payment.OrderStatusFailed
 )
 
 const (
@@ -41,12 +35,14 @@ const (
 	// payment_config_service.go alongside other payment configuration defaults.
 	paymentGraceMinutes = 5
 
-	defaultPageSize    = 20
-	maxPageSize        = 100
-	topUsersLimit      = 10
-	amountToleranceCNY = 0.01
+	defaultPageSize = 20
+	maxPageSize     = 100
+	topUsersLimit   = 10
+	// amountTolerance absorbs float rounding when comparing a provider-reported
+	// amount to the order's own pay_amount.
+	amountTolerance = 0.01
 
-	orderIDPrefix = "sub2_"
+	orderIDPrefix = payment.OrderCodePrefix
 )
 
 const paymentResumeSigningKeyEnv = "PAYMENT_RESUME_SIGNING_KEY"
@@ -54,62 +50,57 @@ const paymentResumeSigningKeyEnv = "PAYMENT_RESUME_SIGNING_KEY"
 // --- Types ---
 
 // generateOutTradeNo creates a unique external order ID for payment providers.
-// Format: sub2_20250409aB3kX9mQ (prefix + date + 8-char random)
+// Format: SUB220250409AB3KX9MQ (prefix + date + 8-char random)
+//
+// The alphabet is uppercase-only because SePay orders are matched by finding
+// this code inside a bank transfer description, and banks routinely uppercase
+// that text — a mixed-case code could not be mapped back to one exact order.
 func generateOutTradeNo() string {
 	date := time.Now().Format("20060102")
-	rnd := generateRandomString(8)
+	rnd := generateRandomString(payment.OrderCodeRandomLength)
 	return orderIDPrefix + date + rnd
 }
 
 func generateRandomString(n int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = charset[rand.IntN(len(charset))]
+		b[i] = payment.OrderCodeAlphabet[rand.IntN(len(payment.OrderCodeAlphabet))]
 	}
 	return string(b)
 }
 
 type CreateOrderRequest struct {
-	UserID          int64
-	Amount          float64
-	PaymentType     string
-	OpenID          string
-	ClientIP        string
-	IsMobile        bool
-	IsWeChatBrowser bool
-	SrcHost         string
-	SrcURL          string
-	ReturnURL       string
-	PaymentSource   string
-	OrderType       string
-	PlanID          int64
-	Locale          string
+	UserID        int64
+	Amount        float64
+	PaymentType   string
+	ClientIP      string
+	IsMobile      bool
+	SrcHost       string
+	SrcURL        string
+	ReturnURL     string
+	PaymentSource string
+	OrderType     string
+	PlanID        int64
+	Locale        string
 }
 
 type CreateOrderResponse struct {
-	OrderID                       int64                           `json:"order_id"`
-	Amount                        float64                         `json:"amount"`
-	PayAmount                     float64                         `json:"pay_amount"`
-	FeeRate                       float64                         `json:"fee_rate"`
-	Status                        string                          `json:"status"`
-	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
-	PaymentType                   string                          `json:"payment_type"`
-	OutTradeNo                    string                          `json:"out_trade_no,omitempty"`
-	PayURL                        string                          `json:"pay_url,omitempty"`
-	QRCode                        string                          `json:"qr_code,omitempty"`
-	ClientSecret                  string                          `json:"client_secret,omitempty"`
-	IntentID                      string                          `json:"intent_id,omitempty"`
-	Currency                      string                          `json:"currency,omitempty"`
-	CountryCode                   string                          `json:"country_code,omitempty"`
-	PaymentEnv                    string                          `json:"payment_env,omitempty"`
-	OAuth                         *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
-	JSAPI                         *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
-	JSAPIPayload                  *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`
-	ExpiresAt                     time.Time                       `json:"expires_at"`
-	PaymentMode                   string                          `json:"payment_mode,omitempty"`
-	ResumeToken                   string                          `json:"resume_token,omitempty"`
-	AlipayMobilePrecreateDeepLink bool                            `json:"alipay_mobile_precreate_deep_link,omitempty"`
+	OrderID     int64                           `json:"order_id"`
+	Amount      float64                         `json:"amount"`
+	PayAmount   float64                         `json:"pay_amount"`
+	FeeRate     float64                         `json:"fee_rate"`
+	Status      string                          `json:"status"`
+	ResultType  payment.CreatePaymentResultType `json:"result_type,omitempty"`
+	PaymentType string                          `json:"payment_type"`
+	OutTradeNo  string                          `json:"out_trade_no,omitempty"`
+	PayURL      string                          `json:"pay_url,omitempty"`
+	QRCode      string                          `json:"qr_code,omitempty"`
+	IntentID    string                          `json:"intent_id,omitempty"`
+	Currency    string                          `json:"currency,omitempty"`
+	Transfer    *payment.BankTransferInfo       `json:"transfer,omitempty"`
+	ExpiresAt   time.Time                       `json:"expires_at"`
+	PaymentMode string                          `json:"payment_mode,omitempty"`
+	ResumeToken string                          `json:"resume_token,omitempty"`
 }
 
 type OrderListParams struct {
@@ -119,28 +110,6 @@ type OrderListParams struct {
 	OrderType   string
 	PaymentType string
 	Keyword     string
-}
-
-type RefundPlan struct {
-	OrderID         int64
-	Order           *dbent.PaymentOrder
-	RefundAmount    float64
-	GatewayAmount   float64
-	Reason          string
-	Force           bool
-	DeductBalance   bool
-	DeductionType   string
-	BalanceToDeduct float64
-	SubDaysToDeduct int
-	SubscriptionID  int64
-}
-
-type RefundResult struct {
-	Success         bool    `json:"success"`
-	Warning         string  `json:"warning,omitempty"`
-	RequireForce    bool    `json:"require_force,omitempty"`
-	BalanceDeducted float64 `json:"balance_deducted,omitempty"`
-	SubDaysDeducted int     `json:"subscription_days_deducted,omitempty"`
 }
 
 type DashboardStats struct {
@@ -201,7 +170,7 @@ type PaymentService struct {
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
-	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
+	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
 	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
 }
@@ -259,14 +228,6 @@ func (s *PaymentService) loadProviders(ctx context.Context) {
 }
 
 // --- Helpers ---
-
-func psIsRefundStatus(s string) bool {
-	switch s {
-	case OrderStatusRefundRequested, OrderStatusRefunding, OrderStatusRefundPending, OrderStatusPartiallyRefunded, OrderStatusRefunded, OrderStatusRefundFailed:
-		return true
-	}
-	return false
-}
 
 func psErrMsg(err error) string {
 	if err == nil {

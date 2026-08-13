@@ -87,7 +87,6 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
-import { isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
@@ -116,8 +115,8 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(paymentType.value))
-const isWxpay = computed(() => isBuiltInWxpayMethod(paymentType.value))
+const isAlipay = computed(() => false)
+const isWxpay = computed(() => false)
 
 const qrTone = computed<'alipay' | 'wxpay' | ''>(() => {
   if (isAlipay.value) return 'alipay'

@@ -208,18 +208,12 @@ const statusFilterOptions = computed(() => [
   { value: 'EXPIRED', label: t('payment.status.expired') },
   { value: 'CANCELLED', label: t('payment.status.cancelled') },
   { value: 'FAILED', label: t('payment.status.failed') },
-  { value: 'REFUNDED', label: t('payment.status.refunded') },
-  { value: 'REFUND_REQUESTED', label: t('payment.status.refund_requested') },
-  { value: 'REFUND_PENDING', label: t('payment.status.refund_pending') },
-  { value: 'REFUND_FAILED', label: t('payment.status.refund_failed') },
 ])
 
 const paymentTypeFilterOptions = computed(() => [
   { value: '', label: t('payment.admin.allPaymentTypes') },
-  { value: 'alipay', label: t('payment.methods.alipay') },
-  { value: 'wxpay', label: t('payment.methods.wxpay') },
-  { value: 'stripe', label: t('payment.methods.stripe') },
-  { value: 'airwallex', label: t('payment.methods.airwallex') },
+  { value: 'sepay', label: t('payment.methods.sepay') },
+  { value: 'nowpayments', label: t('payment.methods.nowpayments') },
 ])
 
 const orderTypeFilterOptions = computed(() => [

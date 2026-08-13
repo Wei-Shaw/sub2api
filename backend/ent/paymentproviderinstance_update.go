@@ -147,34 +147,6 @@ func (_u *PaymentProviderInstanceUpdate) SetNillableLimits(v *string) *PaymentPr
 	return _u
 }
 
-// SetRefundEnabled sets the "refund_enabled" field.
-func (_u *PaymentProviderInstanceUpdate) SetRefundEnabled(v bool) *PaymentProviderInstanceUpdate {
-	_u.mutation.SetRefundEnabled(v)
-	return _u
-}
-
-// SetNillableRefundEnabled sets the "refund_enabled" field if the given value is not nil.
-func (_u *PaymentProviderInstanceUpdate) SetNillableRefundEnabled(v *bool) *PaymentProviderInstanceUpdate {
-	if v != nil {
-		_u.SetRefundEnabled(*v)
-	}
-	return _u
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (_u *PaymentProviderInstanceUpdate) SetAllowUserRefund(v bool) *PaymentProviderInstanceUpdate {
-	_u.mutation.SetAllowUserRefund(v)
-	return _u
-}
-
-// SetNillableAllowUserRefund sets the "allow_user_refund" field if the given value is not nil.
-func (_u *PaymentProviderInstanceUpdate) SetNillableAllowUserRefund(v *bool) *PaymentProviderInstanceUpdate {
-	if v != nil {
-		_u.SetAllowUserRefund(*v)
-	}
-	return _u
-}
-
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *PaymentProviderInstanceUpdate) SetUpdatedAt(v time.Time) *PaymentProviderInstanceUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -285,12 +257,6 @@ func (_u *PaymentProviderInstanceUpdate) sqlSave(ctx context.Context) (_node int
 	}
 	if value, ok := _u.mutation.Limits(); ok {
 		_spec.SetField(paymentproviderinstance.FieldLimits, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RefundEnabled(); ok {
-		_spec.SetField(paymentproviderinstance.FieldRefundEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.AllowUserRefund(); ok {
-		_spec.SetField(paymentproviderinstance.FieldAllowUserRefund, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(paymentproviderinstance.FieldUpdatedAt, field.TypeTime, value)
@@ -430,34 +396,6 @@ func (_u *PaymentProviderInstanceUpdateOne) SetLimits(v string) *PaymentProvider
 func (_u *PaymentProviderInstanceUpdateOne) SetNillableLimits(v *string) *PaymentProviderInstanceUpdateOne {
 	if v != nil {
 		_u.SetLimits(*v)
-	}
-	return _u
-}
-
-// SetRefundEnabled sets the "refund_enabled" field.
-func (_u *PaymentProviderInstanceUpdateOne) SetRefundEnabled(v bool) *PaymentProviderInstanceUpdateOne {
-	_u.mutation.SetRefundEnabled(v)
-	return _u
-}
-
-// SetNillableRefundEnabled sets the "refund_enabled" field if the given value is not nil.
-func (_u *PaymentProviderInstanceUpdateOne) SetNillableRefundEnabled(v *bool) *PaymentProviderInstanceUpdateOne {
-	if v != nil {
-		_u.SetRefundEnabled(*v)
-	}
-	return _u
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (_u *PaymentProviderInstanceUpdateOne) SetAllowUserRefund(v bool) *PaymentProviderInstanceUpdateOne {
-	_u.mutation.SetAllowUserRefund(v)
-	return _u
-}
-
-// SetNillableAllowUserRefund sets the "allow_user_refund" field if the given value is not nil.
-func (_u *PaymentProviderInstanceUpdateOne) SetNillableAllowUserRefund(v *bool) *PaymentProviderInstanceUpdateOne {
-	if v != nil {
-		_u.SetAllowUserRefund(*v)
 	}
 	return _u
 }
@@ -602,12 +540,6 @@ func (_u *PaymentProviderInstanceUpdateOne) sqlSave(ctx context.Context) (_node 
 	}
 	if value, ok := _u.mutation.Limits(); ok {
 		_spec.SetField(paymentproviderinstance.FieldLimits, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RefundEnabled(); ok {
-		_spec.SetField(paymentproviderinstance.FieldRefundEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.AllowUserRefund(); ok {
-		_spec.SetField(paymentproviderinstance.FieldAllowUserRefund, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(paymentproviderinstance.FieldUpdatedAt, field.TypeTime, value)

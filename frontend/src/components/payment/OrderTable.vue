@@ -154,12 +154,6 @@ const STATUS_TONE: Record<OrderStatus, Tone> = {
   EXPIRED: 'neutral',
   CANCELLED: 'neutral',
   FAILED: 'danger',
-  REFUND_REQUESTED: 'warn',
-  REFUNDING: 'warn',
-  REFUND_PENDING: 'warn',
-  PARTIALLY_REFUNDED: 'neutral',
-  REFUNDED: 'neutral',
-  REFUND_FAILED: 'danger',
 }
 
 const STATUS_KEY: Record<OrderStatus, string> = {
@@ -170,12 +164,6 @@ const STATUS_KEY: Record<OrderStatus, string> = {
   EXPIRED: 'payment.status.expired',
   CANCELLED: 'payment.status.cancelled',
   FAILED: 'payment.status.failed',
-  REFUND_REQUESTED: 'payment.status.refund_requested',
-  REFUNDING: 'payment.status.refunding',
-  REFUND_PENDING: 'payment.status.refund_pending',
-  PARTIALLY_REFUNDED: 'payment.status.partially_refunded',
-  REFUNDED: 'payment.status.refunded',
-  REFUND_FAILED: 'payment.status.refund_failed',
 }
 
 function statusTone(status: OrderStatus): Tone {

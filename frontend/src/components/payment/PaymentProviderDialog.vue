@@ -39,8 +39,6 @@
       <!-- Toggles + Payment mode + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
-        <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
         <!--
           Payment mode and supported types are a SELECTION, not a status — which
           of several mutually exclusive (or multiple) options is currently in
@@ -79,48 +77,6 @@
                   : 'border-line bg-surface text-ink-secondary hover:border-line-strong hover:bg-surface-hover',
               ]"
             >{{ pt.label }}</button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="form.provider_key === 'easypay'" class="space-y-3 rounded border border-line-subtle p-3">
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h5 class="text-sm font-medium text-ink">
-              {{ t('admin.settings.payment.easypayCustomMethods') }}
-            </h5>
-            <p class="mt-1 text-xs text-ink-tertiary">
-              {{ t('admin.settings.payment.easypayCustomMethodsHint') }}
-            </p>
-          </div>
-          <Button variant="outline" size="sm" data-testid="add-custom-method" @click="addEasyPayCustomMethod">
-            {{ t('admin.settings.payment.addCustomMethod') }}
-          </Button>
-        </div>
-        <div v-if="easyPayCustomMethods.length" class="space-y-2">
-          <div
-            v-for="(method, index) in easyPayCustomMethods"
-            :key="index"
-            class="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2"
-          >
-            <FormField :label="t('admin.settings.payment.customMethodType')" hide-message>
-              <template #default="{ id }">
-                <input :id="id" v-model="method.type" type="text" class="input mt-0.5" placeholder="credit_card" />
-              </template>
-            </FormField>
-            <FormField :label="t('admin.settings.payment.customMethodUpstreamType')" hide-message>
-              <template #default="{ id }">
-                <input :id="id" v-model="method.upstreamType" type="text" class="input mt-0.5" placeholder="credit_card" />
-              </template>
-            </FormField>
-            <FormField :label="t('admin.settings.payment.customMethodDisplayName')" hide-message>
-              <template #default="{ id }">
-                <input :id="id" v-model="method.displayName" type="text" class="input mt-0.5" :placeholder="t('admin.settings.payment.customMethodDisplayNamePlaceholder')" />
-              </template>
-            </FormField>
-            <Button variant="outline" tone="danger" size="sm" @click="removeEasyPayCustomMethod(index)">
-              {{ t('common.delete') }}
-            </Button>
           </div>
         </div>
       </div>
@@ -295,9 +251,6 @@
           <code class="mt-1 block break-all rounded-sm border border-info/40 bg-surface px-2 py-1 text-xs font-mono text-info">
             {{ providerWebhookUrl }}
           </code>
-          <p v-if="form.provider_key === 'stripe'" class="mt-2 text-xs leading-relaxed text-info">
-            {{ t('admin.settings.payment.stripeWebhookApiVersionHint', { version: STRIPE_SDK_API_VERSION }) }}
-          </p>
         </div>
       </div>
 
@@ -386,20 +339,16 @@ import Select from '@/components/common/Select.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
-import type { EasyPayCustomMethod, TypeOption } from './providerConfig'
+import type { TypeOption } from './providerConfig'
 import {
   PROVIDER_CONFIG_FIELDS,
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
-  PAYMENT_MODE_POPUP,
   PAYMENT_MODE_REDIRECT,
-  STRIPE_SDK_API_VERSION,
   getAvailableTypes,
   extractBaseUrl,
-  parseEasyPayCustomMethods,
-  serializeEasyPayCustomMethods,
 } from './providerConfig'
 
 /** Default payment_mode per provider key — "" means "no preference, use
@@ -419,7 +368,7 @@ function providerSupportsPaymentMode(providerKey: string): boolean {
  * from a different provider (or stale data) back to the default. */
 function isValidPaymentMode(providerKey: string, mode: string): boolean {
   if (providerKey === 'easypay') {
-    return mode === PAYMENT_MODE_QRCODE || mode === PAYMENT_MODE_POPUP
+    return mode === PAYMENT_MODE_QRCODE
   }
   if (providerKey === 'alipay') {
     return mode === '' || mode === PAYMENT_MODE_REDIRECT
@@ -445,8 +394,6 @@ const emit = defineEmits<{
     supported_types: string[]
     enabled: boolean
     payment_mode: string
-    refund_enabled: boolean
-    allow_user_refund: boolean
     config: Record<string, string>
     limits: string
   }]
@@ -474,8 +421,6 @@ const form = reactive({
   supported_types: [] as string[],
   enabled: true,
   payment_mode: PAYMENT_MODE_QRCODE,
-  refund_enabled: false,
-  allow_user_refund: false,
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
@@ -483,7 +428,6 @@ const notifyBaseUrl = ref('')
 const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
 const visibleFields = reactive<Record<string, boolean>>({})
-const easyPayCustomMethods = reactive<EasyPayCustomMethod[]>([])
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -517,23 +461,12 @@ const paymentModeOptions = computed(() => {
   }
   return [
     { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-    { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
   ]
 })
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
-  if (form.provider_key === 'easypay') {
-    for (const method of normalizedEasyPayCustomMethods()) {
-      if (!base.some(opt => opt.value === method.type)) {
-        base.push({
-          value: method.type,
-          label: method.displayName || method.type,
-        })
-      }
-    }
-  }
-  // Resolve i18n labels for types not in allPaymentTypes (e.g. card, link inside stripe)
+  // Resolve i18n labels for types the parent did not supply.
   return base.map(opt =>
     opt.label === opt.value
       ? { ...opt, label: t(`payment.methods.${opt.value}`, opt.value) }
@@ -639,27 +572,9 @@ function toggleType(type: string) {
   }
 }
 
-function normalizedEasyPayCustomMethods(): EasyPayCustomMethod[] {
-  return easyPayCustomMethods
-    .map(method => ({
-      type: normalizeEasyPayCustomMethodCode(method.type),
-      upstreamType: normalizeEasyPayCustomMethodCode(method.upstreamType),
-      displayName: method.displayName.trim(),
-    }))
-    .filter(method => method.type || method.upstreamType || method.displayName)
-}
 
-function normalizeEasyPayCustomMethodCode(value: string): string {
-  return value.trim().toLowerCase()
-}
 
-function addEasyPayCustomMethod() {
-  easyPayCustomMethods.push({ type: '', upstreamType: '', displayName: '' })
-}
 
-function removeEasyPayCustomMethod(index: number) {
-  easyPayCustomMethods.splice(index, 1)
-}
 
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
@@ -675,7 +590,6 @@ function clearConfig() {
   notifyBaseUrl.value = ''
   returnBaseUrl.value = ''
   limitsExpanded.value = false
-  easyPayCustomMethods.splice(0, easyPayCustomMethods.length)
 }
 
 function applyDefaults() {
@@ -733,14 +647,6 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  if (form.provider_key === 'easypay') {
-    const validationError = validateEasyPayCustomMethods()
-    if (validationError) {
-      emitValidationError(validationError)
-      return
-    }
-    syncEasyPayCustomMethods()
-  }
   // Validate required config fields — all non-optional fields must be filled.
   // In edit mode, sensitive fields may be left blank to preserve the stored
   // value (backend merges blanks by preserving the existing secret).
@@ -771,7 +677,6 @@ function handleSave() {
     filteredConfig[k] = v
   }
   if (form.provider_key === 'easypay') {
-    filteredConfig.customMethods = serializeEasyPayCustomMethods(normalizedEasyPayCustomMethods())
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
@@ -792,63 +697,10 @@ function handleSave() {
     supported_types: form.supported_types,
     enabled: form.enabled,
     payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
-    refund_enabled: form.refund_enabled,
-    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,
     limits: serializeLimits(),
   })
 }
-
-function syncEasyPayCustomMethods(): string[] {
-  if (form.provider_key !== 'easypay') return []
-  const baseTypes = new Set(PROVIDER_SUPPORTED_TYPES.easypay || [])
-  const customTypes: string[] = []
-  const seen = new Set<string>()
-  for (const method of normalizedEasyPayCustomMethods()) {
-    if (!method.type || !method.upstreamType) continue
-    if (seen.has(method.type)) continue
-    seen.add(method.type)
-    customTypes.push(method.type)
-  }
-  form.supported_types = form.supported_types
-    .map(type => normalizeEasyPayCustomMethodCode(type))
-    .filter(type => baseTypes.has(type) || customTypes.includes(type))
-  for (const customType of customTypes) {
-    if (!form.supported_types.includes(customType)) {
-      form.supported_types.push(customType)
-    }
-  }
-  return customTypes
-}
-
-function validateEasyPayCustomMethods(): string | null {
-  const seen = new Set<string>()
-  for (const method of normalizedEasyPayCustomMethods()) {
-    const hasAnyValue = Boolean(method.type || method.upstreamType || method.displayName)
-    if (!hasAnyValue) continue
-    if (!method.type || !method.upstreamType) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodRequired')
-    }
-    if (!/^[a-z0-9_-]+$/.test(method.type)) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodTypeInvalid')
-    }
-    if (!/^[a-z0-9_-]+$/.test(method.upstreamType)) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodUpstreamTypeInvalid')
-    }
-    if ((PROVIDER_SUPPORTED_TYPES.easypay || []).includes(method.type)) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodReserved')
-    }
-    if (method.type.startsWith('alipay') || method.type.startsWith('wxpay')) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodPrefixReserved')
-    }
-    if (seen.has(method.type)) {
-      return t('admin.settings.payment.validationEasyPayCustomMethodDuplicate')
-    }
-    seen.add(method.type)
-  }
-  return null
-}
-
 function emitValidationError(msg: string) {
   // Use a custom event or inject appStore — for now use window alert fallback
   // The parent handles this via the save event validation
@@ -862,8 +714,6 @@ function reset(defaultKey: string) {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
   form.payment_mode = defaultPaymentMode(defaultKey)
-  form.refund_enabled = false
-  form.allow_user_refund = false
   clearConfig()
   applyDefaults()
 }
@@ -881,8 +731,6 @@ function loadProvider(provider: ProviderInstance) {
   form.payment_mode = isValidPaymentMode(provider.provider_key, provider.payment_mode || '')
     ? (provider.payment_mode || '')
     : defaultPaymentMode(provider.provider_key)
-  form.refund_enabled = provider.refund_enabled
-  form.allow_user_refund = provider.allow_user_refund
   clearConfig()
   // Pre-fill config from API response. Backend omits sensitive fields entirely,
   // so those inputs stay blank — submitting blank preserves the stored secret.
@@ -891,7 +739,6 @@ function loadProvider(provider: ProviderInstance) {
       // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl
       if (k === 'notifyUrl' || k === 'returnUrl') continue
       if (k === 'customMethods' && provider.provider_key === 'easypay') {
-        easyPayCustomMethods.push(...parseEasyPayCustomMethods(v))
         continue
       }
       config[k] = v

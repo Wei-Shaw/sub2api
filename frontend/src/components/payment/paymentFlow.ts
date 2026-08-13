@@ -1,34 +1,24 @@
 import type {
+  BankTransferInfo,
   CreateOrderRequest,
   CreateOrderResult,
   MethodLimit,
   OrderType,
-  WechatJSAPIPayload,
-  WechatOAuthInfo,
 } from '@/types/payment'
 
 export const PAYMENT_RECOVERY_STORAGE_KEY = 'payment.recovery.current'
 
-const VISIBLE_METHOD_ALIASES = {
-  alipay: 'alipay',
-  alipay_direct: 'alipay',
-  wxpay: 'wxpay',
-  wxpay_direct: 'wxpay',
-  stripe: 'stripe',
-  airwallex: 'airwallex',
-} as const
+/**
+ * The two providers left each back exactly one user-facing method, so there is
+ * no alias layer any more: a payment type is a provider key.
+ */
+export const VISIBLE_PAYMENT_METHODS = ['sepay', 'nowpayments'] as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex'
-export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
+export type VisiblePaymentMethod = (typeof VISIBLE_PAYMENT_METHODS)[number]
+
 export type PaymentLaunchKind =
   | 'qr_waiting'
-  | 'alipay_deep_link'
   | 'redirect_waiting'
-  | 'stripe_popup'
-  | 'stripe_route'
-  | 'airwallex_route'
-  | 'wechat_oauth'
-  | 'wechat_jsapi'
   | 'unhandled'
 
 export interface PaymentRecoverySnapshot {
@@ -39,16 +29,13 @@ export interface PaymentRecoverySnapshot {
   paymentType: string
   payUrl: string
   outTradeNo: string
-  clientSecret: string
   intentId: string
   currency: string
-  countryCode: string
-  paymentEnv: string
   payAmount: number
   orderType: OrderType | ''
   paymentMode: string
   resumeToken: string
-  alipayMobilePrecreateDeepLink?: boolean
+  transfer?: BankTransferInfo
   createdAt: number
 }
 
@@ -56,24 +43,13 @@ export interface PaymentLaunchContext {
   visibleMethod: string
   orderType: OrderType
   isMobile: boolean
-  isWechatBrowser?: boolean
-  /** When true, Alipay payments always use QR code regardless of device type */
-  forceQRCode?: boolean
-  /** When true, the new mobile Alipay precreate flow takes priority over forceQRCode */
-  mobilePrecreateDeepLink?: boolean
   now?: number
-  stripePopupUrl?: string
-  stripeRouteUrl?: string
-  airwallexRouteUrl?: string
 }
 
 export interface PaymentLaunchDecision {
   kind: PaymentLaunchKind
   paymentState: PaymentRecoverySnapshot
   recovery: PaymentRecoverySnapshot
-  stripeMethod?: StripeVisibleMethod
-  oauth?: WechatOAuthInfo
-  jsapi?: WechatJSAPIPayload
 }
 
 export interface BuildCreateOrderPayloadInput {
@@ -83,11 +59,6 @@ export interface BuildCreateOrderPayloadInput {
   planId?: number
   origin?: string
   isMobile: boolean
-  isWechatBrowser: boolean
-  /** When true, Alipay payments always use QR code (passes is_mobile: false to backend) */
-  forceQRCode?: boolean
-  /** When true, keep the real mobile signal so the backend can select precreate */
-  mobilePrecreateDeepLink?: boolean
 }
 
 type CreateOrderFlowResult = CreateOrderResult & {
@@ -96,44 +67,36 @@ type CreateOrderFlowResult = CreateOrderResult & {
 
 type StorageWriter = Pick<Storage, 'removeItem' | 'setItem'>
 
+export function isVisiblePaymentMethod(method: string): method is VisiblePaymentMethod {
+  return (VISIBLE_PAYMENT_METHODS as readonly string[]).includes(method.trim())
+}
+
 export function normalizeVisibleMethod(method: string): VisiblePaymentMethod | '' {
-  const normalized = VISIBLE_METHOD_ALIASES[method.trim() as keyof typeof VISIBLE_METHOD_ALIASES]
-  return normalized ?? ''
+  const trimmed = method.trim()
+  return isVisiblePaymentMethod(trimmed) ? trimmed : ''
 }
 
 export function getVisibleMethods(methods: Record<string, MethodLimit>): Record<string, MethodLimit> {
   const visible: Record<string, MethodLimit> = {}
 
   Object.entries(methods).forEach(([type, limit]) => {
-    const normalized = normalizeVisibleMethod(type) || type.trim()
+    const normalized = normalizeVisibleMethod(type)
     if (!normalized) return
-
-    const isCanonical = type === normalized
-    const existing = visible[normalized]
-    if (!existing || isCanonical) {
-      visible[normalized] = { ...limit }
-    }
+    visible[normalized] = { ...limit }
   })
 
   return visible
 }
 
 export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): CreateOrderRequest {
-  const visibleMethod = normalizeVisibleMethod(input.paymentType) || input.paymentType.trim()
+  const paymentType = input.paymentType.trim()
   const normalizedOrigin = (input.origin || '').trim().replace(/\/+$/, '')
-  // When forceQRCode is enabled for alipay, always tell the backend this is not a mobile
-  // request so it generates a QR code instead of a mobile-redirect URL.
-  const effectiveMobile = (input.forceQRCode && !input.mobilePrecreateDeepLink && visibleMethod === 'alipay')
-    ? false
-    : input.isMobile
   const payload: CreateOrderRequest = {
     amount: input.amount,
-    payment_type: visibleMethod,
+    payment_type: paymentType,
     order_type: input.orderType,
-    is_mobile: effectiveMobile,
-    payment_source: visibleMethod === 'wxpay' && input.isWechatBrowser
-      ? 'wechat_in_app_resume'
-      : 'hosted_redirect',
+    is_mobile: input.isMobile,
+    payment_source: 'hosted_redirect',
   }
 
   if (input.planId) {
@@ -146,6 +109,14 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
   return payload
 }
 
+/**
+ * Decides how to present a freshly created order.
+ *
+ * SePay hands back a VietQR payload the payer scans in their banking app;
+ * NOWPayments hands back a hosted invoice URL. Which one arrives is the
+ * provider's decision, so the shape of the response drives this — not the
+ * method name.
+ */
 export function decidePaymentLaunch(
   result: CreateOrderFlowResult,
   context: PaymentLaunchContext,
@@ -159,81 +130,18 @@ export function decidePaymentLaunch(
     paymentType: visibleMethod,
     payUrl: result.pay_url || '',
     outTradeNo: result.out_trade_no || '',
-    clientSecret: result.client_secret || '',
     intentId: result.intent_id || '',
     currency: result.currency || '',
-    countryCode: result.country_code || '',
-    paymentEnv: result.payment_env || '',
     payAmount: result.pay_amount,
     orderType: context.orderType,
     paymentMode: (result.payment_mode || '').trim(),
     resumeToken: result.resume_token || '',
-    alipayMobilePrecreateDeepLink: result.alipay_mobile_precreate_deep_link === true,
+    transfer: result.transfer,
   }, context.now)
 
-  if (visibleMethod === 'airwallex' && baseState.clientSecret && baseState.intentId) {
-    if (!context.airwallexRouteUrl) {
-      return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
-    }
-    const paymentState = { ...baseState, payUrl: context.airwallexRouteUrl || '' }
-    return { kind: 'airwallex_route', paymentState, recovery: paymentState }
-  }
-
-  if (baseState.clientSecret) {
-    // visibleMethod === 'stripe' means the user clicked the dedicated Stripe button
-    // and should land on the full Payment Element to choose a sub-method themselves.
-    const isStripeButton = visibleMethod === 'stripe'
-    const stripeMethod: StripeVisibleMethod | undefined = isStripeButton
-      ? undefined
-      : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
-    const kind: PaymentLaunchKind = stripeMethod === 'alipay' && !context.isMobile
-      ? 'stripe_popup'
-      : 'stripe_route'
-    const payUrl = kind === 'stripe_popup'
-      ? context.stripePopupUrl || context.stripeRouteUrl || ''
-      : context.stripeRouteUrl || context.stripePopupUrl || ''
-    const paymentState = { ...baseState, payUrl }
-    return { kind, paymentState, recovery: paymentState, stripeMethod }
-  }
-
-  if (result.result_type === 'oauth_required' && result.oauth?.authorize_url) {
-    return { kind: 'wechat_oauth', paymentState: baseState, recovery: baseState, oauth: result.oauth }
-  }
-
-  const jsapiPayload = result.jsapi ?? result.jsapi_payload
-  if (result.result_type === 'jsapi_ready' && jsapiPayload) {
-    return { kind: 'wechat_jsapi', paymentState: baseState, recovery: baseState, jsapi: jsapiPayload }
-  }
-
-  if (
-    visibleMethod === 'alipay'
-    && context.isMobile
-    && baseState.alipayMobilePrecreateDeepLink
-    && baseState.qrCode
-  ) {
-    return { kind: 'alipay_deep_link', paymentState: baseState, recovery: baseState }
-  }
-
   const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
-  // When forceQRCode is on for alipay, treat the device as desktop so the mobile-redirect
-  // branch is bypassed and we fall through to qr_waiting.
-  const effectiveMobile = (context.forceQRCode && !context.mobilePrecreateDeepLink && visibleMethod === 'alipay')
-    ? false
-    : context.isMobile
   const prefersRedirect = normalizedPaymentMode === 'redirect'
-    || normalizedPaymentMode === 'popup'
-    || (effectiveMobile && !!baseState.payUrl)
-  const prefersQr = normalizedPaymentMode === 'qrcode'
-    || normalizedPaymentMode === 'native'
-    || (!prefersRedirect && !!baseState.qrCode)
-
-  if (visibleMethod === 'wxpay' && context.isWechatBrowser && baseState.payUrl && !baseState.qrCode) {
-    return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
-  }
-
-  if (prefersRedirect && baseState.payUrl) {
-    return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
-  }
+  const prefersQr = normalizedPaymentMode === 'qrcode' || (!prefersRedirect && !!baseState.qrCode)
 
   if (prefersQr && baseState.qrCode) {
     return { kind: 'qr_waiting', paymentState: baseState, recovery: baseState }
@@ -241,6 +149,10 @@ export function decidePaymentLaunch(
 
   if (baseState.payUrl) {
     return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState }
+  }
+
+  if (baseState.qrCode) {
+    return { kind: 'qr_waiting', paymentState: baseState, recovery: baseState }
   }
 
   return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
@@ -287,15 +199,12 @@ export function readPaymentRecoverySnapshot(
       || typeof parsed.paymentType !== 'string'
       || typeof parsed.payUrl !== 'string'
       || (parsed.outTradeNo != null && typeof parsed.outTradeNo !== 'string')
-      || typeof parsed.clientSecret !== 'string'
       || (parsed.intentId != null && typeof parsed.intentId !== 'string')
       || (parsed.currency != null && typeof parsed.currency !== 'string')
-      || (parsed.countryCode != null && typeof parsed.countryCode !== 'string')
-      || (parsed.paymentEnv != null && typeof parsed.paymentEnv !== 'string')
       || typeof parsed.payAmount !== 'number'
       || typeof parsed.paymentMode !== 'string'
       || typeof parsed.resumeToken !== 'string'
-      || (parsed.alipayMobilePrecreateDeepLink != null && typeof parsed.alipayMobilePrecreateDeepLink !== 'boolean')
+      || (parsed.transfer != null && typeof parsed.transfer !== 'object')
       || typeof parsed.createdAt !== 'number'
     ) {
       return null
@@ -318,16 +227,13 @@ export function readPaymentRecoverySnapshot(
       paymentType: parsed.paymentType,
       payUrl: parsed.payUrl,
       outTradeNo: parsed.outTradeNo || '',
-      clientSecret: parsed.clientSecret,
       intentId: parsed.intentId || '',
       currency: parsed.currency || '',
-      countryCode: parsed.countryCode || '',
-      paymentEnv: parsed.paymentEnv || '',
       payAmount: parsed.payAmount,
       orderType: parsed.orderType === 'subscription' ? 'subscription' : 'balance',
       paymentMode: parsed.paymentMode,
       resumeToken: parsed.resumeToken,
-      alipayMobilePrecreateDeepLink: parsed.alipayMobilePrecreateDeepLink === true,
+      transfer: parsed.transfer,
       createdAt: parsed.createdAt,
     }
   } catch {

@@ -53,8 +53,6 @@
       <!-- Right: toggles + actions -->
       <div class="flex items-center gap-4">
         <ToggleSwitch :label="t('common.enabled')" :checked="provider.enabled" @toggle="emit('toggleField', 'enabled')" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
-        <ToggleSwitch v-if="provider.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="provider.allow_user_refund" @toggle="emit('toggleField', 'allow_user_refund')" />
         <div class="flex items-center gap-2 border-l border-line pl-3">
           <button
             type="button"
@@ -86,7 +84,7 @@ import StatusDot from '@/components/common/StatusDot.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
-import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP, PAYMENT_MODE_REDIRECT } from './providerConfig'
+import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_REDIRECT } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
   easypay: 'admin.settings.payment.providerEasypay',
@@ -103,7 +101,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  toggleField: [field: 'enabled' | 'refund_enabled' | 'allow_user_refund']
+  toggleField: [field: 'enabled']
   toggleType: [type: string]
   edit: []
   delete: []
@@ -115,7 +113,6 @@ const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_ke
 
 const modeLabel = computed(() => {
   if (props.provider.payment_mode === PAYMENT_MODE_QRCODE) return t('admin.settings.payment.modeQRCode')
-  if (props.provider.payment_mode === PAYMENT_MODE_POPUP) return t('admin.settings.payment.modePopup')
   if (props.provider.payment_mode === PAYMENT_MODE_REDIRECT) return t('admin.settings.payment.modeRedirect')
   return ''
 })

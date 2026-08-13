@@ -130,7 +130,6 @@ import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import type { PaymentOrder } from '@/types/payment'
 import { currencySymbol, paymentCurrencyFractionDigits } from '@/components/payment/currency'
 import QRCode from 'qrcode'
@@ -173,8 +172,8 @@ let lastVerifyAt = 0
 const VERIFY_RETRY_INTERVAL_MS = 15000
 const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(props.paymentType))
-const isWxpay = computed(() => isBuiltInWxpayMethod(props.paymentType))
+const isAlipay = computed(() => false)
+const isWxpay = computed(() => false)
 
 const dialogTitle = computed(() => {
   if (success.value) return t('payment.result.success')
@@ -219,7 +218,7 @@ const countdownDisplay = computed(() => {
 
 function reopenPopup() {
   if (props.payUrl) {
-    window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    window.open(props.payUrl, '_blank', 'noopener,noreferrer')
   }
 }
 

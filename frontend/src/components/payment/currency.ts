@@ -1,7 +1,11 @@
-export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+export const DEFAULT_PAYMENT_CURRENCY = 'USD'
+
+/** The currency SePay settles in — Vietnamese bank transfers are dong-only. */
+export const SEPAY_CURRENCY = 'VND'
 
 const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
+  VND: '₫',
   CNY: '¥',
   RMB: '¥',
   EUR: '€',

@@ -200,7 +200,6 @@ const statusFilters = computed(() => [
   { value: 'PENDING', label: t('payment.status.pending') },
   { value: 'COMPLETED', label: t('payment.status.completed') },
   { value: 'FAILED', label: t('payment.status.failed') },
-  { value: 'REFUNDED', label: t('payment.status.refunded') },
 ])
 
 async function fetchOrders() {
