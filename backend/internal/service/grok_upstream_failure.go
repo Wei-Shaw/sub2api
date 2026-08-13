@@ -30,8 +30,9 @@ const (
 
 // GrokUpstreamFailureDecision is a pure classification result. Callers map it
 // onto existing account state helpers (tempUnscheduleGrok / rateLimitGrok).
-// BlockModel is retained for observability; the current scheduler does not
-// implement per-model soft-blocks, so free-usage deliberately never sets it.
+// BlockModel is set for empty-output / billing when a model id is known.
+// Account-wide free-usage never sets it; model-scoped free-usage is handled
+// separately via markGrokModelQuotaBlock.
 type GrokUpstreamFailureDecision struct {
 	Class          GrokUpstreamFailureClass
 	Model          string
@@ -311,6 +312,7 @@ func isGrokFreeUsageExhaustedText(low string) bool {
 	}
 	for _, p := range []string{
 		"额度耗尽", "额度用完", "额度不足", "额度已用尽", "额度已耗尽",
+		"额度已经用尽", "额度已经耗尽", "额度已经用完",
 		"免费额度", "免费用量", "用量用完", "用量耗尽", "用量超限", "用量已用尽",
 		"配额耗尽", "配额已用尽", "配额不足", "配额超限", "配额用完",
 		"没有额度", "没额度", "无额度", "可用额度不足", "模型额度",

@@ -398,12 +398,13 @@ func (s *GrokFreeRecoveryService) runClaimedCycle(ctx context.Context, store gro
 			usageByAccount, usageErr := usageReader.grokFreeRollingUsage(ctx, ids, now)
 			if usageErr != nil {
 				slog.Warn("grok_free_proactive_usage_query_failed", "error", usageErr)
-				return
+				usageByAccount = map[int64]*WindowStats{}
 			}
 			selected := make([]int64, 0, min(len(eligible), remaining))
 			for i := range eligible {
 				usage := usageByAccount[eligible[i].ID]
-				if usage != nil && usage.Tokens >= grokFreeProactiveProbeTokenThreshold {
+				if grokQuotaSnapshotBlocksScheduling(&eligible[i]) ||
+					(usage != nil && usage.Tokens >= grokFreeProactiveProbeTokenThreshold) {
 					selected = append(selected, eligible[i].ID)
 					if len(selected) >= remaining {
 						break
@@ -467,9 +468,16 @@ func (s *GrokFreeRecoveryService) runLegacyCycle(ctx context.Context) {
 		} else {
 			for i := range proactiveAccounts {
 				usage := usageByAccount[proactiveAccounts[i].ID]
-				if usage != nil && usage.Tokens >= grokFreeProactiveProbeTokenThreshold {
+				if grokQuotaSnapshotBlocksScheduling(&proactiveAccounts[i]) ||
+					(usage != nil && usage.Tokens >= grokFreeProactiveProbeTokenThreshold) {
 					proactiveSelected = append(proactiveSelected, proactiveAccounts[i])
 				}
+			}
+		}
+	} else {
+		for i := range proactiveAccounts {
+			if grokQuotaSnapshotBlocksScheduling(&proactiveAccounts[i]) {
+				proactiveSelected = append(proactiveSelected, proactiveAccounts[i])
 			}
 		}
 	}
@@ -562,11 +570,13 @@ func grokFreeRecoveryCandidate(account *Account, now time.Time) bool {
 }
 
 func grokFreeProactiveUsageCandidate(account *Account, now time.Time) bool {
-	if account == nil || account.IsGrokFreeRecoveryPending() || !account.IsGrokFreeOrUnknownOAuth() ||
-		!account.IsActive() || !account.Schedulable {
+	if account == nil || account.IsGrokFreeRecoveryPending() || !account.IsActive() || !account.Schedulable {
 		return false
 	}
 	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return false
+	}
+	if !account.IsGrokFreeOrUnknownOAuth() && !isKnownGrokFreeAccount(account) && !grokQuotaSnapshotBlocksScheduling(account) {
 		return false
 	}
 	nextProbeAt := account.getExtraTime(GrokFreeProactiveNextProbeAtExtraKey)

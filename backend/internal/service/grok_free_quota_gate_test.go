@@ -5,12 +5,14 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -182,6 +184,29 @@ func TestResolveGrokFreeQuotaGateSettingsDefaultsToNinetyFivePercent(t *testing.
 	require.Equal(t, int64(500_000), settings.limitTokens)
 	require.Equal(t, int64(475_000), settings.gateTokens) // 95% of 500k
 	require.Equal(t, 24*time.Hour, settings.window)
+}
+
+func TestFilterGrokFreeQuotaAccountsDropsExhaustedSnapshotImmediately(t *testing.T) {
+	remaining := int64(0)
+	repo := &grokFreeQuotaUsageRepoStub{}
+	openaiGrokFreeQuotaGateCache = sync.Map{}
+	scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: grokFreeQuotaTestConfig(), usageLogRepo: repo}}
+	accounts := []Account{
+		{
+			ID: 1, Platform: PlatformGrok, Type: AccountTypeOAuth,
+			Extra: map[string]any{
+				grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+					StatusCode: http.StatusTooManyRequests,
+					Tokens:     &xai.QuotaWindow{Remaining: &remaining},
+				},
+			},
+		},
+		{ID: 2, Platform: PlatformGrok, Type: AccountTypeOAuth, Credentials: map[string]any{"subscription_tier": "PRO"}},
+	}
+
+	filtered := scheduler.filterGrokFreeQuotaAccounts(context.Background(), accounts)
+	require.Equal(t, []int64{2}, accountIDs(filtered), "remaining=0 snapshot must fail closed on the first pass")
+	require.Zero(t, repo.calls, "exhausted snapshots must not wait for local usage stats")
 }
 
 func TestIsExplicitGrokFreeOAuthAccount_OnlyExactFree(t *testing.T) {

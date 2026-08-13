@@ -50,6 +50,19 @@ describe('accountStatus', () => {
     expect(isAccountRateLimited(account, Date.parse('2026-07-14T00:04:00Z'))).toBe(false)
   })
 
+  it('treats a persisted Grok remaining=0 snapshot as rate limited', () => {
+    const account = makeAccount({
+      extra: {
+        grok_usage_snapshot: {
+          provider_error_code: 'subscription:free-usage-exhausted',
+          tokens: { remaining: 0 }
+        }
+      }
+    })
+
+    expect(isAccountRateLimited(account)).toBe(true)
+  })
+
   it('ignores a misplaced Grok recovery marker on another platform', () => {
     const account = makeAccount({
       platform: 'openai',

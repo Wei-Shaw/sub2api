@@ -30,6 +30,59 @@ func TestAccountGrokFreeRecoveryPendingBlocksSchedulingAndReportsRateLimited(t *
 	require.Equal(t, nextProbeAt, account.GrokFreeRecoveryNextProbeAt())
 }
 
+func TestGrokQuotaSnapshotBlocksSchedulingForPersistedExhaustion(t *testing.T) {
+	t.Parallel()
+
+	remaining := int64(0)
+	future := time.Now().Add(30 * time.Minute).Unix()
+	account := &Account{
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode: http.StatusTooManyRequests,
+				Tokens:     &xai.QuotaWindow{Remaining: &remaining, ResetUnix: &future},
+			},
+		},
+	}
+	require.True(t, grokQuotaSnapshotBlocksScheduling(account))
+	require.False(t, account.IsSchedulable())
+	require.True(t, account.IsRateLimited())
+}
+
+func TestGrokQuotaSnapshotBlocksSchedulingFreeUsageCodeWithoutReset(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode:        http.StatusTooManyRequests,
+				ProviderErrorCode: grokFreeUsageExhaustedErrorCode,
+			},
+		},
+	}
+	require.True(t, grokQuotaSnapshotBlocksScheduling(account))
+	require.False(t, account.IsSchedulable())
+	require.True(t, account.IsRateLimited())
+}
+
+func TestBuildGrokQuotaSnapshotUpdatesLatchesAccountWideFreeUsageCopy(t *testing.T) {
+	now := time.Now()
+	account := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
+	snapshot := &xai.QuotaSnapshot{StatusCode: http.StatusTooManyRequests}
+	body := []byte(`{"error":"额度已经用尽，请稍后再试"}`)
+
+	updates, pending := buildGrokQuotaSnapshotUpdatesForResponse(account, snapshot, now, body)
+	require.True(t, pending)
+	require.Equal(t, true, updates[GrokFreeRecoveryPendingExtraKey])
+}
+
 func TestBuildGrokQuotaSnapshotUpdatesRequiresAuthoritativeFreeExhaustion(t *testing.T) {
 	now := time.Now()
 	limit := xai.GrokFreeRolling24hTokenLimit

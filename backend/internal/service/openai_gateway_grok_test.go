@@ -3262,6 +3262,29 @@ func TestHandleGrokAccountUpstreamError429FreeUsesProbeRecoveryLease(t *testing.
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestHandleGrokAccountUpstreamError429FreeUsageCopyLatchesUnknownOAuth(t *testing.T) {
+	account := &Account{ID: 614, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+	repo := &grokQuotaAccountRepo{}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	before := time.Now()
+	body := []byte(`{"error":{"message":"You've used all the included free usage. Usage resets over a rolling 24-hour window."}}`)
+
+	permanentlyDisabled := svc.handleGrokAccountUpstreamError(
+		context.Background(), account, http.StatusTooManyRequests,
+		http.Header{"Retry-After": []string{"45"}}, body, "grok-4.5",
+	)
+
+	require.False(t, permanentlyDisabled)
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Empty(t, repo.modelRateLimitCalls, "account-wide free usage must not become a model-only cool")
+	require.Equal(t, true, repo.updates[account.ID][GrokFreeRecoveryPendingExtraKey])
+	require.WithinDuration(t, before.Add(grokFreeRecoveryLeaseDuration), repo.lastRateLimitResetAt, time.Second)
+	account.Extra = repo.updates[account.ID]
+	account.RateLimitResetAt = &repo.lastRateLimitResetAt
+	require.False(t, account.IsSchedulable())
+}
+
 func TestHandleGrokAccountUpstreamError429WithoutGlobalEvidenceUsesModelScope(t *testing.T) {
 	account := &Account{ID: 612, Platform: PlatformGrok, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
 	repo := &grokQuotaAccountRepo{}
@@ -3665,6 +3688,36 @@ func TestUpdateGrokUsageFromResponseHeaderlessSuccessClearsObservedCooldown(t *t
 	require.Equal(t, limitedAt, repo.recoveryObservedAt)
 	require.Equal(t, observedResetAt, repo.recoveryObservedReset)
 	require.Same(t, &observedResetAt, account.RateLimitResetAt, "shared account snapshots must not be mutated in place")
+}
+
+func TestUpdateGrokUsageFromResponseHeaderlessSuccessKeepsExhaustedSnapshot(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	limitedAt := now.Add(-grokRateLimitRepeatCooldown)
+	observedResetAt := now.Add(-time.Second)
+	remaining := int64(0)
+	account := &Account{
+		ID:               662,
+		Platform:         PlatformGrok,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitedAt:    &limitedAt,
+		RateLimitResetAt: &observedResetAt,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode:        http.StatusTooManyRequests,
+				ProviderErrorCode: grokFreeUsageExhaustedErrorCode,
+				Tokens:            &xai.QuotaWindow{Remaining: &remaining},
+			},
+		},
+	}
+	repo := &grokQuotaAccountRepo{recoveryClearResult: true}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+
+	svc.updateGrokUsageFromResponse(context.Background(), account, nil, http.StatusOK)
+
+	require.Zero(t, repo.recoveryClearCalls, "headerless 200 must not clear a stored exhausted quota snapshot")
+	require.True(t, account.IsRateLimited())
 }
 
 func TestUpdateGrokUsageFromResponseRecoveryRespectsCancellationAndAPIKeyBoundary(t *testing.T) {

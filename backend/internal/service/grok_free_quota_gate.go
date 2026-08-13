@@ -80,10 +80,32 @@ func calculateGrokFreeQuotaSoftGateTokens(limit int64, percent int) int64 {
 	return (limit/100)*int64(percent) + (limit%100)*int64(percent)/100
 }
 
+// grokAccountAppliesLocalFreeQuotaGate decides whether local rolling-token
+// soft-gate stats are collected for this account. Explicit "free" and accounts
+// recognized as Free from billing/quota headers are both gated; unknown /
+// paid-looking OAuth stays fail-open.
+func grokAccountAppliesLocalFreeQuotaGate(account *Account) bool {
+	return isExplicitGrokFreeOAuthAccount(account) || isKnownGrokFreeAccount(account)
+}
+
+func filterGrokExhaustedQuotaSnapshotAccounts(accounts []Account) []Account {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	out := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if grokQuotaSnapshotBlocksScheduling(&accounts[i]) {
+			continue
+		}
+		out = append(out, accounts[i])
+	}
+	return out
+}
+
 // isExplicitGrokFreeOAuthAccount decides whether the free soft-gate applies.
 // Contract: only OAuth accounts with credentials/extra
 // subscription_tier or plan_type exactly "free" (case-insensitive). Inferred
-// free / basic / blank plan do not soft-gate.
+// free / basic / blank plan do not soft-gate via this helper alone.
 func isExplicitGrokFreeOAuthAccount(account *Account) bool {
 	if account == nil || !account.IsGrokOAuth() {
 		return false
@@ -101,9 +123,11 @@ func isExplicitGrokFreeOAuthAccount(account *Account) bool {
 	return false
 }
 
-// filterGrokFreeQuotaAccounts applies a local, rolling soft gate only to
-// FREE Grok OAuth accounts on the OpenAI scheduling hot path.
-// Missing or failed statistics always fail open; upstream quota/rate-limit
+// filterGrokFreeQuotaAccounts applies a local, rolling soft gate to Free Grok
+// OAuth accounts (explicit "free" or known-free from billing/quota headers)
+// on the OpenAI scheduling hot path.
+// Persisted remaining=0 / free-usage snapshots fail closed immediately.
+// Missing or failed local statistics still fail open; upstream quota/rate-limit
 // handling remains authoritative. Admin quota/import probes never call this.
 func (s *defaultOpenAIAccountScheduler) filterGrokFreeQuotaAccounts(ctx context.Context, accounts []Account) []Account {
 	if s == nil || s.service == nil {
@@ -113,8 +137,8 @@ func (s *defaultOpenAIAccountScheduler) filterGrokFreeQuotaAccounts(ctx context.
 }
 
 // filterGrokFreeQuotaAccountsForGateway applies the same soft gate on Gateway
-// scheduling (e.g. /v1/web_search) so free accounts near local 95%/1M are not
-// still selected for native search while Responses soft-gates them out.
+// scheduling (e.g. /v1/web_search) so free accounts near the local 95%/500k
+// gate are not still selected for native search while Responses soft-gates them out.
 func (s *GatewayService) filterGrokFreeQuotaAccountsForGateway(ctx context.Context, accounts []Account) []Account {
 	if s == nil {
 		return accounts
@@ -137,6 +161,7 @@ func filterGrokFreeQuotaAccountsCore(
 	cache *sync.Map,
 	accounts []Account,
 ) []Account {
+	accounts = filterGrokExhaustedQuotaSnapshotAccounts(accounts)
 	if cache == nil {
 		return accounts
 	}
@@ -150,7 +175,7 @@ func filterGrokFreeQuotaAccountsCore(
 	seenMissing := make(map[int64]struct{})
 	for i := range accounts {
 		account := &accounts[i]
-		if !isExplicitGrokFreeOAuthAccount(account) || account.ID <= 0 {
+		if !grokAccountAppliesLocalFreeQuotaGate(account) || account.ID <= 0 {
 			continue
 		}
 		if cached, ok := cache.Load(account.ID); ok {
@@ -182,7 +207,7 @@ func filterGrokFreeQuotaAccountsCore(
 	filtered := make([]Account, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
-		if isExplicitGrokFreeOAuthAccount(account) {
+		if grokAccountAppliesLocalFreeQuotaGate(account) {
 			if tokens, known := tokensByID[account.ID]; known && tokens >= settings.gateTokens {
 				continue
 			}

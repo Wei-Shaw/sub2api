@@ -167,9 +167,16 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		errCtx := withGrokTeamRateLimitModel(ctx, upstreamModel)
 		permanentlyDisabled := s.handleGrokAccountUpstreamError(errCtx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 		// 429 / free-usage: stamp team+model cool so sibling accounts skip this model.
+		// Prefer the account reset written above so Retry-After is not stretched
+		// to the 10-minute team default.
 		if resp.StatusCode == http.StatusTooManyRequests ||
 			classifyGrokUpstreamFailure(resp.StatusCode, respBody, upstreamModel).Class == GrokFailureFreeUsage {
-			markGrokTeamModelRateLimit(account, upstreamModel, resolveGrokTeamRateLimitUntil(time.Now().Add(grokTeamRateLimitDefaultTTL), time.Now()))
+			now := time.Now()
+			until := now.Add(grokTeamRateLimitDefaultTTL)
+			if account.RateLimitResetAt != nil {
+				until = resolveGrokTeamRateLimitUntil(*account.RateLimitResetAt, now)
+			}
+			markGrokTeamModelRateLimit(account, upstreamModel, until)
 		}
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			return nil, &UpstreamFailoverError{
@@ -1385,7 +1392,16 @@ func grokShouldEnterFreeRecovery(account *Account, snapshot *xai.QuotaSnapshot, 
 	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
 		return true
 	}
-	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) && grokSnapshotHasKnownFreeEvidence(account, snapshot)
+	if grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) && grokSnapshotHasKnownFreeEvidence(account, snapshot) {
+		return true
+	}
+	// Production xAI 429s often use Chinese/English quota copy without the
+	// structured free-usage code or remaining=0 headers. Those used to take
+	// the model-scoped 429 path and stay globally schedulable.
+	if !account.IsGrokFreeOrUnknownOAuth() && !isKnownGrokFreeAccount(account) {
+		return false
+	}
+	return grokResponseIndicatesAccountWideFreeUsage(responseBody)
 }
 
 func grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot *xai.QuotaSnapshot) bool {
@@ -1398,6 +1414,84 @@ func grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot *xai.QuotaSnapshot) bool
 		}
 	}
 	return false
+}
+
+// grokQuotaSnapshotBlocksScheduling reports that a persisted Grok quota
+// observation still says the account is exhausted. Used by IsSchedulable and
+// the pre-select soft-gate so remaining=0 accounts cannot re-enter rotation
+// after a 2-minute fallback cooldown expires.
+func grokQuotaSnapshotBlocksScheduling(account *Account) bool {
+	if account == nil || !account.IsGrokOAuth() {
+		return false
+	}
+	snapshot, err := grokQuotaSnapshotFromExtra(account.Extra)
+	if err != nil || snapshot == nil {
+		return false
+	}
+	return grokQuotaSnapshotBlocksSchedulingFromSnapshot(account, snapshot)
+}
+
+func grokQuotaSnapshotBlocksSchedulingFromSnapshot(account *Account, snapshot *xai.QuotaSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	if grokStoredFreeUsageExhaustionStillActive(snapshot) {
+		return true
+	}
+	if !grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) {
+		return false
+	}
+	now := time.Now()
+	if resetAt := grokSnapshotAbsoluteResetAt(snapshot, now); !resetAt.IsZero() {
+		return resetAt.After(now)
+	}
+	// remaining=0 with no absolute reset: keep free/unknown accounts out until
+	// a probe rewrites the snapshot. Paid accounts fall back to the ordinary
+	// rate_limit_reset_at / temp-unsched timers.
+	return account != nil && (account.IsGrokFreeOrUnknownOAuth() || isKnownGrokFreeAccount(account))
+}
+
+func grokStoredFreeUsageExhaustionStillActive(snapshot *xai.QuotaSnapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	code := strings.ToLower(strings.TrimSpace(snapshot.ProviderErrorCode))
+	return code == grokFreeUsageExhaustedErrorCode || code == grokFreeUsageExhaustedLegacyCode
+}
+
+// grokSnapshotAbsoluteResetAt returns a future retry boundary recorded on the
+// snapshot. It never invents a rolling fallback from "now", so a stale
+// remaining=0 observation cannot permanently self-renew every time it is read.
+func grokSnapshotAbsoluteResetAt(snapshot *xai.QuotaSnapshot, now time.Time) time.Time {
+	if snapshot == nil {
+		return time.Time{}
+	}
+	var resetAt time.Time
+	if snapshot.RetryAfterSeconds != nil && *snapshot.RetryAfterSeconds > 0 {
+		observedAt := now
+		if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(snapshot.UpdatedAt)); err == nil {
+			observedAt = parsed
+		}
+		candidate := observedAt.Add(time.Duration(*snapshot.RetryAfterSeconds) * time.Second)
+		if candidate.After(now) {
+			resetAt = candidate
+		}
+	}
+	for _, window := range []*xai.QuotaWindow{snapshot.Requests, snapshot.Tokens} {
+		if window == nil {
+			continue
+		}
+		candidate := time.Time{}
+		if window.ResetUnix != nil && *window.ResetUnix > 0 {
+			candidate = time.Unix(*window.ResetUnix, 0)
+		} else if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(window.ResetAt)); err == nil {
+			candidate = parsed
+		}
+		if candidate.After(now) && candidate.After(resetAt) {
+			resetAt = candidate
+		}
+	}
+	return resetAt
 }
 
 func grokSnapshotHasKnownFreeEvidence(account *Account, snapshot *xai.QuotaSnapshot) bool {
@@ -1422,7 +1516,24 @@ func grok429HasAuthoritativeGlobalQuotaEvidence(account *Account, snapshot *xai.
 	if grokResponseIndicatesFreeUsageExhausted(responseBody) {
 		return true
 	}
-	return grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot)
+	if grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) {
+		return true
+	}
+	// Any account-wide or model-scoped free-usage body must skip the short
+	// persistGrokModelCooldown path so handleGrok can latch or model-block.
+	return grokResponseIndicatesAccountWideFreeUsage(responseBody) ||
+		classifyGrokUpstreamFailure(http.StatusTooManyRequests, responseBody, "").Class == GrokFailureFreeUsage
+}
+
+// grokResponseIndicatesAccountWideFreeUsage is true when the body describes
+// rolling Free quota exhaustion that is not scoped to a single model.
+func grokResponseIndicatesAccountWideFreeUsage(responseBody []byte) bool {
+	decision := classifyGrokUpstreamFailure(http.StatusTooManyRequests, responseBody, "")
+	if decision.Class != GrokFailureFreeUsage {
+		return false
+	}
+	low := strings.ToLower(decision.Reason)
+	return decision.Model == "" || !isGrokModelSpecificFreeUsage(low, decision.Model)
 }
 
 // The upstream error code is authoritative even when stale billing metadata
@@ -1651,13 +1762,25 @@ type grokRateLimitRecoveryRepository interface {
 }
 
 func isSuccessfulGrokRateLimitRecovery(account *Account, snapshot *xai.QuotaSnapshot) bool {
-	return isGrokOAuthAccount(account) &&
-		!account.IsGrokFreeRecoveryPending() &&
-		account.RateLimitedAt != nil &&
-		account.RateLimitResetAt != nil &&
-		snapshot != nil &&
-		snapshot.StatusCode >= http.StatusOK &&
-		snapshot.StatusCode < http.StatusMultipleChoices
+	if !isGrokOAuthAccount(account) ||
+		account.IsGrokFreeRecoveryPending() ||
+		account.RateLimitedAt == nil ||
+		account.RateLimitResetAt == nil ||
+		snapshot == nil ||
+		snapshot.StatusCode < http.StatusOK ||
+		snapshot.StatusCode >= http.StatusMultipleChoices {
+		return false
+	}
+	if grokQuotaSnapshotHasExhaustedGlobalWindow(snapshot) || grokStoredFreeUsageExhaustionStillActive(snapshot) {
+		return false
+	}
+	// A headerless 2xx must not clear a stored remaining=0 / free-usage snapshot.
+	if snapshot.Requests == nil && snapshot.Tokens == nil && strings.TrimSpace(snapshot.ProviderErrorCode) == "" {
+		if stored, err := grokQuotaSnapshotFromExtra(account.Extra); err == nil && grokQuotaSnapshotBlocksSchedulingFromSnapshot(account, stored) {
+			return false
+		}
+	}
+	return true
 }
 
 func clearGrokRateLimitAfterRecovery(ctx context.Context, repo AccountRepository, account *Account) {

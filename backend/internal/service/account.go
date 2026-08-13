@@ -232,6 +232,12 @@ func (a *Account) IsSchedulable() bool {
 	if a.IsGrokFreeRecoveryPending() {
 		return false
 	}
+	// Persisted remaining=0 / free-usage snapshots must keep the account out of
+	// rotation even after a short local cooldown expired. Production previously
+	// treated these as healthy because SQL only checks rate_limit_reset_at.
+	if grokQuotaSnapshotBlocksScheduling(a) {
+		return false
+	}
 	now := time.Now()
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
@@ -282,6 +288,9 @@ func (a *Account) IsRateLimited() bool {
 		return false
 	}
 	if a.IsGrokFreeRecoveryPending() {
+		return true
+	}
+	if grokQuotaSnapshotBlocksScheduling(a) {
 		return true
 	}
 	if a.RateLimitResetAt == nil {

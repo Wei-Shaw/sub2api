@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sort"
 	"sync"
 	"testing"
@@ -403,6 +404,43 @@ func TestGrokFreeRecoveryServiceHonorsNextProbeAndCASFailure(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, account.IsGrokFreeRecoveryPending())
 	})
+}
+
+func TestGrokFreeRecoveryServiceProactivelyClaimsExhaustedSnapshot(t *testing.T) {
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	remaining := int64(0)
+	account := Account{
+		ID:          15,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				StatusCode:        http.StatusTooManyRequests,
+				ProviderErrorCode: grokFreeUsageExhaustedErrorCode,
+				Tokens:            &xai.QuotaWindow{Remaining: &remaining},
+			},
+		},
+	}
+	store := &grokFreeRecoveryStoreStub{accounts: map[int64]Account{account.ID: account}}
+	prober := &grokFreeRecoveryUsageProberStub{
+		usage: map[int64]*WindowStats{account.ID: {Tokens: 1}},
+		result: &GrokQuotaProbeResult{
+			StatusCode: 429,
+			Snapshot:   &xai.QuotaSnapshot{StatusCode: 429},
+		},
+	}
+	recoverer := &grokFreeRecoveryRecovererStub{}
+	svc := newGrokFreeRecoveryServiceForTest(store, prober, recoverer)
+	svc.now = func() time.Time { return now }
+
+	svc.runCycle(context.Background())
+
+	require.Equal(t, []int64{account.ID}, prober.probeCalls, "remaining=0 snapshot must be probed even below the usage threshold")
+	updated, err := store.GetByID(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.True(t, updated.IsGrokFreeRecoveryPending())
 }
 
 func TestGrokFreeRecoveryServiceProactivelyProbesRollingUsageAtLimit(t *testing.T) {
