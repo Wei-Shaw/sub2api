@@ -60,14 +60,23 @@ func BootstrapInstallation(ctx context.Context, db *sql.DB, client *ent.Client, 
 }
 
 func BootstrapInstallationWithFinalizer(ctx context.Context, db *sql.DB, client *ent.Client, cfg *config.Config, finalize func() error) error {
-	if db == nil {
-		return errors.New("nil sql db")
-	}
 	if client == nil {
 		return errors.New("nil ent client")
 	}
+	return bootstrapInstallation(ctx, db, migrations.FS, func() error {
+		return BootstrapEnt(ctx, client, cfg)
+	}, finalize)
+}
 
-	if err := RequireMigrationsApplied(ctx, db); err != nil {
+func bootstrapInstallation(ctx context.Context, db *sql.DB, fsys fs.FS, bootstrap func() error, finalize func() error) error {
+	if db == nil {
+		return errors.New("nil sql db")
+	}
+	if bootstrap == nil {
+		return errors.New("nil bootstrap action")
+	}
+
+	if err := requireMigrationsAppliedFS(ctx, db, fsys); err != nil {
 		return err
 	}
 
@@ -89,7 +98,7 @@ func BootstrapInstallationWithFinalizer(ctx context.Context, db *sql.DB, client 
 		return nil
 	}
 
-	if err := BootstrapEnt(ctx, client, cfg); err != nil {
+	if err := bootstrap(); err != nil {
 		return err
 	}
 	if finalize != nil {

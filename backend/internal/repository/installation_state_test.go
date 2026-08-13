@@ -68,6 +68,28 @@ func TestRequireBootstrapCompleteRejectsIncompleteInstallation(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestBootstrapInstallationDoesNotRunBootstrapBeforeMigrationGate(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	migrations := fstest.MapFS{
+		"001_schema.sql": {Data: []byte("CREATE TABLE widgets (id bigint);")},
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT checksum FROM schema_migrations WHERE filename = $1")).
+		WithArgs("001_schema.sql").
+		WillReturnRows(sqlmock.NewRows([]string{"checksum"}))
+
+	bootstrapped := false
+	err = bootstrapInstallation(context.Background(), db, migrations, func() error {
+		bootstrapped = true
+		return nil
+	}, nil)
+	require.ErrorContains(t, err, "migration gate incomplete: 001_schema.sql")
+	require.False(t, bootstrapped)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestRequireMigrationsAppliedFS(t *testing.T) {
 	migrations := fstest.MapFS{
 		"001_schema.sql": {Data: []byte("CREATE TABLE widgets (id bigint);")},
