@@ -41,6 +41,26 @@ const stubMobileMatchMedia = () => {
   })
 }
 
+const readSortedData = (wrapper: ReturnType<typeof mount>): any[] => {
+  const exposed = (wrapper.vm as any).sortedData
+  return exposed?.value ?? exposed
+}
+
+const mountSorted = (
+  columnKey: string,
+  data: any[],
+  order: 'asc' | 'desc'
+) =>
+  mount(DataTable, {
+    props: {
+      columns: [{ key: columnKey, label: columnKey, sortable: true }],
+      data,
+      rowKey: 'id',
+      defaultSortKey: columnKey,
+      defaultSortOrder: order
+    }
+  })
+
 describe('DataTable', () => {
   beforeEach(() => {
     stubDesktopMatchMedia()
@@ -356,5 +376,85 @@ describe('DataTable', () => {
     await wrapper.get('[data-test="select-all-mobile"]').setValue(true)
 
     expect(wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]).toEqual([99, 1, 2])
+  })
+
+  describe('client-side sort ordering', () => {
+    // isNullishOrEmpty treats null, undefined and '' as empty.
+    const numericRows = [
+      { id: 1, cost: 5 },
+      { id: 2, cost: null },
+      { id: 3, cost: 20 },
+      { id: 4, cost: undefined },
+      { id: 5, cost: 1 },
+      { id: 6, cost: '' }
+    ]
+    const stringRows = [
+      { id: 1, name: 'beta' },
+      { id: 2, name: '' },
+      { id: 3, name: 'alpha' },
+      { id: 4, name: null },
+      { id: 5, name: 'gamma' },
+      { id: 6, name: undefined }
+    ]
+
+    it('sorts a numeric column ascending with empty cells last', () => {
+      const wrapper = mountSorted('cost', numericRows, 'asc')
+
+      expect(readSortedData(wrapper).map(row => row.id)).toEqual([5, 1, 3, 2, 4, 6])
+    })
+
+    it('sorts a numeric column descending with empty cells still last', () => {
+      const wrapper = mountSorted('cost', numericRows, 'desc')
+
+      const ids = readSortedData(wrapper).map(row => row.id)
+      // Regression: negating the whole comparator used to float empty cells to the top.
+      expect(ids).toEqual([3, 1, 5, 2, 4, 6])
+      expect(ids.slice(0, 3)).toEqual([3, 1, 5])
+    })
+
+    it('sorts a string column ascending with empty cells last', () => {
+      const wrapper = mountSorted('name', stringRows, 'asc')
+
+      expect(readSortedData(wrapper).map(row => row.id)).toEqual([3, 1, 5, 2, 4, 6])
+    })
+
+    it('sorts a string column descending with empty cells still last', () => {
+      const wrapper = mountSorted('name', stringRows, 'desc')
+
+      const ids = readSortedData(wrapper).map(row => row.id)
+      expect(ids).toEqual([5, 1, 3, 2, 4, 6])
+      expect(ids.slice(0, 3)).toEqual([5, 1, 3])
+    })
+
+    it('keeps the original order among equally empty cells in both directions', () => {
+      const rows = [
+        { id: 1, cost: null },
+        { id: 2, cost: 7 },
+        { id: 3, cost: '' },
+        { id: 4, cost: undefined }
+      ]
+
+      expect(readSortedData(mountSorted('cost', rows, 'asc')).map(row => row.id)).toEqual([
+        2, 1, 3, 4
+      ])
+      expect(readSortedData(mountSorted('cost', rows, 'desc')).map(row => row.id)).toEqual([
+        2, 1, 3, 4
+      ])
+    })
+
+    it('leaves row order untouched when serverSideSort is enabled', () => {
+      const wrapper = mount(DataTable, {
+        props: {
+          columns: [{ key: 'cost', label: 'Cost', sortable: true }],
+          data: numericRows,
+          rowKey: 'id',
+          serverSideSort: true,
+          defaultSortKey: 'cost',
+          defaultSortOrder: 'desc'
+        }
+      })
+
+      expect(readSortedData(wrapper).map(row => row.id)).toEqual([1, 2, 3, 4, 5, 6])
+    })
   })
 })

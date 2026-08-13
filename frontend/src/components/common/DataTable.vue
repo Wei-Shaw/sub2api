@@ -599,13 +599,10 @@ const toSortableString = (value: any): string => {
   }
 }
 
-const compareSortValues = (a: any, b: any): number => {
-  const aEmpty = isNullishOrEmpty(a)
-  const bEmpty = isNullishOrEmpty(b)
-  if (aEmpty && bEmpty) return 0
-  if (aEmpty) return 1
-  if (bEmpty) return -1
-
+// Compares two values that are both known to be non-empty.
+// Emptiness is handled by the sort comparator so that empty cells stay last in
+// both directions (the direction flip must not be applied to them).
+const compareNonEmptyValues = (a: any, b: any): number => {
   const aNum = toFiniteNumberOrNull(a)
   const bNum = toFiniteNumberOrNull(b)
   if (aNum !== null && bNum !== null) {
@@ -697,8 +694,16 @@ const sortedData = computed(() => {
   return props.data
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
-      const cmp = compareSortValues(a.row?.[key], b.row?.[key])
-      if (cmp !== 0) return order === 'asc' ? cmp : -cmp
+      const av = a.row?.[key]
+      const bv = b.row?.[key]
+      const aEmpty = isNullishOrEmpty(av)
+      const bEmpty = isNullishOrEmpty(bv)
+      // Empty cells always sink to the bottom, in both sort directions.
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1
+      if (!aEmpty) {
+        const cmp = compareNonEmptyValues(av, bv)
+        if (cmp !== 0) return order === 'asc' ? cmp : -cmp
+      }
       return a.index - b.index
     })
     .map(item => item.row)
