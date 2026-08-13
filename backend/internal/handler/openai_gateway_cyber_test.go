@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -133,10 +137,107 @@ func TestRejectIfCyberSessionBlocked_FailOpen(t *testing.T) {
 
 	h := &OpenAIGatewayHandler{}
 	require.False(t, h.rejectIfCyberSessionBlocked(c, nil, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil apiKey → pass")
+	require.False(t, service.GetOpsSessionBlocked(c), "pass-through must not set session-block marker")
 
 	h2 := &OpenAIGatewayHandler{gatewayService: nil}
 	key := &service.APIKey{ID: 1}
 	require.False(t, h2.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil gateway service → pass")
+	require.False(t, service.GetOpsSessionBlocked(c), "nil gateway service pass-through must not set session-block marker")
+}
+
+// fakeSettingRepo is a minimal SettingRepository stub for the session-block test.
+// Only GetValue is exercised by GetCyberSessionBlockRuntime.
+type fakeSettingRepo struct {
+	vals map[string]string
+}
+
+var _ service.SettingRepository = (*fakeSettingRepo)(nil)
+
+func (r *fakeSettingRepo) Get(_ context.Context, _ string) (*service.Setting, error) {
+	return nil, errors.New("stub")
+}
+func (r *fakeSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	v, ok := r.vals[key]
+	if !ok {
+		return "", service.ErrSettingNotFound
+	}
+	return v, nil
+}
+func (r *fakeSettingRepo) Set(_ context.Context, _, _ string) error { return nil }
+func (r *fakeSettingRepo) GetMultiple(_ context.Context, _ []string) (map[string]string, error) {
+	return r.vals, nil
+}
+func (r *fakeSettingRepo) SetMultiple(_ context.Context, _ map[string]string) error { return nil }
+func (r *fakeSettingRepo) GetAll(_ context.Context) (map[string]string, error)      { return r.vals, nil }
+func (r *fakeSettingRepo) Delete(_ context.Context, _ string) error                 { return nil }
+
+// fakeBlockCache implements both GatewayCache (no-op stubs) and
+// CyberSessionBlockStore so it can be injected as OpenAIGatewayService.cache.
+type fakeBlockCache struct {
+	blocked bool
+}
+
+var _ service.GatewayCache = (*fakeBlockCache)(nil)
+var _ service.CyberSessionBlockStore = (*fakeBlockCache)(nil)
+
+func (c *fakeBlockCache) GetSessionAccountID(_ context.Context, _ int64, _ string) (int64, error) {
+	return 0, service.ErrStickySessionNotFound
+}
+func (c *fakeBlockCache) SetSessionAccountID(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c *fakeBlockCache) RefreshSessionTTL(_ context.Context, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *fakeBlockCache) DeleteSessionAccountID(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+func (c *fakeBlockCache) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (c *fakeBlockCache) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (c *fakeBlockCache) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+func (c *fakeBlockCache) ReleaseGrokVideoBilled(_ context.Context, _ string) error { return nil }
+func (c *fakeBlockCache) SetCyberSessionBlocked(_ context.Context, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *fakeBlockCache) IsCyberSessionBlocked(_ context.Context, _ string) (bool, error) {
+	return c.blocked, nil
+}
+
+// TestRejectIfCyberSessionBlocked_SetsSessionBlockMarker verifies the blocked
+// path marks the gin context so OpsErrorLoggerMiddleware skips its own fallback
+// write (dedup with the explicit enqueueCyberSessionBlockedOpsEntry entry).
+func TestRejectIfCyberSessionBlocked_SetsSessionBlockMarker(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{}`))
+	c.Request.Header.Set("session_id", "sess-blocked")
+
+	settingSvc := service.NewSettingService(&fakeSettingRepo{vals: map[string]string{
+		service.SettingKeyCyberSessionBlockEnabled:    "true",
+		service.SettingKeyCyberSessionBlockTTLSeconds: "60",
+	}}, nil)
+
+	h := &OpenAIGatewayHandler{
+		gatewayService: service.NewOpenAIGatewayService(
+			nil, nil, nil, nil, nil, nil,
+			&fakeBlockCache{blocked: true},
+			nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			settingSvc,
+			nil,
+		),
+	}
+	key := &service.APIKey{ID: 1}
+
+	require.False(t, service.GetOpsSessionBlocked(c), "前置：标记未设置")
+	require.True(t, h.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "blocked request must be rejected")
+	require.True(t, service.GetOpsSessionBlocked(c), "blocked request must set session-block marker")
+	require.Equal(t, http.StatusForbidden, c.Writer.Status(), "response must be 403")
 }
 
 // TestRecordCyberPolicyIfMarked_BlockKeyPlumbed verifies the 6th param is

@@ -1811,8 +1811,10 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 	return false
 }
 
-// shouldSkipOpsErrorLogForCyber：cyber_policy 命中的请求由 recordCyberPolicyIfMarked
-// 统一落一条 status=403 的错误请求，故中间件跳过自身落库，避免双写。
+// shouldSkipOpsErrorLogForCyber：两类请求的 ops_error_logs 已由 handler 侧统一落库，
+// 中间件跳过自身兜底落库，避免双写：
+//   - 上游透传 cyber_policy：recordCyberPolicyIfMarked 统一落一条 status=403 的错误请求
+//   - 本地会话屏蔽：enqueueCyberSessionBlockedOpsEntry 显式落一条 cyber_policy_session_blocked
 func shouldSkipOpsErrorLogForCyber(c *gin.Context) bool {
-	return service.GetOpsCyberPolicy(c) != nil
+	return service.GetOpsCyberPolicy(c) != nil || service.GetOpsSessionBlocked(c)
 }

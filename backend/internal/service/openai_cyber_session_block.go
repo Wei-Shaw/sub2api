@@ -10,6 +10,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// opsSessionBlockedKey 在 gin context 中携带「本地会话屏蔽命中」标记。
+// 由 handler 在 rejectIfCyberSessionBlocked 本地拦截时设置，
+// OpsErrorLoggerMiddleware 据此跳过自身兜底落库，避免与
+// enqueueCyberSessionBlockedOpsEntry 显式落库构成同 ID 双写。
+const opsSessionBlockedKey = "ops_session_blocked"
+
+// MarkOpsSessionBlocked 标记一次本地会话屏蔽（幂等，重复调用覆盖为 true）。
+func MarkOpsSessionBlocked(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(opsSessionBlockedKey, true)
+}
+
+// GetOpsSessionBlocked 返回本地会话屏蔽标记是否命中。
+func GetOpsSessionBlocked(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if v, ok := c.Get(opsSessionBlockedKey); ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 // CyberSessionBlockStore 是 cyber 会话屏蔽表的存取接口。
 // repository 层 gatewayCache 附带实现（类型断言探测接入，不改 GatewayCache
 // 共享接口）；测试 stub 不实现时屏蔽能力自动降级关闭。
