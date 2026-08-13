@@ -285,3 +285,15 @@ func TestMigration234KeepsGroupPricingExpansionRollbackCompatible(t *testing.T) 
 	require.Contains(t, sql, "create or replace trigger groups_default_long_context_pricing_enabled")
 	require.Contains(t, sql, "before insert or update of long_context_pricing_enabled on groups")
 }
+
+func TestMigration235InvalidatesV20GroupPricingSnapshots(t *testing.T) {
+	content, err := FS.ReadFile("235_group_model_pricing_auth_cache_invalidation.sql")
+	require.NoError(t, err)
+
+	sql := strings.ToLower(string(content))
+	require.Contains(t, sql, "sub2api-managed-update: reviewed-compatible")
+	require.Contains(t, sql, "create or replace function enqueue_group_auth_cache_invalidation()")
+	require.Contains(t, sql, "old.long_context_pricing_enabled is not distinct from new.long_context_pricing_enabled")
+	require.Contains(t, sql, "old.model_pricing is not distinct from new.model_pricing")
+	require.Contains(t, sql, "insert into auth_cache_invalidation_outbox")
+}
