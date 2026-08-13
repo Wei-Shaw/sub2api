@@ -282,5 +282,6 @@ func TestMigration234KeepsGroupPricingExpansionRollbackCompatible(t *testing.T) 
 	require.Contains(t, sql, "where long_context_pricing_enabled is null")
 	require.Contains(t, sql, "if new.long_context_pricing_enabled is null then")
 	require.Contains(t, sql, "new.long_context_pricing_enabled := true")
+	require.Contains(t, sql, "create or replace trigger groups_default_long_context_pricing_enabled")
 	require.Contains(t, sql, "before insert or update of long_context_pricing_enabled on groups")
 }

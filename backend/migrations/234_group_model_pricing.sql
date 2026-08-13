@@ -33,7 +33,7 @@ END;
 $$;
 
 -- sub2api-managed-update: reviewed-compatible
-CREATE TRIGGER groups_default_long_context_pricing_enabled
+CREATE OR REPLACE TRIGGER groups_default_long_context_pricing_enabled
 BEFORE INSERT OR UPDATE OF long_context_pricing_enabled ON groups
 FOR EACH ROW
 EXECUTE FUNCTION sub2api_default_group_long_context_pricing_enabled();
