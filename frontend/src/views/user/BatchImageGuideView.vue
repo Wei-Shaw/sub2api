@@ -559,8 +559,8 @@
               </colgroup>
               <thead>
                 <tr>
-                  <th scope="col" class="is-numeric">Custom ID</th>
-                  <th scope="col">Prompt</th>
+                  <th scope="col" class="is-numeric">{{ t('batchImage.detail.customId') }}</th>
+                  <th scope="col">{{ t('batchImage.detail.prompt') }}</th>
                   <th scope="col">{{ t('common.status') }}</th>
                   <th scope="col">{{ t('batchImage.detail.preview') }}</th>
                   <th scope="col">{{ t('batchImage.detail.result') }}</th>
@@ -849,13 +849,17 @@
 
         <div class="space-y-3">
           <div class="flex items-center justify-between gap-3 border-b border-line pb-1.5">
-            <h4 class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">Prompt</h4>
+            <h4 class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+              {{ t('batchImage.create.promptSection') }}
+            </h4>
             <span class="text-2xs text-ink-tertiary">
               {{ t('batchImage.create.promptAdded', { count: promptRows.length }) }}
             </span>
           </div>
           <div class="border border-line p-3">
-            <label class="sr-only" for="batch-image-prompt-draft">Prompt</label>
+            <label class="sr-only" for="batch-image-prompt-draft">
+              {{ t('batchImage.create.promptSection') }}
+            </label>
             <textarea
               id="batch-image-prompt-draft"
               v-model="promptDraft"
@@ -1083,11 +1087,28 @@
         </Button>
       </template>
     </BaseDialog>
+
+    <!--
+      Last in the template on purpose. Every dialog here teleports to `body` and
+      they all share the default z-index, so the stack is decided by document
+      order — and this one has to sit above the job-detail dialog it can be
+      opened from.
+    -->
+    <ConfirmDialog
+      :show="!!pendingConfirm"
+      :title="confirmDialogCopy.title"
+      :message="confirmDialogCopy.message"
+      :confirm-text="confirmDialogCopy.confirmText"
+      :cancel-text="confirmDialogCopy.cancelText"
+      danger
+      @confirm="runPendingConfirm"
+      @cancel="closePendingConfirm"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1100,6 +1121,7 @@ import Badge from '@/components/common/Badge.vue'
 import Button from '@/components/common/Button.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import FormField from '@/components/common/FormField.vue'
 import NumCell from '@/components/common/NumCell.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -1109,6 +1131,13 @@ import type { Tone } from '@/components/common/primitives'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize, setPersistedPageSize } from '@/composables/usePersistedPageSize'
+/*
+ * The Codex skill document, one plain string builder per locale. These modules
+ * are leaves — they import nothing — so pulling them in cannot drag
+ * `createI18n` into the graph the way the `components/common` barrel does.
+ */
+import { batchImageAgentInstruction as enAgentInstruction } from '@/i18n/locales/en/batchImage'
+import { batchImageAgentInstruction as zhAgentInstruction } from '@/i18n/locales/zh/batchImage'
 import { useAppStore } from '@/stores/app'
 import { keysAPI } from '@/api'
 import {
@@ -1302,6 +1331,30 @@ const promptPopover = reactive({
   text: '',
   style: {} as Record<string, string>,
 })
+
+/**
+ * The destructive action waiting on `ConfirmDialog`.
+ *
+ * `window.confirm` was synchronous and blocking: the work after it ran in the
+ * same tick, and a second click was impossible while the native sheet was up.
+ * `ConfirmDialog` is neither, so each of the three actions splits in half — a
+ * `request…` function that only validates and opens the dialog, and a
+ * `perform…` function that runs once the user has confirmed. This value doubles
+ * as the re-entrancy guard: `request…` refuses to queue a second action, and
+ * `runPendingConfirm` clears it synchronously before awaiting anything, so a
+ * double click cannot turn into two requests.
+ *
+ * The selection is captured here rather than re-read on confirm — the user
+ * agreed to delete the rows that were selected when they were asked, not
+ * whatever is selected by the time the request lands.
+ */
+type PendingConfirm =
+  | { kind: 'cancelJob'; batchId: string }
+  | { kind: 'deleteJob'; job: BatchImageJobRow }
+  | { kind: 'deleteSelected'; jobs: BatchImageJobRow[] }
+
+const pendingConfirm = shallowRef<PendingConfirm | null>(null)
+
 let modelRequestSeq = 0
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let previewCacheDBPromise: Promise<IDBDatabase | null> | null = null
@@ -1479,6 +1532,35 @@ const recoveredOriginalCustomIds = computed(() => {
   return ids
 })
 
+/*
+ * All three confirmations are destructive, so the dialog always runs `danger`.
+ * The cancel-job dialog dismisses with "Back" rather than "Cancel": next to a
+ * question about cancelling a job, a button labelled "Cancel" does not say which
+ * way it goes.
+ */
+const confirmDialogCopy = computed(() => {
+  const pending = pendingConfirm.value
+  if (!pending) {
+    return { title: '', message: '', confirmText: '', cancelText: '' }
+  }
+  if (pending.kind === 'cancelJob') {
+    return {
+      title: t('batchImage.actions.cancelJob'),
+      message: batchImageText('cancelConfirm'),
+      confirmText: t('batchImage.actions.cancelJob'),
+      cancelText: t('common.back'),
+    }
+  }
+  return {
+    title: t('batchImage.actions.deleteRecords'),
+    message: pending.kind === 'deleteJob'
+      ? batchImageText('deleteConfirm')
+      : batchImageText('deleteSelectedConfirm'),
+    confirmText: t('common.delete'),
+    cancelText: t('common.cancel'),
+  }
+})
+
 const currentDisplayJob = computed(() => {
   if (!currentJob.value) return null
   return displayJob(currentJob.value)
@@ -1488,7 +1570,7 @@ const endpointBase = computed(() => {
   const configured = appStore.apiBaseUrl?.trim()
   if (configured) return configured.replace(/\/+$/, '')
   if (typeof window !== 'undefined') return window.location.origin.replace(/\/+$/, '')
-  return '<你的 Sub2API API 端点>'
+  return t('batchImage.guide.endpointFallback')
 })
 
 const selectedModelReferenceLimit = computed(() => referenceImageLimitForModel(form.model))
@@ -1522,76 +1604,24 @@ function referenceImageLimitForModel(model: string) {
   return 0
 }
 
-const agentInstruction = computed(() => `---
-name: sub2api-batch-image
-description: 当用户希望用 Gemini/Vertex 批量生成图片、批量跑提示词、下载批量生图结果、重试失败图片时使用。
----
-
-你是 Codex 中的批量生图执行 Agent。用户不需要手动填写页面表单；你应从当前聊天、用户给的文件、目录或上下文中整理任务名称、prompt 列表和输出目录，只有缺少关键决策时才向用户提问。
-
-默认端点：
-${endpointBase.value}
-
-你需要自己完成：
-1. 从用户聊天或附件中提取 prompt。每条 prompt 保留完整文本，按顺序生成稳定 custom_id，例如 img_001、img_002。
-2. 从用户要求或上下文推断任务名称；没有明确名称时用当前时间生成任务名。
-3. 从用户要求或上下文推断输出目录；如果用户没有说保存到哪里，才询问用户。
-4. 提交前必须先计算 expected_output_count = 所有 item 的 output_count 之和。单个批量任务硬性最多 200 张输出图；超过 200 张必须拆成多组任务，不能提交一个超大任务，也不能把参考图附件上限当成生成张数上限。
-5. 如果用户提供参考图，把参考图按用途绑定到具体 item。参考图只是输入附件，不是输出图数量。模型单条限制必须按模型执行：Gemini 2.5 Flash Image 每条最多 3 张参考图；Gemini 3 Pro Image 每条最多 14 张参考图。不要把后端附件风控理解成 Pro 单条能力：按 output_count 展开后，所有 item 的参考图附件总数还有内部保护阈值 1000 个，inline base64 参考图解码后总量最多 128MB。这个 1000 只是服务器拒绝异常请求的保护阈值，不是推荐规模；参考图很多或总请求体较大时应主动拆分任务。
-6. 参考图会按 output_count 重复消耗输入 token；大量任务、重复复用同一张参考图或参考图总体积较大时，优先使用 gs:// file_uri 或拆分成多组任务。
-7. 选择 API Key 和模型：先获取当前可用的批量生图 Key/模型；如果用户指定模型且该 Key 支持，则使用用户指定模型；否则使用该 Key 可用模型中的默认/第一个。不要展示或询问内部 provider 名称。
-8. 调用批量生图 API 提交、轮询、下载，不要求用户去页面里手填。
-
-API 调用规范：
-- 模型：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/models')}
-- 提交：POST ${joinEndpointPath(endpointBase.value, '/v1/images/batches')}
-- 查询：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}')}
-- 明细：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}/items')}
-- 下载：GET ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}/download')}
-- 取消：POST ${joinEndpointPath(endpointBase.value, '/v1/images/batches/{id}/cancel')}
-
-提交请求体：
-{
-  "model": "<按所选 Key 可用模型填写>",
-  "task_name": "<从聊天推断；为空则用当前时间>",
-  "image_size": "1K",
-  "response_mime_type": "image/png",
-  "items": [
-    {
-      "custom_id": "img_001",
-      "prompt": "<第一条完整 prompt>",
-      "output_count": 1,
-      "reference_images": [
-        {
-          "id": "face",
-          "type": "subject",
-          "mime_type": "image/png",
-          "data": "<base64，不含 data:image/png;base64, 前缀>"
-        }
-      ]
-    }
-  ]
-}
-
-必须遵守：
-- 不要把 API Key 写入仓库、日志、提交记录或最终回复。
-- 不要把参考图 base64 写入最终回复、日志或公开文件。恢复记录中只保存参考图文件名、用途、数量和请求 JSON 文件路径；若请求 JSON 文件包含 base64，应保存在用户指定输出目录且不要提交到仓库。
-- output_count 表示同一 prompt 和参考图重复生成几张，默认 1，每条最多 4；这不是依赖 Gemini 单次请求返回多图，而是系统展开成多个真实任务项。提交前必须确认预计输出图总数不超过 200，超过就拆分成多组任务。绝不能因为参考图附件有更高的内部保护阈值，就提交会生成超过 200 张图的任务。
-- 当前对用户的批量生图计费仍按成功输出图片数量结算，不单独对参考图加价。可以向用户说明：参考图会产生少量上游输入 token 和临时存储成本，且会随 output_count 重复计算；页面显示的冻结/结算金额按输出图片数量计算。
-- 提交成功后，必须立刻在输出目录写入本地恢复记录，例如 batch-image-resume.json。不要在恢复记录里保存 API Key。
-- 恢复记录至少包含：endpoint、task_name、batch_id、model、output_dir、request_file、submitted_at、last_status、status_url、items_url、download_url、prompt_count、expected_output_count，以及可用于失败重试的 custom_id 到 prompt 映射或请求 JSON 文件路径。
-- 每次查询状态后更新恢复记录，写入 last_checked_at、last_status、成功数、失败数、实际扣费和失败摘要。会话中断或暂停后，下次必须能凭该文件继续查询、下载或重试。
-- 不要高频轮询。首次查询等待约 20 到 30 秒；queued 状态每 60 到 120 秒查询一次；如果连续 3 次仍是 queued，就先停止主动查询，告诉用户任务仍在排队，并保留恢复记录，之后可继续其他任务或等待用户稍后让你恢复。
-- running 状态每约 60 秒查询一次，服务器压力大或大批量任务时可以更久；processing_results 等接近完成的状态可每 20 到 45 秒查询一次。
-- 任务完成后报告任务名、任务 id、成功数、失败数、实际扣费和保存路径。
-- 只下载成功图片。部分失败时，先展示失败 custom_id、错误码、错误来源和简要原因。
-- 重试只能重试失败项，不能重复提交已成功项。若历史任务没有保存失败项 prompt，必须告诉用户无法自动重试，并询问用户是否提供原 prompt。
-- 取消任务前必须提醒：已被系统索引为成功的图片仍会按成功项结算扣费，其余冻结金额会释放。
-- 图片预览按需加载；不要为了查看列表自动批量加载图片内容。`)
-
-function joinEndpointPath(base: string, path: string): string {
-  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
-}
+/*
+ * The Codex skill document rendered by the usage guide.
+ *
+ * The text lives in the locale modules as a plain named export rather than as
+ * a vue-i18n message. vue-i18n compiles messages at render time, and this
+ * document carries a JSON request body plus six URL templates with a literal
+ * `{id}` segment — in message syntax every one of those braces would have to
+ * be written `{'{'}`, which is unreadable, and a silently-escaped brace here
+ * breaks the workflow the user pastes this into rather than merely reading
+ * badly. See the comment on `batchImageAgentInstruction` in
+ * `locales/en/batchImage.ts`.
+ *
+ * `isZhLocale()` reads `locale.value`, so this recomputes on a language switch
+ * exactly the way a `t()` call would.
+ */
+const agentInstruction = computed(() =>
+  (isZhLocale() ? zhAgentInstruction : enAgentInstruction)(endpointBase.value),
+)
 
 function uniqueCustomID(raw: string, used: Set<string>, index: number): string {
   const base = raw.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || `img_${String(index + 1).padStart(3, '0')}`
@@ -2039,6 +2069,8 @@ function resetCreateDraft() {
 }
 
 function closeDetail() {
+  // A cancel confirmation belongs to the job on screen; it must not outlive it.
+  if (pendingConfirm.value?.kind === 'cancelJob') closePendingConfirm()
   closePromptPopover()
   currentJob.value = null
   selectedBatchId.value = ''
@@ -2250,14 +2282,27 @@ function canDeleteRecord(job: Pick<BatchImageJob, 'status'>) {
   return TERMINAL_STATUSES.has(job.status)
 }
 
-async function cancelSelected() {
-  if (!currentJob.value) return
+function cancelSelected() {
+  if (!currentJob.value || cancelling.value || pendingConfirm.value) return
+  /*
+   * The key is still resolved before the dialog opens, which is what the
+   * `window.confirm` ordering did: a missing key raises its own toast and there
+   * is nothing worth confirming.
+   */
+  if (!(keyForSelectedBatch() || requireApiKey())) return
+  pendingConfirm.value = { kind: 'cancelJob', batchId: currentJob.value.id }
+}
+
+async function performCancelJob(batchId: string) {
+  if (cancelling.value) return
+  // Re-checked rather than trusted: the dialog is async, so the detail pane may
+  // have moved to another job — or closed — while it was open.
+  if (currentJob.value?.id !== batchId) return
   const key = keyForSelectedBatch() || requireApiKey()
   if (!key) return
-  if (!window.confirm(batchImageText('cancelConfirm'))) return
   cancelling.value = true
   try {
-    const job = await cancelBatchImageJob(key.key, currentJob.value.id)
+    const job = await cancelBatchImageJob(key.key, batchId)
     currentJob.value = job
     upsertJob(job)
     appStore.showSuccess(batchImageText('cancelled'))
@@ -2385,12 +2430,19 @@ async function downloadSelectedJobs() {
   }
 }
 
-async function deleteJob(job: BatchImageJobRow) {
-  if (!canDeleteRecord(job) || deletingBatchId.value) return
+function deleteJob(job: BatchImageJobRow) {
+  if (!canDeleteRecord(job) || deletingBatchId.value || pendingConfirm.value) return
+  // Closed first: the popover menu is a `Teleport` at z-9999 and would otherwise
+  // float above the confirmation it just opened.
   closeMoreMenu()
+  if (!apiKeyForJob(job)) return
+  pendingConfirm.value = { kind: 'deleteJob', job }
+}
+
+async function performDeleteJob(job: BatchImageJobRow) {
+  if (deletingBatchId.value) return
   const key = apiKeyForJob(job)
   if (!key) return
-  if (!window.confirm(batchImageText('deleteConfirm'))) return
   deletingBatchId.value = job.id
   try {
     await deleteBatchImageJobRecord(key.key, job.id)
@@ -2403,10 +2455,38 @@ async function deleteJob(job: BatchImageJobRow) {
   }
 }
 
-async function deleteSelectedJobs() {
+function deleteSelectedJobs() {
   const rows = selectedRows.value.filter(job => canDeleteRecord(job))
+  if (bulkDeleting.value || rows.length === 0 || pendingConfirm.value) return
+  pendingConfirm.value = { kind: 'deleteSelected', jobs: rows }
+}
+
+function closePendingConfirm() {
+  pendingConfirm.value = null
+}
+
+async function runPendingConfirm() {
+  const pending = pendingConfirm.value
+  if (!pending) return
+  /*
+   * Cleared before awaiting, so the dialog closes immediately and the row's own
+   * loading flag (`cancelling` / `deletingBatchId` / `bulkDeleting`) takes over.
+   * A second click on the confirm button now finds nothing pending.
+   */
+  pendingConfirm.value = null
+  if (pending.kind === 'cancelJob') {
+    await performCancelJob(pending.batchId)
+    return
+  }
+  if (pending.kind === 'deleteJob') {
+    await performDeleteJob(pending.job)
+    return
+  }
+  await performDeleteSelectedJobs(pending.jobs)
+}
+
+async function performDeleteSelectedJobs(rows: BatchImageJobRow[]) {
   if (bulkDeleting.value || rows.length === 0) return
-  if (!window.confirm(batchImageText('deleteSelectedConfirm'))) return
   bulkDeleting.value = true
   try {
     for (const row of rows) {

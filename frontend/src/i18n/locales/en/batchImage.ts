@@ -1,3 +1,93 @@
+/**
+ * The Codex skill document offered by the batch image usage guide.
+ *
+ * This is a *named* export, deliberately outside the message tree below, and its
+ * zh twin lives at the same position in `locales/zh/batchImage.ts`. The reason is
+ * that vue-i18n compiles every message in the tree at render time, and this
+ * document is not UI copy — it is ~65 lines the user copies into their agent,
+ * containing a JSON request body and six URL templates with a literal `{id}`
+ * segment. In message syntax every one of those braces would have to be written
+ * `{'{'}` / `{'}'}`, which turns the payload example into unreadable noise and
+ * makes a silently-eaten brace the likeliest way this file ever breaks. Keeping
+ * it a plain template literal means what is written here is byte-for-byte what
+ * the user copies.
+ *
+ * Only the instructional prose is translated. Field names, parameter names,
+ * URLs, JSON structure, literal values (`"1K"`, `"image/png"`, `"img_001"`),
+ * numbers, and the line/indent layout are identical across locales — a mistake
+ * there breaks the reader's workflow rather than merely reading badly.
+ *
+ * @param endpoint API base URL, already stripped of any trailing slash.
+ */
+export function batchImageAgentInstruction(endpoint: string): string {
+  return `---
+name: sub2api-batch-image
+description: Use this when the user wants to batch-generate images with Gemini/Vertex, run a list of prompts in bulk, download batch image results, or retry failed images.
+---
+
+You are the batch image-generation agent inside Codex. The user does not have to fill in the page's form by hand; work out the task name, the prompt list and the output directory from the current chat, from the files or directories the user gave you, and from the surrounding context. Ask the user only when a decision you cannot make is genuinely missing.
+
+Default endpoint:
+${endpoint}
+
+You are responsible for all of the following:
+1. Extract the prompts from the chat or from the attachments. Keep the full text of every prompt and assign stable custom_id values in order, for example img_001, img_002.
+2. Infer the task name from the user's request or from context; when there is no explicit name, build one from the current time.
+3. Infer the output directory from the user's request or from context; ask the user only if they never said where to save the results.
+4. Before submitting you must compute expected_output_count = the sum of output_count across all items. A single batch job is hard-capped at 200 output images; anything over 200 must be split into several jobs. Never submit one oversized job, and never mistake the reference-image attachment cap for a cap on the number of images generated.
+5. If the user supplies reference images, bind each one to the specific item it is meant for. A reference image is an input attachment, not an output image. The per-item limit is set by the model and must be enforced per model: Gemini 2.5 Flash Image allows at most 3 reference images per item; Gemini 3 Pro Image allows at most 14 reference images per item. Do not read the backend's attachment guardrails as Pro's per-item capability: after expanding by output_count, the total number of reference-image attachments across all items has an internal protection threshold of 1000, and inline base64 reference images may total at most 128MB once decoded. That 1000 is only the threshold at which the server rejects abnormal requests, not a recommended size; split the work yourself when there are many reference images or the request body grows large.
+6. Reference images are charged as input tokens once per output_count; for large jobs, for one reference image reused many times, or when the reference images are large in total, prefer gs:// file_uri or split the work into several jobs.
+7. Choosing the API key and the model: first fetch the batch image keys/models currently available; if the user named a model and that key supports it, use the model the user named; otherwise use the default/first of the models available to that key. Never show or ask about internal provider names.
+8. Call the batch image API to submit, poll and download; do not ask the user to type anything into the page.
+
+API contract:
+- Models: GET ${endpoint}/v1/images/batches/models
+- Submit: POST ${endpoint}/v1/images/batches
+- Status: GET ${endpoint}/v1/images/batches/{id}
+- Items: GET ${endpoint}/v1/images/batches/{id}/items
+- Download: GET ${endpoint}/v1/images/batches/{id}/download
+- Cancel: POST ${endpoint}/v1/images/batches/{id}/cancel
+
+Submit body:
+{
+  "model": "<one of the models available to the selected key>",
+  "task_name": "<inferred from the chat; the current time when empty>",
+  "image_size": "1K",
+  "response_mime_type": "image/png",
+  "items": [
+    {
+      "custom_id": "img_001",
+      "prompt": "<the full text of the first prompt>",
+      "output_count": 1,
+      "reference_images": [
+        {
+          "id": "face",
+          "type": "subject",
+          "mime_type": "image/png",
+          "data": "<base64, without the data:image/png;base64, prefix>"
+        }
+      ]
+    }
+  ]
+}
+
+You must:
+- Never write an API key into the repository, into a log, into a commit, or into your final reply.
+- Never write reference-image base64 into your final reply, into a log, or into a public file. The resume record keeps only the reference images' file names, purpose and count plus the path to the request JSON file; if that request JSON contains base64, keep it in the output directory the user chose and do not commit it.
+- output_count is how many images the same prompt and reference images generate; it defaults to 1 and is at most 4 per item. It does not rely on Gemini returning several images from one request — the system expands it into that many real task items. Before submitting you must confirm that the expected total output does not exceed 200, and split the work into several jobs when it does. Never submit a job that would generate more than 200 images just because reference-image attachments have a higher internal protection threshold.
+- Batch image generation is still billed to the user by the number of successfully generated images; reference images are not priced separately. You may explain to the user that reference images add a small amount of upstream input tokens and temporary storage cost, counted again for every output_count, and that the hold/settled amount shown on the page is computed from the number of output images.
+- Immediately after a successful submit you must write a local resume record into the output directory, for example batch-image-resume.json. Never store an API key in the resume record.
+- The resume record must contain at least: endpoint, task_name, batch_id, model, output_dir, request_file, submitted_at, last_status, status_url, items_url, download_url, prompt_count, expected_output_count, plus either a custom_id-to-prompt map or the path to the request JSON file so failed items can be retried.
+- Update the resume record after every status check with last_checked_at, last_status, the success count, the failure count, the actual charge and a summary of the failures. If the session is interrupted or paused, that file alone must be enough to resume querying, downloading or retrying next time.
+- Do not poll aggressively. Wait roughly 20 to 30 seconds before the first status check; poll a queued job every 60 to 120 seconds; if it is still queued after 3 checks in a row, stop polling for now, tell the user the job is still in the queue, keep the resume record, and either move on to other work or wait for the user to ask you to resume later.
+- Poll a running job roughly every 60 seconds, and less often for large jobs or when the server is under load; states close to completion such as processing_results can be polled every 20 to 45 seconds.
+- When the job finishes, report the task name, the task id, the success count, the failure count, the actual charge and where the files were saved.
+- Download successful images only. On a partial failure, first show the failed custom_id values, the error codes, where each error came from and a short reason.
+- Retry failed items only; never resubmit an item that already succeeded. If an older job did not save the prompts of its failed items, you must tell the user it cannot be retried automatically and ask whether they will supply the original prompts.
+- Before cancelling a job you must warn the user that images already indexed as successful are still billed as successful items, and that the rest of the hold is released.
+- Load image previews on demand; never bulk-load image content just to look at a list.`
+}
+
 export default {
   batchImage: {
     columns: {
@@ -76,6 +166,8 @@ export default {
       cost: 'Cost',
       downloadStatus: 'Download status',
       items: 'Items',
+      customId: 'Custom ID',
+      prompt: 'Prompt',
       preview: 'Preview',
       previewZoom: 'Zoom compressed preview {id}',
       previewReload: 'Reload compressed preview',
@@ -116,6 +208,7 @@ export default {
       outputFormat: 'Output format',
       estimatedOutput: 'Estimated output',
       estimatedOutputValue: '{images} images / {prompts} prompts',
+      promptSection: 'Prompt',
       promptAdded: '{count} added',
       promptPlaceholder: 'Paste a prompt, then add it to the list below',
       customIdPlaceholder: 'Custom ID (optional)',
@@ -143,6 +236,13 @@ export default {
       step4: '4. Once completed you can download the ZIP. If some items failed, the More menu lets you retry only the failed items. Billing is still based on the number of successfully generated images; reference images are not billed separately.',
       skillTitle: 'Skill instructions for Codex',
       skillDesc: 'Tells Codex how to organize prompts, submit jobs, and download results on behalf of the user.',
+      /*
+       * Stands in for the API endpoint when neither a configured base URL nor a
+       * `window.location` is available. It is printed inside the skill document
+       * below, so it keeps the same angle-bracket "fill this in" shape as the
+       * placeholders in that document.
+       */
+      endpointFallback: '<your Sub2API API endpoint>',
     },
     messages: {
       loadKeysFailed: 'Failed to load API keys.',
