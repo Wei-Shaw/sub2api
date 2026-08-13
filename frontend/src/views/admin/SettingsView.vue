@@ -4942,6 +4942,24 @@
                 </div>
                 <div v-if="opencodeGoUsageForm.enabled" class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
                   <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-debounce">
+                      {{ t("admin.settings.opencodeGoUsage.debounceMinutes") }}
+                    </label>
+                    <input
+                      id="opencode-go-usage-debounce"
+                      v-model.number="opencodeGoUsageForm.debounce_minutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      class="input w-32"
+                      data-testid="opencode-go-usage-global-debounce"
+                      @keydown.enter.prevent="saveOpenCodeGoUsageSettings"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.debounceHint") }}
+                    </p>
+                  </div>
+                  <div>
                     <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-interval">
                       {{ t("admin.settings.opencodeGoUsage.intervalMinutes") }}
                     </label>
@@ -9043,7 +9061,8 @@ const opencodeGoUsageLoading = ref(true);
 const opencodeGoUsageSaving = ref(false);
 const opencodeGoUsageForm = reactive({
   enabled: false,
-  interval_minutes: 60,
+  interval_minutes: 15,
+  debounce_minutes: 1,
 });
 
 // Overload Cooldown (529) 状态

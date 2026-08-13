@@ -457,8 +457,10 @@ export default {
         description: '刷新上游 OpenCode Go 账号上报的用量窗口；默认关闭，仅对单独开启的账号生效。',
         enabled: '启用全局自动刷新',
         enabledHint: '仅刷新账号自身也开启自动刷新的账号。手动刷新不受影响。',
-        intervalMinutes: '刷新间隔（分钟）',
-        intervalHint: '范围 5–1440 分钟。',
+        intervalMinutes: '请求持续时的最长等待（分钟）',
+        intervalHint: '范围 5–1440 分钟。请求持续不断导致 debounce 一直后移时，最晚在此时间强制刷新。',
+        debounceMinutes: '请求安静等待（分钟）',
+        debounceHint: '范围 1–60 分钟，且必须小于刷新间隔。最后一次模型请求安静满此时长后再抓取用量。',
         saved: 'OpenCode Go 用量刷新设置已保存',
         saveFailed: '保存 OpenCode Go 用量刷新设置失败'
       },
