@@ -49,7 +49,6 @@
                 :options="reasoningEffortOptions"
                 :placeholder="t('admin.groups.form.reasoningEffortFromPlaceholder')"
                 :error="showValidation && !!validationErrors[row.id]?.from"
-                :aria-label="t('admin.groups.form.reasoningEffortFrom')"
                 :aria-describedby="showValidation && validationErrors[row.id]?.from ? `${idPrefix}-${row.id}-from-error` : undefined"
                 :searchable="false"
                 clearable
@@ -79,7 +78,6 @@
                 :options="reasoningEffortOptions"
                 :placeholder="t('admin.groups.form.reasoningEffortToPlaceholder')"
                 :error="showValidation && !!validationErrors[row.id]?.to"
-                :aria-label="t('admin.groups.form.reasoningEffortTo')"
                 :aria-describedby="showValidation && validationErrors[row.id]?.to ? `${idPrefix}-${row.id}-to-error` : undefined"
                 :searchable="false"
                 clearable

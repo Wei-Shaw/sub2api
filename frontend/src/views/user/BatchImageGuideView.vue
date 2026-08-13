@@ -759,12 +759,6 @@
             :error="formErrors.apiKey"
             :hint="noKeysHint"
           >
-            <!--
-              `aria-label` is passed even though FormField already renders a
-              `<label for>`: Select falls back to a hardcoded English
-              "Select option" when the prop is absent, and an `aria-label` on the
-              trigger overrides the associated label rather than adding to it.
-            -->
             <template #default="{ id, describedBy, invalid }">
               <Select
                 :id="id"
@@ -772,7 +766,6 @@
                 :options="apiKeySelectOptions"
                 :disabled="loadingKeys"
                 :error="invalid"
-                :aria-label="t('batchImage.columns.apiKey')"
                 :aria-describedby="describedBy"
                 @update:model-value="onCreateApiKeyChange"
               />
@@ -792,7 +785,6 @@
                 :options="modelSelectOptions"
                 :disabled="loadingModels || availableBatchImageModels.length === 0"
                 :error="invalid"
-                :aria-label="t('batchImage.create.model')"
                 :aria-describedby="describedBy"
                 :placeholder="loadingModels ? batchImageText('loadingModels') : batchImageText('noModels')"
                 @update:model-value="onCreateModelChange"
@@ -806,7 +798,6 @@
                 :id="id"
                 :model-value="form.responseMimeType"
                 :options="outputFormatOptions"
-                :aria-label="t('batchImage.create.outputFormat')"
                 :aria-describedby="describedBy"
                 @update:model-value="onOutputFormatChange"
               />

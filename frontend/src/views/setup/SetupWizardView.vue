@@ -164,7 +164,6 @@
                   <Select
                     :id="id"
                     v-model="formData.database.sslmode"
-                    :aria-label="t('setup.database.sslMode')"
                     :aria-describedby="describedBy"
                     :options="sslModeOptions"
                   />
