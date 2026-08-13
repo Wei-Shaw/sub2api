@@ -135,7 +135,8 @@ func evaluateCreate(tokens []sqlToken) policyDecision {
 		keywordsAt(tokens, 0, "CREATE", "PROCEDURE"),
 		keywordsAt(tokens, 0, "CREATE", "TRIGGER"),
 		keywordsAt(tokens, 0, "CREATE", "OR", "REPLACE", "FUNCTION"),
-		keywordsAt(tokens, 0, "CREATE", "OR", "REPLACE", "PROCEDURE"):
+		keywordsAt(tokens, 0, "CREATE", "OR", "REPLACE", "PROCEDURE"),
+		keywordsAt(tokens, 0, "CREATE", "OR", "REPLACE", "TRIGGER"):
 		return policyDecision{
 			reviewEligible: true,
 			description:    "behavior-defining CREATE statement",

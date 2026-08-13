@@ -125,6 +125,21 @@ CREATE OR REPLACE FUNCTION f() RETURNS void LANGUAGE sql AS $$ SELECT 1 $$;
 `)
 	require.True(t, evaluateStatement(reviewedFunction, nil, "002_test.sql").allowed)
 
+	reviewedReplaceTrigger := mustOneStatement(t, `
+-- sub2api-managed-update: reviewed-compatible
+CREATE OR REPLACE TRIGGER groups_default_long_context_pricing_enabled
+BEFORE INSERT ON groups
+FOR EACH ROW EXECUTE FUNCTION default_group_long_context_pricing_enabled();
+`)
+	require.True(t, evaluateStatement(reviewedReplaceTrigger, nil, "002_test.sql").allowed)
+
+	unreviewedReplaceTrigger := mustOneStatement(t, `
+CREATE OR REPLACE TRIGGER groups_default_long_context_pricing_enabled
+BEFORE INSERT ON groups
+FOR EACH ROW EXECUTE FUNCTION default_group_long_context_pricing_enabled();
+`)
+	require.False(t, evaluateStatement(unreviewedReplaceTrigger, nil, "002_test.sql").allowed)
+
 	unreviewedFunction := mustOneStatement(t, `
 CREATE OR REPLACE FUNCTION f() RETURNS void LANGUAGE sql AS $$ SELECT 1 $$;
 `)
