@@ -8,6 +8,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyExistence.spec.ts \
 	src/components/layout/__tests__/navTree.spec.ts \
 	src/api/__tests__/client.spec.ts \
+	src/api/__tests__/localeGraph.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \

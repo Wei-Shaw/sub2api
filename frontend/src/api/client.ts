@@ -5,7 +5,9 @@
 
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
-import { getLocale } from '@/i18n'
+// Imported from the leaf locale module, never from `@/i18n`: the API layer must not pull an
+// i18n instance into its module graph.
+import { getLocale } from '@/i18n/locale'
 import {
   ADMIN_UI_REQUEST_HEADER,
   USER_UI_REQUEST_HEADER,

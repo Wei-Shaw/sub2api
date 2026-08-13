@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import axios from 'axios'
 import type { AxiosInstance } from 'axios'
 
-// 需要在导入 client 之前设置 mock
-vi.mock('@/i18n', () => ({
-  getLocale: () => 'zh-CN',
-}))
+// client 只从 @/i18n/locale 读取语言（一个不构建 i18n 实例的叶子模块），
+// 因此这里不再需要 mock @/i18n。相关断言见 ./localeGraph.spec.ts。
 
 describe('API Client', () => {
   let apiClient: AxiosInstance
