@@ -240,8 +240,7 @@ const chartData = computed(() => {
         data: displayEndpointStats.value.map((item) =>
           props.metric === 'actual_cost' ? item.actual_cost : item.total_tokens
         ),
-        backgroundColor: chartColors.value.slice(0, displayEndpointStats.value.length),
-        borderWidth: 0
+        backgroundColor: chartColors.value.slice(0, displayEndpointStats.value.length)
       }
     ]
   }

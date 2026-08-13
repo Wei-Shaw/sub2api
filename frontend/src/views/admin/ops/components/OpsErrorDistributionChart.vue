@@ -90,8 +90,7 @@ const chartData = computed(() => {
     datasets: [
       {
         data: categories.value.map((c) => c.count),
-        backgroundColor: categories.value.map((c) => c.color),
-        borderWidth: 0
+        backgroundColor: categories.value.map((c) => c.color)
       }
     ]
   }

@@ -195,8 +195,7 @@ const chartData = computed(() => {
     datasets: [
       {
         data: displayGroupStats.value.map((g) => toFiniteNumber(props.metric === 'actual_cost' ? g.actual_cost : g.total_tokens)),
-        backgroundColor: chartColors.value.slice(0, displayGroupStats.value.length),
-        borderWidth: 0
+        backgroundColor: chartColors.value.slice(0, displayGroupStats.value.length)
       }
     ]
   }

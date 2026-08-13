@@ -54,17 +54,59 @@ function stripComments(source: string): string {
 }
 
 /** Every key here is already set globally, and set deliberately. */
-const BANNED: Array<{ pattern: RegExp; why: string }> = [
-  { pattern: /\btension\s*:/, why: 'line.tension = 0 — smoothing invents values between samples' },
-  { pattern: /\blineTension\b/, why: 'chart.js v2 alias for tension' },
-  { pattern: /\bcubicInterpolationMode\b/, why: 'monotone interpolation invents values too' },
-  { pattern: /\bpointRadius\s*:/, why: 'point.radius = 0' },
-  { pattern: /\bpointHitRadius\s*:/, why: 'point.hitRadius = 8' },
-  { pattern: /\bborderRadius\s*:/, why: 'bar.borderRadius = 0' },
+const BANNED: Array<{ id: string; pattern: RegExp; why: string }> = [
+  {
+    id: 'tension',
+    pattern: /\btension\s*:/,
+    why: 'line.tension = 0 — smoothing invents values between samples',
+  },
+  { id: 'lineTension', pattern: /\blineTension\b/, why: 'chart.js v2 alias for tension' },
+  {
+    id: 'cubicInterpolationMode',
+    pattern: /\bcubicInterpolationMode\b/,
+    why: 'monotone interpolation invents values too',
+  },
+  { id: 'pointRadius', pattern: /\bpointRadius\s*:/, why: 'point.radius = 0' },
+  { id: 'pointHitRadius', pattern: /\bpointHitRadius\s*:/, why: 'point.hitRadius = 8' },
+  { id: 'borderRadius', pattern: /\bborderRadius\s*:/, why: 'bar.borderRadius = 0' },
+  {
+    id: 'borderWidth',
+    pattern: /\bborderWidth\s*:/,
+    why:
+      'arc.borderWidth = 1 with borderColor = surface-raised — a ground-coloured hairline ' +
+      'between slices, which is how two neighbouring slices of similar hue stay tellable apart',
+  },
 ]
+
+/**
+ * Files that deviate on purpose, per key. Deviating is allowed; deviating
+ * silently is not — every entry here must carry its reason in the component
+ * itself, the way `pointHoverRadius: 5` does in `DailyRevenueChart`.
+ *
+ * ADDING A FILE HERE IS NOT A FIX unless the comment beside the override
+ * explains why that chart is the exception.
+ */
+const ALLOWED: Record<string, string[]> = {
+  /*
+   * Both of these are unbounded doughnuts: one row per distinct model, with no
+   * server-side LIMIT and no "Others" bucket to collapse the tail into. The
+   * separator costs ~1px of arc per boundary, so on a sub-1% slice it is the
+   * whole slice — it would delete data instead of clarifying it. Every other
+   * doughnut in the app is bounded (top-N + Others, a closed endpoint set, or
+   * four fixed error buckets) and takes the global hairline.
+   */
+  borderWidth: [
+    'components/charts/ModelDistributionChart.vue',
+    'components/user/dashboard/UserDashboardCharts.vue',
+  ],
+}
 
 describe('chart components do not re-declare global chart.js defaults', () => {
   const components = collectChartComponents(srcRoot)
+  const named = components.map((file) => ({
+    name: relative(srcRoot, file).split(sep).join('/'),
+    source: stripComments(readFileSync(file, 'utf8')),
+  }))
 
   it('finds the chart components to check', () => {
     // A refactor that renames or relocates the charts must not silently turn
@@ -72,15 +114,49 @@ describe('chart components do not re-declare global chart.js defaults', () => {
     expect(components.length).toBeGreaterThanOrEqual(10)
   })
 
-  for (const file of components) {
-    const name = relative(srcRoot, file).split(sep).join('/')
-
+  for (const { name, source } of named) {
     it(`${name} inherits smoothing and point geometry from applyChartDefaults()`, () => {
-      const source = stripComments(readFileSync(file, 'utf8'))
-
-      for (const { pattern, why } of BANNED) {
+      for (const { id, pattern, why } of BANNED) {
+        if ((ALLOWED[id] ?? []).includes(name)) continue
         expect(source, `${name} re-declares a global default (${why})`).not.toMatch(pattern)
       }
     })
   }
+
+  for (const { id } of BANNED) {
+    const allowed = ALLOWED[id]
+    if (!allowed?.length) continue
+
+    it(`keeps ALLOWED['${id}'] honest`, () => {
+      // A stale allowlist is worse than none: it hides that the debt is already
+      // paid, and it lets the override come back unnoticed under cover.
+      const { pattern } = BANNED.find((entry) => entry.id === id)!
+      const known = new Map(named.map(({ name, source }) => [name, source]))
+      const stale = allowed
+        .filter((name) => {
+          const source = known.get(name)
+          return source === undefined || !pattern.test(source)
+        })
+        .sort()
+
+      expect(stale, `no longer overrides ${id} — remove from ALLOWED['${id}']`).toEqual([])
+    })
+  }
+})
+
+describe('the doughnut slice separator is a global, not a per-chart choice', () => {
+  it('applyChartDefaults sets a 1px arc border in the raised-surface colour', async () => {
+    // The ban above only means something if the global it defends is real. No
+    // canvas and no mounting: registering ArcElement is what makes chart.js
+    // create `defaults.elements.arc` at all, and the rest is configuration.
+    const { Chart, ArcElement } = await import('chart.js')
+    const { applyChartDefaults, token } = await import('../chartTheme')
+
+    Chart.register(ArcElement)
+    applyChartDefaults()
+
+    expect(Chart.defaults.elements.arc.borderWidth).toBe(1)
+    // Ground-coloured, so the separator reads as a cut rather than as a stroke.
+    expect(Chart.defaults.elements.arc.borderColor).toBe(token('surface-raised'))
+  })
 })

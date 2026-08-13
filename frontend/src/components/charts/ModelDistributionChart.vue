@@ -365,6 +365,24 @@ const chartData = computed(() => {
       {
         data: displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens)),
         backgroundColor: chartColors.value.slice(0, displayModelStats.value.length),
+        /*
+         * Deliberately opts out of the global `arc.borderWidth = 1`.
+         *
+         * That hairline is right wherever the slice count is bounded: it cuts
+         * two neighbouring slices of similar hue apart. This dataset is not
+         * bounded. It is the entire `modelStats` prop with no `slice()`, and
+         * the server returns one row per distinct model with no LIMIT and no
+         * residual bucket (`GROUP BY <model> ORDER BY total_tokens DESC` in
+         * usage_log_repo_trend.go). A gateway fronting several providers
+         * accumulates dozens of model strings — every dated variant is its own
+         * row — so the tail is all sub-1% slices. The donut is 192px, ~600px of
+         * circumference, and each boundary spends a hairline: a 0.5% slice is
+         * ~3px of arc, which the separator swallows whole. That erases data
+         * rather than clarifying it.
+         *
+         * `rankingChartData` below is capped at 12 + Others, so it does take
+         * the global hairline.
+         */
         borderWidth: 0
       }
     ]
@@ -391,8 +409,7 @@ const rankingChartData = computed(() => {
     datasets: [
       {
         data,
-        backgroundColor,
-        borderWidth: 0
+        backgroundColor
       }
     ]
   }

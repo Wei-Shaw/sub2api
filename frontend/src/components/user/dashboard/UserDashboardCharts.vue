@@ -243,6 +243,18 @@ const modelData = computed(() => {
         // Perceptually ordered categorical palette from the tokens, not eight
         // raw hexes that only worked in light mode.
         backgroundColor: rows.value.map((row) => row.color),
+        /*
+         * Deliberately opts out of the global `arc.borderWidth = 1`.
+         *
+         * The global hairline separates neighbouring slices of similar hue, and
+         * it earns its place on a bounded donut. This one is unbounded: it maps
+         * `props.models` straight through, and `usageAPI.getDashboardModels`
+         * takes no limit and returns one row per distinct model with no
+         * "Others" bucket, so the tail is all sub-1% slices. Worse than the
+         * admin donut, in fact — this one is 160px (h-40), ~500px of
+         * circumference, so a single hairline is a larger share of every slice
+         * it touches. Below ~2% the separator IS the slice.
+         */
         borderWidth: 0,
       },
     ],
