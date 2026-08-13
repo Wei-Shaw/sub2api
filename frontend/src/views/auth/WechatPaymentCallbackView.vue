@@ -1,39 +1,37 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-10 dark:bg-dark-900">
-    <div class="mx-auto max-w-2xl">
-      <div class="card p-6">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-          {{ callbackTitleText }}
-        </h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ errorMessage || callbackProcessingText }}
-        </p>
+  <!--
+    Not an OAuth login screen and not `AuthLayout`'s column — this is a payment
+    resume hop. It shares the callback shell and nothing else.
+  -->
+  <div class="min-h-screen bg-canvas px-4 py-10">
+    <div class="mx-auto max-w-2xl border border-line bg-surface p-6">
+      <!--
+        The failing state used to say the same sentence twice: once in the
+        subtitle and again inside a tinted box below it. One statement, carrying
+        its own tone, and the recovery action under a rule.
 
-        <div
-          v-if="!errorMessage"
-          class="mt-6 flex items-center justify-center py-10"
-        >
-          <div
-            class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"
-          ></div>
-        </div>
-
-        <div
-          v-else
-          class="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/80"
-        >
-          <p class="text-sm text-gray-700 dark:text-gray-300">
-            {{ errorMessage }}
-          </p>
-          <button
-            class="btn btn-primary mt-4"
+        The centred 32px ring spinner is gone with it. A callback that is still
+        working now says so in words; the spinner rides along in the eyebrow as
+        the redundant channel.
+      -->
+      <CallbackStatusPanel
+        :status="errorMessage ? 'error' : 'working'"
+        :status-label="errorMessage ? t('common.error') : t('common.processing')"
+        :title="callbackTitleText"
+        :description="errorMessage || callbackProcessingText"
+      >
+        <div v-if="errorMessage" class="border-t border-line pt-5">
+          <Button
             type="button"
+            tone="accent"
+            variant="solid"
+            size="md"
             @click="goBackToPayment"
           >
             {{ backToPaymentText }}
-          </button>
+          </Button>
         </div>
-      </div>
+      </CallbackStatusPanel>
     </div>
   </div>
 </template>
@@ -42,6 +40,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+// By path, not through `components/common/index.ts`: the barrel re-exports
+// LocaleSwitcher, which pulls `createI18n` into the graph and breaks the specs
+// that mock `vue-i18n` with a partial factory.
+import Button from '@/components/common/Button.vue'
+import CallbackStatusPanel from '@/components/auth/CallbackStatusPanel.vue'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()

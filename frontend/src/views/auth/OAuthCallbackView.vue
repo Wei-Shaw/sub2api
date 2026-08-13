@@ -1,146 +1,209 @@
 <template>
-  <div class="min-h-screen bg-gray-50 px-4 py-10 dark:bg-dark-900">
-    <div class="mx-auto max-w-2xl">
-      <div v-if="isProcessing" class="card p-6 text-center">
-        <div class="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div>
-        <h1 class="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
-          {{ t('auth.oauth.callbackTitle') }}
-        </h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ t('auth.oauth.callbackHint') }}
-        </p>
-      </div>
+  <!--
+    This one keeps its own shell rather than moving into `AuthLayout`. Its
+    widest state is the manual code/state/URL panel used to hand an authorization
+    result back to an admin flow, which does not fit `AuthLayout`'s 26rem column,
+    and the brand lockup would be noise on a machine-facing screen. Same ground,
+    same hairline panel, no duplicated chrome.
+  -->
+  <div class="min-h-screen bg-canvas px-4 py-10">
+    <div class="mx-auto max-w-2xl border border-line bg-surface p-6">
+      <CallbackStatusPanel
+        v-if="isProcessing"
+        status="working"
+        :status-label="t('common.processing')"
+        :title="t('auth.oauth.callbackTitle')"
+        :description="t('auth.oauth.callbackHint')"
+      />
 
-      <div v-else-if="needsRegistrationCompletion" class="card p-6">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-          {{ t('auth.oidc.callbackTitle', { providerName }) }}
-        </h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ registrationHint }}
-        </p>
-
-        <div class="mt-6 space-y-4">
-          <div>
-            <label class="input-label">{{ t('auth.emailLabel') }}</label>
+      <CallbackStatusPanel
+        v-else-if="needsRegistrationCompletion"
+        :title="t('auth.oidc.callbackTitle', { providerName })"
+        :description="registrationHint"
+      >
+        <!--
+          Every field here was a bare `<input>` under a detached `<label>` with
+          no `for`/`id` pair — the label was decoration, not a label. `FormField`
+          owns the pairing, `aria-describedby`, and the reserved message row.
+        -->
+        <div class="space-y-4 border-t border-line pt-5">
+          <FormField id="oauth-complete-email" :label="t('auth.emailLabel')">
             <input
-              class="input w-full"
+              id="oauth-complete-email"
+              class="input"
               type="email"
               :value="registrationEmail"
               readonly
               disabled
             />
-          </div>
-          <div>
-            <label class="input-label">{{ t('auth.passwordLabel') }}</label>
-            <input
-              v-model="password"
-              type="password"
-              class="input w-full"
-              :placeholder="t('auth.createPasswordPlaceholder')"
-              :disabled="isSubmitting"
-              autocomplete="new-password"
-              @keyup.enter="handleSubmitRegistration"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('auth.confirmPassword') }}</label>
-            <input
-              v-model="confirmPassword"
-              type="password"
-              class="input w-full"
-              :placeholder="t('auth.confirmPasswordPlaceholder')"
-              :disabled="isSubmitting"
-              autocomplete="new-password"
-              @keyup.enter="handleSubmitRegistration"
-            />
-          </div>
-          <div v-if="invitationRequired">
-            <label class="input-label">{{ t('auth.invitationCodeLabel') }}</label>
-            <input
-              v-model="invitationCode"
-              type="text"
-              class="input w-full"
-              :placeholder="t('auth.invitationCodePlaceholder')"
-              :disabled="isSubmitting"
-              @keyup.enter="handleSubmitRegistration"
-            />
-          </div>
-          <p v-if="registrationError" class="text-sm text-red-600 dark:text-red-400">
+          </FormField>
+
+          <FormField id="oauth-complete-password" :label="t('auth.passwordLabel')">
+            <template #default="{ describedBy }">
+              <input
+                id="oauth-complete-password"
+                v-model="password"
+                type="password"
+                class="input"
+                :aria-describedby="describedBy"
+                :placeholder="t('auth.createPasswordPlaceholder')"
+                :disabled="isSubmitting"
+                autocomplete="new-password"
+                @keyup.enter="handleSubmitRegistration"
+              />
+            </template>
+          </FormField>
+
+          <FormField id="oauth-complete-confirm-password" :label="t('auth.confirmPassword')">
+            <template #default="{ describedBy }">
+              <input
+                id="oauth-complete-confirm-password"
+                v-model="confirmPassword"
+                type="password"
+                class="input"
+                :aria-describedby="describedBy"
+                :placeholder="t('auth.confirmPasswordPlaceholder')"
+                :disabled="isSubmitting"
+                autocomplete="new-password"
+                @keyup.enter="handleSubmitRegistration"
+              />
+            </template>
+          </FormField>
+
+          <FormField
+            v-if="invitationRequired"
+            id="oauth-complete-invitation-code"
+            :label="t('auth.invitationCodeLabel')"
+          >
+            <template #default="{ describedBy }">
+              <input
+                id="oauth-complete-invitation-code"
+                v-model="invitationCode"
+                type="text"
+                class="input"
+                :aria-describedby="describedBy"
+                :placeholder="t('auth.invitationCodePlaceholder')"
+                :disabled="isSubmitting"
+                @keyup.enter="handleSubmitRegistration"
+              />
+            </template>
+          </FormField>
+
+          <!-- Form-level failure: the word carries it, `danger` only reinforces. -->
+          <p v-if="registrationError" role="alert" class="text-sm text-danger">
             {{ registrationError }}
           </p>
-          <button
-            class="btn btn-primary w-full"
+
+          <!--
+            The label used to swap to "Processing…" mid-press, changing the
+            button's width under the cursor. `Button` keeps the label's box,
+            overlays the spinner and sets `aria-busy`.
+          -->
+          <Button
             type="button"
+            tone="accent"
+            variant="solid"
+            size="md"
+            block
+            :loading="isSubmitting"
             :disabled="isSubmitting || !canSubmitRegistration"
             @click="handleSubmitRegistration"
           >
-            {{ isSubmitting ? t('common.processing') : t('auth.oidc.completeRegistration') }}
-          </button>
+            {{ t('auth.oidc.completeRegistration') }}
+          </Button>
         </div>
-      </div>
+      </CallbackStatusPanel>
 
-      <div v-else-if="invalidCallback" class="card p-6 text-center">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-          {{ t('auth.oauth.invalidCallbackTitle') }}
-        </h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ t('auth.oauth.invalidCallbackHint') }}
-        </p>
-        <button class="btn btn-primary mt-6" type="button" @click="router.replace('/login')">
-          {{ t('auth.backToLogin') }}
-        </button>
-      </div>
+      <CallbackStatusPanel
+        v-else-if="invalidCallback"
+        status="error"
+        :status-label="t('common.error')"
+        :title="t('auth.oauth.invalidCallbackTitle')"
+        :description="t('auth.oauth.invalidCallbackHint')"
+      >
+        <div class="border-t border-line pt-5">
+          <Button
+            type="button"
+            tone="accent"
+            variant="solid"
+            size="md"
+            @click="router.replace('/login')"
+          >
+            {{ t('auth.backToLogin') }}
+          </Button>
+        </div>
+      </CallbackStatusPanel>
 
-      <div v-else class="card p-6">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
-          {{ t('auth.oauth.callbackTitle') }}
-        </h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ t('auth.oauth.callbackHint') }}
-        </p>
-
-        <div class="mt-6 space-y-4">
-          <div>
-            <label class="input-label">{{ t('auth.oauth.code') }}</label>
-            <div class="flex gap-2">
-              <input class="input flex-1 font-mono text-sm" :value="code" readonly />
-              <button class="btn btn-secondary" type="button" :disabled="!code" @click="copy(code)">
-                {{ t('common.copy') }}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label class="input-label">{{ t('auth.oauth.state') }}</label>
-            <div class="flex gap-2">
-              <input class="input flex-1 font-mono text-sm" :value="state" readonly />
-              <button
-                class="btn btn-secondary"
+      <CallbackStatusPanel
+        v-else
+        :title="t('auth.oauth.callbackTitle')"
+        :description="t('auth.oauth.callbackHint')"
+      >
+        <div class="space-y-4 border-t border-line pt-5">
+          <FormField id="oauth-callback-code" :label="t('auth.oauth.code')">
+            <div class="flex items-start gap-2">
+              <input
+                id="oauth-callback-code"
+                class="input min-w-0 flex-1 font-mono"
+                :value="code"
+                readonly
+              />
+              <Button
+                class="shrink-0"
                 type="button"
+                variant="outline"
+                size="md"
+                :disabled="!code"
+                @click="copy(code)"
+              >
+                {{ t('common.copy') }}
+              </Button>
+            </div>
+          </FormField>
+
+          <FormField id="oauth-callback-state" :label="t('auth.oauth.state')">
+            <div class="flex items-start gap-2">
+              <input
+                id="oauth-callback-state"
+                class="input min-w-0 flex-1 font-mono"
+                :value="state"
+                readonly
+              />
+              <Button
+                class="shrink-0"
+                type="button"
+                variant="outline"
+                size="md"
                 :disabled="!state"
                 @click="copy(state)"
               >
                 {{ t('common.copy') }}
-              </button>
+              </Button>
             </div>
-          </div>
+          </FormField>
 
-          <div>
-            <label class="input-label">{{ t('auth.oauth.fullUrl') }}</label>
-            <div class="flex gap-2">
-              <input class="input flex-1 font-mono text-xs" :value="fullUrl" readonly />
-              <button
-                class="btn btn-secondary"
+          <FormField id="oauth-callback-full-url" :label="t('auth.oauth.fullUrl')">
+            <div class="flex items-start gap-2">
+              <input
+                id="oauth-callback-full-url"
+                class="input min-w-0 flex-1 font-mono text-xs"
+                :value="fullUrl"
+                readonly
+              />
+              <Button
+                class="shrink-0"
                 type="button"
+                variant="outline"
+                size="md"
                 :disabled="!fullUrl"
                 @click="copy(fullUrl)"
               >
                 {{ t('common.copy') }}
-              </button>
+              </Button>
             </div>
-          </div>
+          </FormField>
         </div>
-      </div>
+      </CallbackStatusPanel>
     </div>
   </div>
 </template>
@@ -149,6 +212,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+// By path, not through `components/common/index.ts`: the barrel re-exports
+// LocaleSwitcher, which pulls `createI18n` into the graph and breaks the specs
+// that mock `vue-i18n` with a partial factory.
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import CallbackStatusPanel from '@/components/auth/CallbackStatusPanel.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore, useAuthStore } from '@/stores'
 import { apiClient } from '@/api/client'
