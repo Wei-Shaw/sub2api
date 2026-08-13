@@ -101,7 +101,6 @@ const ALLOWED: Record<string, string[]> = {
     'components/user/profile/ProfileAvatarCard.vue',
     'components/user/profile/ProfileInfoCard.vue',
     'composables/useChannelMonitorFormat.ts',
-    'views/NotFoundView.vue',
     'views/admin/SubscriptionsView.vue',
     'views/user/ChannelStatusV2View.vue',
     'views/user/CustomPageView.vue',

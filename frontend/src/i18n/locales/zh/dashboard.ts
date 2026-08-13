@@ -903,6 +903,9 @@ export default {
   errors: {
     somethingWentWrong: '出错了',
     pageNotFound: '页面未找到',
+    // NotFoundView carried this sentence as a hardcoded English literal, so the
+    // zh build printed English underneath a translated heading.
+    pageNotFoundDescription: '你访问的页面不存在，或者已经被移动到其他位置。',
     unauthorized: '未授权',
     forbidden: '禁止访问',
     serverError: '服务器错误',

@@ -143,6 +143,10 @@ export default {
     retryLater: '请稍后刷新页面重试。',
     notFound: '文档不存在',
     notFoundDescription: '当前条款文档不存在或已被管理员移除。',
+    // Owned here rather than reused from `customPage`: a legal view reaching
+    // into the custom-page namespace for a label couples two unrelated
+    // surfaces, and the next edit to either one has to remember the other.
+    tableOfContents: '目录',
     updatedAt: '更新日期：{date}',
     empty: '暂无正文内容',
     loginAgreement: '登录条款',

@@ -143,6 +143,10 @@ export default {
     retryLater: 'Refresh the page and try again later.',
     notFound: 'Document not found',
     notFoundDescription: 'This legal document does not exist or has been removed by an administrator.',
+    // Owned here rather than reused from `customPage`: a legal view reaching
+    // into the custom-page namespace for a label couples two unrelated
+    // surfaces, and the next edit to either one has to remember the other.
+    tableOfContents: 'Contents',
     updatedAt: 'Updated: {date}',
     empty: 'No content',
     loginAgreement: 'Login Agreement',

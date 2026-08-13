@@ -1,109 +1,164 @@
 <template>
-  <div class="min-h-screen bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-white">
-    <header class="border-b border-gray-200 bg-white/95 dark:border-dark-800 dark:bg-dark-900/95">
-      <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <RouterLink to="/home" class="flex min-w-0 items-center gap-3">
+  <div data-testid="legal-document-view" class="flex min-h-screen flex-col bg-canvas text-ink">
+    <header class="border-b border-line">
+      <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-3">
+        <RouterLink to="/home" class="flex min-w-0 items-center gap-3 rounded">
           <template v-if="settings">
-            <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700">
-              <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-            </span>
-            <span class="truncate text-base font-semibold text-gray-950 dark:text-white">
+            <img
+              :src="siteLogo || '/logo.svg'"
+              alt=""
+              class="h-7 w-7 shrink-0 rounded object-contain"
+            />
+            <span class="min-w-0 truncate text-sm font-semibold [overflow-wrap:anywhere]">
               {{ siteName }}
             </span>
           </template>
           <template v-else>
-            <span class="h-10 w-10 flex-shrink-0 animate-pulse rounded-xl bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
-            <span class="h-5 w-28 animate-pulse rounded bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
+            <span class="skeleton h-7 w-7 shrink-0 rounded" aria-hidden="true"></span>
+            <span class="skeleton h-4 w-28" aria-hidden="true"></span>
           </template>
         </RouterLink>
-        <RouterLink
-          to="/login"
-          class="inline-flex flex-shrink-0 items-center justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-primary-600/20 transition hover:bg-primary-700"
-        >
+
+        <Button to="/login" tone="accent" variant="solid" size="md" class="shrink-0">
           {{ t('home.login') }}
-        </RouterLink>
+        </Button>
       </div>
     </header>
 
-    <main class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:py-10">
-      <div v-if="loading" class="flex min-h-[320px] items-center justify-center">
-        <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-600"></div>
-      </div>
-
-      <section
-        v-else-if="loadError"
-        class="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
-      >
-        <h1 class="text-lg font-semibold">{{ t('legal.loadFailed') }}</h1>
-        <p class="mt-2 text-sm">{{ t('legal.retryLater') }}</p>
-      </section>
-
-      <section
-        v-else-if="!currentDocument"
-        class="rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-900"
-      >
-        <div class="flex items-start gap-3">
-          <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600 dark:bg-dark-800 dark:text-dark-300">
-            <Icon name="document" size="sm" />
-          </span>
-          <div>
-            <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('legal.notFound') }}</h1>
-            <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-dark-300">
-              {{ t('legal.notFoundDescription') }}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <article v-else>
-        <div class="mb-8 border-b border-gray-200 pb-6 dark:border-dark-700">
-          <div class="flex items-start gap-4">
-            <span class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300">
-              <Icon :name="documentIcon" size="md" />
-            </span>
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-primary-700 dark:text-primary-300">{{ documentTypeLabel }}</p>
-              <h1 class="mt-2 break-words text-2xl font-bold tracking-normal text-gray-950 dark:text-white sm:text-3xl">
-                {{ currentDocument.title }}
-              </h1>
-              <p v-if="updatedAt" class="mt-3 text-sm text-gray-500 dark:text-dark-400">
-                {{ t('legal.updatedAt', { date: updatedAt }) }}
-              </p>
-            </div>
-          </div>
+    <main class="flex-1">
+      <div class="mx-auto max-w-5xl px-6 py-12 lg:py-16">
+        <!--
+          A spinner told the reader nothing about what is arriving. Bars on the
+          reading measure show the shape of the document instead.
+        -->
+        <div v-if="loading" data-testid="legal-loading" class="max-w-[68ch] space-y-4">
+          <span class="skeleton block h-3 w-24" aria-hidden="true"></span>
+          <span class="skeleton block h-8 w-2/3" aria-hidden="true"></span>
+          <span class="skeleton block h-4 w-full" aria-hidden="true"></span>
+          <span class="skeleton block h-4 w-11/12" aria-hidden="true"></span>
+          <span class="skeleton block h-4 w-4/5" aria-hidden="true"></span>
+          <span class="sr-only">{{ t('common.loading') }}</span>
         </div>
 
-        <div
-          v-if="hasContent"
-          class="legal-document-content"
-          v-html="renderedHtml"
-        ></div>
+        <!-- `danger` is a status token, so it may carry a status. The accent may not. -->
+        <section
+          v-else-if="loadError"
+          data-testid="legal-load-error"
+          class="max-w-[68ch] border border-line bg-surface p-8"
+        >
+          <p class="font-mono text-2xs uppercase tracking-[0.04em] text-danger">
+            {{ t('common.error') }}
+          </p>
+          <h1 class="mt-3 text-lg font-semibold text-ink">{{ t('legal.loadFailed') }}</h1>
+          <p class="mt-2 text-sm text-ink-secondary">{{ t('legal.retryLater') }}</p>
+        </section>
+
+        <section
+          v-else-if="!currentDocument"
+          data-testid="legal-missing"
+          class="max-w-[68ch] border border-line bg-surface p-8"
+        >
+          <h1 class="text-lg font-semibold text-ink">{{ t('legal.notFound') }}</h1>
+          <p class="mt-2 text-sm leading-6 text-ink-secondary">
+            {{ t('legal.notFoundDescription') }}
+          </p>
+        </section>
+
         <div
           v-else
-          class="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-14 text-center text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-400"
+          data-testid="legal-document"
+          :class="showTableOfContents ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_13rem] lg:gap-16' : ''"
         >
-          {{ t('legal.empty') }}
+          <article class="min-w-0 max-w-[68ch]">
+            <header class="border-b border-line pb-8">
+              <p class="text-2xs uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ documentTypeLabel }}
+              </p>
+              <h1 class="mt-4 text-3xl font-semibold [overflow-wrap:anywhere]">
+                {{ currentDocument.title }}
+              </h1>
+              <!-- Quantities are mono and tabular, dates included. -->
+              <p
+                v-if="updatedAt"
+                data-testid="legal-updated-at"
+                class="mt-5 font-mono text-2xs uppercase tracking-[0.04em] tabular-nums text-ink-tertiary"
+              >
+                {{ t('legal.updatedAt', { date: updatedAt }) }}
+              </p>
+            </header>
+
+            <div
+              v-if="hasContent"
+              data-testid="legal-prose"
+              class="legal-prose mt-10"
+              v-html="renderedHtml"
+            ></div>
+            <p
+              v-else
+              data-testid="legal-empty"
+              class="mt-10 border border-line bg-surface-sunken px-6 py-12 text-center text-sm text-ink-tertiary"
+            >
+              {{ t('legal.empty') }}
+            </p>
+          </article>
+
+          <!--
+            Earned, not decorative: a document has to reach TOC_MIN_HEADINGS
+            sections before this renders at all, so short agreements stay a
+            single unbroken column.
+          -->
+          <nav
+            v-if="showTableOfContents"
+            data-testid="legal-toc"
+            :aria-label="t('legal.tableOfContents')"
+            class="hidden lg:block"
+          >
+            <div class="sticky top-10">
+              <p class="text-2xs uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ t('legal.tableOfContents') }}
+              </p>
+              <ul class="mt-4 border-l border-line-subtle">
+                <li v-for="item in tableOfContents" :key="item.id">
+                  <a
+                    :href="`#${item.id}`"
+                    class="-ml-px block border-l border-transparent py-1.5 text-xs text-ink-tertiary transition-colors duration-fast hover:border-line-strong hover:text-ink"
+                    :class="item.level === 3 ? 'pl-6' : 'pl-4'"
+                  >
+                    {{ item.text }}
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </nav>
         </div>
-      </article>
+      </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
-import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { marked } from 'marked'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Icon from '@/components/icons/Icon.vue'
+import { useRoute } from 'vue-router'
+
+import Button from '@/components/common/Button.vue'
 import { getLocale } from '@/i18n'
-import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
 import type { LoginAgreementDocument } from '@/types'
+import { sanitizeUrl } from '@/utils/url'
 import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
 
-type LegalDocumentIcon = 'document' | 'shield' | 'globe' | 'cog'
+interface TocEntry {
+  id: string
+  text: string
+  level: 2 | 3
+}
+
+/** Below this, a table of contents is chrome rather than navigation. */
+const TOC_MIN_HEADINGS = 4
 
 const route = useRoute()
 const { t } = useI18n()
@@ -121,10 +176,12 @@ const documentId = computed(() => String(route.params.documentId || ''))
 const isAdminComplianceDocument = computed(() => documentId.value === 'admin-compliance')
 const documents = computed(() => settings.value?.login_agreement_documents ?? [])
 const siteName = computed(() => settings.value?.site_name || 'Sub2API')
-const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || '', {
-  allowRelative: true,
-  allowDataUrl: true,
-}))
+const siteLogo = computed(() =>
+  sanitizeUrl(settings.value?.site_logo || '', {
+    allowRelative: true,
+    allowDataUrl: true,
+  })
+)
 const updatedAt = computed(() =>
   isAdminComplianceDocument.value ? '' : settings.value?.login_agreement_updated_at || ''
 )
@@ -137,7 +194,7 @@ const currentDocument = computed<LoginAgreementDocument | null>(() => {
     return {
       id: 'admin-compliance',
       title: t('adminCompliance.title'),
-      content_md: getLocale() === 'zh' ? zhAdminCompliance : enAdminCompliance
+      content_md: getLocale() === 'zh' ? zhAdminCompliance : enAdminCompliance,
     }
   }
   const id = documentId.value
@@ -149,28 +206,41 @@ const currentDocument = computed<LoginAgreementDocument | null>(() => {
 
 const hasContent = computed(() => Boolean(currentDocument.value?.content_md?.trim()))
 
-const renderedHtml = computed(() => {
+/**
+ * Render, sanitize, then annotate — in that order. The annotation pass only
+ * ever writes an `id` onto a heading DOMPurify has already cleared, so the
+ * markdown pipeline itself is untouched and nothing re-enters the document
+ * that sanitization did not approve.
+ */
+const renderedDocument = computed<{ html: string; toc: TocEntry[] }>(() => {
   const content = currentDocument.value?.content_md?.trim() || ''
   if (!content) {
-    return ''
+    return { html: '', toc: [] }
   }
-  const html = marked.parse(content) as string
-  return DOMPurify.sanitize(html)
+
+  const safe = DOMPurify.sanitize(marked.parse(content) as string)
+  const host = document.createElement('div')
+  host.innerHTML = safe
+
+  const toc: TocEntry[] = []
+  host.querySelectorAll('h2, h3').forEach((heading, index) => {
+    const text = heading.textContent?.trim() ?? ''
+    if (!text) {
+      return
+    }
+    // Positional ids rather than slugs: these documents also ship in Chinese,
+    // and a CJK slug has to be percent-encoded at every `href` pointing at it.
+    const id = `legal-section-${index + 1}`
+    heading.id = id
+    toc.push({ id, text, level: heading.tagName === 'H2' ? 2 : 3 })
+  })
+
+  return { html: host.innerHTML, toc }
 })
 
-const documentIcon = computed<LegalDocumentIcon>(() => {
-  const title = currentDocument.value?.title || ''
-  if (title.includes('政策') || title.includes('隐私')) {
-    return 'shield'
-  }
-  if (title.includes('国家') || title.includes('地区')) {
-    return 'globe'
-  }
-  if (title.includes('特定')) {
-    return 'cog'
-  }
-  return 'document'
-})
+const renderedHtml = computed(() => renderedDocument.value.html)
+const tableOfContents = computed(() => renderedDocument.value.toc)
+const showTableOfContents = computed(() => tableOfContents.value.length >= TOC_MIN_HEADINGS)
 
 onMounted(async () => {
   loadError.value = false
@@ -183,81 +253,130 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.legal-document-content {
+/*
+ * The one long-form reading surface in the product, so this block is doing
+ * typographic work rather than token bookkeeping.
+ *
+ * Family B throughout — every colour below flips at `.dark` on its own, so
+ * this file writes no dark-mode variant at all. Hierarchy is carried by
+ * size, weight and the space above a heading; no coloured left rules, no
+ * decorative dividers, no shadow, radius at or under 2px.
+ */
+.legal-prose {
+  @apply text-md text-ink-secondary;
   line-height: 1.75;
   overflow-wrap: anywhere;
-  color: inherit;
 }
 
-.legal-document-content :deep(h1) {
-  @apply mb-4 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold dark:border-dark-700;
+/*
+ * A heading belongs to the section that follows it, so the space above is
+ * always larger than the space below. That single asymmetry is what makes the
+ * document scannable without a rule under every title.
+ *
+ * The markdown `# Title` duplicates the page `<h1>` above, so it is set at the
+ * section rank instead of competing with it.
+ */
+.legal-prose :deep(h1),
+.legal-prose :deep(h2) {
+  @apply mb-4 mt-12 scroll-mt-8 text-xl font-semibold text-ink;
 }
 
-.legal-document-content :deep(h2) {
-  @apply mb-3 mt-7 text-2xl font-bold;
+.legal-prose :deep(h3) {
+  @apply mb-3 mt-9 scroll-mt-8 text-lg font-medium text-ink;
 }
 
-.legal-document-content :deep(h3) {
-  @apply mb-2 mt-6 text-xl font-semibold;
+.legal-prose :deep(h4) {
+  @apply mb-2 mt-7 scroll-mt-8 text-md font-semibold text-ink;
 }
 
-.legal-document-content :deep(h4) {
-  @apply mb-2 mt-5 text-lg font-semibold;
+/* The article already sits against its own rule; do not push it off. */
+.legal-prose > :deep(*:first-child) {
+  @apply mt-0;
 }
 
-.legal-document-content :deep(p) {
-  @apply mb-4 text-gray-700 dark:text-dark-200;
+.legal-prose > :deep(*:last-child) {
+  @apply mb-0;
 }
 
-.legal-document-content :deep(a) {
-  @apply text-primary-600 underline underline-offset-4 hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200;
+.legal-prose :deep(p) {
+  @apply mb-5;
 }
 
-.legal-document-content :deep(ul) {
-  @apply mb-4 list-disc pl-6;
+/* Accent means "you can act on this" and nothing else. */
+.legal-prose :deep(a) {
+  @apply text-accent underline-offset-2 transition-colors duration-fast;
+  @apply hover:text-accent-hover hover:underline;
 }
 
-.legal-document-content :deep(ol) {
-  @apply mb-4 list-decimal pl-6;
+.legal-prose :deep(ul) {
+  @apply mb-5 list-disc pl-6;
 }
 
-.legal-document-content :deep(li) {
-  @apply mb-1 text-gray-700 dark:text-dark-200;
+.legal-prose :deep(ol) {
+  @apply mb-5 list-decimal pl-6;
 }
 
-.legal-document-content :deep(blockquote) {
-  @apply my-5 border-l-4 border-gray-300 pl-4 text-gray-600 dark:border-dark-600 dark:text-dark-300;
+.legal-prose :deep(li) {
+  @apply mb-2 pl-1;
 }
 
-.legal-document-content :deep(code) {
-  @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm dark:bg-dark-800;
+.legal-prose :deep(li::marker) {
+  @apply text-ink-tertiary;
 }
 
-.legal-document-content :deep(pre) {
-  @apply my-5 overflow-x-auto rounded-lg bg-gray-950 p-4 text-gray-100;
+.legal-prose :deep(li > ul),
+.legal-prose :deep(li > ol) {
+  @apply mb-0 mt-2;
 }
 
-.legal-document-content :deep(pre code) {
-  @apply bg-transparent p-0 text-inherit;
+.legal-prose :deep(strong) {
+  @apply font-semibold text-ink;
 }
 
-.legal-document-content :deep(table) {
-  @apply my-5 block w-full overflow-x-auto border-collapse;
+.legal-prose :deep(em) {
+  @apply italic;
 }
 
-.legal-document-content :deep(th) {
-  @apply border border-gray-300 bg-gray-50 px-3 py-2 text-left font-semibold dark:border-dark-600 dark:bg-dark-800;
+.legal-prose :deep(code) {
+  @apply rounded-sm border border-line-subtle bg-surface-sunken px-1.5 py-0.5;
+  @apply font-mono text-[0.875em] text-ink;
 }
 
-.legal-document-content :deep(td) {
-  @apply border border-gray-300 px-3 py-2 dark:border-dark-600;
+.legal-prose :deep(pre) {
+  @apply mb-5 overflow-x-auto rounded border border-line bg-surface-sunken p-4;
 }
 
-.legal-document-content :deep(img) {
-  @apply my-5 h-auto max-w-full rounded-lg;
+.legal-prose :deep(pre code) {
+  @apply rounded-none border-0 bg-transparent p-0 text-sm;
 }
 
-.legal-document-content :deep(hr) {
-  @apply my-7 border-gray-200 dark:border-dark-700;
+.legal-prose :deep(blockquote) {
+  @apply mb-5 border-l border-line-strong bg-surface-sunken px-5 py-4 text-ink-secondary;
+}
+
+.legal-prose :deep(blockquote > *:last-child) {
+  @apply mb-0;
+}
+
+/* `block` is what makes a markdown table scroll instead of blowing the measure. */
+.legal-prose :deep(table) {
+  @apply mb-5 block w-full overflow-x-auto border-collapse text-sm;
+}
+
+.legal-prose :deep(th),
+.legal-prose :deep(td) {
+  @apply border border-line-subtle px-3 py-2 text-left align-top;
+}
+
+.legal-prose :deep(th) {
+  @apply bg-surface-sunken font-semibold text-ink;
+}
+
+.legal-prose :deep(img) {
+  @apply mb-5 h-auto max-w-full rounded border border-line;
+}
+
+.legal-prose :deep(hr) {
+  @apply my-10 h-px border-0 bg-line-subtle;
 }
 </style>

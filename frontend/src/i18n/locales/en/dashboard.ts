@@ -898,6 +898,10 @@ export default {
   errors: {
     somethingWentWrong: 'Something went wrong',
     pageNotFound: 'Page not found',
+    // NotFoundView carried this sentence as a hardcoded English literal, so the
+    // zh build printed English underneath a translated heading.
+    pageNotFoundDescription:
+      'The page you are looking for does not exist, or it has moved somewhere else.',
     unauthorized: 'Unauthorized',
     forbidden: 'Forbidden',
     serverError: 'Server error',
