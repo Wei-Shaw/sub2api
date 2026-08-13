@@ -89,18 +89,21 @@ describe('DataTable', () => {
     await wrapper.vm.$nextTick()
 
     const nameHeader = wrapper.findAll('th')[0]
+    // The arrows advertise their own state, so this asserts which direction is
+    // active rather than which colour class happens to paint it.
+    const arrows = () => nameHeader.findAll('[data-test="sort-arrow"]')
+
     expect(nameHeader.find('[data-test="custom-name-header"]').exists()).toBe(true)
     expect(nameHeader.attributes('aria-sort')).toBe('ascending')
-    expect(nameHeader.findAll('svg')).toHaveLength(2)
-    expect(nameHeader.findAll('svg')[0].classes()).toContain('text-primary-600')
-    expect(nameHeader.findAll('svg')[1].classes()).toContain('text-gray-300')
+    expect(arrows()).toHaveLength(2)
+    expect(arrows().map((arrow) => arrow.attributes('data-sort-arrow'))).toEqual(['asc', 'desc'])
+    expect(arrows().map((arrow) => arrow.attributes('data-active'))).toEqual(['true', 'false'])
 
     await nameHeader.trigger('click')
     await wrapper.vm.$nextTick()
 
     expect(nameHeader.attributes('aria-sort')).toBe('descending')
-    expect(nameHeader.findAll('svg')[0].classes()).toContain('text-gray-300')
-    expect(nameHeader.findAll('svg')[1].classes()).toContain('text-primary-600')
+    expect(arrows().map((arrow) => arrow.attributes('data-active'))).toEqual(['false', 'true'])
   })
 
   it('renders every row with no virtual padding spacer for small datasets (virtualization off)', async () => {
@@ -376,6 +379,126 @@ describe('DataTable', () => {
     await wrapper.get('[data-test="select-all-mobile"]').setValue(true)
 
     expect(wrapper.emitted('update:selectedKeys')?.at(-1)?.[0]).toEqual([99, 1, 2])
+  })
+
+  /*
+   * Row height is the component's own contract, not something a page shell
+   * lends it: the padded `py-4` cells this replaces rendered ~56px rows against
+   * a 32px spec at all 21 call sites. jsdom does no layout, so these assert the
+   * hooks that carry the token (`ds-row-cell` / `ds-header-cell`, sized from
+   * `--ds-row-h` / `--ds-header-h` in the component's own stylesheet) and the
+   * absence of the fixed vertical padding that used to defeat them.
+   */
+  describe('row geometry', () => {
+    const geometryColumns = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ key: `c${i}`, label: `C${i}` }))
+
+    const mountGeometry = (columnCount: number, extra: Record<string, unknown> = {}) =>
+      mount(DataTable, {
+        props: {
+          columns: geometryColumns(columnCount),
+          data: [{ id: 1 }],
+          rowKey: 'id',
+          ...extra
+        }
+      })
+
+    it('sizes body cells from the row token instead of hardcoded vertical padding', () => {
+      const cells = mountGeometry(3, { selectable: true }).findAll('tbody td')
+
+      expect(cells.length).toBe(4) // selection cell + three data cells
+      for (const cell of cells) {
+        expect(cell.classes()).toContain('ds-row-cell')
+        expect(cell.classes()).not.toContain('py-4')
+      }
+    })
+
+    it('sizes skeleton cells identically so loading does not change row height', () => {
+      const cells = mountGeometry(3, { selectable: true, loading: true }).findAll('tbody td')
+
+      expect(cells.length).toBeGreaterThan(0)
+      for (const cell of cells) {
+        expect(cell.classes()).toContain('ds-row-cell')
+        expect(cell.classes()).not.toContain('py-4')
+      }
+    })
+
+    it('sizes header cells from the header token', () => {
+      const headers = mountGeometry(3, { selectable: true }).findAll('thead th')
+
+      expect(headers.length).toBe(4)
+      for (const header of headers) {
+        expect(header.classes()).toContain('ds-header-cell')
+        expect(header.classes()).not.toContain('py-3')
+      }
+    })
+
+    it('leaves the adaptive horizontal padding untouched', () => {
+      // Column count still drives horizontal padding; only the vertical axis moved.
+      const expectations: Array<[number, string]> = [
+        [3, 'px-6'],
+        [5, 'px-4'],
+        [7, 'px-3'],
+        [10, 'px-2']
+      ]
+
+      for (const [columnCount, padding] of expectations) {
+        const wrapper = mountGeometry(columnCount)
+
+        expect(wrapper.findAll('tbody td')[0].classes()).toContain(padding)
+        expect(wrapper.findAll('thead th')[0].classes()).toContain(padding)
+      }
+    })
+
+    it('keeps the selection column on its own fixed horizontal padding', () => {
+      const wrapper = mountGeometry(10, { selectable: true })
+      const selectionCell = wrapper.findAll('tbody td')[0]
+
+      expect(selectionCell.classes()).toEqual(
+        expect.arrayContaining(['ds-row-cell', 'w-11', 'px-3'])
+      )
+      // The adaptive class belongs to data cells only.
+      expect(selectionCell.classes()).not.toContain('px-2')
+    })
+
+    it('estimates virtualized rows at the compact row height, not the old padded one', async () => {
+      const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1 }))
+      const wrapper = mount(DataTable, {
+        props: {
+          columns: geometryColumns(2),
+          data,
+          rowKey: 'id',
+          virtualizeThreshold: 3
+        }
+      })
+
+      await wrapper.vm.$nextTick()
+
+      const exposed = (wrapper.vm as any).virtualizer
+      const instance = exposed?.value ?? exposed
+      // A stale 56 here (the height `py-4` produced) would make the scrollbar
+      // jump as real rows are measured against it.
+      expect(instance.options.estimateSize(0)).toBe(32)
+    })
+
+    it('still honours an explicit estimateRowHeight override', async () => {
+      const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1 }))
+      const wrapper = mount(DataTable, {
+        props: {
+          columns: geometryColumns(2),
+          data,
+          rowKey: 'id',
+          virtualizeThreshold: 3,
+          estimateRowHeight: 44
+        }
+      })
+
+      await wrapper.vm.$nextTick()
+
+      const exposed = (wrapper.vm as any).virtualizer
+      const instance = exposed?.value ?? exposed
+      expect(instance.options.estimateSize(0)).toBe(44)
+    })
   })
 
   describe('client-side sort ordering', () => {
