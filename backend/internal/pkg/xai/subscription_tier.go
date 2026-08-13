@@ -12,7 +12,7 @@ import (
 const GrokQuotaSignalMaxAge = 24 * time.Hour
 
 const (
-	grok45ResponsesModel       = "grok-4.5"
+	grok45ResponsesModel             = "grok-4.5"
 	grokHeavyQuotaRequestLimit int64 = 8_300
 	grokHeavyQuotaTokenLimit   int64 = 53_000_000
 )
