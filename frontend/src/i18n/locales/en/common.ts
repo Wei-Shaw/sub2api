@@ -46,6 +46,8 @@ export default {
     close: 'Close',
     toggleMenu: 'Toggle menu',
     userMenu: 'User menu',
+    primaryNavigation: 'Primary navigation',
+    accountSummary: 'Account summary',
     pageNotFound: 'Page not found',
     enabled: 'Enabled',
     disabled: 'Disabled',

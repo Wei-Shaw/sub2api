@@ -46,6 +46,8 @@ export default {
     close: '关闭',
     toggleMenu: '切换菜单',
     userMenu: '用户菜单',
+    primaryNavigation: '主导航',
+    accountSummary: '账户概览',
     pageNotFound: '页面不存在',
     enabled: '已启用',
     disabled: '已禁用',

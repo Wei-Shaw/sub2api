@@ -5,6 +5,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/__tests__/tourAnchors.spec.ts \
 	src/styles/__tests__/tokens.parity.spec.ts \
 	src/i18n/__tests__/localeParity.spec.ts \
+	src/components/layout/__tests__/navTree.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \

@@ -12,9 +12,16 @@
       from, so the two can never drift. Previously each side hardcoded its own
       magic number (72px / 16rem).
     -->
+    <!--
+      `inert` is the other half of the mobile drawer being a real dialog: the
+      sidebar traps Tab inside itself, and this takes the page behind the scrim
+      out of the tab order and the accessibility tree entirely. Desktop never
+      gets it — there the sidebar is permanent chrome, not an overlay.
+    -->
     <div
       class="relative min-h-screen transition-[margin] duration-slow ease-out lg:ms-[--gutter]"
       :style="{ '--gutter': gutter }"
+      :inert="drawerBlocking || undefined"
     >
       <AppHeader />
 
@@ -32,6 +39,7 @@
 <script setup lang="ts">
 import '@/styles/onboarding.css'
 import { computed, onMounted } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { useAppStore } from '@/stores'
 import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
@@ -49,6 +57,11 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 const gutter = computed(() =>
   sidebarCollapsed.value ? 'var(--ds-sidebar-w-collapsed)' : 'var(--ds-sidebar-w)'
 )
+
+// Same breakpoint as the sidebar's own `lg:translate-x-0`: below it the sidebar
+// is an overlay, above it it is permanent chrome.
+const isDesktop = useMediaQuery('(min-width: 1024px)')
+const drawerBlocking = computed(() => appStore.mobileOpen && !isDesktop.value)
 
 const { replayTour } = useOnboardingTour({
   storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',

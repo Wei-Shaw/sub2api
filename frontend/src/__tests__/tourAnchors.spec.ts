@@ -66,7 +66,15 @@ const selectors = Array.from(
  */
 function isProduced(selector: string): boolean {
   const attr = selector.match(/^\[data-tour="(.+)"\]$/)
-  if (attr) return allSource.includes(`data-tour="${attr[1]}"`)
+  if (attr) {
+    // Either written literally in a template, or declared on a nav item in
+    // navTree.ts, which the sidebar binds through `:data-tour`. The second form
+    // is the stronger one — it is the anchor as data, not as markup.
+    return (
+      allSource.includes(`data-tour="${attr[1]}"`) ||
+      allSource.includes(`tourAnchor: '${attr[1]}'`)
+    )
+  }
 
   const id = selector.match(/^#([\w-]+)$/)
   if (id) {

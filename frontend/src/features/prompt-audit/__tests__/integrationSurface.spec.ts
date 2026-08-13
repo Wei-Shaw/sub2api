@@ -19,8 +19,10 @@ describe('Prompt Audit integration surface', () => {
   })
 
   it('keeps the legacy content moderation route and adds both pages under an expand-only security group', () => {
-    const sidebar = read('../../../components/layout/AppSidebar.vue')
-    const group = sidebar.slice(sidebar.indexOf("path: '/admin/security-audit'"), sidebar.indexOf("path: '/admin/redeem'"))
+    // The nav tree moved out of AppSidebar.vue into navTree.ts, where it is
+    // data rather than markup; the assertion is unchanged, only the source is.
+    const nav = read('../../../components/layout/navTree.ts')
+    const group = nav.slice(nav.indexOf("path: '/admin/security-audit'"), nav.indexOf("path: '/admin/redeem'"))
     expect(group).toContain('expandOnly: true')
     expect(group).toContain("path: '/admin/risk-control'")
     expect(group).toContain("path: '/admin/prompt-audit'")
