@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	openaiutil "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -753,19 +754,38 @@ func isBareOpenAIResponsesPath(c *gin.Context) bool {
 	return strings.HasSuffix(normalizedPath, "/responses")
 }
 
+// Codex 0.144.1 introduced the native remote_compaction_v2 Responses wire.
+const codexDesktopRemoteCompactionV2MinVersion = "0.144.1"
+
+func isCodexDesktopRemoteCompactionV2Request(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	userAgent := strings.TrimSpace(c.GetHeader("User-Agent"))
+	if !strings.HasPrefix(strings.ToLower(userAgent), "codex desktop/") {
+		return false
+	}
+	version, ok := openaiutil.ParseCodexEngineVersion(userAgent)
+	return ok && service.CompareVersions(version, codexDesktopRemoteCompactionV2MinVersion) >= 0
+}
+
 func isOpenAIRemoteCompactionV2Request(c *gin.Context, body []byte) bool {
 	stream, valid := parseOpenAICompatibleStream(body)
 	if !valid || !stream || c == nil || c.Request == nil {
 		return false
 	}
-	for _, header := range c.Request.Header.Values("x-codex-beta-features") {
+	betaHeaders := c.Request.Header.Values("x-codex-beta-features")
+	for _, header := range betaHeaders {
 		for _, feature := range strings.Split(header, ",") {
 			if strings.TrimSpace(feature) == "remote_compaction_v2" {
 				return true
 			}
 		}
 	}
-	return false
+	if len(betaHeaders) > 0 {
+		return false
+	}
+	return isCodexDesktopRemoteCompactionV2Request(c)
 }
 
 // normalizeOpenAIResponsesCompactRequest keeps Codex remote compaction v2 on
