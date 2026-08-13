@@ -80,15 +80,17 @@ const BANNED: Array<{ id: string; pattern: RegExp; why: string }> = [
   },
 ]
 
-/** Files still carrying a banned pattern. Shrink this; never grow it. */
+/**
+ * Files still carrying a banned pattern.
+ *
+ * EMPTY, as of the end of the migration — every rule is now a plain ban rather
+ * than a burndown. The mechanism stays because the ratchet is what stops the
+ * old visual language from coming back: a new gradient or a new blur fails the
+ * relevant test the moment it lands, and the only way to make it pass is to
+ * write an explicit debt entry here, which is visible in review.
+ */
 const ALLOWED: Record<string, string[]> = {
-  // Tier 2-5 debt. Baseline measured at the end of Tier 0.
-  'gradient-fill': [
-    'components/common/AnnouncementBell.vue',
-    'components/common/AnnouncementPopup.vue',
-    'components/common/SubscriptionProgressMini.vue',
-    'composables/useChannelMonitorFormat.ts',
-  ],
+  'gradient-fill': [],
   'backdrop-blur': [],
   'named-gradient': [],
   'glow-shadow': [],

@@ -62,10 +62,14 @@
               <!-- Unlimited subscription badge -->
               <div
                 v-if="isUnlimited(subscription)"
-                class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-2.5 py-1.5 dark:from-emerald-900/20 dark:to-teal-900/20"
+                class="flex items-center gap-1.5"
               >
-                <span class="text-lg text-emerald-600 dark:text-emerald-400">∞</span>
-                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                <!--
+                  No quota is not a healthy quota, so this stops being a green
+                  gradient chip. The glyph and the word carry it.
+                -->
+                <span class="font-mono text-sm text-ink-tertiary" aria-hidden="true">∞</span>
+                <span class="text-xs text-ink-secondary">
                   {{ t('subscriptionProgress.unlimited') }}
                 </span>
               </div>
