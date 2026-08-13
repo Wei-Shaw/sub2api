@@ -39,18 +39,19 @@ describe("groupsReasoningEffort", () => {
     }
   });
 
-  it("hydrates supported rows and drops stale custom values", () => {
+  it("hydrates and serializes model-scoped custom sources", () => {
     const rows = reasoningEffortMappingsToRows(
       [
         { from: " max ", to: " xhigh " },
-        { from: "ultra", to: "high" },
+        { model: " GPT-5.6-SOL ", from: " Ultra ", to: "high" },
       ],
       "openai",
     );
 
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(reasoningEffortMappingsToAPI(rows)).toEqual([
       { from: "max", to: "xhigh" },
+      { model: "gpt-5.6-sol", from: "ultra", to: "high" },
     ]);
   });
 
@@ -73,9 +74,17 @@ describe("groupsReasoningEffort", () => {
     });
   });
 
-  it("rejects duplicate source values case insensitively", () => {
-    const first = createReasoningEffortMappingRow({ from: "MAX", to: "xhigh" });
-    const second = createReasoningEffortMappingRow({ from: " max ", to: "high" });
+  it("rejects duplicate model and source pairs case insensitively", () => {
+    const first = createReasoningEffortMappingRow({
+      model: "gpt-5.6-sol",
+      from: "ULTRA",
+      to: "xhigh",
+    });
+    const second = createReasoningEffortMappingRow({
+      model: " GPT-5.6-SOL ",
+      from: " ultra ",
+      to: "high",
+    });
 
     expect(validateReasoningEffortMappings([first, second])).toEqual({
       [first.id]: { from: "duplicateFrom" },
@@ -83,10 +92,34 @@ describe("groupsReasoningEffort", () => {
     });
   });
 
-  it("rejects custom mappings", () => {
+  it("accepts custom sources but keeps targets fixed", () => {
     const row = createReasoningEffortMappingRow({ from: "ultra", to: "high" });
-    expect(validateReasoningEffortMappings([row], "openai")).toEqual({
-      [row.id]: { from: "unsupportedFrom" },
+    expect(validateReasoningEffortMappings([row], "openai")).toEqual({});
+
+    const invalidTarget = createReasoningEffortMappingRow({
+      from: "ultra",
+      to: "future",
     });
+    expect(validateReasoningEffortMappings([invalidTarget], "openai")).toEqual({
+      [invalidTarget.id]: { to: "unsupportedTo" },
+    });
+
+    const noneSource = createReasoningEffortMappingRow({
+      from: "none",
+      to: "low",
+    });
+    expect(validateReasoningEffortMappings([noneSource], "openai")).toEqual({
+      [noneSource.id]: { from: "unsupportedFrom" },
+    });
+  });
+
+  it("allows the same source in different model scopes", () => {
+    const global = createReasoningEffortMappingRow({ from: "ultra", to: "high" });
+    const scoped = createReasoningEffortMappingRow({
+      model: "gpt-5.6-sol",
+      from: "ultra",
+      to: "xhigh",
+    });
+    expect(validateReasoningEffortMappings([global, scoped], "openai")).toEqual({});
   });
 });

@@ -38,7 +38,19 @@
           :key="row.id"
           class="rounded-lg border border-gray-200 bg-gray-50/40 p-3 dark:border-dark-600 dark:bg-dark-800/40"
         >
-          <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] md:items-start">
+          <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_minmax(0,1fr)_auto] md:items-start">
+            <div>
+              <Input
+                :id="`${idPrefix}-${row.id}-model`"
+                :model-value="row.model"
+                :label="t('admin.groups.form.reasoningEffortModel')"
+                :placeholder="t('admin.groups.form.reasoningEffortModelPlaceholder')"
+                :error="showValidation && validationErrors[row.id]?.model ? mappingErrorText(validationErrors[row.id]?.model) : undefined"
+                autocomplete="off"
+                @update:model-value="updateMapping(row.id, 'model', $event)"
+              />
+            </div>
+
             <div>
               <label :for="`${idPrefix}-${row.id}-from`" class="input-label">
                 {{ t("admin.groups.form.reasoningEffortFrom") }}
@@ -51,7 +63,8 @@
                 :error="showValidation && !!validationErrors[row.id]?.from"
                 :aria-label="t('admin.groups.form.reasoningEffortFrom')"
                 :aria-describedby="showValidation && validationErrors[row.id]?.from ? `${idPrefix}-${row.id}-from-error` : undefined"
-                :searchable="false"
+                searchable
+                creatable
                 clearable
                 @update:model-value="updateMapping(row.id, 'from', $event)"
               />
@@ -116,6 +129,7 @@ import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { GroupPlatform } from "@/types";
 import Icon from "@/components/icons/Icon.vue";
+import Input from "@/components/common/Input.vue";
 import Select from "@/components/common/Select.vue";
 import {
   createReasoningEffortMappingRow,
@@ -155,7 +169,7 @@ const updateMaxEffort = (value: string | number | boolean | null) => {
 
 const updateMapping = (
   id: string,
-  field: "from" | "to",
+  field: "model" | "from" | "to",
   value: string | number | boolean | null,
 ) => {
   emit(

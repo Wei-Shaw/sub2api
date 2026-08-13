@@ -573,7 +573,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 			return
 		}
 
-		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, &OpenAIWSIngressHooks{
+			InitialRequestModel: "client-model",
+			ReasoningEffortMappings: []ReasoningEffortMapping{{
+				Model: "client-model",
+				From:  "ultra",
+				To:    "xhigh",
+			}},
+		})
 	}))
 	defer wsServer.Close()
 
@@ -586,7 +593,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 	}()
 
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"client-model","stream":false}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"client-model","stream":false,"reasoning":{"effort":"ultra"}}`))
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -597,7 +604,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 	require.Equal(t, "resp_omit_model_1", gjson.GetBytes(firstEvent, "response.id").String())
 
 	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","stream":false,"previous_response_id":"resp_omit_model_1"}`))
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","stream":false,"previous_response_id":"resp_omit_model_1","reasoning":{"effort":"ultra"}}`))
 	cancelWrite()
 	require.NoError(t, err)
 
@@ -618,6 +625,8 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 	require.Len(t, captureConn.writes, 2)
 	require.Equal(t, "gpt-5.1", gjson.Get(requestToJSONString(captureConn.writes[0]), "model").String())
 	require.Equal(t, "gpt-5.1", gjson.Get(requestToJSONString(captureConn.writes[1]), "model").String())
+	require.Equal(t, "xhigh", gjson.Get(requestToJSONString(captureConn.writes[0]), "reasoning.effort").String())
+	require.Equal(t, "xhigh", gjson.Get(requestToJSONString(captureConn.writes[1]), "reasoning.effort").String())
 	require.Equal(t, "resp_omit_model_1", gjson.Get(requestToJSONString(captureConn.writes[1]), "previous_response_id").String())
 }
 
@@ -1099,6 +1108,137 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 
 	require.Equal(t, 1, captureDialer.DialCount(), "passthrough 模式应直接建立上游 websocket")
 	require.Len(t, upstreamConn.writes, 1, "passthrough 模式应透传首条 response.create")
+}
+
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughSessionUpdateUsesClientModelForEffortMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.ModeRouterV2Enabled = true
+	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	upstreamConn := &openAIWSCaptureConn{
+		// Keep the upstream reader from consuming the second terminal event
+		// before the client-to-upstream goroutine relays session.update and the
+		// second response.create.
+		readDelays: []time.Duration{0, 100 * time.Millisecond},
+		events: [][]byte{
+			[]byte(`{"type":"response.completed","response":{"id":"resp_session_model_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
+			[]byte(`{"type":"response.completed","response":{"id":"resp_session_model_2","model":"gpt-5.6-sol","usage":{"input_tokens":1,"output_tokens":1}}}`),
+		},
+	}
+	captureDialer := &openAIWSCaptureDialer{conn: upstreamConn}
+	svc := &OpenAIGatewayService{
+		cfg:                       cfg,
+		httpUpstream:              &httpUpstreamRecorder{},
+		cache:                     &stubGatewayCache{},
+		openaiWSResolver:          NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:             NewCodexToolCorrector(),
+		openaiWSPassthroughDialer: captureDialer,
+	}
+	account := &Account{
+		ID:          453,
+		Name:        "openai-ingress-passthrough-session-model",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test",
+			"model_mapping": map[string]any{
+				"client-a":   "gpt-5.1",
+				"client-sol": "gpt-5.6-sol",
+			},
+		},
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_mode": OpenAIWSIngressModePassthrough,
+		},
+	}
+
+	serverErrCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
+		if err != nil {
+			serverErrCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+
+		readCtx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, readErr := conn.Read(readCtx)
+		cancel()
+		if readErr != nil {
+			serverErrCh <- readErr
+			return
+		}
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, &OpenAIWSIngressHooks{
+			InitialRequestModel: "client-a",
+			ReasoningEffortMappings: []ReasoningEffortMapping{{
+				Model: "client-sol",
+				From:  "ultra",
+				To:    "xhigh",
+			}},
+		})
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"client-a","stream":false}`))
+	cancelWrite()
+	require.NoError(t, err)
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, firstEvent, readErr := clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, readErr)
+	require.Equal(t, "resp_session_model_1", gjson.GetBytes(firstEvent, "response.id").String())
+
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"session.update","session":{"model":"client-sol"}}`))
+	cancelWrite()
+	require.NoError(t, err)
+	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","stream":false,"reasoning":{"effort":"ultra"}}`))
+	cancelWrite()
+	require.NoError(t, err)
+	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+	_, secondEvent, readErr := clientConn.Read(readCtx)
+	cancelRead()
+	require.NoError(t, readErr)
+	require.Equal(t, "resp_session_model_2", gjson.GetBytes(secondEvent, "response.id").String())
+	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
+
+	select {
+	case serverErr := <-serverErrCh:
+		// The in-memory upstream ends immediately after its second terminal
+		// event, so the relay may observe EOF before the client's normal close.
+		// The forwarded frames below are the behavior under test.
+		_ = serverErr
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待 passthrough websocket 结束超时")
+	}
+
+	require.Len(t, upstreamConn.writes, 3)
+	require.Equal(t, "session.update", gjson.Get(requestToJSONString(upstreamConn.writes[1]), "type").String())
+	require.Equal(t, "gpt-5.6-sol", gjson.Get(requestToJSONString(upstreamConn.writes[2]), "model").String())
+	require.Equal(t, "xhigh", gjson.Get(requestToJSONString(upstreamConn.writes[2]), "reasoning.effort").String())
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeadersUsePromptCacheAndTurnState(t *testing.T) {

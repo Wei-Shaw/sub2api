@@ -217,8 +217,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				nil,
 			)
 		}
+		policyModel := strings.TrimSpace(values[1].String())
+		if policyModel == "" {
+			policyModel = ingressSessionOriginalModel
+		}
 		if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-			if capped, changed := ApplyOpenAIReasoningEffortPolicy(normalized, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+			if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(normalized, policyModel, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 				normalized = capped
 			}
 		}

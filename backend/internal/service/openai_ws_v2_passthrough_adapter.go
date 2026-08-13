@@ -682,7 +682,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstClientMessage = liteFirstMessage
 	}
 	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-		if capped, changed := ApplyOpenAIReasoningEffortPolicy(firstClientMessage, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+		if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(firstClientMessage, hooks.InitialRequestModel, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 			firstClientMessage = capped
 		}
 	}
@@ -961,8 +961,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					}
 					payload = litePayload
 				}
+				policyModel := usageMeta.requestModelForFrame(payload)
+				if policyModel == "" {
+					policyModel = capturedSessionModel
+				}
 				if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
-					if capped, changed := ApplyOpenAIReasoningEffortPolicy(payload, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
+					if capped, changed := ApplyOpenAIReasoningEffortPolicyForModel(payload, policyModel, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 						payload = capped
 					}
 				}

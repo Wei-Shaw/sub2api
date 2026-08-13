@@ -104,8 +104,8 @@ func openAIReasoningEffortToClaudeOutputEffort(effort string) string {
 
 // openAICompatAnthropicReasoningEffort resolves the effort emitted by the
 // Anthropic bridge after the final upstream model is known. Anthropic's max is
-// normally translated to OpenAI xhigh, but GPT-5.6 accepts the original max
-// value on Responses and Chat Completions.
+// normally translated to OpenAI xhigh, but max-capable upstreams such as GPT-5.6
+// and DeepSeek accept the original max value on Responses and Chat Completions.
 func openAICompatAnthropicReasoningEffort(req *apicompat.AnthropicRequest, upstreamModel, convertedEffort string) string {
 	if req == nil || req.OutputConfig == nil || !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
 		return convertedEffort

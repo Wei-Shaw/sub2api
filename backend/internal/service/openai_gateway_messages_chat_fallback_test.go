@@ -55,6 +55,7 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 		effortJSON string
 		wantEffort string
 		maxPolicy  string
+		mappings   []ReasoningEffortMapping
 	}{
 		{
 			name:       "policy caps converted effort",
@@ -86,6 +87,22 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			wantEffort: "high",
 		},
 		{
+			name:       "maps original max after bridge",
+			model:      "gpt-5.5",
+			mapped:     "gpt-5.5",
+			effortJSON: `,"output_config":{"effort":"max"}`,
+			wantEffort: "high",
+			mappings:   []ReasoningEffortMapping{{Model: "gpt-5.5", From: "max", To: "high"}},
+		},
+		{
+			name:       "unmatched original max keeps converted xhigh",
+			model:      "gpt-5.5",
+			mapped:     "gpt-5.5",
+			effortJSON: `,"output_config":{"effort":"max"}`,
+			wantEffort: "xhigh",
+			mappings:   []ReasoningEffortMapping{{From: "ultra", To: "low"}},
+		},
+		{
 			name:       "omitted defaults medium",
 			model:      "gpt-5.6-luna",
 			mapped:     "gpt-5.6-luna",
@@ -113,8 +130,8 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			ctx := context.Background()
-			if tt.maxPolicy != "" {
-				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, nil)
+			if tt.maxPolicy != "" || len(tt.mappings) > 0 {
+				ctx = WithOpenAIMessagesReasoningEffortPolicy(ctx, tt.maxPolicy, tt.mappings, tt.model, gjson.GetBytes([]byte(body), "output_config.effort").String())
 			}
 			result, err := svc.ForwardAsAnthropic(ctx, c, account, []byte(body), "", "")
 			require.NoError(t, err)

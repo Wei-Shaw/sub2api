@@ -49,6 +49,12 @@ func TestExtractOpenAIReasoningEffortFromBodyModelCandidates(t *testing.T) {
 			want:       "xhigh",
 		},
 		{
+			name:       "显式 max DeepSeek 首候选保留",
+			body:       bodyWithMax,
+			candidates: []string{"deepseek-v4-flash", "deepseek-v4-flash"},
+			want:       "max",
+		},
+		{
 			name:       "所有候选均无后缀时返回 nil",
 			body:       bodyWithoutEffort,
 			candidates: []string{"gpt-5.4", "gpt-5.4", "gpt-5.4"},

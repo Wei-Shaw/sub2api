@@ -95,5 +95,6 @@ func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *s
 	if !ok {
 		return
 	}
-	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings))
+	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	c.Request = c.Request.WithContext(service.WithOpenAIMessagesReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings, model, effort.String()))
 }
