@@ -1414,7 +1414,7 @@ func (a *Account) GetOpenAIIDToken() string {
 }
 
 func (a *Account) GetOpenAIApiKey() string {
-	if !a.IsOpenAIApiKey() && !(a.IsMiniMax() && a.Type == AccountTypeAPIKey) {
+	if !a.IsOpenAIApiKey() && (!a.IsMiniMax() || a.Type != AccountTypeAPIKey) {
 		return ""
 	}
 	return a.GetCredential("api_key")
