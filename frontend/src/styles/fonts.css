@@ -18,8 +18,8 @@
  *
  * CSP: `backend/internal/config/config.go:33` already allows
  * `font-src 'self'`, which covers `/assets/*.woff2`. No backend change needed.
- * Follow-up hardening: the stale `fonts.gstatic.com` / `fonts.googleapis.com`
- * entries in that policy can be dropped now that nothing references them.
+ * The stale `fonts.gstatic.com` / `fonts.googleapis.com` entries have been
+ * dropped from that policy: nothing in the tree references either host.
  *
  * NO ITALIC. There is no legitimate use for it in an ops console, and skipping
  * it saves ~50 KB. The rare `<em>` gets a synthetic oblique, which is fine.
