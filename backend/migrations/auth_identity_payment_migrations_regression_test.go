@@ -269,3 +269,18 @@ func TestMigrations201And202KeepGroupProfitControlRollbackCompatible(t *testing.
 	require.NoError(t, err)
 	require.Contains(t, string(invalidation), "sub2api-managed-update: reviewed-compatible")
 }
+
+func TestMigration234KeepsGroupPricingExpansionRollbackCompatible(t *testing.T) {
+	content, err := FS.ReadFile("234_group_model_pricing.sql")
+	require.NoError(t, err)
+
+	sql := strings.ToLower(string(content))
+	require.Contains(t, sql, "add column if not exists long_context_pricing_enabled boolean;")
+	require.Contains(t, sql, "add column if not exists model_pricing jsonb;")
+	require.NotContains(t, sql, "long_context_pricing_enabled boolean not null")
+	require.NotContains(t, sql, "long_context_pricing_enabled boolean default")
+	require.Contains(t, sql, "where long_context_pricing_enabled is null")
+	require.Contains(t, sql, "if new.long_context_pricing_enabled is null then")
+	require.Contains(t, sql, "new.long_context_pricing_enabled := true")
+	require.Contains(t, sql, "before insert or update of long_context_pricing_enabled on groups")
+}
