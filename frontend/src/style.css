@@ -792,9 +792,15 @@
 
   /* ============ Onboarding tour content ============ */
   /*
-   * driver.js popover CHROME is themed in src/styles/onboarding.css, which is
-   * still on hardcoded teal and has its own migration line item. These rules
-   * cover the content we render inside the popover.
+   * driver.js popover CHROME is themed in src/styles/onboarding.css, now on
+   * Family B tokens like everything else. These rules cover the content we
+   * render INSIDE the popover.
+   *
+   * They are currently unused: the step descriptions in i18n/locales/{en,zh}/
+   * misc.ts ship as `<div style="…">` blobs carrying light-mode hex, so they
+   * ignore these classes and render light-green tint boxes on a dark surface.
+   * Rewriting those strings onto these classes is the fix; no CSS change can
+   * reach an inline style.
    */
   .tour-step-description {
     @apply space-y-3 text-sm leading-relaxed text-ink-secondary;
