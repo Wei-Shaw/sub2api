@@ -1166,10 +1166,10 @@ const isGrokFreeUsage = (usage: AccountUsageInfo | null) => {
   const plan = (billing?.plan || '').trim().toLowerCase()
   const tier = (usage.subscription_tier || '').trim().toLowerCase()
   const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
-  if (grokPlanLabelIsPaid(plan) || grokPlanLabelIsPaid(tier)) return false
+  if (grokPlanLabelIsFree(tier)) return true
+  if (grokPlanLabelIsPaid(tier) || grokPlanLabelIsPaid(plan)) return false
   if (
     grokPlanLabelIsFree(plan) ||
-    grokPlanLabelIsFree(tier) ||
     grokPlanLabelIsFree(entitlement)
   ) return true
   return billing != null

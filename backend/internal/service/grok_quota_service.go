@@ -195,6 +195,7 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 	if probeStatus == http.StatusTooManyRequests {
 		snapshot = enrichGrokQuotaSnapshotFromError(snapshot, quotaResponseBody, probeStatus, now)
 	}
+	stampGrokQuotaSnapshotForPlan(account, snapshot, probeModel)
 	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
 	if limited {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)

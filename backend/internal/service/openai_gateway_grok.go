@@ -638,7 +638,8 @@ func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
 func grokSupportsReasoningEffort(model string) bool {
 	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
 	switch model {
-	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.3", "grok-4.3-latest",
+	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
+		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
 		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":
 		return true
@@ -1097,7 +1098,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 			Message:            upstreamMsg,
 		})
 		permanentlyDisabled := s.handleGrokAccountUpstreamError(
-			ctx,
+			withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel),
 			account,
 			resp.StatusCode,
 			resp.Header,
@@ -1115,7 +1116,7 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
 	}
 
-	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+	s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.Header, resp.StatusCode)
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
 	if err != nil {
 		return "", OpenAIUsage{}, fmt.Errorf("read grok composer image bridge response: %w", err)
@@ -1325,6 +1326,13 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotForResponse(
 		stateCtx, cancel = openAIAccountStateContext(ctx)
 		defer cancel()
 	}
+	// Account pointers on the request path are per-request copies (Redis/DB decode),
+	// not a shared in-process cache. Mutating Extra here matches token refresh /
+	// rate-limit writers; do not reuse the same *Account across goroutines.
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[grokQuotaSnapshotExtraKey] = snapshot
 	// Pool-mode API keys keep the snapshot for observability but leave account
 	// health to the upstream pool — never install runtime/durable rate-limit blocks.
 	poolMode := account.IsPoolMode()
@@ -1565,6 +1573,7 @@ func extendGrokFreeRecoveryLease(resetAt, now time.Time, pending bool) time.Time
 func (s *OpenAIGatewayService) updateGrokUsageFromResponse(ctx context.Context, account *Account, headers http.Header, statusCode int) {
 	snapshot := parseGrokQuotaSnapshot(headers, statusCode, time.Now())
 	if snapshot != nil {
+		stampGrokQuotaSnapshotForPlan(account, snapshot, grokRequestedModelFromCtx(ctx))
 		s.updateGrokUsageSnapshot(ctx, account, snapshot)
 		return
 	}
@@ -1951,6 +1960,35 @@ func withGrokTeamRateLimitModel(ctx context.Context, model string) context.Conte
 	return context.WithValue(ctx, grokTeamRateLimitModelContextKey{}, model)
 }
 
+func grokRequestedModelFromCtx(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	model, _ := ctx.Value(grokTeamRateLimitModelContextKey{}).(string)
+	return strings.TrimSpace(model)
+}
+
+func isGrokHeavyTransientModel(requestedModel string) bool {
+	model := strings.ToLower(strings.TrimSpace(xai.ResolveGrokTextResponsesModelID(requestedModel)))
+	return strings.Contains(model, "multi-agent")
+}
+
+func persistGrokTransientModelCooldown(account *Account, decision GrokUpstreamFailureDecision) bool {
+	if account == nil {
+		return false
+	}
+	model := strings.TrimSpace(decision.Model)
+	if model == "" || !isGrokHeavyTransientModel(model) {
+		return false
+	}
+	cooldown := decision.Cooldown
+	if cooldown <= 0 {
+		cooldown = 3 * time.Minute
+	}
+	markGrokModelTransientBlock(account.ID, model, time.Now().Add(cooldown))
+	return true
+}
+
 func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 	ctx context.Context,
 	account *Account,
@@ -1974,6 +2012,10 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(
 	snapshot := parseGrokQuotaSnapshot(headers, statusCode, now)
 	snapshot = enrichGrokQuotaSnapshotFromError(snapshot, responseBody, statusCode, now)
 	model := firstNonEmpty(canonicalModel...)
+	if model == "" {
+		model = grokRequestedModelFromCtx(ctx)
+	}
+	stampGrokQuotaSnapshotForPlan(account, snapshot, model)
 	if statusCode == http.StatusTooManyRequests && account.IsGrokOAuth() && strings.TrimSpace(model) != "" &&
 		!grok429HasAuthoritativeGlobalQuotaEvidence(account, snapshot, responseBody) {
 		s.persistGrokModelCooldown(ctx, account, model, statusCode, snapshot, responseBody)
