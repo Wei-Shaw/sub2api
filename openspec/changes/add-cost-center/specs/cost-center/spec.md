@@ -32,6 +32,14 @@ The system SHALL allow an administrator to create a one-off expense for an accou
 - **WHEN** an administrator uses the account action menu to add a later renewal or recharge expense
 - **THEN** the system appends a new event without overwriting or mutating prior account expenses
 
+#### Scenario: Append audited account cost from the cost center
+- **WHEN** an administrator selects an account and appends a cost from the cost-center console
+- **THEN** the system creates a settled account expense linked to that account and records the authenticated administrator, category, occurred-at timestamp, and optional note
+
+#### Scenario: Append global manual cost from the cost center
+- **WHEN** an administrator appends a cost from the cost-center console without selecting an account
+- **THEN** the system creates a settled global manual expense with the selected category, authenticated administrator, occurred-at timestamp, and optional note
+
 #### Scenario: Recurring occurrence awaits confirmation
 - **WHEN** a recurring expense plan reaches a due period
 - **THEN** the system materializes one pending occurrence keyed by the plan and period, and excludes it from cash profit until an administrator confirms payment
@@ -40,17 +48,17 @@ The system SHALL allow an administrator to create a one-off expense for an accou
 - **WHEN** an administrator records a server, proxy, payment-fee, rebate, refund-loss, or other operating expense without an account target
 - **THEN** the system records it as a global expense with a category, USD amount, occurred-at date, and audit metadata
 
-### Requirement: New usage is classified by funding source and upstream cost
+### Requirement: New usage is classified by funding source without automatic upstream cost
 
-The system SHALL classify post-activation token consumption as paid balance, subscription, recharge bonus, administrator/affiliate grant, or unknown when the source can be determined from existing billing associations. Each usage-derived cost entry SHALL be idempotently linked to the usage/request identifier and SHALL preserve the account upstream-cost snapshot used for reporting.
+The system SHALL classify post-activation token consumption as paid balance, subscription, recharge bonus, administrator/affiliate grant, or unknown when the source can be determined from existing billing associations. Each usage-derived income or consumption entry SHALL be idempotently linked to the usage/request identifier. The cost center SHALL NOT create or report automatic upstream-cost expense events; administrators SHALL record account costs through one-off or recurring account expenses.
 
 #### Scenario: Paid balance consumption
 - **WHEN** a usage record deducts a user's paid balance
-- **THEN** the cost center reports its realized consumption income separately from its account upstream cost
+- **THEN** the cost center reports its realized consumption income and identifies the account used, without creating an automatic upstream-cost expense
 
 #### Scenario: Gift consumption
 - **WHEN** a usage record is funded by recharge bonus or an administrator grant
-- **THEN** the cost center excludes its consumed face value from cash and realized income, reports it as promotional/free consumption, and includes its associated upstream cost in operating costs
+- **THEN** the cost center excludes its consumed face value from cash and realized income and reports it as promotional/free consumption without estimating an upstream expense
 
 #### Scenario: Unknown source is visible
 - **WHEN** a new usage record has no resolvable funding source
@@ -74,7 +82,7 @@ The system SHALL snapshot a paid subscription plan's price, standard token-quota
 
 ### Requirement: Administrator reports provide cash and operating profit by time range
 
-The system SHALL provide an administrator-only report query with an inclusive start and exclusive end timestamp in the configured reporting timezone. The response SHALL include cash income, realized consumption income, promotional/free consumption, upstream token cost, settled operating expenses, pending expense forecast, refunds, fees/rebates when available, cash profit, operating profit, and profit margin. It SHALL support filtering and grouping by account, platform, user, group, model, subscription plan, source classification, and expense category.
+The system SHALL provide an administrator-only report query with an inclusive start and exclusive end timestamp in the configured reporting timezone. The response SHALL include cash income, realized consumption income, promotional/free consumption, manually entered settled operating expenses, pending expense forecast, refunds, fees/rebates when available, cash profit, operating profit, and profit margin. It SHALL support filtering and grouping by account, platform, user, group, model, subscription plan, source classification, and expense category. Historical automatic upstream-cost events SHALL remain stored for audit but SHALL be excluded from reports and event listings.
 
 #### Scenario: Time-range summary
 - **WHEN** an administrator requests a report for a custom date range
@@ -86,7 +94,7 @@ The system SHALL provide an administrator-only report query with an inclusive st
 
 #### Scenario: Account profitability drill-down
 - **WHEN** an administrator filters by an account
-- **THEN** the response separates that account's usage-derived upstream cost, manual/recurring account expenses, paid consumption income, gifted consumption cost, and resulting operating profit
+- **THEN** the response separates that account's manual/recurring expenses, paid consumption income, gifted consumption, and resulting operating profit without including automatic upstream-cost estimates
 
 #### Scenario: Unauthorized access is denied
 - **WHEN** a non-administrator requests a cost-center report or expense mutation
@@ -94,7 +102,9 @@ The system SHALL provide an administrator-only report query with an inclusive st
 
 ### Requirement: Cost-center console supports review and audit actions
 
-The administrator console SHALL provide a cost-center route with time-range controls, summary metrics, income/consumption and expense detail views, source/category filters, recurring-plan pending confirmations, and an audit-friendly event detail. Account creation, bulk edit, and account action workflows SHALL expose the applicable expense entry controls.
+The administrator console SHALL provide a cost-center route with time-range controls, summary metrics, income/consumption and expense detail views, source/category filters, recurring-plan pending confirmations, and an audit-friendly event detail. Every listed event SHALL expose a readable source person when a user or operator is associated and the account name when an account is associated. Account creation, bulk edit, and account action workflows SHALL expose the applicable expense entry controls with a normally sized category selector. Usage cost displays SHALL identify the account used.
+
+The cost-center console SHALL provide an append-cost action whose form allows the administrator to optionally search and select an account, choose an expense category including audited account expense, enter a positive USD amount, choose the occurred-at time, and optionally provide a note. An omitted account SHALL create a global manual expense. Account-targeted expenses created through the expense API SHALL be classified as account expenses by the server regardless of a client-supplied source classification.
 
 #### Scenario: Review a recurring expense
 - **WHEN** an administrator opens a pending recurring expense from the cost center

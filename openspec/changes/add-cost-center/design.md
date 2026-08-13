@@ -8,12 +8,13 @@ Only activity created after this change is enabled is in scope. Historical rows 
 
 **Goals:**
 
-- Provide a single ledger query for settled cash income, realized consumption income, promotional/free consumption, upstream token cost, operating expenses, and profit.
+- Provide a single ledger query for settled cash income, realized consumption income, promotional/free consumption, manually entered operating expenses, and profit.
 - Record one-off and recurring expenses with an immutable auditable event for every actual or confirmed occurrence.
 - Preserve the source of every new usage and balance event sufficiently to distinguish paid balance, subscription, recharge bonus, administrator grant, and unknown/unallocated value.
 - Allocate subscription-plan revenue over actual token-quota consumption within the validity window while keeping unused and expired entitlement visible but unrecognized by default.
 - Make account expense entry available from create, bulk-edit, and account action workflows, with bulk amounts applied independently to each selected account.
-- Keep current user charging, payment fulfillment, and upstream-cost calculations unchanged.
+- Make account expense entry available directly in the cost center with searchable account selection and explicit audit context.
+- Keep current user charging, payment fulfillment, and operational upstream-cost calculations unchanged while excluding automatic upstream cost from the cost center.
 
 **Non-Goals:**
 
@@ -32,13 +33,13 @@ Introduce append-oriented records for `income`, `expense`, `promotional_consumpt
 
 ### 2. Separate cash and realized-profit calculations
 
-Cash income is settled payment-order money minus refunds, payment fees, and rebates. Realized income is paid-balance consumption plus the recognized portion of subscription consumption. Recharge and administrator gifts are not income; their consumed value and associated upstream cost are shown separately. The API returns both cash profit and operating profit so one number cannot be mistaken for the other.
+Cash income is settled payment-order money minus refunds, payment fees, and rebates. Realized income is paid-balance consumption plus the recognized portion of subscription consumption. Recharge and administrator gifts are not income; their consumed value is shown separately. Account costs are recorded by administrators as one-off or recurring account expenses because usage-derived upstream estimates are not sufficiently accurate. The API returns both cash profit and operating profit so one number cannot be mistaken for the other.
 
 **Alternative rejected:** treating every token request as income; it double-counts prepaid recharge and overstates revenue for free/gift usage.
 
 ### 3. Capture immutable USD snapshots at event creation
 
-Every new event stores `amount_usd` and, when relevant, `original_amount`, `original_currency`, and `fx_rate`. Payment settlement creates the cash-income snapshot using the settlement-time rate. Account and global expenses require USD input in the first version. Existing usage pricing and account cost calculations are snapshotted into the event or a reporting projection at usage finalization.
+Every new event stores `amount_usd` and, when relevant, `original_amount`, `original_currency`, and `fx_rate`. Payment settlement creates the cash-income snapshot using the settlement-time rate. Account and global expenses require USD input in the first version. Usage finalization snapshots income and funding-source classification only; it does not write automatic upstream-cost expenses.
 
 **Alternative rejected:** converting at report time using current settings; historical reports would change when exchange rates or pricing settings change.
 
@@ -62,13 +63,25 @@ Use the existing balance-source and subscription associations as inputs. New usa
 
 Cost-center reads, expense writes, plan confirmations, reversals, and exports require the existing administrator authorization model. Every mutation records operator identity, timestamp, reason/notes, and the source object. The UI exposes only authorized navigation and actions.
 
+### 8. Resolve readable people and accounts at query time
+
+Cost-center event listings join the event's `user_id`, `operator_id`, and `account_id` to return readable names in one query. Manual and reversal events prefer the operator as their source person; usage-derived events use the consuming user. Historical automatic `upstream` events stay in the append-only ledger but are excluded by the common report predicate.
+
+### 9. Classify account-targeted expense writes on the server
+
+The administrator expense endpoint derives `source_type=account` whenever `account_id` is present and records the authenticated administrator as `operator_id`. The cost-center form loads account choices in complete paginated batches and displays account name, platform, and ID so similarly named and child accounts remain distinguishable.
+
+### 10. Allow account-optional cost-center expense entry
+
+The cost-center append-cost form treats the account and note as optional. When an account is selected, the client submits its ID and the server classifies the expense as account-targeted; when no account is selected, the client omits `account_id` and the server retains the global `manual` classification. Empty notes are omitted from the request. The form includes an `audit_account_expense` category for separately identified audited account spending and labels its free-text field simply as “Note”.
+
 ## Risks / Trade-offs
 
 - [Usage finalization is asynchronous] → Make event creation idempotent by usage/request identifier and reconcile missing events; never create duplicate recognition or cost events on retry.
 - [Recurring plan materialization runs late or twice] → Use a unique key of plan plus occurrence period and a transactional state transition; expose pending/missed occurrences for review.
 - [Subscription quota valuation differs from actual model pricing] → Freeze the plan valuation at purchase and display the factor; do not silently recompute historical recognition when pricing settings change.
 - [Some existing usage sources are not classified] → Keep an explicit `unknown` bucket and a reconciliation count; do not backfill history in this change.
-- [Expense entry could duplicate automatically computed upstream cost] → Category and source validation warn/block duplicate source references; reports distinguish usage-derived costs from manually entered expenses.
+- [Manual account expenses can be entered twice] → Keep immutable event audit fields and use reversals for corrections; do not combine them with unreliable automatic upstream estimates.
 - [Large usage tables make ad-hoc reports slow] → Query indexed event timestamps and source dimensions; add daily aggregation only after measuring report latency.
 
 ## Migration Plan

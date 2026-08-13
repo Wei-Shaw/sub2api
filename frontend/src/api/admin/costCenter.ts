@@ -4,7 +4,6 @@ export interface CostCenterSummary {
   cash_income: number
   realized_income: number
   promotional_consumption: number
-  upstream_cost: number
   settled_expenses: number
   pending_forecast: number
   cash_profit: number
@@ -22,6 +21,7 @@ export interface CostCenterEvent {
   source_type: string
   source_id?: string | null
   account_id?: number | null
+  account_name?: string
   category: string
   amount_usd: number
   occurred_at: string
@@ -29,6 +29,9 @@ export interface CostCenterEvent {
   platform?: string
   model?: string
   user_id?: number | null
+  user_name?: string
+  operator_id?: number | null
+  operator_name?: string
   group_id?: number | null
   plan_id?: number | null
 }

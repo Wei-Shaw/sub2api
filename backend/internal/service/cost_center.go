@@ -21,7 +21,9 @@ type CostCenterEvent struct {
 	SourceType       string         `json:"source_type"`
 	SourceID         *string        `json:"source_id,omitempty"`
 	AccountID        *int64         `json:"account_id,omitempty"`
+	AccountName      string         `json:"account_name,omitempty"`
 	UserID           *int64         `json:"user_id,omitempty"`
+	UserName         string         `json:"user_name,omitempty"`
 	PlanID           *int64         `json:"plan_id,omitempty"`
 	Platform         string         `json:"platform,omitempty"`
 	GroupID          *int64         `json:"group_id,omitempty"`
@@ -35,6 +37,7 @@ type CostCenterEvent struct {
 	Note             string         `json:"note"`
 	Metadata         map[string]any `json:"metadata,omitempty"`
 	OperatorID       *int64         `json:"operator_id,omitempty"`
+	OperatorName     string         `json:"operator_name,omitempty"`
 	ReversalOf       *int64         `json:"reversal_of,omitempty"`
 	CreatedAt        time.Time      `json:"created_at"`
 }
@@ -80,7 +83,6 @@ type CostCenterSummary struct {
 	CashIncome              float64 `json:"cash_income"`
 	RealizedIncome          float64 `json:"realized_income"`
 	PromotionalConsumption  float64 `json:"promotional_consumption"`
-	UpstreamCost            float64 `json:"upstream_cost"`
 	SettledExpenses         float64 `json:"settled_expenses"`
 	PendingForecast         float64 `json:"pending_forecast"`
 	CashProfit              float64 `json:"cash_profit"`
@@ -161,7 +163,9 @@ func (s *CostCenterService) CreateEvent(ctx context.Context, input *CreateCostCe
 	if input.Status == "" {
 		input.Status = "settled"
 	}
-	if input.SourceType == "" {
+	if input.EventType == CostEventExpense && input.AccountID != nil {
+		input.SourceType = "account"
+	} else if input.SourceType == "" {
 		input.SourceType = "manual"
 	}
 	return s.repo.CreateEvent(ctx, input)

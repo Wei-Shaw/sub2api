@@ -121,12 +121,13 @@ func NewClient(cfg Config) (*Client, error) {
 //
 // 除结构化字段外保留 Raw（完整 JSON map）用于结果透传。
 type predictionResponse struct {
-	ID      string   `json:"id"`
-	Model   string   `json:"model,omitempty"`
-	Status  string   `json:"status"`
-	Outputs []string `json:"outputs,omitempty"`
-	Error   string   `json:"error,omitempty"`
-	Message string   `json:"message,omitempty"`
+	ID      string              `json:"id"`
+	Model   string              `json:"model,omitempty"`
+	Status  string              `json:"status"`
+	Outputs []string            `json:"outputs,omitempty"`
+	Error   string              `json:"error,omitempty"`
+	Message string              `json:"message,omitempty"`
+	Data    *predictionResponse `json:"data,omitempty"`
 
 	Raw map[string]any `json:"-"`
 }
@@ -274,6 +275,7 @@ func (c *Client) doPrediction(ctx context.Context, method, endpoint string, reqB
 	if err := json.Unmarshal(raw, out); err != nil {
 		return nil, fmt.Errorf("atlascloud: decode response: %w", err)
 	}
+	out.applyDataFallback()
 	rawMap := make(map[string]any)
 	if err := json.Unmarshal(raw, &rawMap); err == nil {
 		out.Raw = rawMap
@@ -281,6 +283,33 @@ func (c *Client) doPrediction(ctx context.Context, method, endpoint string, reqB
 		out.Raw = make(map[string]any)
 	}
 	return out, nil
+}
+
+// applyDataFallback 兼容 atlascloud 将业务字段包在 data 对象中的响应格式。
+// 顶层字段仍优先，避免改变旧格式响应的行为。
+func (r *predictionResponse) applyDataFallback() {
+	if r == nil || r.Data == nil {
+		return
+	}
+	data := r.Data
+	if strings.TrimSpace(r.ID) == "" {
+		r.ID = data.ID
+	}
+	if strings.TrimSpace(r.Model) == "" {
+		r.Model = data.Model
+	}
+	if strings.TrimSpace(r.Status) == "" {
+		r.Status = data.Status
+	}
+	if len(r.Outputs) == 0 {
+		r.Outputs = data.Outputs
+	}
+	if strings.TrimSpace(r.Error) == "" {
+		r.Error = data.Error
+	}
+	if strings.TrimSpace(r.Message) == "" {
+		r.Message = data.Message
+	}
 }
 
 // doJSON 执行一次 HTTP 请求，序列化 reqBody（可为 nil）并返回原始响应体。
@@ -336,6 +365,7 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, reqBody an
 			"endpoint", endpoint,
 			"status", resp.StatusCode,
 			"body_bytes", len(raw),
+			"body", string(raw),
 		)
 	}
 

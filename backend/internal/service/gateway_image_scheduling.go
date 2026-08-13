@@ -117,6 +117,8 @@ type videoSelectionDiagnostic struct {
 	GenericSchedulable   bool
 	VideoEnabled         bool
 	MappingSupported     bool
+	WhitelistSupported   bool
+	RequestSupported     bool
 	ModelSchedulable     bool
 	QuotaOK              bool
 	WindowCostOK         bool
@@ -151,12 +153,8 @@ func (s *GatewayService) buildVideoSelectionDiagnostic(
 	diagnostic.ManualSchedulable = account.Schedulable
 	diagnostic.GenericSchedulable = account.IsSchedulable()
 	diagnostic.VideoEnabled = domain.IsVideoModelsEnabled(account.Extra)
-	diagnostic.MappingSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, func() string {
-		if account.Platform == PlatformFal {
-			return api
-		}
-		return ""
-	}())
+	diagnostic.MappingSupported, diagnostic.WhitelistSupported = videoMappingSupportsRequest(account, requestedModel)
+	diagnostic.RequestSupported = s.videoAccountSupportsRequest(ctx, account, requestedModel, api)
 	diagnostic.ModelSchedulable = s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
 	diagnostic.QuotaOK = s.isAccountSchedulableForQuota(account)
 	diagnostic.WindowCostOK = s.isAccountSchedulableForWindowCost(ctx, account, false)
@@ -243,7 +241,7 @@ func (s *GatewayService) logVideoSelectionFailure(
 		diagnostic := s.buildVideoSelectionDiagnostic(ctx, account, requestedModel, api, excludedIDs, schedulerCandidate)
 		logger.LegacyPrintf(
 			"service.gateway",
-			"[VideoSelectionCandidate] source=%s group_id=%d model=%q account_id=%d account_name=%q platform=%s scheduler_candidate=%t status=%s manual_schedulable=%t generic_schedulable=%t video_enabled=%t mapping_supported=%t model_schedulable=%t quota_ok=%t window_cost_ok=%t rpm_ok=%t excluded=%t overload_remaining=%s rate_limit_remaining=%s temp_unsched_remaining=%s temp_unsched_reason=%q model_limit_remaining=%s mapping_keys=%q",
+			"[VideoSelectionCandidate] source=%s group_id=%d model=%q account_id=%d account_name=%q platform=%s scheduler_candidate=%t status=%s manual_schedulable=%t generic_schedulable=%t video_enabled=%t mapping_supported=%t whitelist_supported=%t request_supported=%t model_schedulable=%t quota_ok=%t window_cost_ok=%t rpm_ok=%t excluded=%t overload_remaining=%s rate_limit_remaining=%s temp_unsched_remaining=%s temp_unsched_reason=%q model_limit_remaining=%s mapping_keys=%q",
 			source,
 			derefGroupID(groupID),
 			requestedModel,
@@ -256,6 +254,8 @@ func (s *GatewayService) logVideoSelectionFailure(
 			diagnostic.GenericSchedulable,
 			diagnostic.VideoEnabled,
 			diagnostic.MappingSupported,
+			diagnostic.WhitelistSupported,
+			diagnostic.RequestSupported,
 			diagnostic.ModelSchedulable,
 			diagnostic.QuotaOK,
 			diagnostic.WindowCostOK,
@@ -300,7 +300,8 @@ func (s *GatewayService) listSchedulableVideoAccounts(ctx context.Context, group
 }
 
 // videoAccountSupportsRequest 判断某平台账号是否支持指定视频模型。
-func (s *GatewayService) videoAccountSupportsRequest(ctx context.Context, account *Account, requestedModel, api string) bool {
+// 三个平台统一先匹配公开模型映射 key；未命中时再按各平台的原生模型白名单回退。
+func (s *GatewayService) videoAccountSupportsRequest(_ context.Context, account *Account, requestedModel, _ string) bool {
 	if account == nil {
 		return false
 	}
@@ -309,13 +310,41 @@ func (s *GatewayService) videoAccountSupportsRequest(ctx context.Context, accoun
 		if !domain.IsVideoModelsEnabled(account.Extra) {
 			return false
 		}
-		if account.Platform == PlatformFal {
-			return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, api)
-		}
-		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
+		mappingSupported, whitelistSupported := videoMappingSupportsRequest(account, requestedModel)
+		return mappingSupported || whitelistSupported
 	default:
 		return false
 	}
+}
+
+func videoMappingSupportsRequest(account *Account, requestedModel string) (mappingSupported, whitelistSupported bool) {
+	if account == nil {
+		return false, false
+	}
+	mapping := account.GetModelMapping()
+	if mappingSupportsRequestedModel(mapping, requestedModel) {
+		mappingSupported = true
+	}
+
+	if domain.VideoPlatformWhitelistSupports(account.Platform, requestedModel) {
+		return mappingSupported, true
+	}
+	// fal 的 mapping value 是其原生 endpoint，同时也是账号实际支持的
+	// endpoint 白名单。atlascloud/apiz 的 value 是内部模型标识，不能用于
+	// 判断公开请求模型是否在白名单中。
+	if account.Platform != PlatformFal {
+		return mappingSupported, false
+	}
+	requestedSlug := domain.NormalizeFalVideoModelEndpoint(requestedModel)
+	if requestedSlug == "" {
+		return mappingSupported, false
+	}
+	for _, upstreamModel := range mapping {
+		if strings.EqualFold(domain.NormalizeFalVideoModelEndpoint(upstreamModel), requestedSlug) {
+			return mappingSupported, true
+		}
+	}
+	return mappingSupported, false
 }
 
 func (s *GatewayService) SelectImageAccountMixed(

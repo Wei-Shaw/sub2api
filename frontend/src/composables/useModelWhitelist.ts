@@ -162,7 +162,8 @@ const metaModels = [
 
 // AtlasCloud 视频模型
 const atlascloudModels = [
-  'bytedance/seedance-2.0/image-to-video'
+  'bytedance/seedance-2.0/image-to-video',
+  'bytedance/seedance-2.5/image-to-video'
 ]
 
 // apiz 视频模型

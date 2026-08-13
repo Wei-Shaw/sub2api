@@ -54,31 +54,27 @@
 
         <template #cell-model="{ row }">
           <div class="space-y-0.5 text-xs">
-            <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">
-              <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
+            <div class="space-y-0.5">
+              <div v-for="(step, i) in modelRoute(row)" :key="`${i}-${step}`"
+                   data-testid="model-route-step"
                    class="break-all"
                    :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
                    :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''">
                 <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
               </div>
             </div>
-            <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5">
-              <div class="break-all font-medium text-gray-900 dark:text-white">
-                {{ row.model }}
-              </div>
-              <div class="break-all text-gray-500 dark:text-gray-400">
-                <span class="mr-0.5">↳</span>{{ row.upstream_model }}
-              </div>
-            </div>
-            <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
             <div
-              v-if="row.upstream_model_mismatch === true && row.upstream_response_model"
-              class="break-all pl-3 text-[11px]"
-              :class="isLikelyModelVariant(row) ? 'text-amber-600 dark:text-amber-400' : 'text-orange-600 dark:text-orange-400'"
+              v-if="row.upstream_response_model"
+              data-testid="model-response"
+              class="break-all text-[11px]"
+              :class="row.upstream_model_mismatch === true
+                ? (isLikelyModelVariant(row) ? 'pl-3 text-amber-600 dark:text-amber-400' : 'pl-3 text-orange-600 dark:text-orange-400')
+                : 'font-medium text-gray-900 dark:text-white'"
               :title="modelAuditTitle(row)"
             >
-              <span class="mr-1">↳ {{ t('usage.upstreamResponseModel') }}:</span>{{ row.upstream_response_model }}
+              <span v-if="row.upstream_model_mismatch === true" class="mr-1">↳ {{ t('usage.upstreamResponseModel') }}:</span>{{ row.upstream_response_model }}
               <span
+                v-if="row.upstream_model_mismatch === true"
                 class="ml-1 inline-flex rounded px-1 py-px text-[10px] font-medium ring-1 ring-inset"
                 :class="isLikelyModelVariant(row)
                   ? 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30'
@@ -87,15 +83,6 @@
                 {{ isLikelyModelVariant(row) ? t('usage.modelVariant') : t('usage.modelMismatch') }}
               </span>
             </div>
-            <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5">
-              <div class="break-all font-medium text-gray-900 dark:text-white">
-                {{ row.model }}
-              </div>
-              <div class="break-all text-gray-500 dark:text-gray-400">
-                <span class="mr-0.5">↳</span>{{ row.upstream_model }}
-              </div>
-            </div>
-            <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
           </div>
         </template>
 
@@ -274,8 +261,8 @@
                 </div>
               </div>
             </div>
-            <div v-if="showAccountBilling && row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
-              A ${{ accountBilled(row).toFixed(6) }}
+            <div v-if="showAccountBilling && (row.account || row.account_id)" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400" :title="row.account?.name || undefined">
+              {{ row.account?.name || `#${row.account_id}` }} · A ${{ accountBilled(row).toFixed(6) }}
             </div>
           </div>
         </template>
@@ -553,6 +540,10 @@
           <!-- Account billing (separated from user billing) -->
           <template v-if="showAccountBilling">
             <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+              <span class="text-gray-400">{{ t('admin.usage.account') }}</span>
+              <span class="max-w-48 truncate font-semibold text-orange-300" :title="tooltipData?.account?.name || undefined">{{ tooltipData?.account?.name || (tooltipData?.account_id ? `#${tooltipData.account_id}` : '-') }}</span>
+            </div>
+            <div class="flex items-center justify-between gap-6">
               <span class="text-gray-400">{{ t('usage.accountMultiplier') }}</span>
               <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) }}x</span>
             </div>
@@ -667,6 +658,22 @@ const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+function modelRoute(row: AdminUsageLog): string[] {
+  const requested = row.model?.trim() || '-'
+  const chain = row.model_mapping_chain
+    ?.split('→')
+    .map(step => step.trim())
+    .filter(Boolean) ?? []
+  const route = chain.length > 0 ? chain : [requested]
+  if (route[0] !== requested) route.unshift(requested)
+
+  const upstream = row.upstream_model?.trim()
+  if (upstream && (route.length === 1 || route[route.length - 1] !== upstream)) {
+    route.push(upstream)
+  }
+  return route
+}
 
 const sentUpstreamModel = (row: AdminUsageLog): string => row.upstream_model?.trim() || row.model?.trim() || ''
 

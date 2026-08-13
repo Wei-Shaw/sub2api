@@ -494,7 +494,7 @@
       <form class="space-y-4" @submit.prevent="submitAccountExpense">
         <p class="text-sm text-gray-500">{{ expenseAccount?.name }}</p>
         <label class="input-label">{{ t('admin.costCenter.amountUsd') }}<input v-model.number="expenseForm.amount_usd" type="number" min="0.000001" step="0.000001" required class="input mt-1" /></label>
-        <label class="input-label">{{ t('admin.costCenter.category') }}<Select v-model="expenseForm.category" :options="expenseCategoryOptions" size="sm" class="mt-1" /></label>
+        <label class="input-label">{{ t('admin.costCenter.category') }}<Select v-model="expenseForm.category" :options="expenseCategoryOptions" class="mt-1" /></label>
         <label class="input-label">{{ t('admin.costCenter.note') }}<textarea v-model="expenseForm.note" rows="2" class="input mt-1" /></label>
         <div class="flex justify-end gap-2"><button type="button" class="btn btn-secondary" @click="showExpenseDialog = false">{{ t('common.cancel') }}</button><button type="submit" class="btn btn-primary" :disabled="expenseSubmitting">{{ t('common.confirm') }}</button></div>
       </form>

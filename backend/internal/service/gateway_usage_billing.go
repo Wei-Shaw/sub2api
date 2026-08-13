@@ -1085,10 +1085,6 @@ func writeCostCenterUsageEvents(ctx context.Context, writer CostCenterWriter, us
 	if writer == nil || usageLog == nil || usageLog.RequestID == "" {
 		return
 	}
-	accountCost := usageLog.TotalCost * 1
-	if usageLog.AccountRateMultiplier != nil {
-		accountCost = usageLog.TotalCost * *usageLog.AccountRateMultiplier
-	}
 	source := "paid_balance"
 	eventType := CostEventConsumption
 	if subscription || (usageLog.BalanceSource != nil && *usageLog.BalanceSource == BalanceSourceSubscription) {
@@ -1120,11 +1116,6 @@ func writeCostCenterUsageEvents(ctx context.Context, writer CostCenterWriter, us
 	if source != "subscription" {
 		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: eventType, SourceType: source, SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":income"), AccountID: &accountID, UserID: &userID, Category: "token_consumption", Model: usageLog.Model, AmountUSD: amount, OccurredAt: &usageLog.CreatedAt, Note: "usage finalized"}); err != nil {
 			slog.Warn("cost center usage income event failed", "request_id", requestID, "error", err)
-		}
-	}
-	if accountCost > 0 {
-		if _, err := writer.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventExpense, SourceType: "upstream", SourceID: &requestID, IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"), AccountID: &accountID, UserID: &userID, Category: "upstream_usage", Model: usageLog.Model, AmountUSD: accountCost, OccurredAt: &usageLog.CreatedAt, Note: "usage upstream cost"}); err != nil {
-			slog.Warn("cost center upstream event failed", "request_id", requestID, "error", err)
 		}
 	}
 	// Subscription cash is deferred until linked token usage is finalized. The

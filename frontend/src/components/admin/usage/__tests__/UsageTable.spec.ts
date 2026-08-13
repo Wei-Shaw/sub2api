@@ -24,6 +24,7 @@ import UsageTable from '../UsageTable.vue'
 
 const messages: Record<string, string> = {
   'admin.usage.userDeletedBadge': 'Deleted',
+  'admin.usage.account': 'Account',
   'usage.costDetails': 'Cost Breakdown',
   'admin.usage.inputCost': 'Input Cost',
   'admin.usage.outputCost': 'Output Cost',
@@ -222,6 +223,31 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$0.069568')
   })
 
+  it('shows the account used alongside account-billed cost', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          account_id: 23,
+          account: { id: 23, name: 'atlas-primary' },
+          account_rate_multiplier: 1.5,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('atlas-primary · A $0.600000')
+  })
+
   it('shows requested and upstream models separately for admin rows', () => {
     const row = {
       request_id: 'req-admin-model-1',
@@ -258,6 +284,36 @@ describe('admin UsageTable tooltip', () => {
     const text = wrapper.text()
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
+  })
+
+  it('keeps identical sub-account model values on separate route and response lines', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'req-sub-account-model',
+          model: 'gpt-5.6-sol',
+          upstream_model: 'gpt-5.6-sol',
+          upstream_response_model: 'gpt-5.6-sol',
+          upstream_model_mismatch: false,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="model-route-step"]').map(step => step.text())).toEqual([
+      'gpt-5.6-sol',
+      '↳gpt-5.6-sol',
+    ])
+    expect(wrapper.get('[data-testid="model-response"]').text()).toBe('gpt-5.6-sol')
   })
 
 	it.each([

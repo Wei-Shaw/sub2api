@@ -57,8 +57,8 @@ type AsyncVideoService struct {
 	balanceCache           interface {
 		InvalidateUserBalance(ctx context.Context, userID int64) error
 	}
-	// costCenter：成本中心写入器。与 Gateway/OpenAI 网关的羊毛出在羊身上另行记账（income+upstream）
-	// 一致，让视频任务的实际支出也能转进 cost_center_events。nil 时静默跳过（向后兼容禁用场景）。
+	// costCenter：成本中心写入器。视频只记录消费侧事件，账号成本由管理员另行录入。
+	// nil 时静默跳过（向后兼容禁用场景）。
 	costCenter CostCenterWriter
 
 	// cosService：视频产物 COS 转存器。nil 或未启用时全程 no-op，直接返回上游原始 URL。
@@ -205,6 +205,7 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 	if upstreamModel == "" {
 		upstreamModel = in.RequestedModel
 	}
+	requestPayload := prepareVideoRequestPayload(in.Account, upstreamModel, in.RequestPayload)
 
 	resolution := normalizeVideoResolution(in.Resolution)
 	duration := in.DurationSeconds
@@ -289,7 +290,7 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		HeldCost:          heldCost,
 		RateMultiplier:    in.RateMultiplier,
 		UnitPriceSnapshot: unitPrice,
-		RequestPayload:    in.RequestPayload,
+		RequestPayload:    requestPayload,
 		FailDeadlineAt:    &failDeadline,
 		ClientIP:          amStrPtr(in.ClientIP),
 		UserAgent:         amStrPtr(in.UserAgent),
@@ -307,7 +308,7 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		return task, fmt.Errorf("async video: build client: %w", err)
 	}
 
-	submitResp, err := client.SubmitRaw(ctx, upstreamModel, in.RequestPayload)
+	submitResp, err := client.SubmitRaw(ctx, upstreamModel, requestPayload)
 	if err != nil {
 		// 触发上游 4xx/5xx 时，把完整 status + body 打到日志，便于排查
 		// 为什么 reason 会超长 / 上游到底返回了什么。
@@ -352,6 +353,21 @@ func (s *AsyncVideoService) SubmitAsync(ctx context.Context, in *AsyncVideoSubmi
 		s.deferred.ScheduleLastUsedUpdate(in.Account.ID)
 	}
 	return task, nil
+}
+
+func prepareVideoRequestPayload(account *Account, upstreamModel string, payload map[string]any) map[string]any {
+	if account == nil || account.Platform != PlatformAtlasCloud || strings.TrimSpace(upstreamModel) == "" {
+		return payload
+	}
+	prepared := make(map[string]any, len(payload)+1)
+	for key, value := range payload {
+		prepared[key] = value
+	}
+	prepared["model"] = strings.TrimSpace(upstreamModel)
+	if duration, ok := prepared["duration"].(string); ok && strings.EqualFold(strings.TrimSpace(duration), "auto") {
+		prepared["duration"] = -1
+	}
+	return prepared
 }
 
 // WaitForTerminal 伪同步阻塞等待任务终态（当前实现保留，供未来 OpenAI 风格视频门面复用）。
@@ -837,13 +853,8 @@ func (s *AsyncVideoService) writeTerminalUsageLog(
 
 // writeCostCenterEvents 为已成功结算的视频任务写入成本中心事件。
 //
-// 视频链路与 token / 图片有两点差异，因此**不再复用** writeCostCenterUsageEvents：
-//  1. 分类：视频用 `video_consumption` / `video_upstream`（token 侧是 `token_consumption` / `upstream_usage`），
-//     便于成本中心报表按业务线拆分。
-//  2. 上游成本：apiz 等平台在结果里回传了本次任务的**真实上游成本**（USD），
-//     应直接使用 task.UpstreamCost；未回传（fal / atlascloud）时回退到
-//     "cost × RateMultiplier"（RateMultiplier 未设默认 1.0）的旧估算口径，
-//     保持行为向下兼容。
+// 视频链路使用 `video_consumption` 分类，便于成本中心报表按业务线拆分。
+// 上游账号成本由管理员通过账号支出录入，不在调用完成时自动估算或写入。
 //
 // 幂等：与 writeCostCenterUsageEvents 相同——用 request_id 作为 idempotency_key 前缀，
 // ON CONFLICT DO UPDATE updated_at 即可去重（DB 层保证）。
@@ -887,33 +898,6 @@ func (s *AsyncVideoService) writeCostCenterEvents(ctx context.Context, task *Asy
 			Note:           "video usage finalized",
 		}); err != nil {
 			slog.Warn("cost center video usage income event failed", "request_id", requestID, "error", err)
-		}
-	}
-
-	// 上游侧 event（支出）：优先 task.UpstreamCost（apiz price/100）；未回传则回退估算。
-	upstreamCost := task.UpstreamCost
-	if upstreamCost <= 0 {
-		rate := task.RateMultiplier
-		if rate <= 0 {
-			rate = 1
-		}
-		upstreamCost = cost * rate
-	}
-	if upstreamCost > 0 {
-		if _, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{
-			EventType:      CostEventExpense,
-			SourceType:     "upstream",
-			SourceID:       &requestID,
-			IdempotencyKey: costCenterStringPtr("usage:" + requestID + ":upstream"),
-			AccountID:      &accountID,
-			UserID:         &userID,
-			Category:       "video_upstream",
-			Model:          model,
-			AmountUSD:      upstreamCost,
-			OccurredAt:     &occurred,
-			Note:           "video usage upstream cost",
-		}); err != nil {
-			slog.Warn("cost center video upstream event failed", "request_id", requestID, "error", err)
 		}
 	}
 

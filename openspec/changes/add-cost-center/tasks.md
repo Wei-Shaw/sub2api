@@ -9,8 +9,8 @@
 
 - [x] 2.1 Create a settled payment income event from each newly fulfilled balance or subscription order, including USD/credited and original payment snapshots, with webhook idempotency.
 - [x] 2.2 Capture new usage source classification from existing balance-source/subscription associations and persist paid, subscription, or unknown snapshots.
-- [x] 2.3 Capture one idempotent upstream-cost event per finalized usage/request using the existing account pricing and account multiplier snapshot without changing user deductions.
-- [x] 2.4 Implement recharge-bonus and administrator/affiliate-grant consumption reporting so face value is excluded from income while associated upstream cost remains included.
+- [x] 2.3 Initially captured one idempotent upstream-cost event per finalized usage/request; this behavior is superseded and removed by task 7.1.
+- [x] 2.4 Implement recharge-bonus and administrator/affiliate-grant consumption reporting; automatic associated upstream cost is superseded and removed by task 7.1.
 - [x] 2.5 Snapshot subscription plan price, standard quota valuation, validity window, and realization factor at fulfillment; create bounded, idempotent recognition events as linked usage is finalized.
 - [x] 2.6 Add deferred and expired-entitlement calculations, keeping unused/expired subscription quota out of recognized income by default.
 - [x] 2.7 Add reconciliation jobs or diagnostics for missing/duplicate cost-center events and unknown source classifications.
@@ -27,7 +27,7 @@
 
 ## 4. Cost-Center Reporting API
 
-- [x] 4.1 Define administrator report DTOs for cash income, realized income, promotional/free consumption, upstream cost, settled expenses, pending forecast, cash profit, operating profit, margin, and unknown-source warnings.
+- [x] 4.1 Define administrator report DTOs for income, consumption, expenses, forecasts, profit, margin, and warnings; the upstream-cost field is superseded and removed by task 7.2.
 - [x] 4.2 Implement inclusive-start/exclusive-end time-range filtering and USD aggregation from cost-center events.
 - [x] 4.3 Implement filters and groupings by account, platform, user, group, model, subscription plan, source classification, and expense category.
 - [x] 4.4 Implement paginated event/expense detail endpoints and stable occurred-at/id ordering.
@@ -48,3 +48,29 @@
 - [x] 6.3 Add frontend tests for route visibility, summary rendering, date filters, expense entry in all three account workflows, and pending confirmations.
 - [x] 6.4 Add migration/checksum coverage and verify no historical backfill or mutation occurs.
 - [x] 6.5 Run the repository-required frontend and backend checks before submitting the implementation.
+
+## 7. Manual Account Cost Revision
+
+- [x] 7.1 Stop creating automatic upstream-cost events for token, image, and video usage while preserving existing operational usage-cost data.
+- [x] 7.2 Exclude historical automatic upstream-cost events from cost-center summaries, event listings, profit, and reconciliation.
+- [x] 7.3 Return and display readable source-person and account names in cost-center event details.
+- [x] 7.4 Show the account name with usage account cost and increase the category selector height in account expense workflows.
+- [x] 7.5 Add focused backend coverage and run proportional frontend/backend verification for the revision.
+
+## 8. Cost-Center Account Cost Entry
+
+- [x] 8.1 Classify account-targeted expense API writes as audited account expenses on the server.
+- [x] 8.2 Add a cost-center append-cost action with complete searchable account selection, category, USD amount, occurred-at time, and audit note.
+- [x] 8.3 Refresh cost-center summaries and events after creation and show localized success/error feedback.
+- [x] 8.4 Add focused coverage and run proportional frontend/backend verification.
+
+## 9. Account-Optional Cost Entry
+
+- [x] 9.1 Allow cost-center append-cost submissions without an account while preserving account-targeted classification when one is selected.
+- [x] 9.2 Add the audited-account-expense category and rename the append-cost audit-note label to note.
+- [x] 9.3 Add focused coverage and run proportional frontend/backend and OpenSpec verification.
+
+## 10. Optional Append-Cost Note
+
+- [x] 10.1 Allow the cost-center append-cost form to submit without a note and omit empty notes from the request.
+- [x] 10.2 Add focused frontend coverage and run proportional frontend and OpenSpec verification.

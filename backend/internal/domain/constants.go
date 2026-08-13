@@ -231,6 +231,34 @@ const (
 	AtlasCloudPathPrediction    = "/api/v1/model/prediction" // + /{id}
 )
 
+// VideoPlatformModelWhitelist lists video models that a platform accepts
+// directly when an account has no matching model_mapping entry. Keep these
+// values aligned with the account model selector in useModelWhitelist.ts.
+var VideoPlatformModelWhitelist = map[string][]string{
+	PlatformAtlasCloud: {
+		"bytedance/seedance-2.0/image-to-video",
+		"bytedance/seedance-2.5/image-to-video",
+	},
+	PlatformApiz: {
+		"clawsea/seedance2.0",
+	},
+}
+
+// VideoPlatformWhitelistSupports reports whether a requested model is in the
+// platform's direct-model whitelist. Matching is normalized and case-insensitive.
+func VideoPlatformWhitelistSupports(platform, requestedModel string) bool {
+	requested := NormalizeFalVideoModelEndpoint(requestedModel)
+	if requested == "" {
+		return false
+	}
+	for _, model := range VideoPlatformModelWhitelist[platform] {
+		if strings.EqualFold(NormalizeFalVideoModelEndpoint(model), requested) {
+			return true
+		}
+	}
+	return false
+}
+
 // Apiz 上游 REST 端点路径（相对 base_url）。
 //
 // apiz 采用"创建任务 + 查询任务"的异步协议，两个端点都是 POST：

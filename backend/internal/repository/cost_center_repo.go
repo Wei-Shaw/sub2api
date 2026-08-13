@@ -54,14 +54,20 @@ func (r *costCenterRepository) ListEvents(ctx context.Context, f service.CostCen
 	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cost_center_events WHERE "+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx, "SELECT id,event_type,status,source_type,source_id,account_id,user_id,plan_id,platform,group_id,model,category,amount_usd,original_amount,original_currency,fx_rate,occurred_at,note,metadata,operator_id,reversal_of,created_at FROM cost_center_events WHERE "+where+" ORDER BY occurred_at DESC,id DESC LIMIT $"+fmt.Sprint(len(args)+1)+" OFFSET $"+fmt.Sprint(len(args)+2), append(args, pageSize, offset)...)
+	rows, err := r.db.QueryContext(ctx, `SELECT cost_center_events.id,cost_center_events.event_type,cost_center_events.status,cost_center_events.source_type,cost_center_events.source_id,cost_center_events.account_id,cost_center_events.user_id,cost_center_events.plan_id,cost_center_events.platform,cost_center_events.group_id,cost_center_events.model,cost_center_events.category,cost_center_events.amount_usd,cost_center_events.original_amount,cost_center_events.original_currency,cost_center_events.fx_rate,cost_center_events.occurred_at,cost_center_events.note,cost_center_events.metadata,cost_center_events.operator_id,cost_center_events.reversal_of,cost_center_events.created_at,
+		COALESCE(a.name,''),COALESCE(NULLIF(u.username,''),u.email,''),COALESCE(NULLIF(op.username,''),op.email,'')
+		FROM cost_center_events
+		LEFT JOIN accounts a ON a.id=cost_center_events.account_id
+		LEFT JOIN users u ON u.id=cost_center_events.user_id
+		LEFT JOIN users op ON op.id=cost_center_events.operator_id
+		WHERE `+where+" ORDER BY occurred_at DESC,cost_center_events.id DESC LIMIT $"+fmt.Sprint(len(args)+1)+" OFFSET $"+fmt.Sprint(len(args)+2), append(args, pageSize, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	out := make([]service.CostCenterEvent, 0)
 	for rows.Next() {
-		e, err := scanCostEvent(rows)
+		e, err := scanListedCostEvent(rows)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -70,39 +76,56 @@ func (r *costCenterRepository) ListEvents(ctx context.Context, f service.CostCen
 	return out, total, rows.Err()
 }
 
+func scanListedCostEvent(row costCenterRowScanner) (*service.CostCenterEvent, error) {
+	var e service.CostCenterEvent
+	var metadata []byte
+	if err := row.Scan(&e.ID, &e.EventType, &e.Status, &e.SourceType, &e.SourceID, &e.AccountID, &e.UserID, &e.PlanID, &e.Platform, &e.GroupID, &e.Model, &e.Category, &e.AmountUSD, &e.OriginalAmount, &e.OriginalCurrency, &e.FXRate, &e.OccurredAt, &e.Note, &metadata, &e.OperatorID, &e.ReversalOf, &e.CreatedAt, &e.AccountName, &e.UserName, &e.OperatorName); err != nil {
+		return nil, err
+	}
+	if len(metadata) > 0 {
+		_ = json.Unmarshal(metadata, &e.Metadata)
+	}
+	return &e, nil
+}
+
 func costCenterWhere(f service.CostCenterReportFilter) (string, []any) {
-	where := []string{"occurred_at >= $1", "occurred_at < $2"}
+	where := []string{
+		"cost_center_events.occurred_at >= $1",
+		"cost_center_events.occurred_at < $2",
+		"cost_center_events.source_type <> 'upstream'",
+		"NOT EXISTS (SELECT 1 FROM cost_center_events upstream_event WHERE upstream_event.id=cost_center_events.reversal_of AND upstream_event.source_type='upstream')",
+	}
 	args := []any{f.Start, f.End}
 	if f.AccountID != nil {
-		where = append(where, fmt.Sprintf("account_id=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.account_id=$%d", len(args)+1))
 		args = append(args, *f.AccountID)
 	}
 	if f.Category != "" {
-		where = append(where, fmt.Sprintf("category=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.category=$%d", len(args)+1))
 		args = append(args, f.Category)
 	}
 	if f.SourceType != "" {
-		where = append(where, fmt.Sprintf("source_type=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.source_type=$%d", len(args)+1))
 		args = append(args, f.SourceType)
 	}
 	if f.Platform != "" {
-		where = append(where, fmt.Sprintf("platform=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.platform=$%d", len(args)+1))
 		args = append(args, f.Platform)
 	}
 	if f.UserID != nil {
-		where = append(where, fmt.Sprintf("user_id=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.user_id=$%d", len(args)+1))
 		args = append(args, *f.UserID)
 	}
 	if f.GroupID != nil {
-		where = append(where, fmt.Sprintf("group_id=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.group_id=$%d", len(args)+1))
 		args = append(args, *f.GroupID)
 	}
 	if f.Model != "" {
-		where = append(where, fmt.Sprintf("model=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.model=$%d", len(args)+1))
 		args = append(args, f.Model)
 	}
 	if f.PlanID != nil {
-		where = append(where, fmt.Sprintf("plan_id=$%d", len(args)+1))
+		where = append(where, fmt.Sprintf("cost_center_events.plan_id=$%d", len(args)+1))
 		args = append(args, *f.PlanID)
 	}
 	return joinAnd(where), args
@@ -120,16 +143,14 @@ func joinAnd(v []string) string {
 
 func (r *costCenterRepository) Summarize(ctx context.Context, f service.CostCenterReportFilter) (*service.CostCenterSummary, error) {
 	where, args := costCenterWhere(f)
-	q := `SELECT COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('income','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('consumption','subscription_recognition','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('promotional_consumption','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('expense','reversal') AND status='settled'),0), COALESCE(SUM(amount_usd) FILTER (WHERE event_type='expense' AND status='pending'),0), COALESCE(SUM(amount_usd) FILTER (WHERE event_type='expense' AND status='settled' AND source_type='upstream'),0), COALESCE(SUM(amount_usd) FILTER (WHERE source_type='unknown'),0) FROM cost_center_events WHERE ` + where
-	var cash, realized, promo, expenses, pending, upstream, unknown float64
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&cash, &realized, &promo, &expenses, &pending, &upstream, &unknown); err != nil {
+	q := `SELECT COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('income','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('consumption','subscription_recognition','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('promotional_consumption','reversal') AND status='settled'),0), COALESCE(SUM(CASE WHEN event_type='reversal' THEN -amount_usd ELSE amount_usd END) FILTER (WHERE event_type IN ('expense','reversal') AND status='settled'),0), COALESCE(SUM(amount_usd) FILTER (WHERE event_type='expense' AND status='pending'),0), COALESCE(SUM(amount_usd) FILTER (WHERE source_type='unknown'),0) FROM cost_center_events WHERE ` + where
+	var cash, realized, promo, expenses, pending, unknown float64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&cash, &realized, &promo, &expenses, &pending, &unknown); err != nil {
 		return nil, err
 	}
-	s := &service.CostCenterSummary{CashIncome: cash, RealizedIncome: realized, PromotionalConsumption: promo, SettledExpenses: expenses, PendingForecast: pending, UpstreamCost: upstream, UnknownSourceAmount: unknown}
+	s := &service.CostCenterSummary{CashIncome: cash, RealizedIncome: realized, PromotionalConsumption: promo, SettledExpenses: expenses, PendingForecast: pending, UnknownSourceAmount: unknown}
 	_ = r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(price_usd-recognized_usd) FILTER (WHERE expires_at >= $1 AND starts_at < $2),0), COALESCE(SUM(price_usd-recognized_usd) FILTER (WHERE expires_at < $2),0) FROM cost_center_subscription_entitlements WHERE starts_at < $2`, f.Start, f.End).Scan(&s.DeferredSubscriptionUSD, &s.ExpiredEntitlementUSD)
 	s.CashProfit = cash - expenses
-	// Upstream events are included in settled expenses; subtract the total once
-	// while exposing upstream separately for the breakdown.
 	s.OperatingProfit = realized - expenses
 	if realized != 0 {
 		s.ProfitMargin = s.OperatingProfit / realized
@@ -219,7 +240,7 @@ func (r *costCenterRepository) Reconcile(ctx context.Context, f service.CostCent
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FILTER (WHERE source_type='unknown'), COUNT(*) FILTER (WHERE status='pending') FROM cost_center_events WHERE `+where, args...).Scan(&out.UnknownEvents, &out.PendingEvents); err != nil {
 		return nil, err
 	}
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT idempotency_key FROM cost_center_events WHERE idempotency_key IS NOT NULL GROUP BY idempotency_key HAVING COUNT(*)>1) d`).Scan(&out.DuplicateKeys); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT idempotency_key FROM cost_center_events WHERE idempotency_key IS NOT NULL AND source_type <> 'upstream' AND NOT EXISTS (SELECT 1 FROM cost_center_events upstream_event WHERE upstream_event.id=cost_center_events.reversal_of AND upstream_event.source_type='upstream') GROUP BY idempotency_key HAVING COUNT(*)>1) d`).Scan(&out.DuplicateKeys); err != nil {
 		return nil, err
 	}
 	return &out, nil

@@ -148,9 +148,9 @@ func (h *FalVideoGatewayHandler) nativeSubmit(c *gin.Context, model string) {
 	// 映射到 bytedance-seedance-1-0-pro-t2v 之类的上游 model 值）。
 	// 未配置或未命中时，退回客户端原始模型名。
 	upstreamModel := model
-	if mapping := account.GetModelMapping(); mapping != nil {
-		if v := strings.TrimSpace(mapping[model]); v != "" {
-			upstreamModel = v
+	if mappedModel, matched := account.ResolveMappedModel(model); matched {
+		if mappedModel = strings.TrimSpace(mappedModel); mappedModel != "" {
+			upstreamModel = mappedModel
 		}
 	}
 
