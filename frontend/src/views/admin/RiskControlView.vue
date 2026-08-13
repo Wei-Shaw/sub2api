@@ -577,7 +577,9 @@
                           <img :src="image" alt="" class="h-full w-full object-cover" />
                           <button
                             type="button"
-                            class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                            class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+                            :aria-label="t('common.remove')"
+                            :title="t('common.remove')"
                             @click="removeModerationTestImage(index)"
                           >
                             <Icon name="x" size="xs" :stroke-width="2" />
@@ -873,7 +875,7 @@
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.blockMessage') }}</label>
-                <input v-model.trim="configForm.block_message" type="text" class="input" />
+                <input v-model.trim="configForm.block_message" type="text" class="input" :placeholder="defaultBlockMessage()" />
               </div>
               <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
                 <div>
@@ -1246,7 +1248,9 @@ const configForm = reactive({
   worker_count: 4,
   queue_size: 32768,
   block_status: 403,
-  block_message: defaultBlockMessage(),
+  // 留空表示“沿用默认拦截提示”：默认文案在保存/展示时才通过 t() 求值，
+  // 避免在 reactive() 初始化的那一刻把当时的语言固化下来（切换语言后不再跟随）。
+  block_message: '',
   email_on_hit: true,
   auto_ban_enabled: true,
   cyber_policy_exclude_from_ban_count: false,
@@ -1444,6 +1448,19 @@ const blockedKeywordCount = computed(() => blockedKeywordList.value.length)
 
 const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
 
+// 后台轮询与用户草稿的边界：
+// - 服务端只读数据：status（队列 / worker / 命中等运行时指标，以及服务端上报的 Key 健康快照），
+//   任何时候都可以整体刷新，这正是 15s 轮询存在的意义。
+// - 用户草稿：configForm 的全部表单字段、pendingDeleteApiKeyHashes（待删除队列）、
+//   testedApiKeyStatuses、moderationTest*，只能由用户操作或保存成功后的 applyConfig 改写。
+// configForm.api_key_statuses 是唯一的灰色地带：它承载服务端只读健康数据，
+// 同时又是「待删除队列」赖以存在的行列表，所以草稿未提交时只允许合并、不允许整表替换。
+const hasPendingAPIKeyDraft = computed(() => (
+  pendingDeleteApiKeyHashes.value.length > 0
+  || configForm.clear_api_key
+  || configForm.api_keys_text.trim() !== ''
+))
+
 const effectiveStoredApiKeyCount = computed(() => Math.max(0, configForm.api_key_count - pendingDeletedApiKeyCount.value))
 
 const apiKeysPlaceholder = computed(() => (
@@ -1471,9 +1488,11 @@ const storedApiKeyTestButtonText = computed(() => {
 })
 
 const savedApiKeyRows = computed<ContentModerationAPIKeyStatus[]>(() => {
-  const rows = status.value?.api_key_statuses?.length
-    ? status.value.api_key_statuses
-    : configForm.api_key_statuses
+  // configForm.api_key_statuses 始终是「合并后的最新视图」：applyRuntimeAPIKeyStatuses
+  // 会把运行时健康并进来，所以优先用它；只有它为空时才退回运行时快照。
+  const rows = configForm.api_key_statuses.length
+    ? configForm.api_key_statuses
+    : status.value?.api_key_statuses
   return Array.isArray(rows) ? rows : []
 })
 
@@ -1724,7 +1743,8 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
   configForm.block_status = config.block_status || 403
-  configForm.block_message = config.block_message || defaultBlockMessage()
+  // 同上：不落地默认文案，空值交给占位符/保存时按当前语言求值
+  configForm.block_message = config.block_message || ''
   configForm.email_on_hit = config.email_on_hit ?? true
   configForm.auto_ban_enabled = config.auto_ban_enabled ?? true
   configForm.cyber_policy_exclude_from_ban_count = config.cyber_policy_exclude_from_ban_count ?? false
@@ -1755,10 +1775,7 @@ async function loadAll() {
     groups.value = groupItems
     status.value = runtimeStatus
     proxies.value = proxyItems
-    if (Array.isArray(runtimeStatus.api_key_statuses)) {
-      configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
-      prunePendingDeleteAPIKeyHashes()
-    }
+    applyRuntimeAPIKeyStatuses(runtimeStatus.api_key_statuses)
     await loadLogs()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.loadFailed')))
@@ -1771,11 +1788,9 @@ async function loadStatus(silent = true) {
   statusLoading.value = true
   try {
     const runtimeStatus = await adminAPI.riskControl.getStatus()
+    // 运行时指标是服务端只读数据，任何情况下都刷新
     status.value = runtimeStatus
-    if (Array.isArray(runtimeStatus.api_key_statuses)) {
-      configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
-      prunePendingDeleteAPIKeyHashes()
-    }
+    applyRuntimeAPIKeyStatuses(runtimeStatus.api_key_statuses)
   } catch (err: unknown) {
     if (!silent) {
       appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.statusFailed')))
@@ -2040,6 +2055,30 @@ function toggleDeleteStoredApiKey(row: ContentModerationAPIKeyStatus) {
 
 function isStoredApiKeyPendingDelete(row: ContentModerationAPIKeyStatus): boolean {
   return row.configured && row.key_hash !== '' && pendingDeleteApiKeyHashes.value.includes(row.key_hash)
+}
+
+// 把服务端刚拉回来的 Key 健康快照落到表单里。
+// 没有未提交草稿时（首次加载、保存之后）保持原行为：整表替换 + 清理失效的待删除 hash。
+// 有草稿时改为「合并」——后台 15s 轮询不得推翻管理员正在做的事。
+function applyRuntimeAPIKeyStatuses(rows: ContentModerationAPIKeyStatus[] | null | undefined) {
+  if (!Array.isArray(rows)) return
+  if (!hasPendingAPIKeyDraft.value) {
+    configForm.api_key_statuses = [...rows]
+    prunePendingDeleteAPIKeyHashes()
+    return
+  }
+  // 关键：这里绝不调用 prunePendingDeleteAPIKeyHashes()。prune 会按刚拉回来的列表重算待删除队列，
+  // 而 /status 在 worker 空闲时会返回空的 api_key_statuses——重算就等于静默清空管理员排好的删除操作。
+  // 冲突方向固定为「用户意图优先」：服务端只能更新用户没有触碰的只读健康字段；
+  // 即使某把 Key 在服务端消失，也不撤销用户的待删除标记。
+  // 代价最多是保存时多发一个已不存在的 hash（后端按 hash 删除，幂等忽略即可），
+  // 反方向则是无声吞掉管理员的操作，两者不对等。
+  const incoming = new Map(rows.filter((row) => row.key_hash).map((row) => [row.key_hash, row]))
+  const known = new Set(configForm.api_key_statuses.map((row) => row.key_hash))
+  const merged = configForm.api_key_statuses.map((row) => incoming.get(row.key_hash) ?? row)
+  // 编辑期间服务端新增的 Key 仍然展示出来，只是追加在后面，不影响既有行的顺序与标记
+  const added = rows.filter((row) => row.key_hash !== '' && !known.has(row.key_hash))
+  configForm.api_key_statuses = added.length > 0 ? [...merged, ...added] : merged
 }
 
 function prunePendingDeleteAPIKeyHashes() {
