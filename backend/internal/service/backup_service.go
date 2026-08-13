@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,21 @@ const (
 
 	maxBackupRecords           = 100
 	backupObjectCleanupTimeout = 2 * time.Minute
+
+	// backupScheduledLeaderLockKey gates the scheduled full-database backup so
+	// that only one instance in a clustered deployment performs the
+	// dump-and-upload each cycle. Without it every instance runs the cron
+	// independently, producing N concurrent pg_dumps against the same database,
+	// N× peak memory while the archive is uploaded, and N identical objects that
+	// overwrite the same timestamped key. Every other periodic job in this
+	// package is already gated the same way; the scheduled backup was the last
+	// one that still fanned out across every instance.
+	backupScheduledLeaderLockKey = "backup:scheduled:leader"
+	// backupScheduledLeaderLockTTL bounds crash recovery only; the lock is
+	// released as soon as the backup finishes. It must exceed the job's
+	// worst-case runtime (the scheduled backup context is bounded at 30m) so the
+	// lock cannot expire mid-dump and let a peer start a second backup.
+	backupScheduledLeaderLockTTL = 35 * time.Minute
 )
 
 var (
@@ -161,6 +177,14 @@ type BackupService struct {
 	cronSched   *cron.Cron
 	cronEntryID cron.EntryID
 
+	// lockCache/db elect a single leader for the scheduled backup across
+	// instances; instanceID identifies this process as the lock owner. Injected
+	// via SetLeaderLock — when both are nil the backup runs ungated
+	// (single-instance / test behavior).
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
+
 	wg            sync.WaitGroup     // 追踪活跃的备份/恢复 goroutine
 	shuttingDown  atomic.Bool        // 阻止新备份启动
 	bgCtx         context.Context    // 所有后台操作的 parent context
@@ -186,7 +210,19 @@ func NewBackupService(
 		bgCtx:                   bgCtx,
 		bgCancel:                bgCancel,
 		partSizeBytes:           defaultBackupPartSizeBytes,
+		instanceID:              uuid.NewString(),
 	}
+}
+
+// SetLeaderLock injects the leader-lock cache and DB used to elect a single
+// instance for the scheduled backup. When both are nil the scheduled backup runs
+// ungated (single-instance / test behavior).
+func (s *BackupService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 // Start 启动定时备份调度器并清理孤立记录
@@ -466,6 +502,16 @@ func (s *BackupService) runScheduledBackup() {
 
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
 	defer cancel()
+
+	// 多实例保护: 集群部署时只让 leader 执行定时备份, 避免每个实例各自对同一个
+	// 数据库跑一次全量 dump、上传时峰值内存翻倍、以及多份同名对象互相覆盖。
+	// 手动触发的备份 (CreateBackup/StartBackup) 不受此限, 运维仍可随时在任一节点强制备份。
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, backupScheduledLeaderLockKey, s.instanceID, backupScheduledLeaderLockTTL)
+	if !ok {
+		logger.LegacyPrintf("service.backup", "[Backup] 定时备份跳过: 本实例非 leader")
+		return
+	}
+	defer release()
 
 	// 读取定时备份配置中的过期天数
 	schedule, _ := s.GetSchedule(ctx)

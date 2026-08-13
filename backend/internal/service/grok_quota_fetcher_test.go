@@ -24,6 +24,110 @@ func TestGrokQuotaFetcherBuildUsageInfoUnknownUntilFirstSnapshot(t *testing.T) {
 	require.Contains(t, usage.Error, "unknown until billing is probed")
 }
 
+func TestGrokQuotaFetcherDoesNotTreatGrok45ResponsesWindowAsHeavy(t *testing.T) {
+	t.Parallel()
+
+	// 8300 / 53M is the grok-4.5 Responses rate-limit window, not a plan fingerprint.
+	reqLimit, tokLimit := int64(8300), int64(53_000_000)
+	fresh := time.Now().UTC().Format(time.RFC3339)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"subscription_tier": "SuperGrokPro",
+		},
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				Requests:          &xai.QuotaWindow{Limit: &reqLimit},
+				Tokens:            &xai.QuotaWindow{Limit: &tokLimit},
+				LastHeadersSeenAt: fresh,
+				HeadersObserved:   true,
+				UpdatedAt:         fresh,
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+	require.Equal(t, "supergrok", usage.SubscriptionTier)
+}
+
+func TestGrokQuotaFetcherUsesGrok45ResponsesWindowAsHeavy(t *testing.T) {
+	t.Parallel()
+
+	reqLimit, tokLimit := int64(8300), int64(53_000_000)
+	fresh := time.Now().UTC().Format(time.RFC3339)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"subscription_tier": "SuperGrokPro",
+		},
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				Model:             "grok-4.5",
+				Requests:          &xai.QuotaWindow{Limit: &reqLimit},
+				Tokens:            &xai.QuotaWindow{Limit: &tokLimit},
+				LastHeadersSeenAt: fresh,
+				HeadersObserved:   true,
+				UpdatedAt:         fresh,
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+	require.Equal(t, "supergrok_heavy", usage.SubscriptionTier)
+}
+
+func TestGrokQuotaFetcherJWTBeatsAmbiguousSuperGrokProQuota(t *testing.T) {
+	t.Parallel()
+
+	heavyReq := int64(8300)
+	fresh := time.Now().UTC().Format(time.RFC3339)
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":      makeGrokOAuthJWT(map[string]any{"tier": 1}),
+			"subscription_tier": "SuperGrokPro",
+		},
+		Extra: map[string]any{
+			grokQuotaSnapshotExtraKey: &xai.QuotaSnapshot{
+				Requests:          &xai.QuotaWindow{Limit: &heavyReq},
+				LastHeadersSeenAt: fresh,
+				HeadersObserved:   true,
+				UpdatedAt:         fresh,
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+	require.Equal(t, "supergrok", usage.SubscriptionTier)
+}
+
+func TestGrokQuotaFetcherPrefersLiveJWTTierOverStaleBillingPlan(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":      makeGrokOAuthJWT(map[string]any{"tier": 0}),
+			"subscription_tier": "supergrok_heavy",
+		},
+		Extra: map[string]any{
+			grokBillingExtraKey: &xai.BillingSummary{
+				Plan:       "SuperGrok Heavy",
+				StatusCode: http.StatusOK,
+				UpdatedAt:  "2030-01-01T00:00:00Z",
+			},
+		},
+	}
+
+	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
+	require.Equal(t, "free", usage.SubscriptionTier)
+	require.Equal(t, "free", usage.SubscriptionTierRaw)
+}
+
 func TestGrokQuotaFetcherUsesCredentialTierWhenBillingHasNoPlan(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +150,7 @@ func TestGrokQuotaFetcherUsesCredentialTierWhenBillingHasNoPlan(t *testing.T) {
 	usage := NewGrokQuotaFetcher().BuildUsageInfo(account)
 
 	require.NotNil(t, usage.GrokBilling)
-	require.Equal(t, "FREE", usage.SubscriptionTier)
+	require.Equal(t, "free", usage.SubscriptionTier)
 	require.Equal(t, "FREE", usage.SubscriptionTierRaw)
 	require.Equal(t, "active", usage.GrokEntitlementStatus)
 }

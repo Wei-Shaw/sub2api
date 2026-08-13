@@ -56,6 +56,8 @@ func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T
 		{name: "composer legacy alias", upstreamModel: "composer-2.5"},
 		{name: "provider-prefixed composer", upstreamModel: "xai/grok-composer-2.5-fast"},
 		{name: "grok 4.5", upstreamModel: "grok-4.5", wantReasoning: true},
+		{name: "grok 4.6", upstreamModel: "grok-4.6", wantReasoning: true},
+		{name: "grok 4.6 latest", upstreamModel: "grok-4.6-latest", wantReasoning: true},
 	}
 
 	bodyTemplate := []byte(`{
