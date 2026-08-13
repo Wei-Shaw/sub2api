@@ -2,6 +2,7 @@
 
 FRONTEND_CRITICAL_VITEST := \
 	src/__tests__/designSystem.legacy.spec.ts \
+	src/components/charts/__tests__/chartDefaultOverrides.spec.ts \
 	src/__tests__/tourAnchors.spec.ts \
 	src/styles/__tests__/tokens.parity.spec.ts \
 	src/i18n/__tests__/localeParity.spec.ts \

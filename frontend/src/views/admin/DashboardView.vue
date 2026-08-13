@@ -549,8 +549,7 @@ const userTrendChartData = computed(() => {
     data: sortedDates.map((date) => group.data.get(date) || 0),
     borderColor: colors[idx % colors.length],
     backgroundColor: `${colors[idx % colors.length]}20`,
-    fill: false,
-    tension: 0.3
+    fill: false
   }))
 
   return {

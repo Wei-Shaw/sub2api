@@ -63,10 +63,7 @@ const chartData = computed(() => {
         }),
         borderColor: colors.value.teal,
         backgroundColor: colors.value.tealAlpha,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 0,
-        pointHitRadius: 10
+        fill: true
       }
     ]
   }
@@ -95,7 +92,6 @@ const options = computed(() => {
         titleColor: isDarkMode.value ? '#f3f4f6' : '#111827',
         bodyColor: isDarkMode.value ? '#d1d5db' : '#4b5563',
         borderColor: c.grid,
-        borderWidth: 1,
         padding: 10,
         displayColors: true,
         callbacks: {

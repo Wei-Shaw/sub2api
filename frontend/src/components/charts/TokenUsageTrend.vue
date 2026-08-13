@@ -81,32 +81,28 @@ const chartData = computed(() => {
         data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
         backgroundColor: `${chartColors.value.input}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Output',
         data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
         backgroundColor: `${chartColors.value.output}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Creation',
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
         backgroundColor: `${chartColors.value.cacheCreation}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Read',
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
         backgroundColor: `${chartColors.value.cacheRead}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Hit Rate',
@@ -118,7 +114,6 @@ const chartData = computed(() => {
         backgroundColor: `${chartColors.value.cacheHitRate}20`,
         borderDash: [5, 5],
         fill: false,
-        tension: 0.3,
         yAxisID: 'yPercent'
       }
     ]

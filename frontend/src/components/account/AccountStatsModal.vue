@@ -556,7 +556,6 @@ const trendChartData = computed(() => {
         borderColor: '#3b82f6',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         fill: true,
-        tension: 0.3,
         yAxisID: 'y'
       },
       {
@@ -565,7 +564,6 @@ const trendChartData = computed(() => {
         borderColor: '#10b981',
         backgroundColor: 'rgba(16, 185, 129, 0.08)',
         fill: false,
-        tension: 0.3,
         borderDash: [5, 5],
         yAxisID: 'y'
       },
@@ -575,7 +573,6 @@ const trendChartData = computed(() => {
         borderColor: '#f97316',
         backgroundColor: 'rgba(249, 115, 22, 0.1)',
         fill: false,
-        tension: 0.3,
         yAxisID: 'y1'
       }
     ]

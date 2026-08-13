@@ -117,4 +117,38 @@ describe('TokenUsageTrend', () => {
     // Hit rate = 500 / (200 + 500 + 300) * 100 = 50%
     expect(hitRateDataset.data[0]).toBe(50)
   })
+
+  it('hands chart.js unsmoothed datasets', () => {
+    const wrapper = mount(TokenUsageTrend, {
+      props: {
+        trendData: [
+          {
+            date: '2026-05-08',
+            requests: 1,
+            input_tokens: 200,
+            output_tokens: 50,
+            cache_creation_tokens: 300,
+            cache_read_tokens: 500,
+            cost: 0.02,
+            actual_cost: 0.01,
+          },
+        ],
+      },
+      global: {
+        stubs: {
+          LoadingSpinner: true,
+        },
+      },
+    })
+
+    const chartData = JSON.parse(wrapper.find('.chart-data').text())
+    expect(chartData.datasets).toHaveLength(5)
+    for (const dataset of chartData.datasets) {
+      // `applyChartDefaults()` pins `line.tension` to 0: a smoothed line draws
+      // token counts that were never recorded, and flattens the day-long spike
+      // this chart exists to show. Every dataset must inherit that.
+      expect(dataset).not.toHaveProperty('tension')
+      expect(dataset).not.toHaveProperty('cubicInterpolationMode')
+    }
+  })
 })

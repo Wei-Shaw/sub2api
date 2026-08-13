@@ -68,10 +68,7 @@ const chartData = computed(() => {
         data: props.points.map((p) => p.qps ?? 0),
         borderColor: colors.value.blue,
         backgroundColor: colors.value.blueAlpha,
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHitRadius: 10
+        fill: true
       },
       {
         label: t('admin.ops.tpsK'),
@@ -79,9 +76,6 @@ const chartData = computed(() => {
         borderColor: colors.value.green,
         backgroundColor: colors.value.greenAlpha,
         fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHitRadius: 10,
         yAxisID: 'y1'
       }
     ]
@@ -111,7 +105,6 @@ const options = computed(() => {
         titleColor: isDarkMode.value ? '#f3f4f6' : '#111827',
         bodyColor: isDarkMode.value ? '#d1d5db' : '#4b5563',
         borderColor: c.grid,
-        borderWidth: 1,
         padding: 10,
         displayColors: true,
         callbacks: {
