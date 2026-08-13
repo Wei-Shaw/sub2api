@@ -42,6 +42,12 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      // `NumCell` reads `locale` off `useI18n()`. Left undefined on purpose:
+      // `Intl` then falls back to the system default, which is exactly what the
+      // view's own `localeCode` computed resolves to for an empty locale — so the
+      // amount expectations below can keep comparing against
+      // `formatPaymentAmount(...)` called with no locale at all.
+      locale: { value: undefined as unknown as string },
     }),
   }
 })
@@ -226,6 +232,22 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
       stubs: {
         AppLayout: {
           template: '<div><slot /></div>',
+        },
+        // Money is rendered as a currency-symbol `<span>` plus a `NumCell`, so
+        // `NumCell` has to render for the amounts to reach `wrapper.text()` at
+        // all. The rest of the tree stays shallow.
+        NumCell: false,
+        /*
+         * `Button` is stubbed to a real `<button>` that renders its slot rather
+         * than being un-stubbed with `Button: false`. The primitive's root is
+         * `<component :is="tag">`, and VTU's shallow mode intercepts dynamic
+         * components — it stubs the resolved `'button'` tag as a component named
+         * `Button`, which then has no render function at all. A one-line stub
+         * keeps `findAll('button')` and `.text()` working without asking
+         * `shallowMount` to special-case a dynamic root.
+         */
+        Button: {
+          template: '<button><slot /></button>',
         },
         Teleport: true,
         Transition: false,

@@ -13,6 +13,12 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      // `NumCell` reads `locale` off `useI18n()`. Left undefined on purpose:
+      // `Intl` then falls back to the system default, which is what the views'
+      // own `localeCode` computed resolves to for an empty locale — so the
+      // expectations below can keep comparing against `formatPaymentAmount(...)`
+      // called with no locale at all.
+      locale: { value: undefined as unknown as string },
     }),
   }
 })
@@ -122,7 +128,10 @@ describe('PaymentStatusPanel', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('payment.qr.openPayWindow')
 
-    await wrapper.get('button.btn.btn-secondary.text-sm').trigger('click')
+    // Anchored on a `data-testid` rather than on `.btn.btn-secondary.text-sm`:
+    // that button is now the `Button` primitive, so its classes are generated
+    // from `variant`/`size` and are no longer a stable selector.
+    await wrapper.get('[data-testid="reopen-payment-window"]').trigger('click')
     expect(openSpy).toHaveBeenCalledWith(
       'https://pay.example.com/session/42',
       'paymentPopup',

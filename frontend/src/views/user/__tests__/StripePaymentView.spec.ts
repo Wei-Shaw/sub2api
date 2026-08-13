@@ -89,6 +89,13 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         Icon: true,
+        /*
+         * `NumCell` renders the digits and a sibling `<span>` renders the
+         * currency symbol, so the assertion below only sees the composed amount
+         * if this one is not stubbed away by `shallowMount`. Everything else
+         * stays shallow.
+         */
+        NumCell: false,
       },
     },
   })

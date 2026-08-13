@@ -14,6 +14,12 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      // `NumCell` reads `locale` off `useI18n()`. Left undefined on purpose:
+      // `Intl` then falls back to the system default, which is what the views'
+      // own `localeCode` computed resolves to for an empty locale — so the
+      // expectations below can keep comparing against `formatPaymentAmount(...)`
+      // called with no locale at all.
+      locale: { value: undefined as unknown as string },
     }),
   }
 })

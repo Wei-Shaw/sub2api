@@ -48,16 +48,34 @@ describe('PaymentMethodSelector', () => {
     expect(wrapper.text()).not.toContain('payment.methods.ldc')
   })
 
-  it('uses the generic selected style for custom methods that contain built-in names', () => {
-    const wrapper = mount(PaymentMethodSelector, {
+  /*
+   * The selected state is now the accent for every method — the provider hue no
+   * longer rides on the border — so the old `border-[#02A9F1]` assertion has
+   * nothing left to distinguish. The underlying rule it guarded is unchanged
+   * and still worth guarding: `isBuiltInAlipayMethod` is a whole-token check,
+   * so a custom EasyPay method named `card_alipay` must not be dressed as
+   * Alipay. That now shows up in the mark rather than the border, which is
+   * where the assertion moved.
+   */
+  it('does not give the Alipay mark to custom methods that contain built-in names', () => {
+    const customWrapper = mount(PaymentMethodSelector, {
       props: {
         selected: 'card_alipay',
         methods: [{ type: 'card_alipay', display_name: 'Card Pay', fee_rate: 0, available: true }],
       },
     })
+    const builtInWrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'alipay',
+        methods: [{ type: 'alipay', fee_rate: 0, available: true }],
+      },
+    })
 
-    const button = wrapper.get('button')
-    expect(button.classes()).toContain('border-primary-500')
-    expect(button.classes()).not.toContain('border-[#02A9F1]')
+    const customIcon = customWrapper.get('img').attributes('src')
+    const builtInIcon = builtInWrapper.get('img').attributes('src')
+
+    expect(customIcon).not.toBe(builtInIcon)
+    expect(customWrapper.get('button').attributes('aria-checked')).toBe('true')
+    expect(customWrapper.get('button').classes()).toContain('border-accent')
   })
 })

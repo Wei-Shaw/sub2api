@@ -1,15 +1,30 @@
 <template>
-  <span
-    class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-    :class="statusClass"
-  >
-    {{ statusLabel }}
-  </span>
+  <!--
+    A dot plus a written label, not a coloured pill.
+
+    Two things changed and both are load-bearing. The pill was `rounded-full`
+    with a tinted ground and no border — the shape read as a dismissible tag
+    rather than as the state of the row, and `rounded-full` on text was the most
+    repeated slop signal in the old tree. And the twelve statuses were spread
+    across six hues (yellow / blue / green / gray / red / purple), so the colour
+    was doing all the work: in grayscale, in a screenshot pasted into a ticket,
+    or for a reader with a colour vision deficiency, "refunded" and "paid" were
+    the same object.
+
+    `StatusDot` makes the text label a required prop, so the redundant channel
+    cannot be dropped later. The tone table lives in `orderUtils.ts` next to the
+    refundability rules, because "which statuses are terminal" is one fact and
+    it should not be stated twice.
+  -->
+  <StatusDot :tone="tone" :label="statusLabel" :muted="tone === 'neutral'" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+import StatusDot from '@/components/common/StatusDot.vue'
+import { orderStatusI18nKey, orderStatusTone } from '@/components/payment/orderUtils'
 import type { OrderStatus } from '@/types/payment'
 
 const props = defineProps<{
@@ -18,29 +33,11 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const statusMap: Record<OrderStatus, { key: string; class: string }> = {
-  PENDING: { key: 'payment.status.pending', class: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' },
-  PAID: { key: 'payment.status.paid', class: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' },
-  RECHARGING: { key: 'payment.status.recharging', class: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' },
-  COMPLETED: { key: 'payment.status.completed', class: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' },
-  EXPIRED: { key: 'payment.status.expired', class: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400' },
-  CANCELLED: { key: 'payment.status.cancelled', class: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400' },
-  FAILED: { key: 'payment.status.failed', class: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' },
-  REFUND_REQUESTED: { key: 'payment.status.refund_requested', class: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' },
-  REFUNDING: { key: 'payment.status.refunding', class: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' },
-  REFUND_PENDING: { key: 'payment.status.refund_pending', class: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' },
-  REFUNDED: { key: 'payment.status.refunded', class: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' },
-  PARTIALLY_REFUNDED: { key: 'payment.status.partially_refunded', class: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400' },
-  REFUND_FAILED: { key: 'payment.status.refund_failed', class: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' },
-}
+const tone = computed(() => orderStatusTone(props.status))
 
+/** An unmapped status prints its raw value — more diagnostic than "unknown". */
 const statusLabel = computed(() => {
-  const entry = statusMap[props.status]
-  return entry ? t(entry.key) : props.status
-})
-
-const statusClass = computed(() => {
-  const entry = statusMap[props.status]
-  return entry?.class ?? 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+  const key = orderStatusI18nKey(props.status)
+  return key ? t(key) : String(props.status ?? '')
 })
 </script>

@@ -1,25 +1,62 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-lg space-y-6 py-8">
-      <div v-if="loading" class="flex items-center justify-center py-20">
-        <div class="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+    <div class="mx-auto max-w-md space-y-6 py-8">
+      <div v-if="errorMessage" class="rounded border border-line bg-surface p-5">
+        <!--
+          The failure is TEXT, in the semantic tone, inside a live region. It used
+          to be a 64px circle in `bg-red-100` holding a 32px glyph, with the
+          actual reason in small gray type underneath — the decoration was the
+          loudest element and the information was the quietest.
+        -->
+        <div aria-live="polite">
+          <p class="text-2xs font-medium uppercase tracking-[0.08em] text-danger">
+            {{ t('payment.result.failed') }}
+          </p>
+          <h1 class="mt-2 text-lg font-semibold text-ink">{{ t('payment.airwallexLoadFailed') }}</h1>
+          <p class="mt-1 text-sm text-ink-tertiary">{{ errorMessage }}</p>
+        </div>
+        <Button
+          class="mt-5"
+          tone="accent"
+          variant="solid"
+          size="md"
+          @click="router.push('/purchase')"
+        >
+          {{ t('payment.result.backToRecharge') }}
+        </Button>
       </div>
 
-      <div v-else-if="errorMessage" class="card p-8 text-center">
-        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-          <Icon name="exclamationCircle" size="xl" class="text-red-500" />
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.airwallexLoadFailed') }}</h3>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ errorMessage }}</p>
-        <button class="btn btn-primary mt-6" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
-      </div>
+      <!--
+        THE DECLARED BOUNDARY.
 
-      <div v-else class="card p-6">
-        <div class="flex flex-col items-center space-y-4 py-4">
-          <div class="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+        Airwallex exposes far less theming surface than Stripe: this flow hands
+        off to an Airwallex-hosted checkout, and once `redirectToCheckout` fires,
+        every pixel belongs to them. There is no Appearance API to push tokens
+        through, so a seam is unavoidable.
+
+        The response is to PUBLISH the seam rather than to half-hide it: a
+        hairline panel with the provider's name on it, and our own chrome
+        stopping visibly at its edge. A boundary that looks deliberate reads as
+        "you are being handed to the payment provider now"; a near-match that is
+        half a shade and two pixels of radius off reads as a rendering bug, and
+        on a payment page a rendering bug reads as "is this site broken, or is
+        this a phishing page?".
+      -->
+      <section v-else class="rounded border border-line bg-surface">
+        <div class="flex items-center justify-between gap-3 border-b border-line-subtle px-4 py-2">
+          <p class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('payment.methods.airwallex') }}
+          </p>
+          <span class="text-2xs text-ink-disabled">{{ t('payment.airwallexPay') }}</span>
         </div>
-      </div>
+        <div class="p-5" aria-live="polite" aria-busy="true">
+          <p class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+            <span class="spinner h-3 w-3 shrink-0" aria-hidden="true" />
+            {{ t('common.processing') }}
+          </p>
+          <p class="mt-2 text-sm text-ink-secondary">{{ t('payment.qr.payInNewWindowHint') }}</p>
+        </div>
+      </section>
     </div>
   </AppLayout>
 </template>
@@ -29,7 +66,9 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import Icon from '@/components/icons/Icon.vue'
+// Direct path, never the `components/common` barrel — it pulls `createI18n`
+// into the graph and breaks partial `vue-i18n` factory mocks.
+import Button from '@/components/common/Button.vue'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
   readPaymentRecoverySnapshot,
@@ -40,7 +79,11 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const loading = ref(true)
+/**
+ * `loading` is gone: the template has exactly two states, "handing off" and
+ * "failed", and `loading` only ever distinguished two spinners from each other.
+ * The SDK either redirects the tab away or sets `errorMessage`.
+ */
 const errorMessage = ref('')
 
 function queryString(key: string): string {
@@ -94,7 +137,6 @@ onMounted(async () => {
   const checkoutLocale = locale.value.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 
   if (!snapshot) {
-    loading.value = false
     errorMessage.value = t('payment.airwallexMissingParams')
     return
   }
@@ -107,7 +149,6 @@ onMounted(async () => {
       locale: checkoutLocale,
     })
 
-    loading.value = false
     const checkoutOptions = {
       intent_id: snapshot.intentId,
       client_secret: snapshot.clientSecret,
@@ -124,7 +165,6 @@ onMounted(async () => {
       window.location.assign(redirectResult)
     }
   } catch (err: unknown) {
-    loading.value = false
     errorMessage.value = err instanceof Error && err.message
       ? err.message
       : t('payment.airwallexLoadFailed')

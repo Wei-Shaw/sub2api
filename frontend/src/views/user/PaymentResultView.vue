@@ -1,95 +1,166 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-dark-900">
+  <div class="flex min-h-screen items-start justify-center bg-canvas px-4 py-16">
     <div class="w-full max-w-md space-y-6">
       <!-- Loading -->
-      <div v-if="loading" class="flex items-center justify-center py-20">
-        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+      <div v-if="loading" class="rounded border border-line bg-surface p-5" aria-live="polite">
+        <p class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+          <span class="spinner h-3 w-3 shrink-0" aria-hidden="true" />
+          {{ t('common.processing') }}
+        </p>
       </div>
+
       <template v-else>
-        <!-- Status Icon -->
-        <div class="text-center">
-          <div v-if="isSuccess"
-            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-            <svg class="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-              stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-          <div v-else-if="isPending"
-            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-            <div class="h-10 w-10 animate-spin rounded-full border-4 border-yellow-500 border-t-transparent"></div>
-          </div>
-          <div v-else
-            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-            <svg class="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <h2 class="mt-4 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ statusTitle }}
-          </h2>
-          <p v-if="isPending" class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+        <!--
+          THE STATUS IS TEXT.
+
+          This screen used to open with a 80px circle in a pastel tint holding a
+          40px tick, spinner or cross — the single most recognisable
+          generated-dashboard cliché, and it spent the most prominent element on
+          the page on decoration while the tint carried the meaning. A payment
+          result is one of the highest-stakes sentences in the product; it should
+          read like a statement, not like a sticker.
+
+          The live region matters here specifically: a pending result refreshes
+          itself on a timer with no user gesture behind it, so a screen reader
+          user would otherwise never learn that the payment went through.
+        -->
+        <div aria-live="polite" :aria-busy="isPending ? 'true' : undefined">
+          <p
+            class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em]"
+            :class="statusToneClass"
+          >
+            <span v-if="isPending" class="spinner h-3 w-3 shrink-0" aria-hidden="true" />
+            {{ statusEyebrow }}
+          </p>
+          <h1 class="mt-2 text-xl font-semibold text-ink">{{ statusTitle }}</h1>
+          <p v-if="isPending" class="mt-1 text-sm text-ink-tertiary">
             {{ t('payment.result.processingHint') }}
           </p>
         </div>
+
         <!-- Order Info -->
-        <div v-if="order" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
-          <div class="space-y-3 text-sm">
-            <div v-if="hasOrderId(order)" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">#{{ order.id }}</span>
-            </div>
-            <div v-if="order.out_trade_no" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.out_trade_no }}</span>
-            </div>
-            <div v-if="hasAmountFields(order)" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(baseAmount) }}</span>
-            </div>
-            <div v-if="hasAmountFields(order) && order.fee_rate > 0" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(feeAmount) }}</span>
-            </div>
-            <div v-if="hasAmountFields(order)" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">{{ formatGatewayAmount(order.pay_amount) }}</span>
-            </div>
-            <div v-if="hasAmountFields(order) && order.amount !== order.pay_amount" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' + order.amount.toFixed(2) : formatGatewayAmount(order.amount) }}</span>
-            </div>
-            <div v-if="hasPaymentType(order)" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(order.payment_type), normalizedOrderPaymentType(order.payment_type)) }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</span>
-              <OrderStatusBadge :status="displayOrderStatus(order.status)" />
-            </div>
+        <dl
+          v-if="order"
+          class="divide-y divide-line-subtle rounded border border-line bg-surface px-4 text-xs"
+        >
+          <div v-if="hasOrderId(order)" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.orderId') }}</dt>
+            <!--
+              Order ids and trade numbers get the numeric TYPOGRAPHY — mono,
+              tabular, slashed zero — but never `NumCell`, which runs
+              `Intl.NumberFormat` and would turn `#1234` into `#1,234` and an
+              `out_trade_no` into something with an en dash in it.
+            -->
+            <dd class="font-mono tabular-nums slashed-zero text-ink">#{{ order.id }}</dd>
           </div>
-        </div>
+          <div v-if="order.out_trade_no" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.orderNo') }}</dt>
+            <dd class="min-w-0 break-all text-right font-mono text-2xs slashed-zero text-ink">
+              {{ order.out_trade_no }}
+            </dd>
+          </div>
+          <div v-if="hasAmountFields(order)" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.baseAmount') }}</dt>
+            <dd class="inline-flex items-baseline justify-end gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
+              <NumCell :value="baseAmount" :precision="gatewayPrecision" />
+            </dd>
+          </div>
+          <div
+            v-if="hasAmountFields(order) && order.fee_rate > 0"
+            class="flex items-baseline justify-between gap-4 py-2"
+          >
+            <dt class="shrink-0 text-ink-tertiary">
+              {{ t('payment.orders.fee') }}
+              <span class="font-mono tabular-nums">({{ order.fee_rate }}%)</span>
+            </dt>
+            <dd class="inline-flex items-baseline justify-end gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
+              <NumCell :value="feeAmount" :precision="gatewayPrecision" />
+            </dd>
+          </div>
+          <div v-if="hasAmountFields(order)" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 font-medium text-ink">{{ t('payment.orders.payAmount') }}</dt>
+            <dd class="inline-flex items-baseline justify-end gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
+              <NumCell :value="order.pay_amount" :precision="gatewayPrecision" />
+            </dd>
+          </div>
+          <!--
+            The credited amount is USD credit for a balance top-up and the
+            gateway currency for a subscription. Those are genuinely different
+            units and the symbol has to say which — flattening them is how a
+            user comes to believe a ¥88 order credited $88.
+          -->
+          <div
+            v-if="hasAmountFields(order) && order.amount !== order.pay_amount"
+            class="flex items-baseline justify-between gap-4 py-2"
+          >
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.creditedAmount') }}</dt>
+            <dd class="inline-flex items-baseline justify-end gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ creditedCurrencySymbol(order) }}</span>
+              <NumCell :value="order.amount" :precision="creditedPrecision(order)" />
+            </dd>
+          </div>
+          <div v-if="hasPaymentType(order)" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.paymentMethod') }}</dt>
+            <dd class="text-ink">
+              {{ t(paymentMethodI18nKey(order.payment_type), normalizedOrderPaymentType(order.payment_type)) }}
+            </dd>
+          </div>
+          <div class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.status') }}</dt>
+            <dd><OrderStatusBadge :status="displayOrderStatus(order.status)" /></dd>
+          </div>
+        </dl>
+
         <!-- EasyPay return info (when no order loaded) -->
-        <div v-else-if="returnInfo" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
-          <div class="space-y-3 text-sm">
-            <div v-if="returnInfo.outTradeNo" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ returnInfo.outTradeNo }}</span>
-            </div>
-            <div v-if="returnInfo.money" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(Number(returnInfo.money) || 0) }}</span>
-            </div>
-            <div v-if="returnInfo.type" class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(returnInfo.type), normalizedOrderPaymentType(returnInfo.type)) }}</span>
-            </div>
+        <dl
+          v-else-if="returnInfo"
+          class="divide-y divide-line-subtle rounded border border-line bg-surface px-4 text-xs"
+        >
+          <div v-if="returnInfo.outTradeNo" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.orderId') }}</dt>
+            <dd class="min-w-0 break-all text-right font-mono text-2xs slashed-zero text-ink">
+              {{ returnInfo.outTradeNo }}
+            </dd>
           </div>
-        </div>
+          <div v-if="returnInfo.money" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.payAmount') }}</dt>
+            <dd class="inline-flex items-baseline justify-end gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
+              <!--
+                `returnInfo.money` is an untrusted query-string value.
+                `returnMoney` resolves to `null` when it is not a finite number,
+                and `NumCell` then renders an en dash in disabled ink rather than
+                `0.00`: on a payment receipt, "we could not read the amount" and
+                "the amount was zero" are not the same claim.
+              -->
+              <NumCell :value="returnMoney" :precision="gatewayPrecision" />
+            </dd>
+          </div>
+          <div v-if="returnInfo.type" class="flex items-baseline justify-between gap-4 py-2">
+            <dt class="shrink-0 text-ink-tertiary">{{ t('payment.orders.paymentMethod') }}</dt>
+            <dd class="text-ink">
+              {{ t(paymentMethodI18nKey(returnInfo.type), normalizedOrderPaymentType(returnInfo.type)) }}
+            </dd>
+          </div>
+        </dl>
+
         <!-- Actions -->
-        <div class="flex gap-3">
-          <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
-          <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
+        <div class="flex gap-2">
+          <Button variant="outline" size="md" class="flex-1" @click="router.push('/purchase')">
+            {{ t('payment.result.backToRecharge') }}
+          </Button>
+          <Button
+            tone="accent"
+            variant="solid"
+            size="md"
+            class="flex-1"
+            @click="router.push('/orders')"
+          >
+            {{ t('payment.result.viewOrders') }}
+          </Button>
         </div>
       </template>
     </div>
@@ -101,6 +172,11 @@ import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+// Direct paths, never the `components/common` barrel: it pulls `createI18n`
+// into the module graph and breaks the partial `vue-i18n` factory mock this
+// view's spec relies on.
+import Button from '@/components/common/Button.vue'
+import NumCell from '@/components/common/NumCell.vue'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
   clearPaymentRecoverySnapshot,
@@ -110,11 +186,14 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import type { PublicOrderVerifyResult } from '@/api/payment'
 import type { OrderStatus, PaymentOrder } from '@/types/payment'
-import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import {
+  currencySymbol,
+  normalizePaymentCurrency,
+  paymentCurrencyFractionDigits,
+} from '@/components/payment/currency'
 import { normalizePaymentMethodForDisplay, paymentMethodI18nKey } from './paymentUx'
 
-const i18n = useI18n()
-const { t } = i18n
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
@@ -157,13 +236,30 @@ const feeAmount = computed(() => {
   return Math.round((order.value.pay_amount - baseAmount.value) * 100) / 100
 })
 
-const localeCode = computed(() => {
-  const raw = i18n.locale as unknown
-  if (typeof raw === 'string') return raw
-  if (raw && typeof raw === 'object' && 'value' in raw) {
-    return String((raw as { value?: string }).value || '')
-  }
-  return undefined
+const gatewayCurrencySymbol = computed(() => currencySymbol(currency.value))
+const gatewayPrecision = computed(() => paymentCurrencyFractionDigits(currency.value))
+
+/**
+ * A balance top-up credits USD, whatever the gateway settled in; a subscription
+ * order's `amount` is already in the gateway currency.
+ */
+function creditedCurrencySymbol(nextOrder: PaymentOrder): string {
+  return nextOrder.order_type === 'balance' ? currencySymbol('USD') : gatewayCurrencySymbol.value
+}
+
+function creditedPrecision(nextOrder: PaymentOrder): number {
+  return nextOrder.order_type === 'balance' ? 2 : gatewayPrecision.value
+}
+
+/**
+ * `null` when the gateway's `money` query param is absent or unparseable, so a
+ * missing measurement renders as an en dash instead of a confident `0.00`.
+ */
+const returnMoney = computed<number | null>(() => {
+  const raw = String(returnInfo.value?.money ?? '').trim()
+  if (!raw) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
 })
 
 const isSuccess = computed(() => {
@@ -184,12 +280,25 @@ const statusTitle = computed(() => {
   return t('payment.result.failed')
 })
 
+/**
+ * A short state word above the sentence. Pending is `warn`, not the accent:
+ * the accent means "you can interact with this" in this system and must never
+ * signal state.
+ */
+const statusEyebrow = computed(() => {
+  if (isSuccess.value) return t('payment.status.completed')
+  if (isPending.value) return t('payment.status.pending')
+  return t('payment.status.failed')
+})
+
+const statusToneClass = computed(() => {
+  if (isSuccess.value) return 'text-success'
+  if (isPending.value) return 'text-warn'
+  return 'text-danger'
+})
+
 function normalizedOrderPaymentType(paymentType: string): string {
   return normalizePaymentMethodForDisplay(paymentType || '') || paymentType || ''
-}
-
-function formatGatewayAmount(value: number): string {
-  return formatPaymentAmount(value, currency.value, localeCode.value)
 }
 
 function setResolvedOrder(nextOrder: ResolvedOrder | null): void {

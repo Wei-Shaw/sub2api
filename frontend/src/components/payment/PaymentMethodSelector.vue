@@ -1,40 +1,65 @@
 <template>
   <div>
-    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+    <!--
+      A `radiogroup`, not a row of buttons. The old markup carried the selection
+      entirely in colour — a per-brand border plus a pastel ground — so a screen
+      reader heard N independent buttons and was never told which method was
+      active, and an unavailable method was communicated by `opacity-50` alone.
+    -->
+    <p :id="labelId" class="mb-2 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
       {{ t('payment.paymentMethod') }}
-    </label>
+    </p>
     <div
       data-testid="payment-method-grid"
-      class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+      role="radiogroup"
+      :aria-labelledby="labelId"
+      class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
     >
+      <!--
+        Selection is the accent, uniformly. The old selected state used the
+        provider's own hue (#02A9F1 for Alipay, #09BB07 for WeChat, #676BE5 for
+        Stripe, #FF6B3D for Airwallex) over a pastel ground, so the page carried
+        four competing accents and there was no way to tell "this one is chosen"
+        from "this one is Alipay". The brand still appears — in the mark, which
+        is where a brand belongs.
+      -->
       <button
         v-for="method in sortedMethods"
         :key="method.type"
         type="button"
+        role="radio"
+        :aria-checked="selected === method.type"
         :title="methodLabel(method)"
         :disabled="!method.available"
         :class="[
-          'relative flex h-[60px] min-w-0 flex-col items-center justify-center rounded-lg border px-3 transition-all',
+          'flex h-11 min-w-0 items-center gap-2 rounded border px-2.5 text-left',
+          'transition-colors duration-fast ease-out',
+          'disabled:cursor-not-allowed',
           !method.available
-            ? 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50'
+            ? 'border-line-subtle bg-surface-sunken text-ink-disabled'
             : selected === method.type
-              ? methodSelectedClass(method.type)
-              : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500',
+              ? 'border-accent bg-accent-tint text-ink'
+              : 'border-line bg-surface text-ink hover:border-line-strong hover:bg-surface-hover',
         ]"
         @click="method.available && emit('select', method.type)"
       >
-        <span class="flex w-full min-w-0 items-center justify-center gap-2">
-          <img :src="methodIcon(method.type)" :alt="methodLabel(method)" class="h-7 w-7 shrink-0 object-contain" />
-          <span class="flex min-w-0 flex-col items-start leading-none">
-            <span data-testid="payment-method-label" class="block w-full truncate text-base font-semibold">
-              {{ methodLabel(method) }}
-            </span>
-            <span
-              v-if="method.fee_rate > 0"
-              class="text-[10px] tracking-wide text-gray-500 dark:text-dark-400"
-            >
-              {{ t('payment.fee') }} {{ method.fee_rate }}%
-            </span>
+        <img
+          :src="methodIcon(method.type)"
+          alt=""
+          aria-hidden="true"
+          class="h-5 w-5 shrink-0 object-contain"
+        />
+        <span class="flex min-w-0 flex-col">
+          <span data-testid="payment-method-label" class="block w-full truncate text-xs font-medium">
+            {{ methodLabel(method) }}
+          </span>
+          <!-- The fee is a number, so it gets tabular figures like every other. -->
+          <span
+            v-if="method.fee_rate > 0"
+            class="block truncate text-2xs text-ink-tertiary"
+          >
+            {{ t('payment.fee') }}
+            <span class="font-mono tabular-nums">{{ method.fee_rate }}%</span>
           </span>
         </span>
       </button>
@@ -43,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { METHOD_ORDER, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from './providerConfig'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -70,6 +95,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
+const labelId = `payment-method-${useId()}`
+
 const METHOD_ICONS: Record<string, string> = {
   alipay: alipayIcon,
   wxpay: wxpayIcon,
@@ -87,6 +114,12 @@ const sortedMethods = computed(() => {
   })
 })
 
+/**
+ * `isBuiltInAlipayMethod` is a whole-token check, not a substring one: a
+ * custom EasyPay method called `card_alipay` is NOT Alipay and must not wear
+ * Alipay's mark. That distinction is the reason this goes through the helpers
+ * rather than `type.includes('alipay')`.
+ */
 function methodIcon(type: string): string {
   if (isBuiltInAlipayMethod(type)) return METHOD_ICONS.alipay
   if (isBuiltInWxpayMethod(type)) return METHOD_ICONS.wxpay
@@ -96,13 +129,5 @@ function methodIcon(type: string): string {
 
 function methodLabel(method: PaymentMethodOption): string {
   return method.display_name || t(`payment.methods.${method.type}`, method.type)
-}
-
-function methodSelectedClass(type: string): string {
-  if (isBuiltInAlipayMethod(type)) return 'border-[#02A9F1] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
-  if (isBuiltInWxpayMethod(type)) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
-  if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
-  if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 text-gray-900 shadow-sm dark:border-[#FF8E3C] dark:bg-orange-950 dark:text-gray-100'
-  return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
 }
 </script>

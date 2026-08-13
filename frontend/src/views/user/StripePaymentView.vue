@@ -1,92 +1,162 @@
 <template>
-  <component :is="isPopup ? 'div' : AppLayout" :class="isPopup ? 'min-h-screen bg-gray-50 dark:bg-dark-900' : ''">
-    <div class="mx-auto max-w-lg space-y-6 py-8" :class="isPopup ? 'px-4' : ''">
-      <div v-if="loading" class="flex items-center justify-center py-20">
-        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+  <component :is="isPopup ? 'div' : AppLayout" :class="isPopup ? 'min-h-screen bg-canvas' : ''">
+    <div class="mx-auto max-w-md space-y-4 py-8" :class="isPopup ? 'px-4' : ''">
+      <div v-if="loading" class="rounded border border-line bg-surface p-5" aria-live="polite">
+        <p class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+          <span class="spinner h-3 w-3 shrink-0" aria-hidden="true" />
+          {{ t('common.processing') }}
+        </p>
       </div>
-      <div v-else-if="initError" class="card p-8 text-center">
-        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-          <Icon name="exclamationCircle" size="xl" class="text-red-500" />
+
+      <div v-else-if="initError" class="rounded border border-line bg-surface p-5">
+        <div aria-live="polite">
+          <p class="text-2xs font-medium uppercase tracking-[0.08em] text-danger">
+            {{ t('payment.result.failed') }}
+          </p>
+          <h1 class="mt-2 text-lg font-semibold text-ink">{{ t('payment.stripeLoadFailed') }}</h1>
+          <p class="mt-1 text-sm text-ink-tertiary">{{ initError }}</p>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.stripeLoadFailed') }}</h3>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ initError }}</p>
-        <button class="btn btn-primary mt-6" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+        <Button
+          class="mt-5"
+          tone="accent"
+          variant="solid"
+          size="md"
+          @click="router.push('/purchase')"
+        >
+          {{ t('payment.result.backToRecharge') }}
+        </Button>
       </div>
+
       <template v-else>
-        <!-- 金额头部 -->
-        <div v-if="order" class="card overflow-hidden">
-          <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-6 text-center">
-            <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
-            <p class="mt-1 text-3xl font-bold text-white">{{ formatGatewayAmount(order.pay_amount) }}</p>
-          </div>
-        </div>
+        <!--
+          The amount, as type.
 
-        <!-- 微信二维码展示 -->
+          This was a `bg-gradient-to-br from-[#635bff] to-[#4f46e5]` banner with
+          30px white digits — Stripe's brand gradient painted across the top of
+          OUR page. The provider's colour belongs on the provider's button and
+          inside the provider's frame, not on the page header; here it just meant
+          the loudest thing on screen was a rectangle. The number is now the
+          loudest thing because it is the biggest.
+        -->
+        <section v-if="order" class="rounded border border-line bg-surface px-4 py-3">
+          <p class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('payment.actualPay') }}
+          </p>
+          <p class="mt-1 flex items-baseline gap-1">
+            <span class="text-sm text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
+            <span class="font-mono text-2xl font-semibold tabular-nums slashed-zero text-ink">
+              <NumCell :value="order.pay_amount" :precision="gatewayPrecision" />
+            </span>
+          </p>
+        </section>
+
+        <!-- WeChat QR, handed to us by Stripe as a data URL -->
         <template v-if="wechatQrUrl">
-          <div class="card p-6">
-            <div class="flex flex-col items-center space-y-4">
-              <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.scanWxpay') }}</p>
-              <div class="relative rounded-lg border-2 border-[#2BB741] bg-green-50 p-4 dark:border-[#2BB741]/70 dark:bg-green-950/20">
-                <img :src="wechatQrUrl" alt="WeChat Pay QR" class="h-56 w-56 rounded" />
-                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span class="rounded-full bg-[#2BB741] p-2 shadow ring-2 ring-white">
-                    <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm3.636 4.35c-2.084 0-3.993.672-5.363 1.844-1.188.982-2.004 2.308-2.004 3.862 0 1.207.546 2.355 1.483 3.285.114.113.238.213.358.321l-.105.42c-.021.084-.042.17-.042.253 0 .168.126.258.282.258.065 0 .126-.025.18-.058l1.27-.765a.69.69 0 0 1 .58-.086c.96.282 1.99.437 3.043.437 2.633 0 5.03-.972 6.4-2.5.782-.87 1.258-1.901 1.258-3.006 0-3.328-3.325-6.006-7.34-6.006zm-3.21 3.09c.52 0 .94.429.94.957a.949.949 0 0 1-.94.955.949.949 0 0 1-.94-.955c0-.528.42-.957.94-.957zm4.739 0c.52 0 .94.429.94.957a.949.949 0 0 1-.94.955.949.949 0 0 1-.94-.955c0-.528.42-.957.94-.957z"/></svg>
-                  </span>
-                </div>
-              </div>
-              <p class="text-center text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.scanWxpayHint') }}</p>
+          <section class="rounded border border-line bg-surface p-5">
+            <h1 class="text-sm font-medium text-ink">{{ t('payment.qr.scanWxpay') }}</h1>
+            <p class="mt-1 text-xs text-ink-tertiary">{{ t('payment.qr.scanWxpayHint') }}</p>
+            <div class="mt-5 flex justify-center">
+              <!--
+                The 30-line inline WeChat logo path this used to carry is gone;
+                `QrFrame` overlays the shared `wxpay.svg` asset instead, and owns
+                the reason the QR ground stays white in dark mode.
+              -->
+              <QrFrame tone="wxpay" :logo="wxpayIcon">
+                <img :src="wechatQrUrl" alt="WeChat Pay QR" class="block h-52 w-52" />
+              </QrFrame>
             </div>
-          </div>
-          <div class="card p-4 text-center">
-            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.waitingPayment') }}</p>
+          </section>
+          <div class="rounded border border-line bg-surface-sunken px-4 py-3" aria-live="polite">
+            <p class="text-xs text-ink-tertiary">{{ t('payment.qr.waitingPayment') }}</p>
           </div>
         </template>
 
-        <!-- 支付宝跳转状态 -->
+        <!-- Alipay handoff -->
         <template v-else-if="redirecting">
-          <div class="card p-6">
-            <div class="flex flex-col items-center space-y-4 py-4">
-              <div class="h-10 w-10 animate-spin rounded-full border-4 border-[#00AEEF] border-t-transparent"></div>
-              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
-            </div>
-          </div>
+          <section class="rounded border border-line bg-surface p-5" aria-live="polite" aria-busy="true">
+            <p class="flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.08em] text-ink-tertiary">
+              <span class="spinner h-3 w-3 shrink-0" aria-hidden="true" />
+              {{ t('payment.methods.alipay') }}
+            </p>
+            <p class="mt-2 text-sm text-ink-secondary">{{ t('payment.qr.payInNewWindowHint') }}</p>
+          </section>
         </template>
 
-        <!-- 成功状态 -->
+        <!-- Success -->
         <template v-else-if="stripeSuccess">
-          <div class="card p-6 text-center">
-            <div class="flex flex-col items-center gap-3 py-4">
-              <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <Icon name="check" size="lg" class="text-green-500" />
-              </div>
-              <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.stripeSuccessProcessing') }}</p>
-            </div>
-          </div>
+          <section class="rounded border border-line bg-surface p-5" aria-live="polite">
+            <p class="text-2xs font-medium uppercase tracking-[0.08em] text-success">
+              {{ t('payment.status.completed') }}
+            </p>
+            <h1 class="mt-2 text-lg font-semibold text-ink">{{ t('payment.result.success') }}</h1>
+            <p class="mt-1 text-sm text-ink-tertiary">{{ t('payment.stripeSuccessProcessing') }}</p>
+          </section>
         </template>
 
-        <!-- 无指定方式或未知方式时展示完整 Payment Element -->
+        <!-- Full Payment Element: no method was pre-selected -->
         <template v-else-if="showPaymentElement">
-          <div class="card p-6">
-            <div id="stripe-payment-element" class="min-h-[200px]"></div>
-            <p v-if="stripeError" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
-            <button class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="stripeSubmitting || !stripeReady" @click="handleGenericPay">
-              <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
-                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                {{ t('common.processing') }}
-              </span>
-              <span v-else>{{ t('payment.stripePay') }}</span>
-            </button>
-          </div>
-          <div class="text-center">
-            <button class="btn btn-secondary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
-          </div>
+          <!--
+            THE DECLARED BOUNDARY.
+
+            `#stripe-payment-element` is a cross-origin iframe. Our stylesheet
+            stops at its edge — the font inside falls back to `system-ui`, the
+            wallet buttons are Stripe's — so the join can never be seamless.
+
+            Framing and labelling the region is the honest answer. A visible
+            hairline with the provider's name reads as "you are now filling in
+            the payment processor's form", which is what a checkout page should
+            say; a near-match that is half a shade off reads as a rendering bug,
+            and on a payment page a rendering bug reads as "is this site
+            broken, or is it a phishing page?". Colour, radius and text size do
+            cross the boundary, via `stripeAppearance.ts`.
+          -->
+          <section class="rounded border border-line bg-surface">
+            <div class="border-b border-line-subtle px-4 py-2">
+              <p class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ t('payment.methods.stripe') }}
+              </p>
+            </div>
+            <div class="p-4">
+              <div id="stripe-payment-element" class="min-h-[200px]"></div>
+              <p v-if="stripeError" class="mt-3 text-xs text-danger" aria-live="polite">
+                {{ stripeError }}
+              </p>
+              <!--
+                `.btn-stripe` keeps #635BFF: the processor's colour on the
+                confirm button is how the user knows who is about to charge
+                them. It is the sanctioned exception to the single-accent rule,
+                minus the gradient and press-scale it used to carry. The label
+                does not change while submitting — the spinner sits beside it —
+                because a button that changes width mid-click is the worst
+                possible thing to put on a payment page.
+              -->
+              <button
+                class="btn btn-stripe mt-4 w-full"
+                :disabled="stripeSubmitting || !stripeReady"
+                :aria-busy="stripeSubmitting ? 'true' : undefined"
+                @click="handleGenericPay"
+              >
+                <span v-if="stripeSubmitting" class="spinner h-3.5 w-3.5" aria-hidden="true" />
+                {{ t('payment.stripePay') }}
+              </button>
+            </div>
+          </section>
+          <Button variant="outline" size="md" block @click="router.push('/purchase')">
+            {{ t('payment.result.backToRecharge') }}
+          </Button>
         </template>
 
-        <!-- 错误状态 -->
-        <div v-if="stripeError && !showPaymentElement" class="card p-4">
-          <p class="text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
-          <button class="btn btn-secondary mt-3 w-full" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+        <!-- Error outside the Payment Element -->
+        <div v-if="stripeError && !showPaymentElement" class="rounded border border-line bg-surface p-5">
+          <div aria-live="polite">
+            <p class="text-2xs font-medium uppercase tracking-[0.08em] text-danger">
+              {{ t('payment.result.failed') }}
+            </p>
+            <p class="mt-2 text-sm text-ink">{{ stripeError }}</p>
+          </div>
+          <Button class="mt-5" variant="outline" size="md" block @click="router.push('/purchase')">
+            {{ t('payment.result.backToRecharge') }}
+          </Button>
         </div>
       </template>
     </div>
@@ -94,25 +164,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
+import { useTheme } from '@/composables/useTheme'
+import {
+  currencySymbol,
+  normalizePaymentCurrency,
+  paymentCurrencyFractionDigits,
+} from '@/components/payment/currency'
 import { PAYMENT_RECOVERY_STORAGE_KEY, readPaymentRecoverySnapshot } from '@/components/payment/paymentFlow'
+import { buildStripeAppearance } from '@/components/payment/stripeAppearance'
 import type { PaymentOrder } from '@/types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import Icon from '@/components/icons/Icon.vue'
+// Direct paths, never the `components/common` barrel — it pulls `createI18n`
+// into the graph and breaks partial `vue-i18n` factory mocks.
+import Button from '@/components/common/Button.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import QrFrame from '@/components/payment/QrFrame.vue'
+import wxpayIcon from '@/assets/icons/wxpay.svg'
 
-const i18n = useI18n()
-const { t } = i18n
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
+const { isDark } = useTheme()
 
 // 弹窗模式：指定支付宝或微信方式时跳过 AppLayout
 const isPopup = computed(() => !!route.query.method)
@@ -129,9 +210,22 @@ const wechatQrUrl = ref('')
 const redirecting = ref(false)
 const showPaymentElement = ref(false)
 
+const gatewayCurrencySymbol = computed(() => currencySymbol(currency.value))
+const gatewayPrecision = computed(() => paymentCurrencyFractionDigits(currency.value))
+
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
 let redirectTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Appearance is resolved once, at `elements()` time. Without this, flipping the
+ * theme left Stripe's iframe painted for the previous one — a white card in the
+ * middle of a near-black page, which is the most obvious way to make an
+ * embedded form look like it does not belong to the site it is embedded in.
+ */
+watch(isDark, (dark) => {
+  elementsInstance?.update({ appearance: buildStripeAppearance(dark) })
+})
 
 onMounted(async () => {
   const orderId = Number(route.query.order_id)
@@ -190,19 +284,6 @@ onMounted(async () => {
   }
 })
 
-const localeCode = computed(() => {
-  const raw = i18n.locale as unknown
-  if (typeof raw === 'string') return raw
-  if (raw && typeof raw === 'object' && 'value' in raw) {
-    return String((raw as { value?: string }).value || '')
-  }
-  return undefined
-})
-
-function formatGatewayAmount(value: number): string {
-  return formatPaymentAmount(value, currency.value, localeCode.value)
-}
-
 async function confirmAlipay(stripe: Stripe, clientSecret: string, orderId: number) {
   redirecting.value = true
   const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
@@ -241,10 +322,14 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
 }
 
 function mountPaymentElement(stripe: Stripe, clientSecret: string) {
-  const isDark = document.documentElement.classList.contains('dark')
   const elements = stripe.elements({
     clientSecret,
-    appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+    /*
+     * Was `{ theme, variables: { borderRadius: '8px' } }` — an 8px radius in a
+     * system whose ceiling is 4px, so the payment form was visibly rounder than
+     * every control around it, and every other value was Stripe's default.
+     */
+    appearance: buildStripeAppearance(isDark.value),
   })
   elementsInstance = elements
   const paymentElement = elements.create('payment', {

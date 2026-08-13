@@ -184,7 +184,7 @@ describe('PaymentProviderDialog payment guide', () => {
     ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
     await nextTick()
 
-    await wrapper.find('button.btn-sm').trigger('click')
+    await wrapper.find('[data-testid="add-custom-method"]').trigger('click')
     await nextTick()
 
     const inputs = wrapper.findAll('input[type="text"]')
@@ -227,7 +227,7 @@ describe('PaymentProviderDialog payment guide', () => {
     ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
     await nextTick()
 
-    await wrapper.find('button.btn-sm').trigger('click')
+    await wrapper.find('[data-testid="add-custom-method"]').trigger('click')
     await nextTick()
 
     const inputs = wrapper.findAll('input[type="text"]')

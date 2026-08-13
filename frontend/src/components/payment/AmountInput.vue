@@ -1,20 +1,36 @@
 <template>
   <div class="space-y-4">
-    <!-- Quick Amount Buttons -->
+    <!--
+      Quick amounts. A `radiogroup`, because that is what it is: the old markup
+      was a grid of bare buttons with the selection carried by a 2px tinted
+      border and nothing else, so a screen reader heard nine unrelated buttons
+      and never learned which one was active.
+
+      Selection is the accent — that is the one job the accent has in this
+      system. It is not a status and it is not decoration, so a chip that is
+      merely available stays on a hairline.
+    -->
     <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <p :id="quickAmountsLabelId" class="mb-2 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
         {{ t('payment.quickAmounts') }}
-      </label>
-      <div class="grid grid-cols-3 gap-2">
+      </p>
+      <div
+        role="radiogroup"
+        :aria-labelledby="quickAmountsLabelId"
+        class="grid grid-cols-3 gap-2 sm:grid-cols-5"
+      >
         <button
           v-for="amt in filteredAmounts"
           :key="amt"
           type="button"
+          role="radio"
+          :aria-checked="modelValue === amt"
           :class="[
-            'rounded-lg border-2 px-4 py-3 text-center font-medium transition-colors',
+            'h-8 rounded border px-2 font-mono text-sm tabular-nums slashed-zero',
+            'transition-colors duration-fast ease-out',
             modelValue === amt
-              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
-              : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500',
+              ? 'border-accent bg-accent-tint text-accent'
+              : 'border-line bg-surface text-ink hover:border-line-strong hover:bg-surface-hover',
           ]"
           @click="selectAmount(amt)"
         >
@@ -23,41 +39,64 @@
       </div>
     </div>
 
-    <!-- Custom Amount Input -->
-    <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-        {{ t('payment.customAmount') }}
-      </label>
-      <div class="relative">
-        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
-          $
-        </span>
-        <input
-          type="text"
-          inputmode="decimal"
-          :value="customText"
-          :placeholder="placeholderText"
-          class="input w-full py-3 pl-8 pr-4"
-          @input="handleInput"
-        />
-      </div>
-    </div>
+    <!--
+      The custom amount is the only field on the recharge tab that can fail
+      validation, and its error used to be rendered by the PARENT as a loose
+      `<p>` below this component — which meant showing it pushed the payment
+      method grid and the submit button down by a line, at the exact moment the
+      user was reaching for the button. `FormField` reserves the message row, so
+      the error appears in place.
+    -->
+    <FormField :label="t('payment.customAmount')" :error="error">
+      <template #default="{ id, describedBy, invalid }">
+        <div class="relative">
+          <span
+            class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 font-mono text-sm text-ink-tertiary"
+            aria-hidden="true"
+          >
+            {{ creditedCurrencySymbol }}
+          </span>
+          <input
+            :id="id"
+            type="text"
+            inputmode="decimal"
+            :value="customText"
+            :placeholder="placeholderText"
+            :aria-describedby="describedBy"
+            :aria-invalid="invalid || undefined"
+            class="input pl-7 text-right font-mono tabular-nums slashed-zero"
+            :class="{ 'input-error': error }"
+            @input="handleInput"
+          />
+        </div>
+      </template>
+    </FormField>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+
+import FormField from '@/components/common/FormField.vue'
+import { currencySymbol } from '@/components/payment/currency'
 
 const props = withDefaults(defineProps<{
   amounts?: number[]
   modelValue: number | null
   min?: number
   max?: number
+  /**
+   * Validation text. Owned by the parent because the rule depends on the
+   * selected gateway's per-method limits, but RENDERED here so the message sits
+   * against the field it describes instead of floating under the card.
+   */
+  error?: string
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
+  error: '',
 })
 
 const emit = defineEmits<{
@@ -65,6 +104,16 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+const quickAmountsLabelId = `quick-amounts-${useId()}`
+
+/**
+ * The recharge amount is always denominated in USD credit, whatever currency
+ * the chosen gateway settles in — so this symbol is fixed, not derived from the
+ * selected method. Conflating the two is how a user ends up believing they are
+ * topping up 100 CNY.
+ */
+const creditedCurrencySymbol = currencySymbol('USD')
 
 const customText = ref('')
 
@@ -88,8 +137,19 @@ function selectAmount(amt: number) {
 }
 
 function handleInput(e: Event) {
-  const val = (e.target as HTMLInputElement).value
-  if (!AMOUNT_PATTERN.test(val)) return
+  const input = e.target as HTMLInputElement
+  const val = input.value
+  if (!AMOUNT_PATTERN.test(val)) {
+    /*
+     * Rejecting the keystroke used to mean "return and change nothing", but
+     * `:value` is bound to `customText`, so with no reactive change Vue never
+     * re-rendered and the rejected characters stayed on screen — the field
+     * showed `1.234` while the model held `1.23`. On a payment amount, a field
+     * that disagrees with what will be charged is not a cosmetic defect.
+     */
+    input.value = customText.value
+    return
+  }
   customText.value = val
   if (val === '') {
     emit('update:modelValue', null)
