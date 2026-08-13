@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTheme } from '@/composables/useTheme'
+import { useChartTheme, tokenAlpha } from '@/components/charts/chartTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -31,10 +33,15 @@ interface Props {
 const props = defineProps<Props>()
 const { t } = useI18n()
 
-const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+// Was a dependency-free `computed`, which caches forever — this chart never
+// re-themed on toggle. `useTheme().isDark` is a real ref.
+const { isDark: isDarkMode } = useTheme()
+const chartTheme = useChartTheme()
 const colors = computed(() => ({
-  teal: '#14b8a6',
-  tealAlpha: '#14b8a620',
+  // Keys kept as `teal*` so the call sites below do not have to change; the
+  // value is now the ultramarine accent from the design tokens.
+  teal: chartTheme.value.accent,
+  tealAlpha: tokenAlpha('accent', 0.125),
   grid: isDarkMode.value ? '#374151' : '#f3f4f6',
   text: isDarkMode.value ? '#9ca3af' : '#6b7280'
 }))

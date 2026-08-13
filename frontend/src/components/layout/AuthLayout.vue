@@ -1,62 +1,39 @@
 <template>
-  <div class="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-    <!-- Background -->
-    <div
-      class="absolute inset-0 bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
-    ></div>
+  <!--
+    Editorial rewrite. What this replaces: a `bg-gradient-to-br` ground, three
+    blurred teal orbs at `blur-3xl`, a hardcoded `rgba(20,184,166,0.03)` grid
+    overlay, a `rounded-2xl` logo tile with a colored glow shadow, a
+    `text-gradient` clip-text wordmark, and a `card-glass … shadow-glass` panel.
+    All six were the same gesture, repeated.
 
-    <!-- Decorative Elements -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <!-- Gradient Orbs -->
-      <div
-        class="absolute -right-40 -top-40 h-80 w-80 rounded-full bg-primary-400/20 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary-500/15 blur-3xl"
-      ></div>
-      <div
-        class="absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-300/10 blur-3xl"
-      ></div>
-
-      <!-- Grid Pattern -->
-      <div
-        class="absolute inset-0 bg-[linear-gradient(rgba(20,184,166,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(20,184,166,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"
-      ></div>
-    </div>
-
-    <!-- Content Container -->
-    <div class="relative z-10 w-full max-w-md">
-      <!-- Logo/Brand -->
-      <div class="mb-8 text-center">
-        <!-- Custom Logo or Default Logo -->
+    Now: flat canvas, one hairline-ruled panel, typographic lockup, left-aligned
+    composition instead of dead-centre.
+  -->
+  <div class="flex min-h-screen items-center justify-center bg-canvas p-4">
+    <div class="w-full max-w-[26rem]">
+      <!-- Brand lockup. `settingsLoaded` gates it to avoid a logo swap flash. -->
+      <div class="mb-8">
         <template v-if="settingsLoaded">
-          <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30"
-          >
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
+          <div class="mb-5 flex items-center gap-2.5">
+            <img :src="siteLogo || '/logo.svg'" alt="" class="h-6 w-6 shrink-0 object-contain" />
+            <span class="text-md font-semibold tracking-tight text-ink">{{ siteName }}</span>
           </div>
-          <h1 class="text-gradient mb-2 text-3xl font-bold">
-            {{ siteName }}
-          </h1>
-          <p class="text-sm text-gray-500 dark:text-dark-400">
+          <p class="max-w-[22rem] text-sm text-ink-tertiary">
             {{ siteSubtitle }}
           </p>
         </template>
       </div>
 
-      <!-- Card Container -->
-      <div class="card-glass rounded-2xl p-8 shadow-glass">
+      <div class="border border-line bg-surface p-6">
         <slot />
       </div>
 
-      <!-- Footer Links -->
-      <div class="mt-6 text-center text-sm">
+      <div class="mt-5 text-sm">
         <slot name="footer" />
       </div>
 
-      <!-- Copyright -->
-      <div class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
-        &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
+      <div class="mt-8 border-t border-line-subtle pt-4 text-2xs text-ink-disabled">
+        &copy; {{ currentYear }} {{ siteName }}
       </div>
     </div>
   </div>
@@ -81,8 +58,9 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-.text-gradient {
-  @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
-}
-</style>
+<!--
+  The `<style scoped>` block that used to live here redefined `.text-gradient`
+  locally, shadowing the global one. Neutralizing the global rule alone would
+  not have reached it — this file would have kept its gradient wordmark while
+  every other surface lost theirs. Deleted, not overridden.
+-->

@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -98,9 +99,9 @@ const chartRef = ref<HTMLElement | null>(null)
 const zoom = ref<ZoomState>(resetZoom())
 const zoomed = computed(() => isZoomed(zoom.value))
 
-const isDark = computed(() =>
-  typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
-)
+// Was a `computed` reading `documentElement.classList` with no reactive
+// dependency, so it cached forever and this chart never re-themed on toggle.
+const { isDark } = useTheme()
 
 const bucketLabel = computed(() => {
   const seconds = props.coverage?.bucket_seconds || 60

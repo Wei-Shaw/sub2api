@@ -1,0 +1,262 @@
+/*
+ * Design tokens — Swiss/editorial system.
+ *
+ * TWO TOKEN FAMILIES. Only one of them flips with the theme.
+ *
+ *   Family A — static legacy ramps (`gray-*`, `dark-*`, `primary-*`, `red-*`, …).
+ *              Declared in tailwind.config.js as plain hex. They DO NOT live here
+ *              and they DO NOT flip. ~14,500 existing utilities reference them
+ *              through explicit `dark:` pairs (`bg-white dark:bg-dark-800`);
+ *              if those hexes flipped too, the pairs would double-apply.
+ *
+ *   Family B — the semantic tokens below. They flip at `:root` / `.dark`.
+ *              New code consumes ONLY these, and never writes a `dark:` variant:
+ *                  ok:    class="bg-surface text-ink border-line"
+ *                  smell: class="bg-surface dark:bg-surface"
+ *                  bug:   class="bg-surface dark:bg-dark-800"
+ *
+ * Colors are stored as space-separated RGB channels, not hex, so Tailwind's
+ * `rgb(var(--ds-x) / <alpha-value>)` keeps opacity modifiers working
+ * (`bg-white/80`, `border-line/50`, `text-accent/25`).
+ *
+ * Every token declared under `:root` must also exist under `.dark`.
+ * `src/styles/__tests__/tokens.parity.spec.ts` fails the build on asymmetry.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ── surfaces — paper, not gray ─────────────────────────────────── */
+  --ds-canvas: 247 247 245;
+  --ds-surface: 255 255 255;
+  --ds-surface-sunken: 242 242 239;
+  --ds-surface-raised: 255 255 255;
+  --ds-surface-hover: 246 246 243;
+  --ds-surface-active: 238 238 234;
+  --ds-overlay: 18 18 17;
+
+  /* ── hairlines — the border IS the design ───────────────────────── */
+  --ds-line-subtle: 226 226 222;
+  --ds-line: 216 216 211;
+  --ds-line-strong: 180 180 173;
+  --ds-line-emphasis: 156 156 149;
+
+  /* ── ink — type-driven hierarchy ────────────────────────────────── */
+  --ds-ink: 18 19 22;
+  --ds-ink-secondary: 92 96 104;
+  --ds-ink-tertiary: 112 116 124;
+  --ds-ink-disabled: 154 160 170;
+  --ds-ink-inverse: 255 255 255;
+
+  /* ── accent: ultramarine. ONE accent, interaction + selection only ─ */
+  --ds-accent: 42 59 212;
+  --ds-accent-hover: 35 47 174;
+  --ds-accent-active: 30 40 139;
+  --ds-accent-solid: 42 59 212;
+  --ds-accent-on: 255 255 255;
+  --ds-accent-tint: 238 240 254;
+  --ds-accent-tint-strong: 221 225 252;
+  --ds-accent-line: 154 165 247;
+
+  /* ── semantic. STRICTLY status. Never decorative. ───────────────── */
+  --ds-success: 15 123 63;
+  --ds-success-tint: 233 246 238;
+  --ds-warn: 149 97 10;
+  --ds-warn-tint: 252 244 228;
+  --ds-danger: 180 35 24;
+  --ds-danger-tint: 253 236 234;
+  --ds-info: 30 86 200;
+  --ds-info-tint: 234 240 252;
+  --ds-neutral-status: 112 116 124;
+  --ds-neutral-tint: 242 242 239;
+
+  /* ── focus — never teal, never the accent tint ──────────────────── */
+  --ds-focus: 42 59 212;
+  --ds-focus-contrast: 255 255 255;
+
+  /* ── elevation — popover / modal / toast / dropdown ONLY ─────────── */
+  --ds-shadow-popover: 0 4px 12px -2px rgb(18 18 17 / 0.1), 0 0 0 1px rgb(216 216 211 / 1);
+  --ds-shadow-modal: 0 16px 40px -8px rgb(18 18 17 / 0.18), 0 0 0 1px rgb(216 216 211 / 1);
+  --ds-shadow-sticky: 0 1px 0 0 rgb(180 180 173 / 1);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --ds-canvas: 8 9 10;
+  --ds-surface: 16 17 19;
+  --ds-surface-sunken: 12 13 15;
+  --ds-surface-raised: 23 24 27;
+  --ds-surface-hover: 22 23 26;
+  --ds-surface-active: 28 29 33;
+  --ds-overlay: 0 0 0;
+
+  --ds-line-subtle: 35 36 40;
+  --ds-line: 42 44 49;
+  --ds-line-strong: 62 65 72;
+  --ds-line-emphasis: 85 88 95;
+
+  /* not pure white — avoids halation on near-black */
+  --ds-ink: 230 230 227;
+  --ds-ink-secondary: 146 152 162;
+  --ds-ink-tertiary: 123 129 139;
+  --ds-ink-disabled: 97 102 110;
+  --ds-ink-inverse: 18 19 22;
+
+  /*
+   * `--ds-accent` (#6C79EE) is tuned for TEXT and ICONS on dark surfaces.
+   * It cannot carry white text (3.75:1), so filled controls use
+   * `--ds-accent-solid` (#4453DD) instead, where white reaches 5.95:1.
+   * In light mode the two are identical.
+   */
+  --ds-accent: 108 121 238;
+  --ds-accent-hover: 142 153 245;
+  --ds-accent-active: 157 167 247;
+  --ds-accent-solid: 68 83 221;
+  --ds-accent-on: 255 255 255;
+  --ds-accent-tint: 23 26 51;
+  --ds-accent-tint-strong: 27 31 61;
+  --ds-accent-line: 59 71 150;
+
+  --ds-success: 63 207 110;
+  --ds-success-tint: 10 33 19;
+  --ds-warn: 240 180 41;
+  --ds-warn-tint: 38 27 6;
+  --ds-danger: 255 122 112;
+  --ds-danger-tint: 45 17 15;
+  --ds-info: 125 166 255;
+  --ds-info-tint: 11 23 46;
+  --ds-neutral-status: 123 129 139;
+  --ds-neutral-tint: 28 29 33;
+
+  --ds-focus: 142 153 245;
+  --ds-focus-contrast: 8 9 10;
+
+  --ds-shadow-popover: 0 4px 12px -2px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(62 65 72 / 1);
+  --ds-shadow-modal: 0 16px 40px -8px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(62 65 72 / 1);
+  --ds-shadow-sticky: 0 1px 0 0 rgb(62 65 72 / 1);
+}
+
+/*
+ * Non-color tokens. Declared once — they do not flip.
+ */
+:root {
+  /* ── type — 1.200 minor third, px line-heights so mixed zh/en stays on grid ── */
+  --ds-text-2xs: 11px;
+  --ds-lh-2xs: 14px;
+  --ds-tr-2xs: 0.04em;
+  --ds-text-xs: 12px;
+  --ds-lh-xs: 16px;
+  --ds-tr-xs: 0.01em;
+  --ds-text-sm: 13px;
+  --ds-lh-sm: 18px;
+  --ds-tr-sm: 0em;
+  --ds-text-base: 14px;
+  --ds-lh-base: 20px;
+  --ds-tr-base: 0em;
+  --ds-text-md: 16px;
+  --ds-lh-md: 24px;
+  --ds-tr-md: -0.006em;
+  --ds-text-lg: 19px;
+  --ds-lh-lg: 26px;
+  --ds-tr-lg: -0.011em;
+  --ds-text-xl: 23px;
+  --ds-lh-xl: 30px;
+  --ds-tr-xl: -0.016em;
+  --ds-text-2xl: 28px;
+  --ds-lh-2xl: 34px;
+  --ds-tr-2xl: -0.02em;
+  --ds-text-3xl: 34px;
+  --ds-lh-3xl: 40px;
+  --ds-tr-3xl: -0.022em;
+
+  /* ── font stacks. `html[lang="zh"]` overrides --ds-font-sans below. ── */
+  --ds-font-sans: 'IBM Plex Sans', 'IBM Plex Sans Fallback', system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ds-font-mono: 'IBM Plex Mono', 'IBM Plex Mono Fallback', ui-monospace, SFMono-Regular,
+    Menlo, Consolas, monospace;
+
+  /* ── radius — near zero. 4px is the ceiling, `full` is dots + avatars only. ── */
+  --ds-radius-none: 0px;
+  --ds-radius-sm: 1px;
+  --ds-radius: 2px;
+  --ds-radius-lg: 4px;
+  --ds-radius-full: 9999px;
+
+  /* ── space — 4px base, no 3/5/7px escapes ────────────────────────── */
+  --ds-space-1: 2px;
+  --ds-space-2: 4px;
+  --ds-space-3: 6px;
+  --ds-space-4: 8px;
+  --ds-space-5: 12px;
+  --ds-space-6: 16px;
+  --ds-space-7: 20px;
+  --ds-space-8: 24px;
+  --ds-space-9: 32px;
+  --ds-space-10: 40px;
+  --ds-space-11: 48px;
+  --ds-space-12: 64px;
+
+  /* ── motion — three durations, two easings. Nothing else exists. ─── */
+  --ds-dur-fast: 100ms;
+  --ds-dur-base: 150ms;
+  --ds-dur-slow: 220ms;
+  --ds-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ds-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ds-ease-std: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ── data surface + shell geometry ───────────────────────────────── */
+  --ds-row-h: 32px;
+  --ds-row-h-comfy: 40px;
+  --ds-row-h-touch: 44px;
+  --ds-header-h: 34px;
+  --ds-app-header-h: 64px;
+  --ds-page-pad: 32px;
+  --ds-sidebar-w: 256px;
+  --ds-sidebar-w-collapsed: 72px;
+}
+
+/*
+ * Locale-scoped stack. `src/i18n/index.ts` sets `document.documentElement.lang`,
+ * so this is a valid hook. Note the latin `unicode-range` in fonts.css already
+ * routes CJK codepoints past IBM Plex regardless of `lang` — this block only
+ * chooses WHICH CJK face wins, it is not what prevents tofu.
+ */
+html[lang='zh'] {
+  --ds-font-sans: 'IBM Plex Sans', 'IBM Plex Sans Fallback', 'PingFang SC',
+    'Microsoft YaHei', 'Hiragino Sans GB', 'Noto Sans SC', system-ui, sans-serif;
+  font-feature-settings: 'halt' 1;
+}
+
+/*
+ * Reduced motion, handled once at the token level.
+ * Because tailwind.config.js remaps the whole `transitionDuration` scale onto
+ * these variables, every `duration-*` utility in the app inherits this for free.
+ * The blanket `*` override and the spin/pulse carve-outs live in style.css.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-dur-fast: 1ms;
+    --ds-dur-base: 1ms;
+    --ds-dur-slow: 1ms;
+  }
+}
+
+/* Cheap because everything is a variable: promote each rank one step. */
+@media (prefers-contrast: more) {
+  :root {
+    --ds-line-subtle: 216 216 211;
+    --ds-line: 180 180 173;
+    --ds-line-strong: 156 156 149;
+    --ds-ink-tertiary: 92 96 104;
+    --ds-ink-disabled: 118 122 130;
+  }
+
+  .dark {
+    --ds-line-subtle: 42 44 49;
+    --ds-line: 62 65 72;
+    --ds-line-strong: 85 88 95;
+    --ds-ink-tertiary: 146 152 162;
+    --ds-ink-disabled: 123 129 139;
+  }
+}

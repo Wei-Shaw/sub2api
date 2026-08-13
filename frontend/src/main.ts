@@ -6,6 +6,7 @@ import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
 import { updateFavicon } from '@/utils/branding'
 import { isIOSDevice } from '@/utils/device'
+import { applyChartDefaults } from '@/components/charts/chartTheme'
 import './style.css'
 
 function initIOSViewportZoomFix() {
@@ -32,8 +33,15 @@ function initThemeClass() {
 
 async function bootstrap() {
   // Apply theme class globally before app mount to keep all routes consistent.
+  // This must stay BEFORE createApp: the first painted frame reads it, and
+  // deferring it produces a light-mode flash for dark-mode users.
   initThemeClass()
   initIOSViewportZoomFix()
+
+  // Register the chart.js defaults derived from the design tokens. Individual
+  // charts re-apply these on theme flip via useChartTheme(); this call is what
+  // makes a chart constructed before any toggle start out correct.
+  applyChartDefaults()
 
   const app = createApp(App)
   const pinia = createPinia()

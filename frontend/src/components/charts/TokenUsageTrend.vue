@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useChartTheme } from './chartTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -54,13 +55,14 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
-})
+// Was `computed(() => document.documentElement.classList.contains('dark'))`,
+// which has no reactive dependency and therefore cached forever — this chart
+// never re-themed on toggle.
+const chartTheme = useChartTheme()
 
 const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#e5e7eb' : '#374151',
-  grid: isDarkMode.value ? '#374151' : '#e5e7eb',
+  text: chartTheme.value.axis,
+  grid: chartTheme.value.grid,
   input: '#3b82f6',
   output: '#10b981',
   cacheCreation: '#f59e0b',

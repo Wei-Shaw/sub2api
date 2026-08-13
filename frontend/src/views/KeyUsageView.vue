@@ -526,11 +526,15 @@ function setDailyUsageDays(days: 7 | 30 | 90) {
 // ==================== Ring Animation ====================
 
 const CIRCUMFERENCE = 2 * Math.PI * 68
+// Ring colours, drawn from the design-token series palette. The `from`/`to`
+// pairs are retained because the SVG gradient stops expect two values, but both
+// stops are now the same hue at different lightness rather than a hue-shifting
+// sweep — a ring that changes hue as it fills implies a meaning it does not have.
 const RING_GRADIENTS = [
-  { from: '#14b8a6', to: '#5eead4' },
-  { from: '#6366F1', to: '#A5B4FC' },
-  { from: '#10B981', to: '#6EE7B7' },
-  { from: '#F59E0B', to: '#FCD34D' },
+  { from: '#2A3BD4', to: '#6C79EE' },
+  { from: '#0F7B3F', to: '#3FCF6E' },
+  { from: '#95610A', to: '#F0B429' },
+  { from: '#6B4FA8', to: '#A78BCB' },
 ]
 
 const ringAnimated = ref(false)
@@ -944,10 +948,13 @@ onUnmounted(() => {
 .input-ring {
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.input-ring:focus {
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
-  border-color: #14b8a6;
-  outline: none;
+/* Was a teal box-shadow ring plus `outline: none`. The system uses a real
+   outline, which follows border-radius and cannot be clipped by an
+   overflow-hidden ancestor. Never suppress the outline. */
+.input-ring:focus-visible {
+  border-color: rgb(var(--ds-accent));
+  outline: 2px solid rgb(var(--ds-focus));
+  outline-offset: -1px;
 }
 
 /* Ring animation */

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -34,7 +35,9 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+// Was a dependency-free `computed`, which caches forever — this chart never
+// re-themed on toggle. `useTheme().isDark` is a real ref.
+const { isDark: isDarkMode } = useTheme()
 const colors = computed(() => ({
   red: '#ef4444',
   redAlpha: '#ef444420',

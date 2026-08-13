@@ -19,11 +19,21 @@
   pointer-events: none !important;
 }
 
+/*
+ * The tour highlight is the one place in the app where a heavy outline is
+ * correct — it has to survive on top of arbitrary content. Was a 4px teal wash
+ * at 20% alpha; now the accent, and squared to match the rest of the system.
+ *
+ * NOTE: the rest of this file still hardcodes light-mode greys (#ffffff,
+ * #e5e7eb, #1f2937) with `!important`, because driver.js injects its own
+ * stylesheet. Theming the popover chrome properly is its own line item.
+ */
 .driver-active-element {
   position: relative !important;
   z-index: 99999999 !important;
-  outline: 4px solid rgba(20, 184, 166, 0.2) !important;
-  border-radius: 4px !important;
+  outline: 2px solid rgb(var(--ds-accent)) !important;
+  outline-offset: 2px !important;
+  border-radius: 2px !important;
 }
 
 /* 2. Popover Container */
@@ -196,11 +206,16 @@
 }
 
 .theme-tour-popover .driver-popover-next-btn {
-  background-color: #14b8a6 !important;
-  color: #ffffff !important;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  /* `accent-solid` rather than `accent`: this button carries white text, and in
+     dark mode the plain accent cannot reach 4.5:1 against it. */
+  background-color: rgb(var(--ds-accent-solid)) !important;
+  color: rgb(var(--ds-accent-on)) !important;
+  border-radius: 2px !important;
+  box-shadow: none !important;
 }
-.theme-tour-popover .driver-popover-next-btn:hover { background-color: #0d9488 !important; }
+.theme-tour-popover .driver-popover-next-btn:hover {
+  background-color: rgb(var(--ds-accent-hover)) !important;
+}
 
 .theme-tour-popover .driver-popover-prev-btn {
   background-color: white !important;

@@ -361,6 +361,7 @@ import Icon from '@/components/icons/Icon.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
+import { useChartTheme } from '@/components/charts/chartTheme'
 import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
 
@@ -436,15 +437,16 @@ const granularityOptions = computed(() => [
   { value: 'hour', label: t('admin.dashboard.hour') }
 ])
 
-// Dark mode detection
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
-})
-
-// Chart colors
+// Chart colors, from the design tokens.
+//
+// This used to be `computed(() => document.documentElement.classList.contains('dark'))`
+// feeding two hardcoded hex pairs. That computed had no reactive dependency,
+// so it cached forever and these charts never re-themed on toggle — they only
+// picked up the theme once, at mount.
+const chartTheme = useChartTheme()
 const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#e5e7eb' : '#374151',
-  grid: isDarkMode.value ? '#374151' : '#e5e7eb'
+  text: chartTheme.value.axis,
+  grid: chartTheme.value.grid
 }))
 
 // Line chart options (for user trend chart)
@@ -540,20 +542,7 @@ const userTrendChartData = computed(() => {
   })
 
   const sortedDates = Array.from(allDates).sort()
-  const colors = [
-    '#3b82f6',
-    '#10b981',
-    '#f59e0b',
-    '#ef4444',
-    '#8b5cf6',
-    '#ec4899',
-    '#14b8a6',
-    '#f97316',
-    '#6366f1',
-    '#84cc16',
-    '#06b6d4',
-    '#a855f7'
-  ]
+  const colors = chartTheme.value.series
 
   const datasets = Array.from(userGroups.values()).map((group, idx) => ({
     label: group.name,

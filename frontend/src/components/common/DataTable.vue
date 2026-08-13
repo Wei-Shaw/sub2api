@@ -962,16 +962,25 @@ defineExpose({
   isolation: isolate;
 }
 
-/* 表头容器，确保在滚动时覆盖表体内容 */
+/*
+ * Sticky backgrounds are tokenized rather than hardcoded.
+ *
+ * These declarations are unreachable from Tailwind — they were literal
+ * `rgb(249 250 251)` / `rgb(31 41 55)` / `rgb(17 24 39)` / `white`, so a
+ * palette change at the config level could not touch them. Left alone, sticky
+ * headers and pinned columns would have kept rendering the old Tailwind grays
+ * against the new paper / near-black surfaces: a very visible seam, on the
+ * most-used screens in the app.
+ *
+ * Every `.dark`-prefixed duplicate below is DELETED rather than re-tinted.
+ * `--ds-surface*` are Family B tokens that already flip at `.dark`, so a dark
+ * override would be redundant at best and a light-mode bug at worst.
+ */
 .table-wrapper .table-header {
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: rgb(249 250 251);
-}
-
-.dark .table-wrapper .table-header {
-  background-color: rgb(31 41 55);
+  background-color: rgb(var(--ds-surface-sunken));
 }
 
 /* 表体保持在表头下方 */
@@ -985,11 +994,7 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: rgb(249 250 251);
-}
-
-.dark .sticky-header-cell {
-  background-color: rgb(31 41 55);
+  background-color: rgb(var(--ds-surface-sunken));
 }
 
 /* Sticky 列基础样式 */
@@ -1025,70 +1030,48 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: white;
-}
-
-.dark tbody .sticky-col {
-  background-color: rgb(17 24 39);
+  background-color: rgb(var(--ds-surface));
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: rgb(249 250 251);
+  background-color: rgb(var(--ds-surface-hover));
 }
 
-.dark tbody tr:hover .sticky-col {
-  background-color: rgb(31 41 55);
-}
-
-/* 阴影只在可滚动时显示 */
-/* 单列固定右侧阴影 */
-.is-scrollable .sticky-col-left::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 10px;
-  transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
-  pointer-events: none;
-}
-
-/* 双列固定：只在第二列显示阴影 */
+/*
+ * Pinned-column edges: a 1px rule, not a 10px gradient fade.
+ *
+ * Swiss reading of the same signal — "content continues past here" is a
+ * boundary, and a boundary is a line. It is also cheaper to paint: a solid 1px
+ * strip avoids re-rasterizing a gradient on every frame of a horizontal scroll,
+ * which is exactly when this element is visible.
+ *
+ * Only shown while the table is actually scrollable (`.is-scrollable`), and the
+ * `.dark` duplicates are gone because `--ds-line-strong` flips on its own.
+ */
+.is-scrollable .sticky-col-left::after,
 .is-scrollable .sticky-col-left-second::after {
   content: '';
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
+  background: rgb(var(--ds-line-strong));
   pointer-events: none;
 }
 
-/* 操作列左侧阴影 */
 .is-scrollable .sticky-col-right::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(-100%);
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.08), transparent);
+  background: rgb(var(--ds-line-strong));
   pointer-events: none;
-}
-
-/* 暗色模式阴影 */
-.dark .is-scrollable .sticky-col-left::after,
-.dark .is-scrollable .sticky-col-left-second::after {
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
-}
-
-.dark .is-scrollable .sticky-col-right::before {
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent);
 }
 </style>
 

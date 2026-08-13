@@ -12876,9 +12876,9 @@ watch(
   bottom: 0.25rem;
   left: 0.75rem;
   height: 2px;
-  border-radius: 9999px;
   content: "";
-  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+  /* Was a teal→sky gradient on a pill. An active-tab indicator is a rule. */
+  background: rgb(var(--ds-accent));
 }
 
 .settings-tab-icon {

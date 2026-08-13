@@ -1,0 +1,115 @@
+/*
+ * Self-hosted IBM Plex. Three files, 73.5 KB total.
+ *
+ * WHY THESE FILES LIVE IN src/assets AND NOT public/
+ *
+ * `backend/internal/web/static_cache.go:19` grants
+ * `Cache-Control: public, max-age=31536000, immutable` to exactly one shape:
+ * `assets/<name>-<8-char-hash>.<ext>`. Anything dropped in `public/` lands at
+ * the dist root and gets NO cache header, which costs a revalidation
+ * round-trip for all 73.5 KB on every navigation. Importing from CSS makes
+ * Vite fingerprint them into the cacheable shape.
+ *
+ * The bytes are vendored rather than pulled from @fontsource at build time.
+ * That pins them, survives a registry outage, keeps the Go embed reproducible,
+ * and stops the `latin-ext` / `cyrillic` / `greek` slices from sneaking in.
+ *   sans: @fontsource-variable/ibm-plex-sans@5.3.0 → files/ibm-plex-sans-latin-wght-normal.woff2
+ *   mono: @fontsource/ibm-plex-mono@5.3.0          → files/ibm-plex-mono-latin-{400,500}-normal.woff2
+ *
+ * CSP: `backend/internal/config/config.go:33` already allows
+ * `font-src 'self'`, which covers `/assets/*.woff2`. No backend change needed.
+ * Follow-up hardening: the stale `fonts.gstatic.com` / `fonts.googleapis.com`
+ * entries in that policy can be dropped now that nothing references them.
+ *
+ * NO ITALIC. There is no legitimate use for it in an ops console, and skipping
+ * it saves ~50 KB. The rare `<em>` gets a synthetic oblique, which is fine.
+ */
+
+/*
+ * Sans: ONE file for three weights.
+ *
+ * This is the weight-axis variable cut, so 400 / 500 / 600 all come out of a
+ * single 45 KB download. The axis is deliberately clamped to `400 600` rather
+ * than the font's native `100 700`:
+ *   - 300 is illegible at the 11–13px that dominates this UI.
+ *   - 700 is where "editorial" turns into "shouty"; 600 already reads bold at
+ *     these sizes. Clamping means the existing `font-bold` (700) utilities
+ *     resolve to 600 automatically, with no codemod.
+ */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexSans-Var-latin.woff2') format('woff2-variations');
+  /*
+   * Latin only. This range is what actually keeps CJK legible: a Chinese
+   * codepoint never matches this face, so the browser falls straight through to
+   * the next family in `--ds-font-sans` with no download and no tofu. It works
+   * even when a zh string is rendered while `lang="en"`, which is why the
+   * `html[lang="zh"]` block in tokens.css is a refinement, not the mechanism.
+   */
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* Mono 400 — every numeral, ID, key and code span in the app. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexMono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* Mono 500 — mono column headers and emphasized identifiers. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexMono-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/*
+ * ── ON LAYOUT SHIFT ──────────────────────────────────────────────────────────
+ *
+ * There is deliberately NO metric-matched fallback `@font-face` here yet.
+ *
+ * The usual trick is a `local('Arial')` face carrying `ascent-override`,
+ * `descent-override` and `size-adjust` tuned to match the real font, so the
+ * swap is invisible. Those percentages have to be MEASURED against the exact
+ * subsetted files shipped above. Guessed values are worse than none: they lock
+ * in a permanent mis-sizing for every user during the fallback window, in
+ * exchange for a shift that may not have existed.
+ *
+ * What makes `swap` safe in the meantime: the type scale in tokens.css sets
+ * every `line-height` in PIXELS, not as a unitless multiplier. Line box height
+ * is therefore independent of which font wins, so the vertical axis — the one
+ * that dominates CLS — does not move on swap. Only glyph advance widths differ,
+ * which reflows text horizontally within an already-fixed line box.
+ *
+ * TO FINISH THIS (worth doing, not urgent):
+ *   1. pip install fonttools
+ *   2. python -c "from fontTools.ttLib import TTFont; f=TTFont('src/assets/fonts/IBMPlexSans-Var-latin.woff2'); \
+ *        h=f['hhea']; u=f['head'].unitsPerEm; o=f['OS/2']; \
+ *        print('ascent', h.ascent/u, 'descent', abs(h.descent)/u, 'avgWidth', o.xAvgCharWidth/u)"
+ *   3. Repeat for Arial/Consolas (the first `local()` in each fallback chain).
+ *   4. Add the two fallback faces, with size-adjust = plexAvg / fallbackAvg, and
+ *      register them as 'IBM Plex Sans Fallback' / 'IBM Plex Mono Fallback' —
+ *      both names are already wired into `--ds-font-sans` / `--ds-font-mono`.
+ *
+ * If measurement is not going to happen, the other correct answer is
+ * `font-display: optional` on all three faces: no swap, so zero shift ever,
+ * at the cost of first-time visitors seeing the fallback for that whole visit.
+ * For a console people return to daily that is a defensible trade. It is the
+ * wrong trade for the landing and login pages, which is why `swap` is the
+ * default here.
+ */
