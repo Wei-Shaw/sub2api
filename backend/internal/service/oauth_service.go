@@ -320,6 +320,11 @@ func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account
 	return s.RefreshToken(ctx, refreshToken, proxyURL)
 }
 
+// Start starts session store cleanup.
+func (s *OAuthService) Start() {
+	s.sessionStore.Start()
+}
+
 // Stop stops the session store cleanup goroutine
 func (s *OAuthService) Stop() {
 	s.sessionStore.Stop()

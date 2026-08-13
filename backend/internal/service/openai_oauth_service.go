@@ -438,6 +438,11 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	return NormalizeOpenAIPersonalAccessTokenCredentials(nil, tokenInfo, creds)
 }
 
+// Start starts session store cleanup.
+func (s *OpenAIOAuthService) Start() {
+	s.sessionStore.Start()
+}
+
 // Stop stops the session store cleanup goroutine
 func (s *OpenAIOAuthService) Stop() {
 	s.sessionStore.Stop()

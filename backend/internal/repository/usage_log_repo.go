@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -148,6 +148,7 @@ type usageLogRepository struct {
 	bestEffortBatchOnce sync.Once
 	bestEffortBatchCh   chan usageLogBestEffortRequest
 	bestEffortRecent    *gocache.Cache
+	bestEffortWrites    atomic.Uint64
 }
 
 func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
@@ -160,7 +161,7 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	if db, ok := sqlq.(*sql.DB); ok {
 		repo.db = db
 	}
-	repo.bestEffortRecent = gocache.New(usageLogBestEffortRecentTTL, time.Minute)
+	repo.bestEffortRecent = gocache.NewFrom(usageLogBestEffortRecentTTL, 0, map[string]gocache.Item{})
 	return repo
 }
 

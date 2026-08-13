@@ -479,6 +479,11 @@ func (s *AntigravityOAuthService) BuildAccountCredentials(tokenInfo *Antigravity
 	return creds
 }
 
+// Start 启动 session 清理。
+func (s *AntigravityOAuthService) Start() {
+	s.sessionStore.Start()
+}
+
 // Stop 停止服务
 func (s *AntigravityOAuthService) Stop() {
 	s.sessionStore.Stop()

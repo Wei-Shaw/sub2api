@@ -140,6 +140,7 @@ func TestOpenAIGatewayHandlerSubmitMandatoryUsageRecordTask_DroppedTaskSyncFallb
 		AutoScaleEnabled:      false,
 	})
 	t.Cleanup(pool.Stop)
+	pool.Start()
 	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
 
 	block := make(chan struct{})
@@ -170,6 +171,7 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_ImageResultUsesMandator
 		AutoScaleEnabled:      false,
 	})
 	t.Cleanup(pool.Stop)
+	pool.Start()
 	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
 
 	block := make(chan struct{})
@@ -200,6 +202,7 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_SearchCountUsesMandator
 		AutoScaleEnabled:      false,
 	})
 	t.Cleanup(pool.Stop)
+	pool.Start()
 	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
 
 	block := make(chan struct{})
