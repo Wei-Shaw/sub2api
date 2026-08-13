@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -55,12 +56,24 @@ REDACTED
 	if req.EnableVideoUnderstanding != nil {
 		tool["enable_video_understanding"] = *req.EnableVideoUnderstanding
 REDACTED
+	maxResults := 0
+	if req.MaxResults != nil {
+		maxResults = *req.MaxResults
+REDACTED
 	return json.Marshal(map[string]any{
 		"model":       xai.ResolveDefaultTextModel(model),
-		"input":       input,
+		"input":       buildGrokXSearchPrompt(input, maxResults),
 		"tools":       []map[string]any{toolREDACTED,
 		"tool_choice": "required",
+		"include":     []string{"x_search_call.action.sources"REDACTED,
 		"store":       false,
 		"stream":      false,
 REDACTED)
+REDACTED
+
+func buildGrokXSearchPrompt(query string, maxResults int) string {
+	return fmt.Sprintf(`Search X for the user query below. Return ONLY valid JSON with this exact shape: {"results":[{"url":"https://...","title":"post or page title","snippet":"concise factual summary"REDACTED]REDACTED. Return at most %d unique results. Every URL must be an actual x_search source. Populate a non-empty title and snippet for every result. Do not wrap the JSON in markdown.
+
+User query:
+%s`, normalizeGrokWebSearchMaxResults(maxResults), query)
 REDACTED

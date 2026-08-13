@@ -23,7 +23,9 @@ func TestBuildGrokXSearchResponsesBody(t *testing.T) {
 REDACTED, xai.DefaultTextModel)
 REDACTED
 	require.Equal(t, xai.DefaultTextModel, gjson.GetBytes(body, "model").String())
-	require.Equal(t, "latest posts from xAI", gjson.GetBytes(body, "input").String())
+	require.Contains(t, gjson.GetBytes(body, "input").String(), "latest posts from xAI")
+	require.Contains(t, gjson.GetBytes(body, "input").String(), "Return ONLY valid JSON")
+	require.Equal(t, "x_search_call.action.sources", gjson.GetBytes(body, "include.0").String())
 	require.Equal(t, "required", gjson.GetBytes(body, "tool_choice").String())
 	require.Equal(t, "x_search", gjson.GetBytes(body, "tools.0.type").String())
 	require.Equal(t, "xai", gjson.GetBytes(body, "tools.0.allowed_x_handles.0").String())
@@ -40,7 +42,7 @@ func TestBuildGrokXSearchResponsesBodyAcceptsInputAlias(t *testing.T) {
 	t.Parallel()
 	body, err := buildGrokXSearchResponsesBody(grokStandaloneSearchRequest{Input: "latest posts from xAI"REDACTED, xai.DefaultTextModel)
 REDACTED
-	require.Equal(t, "latest posts from xAI", gjson.GetBytes(body, "input").String())
+	require.Contains(t, gjson.GetBytes(body, "input").String(), "latest posts from xAI")
 REDACTED
 
 func TestResolveGrokStandaloneSearchModelUsesRuntimeDefault(t *testing.T) {
