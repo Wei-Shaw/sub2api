@@ -13,62 +13,105 @@
                   @search="applyFilters"
                 />
               </div>
-              <Select v-model="filters.apiKeyId" :options="apiKeyFilterOptions" class="w-full" @change="applyFilters" />
-              <Select v-model="filters.status" :options="statusFilterOptions" class="w-full" @change="applyFilters" />
-              <Select v-model="filters.downloaded" :options="downloadFilterOptions" class="w-full" @change="applyFilters" />
+              <Select
+                v-model="filters.apiKeyId"
+                :options="apiKeyFilterOptions"
+                :aria-label="t('batchImage.columns.apiKey')"
+                class="w-full"
+                @change="applyFilters"
+              />
+              <Select
+                v-model="filters.status"
+                :options="statusFilterOptions"
+                :aria-label="t('common.status')"
+                class="w-full"
+                @change="applyFilters"
+              />
+              <Select
+                v-model="filters.downloaded"
+                :options="downloadFilterOptions"
+                :aria-label="t('batchImage.columns.downloadStatus')"
+                class="w-full"
+                @change="applyFilters"
+              />
             </div>
             <div class="flex flex-wrap items-center justify-start gap-2 sm:justify-end 2xl:flex-shrink-0">
-              <button type="button" class="btn btn-secondary" :disabled="loadingJobs" @click="resetFilters">
+              <Button variant="outline" size="md" :disabled="loadingJobs" @click="resetFilters">
                 {{ t('common.reset') }}
-              </button>
-              <button type="button" class="btn btn-secondary" :disabled="loadingKeys || loadingJobs" :title="t('common.refresh')" @click="refreshPage">
-                <Icon name="refresh" size="md" :class="loadingKeys || loadingJobs ? 'animate-spin' : ''" />
-              </button>
-              <button type="button" class="btn btn-secondary" @click="showGuideModal = true">
-                <Icon name="book" size="md" class="mr-2" />
+              </Button>
+              <!--
+                Icon-only, so the name lives in `aria-label`/`title`. `loading`
+                keeps the box and overlays a spinner rather than spinning the
+                glyph, and it already implies `disabled` + `aria-busy`.
+              -->
+              <Button
+                variant="outline"
+                size="md"
+                :loading="loadingKeys || loadingJobs"
+                :title="t('common.refresh')"
+                :aria-label="t('common.refresh')"
+                @click="refreshPage"
+              >
+                <template #icon>
+                  <Icon name="refresh" size="sm" />
+                </template>
+              </Button>
+              <Button variant="outline" size="md" @click="showGuideModal = true">
+                <template #icon>
+                  <Icon name="book" size="sm" />
+                </template>
                 {{ t('batchImage.actions.usageGuide') }}
-              </button>
-              <button type="button" class="btn btn-primary" @click="openCreateModal">
-                <Icon name="plus" size="md" class="mr-2" />
+              </Button>
+              <!-- The one accent-filled control on the page. -->
+              <Button tone="accent" variant="solid" size="md" @click="openCreateModal">
+                <template #icon>
+                  <Icon name="plus" size="sm" />
+                </template>
                 {{ t('batchImage.actions.createJob') }}
-              </button>
+              </Button>
             </div>
           </div>
 
           <div
             v-if="selectedJobIds.size"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+            class="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-surface px-3 py-2"
           >
             <i18n-t
               keypath="batchImage.list.selectedJobs"
               tag="span"
               scope="global"
               :plural="selectedJobIds.size"
-              class="text-sm text-gray-600 dark:text-gray-300"
+              class="text-xs text-ink-secondary"
             >
               <template #count>
-                <span class="font-medium text-gray-900 dark:text-white">{{ selectedJobIds.size }}</span>
+                <span class="font-mono font-medium tabular-nums text-ink">{{ selectedJobIds.size }}</span>
               </template>
             </i18n-t>
             <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                :disabled="bulkDownloading || selectedDownloadableRows.length === 0"
+              <Button
+                variant="outline"
+                size="sm"
+                :loading="bulkDownloading"
+                :disabled="selectedDownloadableRows.length === 0"
                 @click="downloadSelectedJobs"
               >
-                <Icon :name="bulkDownloading ? 'refresh' : 'download'" size="sm" class="mr-1.5" :class="bulkDownloading ? 'animate-spin' : ''" />
+                <template #icon>
+                  <Icon name="download" size="xs" />
+                </template>
                 {{ t('batchImage.actions.downloadSelected') }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
-                :disabled="bulkDeleting"
+              </Button>
+              <Button
+                variant="outline"
+                tone="danger"
+                size="sm"
+                :loading="bulkDeleting"
                 @click="deleteSelectedJobs"
               >
-                <Icon :name="bulkDeleting ? 'refresh' : 'trash'" size="sm" class="mr-1.5" :class="bulkDeleting ? 'animate-spin' : ''" />
+                <template #icon>
+                  <Icon name="trash" size="xs" />
+                </template>
                 {{ t('batchImage.actions.deleteRecords') }}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -82,12 +125,21 @@
           :expandable-actions="false"
           row-key="id"
         >
+          <!--
+            The hand-rolled `select` column stays instead of DataTable's own
+            `selectable` prop: DataTable pins columns by index and treats
+            `columns[0].key === 'select'` as the signal to pin the first TWO
+            columns, so a native checkbox column (which it does not give a
+            `sticky-col` class) would scroll out from under the pinned task
+            name. What was missing here was the accessible name, not the column.
+          -->
           <template #header-select>
             <input
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              class="ds-focus-inset h-4 w-4 rounded-sm border-line-strong bg-surface text-accent"
               :checked="allVisibleSelected"
               :indeterminate="someVisibleSelected"
+              :aria-label="t('common.selectAll')"
               @change="toggleAllVisible(($event.target as HTMLInputElement).checked)"
             />
           </template>
@@ -95,132 +147,178 @@
           <template #cell-select="{ row }">
             <input
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              class="ds-focus-inset h-4 w-4 rounded-sm border-line-strong bg-surface text-accent"
               :checked="selectedJobIds.has(row.id)"
+              :aria-label="row.task_name || defaultTaskName(row.created_at)"
               @change="toggleJobSelection(row.id, ($event.target as HTMLInputElement).checked)"
               @click.stop
             />
           </template>
 
           <template #cell-id="{ row }">
-	            <div class="flex w-[220px] items-start gap-1" :class="row.is_child ? 'pl-6' : ''">
-	              <button
-	                v-if="row.child_count > 0 && !row.is_child"
-	                type="button"
-	                class="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
-	                :title="expandedParentIds.has(row.id) ? t('batchImage.list.collapseChildren') : t('batchImage.list.expandChildren', { n: row.child_count }, row.child_count)"
-	                @click.stop="toggleChildRows(row.id)"
-	              >
-	                <Icon :name="expandedParentIds.has(row.id) ? 'chevronDown' : 'chevronRight'" size="xs" />
-	              </button>
-	              <span v-else class="w-6 flex-shrink-0" />
-	              <button type="button" class="min-w-0 flex-1 rounded-lg py-1 text-left transition-colors hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:hover:bg-dark-700" @click="selectJob(row.id)">
-	                <span
-	                  class="flex min-w-0 items-center gap-2 text-sm font-medium"
-	                  :class="row.task_name ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
+            <div class="flex w-[240px] items-start gap-1" :class="row.is_child ? 'pl-5' : ''">
+              <button
+                v-if="row.child_count > 0 && !row.is_child"
+                type="button"
+                class="ds-focus-inset mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-sm text-ink-tertiary transition-colors duration-fast hover:bg-surface-hover hover:text-ink"
+                :title="childToggleLabel(row)"
+                :aria-label="childToggleLabel(row)"
+                :aria-expanded="expandedParentIds.has(row.id)"
+                @click.stop="toggleChildRows(row.id)"
+              >
+                <Icon :name="expandedParentIds.has(row.id) ? 'chevronDown' : 'chevronRight'" size="xs" />
+              </button>
+              <span v-else class="w-5 flex-shrink-0" aria-hidden="true" />
+              <button
+                type="button"
+                class="ds-focus-inset -mx-1 min-w-0 flex-1 rounded-sm px-1 py-0.5 text-left transition-colors duration-fast hover:bg-surface-hover"
+                @click="selectJob(row.id)"
+              >
+                <span
+                  class="flex min-w-0 items-center gap-1.5 text-sm font-medium"
+                  :class="row.task_name ? 'text-ink' : 'text-ink-tertiary'"
                 >
                   <span class="min-w-0 truncate">{{ row.task_name || defaultTaskName(row.created_at) }}</span>
-                  <span v-if="row.child_count > 0 && !row.is_child" class="flex-shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-normal text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                  <!-- Structure, not status: a subtask marker gets no hue. -->
+                  <Badge v-if="row.child_count > 0 && !row.is_child" tone="neutral" mono>
                     {{ t('batchImage.list.childCount', { n: row.child_count }, row.child_count) }}
-                  </span>
-                  <span v-if="row.is_child" class="flex-shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                  </Badge>
+                  <Badge v-if="row.is_child" tone="neutral">
                     {{ t('batchImage.list.childBadge') }}
-                  </span>
-	                </span>
-	                <span class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-	                  <span>{{ formatDate(row.created_at) }}</span>
-	                </span>
-	              </button>
-	            </div>
-	          </template>
-
-          <template #cell-model="{ row }">
-	            <div class="mx-auto max-w-[180px] text-center">
-	              <p class="truncate text-sm text-gray-700 dark:text-gray-300" :title="row.model">{{ row.model }}</p>
-	            </div>
-	          </template>
-
-          <template #cell-api_key_name="{ value }">
-            <span class="block truncate text-center text-sm text-gray-700 dark:text-gray-300">
-              {{ value || t('batchImage.list.keyNotRecorded') }}
-            </span>
-          </template>
-
-          <template #cell-status="{ row }">
-            <div class="flex justify-center">
-              <span :class="statusBadgeClass(displayJob(row))" class="badge">
-                {{ statusLabel(displayJob(row)) }}
-              </span>
+                  </Badge>
+                </span>
+                <span class="mt-0.5 block font-mono text-2xs tabular-nums text-ink-tertiary">
+                  {{ formatDate(row.created_at) }}
+                </span>
+              </button>
             </div>
           </template>
 
+          <!-- A model name is an identifier, not a quantity: mono, never NumCell. -->
+          <template #cell-model="{ row }">
+            <p class="max-w-[180px] truncate font-mono text-xs text-ink-secondary" :title="row.model">
+              {{ row.model }}
+            </p>
+          </template>
+
+          <template #cell-api_key_name="{ value }">
+            <span v-if="value" class="block truncate text-sm text-ink-secondary">{{ value }}</span>
+            <span v-else class="text-xs text-ink-tertiary">{{ t('batchImage.list.keyNotRecorded') }}</span>
+          </template>
+
+          <!--
+            Dot + word, never a tinted row or a bare colour. In-flight states are
+            `info`, not the accent — the accent means interaction and selection
+            in this system and may not carry status.
+          -->
+          <template #cell-status="{ row }">
+            <StatusDot
+              :tone="statusTone(displayJob(row))"
+              :label="statusLabel(displayJob(row))"
+              :muted="statusTone(displayJob(row)) === 'neutral'"
+            />
+          </template>
+
+          <!--
+            Success is the unremarkable case and spends no colour; only a
+            non-zero failure count does.
+          -->
           <template #cell-counts="{ row }">
-            <div class="flex items-center justify-center gap-2 text-sm tabular-nums">
-              <span class="text-emerald-600 dark:text-emerald-300">{{ displayJob(row).success_count }}</span>
-              <span class="text-gray-300 dark:text-dark-500">/</span>
-              <span :class="displayJob(row).fail_count > 0 ? 'text-red-600 dark:text-red-300' : 'text-gray-400 dark:text-gray-500'">{{ displayJob(row).fail_count }}</span>
-              <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('batchImage.list.totalCount', { n: displayJob(row).item_count }) }}</span>
+            <div class="flex items-baseline justify-end gap-1.5">
+              <NumCell :value="displayJob(row).success_count" />
+              <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+              <NumCell
+                :value="displayJob(row).fail_count"
+                :tone="displayJob(row).fail_count > 0 ? 'danger' : 'neutral'"
+              />
+              <i18n-t
+                keypath="batchImage.list.totalCount"
+                tag="span"
+                scope="global"
+                class="text-2xs text-ink-tertiary"
+              >
+                <template #n>
+                  <NumCell :value="displayJob(row).item_count" />
+                </template>
+              </i18n-t>
             </div>
           </template>
 
           <template #cell-cost="{ row }">
-            <span class="block text-center text-sm text-gray-700 dark:text-gray-300">
-              {{ costLabel(displayJob(row)) }}
-            </span>
+            <i18n-t
+              v-if="costIsHold(displayJob(row))"
+              keypath="batchImage.detail.holdCost"
+              tag="span"
+              scope="global"
+              class="inline-flex items-baseline gap-1 text-2xs text-ink-tertiary"
+            >
+              <template #amount>
+                <NumCell :value="displayJob(row).hold_amount" :precision="2" :unit="CURRENCY" />
+              </template>
+            </i18n-t>
+            <NumCell v-else :value="settledCost(displayJob(row))" :precision="2" :unit="CURRENCY" />
           </template>
 
+          <!--
+            A timestamp is not a measurement, so it is mono/tabular rather than a
+            NumCell — `Intl.NumberFormat` would turn it into an en dash.
+          -->
           <template #cell-downloaded="{ row }">
-            <span class="block text-center text-sm" :class="row.downloaded_at ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'">
-              {{ row.downloaded_at ? formatDate(row.downloaded_at) : t('batchImage.list.notDownloaded') }}
+            <span v-if="row.downloaded_at" class="font-mono text-xs tabular-nums text-ink-secondary">
+              {{ formatDate(row.downloaded_at) }}
             </span>
+            <span v-else class="text-xs text-ink-tertiary">{{ t('batchImage.list.notDownloaded') }}</span>
           </template>
 
-	          <template #cell-actions="{ row }">
-	            <div class="flex items-center justify-center gap-1">
-              <button
-                type="button"
-                class="batch-row-action flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+          <template #cell-actions="{ row }">
+            <div class="flex items-center justify-end gap-1">
+              <Button
+                variant="ghost"
+                size="xs"
                 :title="t('batchImage.actions.viewDetail')"
-                @click="selectJob(row.id)"
+                @click.stop="selectJob(row.id)"
               >
-                <Icon name="eye" size="sm" />
-                <span class="text-xs">{{ t('common.view') }}</span>
-              </button>
-              <button
-                type="button"
-                class="batch-row-action flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
-                :class="canDownload(row) ? 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400' : 'text-gray-300 dark:text-dark-500'"
+                <template #icon>
+                  <Icon name="eye" size="xs" />
+                </template>
+                {{ t('common.view') }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                :loading="isDownloadingJob(row.id)"
                 :disabled="!canDownload(row) || downloading"
                 :title="t('batchImage.actions.downloadZip')"
-                @click="downloadJob(row)"
+                @click.stop="downloadJob(row)"
               >
-                <Icon
-                  :name="isDownloadingJob(row.id) ? 'refresh' : 'download'"
-	                  size="sm"
-	                  :class="isDownloadingJob(row.id) ? 'animate-spin' : ''"
-	                />
-                <span class="text-xs">{{ t('batchImage.actions.download') }}</span>
-	              </button>
-              <div v-if="canRetry(row) || canDeleteRecord(row)">
-                <button
-                  type="button"
-                  class="batch-row-action flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:hover:bg-dark-700 dark:hover:text-white"
-                  :class="{ 'bg-gray-100 text-gray-900 dark:bg-dark-700 dark:text-white': openMoreJobId === row.id }"
-                  :title="t('batchImage.actions.moreActions')"
-                  @click.stop="toggleMoreMenu(row, $event)"
-                >
-                  <Icon name="more" size="sm" />
-                  <span class="text-xs">{{ t('common.more') }}</span>
-                </button>
-              </div>
-	            </div>
-	          </template>
+                <template #icon>
+                  <Icon name="download" size="xs" />
+                </template>
+                {{ t('batchImage.actions.download') }}
+              </Button>
+              <Button
+                v-if="canRetry(row) || canDeleteRecord(row)"
+                variant="ghost"
+                size="xs"
+                :title="t('batchImage.actions.moreActions')"
+                aria-haspopup="true"
+                :aria-expanded="openMoreJobId === row.id"
+                :class="openMoreJobId === row.id ? 'bg-surface-active text-ink' : ''"
+                @click.stop="toggleMoreMenu(row, $event)"
+              >
+                <template #icon>
+                  <Icon name="more" size="xs" />
+                </template>
+                {{ t('common.more') }}
+              </Button>
+            </div>
+          </template>
 
+          <!-- Type-led. The 48px decorative glyph carried no information. -->
           <template #empty>
-            <div class="flex min-h-[260px] flex-col items-center justify-center py-6 md:min-h-[300px]">
-              <Icon name="sparkles" size="xl" class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500" />
-              <p class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('batchImage.list.empty') }}</p>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <div class="flex min-h-[240px] flex-col items-center justify-center px-4 py-10 text-center">
+              <p class="text-sm font-medium text-ink">{{ t('batchImage.list.empty') }}</p>
+              <p class="mt-1.5 max-w-sm text-xs leading-5 text-ink-tertiary">
                 {{ t('batchImage.list.emptyHint') }}
               </p>
             </div>
@@ -231,58 +329,68 @@
       <template #pagination>
         <div
           v-if="visibleBatchJobs.length > 0 || pagination.page > 1"
-          class="flex flex-col gap-3 border-t border-gray-200 bg-white px-4 py-3 dark:border-dark-700 dark:bg-dark-800 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+          class="flex flex-col gap-3 border-t border-line bg-surface px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between"
         >
-          <div class="flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-secondary">
+            <!-- A page number is an ordinal, not a measurement: mono, not NumCell. -->
             <i18n-t keypath="batchImage.pagination.pageNumber" tag="span" scope="global">
               <template #page>
-                <span class="font-medium">{{ pagination.page }}</span>
+                <span class="font-mono font-medium tabular-nums text-ink">{{ pagination.page }}</span>
               </template>
             </i18n-t>
             <i18n-t keypath="batchImage.pagination.pageItems" tag="span" scope="global">
               <template #count>
-                <span class="font-medium">{{ visibleBatchJobs.length }}</span>
+                <NumCell :value="visibleBatchJobs.length" />
               </template>
             </i18n-t>
             <div class="flex items-center gap-2">
-              <span>{{ t('pagination.perPage') }}</span>
+              <span class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ t('pagination.perPage') }}
+              </span>
               <Select
                 v-model="pagination.page_size"
                 :options="batchPageSizeOptions"
-                class="w-24"
+                :aria-label="t('pagination.perPage')"
+                class="w-20"
                 @change="handlePageSizeChange"
               />
             </div>
           </div>
           <div class="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
+            <Button
+              variant="outline"
+              size="sm"
               :disabled="pagination.page <= 1 || loadingJobs"
               @click="handlePageChange(pagination.page - 1)"
             >
-              <Icon name="chevronLeft" size="sm" class="mr-1" />
+              <template #icon>
+                <Icon name="chevronLeft" size="xs" />
+              </template>
               {{ t('pagination.previous') }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               :disabled="!pagination.has_more || loadingJobs"
               @click="handlePageChange(pagination.page + 1)"
             >
               {{ t('pagination.next') }}
-              <Icon name="chevronRight" size="sm" class="ml-1" />
-            </button>
+              <template #trailing>
+                <Icon name="chevronRight" size="xs" />
+              </template>
+            </Button>
           </div>
         </div>
       </template>
     </TablePageLayout>
 
+    <!-- Genuinely floating, so elevation is earned: one popover shadow, no ring. -->
     <Teleport to="body">
       <div
         v-if="openMoreJobId"
-        class="fixed z-[9999] w-44 overflow-hidden rounded-xl bg-white py-1 text-sm shadow-lg ring-1 ring-black/5 dark:bg-dark-800 dark:ring-white/10"
+        class="fixed z-[9999] w-44 overflow-hidden rounded border border-line bg-surface-raised py-1 shadow-popover"
         :style="moreMenuStyle"
+        role="menu"
         @click.stop
       >
         <template v-for="job in batchJobs" :key="job.id">
@@ -290,21 +398,27 @@
             <button
               v-if="canRetry(job)"
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-700 transition-colors hover:bg-amber-50 hover:text-amber-700 disabled:opacity-60 dark:text-gray-200 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
+              role="menuitem"
+              class="ds-focus-inset flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-ink-secondary transition-colors duration-fast hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="retryingBatchId === job.id"
               @click="retryFailedJob(job)"
             >
-              <Icon name="refresh" size="sm" :class="retryingBatchId === job.id ? 'animate-spin' : ''" />
+              <Icon name="refresh" size="xs" :class="retryingBatchId === job.id ? 'animate-spin' : ''" />
               {{ t('batchImage.actions.retryFailedItems') }}
             </button>
             <button
               v-if="canDeleteRecord(job)"
               type="button"
-              class="flex w-full items-center gap-2 px-3 py-2 text-left text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-900/20"
+              role="menuitem"
+              class="ds-focus-inset flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-danger transition-colors duration-fast hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="deletingBatchId === job.id"
               @click="deleteJob(job)"
             >
-              <Icon :name="deletingBatchId === job.id ? 'refresh' : 'trash'" size="sm" :class="deletingBatchId === job.id ? 'animate-spin' : ''" />
+              <Icon
+                :name="deletingBatchId === job.id ? 'refresh' : 'trash'"
+                size="xs"
+                :class="deletingBatchId === job.id ? 'animate-spin' : ''"
+              />
               {{ t('batchImage.actions.deleteRecords') }}
             </button>
           </template>
@@ -315,222 +429,294 @@
     <Teleport to="body">
       <div
         v-if="promptPopover.visible"
-        class="batch-prompt-popover fixed z-[9999] rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-800 shadow-xl ring-1 ring-black/5 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-100 dark:ring-white/10"
+        class="batch-prompt-popover fixed z-[9999] rounded border border-line bg-surface-raised p-3 shadow-popover"
         :style="promptPopover.style"
         @mouseenter="cancelPromptPopoverClose"
         @mouseleave="schedulePromptPopoverClose"
       >
-        <div class="mb-2 flex items-center justify-between gap-3">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.promptPopover.title') }}</span>
-          <button
-            type="button"
-            class="rounded-md px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:text-primary-300 dark:hover:bg-primary-900/20"
-            @click="copyPromptPopover"
-          >
+        <div class="mb-2 flex items-center justify-between gap-3 border-b border-line-subtle pb-2">
+          <span class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+            {{ t('batchImage.promptPopover.title') }}
+          </span>
+          <Button variant="quiet" tone="accent" size="xs" @click="copyPromptPopover">
             {{ t('common.copy') }}
-          </button>
+          </Button>
         </div>
-        <p class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words leading-6 selection:bg-primary-100 selection:text-primary-900 dark:selection:bg-primary-900/60 dark:selection:text-primary-100">
+        <!-- The prompt is what the reader came for: full text, own scroll box. -->
+        <p class="max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-ink-secondary">
           {{ promptPopover.text }}
         </p>
       </div>
     </Teleport>
 
     <BaseDialog :show="!!currentJob" :title="t('batchImage.detail.title')" width="extra-wide" @close="closeDetail">
-      <div v-if="currentJob" class="space-y-4">
-        <div class="rounded-lg border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/40">
-          <div class="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="min-w-0 text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.status') }}</p>
-              <div class="mt-1 flex justify-center">
-                <span :class="statusBadgeClass(currentDisplayJob || currentJob)" class="badge whitespace-nowrap">
-                  {{ statusLabel(currentDisplayJob || currentJob) }}
-                </span>
-              </div>
-            </div>
-            <div class="min-w-0 text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ hasChildJobs(currentJob.id) ? t('batchImage.detail.aggregatedResult') : t('batchImage.detail.result') }}</p>
-              <p class="mt-1 flex items-center justify-center gap-2 font-medium tabular-nums">
-              <span class="text-emerald-600 dark:text-emerald-300">{{ (currentDisplayJob || currentJob).success_count }}</span>
-              <span class="text-gray-300 dark:text-dark-500">/</span>
-              <span :class="(currentDisplayJob || currentJob).fail_count > 0 ? 'text-red-600 dark:text-red-300' : 'text-gray-400 dark:text-gray-500'">{{ (currentDisplayJob || currentJob).fail_count }}</span>
-            </p>
-            </div>
-            <div class="min-w-0 text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.cost') }}</p>
-              <p class="mt-1 truncate font-medium text-gray-900 dark:text-white">{{ costLabel(currentDisplayJob || currentJob) }}</p>
-            </div>
-            <div class="min-w-0 text-center">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.downloadStatus') }}</p>
-              <p class="mt-1 truncate font-medium text-gray-900 dark:text-white">
-              {{ currentJob.downloaded_at ? formatDate(currentJob.downloaded_at) : t('batchImage.list.notDownloaded') }}
-            </p>
+      <div v-if="currentJob" class="space-y-6">
+        <!--
+          A definition list, not four centred cards. Labels are the small
+          uppercase rank; the numbers are the largest thing in the row.
+        -->
+        <dl class="grid gap-x-8 gap-y-4 border border-line bg-surface-sunken px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="min-w-0">
+            <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+              {{ t('common.status') }}
+            </dt>
+            <dd class="mt-1.5">
+              <StatusDot
+                :tone="statusTone(currentDisplayJob || currentJob)"
+                :label="statusLabel(currentDisplayJob || currentJob)"
+              />
+            </dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+              {{ hasChildJobs(currentJob.id) ? t('batchImage.detail.aggregatedResult') : t('batchImage.detail.result') }}
+            </dt>
+            <dd class="mt-1.5 flex items-baseline gap-1.5">
+              <NumCell :value="(currentDisplayJob || currentJob).success_count" />
+              <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+              <NumCell
+                :value="(currentDisplayJob || currentJob).fail_count"
+                :tone="(currentDisplayJob || currentJob).fail_count > 0 ? 'danger' : 'neutral'"
+              />
+            </dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+              {{ t('batchImage.detail.cost') }}
+            </dt>
+            <dd class="mt-1.5">
+              <i18n-t
+                v-if="costIsHold(currentDisplayJob || currentJob)"
+                keypath="batchImage.detail.holdCost"
+                tag="span"
+                scope="global"
+                class="inline-flex items-baseline gap-1 text-2xs text-ink-tertiary"
+              >
+                <template #amount>
+                  <NumCell
+                    :value="(currentDisplayJob || currentJob).hold_amount"
+                    :precision="2"
+                    :unit="CURRENCY"
+                  />
+                </template>
+              </i18n-t>
+              <NumCell
+                v-else
+                :value="settledCost(currentDisplayJob || currentJob)"
+                :precision="2"
+                :unit="CURRENCY"
+              />
+            </dd>
+          </div>
+          <div class="min-w-0">
+            <dt class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+              {{ t('batchImage.detail.downloadStatus') }}
+            </dt>
+            <dd
+              v-if="currentJob.downloaded_at"
+              class="mt-1.5 truncate font-mono text-xs tabular-nums text-ink"
+            >
+              {{ formatDate(currentJob.downloaded_at) }}
+            </dd>
+            <dd v-else class="mt-1.5 text-xs text-ink-tertiary">
+              {{ t('batchImage.list.notDownloaded') }}
+            </dd>
+          </div>
+        </dl>
+
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-2">
+            <h3 class="text-sm font-semibold text-ink">{{ t('batchImage.detail.items') }}</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              :loading="refreshing || loadingItems"
+              @click="refreshDetail"
+            >
+              <template #icon>
+                <Icon name="refresh" size="xs" />
+              </template>
+              {{ t('common.refresh') }}
+            </Button>
+          </div>
+
+          <!--
+            `.table` rather than DataTable. DataTable owns a virtualizer that
+            derives its scroll height from the flex chain of `TablePageLayout`;
+            inside a dialog body that chain does not exist, and this table also
+            needs a fixed percentage colgroup plus a thumbnail cell taller than
+            the estimated row height. `.table` is already tokenized and carries
+            the same hairline/header/no-zebra rules with none of that machinery.
+          -->
+          <div class="table-container mt-4">
+            <table v-if="items.length" class="table min-w-[860px] table-fixed">
+              <colgroup>
+                <col class="w-[18%]" />
+                <col class="w-[34%]" />
+                <col class="w-[12%]" />
+                <col class="w-[10%]" />
+                <col class="w-[26%]" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" class="is-numeric">Custom ID</th>
+                  <th scope="col">Prompt</th>
+                  <th scope="col">{{ t('common.status') }}</th>
+                  <th scope="col">{{ t('batchImage.detail.preview') }}</th>
+                  <th scope="col">{{ t('batchImage.detail.result') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!--
+                  A superseded row is dimmed, never tinted. Tinting rows is the
+                  second signal that competes with cell-level status, and the row
+                  already says "Recovered by retry" in words.
+                -->
+                <tr v-for="item in items" :key="itemPreviewKey(item)">
+                  <td class="is-numeric">
+                    <span
+                      class="block min-w-0 truncate"
+                      :class="isRecoveredOriginalFailure(item) ? 'text-ink-disabled' : 'text-ink'"
+                      :title="item.custom_id"
+                    >
+                      {{ item.custom_id }}
+                    </span>
+                  </td>
+                  <td :class="isRecoveredOriginalFailure(item) ? 'text-ink-disabled' : 'text-ink-secondary'">
+                    <div
+                      class="batch-prompt-trigger cursor-default truncate rounded-sm text-sm"
+                      tabindex="0"
+                      @pointerenter="schedulePromptPopoverOpen($event, item.prompt_preview || '-')"
+                      @pointerleave="schedulePromptPopoverClose"
+                      @mouseenter="schedulePromptPopoverOpen($event, item.prompt_preview || '-')"
+                      @mouseleave="schedulePromptPopoverClose"
+                      @click="showPromptPopover($event, item.prompt_preview || '-')"
+                      @focus="showPromptPopover($event, item.prompt_preview || '-')"
+                      @focusin="showPromptPopover($event, item.prompt_preview || '-')"
+                      @blur="schedulePromptPopoverClose"
+                    >
+                      {{ item.prompt_preview || '–' }}
+                    </div>
+                  </td>
+                  <td>
+                    <StatusDot
+                      :tone="itemStatusTone(item)"
+                      :label="itemDisplayStatusLabel(item)"
+                      :muted="itemStatusTone(item) === 'neutral'"
+                    />
+                  </td>
+                  <td>
+                    <div class="h-10 w-10 overflow-hidden rounded-sm border border-line-subtle bg-surface-sunken">
+                      <button
+                        v-if="itemPreviewUrls[itemPreviewKey(item)] && !previewErrorIds.has(itemPreviewKey(item))"
+                        type="button"
+                        class="ds-focus-inset block h-full w-full overflow-hidden"
+                        :title="t('batchImage.detail.previewZoom', { id: item.custom_id })"
+                        :aria-label="t('batchImage.detail.previewZoom', { id: item.custom_id })"
+                        @click="openImagePreview(item)"
+                      >
+                        <img
+                          :src="itemPreviewUrls[itemPreviewKey(item)]"
+                          class="h-full w-full object-cover"
+                          alt=""
+                          @error="handlePreviewError(itemPreviewKey(item))"
+                        />
+                      </button>
+                      <button
+                        v-else-if="canLoadItemPreview(item)"
+                        type="button"
+                        class="ds-focus-inset flex h-full w-full items-center justify-center text-ink-tertiary transition-colors duration-fast hover:bg-surface-hover hover:text-ink disabled:cursor-wait disabled:opacity-40"
+                        :disabled="previewLoadingIds.has(itemPreviewKey(item))"
+                        :title="previewButtonLabel(item)"
+                        :aria-label="previewButtonLabel(item)"
+                        @click="loadItemPreview(item)"
+                      >
+                        <Icon
+                          :name="previewLoadingIds.has(itemPreviewKey(item)) ? 'refresh' : 'eye'"
+                          size="xs"
+                          :class="previewLoadingIds.has(itemPreviewKey(item)) ? 'animate-spin' : ''"
+                        />
+                      </button>
+                      <div
+                        v-else
+                        class="flex h-full w-full items-center justify-center text-ink-disabled"
+                        :title="item.image_count > 0 ? t('batchImage.detail.previewUnavailable') : t('batchImage.detail.noImage')"
+                      >
+                        <Icon name="document" size="xs" />
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <Badge :tone="itemResultTone(item)" class="max-w-full">
+                      <span class="min-w-0 truncate" :title="itemResultLabel(item)">
+                        {{ itemResultLabel(item) }}
+                      </span>
+                    </Badge>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div v-else class="bg-surface-sunken px-4 py-10 text-center">
+              <p class="text-sm font-medium text-ink">
+                {{ loadingItems ? t('batchImage.detail.loadingItems') : t('batchImage.detail.noItems') }}
+              </p>
+              <p v-if="!loadingItems" class="mx-auto mt-1.5 max-w-md text-xs leading-5 text-ink-tertiary">
+                {{ t('batchImage.detail.noItemsHint') }}
+              </p>
             </div>
           </div>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('batchImage.detail.items') }}</h3>
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="refreshing || loadingItems" @click="refreshDetail">
-            <Icon name="refresh" size="sm" class="mr-1.5" :class="refreshing || loadingItems ? 'animate-spin' : ''" />
-            {{ t('common.refresh') }}
-          </button>
-        </div>
-
-        <div v-if="items.length" class="overflow-x-auto rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-          <table class="w-full min-w-[860px] table-fixed divide-y divide-gray-200 text-sm dark:divide-dark-700">
-            <colgroup>
-              <col class="w-[18%]" />
-              <col class="w-[34%]" />
-              <col class="w-[12%]" />
-              <col class="w-[10%]" />
-              <col class="w-[26%]" />
-            </colgroup>
-            <thead class="bg-gray-50 dark:bg-dark-800/80">
-              <tr>
-                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">Custom ID</th>
-                <th class="px-3 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-400">Prompt</th>
-                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('common.status') }}</th>
-                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.preview') }}</th>
-                <th class="px-3 py-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400">{{ t('batchImage.detail.result') }}</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr
-                v-for="item in items"
-                :key="itemPreviewKey(item)"
-                class="align-middle"
-                :class="detailItemRowClass(item)"
-              >
-                <td class="px-3 py-2.5 text-center">
-                  <span
-                    class="block min-w-0 truncate font-mono text-sm"
-                    :class="isRecoveredOriginalFailure(item) ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'"
-                    :title="item.custom_id"
-                  >
-                    {{ item.custom_id }}
-                  </span>
-                </td>
-                <td class="px-3 py-2.5 text-left" :class="isRecoveredOriginalFailure(item) ? 'text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'">
-                  <div
-                    class="batch-prompt-trigger cursor-default truncate rounded px-1 text-sm leading-6 focus:outline-none"
-                    tabindex="0"
-                    @pointerenter="schedulePromptPopoverOpen($event, item.prompt_preview || '-')"
-                    @pointerleave="schedulePromptPopoverClose"
-                    @mouseenter="schedulePromptPopoverOpen($event, item.prompt_preview || '-')"
-                    @mouseleave="schedulePromptPopoverClose"
-                    @click="showPromptPopover($event, item.prompt_preview || '-')"
-                    @focus="showPromptPopover($event, item.prompt_preview || '-')"
-                    @focusin="showPromptPopover($event, item.prompt_preview || '-')"
-                    @blur="schedulePromptPopoverClose"
-                  >
-                    {{ item.prompt_preview || '-' }}
-                  </div>
-                </td>
-                <td class="px-3 py-2.5 text-center">
-                  <span :class="itemDisplayStatusBadgeClass(item)" class="badge max-w-full truncate whitespace-nowrap" :title="itemDisplayStatusLabel(item)">
-                    {{ itemDisplayStatusLabel(item) }}
-                  </span>
-                </td>
-                <td class="px-3 py-2.5 text-center">
-                  <div class="mx-auto h-12 w-12 overflow-hidden rounded-md border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
-                    <button
-                      v-if="itemPreviewUrls[itemPreviewKey(item)] && !previewErrorIds.has(itemPreviewKey(item))"
-                      type="button"
-                      class="block h-full w-full overflow-hidden"
-                      :title="t('batchImage.detail.previewZoom', { id: item.custom_id })"
-                      @click="openImagePreview(item)"
-                    >
-                      <img
-                        :src="itemPreviewUrls[itemPreviewKey(item)]"
-                        class="h-full w-full object-cover"
-                        alt=""
-                        @error="handlePreviewError(itemPreviewKey(item))"
-                      />
-                    </button>
-                    <button
-                      v-else-if="canLoadItemPreview(item)"
-                      type="button"
-                      class="flex h-full w-full items-center justify-center text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:cursor-wait disabled:opacity-70 dark:text-gray-400 dark:hover:bg-dark-700"
-                      :disabled="previewLoadingIds.has(itemPreviewKey(item))"
-                      :title="previewErrorIds.has(itemPreviewKey(item)) ? t('batchImage.detail.previewReload') : t('batchImage.detail.previewLoad')"
-                      @click="loadItemPreview(item)"
-                    >
-                      <Icon :name="previewLoadingIds.has(itemPreviewKey(item)) ? 'refresh' : 'eye'" size="sm" :class="previewLoadingIds.has(itemPreviewKey(item)) ? 'animate-spin' : ''" />
-                    </button>
-                    <div v-else class="flex h-full w-full items-center justify-center text-gray-400" :title="item.image_count > 0 ? t('batchImage.detail.previewUnavailable') : t('batchImage.detail.noImage')">
-                      <Icon name="document" size="sm" />
-                    </div>
-                  </div>
-                </td>
-                <td class="px-3 py-2.5 text-center">
-                  <span
-                    class="inline-flex max-w-full items-center justify-center truncate rounded-md px-2.5 py-1 text-xs font-medium leading-5 ring-1 ring-inset"
-                    :class="itemResultClass(item)"
-                    :title="itemResultLabel(item)"
-                  >
-                    {{ itemResultLabel(item) }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-else class="rounded-lg border border-dashed border-gray-200 py-10 text-center dark:border-dark-700">
-          <Icon name="refresh" size="lg" class="mx-auto mb-3 text-gray-400" :class="loadingItems ? 'animate-spin' : ''" />
-          <p class="text-sm font-medium text-gray-700 dark:text-gray-200">
-            {{ loadingItems ? t('batchImage.detail.loadingItems') : t('batchImage.detail.noItems') }}
-          </p>
-          <p v-if="!loadingItems" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('batchImage.detail.noItemsHint') }}
-          </p>
         </div>
       </div>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
-	          <button type="button" class="btn btn-secondary" :disabled="!currentJob || !canCancel(currentJob) || cancelling" @click="cancelSelected">
-	            <Icon v-if="cancelling" name="refresh" size="sm" class="mr-2 animate-spin" />
-	            {{ t('batchImage.actions.cancelJob') }}
-	          </button>
-	          <button
-	            v-if="currentJob && currentDisplayJob && canRetry(currentDisplayJob)"
-	            type="button"
-	            class="btn btn-secondary inline-flex min-w-[116px] items-center justify-center"
-	            :disabled="retryingBatchId === currentJob.id"
-	            @click="retrySelected"
-	          >
-	            <Icon name="refresh" size="sm" class="mr-2" :class="currentJob && retryingBatchId === currentJob.id ? 'animate-spin' : ''" />
-	            {{ t('batchImage.actions.retryFailedItems') }}
-	          </button>
-	          <button
-            type="button"
-            class="btn btn-primary inline-flex min-w-[112px] items-center justify-center"
-            :disabled="!currentJob || !canDownload(currentJob) || downloading"
-            @click="downloadSelected"
-          >
-            <Icon
-              :name="currentJob && isDownloadingJob(currentJob.id) ? 'refresh' : 'download'"
-              size="sm"
-              class="mr-2"
-              :class="currentJob && isDownloadingJob(currentJob.id) ? 'animate-spin' : ''"
-            />
-            {{ t('batchImage.actions.downloadZip') }}
-          </button>
-        </div>
+        <Button
+          variant="outline"
+          size="md"
+          :loading="cancelling"
+          :disabled="!currentJob || !canCancel(currentJob)"
+          @click="cancelSelected"
+        >
+          {{ t('batchImage.actions.cancelJob') }}
+        </Button>
+        <Button
+          v-if="currentJob && currentDisplayJob && canRetry(currentDisplayJob)"
+          variant="outline"
+          size="md"
+          :loading="retryingBatchId === currentJob.id"
+          @click="retrySelected"
+        >
+          <template #icon>
+            <Icon name="refresh" size="xs" />
+          </template>
+          {{ t('batchImage.actions.retryFailedItems') }}
+        </Button>
+        <Button
+          tone="accent"
+          variant="solid"
+          size="md"
+          :loading="!!currentJob && isDownloadingJob(currentJob.id)"
+          :disabled="!currentJob || !canDownload(currentJob) || downloading"
+          @click="downloadSelected"
+        >
+          <template #icon>
+            <Icon name="download" size="xs" />
+          </template>
+          {{ t('batchImage.actions.downloadZip') }}
+        </Button>
       </template>
     </BaseDialog>
 
     <BaseDialog :show="!!previewImageItem" :title="previewImageItem?.custom_id || t('batchImage.imagePreview.title')" width="extra-wide" :z-index="60" @close="closeImagePreview">
       <div class="space-y-3">
-        <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+        <!-- `warn` is a status token and this is a genuine caveat, so it may carry hue. -->
+        <p class="rounded-sm border border-warn/40 bg-warn-tint px-3 py-2 text-xs leading-5 text-warn">
           {{ t('batchImage.imagePreview.notice') }}
-        </div>
-        <div class="flex min-h-[420px] items-center justify-center rounded-lg bg-gray-50 p-4 dark:bg-dark-900">
+        </p>
+        <div class="flex min-h-[420px] items-center justify-center border border-line bg-surface-sunken p-4">
           <img
             v-if="previewImageUrl"
             :src="previewImageUrl"
-            class="max-h-[70vh] max-w-full rounded-md object-contain"
+            class="max-h-[70vh] max-w-full rounded-sm object-contain"
             :alt="previewImageItem?.custom_id || ''"
           />
         </div>
@@ -538,84 +724,143 @@
     </BaseDialog>
 
     <BaseDialog :show="showCreateModal" :title="t('batchImage.create.title')" width="wide" @close="closeCreateModal">
-      <form class="space-y-5" @submit.prevent="submitJob">
-        <div class="grid gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="input-label">{{ t('batchImage.create.taskName') }}</label>
-            <input
-              v-model="form.taskName"
-              type="text"
-              maxlength="255"
-              class="input"
-              :placeholder="t('batchImage.create.taskNamePlaceholder')"
-            />
-          </div>
+      <form class="space-y-6" @submit.prevent="submitJob">
+        <!--
+          Every validated control is wrapped in FormField: it owns the id/`for`
+          pairing, the `aria-describedby`/`aria-invalid` wiring, and a reserved
+          message line so an error does not shove the rest of the form down.
+          Before this, three of the form's failure modes (no key, no model, too
+          many outputs) were only reachable as a toast — the field that caused
+          them said nothing.
+        -->
+        <div class="grid items-start gap-x-4 md:grid-cols-2">
+          <FormField
+            class="md:col-span-2"
+            :label="t('batchImage.create.taskName')"
+            :hint="t('batchImage.create.taskNamePlaceholder')"
+          >
+            <template #default="{ id, describedBy }">
+              <input
+                :id="id"
+                v-model="form.taskName"
+                type="text"
+                maxlength="255"
+                class="input"
+                :aria-describedby="describedBy"
+                :placeholder="t('batchImage.create.taskNamePlaceholder')"
+              />
+            </template>
+          </FormField>
 
-          <div class="md:col-span-2">
-            <label class="input-label">API Key</label>
-            <select v-model.number="form.apiKeyId" class="input" :disabled="loadingKeys">
-              <option :value="0">{{ loadingKeys ? t('batchImage.create.loadingKeys') : t('batchImage.create.selectKeyPlaceholder') }}</option>
-              <option v-for="key in geminiApiKeys" :key="key.id" :value="key.id">
-                {{ key.name }} · {{ key.group?.name || 'Gemini' }}
-              </option>
-            </select>
-            <p v-if="!loadingKeys && geminiApiKeys.length === 0" class="input-hint text-amber-600 dark:text-amber-400">
-              {{ t('batchImage.create.noKeysHint') }}
-            </p>
-          </div>
+          <FormField
+            class="md:col-span-2"
+            :label="t('batchImage.columns.apiKey')"
+            required
+            :error="formErrors.apiKey"
+            :hint="noKeysHint"
+          >
+            <!--
+              `aria-label` is passed even though FormField already renders a
+              `<label for>`: Select falls back to a hardcoded English
+              "Select option" when the prop is absent, and an `aria-label` on the
+              trigger overrides the associated label rather than adding to it.
+            -->
+            <template #default="{ id, describedBy, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.apiKeyId"
+                :options="apiKeySelectOptions"
+                :disabled="loadingKeys"
+                :error="invalid"
+                :aria-label="t('batchImage.columns.apiKey')"
+                :aria-describedby="describedBy"
+                @update:model-value="onCreateApiKeyChange"
+              />
+            </template>
+          </FormField>
 
-          <div>
-            <label class="input-label">{{ t('batchImage.create.model') }}</label>
-            <select v-model="form.model" class="input" :disabled="loadingModels || availableBatchImageModels.length === 0">
-              <option v-if="loadingModels" value="">{{ batchImageText('loadingModels') }}</option>
-              <option v-else-if="availableBatchImageModels.length === 0" value="">{{ batchImageText('noModels') }}</option>
-              <option v-for="model in availableBatchImageModels" :key="model.value" :value="model.value">
-                {{ model.label }}
-              </option>
-            </select>
-            <p v-if="modelLoadError" class="input-hint text-amber-600 dark:text-amber-400">
-              {{ modelLoadError }}
-            </p>
-            <p v-else-if="selectedApiKey && !loadingModels && availableBatchImageModels.length === 0" class="input-hint text-amber-600 dark:text-amber-400">
-              {{ batchImageText('noModelsHint') }}
-            </p>
-          </div>
+          <FormField
+            :label="t('batchImage.create.model')"
+            required
+            :error="formErrors.model || modelLoadError"
+            :hint="modelHint"
+          >
+            <template #default="{ id, describedBy, invalid }">
+              <Select
+                :id="id"
+                :model-value="form.model"
+                :options="modelSelectOptions"
+                :disabled="loadingModels || availableBatchImageModels.length === 0"
+                :error="invalid"
+                :aria-label="t('batchImage.create.model')"
+                :aria-describedby="describedBy"
+                :placeholder="loadingModels ? batchImageText('loadingModels') : batchImageText('noModels')"
+                @update:model-value="onCreateModelChange"
+              />
+            </template>
+          </FormField>
 
-          <div>
-            <label class="input-label">{{ t('batchImage.create.imageSize') }}</label>
-            <div class="input flex items-center bg-gray-50 text-gray-600 dark:bg-dark-900 dark:text-gray-300">
+          <FormField :label="t('batchImage.create.outputFormat')">
+            <template #default="{ id, describedBy }">
+              <Select
+                :id="id"
+                :model-value="form.responseMimeType"
+                :options="outputFormatOptions"
+                :aria-label="t('batchImage.create.outputFormat')"
+                :aria-describedby="describedBy"
+                @update:model-value="onOutputFormatChange"
+              />
+            </template>
+          </FormField>
+
+          <!--
+            Read-only facts, so they are not inputs. Rendering them as a disabled
+            `.input` claimed an interaction that does not exist.
+          -->
+          <div class="flex flex-col">
+            <span class="mb-1.5 text-xs font-medium text-ink-secondary">
+              {{ t('batchImage.create.imageSize') }}
+            </span>
+            <p class="flex h-9 items-center border border-line-subtle bg-surface-sunken px-3 font-mono text-sm tabular-nums text-ink">
               1K
-            </div>
+            </p>
             <p class="input-hint">{{ t('batchImage.create.imageSizeHint') }}</p>
           </div>
 
-          <div>
-            <label class="input-label">{{ t('batchImage.create.outputFormat') }}</label>
-            <select v-model="form.responseMimeType" class="input">
-              <option value="image/png">PNG</option>
-              <option value="image/jpeg">JPEG</option>
-              <option value="image/webp">WebP</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="input-label">{{ t('batchImage.create.estimatedOutput') }}</label>
-            <div class="input flex items-center bg-gray-50 text-gray-600 dark:bg-dark-900 dark:text-gray-300">
-              {{ t('batchImage.create.estimatedOutputValue', { images: estimatedOutputCount, prompts: promptRows.length }) }}
-            </div>
+          <div class="flex flex-col">
+            <span class="mb-1.5 text-xs font-medium text-ink-secondary">
+              {{ t('batchImage.create.estimatedOutput') }}
+            </span>
+            <i18n-t
+              keypath="batchImage.create.estimatedOutputValue"
+              tag="p"
+              scope="global"
+              class="flex h-9 items-center gap-1 border border-line-subtle bg-surface-sunken px-3 text-sm text-ink-secondary"
+            >
+              <template #images>
+                <NumCell :value="estimatedOutputCount" />
+              </template>
+              <template #prompts>
+                <NumCell :value="promptRows.length" />
+              </template>
+            </i18n-t>
           </div>
         </div>
 
         <div class="space-y-3">
-          <div class="flex items-center justify-between gap-3">
-            <label class="input-label mb-0">Prompt</label>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.create.promptAdded', { count: promptRows.length }) }}</span>
+          <div class="flex items-center justify-between gap-3 border-b border-line pb-1.5">
+            <h4 class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">Prompt</h4>
+            <span class="text-2xs text-ink-tertiary">
+              {{ t('batchImage.create.promptAdded', { count: promptRows.length }) }}
+            </span>
           </div>
-          <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+          <div class="border border-line p-3">
+            <label class="sr-only" for="batch-image-prompt-draft">Prompt</label>
             <textarea
+              id="batch-image-prompt-draft"
               v-model="promptDraft"
               rows="3"
-              class="h-[76px] w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm leading-5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-100 dark:focus:border-primary-500 dark:focus:ring-primary-900/40"
+              class="input min-h-[76px] resize-y leading-5"
               :placeholder="t('batchImage.create.promptPlaceholder')"
             />
             <div class="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_112px_132px_112px] md:items-center">
@@ -623,129 +868,219 @@
                 v-model="customIdDraft"
                 type="text"
                 maxlength="255"
-                class="input h-9 text-sm"
+                class="input"
+                :aria-label="t('batchImage.create.customIdPlaceholder')"
                 :placeholder="t('batchImage.create.customIdPlaceholder')"
               />
-              <select
-                v-model.number="outputCountDraft"
-                class="batch-output-count-select input h-9 text-sm"
-                :title="t('batchImage.create.outputCountPerPrompt')"
+              <Select
+                :model-value="outputCountDraft"
+                :options="outputCountSelectOptions"
                 :aria-label="t('batchImage.create.outputCountPerPrompt')"
-              >
-                <option v-for="count in outputCountOptions" :key="count" :value="count">
-                  {{ t('batchImage.create.outputCountOption', { n: count }, count) }}
-                </option>
-              </select>
+                @update:model-value="onOutputCountChange"
+              />
+              <!-- A label wrapping the file input, so it must be styled as `.btn`. -->
               <label
-                class="btn btn-secondary h-9 cursor-pointer justify-center text-sm"
-                :class="referenceImageDrafts.length >= selectedModelReferenceLimit ? 'pointer-events-none opacity-60' : ''"
+                class="btn btn-secondary cursor-pointer justify-center"
+                :class="referenceImageDrafts.length >= selectedModelReferenceLimit ? 'pointer-events-none opacity-40' : ''"
               >
-                <Icon name="upload" size="sm" class="mr-1.5" />
+                <Icon name="upload" size="xs" />
                 {{ t('batchImage.create.referenceImage') }}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   multiple
-                  class="hidden"
+                  class="sr-only"
                   :disabled="referenceImageDrafts.length >= selectedModelReferenceLimit"
                   @change="handleReferenceImageFiles"
                 />
               </label>
-              <button type="button" class="btn btn-secondary h-9 justify-center whitespace-nowrap px-4 text-sm" :disabled="!promptDraft.trim()" @click="addPromptRow">
-                <Icon name="plus" size="sm" class="mr-1.5" />
+              <Button variant="outline" size="md" :disabled="!promptDraft.trim()" @click="addPromptRow">
+                <template #icon>
+                  <Icon name="plus" size="xs" />
+                </template>
                 {{ t('common.add') }}
-              </button>
+              </Button>
             </div>
             <div v-if="referenceImageDrafts.length" class="mt-3 flex flex-wrap gap-2">
               <span
                 v-for="(ref, refIndex) in referenceImageDrafts"
                 :key="`${ref.name}-${refIndex}`"
-                class="inline-flex max-w-full items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-200"
+                class="inline-flex max-w-full items-center gap-1 rounded-sm border border-line bg-surface-sunken px-1.5 py-0.5 text-2xs text-ink-secondary"
               >
                 <span class="max-w-[180px] truncate">{{ ref.name }}</span>
-                <button type="button" class="text-gray-400 hover:text-red-600" :title="t('batchImage.create.removeReferenceImage')" @click="removeReferenceImageDraft(refIndex)">
+                <button
+                  type="button"
+                  class="ds-focus-inset rounded-sm text-ink-tertiary transition-colors duration-fast hover:text-danger"
+                  :title="t('batchImage.create.removeReferenceImage')"
+                  :aria-label="t('batchImage.create.removeReferenceImage')"
+                  @click="removeReferenceImageDraft(refIndex)"
+                >
                   <Icon name="x" size="xs" />
                 </button>
               </span>
             </div>
-            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <p class="mt-2 text-2xs leading-4 text-ink-tertiary">
               {{ t('batchImage.create.limitsHint', { maxPerItem: BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM, maxPerJob: BATCH_IMAGE_MAX_OUTPUTS_PER_JOB, refLimit: selectedModelReferenceLimit }) }}
             </p>
           </div>
-          <div v-if="promptRows.length" class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
+          <p v-if="formErrors.prompts" class="text-2xs text-danger" role="alert">
+            {{ formErrors.prompts }}
+          </p>
+          <div v-if="promptRows.length" class="border border-line">
             <div
               v-for="(row, index) in promptRows"
               :key="row.localId"
-              class="flex items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 dark:border-dark-700"
+              class="flex items-center gap-3 border-b border-line-subtle px-3 py-1.5 last:border-b-0"
             >
-              <span class="w-20 flex-shrink-0 font-mono text-xs text-gray-500 dark:text-gray-400">{{ row.custom_id }}</span>
-              <p class="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-100">{{ row.prompt }}</p>
-              <span v-if="row.output_count > 1" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                x{{ row.output_count }}
+              <!-- A custom id is an identifier: mono + tabular, never a NumCell. -->
+              <span
+                class="w-24 flex-shrink-0 truncate font-mono text-2xs tabular-nums text-ink-tertiary"
+                :title="row.custom_id"
+              >
+                {{ row.custom_id }}
               </span>
-              <span v-if="row.reference_images.length" class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+              <p class="min-w-0 flex-1 truncate text-sm text-ink">{{ row.prompt }}</p>
+              <span
+                v-if="row.output_count > 1"
+                class="inline-flex flex-shrink-0 items-baseline gap-0.5 text-2xs text-ink-tertiary"
+              >
+                <span aria-hidden="true">×</span>
+                <NumCell :value="row.output_count" />
+              </span>
+              <span v-if="row.reference_images.length" class="flex-shrink-0 text-2xs text-ink-tertiary">
                 {{ t('batchImage.create.referenceCount', { n: row.reference_images.length }, row.reference_images.length) }}
               </span>
-              <button type="button" class="btn-ghost btn-icon flex-shrink-0 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" :title="t('common.delete')" @click="removePromptRow(index)">
-                <Icon name="trash" size="sm" />
-              </button>
+              <Button
+                variant="ghost"
+                tone="danger"
+                size="xs"
+                class="flex-shrink-0"
+                :title="t('common.delete')"
+                :aria-label="t('common.delete')"
+                @click="removePromptRow(index)"
+              >
+                <template #icon>
+                  <Icon name="trash" size="xs" />
+                </template>
+              </Button>
             </div>
           </div>
-          <div v-else class="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
+          <p v-else class="border border-line bg-surface-sunken px-3 py-6 text-center text-xs text-ink-tertiary">
             {{ t('batchImage.create.noPrompts') }}
-          </div>
+          </p>
         </div>
 
-	        <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-	          {{ t('batchImage.create.cancelNotice') }}
-	        </div>
-	        <div v-if="submitting" class="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm leading-6 text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
-	          {{ t('batchImage.create.submittingNotice') }}
-	        </div>
-	      </form>
+        <p class="rounded-sm border border-warn/40 bg-warn-tint px-3 py-2 text-xs leading-5 text-warn">
+          {{ t('batchImage.create.cancelNotice') }}
+        </p>
+        <!-- Progress, not a status: it spends no hue. -->
+        <p
+          v-if="submitting"
+          role="status"
+          class="border border-line bg-surface-sunken px-3 py-2 text-xs leading-5 text-ink-secondary"
+        >
+          {{ t('batchImage.create.submittingNotice') }}
+        </p>
+      </form>
 
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" :disabled="submitting" @click="closeCreateModal">{{ t('common.cancel') }}</button>
-	          <button type="button" class="btn btn-primary inline-flex min-w-[120px] justify-center" :disabled="submitting || loadingModels || (parsedItems.length === 0 && !promptDraft.trim()) || !selectedApiKey || !form.model" @click="submitJob">
-            <Icon v-if="submitting" name="refresh" size="sm" class="mr-2 animate-spin" />
-            {{ submitting ? t('common.submitting') : t('batchImage.actions.submitJob') }}
-          </button>
-        </div>
+        <Button variant="outline" size="md" :disabled="submitting" @click="closeCreateModal">
+          {{ t('common.cancel') }}
+        </Button>
+        <!--
+          `loading` keeps the label. Swapping "Submit job" for "Submitting…"
+          resized the button under the cursor mid-click.
+        -->
+        <Button
+          tone="accent"
+          variant="solid"
+          size="md"
+          class="min-w-[120px]"
+          :loading="submitting"
+          :disabled="loadingModels || (parsedItems.length === 0 && !promptDraft.trim()) || !selectedApiKey || !form.model"
+          @click="submitJob"
+        >
+          {{ t('batchImage.actions.submitJob') }}
+        </Button>
       </template>
     </BaseDialog>
 
+    <!--
+      The one long-form reading surface in this view, so it is set as prose
+      rather than as panels: one column on a ~68ch measure, hairlines between
+      sections, and the space ABOVE a heading larger than the space below it so
+      the heading reads as belonging to the section that follows.
+    -->
     <BaseDialog :show="showGuideModal" :title="t('batchImage.guide.title')" width="wide" @close="showGuideModal = false">
-	      <div class="space-y-5">
-	        <section class="space-y-3">
-	          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('batchImage.guide.uiTitle') }}</h3>
-	          <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm leading-6 text-gray-700 dark:border-dark-700 dark:bg-dark-900/50 dark:text-gray-200">
-	            <p>{{ t('batchImage.guide.step1') }}</p>
-	            <p>{{ t('batchImage.guide.step2') }}</p>
-	            <p>{{ t('batchImage.guide.step3') }}</p>
-	            <p>{{ t('batchImage.guide.step4') }}</p>
-	          </div>
-	        </section>
-	        <section class="space-y-3">
-	          <div class="flex flex-wrap items-center justify-between gap-3">
-	            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('batchImage.guide.skillTitle') }}</h3>
-	            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('batchImage.guide.skillDesc') }}</p>
-	          </div>
-	        <textarea
-	          :value="agentInstruction"
-	          readonly
-	          class="min-h-[420px] w-full resize-y rounded-md border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-6 text-gray-800 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-100 dark:focus:border-primary-500 dark:focus:ring-primary-900/40"
-	        />
-	        </section>
-	      </div>
+      <div class="max-w-[68ch]">
+        <section>
+          <h3 class="text-lg font-medium text-ink">{{ t('batchImage.guide.uiTitle') }}</h3>
+          <!--
+            Mono step numbers on a hairline-separated list. No pastel bubbles, no
+            connector line: the rule between rows already says "in order".
+          -->
+          <ol class="mt-5 border-t border-line-subtle">
+            <li
+              v-for="step in guideSteps"
+              :key="step.index"
+              class="flex gap-4 border-b border-line-subtle py-3"
+            >
+              <span
+                class="w-6 shrink-0 pt-0.5 font-mono text-2xs tabular-nums text-ink-tertiary"
+                aria-hidden="true"
+              >
+                {{ step.label }}
+              </span>
+              <p class="min-w-0 flex-1 text-sm leading-6 text-ink-secondary">{{ step.text }}</p>
+            </li>
+          </ol>
+        </section>
+
+        <section class="mt-12">
+          <div class="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-3">
+            <div class="min-w-0">
+              <h3 class="text-lg font-medium text-ink">{{ t('batchImage.guide.skillTitle') }}</h3>
+              <p class="mt-1 text-xs leading-5 text-ink-tertiary">
+                {{ t('batchImage.guide.skillDesc') }}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              class="shrink-0"
+              :title="t('batchImage.actions.copyInstruction')"
+              :aria-label="t('batchImage.actions.copyInstruction')"
+              @click="copyInstruction"
+            >
+              <template #icon>
+                <Icon name="copy" size="xs" />
+              </template>
+              {{ t('common.copy') }}
+            </Button>
+          </div>
+          <!--
+            A flat panel, not a fake terminal. It is what the reader came here to
+            read, so it is mono, selectable, keyboard-scrollable, and it scrolls
+            inside its own box — the dialog never scrolls sideways because of it.
+          -->
+          <pre
+            class="batch-instruction mt-5 max-h-[440px] overflow-auto rounded-sm border border-line bg-surface-sunken p-4 font-mono text-xs leading-6 text-ink"
+            tabindex="0"
+            :aria-label="t('batchImage.guide.skillTitle')"
+          >{{ agentInstruction }}</pre>
+        </section>
+      </div>
+
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" @click="showGuideModal = false">{{ t('common.close') }}</button>
-          <button type="button" class="btn btn-primary" @click="copyInstruction">
-            <Icon name="copy" size="sm" class="mr-2" />
-            {{ t('batchImage.actions.copyInstruction') }}
-          </button>
-        </div>
+        <Button variant="outline" size="md" @click="showGuideModal = false">
+          {{ t('common.close') }}
+        </Button>
+        <Button tone="accent" variant="solid" size="md" @click="copyInstruction">
+          <template #icon>
+            <Icon name="copy" size="xs" />
+          </template>
+          {{ t('batchImage.actions.copyInstruction') }}
+        </Button>
       </template>
     </BaseDialog>
   </AppLayout>
@@ -756,10 +1091,21 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+/*
+ * Primitives are imported by direct path, never through
+ * `components/common/index.ts`. The barrel pulls `createI18n` into the module
+ * graph, which breaks any spec that mocks `vue-i18n` with a partial factory.
+ */
+import Badge from '@/components/common/Badge.vue'
+import Button from '@/components/common/Button.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import FormField from '@/components/common/FormField.vue'
+import NumCell from '@/components/common/NumCell.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
+import type { Tone } from '@/components/common/primitives'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize, setPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -833,21 +1179,33 @@ const BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM = 4
 const BATCH_IMAGE_MAX_OUTPUTS_PER_JOB = 200
 const outputCountOptions = Array.from({ length: BATCH_IMAGE_MAX_OUTPUTS_PER_ITEM }, (_, index) => index + 1)
 const batchPageSizeOptions: SelectOption[] = [20, 50, 100].map(size => ({ value: size, label: String(size) }))
+/** Passed to `NumCell` as the unit, so it renders a step down from the number. */
+const CURRENCY = 'USD'
+const outputFormatOptions: SelectOption[] = [
+  { value: 'image/png', label: 'PNG' },
+  { value: 'image/jpeg', label: 'JPEG' },
+  { value: 'image/webp', label: 'WebP' },
+]
 
 const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
 const { t, locale } = useI18n()
 
+/*
+ * Quantities align on the decimal, so their columns — and their headers, which
+ * DataTable aligns from this same class string — are right-aligned. Everything
+ * else reads from the left.
+ */
 const columns = computed<Column[]>(() => [
-  { key: 'select', label: '', sortable: false, class: 'w-12 text-center' },
-  { key: 'id', label: t('batchImage.columns.taskName'), sortable: false, class: 'w-[240px] max-w-[240px]' },
-  { key: 'model', label: t('batchImage.columns.model'), sortable: false, class: 'w-[180px] max-w-[180px] text-center' },
-  { key: 'api_key_name', label: t('batchImage.columns.apiKey'), sortable: false, class: 'w-40 max-w-40 text-center' },
-  { key: 'status', label: t('common.status'), sortable: false, class: 'w-28 text-center' },
-  { key: 'counts', label: t('batchImage.columns.result'), sortable: false, class: 'w-32 text-center' },
-  { key: 'cost', label: t('batchImage.columns.cost'), sortable: false, class: 'w-36 text-center' },
-  { key: 'downloaded', label: t('batchImage.columns.downloadStatus'), sortable: false, class: 'w-40 text-center' },
-  { key: 'actions', label: t('common.actions'), sortable: false, class: 'w-40 text-center' },
+  { key: 'select', label: '', sortable: false, class: 'w-11 text-center' },
+  { key: 'id', label: t('batchImage.columns.taskName'), sortable: false, class: 'w-[260px] max-w-[260px]' },
+  { key: 'model', label: t('batchImage.columns.model'), sortable: false, class: 'w-[180px] max-w-[180px]' },
+  { key: 'api_key_name', label: t('batchImage.columns.apiKey'), sortable: false, class: 'w-40 max-w-40' },
+  { key: 'status', label: t('common.status'), sortable: false, class: 'w-32' },
+  { key: 'counts', label: t('batchImage.columns.result'), sortable: false, class: 'w-40 text-right' },
+  { key: 'cost', label: t('batchImage.columns.cost'), sortable: false, class: 'w-36 text-right' },
+  { key: 'downloaded', label: t('batchImage.columns.downloadStatus'), sortable: false, class: 'w-44' },
+  { key: 'actions', label: t('common.actions'), sortable: false, class: 'w-52 text-right' },
 ])
 
 const statusFilterOptions = computed<SelectOption[]>(() => [
@@ -880,6 +1238,21 @@ const filters = reactive({
   apiKeyId: '',
   status: '',
   downloaded: '',
+})
+
+/**
+ * Inline validation messages for the create form.
+ *
+ * `validateForm` used to fail entirely through `appStore.showError`, so the
+ * field that was actually wrong never said so and the message vanished with the
+ * toast. These are rendered by the owning `FormField` (which also wires
+ * `aria-invalid`/`aria-describedby`); the toast still fires, so behaviour is
+ * additive.
+ */
+const formErrors = reactive({
+  apiKey: '',
+  model: '',
+  prompts: '',
 })
 
 const pagination = reactive({
@@ -962,6 +1335,90 @@ const apiKeyFilterOptions = computed<SelectOption[]>(() => [
     label: key.name || `API Key #${key.id}`,
   })),
 ])
+
+/*
+ * The create form's three native `<select class="input">` controls are replaced
+ * by the design-system `Select`, which accepts the `id` and `aria-describedby`
+ * that `FormField` generates. A native select cannot consume either, so the
+ * labels above them were unassociated `<label>` elements pointing at nothing.
+ */
+const apiKeySelectOptions = computed<SelectOption[]>(() => [
+  {
+    value: 0,
+    label: loadingKeys.value
+      ? t('batchImage.create.loadingKeys')
+      : t('batchImage.create.selectKeyPlaceholder'),
+  },
+  ...geminiApiKeys.value.map(key => ({
+    value: key.id,
+    label: `${key.name} · ${key.group?.name || 'Gemini'}`,
+  })),
+])
+
+const modelSelectOptions = computed<SelectOption[]>(() =>
+  availableBatchImageModels.value.map(model => ({ value: model.value, label: model.label })),
+)
+
+const outputCountSelectOptions = computed<SelectOption[]>(() =>
+  outputCountOptions.map(count => ({
+    value: count,
+    label: t('batchImage.create.outputCountOption', { n: count }, count),
+  })),
+)
+
+const noKeysHint = computed(() =>
+  !loadingKeys.value && geminiApiKeys.value.length === 0 ? t('batchImage.create.noKeysHint') : '',
+)
+
+const modelHint = computed(() =>
+  selectedApiKey.value && !loadingModels.value && availableBatchImageModels.value.length === 0
+    ? batchImageText('noModelsHint')
+    : '',
+)
+
+function onCreateApiKeyChange(value: string | number | boolean | null) {
+  form.apiKeyId = Number(value) || 0
+  formErrors.apiKey = ''
+}
+
+function onCreateModelChange(value: string | number | boolean | null) {
+  form.model = value === null || typeof value === 'boolean' ? '' : String(value)
+  formErrors.model = ''
+}
+
+function onOutputFormatChange(value: string | number | boolean | null) {
+  if (value === null || typeof value === 'boolean') return
+  form.responseMimeType = String(value)
+}
+
+function onOutputCountChange(value: string | number | boolean | null) {
+  outputCountDraft.value = normalizeOutputCount(value)
+}
+
+function childToggleLabel(row: BatchImageJobRow) {
+  return expandedParentIds.value.has(row.id)
+    ? t('batchImage.list.collapseChildren')
+    : t('batchImage.list.expandChildren', { n: row.child_count }, row.child_count)
+}
+
+function previewButtonLabel(item: BatchImageDetailItem) {
+  return previewErrorIds.value.has(itemPreviewKey(item))
+    ? t('batchImage.detail.previewReload')
+    : t('batchImage.detail.previewLoad')
+}
+
+/**
+ * The `stepN` strings already carry their own "1." / "2." prefix, so the mono
+ * step number would print twice. Strip whatever ordinal the locale wrote and
+ * render the index instead.
+ */
+const guideSteps = computed(() =>
+  ([1, 2, 3, 4] as const).map(step => ({
+    index: step,
+    label: String(step).padStart(2, '0'),
+    text: t(`batchImage.guide.step${step}`).replace(/^\s*\d+\s*[.、．)]\s*/, ''),
+  })),
+)
 
 const selectedRows = computed(() =>
   batchJobs.value.filter(job => selectedJobIds.value.has(job.id)),
@@ -1174,10 +1631,12 @@ function addPromptRow() {
   customIdDraft.value = ''
   outputCountDraft.value = 1
   referenceImageDrafts.value = []
+  formErrors.prompts = ''
 }
 
 function removePromptRow(index: number) {
   promptRows.value = promptRows.value.filter((_, currentIndex) => currentIndex !== index)
+  formErrors.prompts = ''
 }
 
 function removeReferenceImageDraft(index: number) {
@@ -1555,6 +2014,7 @@ function handlePageSizeChange(value: string | number | boolean | null) {
 }
 
 function openCreateModal() {
+  clearFormErrors()
   showCreateModal.value = true
   if (!apiKeys.value.length) {
     void loadApiKeys()
@@ -1575,6 +2035,7 @@ function resetCreateDraft() {
   customIdDraft.value = ''
   outputCountDraft.value = 1
   referenceImageDrafts.value = []
+  clearFormErrors()
 }
 
 function closeDetail() {
@@ -1602,23 +2063,45 @@ function requireApiKey(): ApiKey | null {
   return selectedApiKey.value
 }
 
+function clearFormErrors() {
+  formErrors.apiKey = ''
+  formErrors.model = ''
+  formErrors.prompts = ''
+}
+
+/**
+ * Every branch now writes the message to the field that owns it AND raises the
+ * toast, so the reason survives the toast timeout. `requireApiKey` is still the
+ * gate for the non-form paths (retry, download, delete), which have no field to
+ * annotate.
+ */
 function validateForm(): boolean {
-  if (!requireApiKey()) return false
+  clearFormErrors()
+  if (!requireApiKey()) {
+    formErrors.apiKey = batchImageText('selectApiKey')
+    return false
+  }
   if (!form.model) {
-    appStore.showError(availableBatchImageModels.value.length === 0 ? batchImageText('noModelsForKey') : batchImageText('selectModel'))
+    formErrors.model = availableBatchImageModels.value.length === 0
+      ? batchImageText('noModelsForKey')
+      : batchImageText('selectModel')
+    appStore.showError(formErrors.model)
     return false
   }
   if (parsedItems.value.length === 0) {
-    appStore.showError(batchImageText('promptRequired'))
+    formErrors.prompts = batchImageText('promptRequired')
+    appStore.showError(formErrors.prompts)
     return false
   }
   if (estimatedOutputCount.value > BATCH_IMAGE_MAX_OUTPUTS_PER_JOB) {
-    appStore.showError(batchImageText('tooManyOutputImages'))
+    formErrors.prompts = batchImageText('tooManyOutputImages')
+    appStore.showError(formErrors.prompts)
     return false
   }
   const refLimit = selectedModelReferenceLimit.value
   if (promptRows.value.some(row => row.reference_images.length > refLimit)) {
-    appStore.showError(batchImageText('tooManyReferenceImages'))
+    formErrors.prompts = batchImageText('tooManyReferenceImages')
+    appStore.showError(formErrors.prompts)
     return false
   }
   return true
@@ -1987,13 +2470,6 @@ function isRecoveredOriginalFailure(item: BatchImageDetailItem) {
   )
 }
 
-function detailItemRowClass(item: BatchImageDetailItem) {
-  if (isRecoveredOriginalFailure(item)) {
-    return 'bg-gray-50/80 text-gray-400 hover:bg-gray-100/80 dark:bg-dark-900/60 dark:text-gray-500 dark:hover:bg-dark-800/70'
-  }
-  return 'hover:bg-gray-50/70 dark:hover:bg-dark-800/60'
-}
-
 function previewCacheSupported() {
   return typeof window !== 'undefined' && 'indexedDB' in window
 }
@@ -2319,16 +2795,27 @@ function statusLabel(jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 'status
   return key ? t(`batchImage.status.${key}`) : status
 }
 
-function statusBadgeClass(jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 'status' | 'success_count' | 'fail_count'>) {
+/**
+ * Job status as a semantic tone.
+ *
+ * Two things changed from the badge classes this replaces. In-flight states were
+ * `badge-primary`, i.e. the accent — but the accent means interaction and
+ * selection in this system and may never carry status, so they are `info`. And
+ * `cancelled` was `badge-danger`: a cancellation the user asked for is not a
+ * failure, and painting it red leaves nothing louder for a job that actually
+ * broke.
+ */
+function statusTone(
+  jobOrStatus: BatchImageStatus | Pick<BatchImageJob, 'status' | 'success_count' | 'fail_count'>,
+): Tone {
   const status = typeof jobOrStatus === 'string' ? jobOrStatus : jobOrStatus.status
   if (typeof jobOrStatus !== 'string' && status === 'completed' && jobOrStatus.fail_count > 0) {
-    if (jobOrStatus.success_count > 0) return 'badge-warning'
-    return 'badge-danger'
+    return jobOrStatus.success_count > 0 ? 'warn' : 'danger'
   }
-  if (status === 'completed') return 'badge-success'
-  if (status === 'failed' || status === 'cancelled') return 'badge-danger'
-  if (status === 'output_deleted') return 'badge-gray'
-  return 'badge-primary'
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'cancelled' || status === 'output_deleted') return 'neutral'
+  return 'info'
 }
 
 function itemStatusLabel(status: string) {
@@ -2348,15 +2835,12 @@ function itemDisplayStatusLabel(item: BatchImageDetailItem) {
   return itemStatusLabel(item.status)
 }
 
-function itemStatusBadgeClass(status: string) {
-  if (status === 'succeeded' || status === 'success') return 'badge-success'
-  if (status === 'failed' || status === 'cancelled') return 'badge-danger'
-  return 'badge-primary'
-}
-
-function itemDisplayStatusBadgeClass(item: BatchImageDetailItem) {
-  if (isRecoveredOriginalFailure(item)) return 'badge-gray'
-  return itemStatusBadgeClass(item.status)
+function itemStatusTone(item: BatchImageDetailItem): Tone {
+  if (isRecoveredOriginalFailure(item)) return 'neutral'
+  if (item.status === 'succeeded' || item.status === 'success') return 'success'
+  if (item.status === 'failed') return 'danger'
+  if (item.status === 'cancelled') return 'neutral'
+  return 'info'
 }
 
 function itemResultLabel(item: BatchImageDetailItem) {
@@ -2370,11 +2854,12 @@ function itemResultLabel(item: BatchImageDetailItem) {
   return t('batchImage.itemResult.waiting')
 }
 
-function itemResultClass(item: BatchImageDetailItem) {
-  if (isRecoveredOriginalFailure(item)) return 'bg-gray-100 text-gray-500 ring-gray-200 dark:bg-dark-800 dark:text-gray-400 dark:ring-dark-700'
-  if (item.error || item.status === 'failed' || item.status === 'cancelled') return 'bg-red-50 text-red-700 ring-red-100 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-900/50'
-  if (item.status === 'succeeded' || item.status === 'success') return 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-900/50'
-  return 'bg-gray-50 text-gray-500 ring-gray-200 dark:bg-dark-800 dark:text-gray-400 dark:ring-dark-700'
+function itemResultTone(item: BatchImageDetailItem): Tone {
+  if (isRecoveredOriginalFailure(item)) return 'neutral'
+  if (item.error || item.status === 'failed') return 'danger'
+  if (item.status === 'cancelled') return 'neutral'
+  if (item.status === 'succeeded' || item.status === 'success') return 'success'
+  return 'neutral'
 }
 
 function friendlyItemError(error: BatchImageItem['error']) {
@@ -2384,19 +2869,29 @@ function friendlyItemError(error: BatchImageItem['error']) {
   return error.message || error.code || '-'
 }
 
-function formatMoney(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '$0.00'
-  return `$${Number(value).toFixed(2)}`
-}
-
 function terminalZeroCost(job: Pick<BatchImageJob, 'status' | 'actual_cost'>) {
   return job.actual_cost === null && (job.status === 'failed' || job.status === 'cancelled')
 }
 
-function costLabel(job: Pick<BatchImageJob, 'status' | 'hold_amount' | 'actual_cost'>) {
-  if (job.actual_cost !== null) return formatMoney(job.actual_cost)
-  if (terminalZeroCost(job)) return formatMoney(0)
-  return t('batchImage.detail.holdCost', { amount: formatMoney(job.hold_amount) })
+/**
+ * Money is a quantity, so it goes through `NumCell` rather than a hand-rolled
+ * `$0.00`. That means the single `costLabel` string has to split into "which
+ * number" and "is that number a hold" — the template then renders the hold case
+ * through `i18n-t` with a `NumCell` in the `{amount}` slot, so the number stays
+ * locale-formatted, mono and tabular inside the sentence.
+ */
+function costIsHold(job: Pick<BatchImageJob, 'status' | 'actual_cost'>) {
+  return job.actual_cost === null && !terminalZeroCost(job)
+}
+
+/**
+ * A terminal job that never charged settled at a real 0. Returning `null` for it
+ * would render an en dash, and "we did not charge you" is not the same fact as
+ * "we have not measured this yet".
+ */
+function settledCost(job: Pick<BatchImageJob, 'status' | 'actual_cost'>) {
+  if (job.actual_cost !== null) return job.actual_cost
+  return terminalZeroCost(job) ? 0 : null
 }
 
 type BatchImageTextKey =
@@ -2475,7 +2970,10 @@ function batchImageErrorReference(error: any) {
   if (code) parts.push(t('batchImage.messages.errorCodeRef', { code }))
   if (requestId) parts.push(t('batchImage.messages.requestIdRef', { id: requestId }))
   if (!code && status) parts.push(t('batchImage.messages.httpStatusRef', { status }))
-  return parts.length ? `（${parts.join(isZhLocale() ? '，' : ', ')}）` : ''
+  if (!parts.length) return ''
+  // The separator was already locale-gated but the brackets were not, so an
+  // English error came back wrapped in fullwidth CJK parentheses.
+  return isZhLocale() ? `（${parts.join('，')}）` : `(${parts.join(', ')})`
 }
 
 function batchImageAdminError(base: string, error: any) {
@@ -2650,29 +3148,24 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.batch-row-action {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  min-width: 42px;
-  line-height: 1;
-  outline: none;
-}
-
-.batch-row-action:focus {
-  outline: none;
-}
-
-.batch-row-action :deep(svg) {
-  margin-right: 0 !important;
-}
-
-.batch-prompt-trigger:focus {
-  outline: none;
-  box-shadow: none;
-}
-
+/*
+ * What used to be here and is deliberately gone:
+ *
+ *   `.batch-row-action` — a stack of `!important` flex overrides propping up
+ *     hand-built icon buttons. Those are `Button` components now, which own
+ *     their own geometry, so there is nothing left to override.
+ *
+ *   `.batch-row-action:focus { outline: none }` and
+ *   `.batch-prompt-trigger:focus { outline: none; box-shadow: none }` — two bare
+ *     outline suppressions. The prompt cell is a real tab stop (it opens its
+ *     popover on `focus`), so removing its focus ring left keyboard users with
+ *     no idea where they were. Focus is the global `:focus-visible` outline in
+ *     style.css and nothing in this file may cancel it.
+ *
+ *   `.batch-output-count-select` — a hardcoded 36px height patching a native
+ *     `<select class="input">` into alignment. That control is a `Select` now and
+ *     takes its height from the same token as every other control on the row.
+ */
 .batch-prompt-popover {
   user-select: text;
 }
@@ -2681,13 +3174,16 @@ onBeforeUnmount(() => {
   scrollbar-width: thin;
 }
 
-.batch-output-count-select {
-  height: 36px;
-  min-height: 36px;
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: 14px;
-  padding-right: 34px;
-  line-height: 36px;
+/*
+ * The agent instruction is prose, not source, so it wraps at spaces the way the
+ * old `<textarea>` did — `white-space: pre` would force the reader to scroll
+ * sideways through every Chinese paragraph. Indentation in the embedded JSON is
+ * still preserved, and `overflow: auto` on the element catches any single
+ * unbreakable token (a long URL) so the dialog itself never scrolls sideways.
+ */
+.batch-instruction {
+  white-space: pre-wrap;
+  tab-size: 2;
+  user-select: text;
 }
 </style>
