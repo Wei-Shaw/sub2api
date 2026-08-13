@@ -223,6 +223,17 @@ func isGrokNativeOrAlias(model string) bool {
 		strings.HasPrefix(model, "composer")
 }
 
+// IsGrok46Model 判断是否 Grok 4.6 系列（含 -latest / 日期后缀 / 厂商前缀）。
+// 对齐 OpenAI 的 isOpenAIGPT56Model：按系列识别，不用主版本号比大小，
+// 避免把 grok-4.20 误判成「比 4.6 更新」。
+func IsGrok46Model(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(strings.TrimSpace(model)))
+	if normalized == "grok-4.6" {
+		return true
+	}
+	return strings.HasPrefix(normalized, "grok-4.6-")
+}
+
 // StripGrokProviderPrefix removes common provider prefixes accepted for
 // xAI/Grok models, returning the native model ID.
 func StripGrokProviderPrefix(model string) string {

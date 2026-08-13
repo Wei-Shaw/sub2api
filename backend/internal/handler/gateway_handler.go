@@ -1232,11 +1232,7 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		if grokModelSupportsConfigurableReasoning(modelID) {
 			item.SupportsReasoningEffort = true
 			item.ReasoningEffort = "high"
-			item.ReasoningEfforts = []grokReasoningEffortOption{
-				{Value: "low", Label: "Low"},
-				{Value: "medium", Label: "Medium"},
-				{Value: "high", Label: "High", Default: true},
-			}
+			item.ReasoningEfforts = grokAdvertisedReasoningEfforts(modelID)
 		}
 		models = append(models, item)
 	}
@@ -1245,6 +1241,18 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 		"object": "list",
 		"data":   models,
 	})
+}
+
+func grokAdvertisedReasoningEfforts(modelID string) []grokReasoningEffortOption {
+	opts := []grokReasoningEffortOption{
+		{Value: "low", Label: "Low"},
+		{Value: "medium", Label: "Medium"},
+		{Value: "high", Label: "High", Default: true},
+	}
+	if xai.IsGrok46Model(modelID) {
+		opts = append(opts, grokReasoningEffortOption{Value: "xhigh", Label: "Extra High"})
+	}
+	return opts
 }
 
 func grokModelSupportsConfigurableReasoning(modelID string) bool {

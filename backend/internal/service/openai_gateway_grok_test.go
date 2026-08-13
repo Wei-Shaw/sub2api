@@ -157,18 +157,25 @@ func TestPatchGrokResponsesBodyNormalizesReasoningEffortAliases(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		body string
-		path string
-		want string
+		name          string
+		upstreamModel string
+		body          string
+		path          string
+		want          string
 	}{
-		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"}}`, path: "reasoning.effort", want: "low"},
-		{name: "xhigh snake", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "high"},
-		{name: "max camel", body: `{"input":"hi","reasoningEffort":"max"}`, path: "reasoning_effort", want: "high"},
+		{name: "minimal nested", upstreamModel: "grok-4.5", body: `{"input":"hi","reasoning":{"effort":"minimal"}}`, path: "reasoning.effort", want: "low"},
+		{name: "4.5 xhigh snake", upstreamModel: "grok-4.5", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "high"},
+		{name: "4.5 max camel", upstreamModel: "grok-4.5", body: `{"input":"hi","reasoningEffort":"max"}`, path: "reasoning_effort", want: "high"},
+		{name: "4.3 ultra", upstreamModel: "grok-4.3", body: `{"input":"hi","reasoning_effort":"ultra"}`, path: "reasoning_effort", want: "high"},
+		{name: "4.6 keeps xhigh", upstreamModel: "grok-4.6", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "xhigh"},
+		{name: "4.6 nested xhigh", upstreamModel: "grok-4.6", body: `{"input":"hi","reasoning":{"effort":"xhigh"}}`, path: "reasoning.effort", want: "xhigh"},
+		{name: "4.6 max becomes xhigh", upstreamModel: "grok-4.6", body: `{"input":"hi","reasoningEffort":"max"}`, path: "reasoning_effort", want: "xhigh"},
+		{name: "4.6-latest keeps xhigh", upstreamModel: "grok-4.6-latest", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "xhigh"},
+		{name: "prefixed 4.6 keeps xhigh", upstreamModel: "xai/grok-4.6", body: `{"input":"hi","reasoning_effort":"xhigh"}`, path: "reasoning_effort", want: "xhigh"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.5")
+			patched, err := patchGrokResponsesBody([]byte(tt.body), tt.upstreamModel)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, gjson.GetBytes(patched, tt.path).String(), string(patched))
 			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
@@ -193,6 +200,10 @@ func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
 	require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+
+	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"xhigh"}`), "grok-4.6")
+	require.NoError(t, err)
+	require.Equal(t, "xhigh", gjson.GetBytes(patched, "reasoning_effort").String())
 
 	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"high"}`), "grok-composer-2.5-fast")
 	require.NoError(t, err)

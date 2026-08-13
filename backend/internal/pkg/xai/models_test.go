@@ -66,6 +66,23 @@ func TestDefaultModelsIncludesGrok46(t *testing.T) {
 	require.Equal(t, "grok-4.6", ResolveGrokTextResponsesModelID("grok-4.6-latest"))
 }
 
+func TestIsGrok46Model(t *testing.T) {
+	t.Parallel()
+	require.True(t, IsGrok46Model("grok-4.6"))
+	require.True(t, IsGrok46Model("GROK-4.6"))
+	require.True(t, IsGrok46Model("grok-4.6-latest"))
+	require.True(t, IsGrok46Model("xai/grok-4.6"))
+	require.True(t, IsGrok46Model("x-ai/grok-4.6-0309"))
+	require.False(t, IsGrok46Model("grok-4.5"))
+	require.False(t, IsGrok46Model("grok-4.5-latest"))
+	require.False(t, IsGrok46Model("grok"))
+	require.False(t, IsGrok46Model("grok-4.3"))
+	require.False(t, IsGrok46Model("grok-4.60"))
+	require.False(t, IsGrok46Model("grok-4.20-0309-reasoning"))
+	require.False(t, IsGrok46Model("grok-4.20-multi-agent-0309"))
+	require.False(t, IsGrok46Model("grok-build-0.1"))
+}
+
 func TestResolveGrokTextResponsesModelID(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "grok-4.5", ResolveGrokTextResponsesModelID(""))
