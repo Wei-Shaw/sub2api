@@ -63,6 +63,9 @@ func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsR
 			if tool.Function != nil {
 				declared[tool.Function.Name] = true
 			}
+			if strings.EqualFold(strings.TrimSpace(tool.Type), "x_search") {
+				declared["x_search"] = true
+			}
 		}
 		if tc := responsesToolChoiceToChatToolChoice(req.ToolChoice, declared); len(tc) > 0 {
 			out.ToolChoice = tc
@@ -847,6 +850,16 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				return nil, err
 			}
 			out = append(out, flattened...)
+		case "x_search":
+			out = append(out, ChatTool{
+				Type:                     "x_search",
+				AllowedXHandles:          tool.AllowedXHandles,
+				ExcludedXHandles:         tool.ExcludedXHandles,
+				FromDate:                 tool.FromDate,
+				ToDate:                   tool.ToDate,
+				EnableImageUnderstanding: tool.EnableImageUnderstanding,
+				EnableVideoUnderstanding: tool.EnableVideoUnderstanding,
+			})
 		}
 		// 其余类型（web_search、image_generation 等服务端工具）在 chat 上游没有
 		// 对应能力，维持丢弃。
@@ -948,6 +961,15 @@ func responsesToolChoiceToChatToolChoice(raw json.RawMessage, declared map[strin
 	}
 	var name string
 	switch rawString(choice["type"]) {
+	case "x_search":
+		if !declared["x_search"] {
+			return nil
+		}
+		out, err := json.Marshal(map[string]any{"type": "x_search"})
+		if err != nil {
+			return raw
+		}
+		return out
 	case "tool_search":
 		// tool_search 未被丢弃而是降级为同名 function 代理（见
 		// responsesToolsToChatTools），强制选择它同样降级为 function 选择，
