@@ -465,7 +465,6 @@
               :search-placeholder="t('keys.searchGroup')"
               :error="invalid"
               :aria-describedby="describedBy"
-              :aria-label="t('keys.groupLabel')"
               data-tour="key-form-group"
             >
               <template #selected="{ option }">
@@ -552,7 +551,6 @@
               :options="statusOptions"
               :placeholder="t('keys.selectStatus')"
               :aria-describedby="describedBy"
-              :aria-label="t('keys.statusLabel')"
             />
           </template>
         </FormField>

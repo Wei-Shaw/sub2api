@@ -344,6 +344,18 @@ const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distrib
 const chartTheme = useChartTheme()
 const chartColors = computed(() => chartTheme.value.series)
 
+/*
+ * Wrap, do not slice. The palette holds eight colours and this chart is fed an
+ * unbounded per-model list — and the ranking donut asks for twelve. `slice(0, n)`
+ * returned a SHORT array past eight, so chart.js fell back to its own grey for
+ * every slice after the eighth, and any colour pushed afterwards landed at index
+ * eight instead of at the end.
+ */
+function colorAt(index: number): string {
+  const palette = chartColors.value
+  return palette[index % palette.length]
+}
+
 const displayModelStats = computed(() => {
   const sourceStats = props.source === 'upstream'
     ? props.upstreamModelStats
@@ -364,7 +376,7 @@ const chartData = computed(() => {
     datasets: [
       {
         data: displayModelStats.value.map((m) => toFiniteNumber(props.metric === 'actual_cost' ? m.actual_cost : m.total_tokens)),
-        backgroundColor: chartColors.value.slice(0, displayModelStats.value.length),
+        backgroundColor: displayModelStats.value.map((_, index) => colorAt(index)),
         /*
          * Deliberately opts out of the global `arc.borderWidth = 1`.
          *
@@ -394,7 +406,7 @@ const rankingChartData = computed(() => {
 
   const labels = props.rankingItems.map((item, index) => `#${index + 1} ${getRankingUserLabel(item)}`)
   const data = props.rankingItems.map((item) => toFiniteNumber(item.actual_cost))
-  const backgroundColor = chartColors.value.slice(0, props.rankingItems.length)
+  const backgroundColor = props.rankingItems.map((_, index) => colorAt(index))
 
   if (otherRankingItem.value) {
     labels.push(t('admin.dashboard.spendingRankingOther'))

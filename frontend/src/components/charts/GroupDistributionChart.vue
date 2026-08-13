@@ -195,7 +195,12 @@ const chartData = computed(() => {
     datasets: [
       {
         data: displayGroupStats.value.map((g) => toFiniteNumber(props.metric === 'actual_cost' ? g.actual_cost : g.total_tokens)),
-        backgroundColor: chartColors.value.slice(0, displayGroupStats.value.length)
+        // Wrap rather than slice: `slice(0, n)` returns a short array once the
+        // group count passes the palette's eight, and chart.js then paints the
+        // rest in its own grey.
+        backgroundColor: displayGroupStats.value.map(
+          (_, index) => chartColors.value[index % chartColors.value.length]
+        )
       }
     ]
   }

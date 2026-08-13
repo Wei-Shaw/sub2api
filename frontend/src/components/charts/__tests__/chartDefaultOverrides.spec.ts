@@ -73,7 +73,7 @@ const BANNED: Array<{ id: string; pattern: RegExp; why: string }> = [
     id: 'borderWidth',
     pattern: /\bborderWidth\s*:/,
     why:
-      'arc.borderWidth = 1 with borderColor = surface-raised — a ground-coloured hairline ' +
+      'arc.borderWidth = 1 with borderColor = surface — a ground-coloured hairline ' +
       'between slices, which is how two neighbouring slices of similar hue stay tellable apart',
   },
 ]
@@ -156,7 +156,12 @@ describe('the doughnut slice separator is a global, not a per-chart choice', () 
     applyChartDefaults()
 
     expect(Chart.defaults.elements.arc.borderWidth).toBe(1)
-    // Ground-coloured, so the separator reads as a cut rather than as a stroke.
-    expect(Chart.defaults.elements.arc.borderColor).toBe(token('surface-raised'))
+    /*
+     * Ground-coloured, so the separator reads as a cut rather than as a stroke —
+     * and specifically `surface`, the ground `.card` and `Surface` actually use.
+     * `surface-raised` is identical in light mode but seven levels lighter in
+     * dark, which paints a web between slices instead of cutting them apart.
+     */
+    expect(Chart.defaults.elements.arc.borderColor).toBe(token('surface'))
   })
 })

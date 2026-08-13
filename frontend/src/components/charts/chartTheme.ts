@@ -149,6 +149,8 @@ export function seriesColor(index: number, dark = isDarkNow()): string {
 }
 
 export interface ChartTheme {
+  /** The ground charts actually sit on — `.card` and `Surface` are both this. */
+  surface: string
   axis: string
   axisTitle: string
   grid: string
@@ -184,6 +186,7 @@ export interface ChartTheme {
  */
 function buildTheme(): ChartTheme {
   return {
+    surface: token('surface'),
     axis: token('ink-tertiary'),
     axisTitle: token('ink-secondary'),
     grid: tokenAlpha('line-subtle', 1),
@@ -255,7 +258,16 @@ export function applyChartDefaults(theme: ChartTheme = buildTheme()): void {
     hitRadius: 8,
   })
   assign(ChartJS.defaults.elements?.bar, { borderRadius: 0 })
-  assign(ChartJS.defaults.elements?.arc, { borderWidth: 1, borderColor: theme.tooltipBg })
+  /*
+   * The arc separator is a 1px hairline in the GROUND colour, so it reads as a
+   * cut rather than as a stroke. It has to be `surface`, not `surface-raised`:
+   * every chart in this app sits in a `.card` or a `Surface`, both of which are
+   * `bg-surface`, and nothing uses `surface-raised` as a ground. In light mode
+   * the two are both pure white so the mistake was invisible, but in dark they
+   * are `16 17 19` against `23 24 27` — seven levels lighter, which paints a
+   * faint web between slices instead of separating them.
+   */
+  assign(ChartJS.defaults.elements?.arc, { borderWidth: 1, borderColor: theme.surface })
 
   assign(ChartJS.defaults.plugins?.legend?.labels, {
     boxWidth: 8,

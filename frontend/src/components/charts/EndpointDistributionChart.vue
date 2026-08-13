@@ -240,7 +240,12 @@ const chartData = computed(() => {
         data: displayEndpointStats.value.map((item) =>
           props.metric === 'actual_cost' ? item.actual_cost : item.total_tokens
         ),
-        backgroundColor: chartColors.value.slice(0, displayEndpointStats.value.length)
+        // Wrap rather than slice: `slice(0, n)` returns a short array once the
+        // endpoint count passes the palette's eight, and chart.js then paints
+        // the rest in its own grey.
+        backgroundColor: displayEndpointStats.value.map(
+          (_, index) => chartColors.value[index % chartColors.value.length]
+        )
       }
     ]
   }
