@@ -68,7 +68,7 @@
                 v-model="form.payment_product_name_suffix"
                 type="text"
                 class="input"
-                placeholder="CNY"
+                placeholder="VND"
               />
             </div>
             <div>
@@ -81,7 +81,7 @@
                 {{
                   (form.payment_product_name_prefix || "Sub2API") +
                   " 100 " +
-                  (form.payment_product_name_suffix || "CNY")
+                  (form.payment_product_name_suffix || "VND")
                 }}
               </div>
             </div>
@@ -184,12 +184,12 @@
             </div>
             <div>
               <label class="input-label">{{
-                t("admin.settings.payment.subscriptionUsdToCnyRate")
+                t("admin.settings.payment.subscriptionUsdToVndRate")
               }}</label>
               <input
-                :value="form.payment_subscription_usd_to_cny_rate || ''"
+                :value="form.payment_subscription_usd_to_vnd_rate || ''"
                 @input="
-                  form.payment_subscription_usd_to_cny_rate =
+                  form.payment_subscription_usd_to_vnd_rate =
                     parseFloat(
                       ($event.target as HTMLInputElement).value,
                     ) || 0
@@ -200,13 +200,13 @@
                 class="input"
                 :placeholder="
                   t(
-                    'admin.settings.payment.subscriptionUsdToCnyRateDisabled',
+                    'admin.settings.payment.subscriptionUsdToVndRateDisabled',
                   )
                 "
               />
               <p class="mt-0.5 text-xs text-ink-tertiary">
                 {{
-                  t("admin.settings.payment.subscriptionUsdToCnyRateHint")
+                  t("admin.settings.payment.subscriptionUsdToVndRateHint")
                 }}
               </p>
             </div>
@@ -385,70 +385,6 @@
                     t("admin.settings.payment.cancelRateLimitTimes")
                   }}</span
                 >
-              </div>
-            </div>
-            <div>
-              <label class="input-label">{{
-                t("admin.settings.payment.alipayForceQRCode")
-              }}</label>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  :class="[
- 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
- form.payment_alipay_force_qrcode
- ? 'bg-accent-tint'
- : 'bg-gray-300 dark:bg-dark-600',
- ]"
-                  @click="
-                    form.payment_alipay_force_qrcode =
-                      !form.payment_alipay_force_qrcode
-                  "
-                >
-                  <span
-                    :class="[
- 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition-colors duration-200 ease-in-out',
- form.payment_alipay_force_qrcode
- ? 'translate-x-5'
- : 'translate-x-0',
- ]"
-                  />
-                </button>
-                <span class="text-sm text-ink-secondary">{{
-                  t("admin.settings.payment.alipayForceQRCodeHint")
-                }}</span>
-              </div>
-            </div>
-            <div>
-              <label class="input-label">{{
-                t("admin.settings.payment.alipayMobilePrecreateDeepLink")
-              }}</label>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  :class="[
- 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
- form.payment_alipay_mobile_precreate_deep_link
- ? 'bg-accent-tint'
- : 'bg-gray-300 dark:bg-dark-600',
- ]"
-                  @click="
-                    form.payment_alipay_mobile_precreate_deep_link =
-                      !form.payment_alipay_mobile_precreate_deep_link
-                  "
-                >
-                  <span
-                    :class="[
- 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition-colors duration-200 ease-in-out',
- form.payment_alipay_mobile_precreate_deep_link
- ? 'translate-x-5'
- : 'translate-x-0',
- ]"
-                  />
-                </button>
-                <span class="text-sm text-ink-secondary">{{
-                  t("admin.settings.payment.alipayMobilePrecreateDeepLinkHint")
-                }}</span>
               </div>
             </div>
           </div>

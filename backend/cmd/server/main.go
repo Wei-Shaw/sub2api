@@ -162,6 +162,12 @@ func runMainServer() {
 			log.Printf("Prompt Audit started in degraded state: %v", err)
 		}
 	}
+	if app.VNDRate != nil {
+		// Start never returns an error today, but a failed first fetch is logged
+		// inside and startup continues on the last stored rate.
+		_ = app.VNDRate.Start(context.Background())
+		defer app.VNDRate.Stop()
+	}
 
 	// 启动服务器
 	go func() {

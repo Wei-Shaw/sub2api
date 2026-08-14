@@ -8,8 +8,8 @@ import type { AdminGroup } from '@/types'
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
-      if (key === 'payment.admin.subscriptionCnyPayPreview') return `preview ${params?.amount}`
-      if (key === 'payment.admin.subscriptionCnyPayPreviewWithFee') return `fee ${params?.feeRate} ${params?.total}`
+      if (key === 'payment.admin.subscriptionVndPayPreview') return `preview ${params?.amount}`
+      if (key === 'payment.admin.subscriptionVndPayPreviewWithFee') return `fee ${params?.feeRate} ${params?.total}`
       return key
     },
   }),
@@ -139,26 +139,28 @@ function mountDialog({
 }
 
 describe('PlanEditDialog', () => {
-  it('shows CNY channel charge using the configured subscription rate and fee', async () => {
+  it('shows VND channel charge using the configured subscription rate and fee', async () => {
     const wrapper = mountDialog({
       paymentConfig: {
-        subscription_usd_to_cny_rate: 7.15,
+        subscription_usd_to_vnd_rate: 26000,
         recharge_fee_rate: 2.5,
       },
     })
 
     await wrapper.find('input[type="number"]').setValue('9.99')
 
+    // 9.99 USD * 26000 = 259,740 VND; dong has no minor units, so the 2.5% fee
+    // rounds up to a whole dong (6,494) rather than to cents.
     expect(wrapper.text()).toContain('preview')
-    expect(wrapper.text()).toContain('¥71.43')
+    expect(wrapper.text()).toContain('₫259,740')
     expect(wrapper.text()).toContain('fee 2.5')
-    expect(wrapper.text()).toContain('¥73.22')
+    expect(wrapper.text()).toContain('₫266,234')
   })
 
   it('hides the preview when the subscription rate is not configured', async () => {
     const wrapper = mountDialog({
       paymentConfig: {
-        subscription_usd_to_cny_rate: 0,
+        subscription_usd_to_vnd_rate: 0,
         recharge_fee_rate: 2.5,
       },
     })
