@@ -31,6 +31,9 @@ const (
 	// An invoice fans out into one payment per deposit, so a page this size
 	// covers the original plus any repeated deposits behind it.
 	nowPaymentsInvoiceLookupLimit = 100
+	// Measured against the live API: an invoice whose redirect URL runs past
+	// this is refused with a bare HTTP 500.
+	maxNowPaymentsRedirectURL = 255
 )
 
 // NOWPayments payment_status values.
@@ -152,6 +155,10 @@ func (n *NOWPayments) CreatePayment(ctx context.Context, req payment.CreatePayme
 		IsFeePaidByUser:  nowPaymentsBoolConfig(n.config["isFeePaidByUser"]),
 	}
 
+	if err := nowPaymentsValidateRedirectLengths(body); err != nil {
+		return nil, err
+	}
+
 	raw, err := n.post(ctx, "/invoice", body)
 	if err != nil {
 		n.logInvoiceRejection(body, err)
@@ -170,6 +177,26 @@ func (n *NOWPayments) CreatePayment(ctx context.Context, req payment.CreatePayme
 		IntentID: invoice.ID.String(),
 		Currency: currency,
 	}, nil
+}
+
+// nowPaymentsValidateRedirectLengths rejects a URL upstream cannot store.
+//
+// NOWPayments answers an over-long redirect with HTTP 500 and no explanation,
+// which reads as a gateway outage rather than as our own URL being too long, so
+// the limit is enforced here where the offending field can be named.
+func nowPaymentsValidateRedirectLengths(body nowPaymentsInvoiceRequest) error {
+	for _, field := range []struct{ name, value string }{
+		{"ipn_callback_url", body.IPNCallbackURL},
+		{"success_url", body.SuccessURL},
+		{"cancel_url", body.CancelURL},
+		{"partially_paid_url", body.PartiallyPaidURL},
+	} {
+		if len(field.value) > maxNowPaymentsRedirectURL {
+			return fmt.Errorf("nowpayments create payment: %s is %d characters, over the %d NOWPayments accepts",
+				field.name, len(field.value), maxNowPaymentsRedirectURL)
+		}
+	}
+	return nil
 }
 
 // logInvoiceRejection records the values an invoice was refused for.

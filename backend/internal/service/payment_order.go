@@ -354,7 +354,6 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 				ProviderInstanceID: sel.InstanceID,
 				ProviderKey:        sel.ProviderKey,
 				PaymentType:        req.PaymentType,
-				CanonicalReturnURL: canonicalReturnURL,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("create payment resume token: %w", err)

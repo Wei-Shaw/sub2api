@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
 	"fmt"
 	"strings"
 
@@ -36,14 +37,22 @@ func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token 
 			orderProviderKey = snapshot.ProviderKey
 		}
 	}
-	if claims.ProviderInstanceID != "" && orderProviderInstanceID != claims.ProviderInstanceID {
-		return nil, invalidResumeTokenMatchError()
-	}
-	if claims.ProviderKey != "" && !strings.EqualFold(orderProviderKey, claims.ProviderKey) {
-		return nil, invalidResumeTokenMatchError()
-	}
-	if claims.PaymentType != "" && !strings.EqualFold(strings.TrimSpace(order.PaymentType), strings.TrimSpace(claims.PaymentType)) {
-		return nil, invalidResumeTokenMatchError()
+	if len(claims.BindHash) > 0 {
+		// Packed token: the three identity claims were folded into one digest.
+		expected := paymentResumeBindHash(orderProviderKey, orderProviderInstanceID, order.PaymentType)
+		if !hmac.Equal(claims.BindHash, expected) {
+			return nil, invalidResumeTokenMatchError()
+		}
+	} else {
+		if claims.ProviderInstanceID != "" && orderProviderInstanceID != claims.ProviderInstanceID {
+			return nil, invalidResumeTokenMatchError()
+		}
+		if claims.ProviderKey != "" && !strings.EqualFold(orderProviderKey, claims.ProviderKey) {
+			return nil, invalidResumeTokenMatchError()
+		}
+		if claims.PaymentType != "" && !strings.EqualFold(strings.TrimSpace(order.PaymentType), strings.TrimSpace(claims.PaymentType)) {
+			return nil, invalidResumeTokenMatchError()
+		}
 	}
 	if order.Status == OrderStatusPending || order.Status == OrderStatusExpired {
 		result := s.reconcilePaid(ctx, order)
