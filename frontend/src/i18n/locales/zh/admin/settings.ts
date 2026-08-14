@@ -651,10 +651,10 @@ export default {
         balanceRechargeMultiplier: '余额充值倍率',
         balanceRechargeMultiplierHint: '用户每支付 1 单位支付货币可获得多少 USD 余额',
         balanceRechargePreview: '预览：支付 1 单位 = {usd} USD',
-        subscriptionUsdToVndRate: '订阅 VND 换算汇率',
+        subscriptionUsdToVndRate: 'VND 换算汇率',
         subscriptionUsdToVndRateHint:
-          'VND 支付通道下，套餐每 1 USD 价格收取多少 VND（如 26000）。0 或留空 = 不换算，订阅按 price 数值直接收款。启用后所有套餐 price 必须按 USD 定价',
-        subscriptionUsdToVndRateDisabled: '未启用（按 price 直付）',
+          'VND 支付通道下，每 1 USD 收取多少 VND（如 26000），同时作用于套餐价格与余额充值。0 或留空 = 不换算，按 USD 数值直接收款。启用后所有套餐 price 必须按 USD 定价',
+        subscriptionUsdToVndRateDisabled: '未启用（按原金额直付）',
         rechargeFeeRate: '充值手续费率',
         rechargeFeeRateHint: '用户充值时额外收取的手续费百分比，0 表示不收取手续费',
         rechargeFeePreview: '预览：充值 100 元，手续费 {fee} 元',

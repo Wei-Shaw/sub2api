@@ -24,9 +24,11 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
-	// SettingSubscriptionUSDToVNDRate is the USD→VND rate used when a
-	// USD-priced plan is collected through a dong channel (SePay).
-	// 0/unset = no conversion (the plan price is charged as-is).
+	// SettingSubscriptionUSDToVNDRate is the USD→VND rate used whenever a USD
+	// amount is collected through a dong channel (SePay) — a plan price or a
+	// balance top-up, both of which are denominated in USD. The key keeps its
+	// historical SUBSCRIPTION_ name so existing installs need no migration.
+	// 0/unset = no conversion (the USD figure is charged as-is).
 	SettingSubscriptionUSDToVNDRate = "SUBSCRIPTION_USD_TO_VND_RATE"
 	SettingRechargeFeeRate          = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix        = "PRODUCT_NAME_PREFIX"
@@ -220,7 +222,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
-		SubscriptionUSDToVNDRate:  normalizeSubscriptionUSDToVNDRate(pcParseFloat(vals[SettingSubscriptionUSDToVNDRate], 0)),
+		SubscriptionUSDToVNDRate:  normalizeUSDToVNDRate(pcParseFloat(vals[SettingSubscriptionUSDToVNDRate], 0)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],

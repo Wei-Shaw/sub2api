@@ -123,7 +123,7 @@
                   <dt class="shrink-0 text-ink-tertiary">{{ t('payment.paymentAmount') }}</dt>
                   <dd class="inline-flex items-baseline justify-end gap-0.5">
                     <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
-                    <NumCell :value="validAmount" :precision="gatewayPrecision" />
+                    <NumCell :value="rechargePaymentAmount" :precision="gatewayPrecision" />
                   </dd>
                 </div>
                 <div v-if="feeRate > 0" class="flex items-baseline justify-between gap-4 py-2">
@@ -147,10 +147,12 @@
                   Credited balance is USD credit; everything above it is in the
                   gateway's settlement currency. The two symbols are the only
                   thing standing between the user and believing they topped up
-                  100 dollars with a ¥100 payment.
+                  100 dollars with a ¥100 payment — which is why the row also
+                  shows on a 1× multiplier whenever the gateway settles in
+                  something other than dollars.
                 -->
                 <div
-                  v-if="balanceRechargeMultiplier !== 1"
+                  v-if="showCreditedAmount"
                   class="flex items-baseline justify-between gap-4 py-2"
                 >
                   <dt class="shrink-0 text-ink-tertiary">{{ t('payment.creditedBalance') }}</dt>
@@ -537,6 +539,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
+  DEFAULT_PAYMENT_CURRENCY,
   SEPAY_CURRENCY,
   currencySymbol,
   formatPaymentAmount,
@@ -697,9 +700,10 @@ const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
-// USD→VND rate for dong channels. 0 = unset, in which case the plan price is
-// charged as-is — the same opt-in condition the backend applies.
-const subscriptionUsdToVndRate = computed(() => {
+// USD→VND rate for dong channels, applied to plan prices and top-ups alike:
+// both are USD figures, and a top-up buys USD credit. 0 = unset, in which case
+// the amount is charged as-is — the same opt-in condition the backend applies.
+const usdToVndRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_vnd_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
@@ -722,18 +726,20 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Visible methods decide the amount range shown to users.
+// Visible methods decide the amount range shown to users. The bounds are
+// converted back to USD because they sit beside — and filter the presets of —
+// an input the user fills in USD credit.
 const globalMinAmount = computed(() => {
   const limits = Object.values(visibleMethods.value)
   if (limits.length === 0) return 0
   if (limits.some(limit => limit.single_min <= 0)) return 0
-  return Math.min(...limits.map(limit => limit.single_min))
+  return Math.min(...limits.map(limit => usdAmountForGatewayBound(limit.single_min, normalizePaymentCurrency(limit.currency))))
 })
 const globalMaxAmount = computed(() => {
   const limits = Object.values(visibleMethods.value)
   if (limits.length === 0) return 0
   if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
+  return Math.max(...limits.map(limit => usdAmountForGatewayBound(limit.single_max, normalizePaymentCurrency(limit.currency))))
 })
 
 // Selected method's limits (for validation and error messages)
@@ -750,7 +756,17 @@ const gatewayCurrencySymbol = computed(() => currencySymbol(selectedCurrency.val
 const gatewayPrecision = computed(() => paymentCurrencyFractionDigits(selectedCurrency.value))
 
 /** Balance credit is always USD, whatever the gateway charged in. */
-const creditedCurrencySymbol = currencySymbol('USD')
+const creditedCurrencySymbol = currencySymbol(DEFAULT_PAYMENT_CURRENCY)
+
+/**
+ * A 1× multiplier used to hide the credited row, which was fine while every
+ * gateway settled in dollars. On a dong channel the rest of the summary is a
+ * six-digit ₫ figure, so this row is the only place the user is told what they
+ * are actually buying.
+ */
+const showCreditedAmount = computed(() =>
+  balanceRechargeMultiplier.value !== 1 || selectedCurrency.value !== DEFAULT_PAYMENT_CURRENCY
+)
 
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
@@ -773,10 +789,26 @@ function ceilPaymentAmount(value: number, currency: string): number {
   return Math.ceil(value * factor) / factor
 }
 
-function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
-  const rate = subscriptionUsdToVndRate.value
+/**
+ * A USD figure — a plan price or a top-up amount — expressed in whatever the
+ * gateway settles in. Without this a dong channel quoted the dollar number
+ * with a ₫ symbol: a 5000 top-up read as ₫5,000 and credited $5,000.
+ */
+function gatewayAmountForCurrency(value: number, currency: string): number {
+  const rate = usdToVndRate.value
   if (rate <= 0 || currency !== SEPAY_CURRENCY) return roundPaymentAmount(value, currency)
   return roundPaymentAmount(value * rate, currency)
+}
+
+/**
+ * The inverse, for the per-method `single_min` / `single_max` bounds: those
+ * arrive in the gateway's currency and are compared against — and shown beside
+ * — an input the user fills in USD.
+ */
+function usdAmountForGatewayBound(value: number, currency: string): number {
+  const rate = usdToVndRate.value
+  if (rate <= 0 || currency !== SEPAY_CURRENCY || value <= 0) return value
+  return Math.round((value / rate) * 100) / 100
 }
 
 /**
@@ -791,57 +823,73 @@ function formatSelectedPaymentAmount(value: number): string {
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
+    // The limits are the gateway's, so the amount has to reach them in the
+    // gateway's currency: comparing a USD top-up against a dong `single_min`
+    // marked every method unavailable.
+    const currency = normalizePaymentCurrency(ml?.currency)
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: ml?.available !== false
+        && amountFitsMethod(gatewayTotalAmountForCurrency(validAmount.value, currency), type),
     }
   })
 )
 
 const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
+/**
+ * What the gateway collects for the requested credit. `validAmount` is USD, so
+ * on a dong channel the fee and the total have to be taken on the converted
+ * figure — the same order the backend applies when it builds `pay_amount`.
+ */
+const rechargePaymentAmount = computed(() =>
+  gatewayAmountForCurrency(validAmount.value, selectedCurrency.value)
+)
 const feeAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
+  feeRate.value > 0 && rechargePaymentAmount.value > 0
+    ? ceilPaymentAmount((rechargePaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
     : 0
 )
 const totalAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.round((validAmount.value + feeAmount.value) * 100) / 100
-    : validAmount.value
+  feeRate.value > 0 && rechargePaymentAmount.value > 0
+    ? roundPaymentAmount(rechargePaymentAmount.value + feeAmount.value, selectedCurrency.value)
+    : rechargePaymentAmount.value
 )
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
+  if (!enabledMethods.value.some((m) => amountFitsMethod(
+    gatewayTotalAmountForCurrency(validAmount.value, normalizePaymentCurrency(visibleMethods.value[m]?.currency)),
+    m,
+  ))) {
     return t('payment.amountNoMethod')
   }
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    if (ml.single_min > 0 && totalAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && totalAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
 
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && amountFitsMethod(totalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 const subPaymentAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
-  return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
+  return gatewayAmountForCurrency(price, selectedCurrency.value)
 })
 
 /** `null`, not `0`, when the plan carries no list price — there is no strike-through to draw. */
 const subOriginalPriceAmount = computed<number | null>(() => {
   const original = selectedPlan.value?.original_price ?? 0
   if (!original || original <= 0) return null
-  return subscriptionPaymentAmountForCurrency(original, selectedCurrency.value)
+  return gatewayAmountForCurrency(original, selectedCurrency.value)
 })
 
 const selectedPlanHasNoLimit = computed(() =>
@@ -860,8 +908,8 @@ const subTotalAmount = computed(() => {
   return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
 })
 
-function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
+function gatewayTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = gatewayAmountForCurrency(value, currency)
   if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
   const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
   return roundPaymentAmount(paymentAmount + fee, currency)
@@ -876,7 +924,7 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
+      available: ml?.available !== false && amountFitsMethod(gatewayTotalAmountForCurrency(price, currency), type),
     }
   })
 })
@@ -889,8 +937,11 @@ const canSubmitSubscription = computed(() =>
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (amt <= 0) return
+  const gatewayAmount = (m: string) =>
+    gatewayTotalAmountForCurrency(amt, normalizePaymentCurrency(visibleMethods.value[m]?.currency))
+  if (amountFitsMethod(gatewayAmount(method), method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(gatewayAmount(m), m))
   if (available) selectedMethod.value = available
 })
 

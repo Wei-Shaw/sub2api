@@ -66,7 +66,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToVNDRate)
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate, methodCurrency, cfg.SubscriptionUSDToVNDRate)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToVNDRate)
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate, selectedCurrency, cfg.SubscriptionUSDToVNDRate)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, feeRate, payAmount, sel)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -145,7 +145,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
-	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
+	// orderAmount, not limitAmount: the stored Amount every other order
+	// contributes to the total is the credited USD figure, so the incoming
+	// order has to be measured the same way.
+	if err := s.checkDailyLimit(ctx, tx, req.UserID, orderAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
 	tm := cfg.OrderTimeoutMin
@@ -296,12 +299,12 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 	if err != nil {
 		return fmt.Errorf("query daily usage: %w", err)
 	}
+	// `amount` arrives in USD, so the running total has to be USD as well.
+	// PayAmount is whatever the gateway settled in — summing it here mixed
+	// dong into a dollar limit and made a single ₫ top-up look like it blew
+	// the daily cap by four orders of magnitude.
 	var used float64
 	for _, o := range orders {
-		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
-			continue
-		}
 		used += o.Amount
 	}
 	if used+amount > limit {
@@ -449,7 +452,14 @@ func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limit
 	if sel != nil {
 		currency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
-	amountStr := payment.FormatAmountForCurrency(limitAmount, currency)
+	// The subject names the sum the user is about to transfer, so it has to be
+	// the converted gateway amount — a dong transfer labelled with the USD
+	// figure is the bank statement telling the user they paid ₫5,000.
+	usdToVndRate := 0.0
+	if cfg != nil {
+		usdToVndRate = cfg.SubscriptionUSDToVNDRate
+	}
+	amountStr := payment.FormatAmountForCurrency(calculateGatewayBaseAmount(limitAmount, usdToVndRate, currency), currency)
 	if hasPaymentProductNameAffix(cfg) {
 		return applyPaymentProductNameAffix(amountStr, cfg)
 	}
@@ -491,23 +501,22 @@ func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string
 	return payAmountStr, payAmount, nil
 }
 
-func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToVndRate float64) (string, float64, error) {
-	paymentAmount := limitAmount
-	if orderType == payment.OrderTypeSubscription {
-		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToVndRate, currency)
-	}
-	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
+func calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate float64, currency string, usdToVndRate float64) (string, float64, error) {
+	return calculateCreateOrderPayAmount(calculateGatewayBaseAmount(limitAmount, usdToVndRate, currency), feeRate, currency)
 }
 
-// calculateSubscriptionGatewayBaseAmount converts a USD-priced plan into the
-// amount the gateway will actually collect.
+// calculateGatewayBaseAmount converts a USD amount into the amount the gateway
+// will actually collect.
 //
-// Plans are priced in USD, which NOWPayments charges directly. SePay collects
-// Vietnamese dong, so a VND channel needs the admin-configured rate — without
-// one the price would be charged as a dong figure, i.e. off by four orders of
-// magnitude, so an unset rate leaves the amount alone rather than guessing.
-func calculateSubscriptionGatewayBaseAmount(amount, usdToVndRate float64, currency string) float64 {
-	rate := normalizeSubscriptionUSDToVNDRate(usdToVndRate)
+// Both sides of the checkout are denominated in USD: plans carry a USD price,
+// and a balance top-up is an order for USD credit. NOWPayments charges that
+// directly. SePay collects Vietnamese dong, so a VND channel needs the
+// admin-configured rate — without one the amount would be charged as a dong
+// figure, i.e. off by four orders of magnitude (a 5000 top-up collecting
+// ₫5,000 and crediting $5,000), so an unset rate leaves the amount alone
+// rather than guessing.
+func calculateGatewayBaseAmount(amount, usdToVndRate float64, currency string) float64 {
+	rate := normalizeUSDToVNDRate(usdToVndRate)
 	if rate <= 0 || currency != payment.CurrencySePay {
 		return amount
 	}

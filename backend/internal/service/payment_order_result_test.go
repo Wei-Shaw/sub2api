@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -31,7 +30,7 @@ func TestCalculateCreateOrderPayAmountUsesCurrencyPrecision(t *testing.T) {
 func TestCalculateCreateOrderPayAmountForSubscriptionConvertsVNDPriceWhenRateConfigured(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "VND", payment.OrderTypeSubscription, 26000)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 0, "VND", 26000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -43,7 +42,7 @@ func TestCalculateCreateOrderPayAmountForSubscriptionConvertsVNDPriceWhenRateCon
 func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterVNDConversion(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 2.5, "VND", payment.OrderTypeSubscription, 26000)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 2.5, "VND", 26000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +55,7 @@ func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterVNDConversio
 func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonVNDPrice(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "USD", payment.OrderTypeSubscription, 26000)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 0, "USD", 26000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -71,7 +70,7 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonVNDPrice(t *testing
 func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDisabled(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(10, 0, "VND", payment.OrderTypeSubscription, 0)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(10, 0, "VND", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,16 +79,58 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDis
 	}
 }
 
-// 汇率只作用于订阅订单，余额充值订单不受影响。
-func TestCalculateCreateOrderPayAmountForBalanceIgnoresSubscriptionRate(t *testing.T) {
+// 汇率只针对 VND 通道，其他币种的充值订单金额保持原样。
+func TestCalculateCreateOrderPayAmountForBalanceKeepsNonVNDAmount(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "CNY", payment.OrderTypeBalance, 7.15)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(50, 0, "CNY", 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if amountStr != "50.00" || amount != 50 {
 		t.Fatalf("balance CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
+	}
+}
+
+// A top-up buys USD credit, so a dong channel has to collect amount × rate.
+// Charging the figure as-is is the ₫5,000-for-$5,000 bug.
+func TestCalculateCreateOrderPayAmountForBalanceConvertsVND(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(5000, 0, "VND", 26000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "130000000" || amount != 130000000 {
+		t.Fatalf("balance VND pay amount = (%q, %v), want (130000000, 130000000)", amountStr, amount)
+	}
+}
+
+// The conversion runs before the fee, so the fee is a percentage of the dong
+// amount rather than of the dollar figure.
+func TestCalculateCreateOrderPayAmountForBalanceAppliesFeeAfterConversion(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(10, 2.5, "VND", 26000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "266500" || amount != 266500 {
+		t.Fatalf("balance VND pay amount with fee = (%q, %v), want (266500, 266500)", amountStr, amount)
+	}
+}
+
+// Opt-in on the balance side too: an unset rate leaves the amount alone rather
+// than guessing a rate.
+func TestCalculateCreateOrderPayAmountForBalanceKeepsAmountWhenRateDisabled(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(50, 0, "VND", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "50" || amount != 50 {
+		t.Fatalf("balance VND pay amount without rate = (%q, %v), want (50, 50)", amountStr, amount)
 	}
 }
 
