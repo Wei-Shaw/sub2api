@@ -14,8 +14,6 @@ export default {
     },
     timeRange: 'Time range',
     clearFilters: 'Reset',
-    refreshingFilters: 'Filters changed; refreshing matrix, trend, and details…',
-    switchingData: 'Switching filtered data…',
     summaryAria: 'Selected range summary',
     loadFailed: 'Failed to load channel monitor',
     detailLoadFailed: 'Failed to load channel monitor details',
@@ -35,22 +33,17 @@ export default {
     tabs: { aria: 'Detail dimension', models: 'Models', errors: 'Error reasons', users: 'User ranking' },
     metrics: {
       rpm: 'RPM',
-      tpm: 'TPM',
       tps: 'Tokens/s',
       rpmDetail: 'Requests per minute',
-      tpmDetail: 'Tokens per minute',
       tpsDetail: 'Derived as TPM ÷ 60',
-      errorRate: 'Error rate',
       ttft: 'First token',
       ttftP50: 'First token P50',
-      durationP50: 'Duration P50',
       cacheRate: 'Cache rate',
       cacheDetail: 'Read cache share',
       successRate: 'Success rate',
       successRateValue: 'Success rate {value}',
       errorRateValue: 'Error rate {value}',
       rpmValue: 'RPM {value}',
-      tpmValue: 'TPM {value}',
       tpsValue: 'Tokens/s {value}',
       ttftValue: 'First token {value}',
       durationValue: 'Duration {value}',
@@ -60,7 +53,7 @@ export default {
     empty: { title: 'No data to display', description: 'Try changing the time range or filters' },
     bucket: { minutes: '{count}-minute buckets', hours: '{count}-hour buckets', days: '{count}-day buckets' },
     matrix: {
-      title: 'Availability trend', description: 'Each row is a channel dimension and each block is an aggregate interval; hover for details', wheelZoom: 'Scroll over blocks to zoom in (narrower range, wider blocks)', wheelZoomX: 'Scroll over blocks to zoom in (narrower range, wider blocks)', dimension: 'Channel dimension', emptyTitle: 'No matrix data for the selected window', legendAria: 'Health score legend', bad: 'Bad', good: 'Good', healthyLegend: 'Healthy (≥80)', warningLegend: 'Watch (50–79)', criticalLegend: 'Critical (<50)', unknownLegend: 'No traffic / insufficient samples', noTraffic: 'No traffic in this interval', noTrafficAt: '{time} · no traffic', scoreLine: 'Health score {score}', resetZoom: 'Reset zoom'
+      title: 'Availability trend', description: 'Each row is a channel dimension and each block is an aggregate interval; hover for details', wheelZoomX: 'Scroll over blocks to zoom in (narrower range, wider blocks)', dimension: 'Channel dimension', emptyTitle: 'No matrix data for the selected window', legendAria: 'Health score legend', bad: 'Bad', good: 'Good', healthyLegend: 'Healthy (≥80)', warningLegend: 'Watch (50–79)', criticalLegend: 'Critical (<50)', unknownLegend: 'No traffic / insufficient samples', noTraffic: 'No traffic in this interval', noTrafficAt: '{time} · no traffic', scoreLine: 'Health score {score}', resetZoom: 'Reset zoom'
     },
     chart: {
       title: 'Availability trend', description: 'Error rate · first token P50 · cache rate', emptyTitle: 'No trend data for the selected window', errorLegend: 'Error rate (left axis %)', cacheLegend: 'Cache rate (left axis %)', ttftLegend: 'First token P50 (right axis)', errorDataset: 'Error rate trend %', cacheDataset: 'Cache rate trend %', ttftDataset: 'First token trend P50 (ms)', percentAxis: 'Rate %', resetZoom: 'Reset zoom'
@@ -81,7 +74,6 @@ export default {
       description:
         'Configure passive usage aggregation dimensions (platform / model / group) and refresh cadence. Health colors and details on the user /monitor page show rates, RPM, and TPM — not absolute request volume.',
       save: 'Save',
-      loading: 'Loading…',
       loadFailed: 'Failed to load V2 config',
       saveSuccess: 'V2 monitor config saved',
       saveFailed: 'Failed to save V2 config',

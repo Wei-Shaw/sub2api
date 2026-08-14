@@ -41,11 +41,19 @@ export default defineConfig({
       // and covered only 6 of them, so the ratio fell 43.29 -> 42.98 without a
       // single source function losing coverage. Statements, branches and lines
       // all rose over the same change.
+      //
+      // `statements`/`lines` moved 69 -> 68 when ~1,300 orphan i18n keys were
+      // deleted. A locale module is a plain object literal that every test
+      // imports, so it counts as 100% covered statements; deleting dead strings
+      // therefore removes numerator faster than it removes denominator and the
+      // ratio falls — 69.36 -> 68.99 — while no executable line lost a test.
+      // The honest reading is that message trees were inflating this number all
+      // along, not that coverage regressed.
       thresholds: {
-        statements: 69,
+        statements: 68,
         branches: 69,
         functions: 42,
-        lines: 69
+        lines: 68
       }
     }
   }

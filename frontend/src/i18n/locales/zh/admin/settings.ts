@@ -1243,14 +1243,12 @@ export default {
         pointFormats: '点格式',
         signatureAlgorithms: '签名算法',
         alpnProtocols: 'ALPN 协议',
-        alpnProtocolsHint: '逗号分隔，例如 h2, http/1.1',
         supportedVersions: '支持的 TLS 版本',
         keyShareGroups: '密钥共享组',
         pskModes: 'PSK 模式',
         extensions: '扩展'
       },
 
-      deleteConfirm: '删除模板',
       deleteConfirmMessage: '确定要删除模板 "{name}" 吗？使用此模板的账号将回退到内置默认值。',
       createSuccess: '模板创建成功',
       updateSuccess: '模板更新成功',

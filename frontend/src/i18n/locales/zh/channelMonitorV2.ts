@@ -14,8 +14,6 @@ export default {
     },
     timeRange: '时间范围',
     clearFilters: '重置',
-    refreshingFilters: '筛选条件已变化，正在刷新矩阵、趋势和明细…',
-    switchingData: '正在切换筛选数据…',
     summaryAria: '筛选范围整体汇总',
     loadFailed: '渠道监控加载失败',
     detailLoadFailed: '渠道监控明细加载失败',
@@ -35,22 +33,17 @@ export default {
     tabs: { aria: '明细维度', models: '模型', errors: '错误原因', users: '用户排行' },
     metrics: {
       rpm: 'RPM',
-      tpm: 'TPM',
       tps: '每秒 Token',
       rpmDetail: '每分钟请求数',
-      tpmDetail: '每分钟 Token 数',
       tpsDetail: '由 TPM ÷ 60 换算',
-      errorRate: '错误率',
       ttft: '首 Token',
       ttftP50: '首 Token P50',
-      durationP50: '请求时长 P50',
       cacheRate: '缓存率',
       cacheDetail: '读缓存占比',
       successRate: '成功率',
       successRateValue: '成功率 {value}',
       errorRateValue: '错误率 {value}',
       rpmValue: 'RPM {value}',
-      tpmValue: 'TPM {value}',
       tpsValue: '每秒 Token {value}',
       ttftValue: '首 Token {value}',
       durationValue: '请求时长 {value}',
@@ -60,7 +53,7 @@ export default {
     empty: { title: '没有可展示的数据', description: '尝试调整时间范围或筛选条件' },
     bucket: { minutes: '{count} 分钟粒度', hours: '{count} 小时粒度', days: '{count} 天粒度' },
     matrix: {
-      title: '可用性趋势', description: '每行是一种渠道组合，每个色块代表一个统计区间；悬停查看明细', wheelZoom: '在色块上滚轮放大（区间变窄、色块变宽）', wheelZoomX: '在色块上滚轮放大（区间变窄、色块变宽）', dimension: '渠道维度', emptyTitle: '当前筛选窗口没有矩阵数据', legendAria: '健康分数图例', bad: '差', good: '好', healthyLegend: '健康 (≥80)', warningLegend: '需关注 (50–79)', criticalLegend: '异常 (<50)', unknownLegend: '无流量 / 样本不足', noTraffic: '该区间无流量', noTrafficAt: '{time} · 无流量', scoreLine: '健康分 {score}', resetZoom: '重置缩放'
+      title: '可用性趋势', description: '每行是一种渠道组合，每个色块代表一个统计区间；悬停查看明细', wheelZoomX: '在色块上滚轮放大（区间变窄、色块变宽）', dimension: '渠道维度', emptyTitle: '当前筛选窗口没有矩阵数据', legendAria: '健康分数图例', bad: '差', good: '好', healthyLegend: '健康 (≥80)', warningLegend: '需关注 (50–79)', criticalLegend: '异常 (<50)', unknownLegend: '无流量 / 样本不足', noTraffic: '该区间无流量', noTrafficAt: '{time} · 无流量', scoreLine: '健康分 {score}', resetZoom: '重置缩放'
     },
     chart: {
       title: '可用性趋势', description: '错误率 · 首 Token P50 · 缓存率', emptyTitle: '当前筛选窗口没有趋势数据', errorLegend: '错误率（左轴 %）', cacheLegend: '缓存率（左轴 %）', ttftLegend: '首 Token P50（右轴）', errorDataset: '错误率趋势 %', cacheDataset: '缓存率趋势 %', ttftDataset: '首 Token 趋势 P50 (ms)', percentAxis: '比率 %', resetZoom: '重置缩放'
@@ -81,7 +74,6 @@ export default {
       description:
         '配置被动用量汇总维度（平台 / 模型 / 分组）与刷新频率。健康色与明细在用户端 /monitor 以比例、RPM/TPM 展示，不暴露绝对请求量。',
       save: '保存',
-      loading: '加载中...',
       loadFailed: 'V2 配置加载失败',
       saveSuccess: 'V2 监控配置已保存',
       saveFailed: 'V2 配置保存失败',

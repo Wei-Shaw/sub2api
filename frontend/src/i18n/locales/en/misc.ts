@@ -13,7 +13,6 @@ export default {
     expiresToday: 'Expires today',
     expiresTomorrow: 'Expires tomorrow',
     viewAll: 'View all subscriptions',
-    noSubscriptions: 'No active subscriptions',
     unlimited: 'Unlimited'
   },
 
@@ -23,13 +22,9 @@ export default {
     latestVersion: 'Latest Version',
     upToDate: "You're running the latest version.",
     updateAvailable: 'A new version is available!',
-    releaseNotes: 'Release Notes',
-    noReleaseNotes: 'No release notes',
-    viewUpdate: 'View Update',
     viewRelease: 'View Release',
     viewChangelog: 'View Changelog',
     refresh: 'Refresh',
-    sourceMode: 'Source Build',
     sourceModeHint: 'Source build, use git pull to update',
     updateNow: 'Update Now',
     updating: 'Updating...',
@@ -61,14 +56,7 @@ export default {
 
   // Recharge / Subscription Page
   purchase: {
-    title: 'Recharge / Subscription',
     description: 'Recharge balance or purchase subscription via the embedded page',
-    openInNewTab: 'Open in new tab',
-    notEnabledTitle: 'Feature not enabled',
-    notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
-    notConfiguredTitle: 'Recharge / Subscription URL not configured',
-    notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   },
 
   // Custom Page (iframe embed)
@@ -88,22 +76,13 @@ export default {
   // Announcements Page
   announcements: {
     title: 'Announcements',
-    description: 'View system announcements',
-    unreadOnly: 'Show unread only',
     markRead: 'Mark as read',
     markAllRead: 'Mark all as read',
-    viewAll: 'View all announcements',
     markedAsRead: 'Marked as read',
     allMarkedAsRead: 'All announcements marked as read',
-    newCount: '{count} new announcement | {count} new announcements',
-    readAt: 'Read at',
     read: 'Read',
     unread: 'Unread',
-    startsAt: 'Starts at',
-    endsAt: 'Ends at',
     empty: 'No announcements',
-    emptyUnread: 'No unread announcements',
-    total: 'announcements',
     emptyDescription: 'There are no system announcements at this time',
     readStatus: 'You have read this announcement',
     markReadHint: 'Click "Mark as read" to mark this announcement'
@@ -122,7 +101,6 @@ export default {
       expired: 'Expired',
       revoked: 'Revoked'
     },
-    usage: 'Usage',
     expires: 'Expires',
     noExpiration: 'No expiration',
     unlimited: 'Unlimited',
@@ -131,20 +109,14 @@ export default {
     weekly: 'Weekly',
     monthly: 'Monthly',
     daysRemaining: '{days} days remaining',
-    expiresOn: 'Expires on {date}',
     resetIn: 'Resets in {time}',
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
   },
 
   // Onboarding Tour
   onboarding: {
     restartTour: 'Restart Onboarding Tour',
-    dontShowAgain: "Don't show again",
-    dontShowAgainTitle: 'Permanently close onboarding guide',
-    confirmDontShow: "Are you sure you don't want to see the onboarding guide again?\n\nYou can restart it anytime from the user menu in the top right corner.",
-    confirmExit: 'Are you sure you want to exit the onboarding guide? You can restart it anytime from the top right menu.',
     interactiveHint: 'Press Enter or Click to continue',
     navigation: {
       flipPage: 'Flip Page',
@@ -258,12 +230,10 @@ export default {
       keyName: {
         title: '✏️ Key Name',
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Give your key an easy-to-identify name.</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 Examples:</b> "My First Key", "For Testing", etc.</p></div>',
-        nextBtn: 'Next'
       },
       keyGroup: {
         title: '🎯 Select Group',
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Select the service group assigned by the administrator.</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Group Info:</b><br/>Different groups may have different service quality and billing rates, choose according to your needs.</p></div>',
-        nextBtn: 'Next'
       },
       keySubmit: {
         title: '🎉 Complete Creation',
@@ -314,17 +284,8 @@ export default {
       cancelledDesc: 'You have cancelled this payment.',
       waitingPayment: 'Waiting for payment...',
       cancelOrder: 'Cancel Order',
-      alipayOpening: 'Opening Alipay',
-      alipayContinueInApp: 'Complete payment in Alipay',
-      alipayWaitingHint: 'The server will confirm the payment and update this page automatically',
-      alipayFallbackTitle: 'Alipay did not open',
-      alipayFallbackHint: 'Try opening Alipay again, or save the QR code and scan it from your Alipay photo album',
-      reopenAlipay: 'Open Alipay Again',
-      saveQRCode: 'Save QR Code',
-      alipaySaveAndScanHint: 'Save the QR code, open Alipay Scan, then select it from your photo album',
     },
     orders: {
-      title: 'My Orders',
       empty: 'No orders yet',
       orderId: 'Order ID',
       orderNo: 'Order No.',
@@ -333,7 +294,6 @@ export default {
       creditedAmount: 'Credited Amount',
       fee: 'Fee',
       baseAmount: 'Base Amount',
-      includedInPayAmount: 'included in paid amount',
       status: 'Status',
       paymentMethod: 'Payment Method',
       createdAt: 'Created',
@@ -356,12 +316,10 @@ export default {
     groupFallback: 'Group #{id}',
     rechargeAccount: 'Recharge Account',
     activeSubscription: 'Active Subscription',
-    noActiveSubscription: 'No active subscription',
     tabTopUp: 'Top Up',
     tabSubscribe: 'Subscribe',
     noPlans: 'No subscription plans available',
     notAvailable: 'Top-up is currently unavailable',
-    confirmSubscription: 'Confirm Subscription',
     confirmCancel: 'Are you sure you want to cancel this order?',
     amountTooLow: 'Minimum amount is {min}',
     amountTooHigh: 'Maximum amount is {max}',
@@ -369,11 +327,6 @@ export default {
     rechargeRatePreview: 'Current rate: 1 CNY = {usd} USD',
     refundReason: 'Refund Reason',
     refundReasonPlaceholder: 'Please describe your refund reason',
-    stripeLoadFailed: 'Failed to load payment component. Please refresh and try again.',
-    stripeMissingParams: 'Missing order ID or client secret',
-    stripeNotConfigured: 'Stripe is not configured',
-    airwallexLoadFailed: 'Failed to load Airwallex payment component. Please refresh and try again.',
-    airwallexMissingParams: 'Missing Airwallex payment parameters',
     errors: {
       providerUnavailable: 'This payment channel is temporarily unavailable.',
       methodNotConfigured: 'This payment method is not configured yet.',
@@ -423,19 +376,11 @@ export default {
       REFUND_AMOUNT_EXCEEDED: 'Refund amount exceeds the recharge amount.',
       REFUND_FAILED: 'Refund failed.',
     },
-    airwallexPay: 'Airwallex Payment',
-    stripePay: 'Pay Now',
-    stripeSuccessProcessing: 'Payment successful, processing your order...',
     stripePopup: {
-      redirecting: 'Redirecting to payment page...',
-      loadingQr: 'Loading WeChat Pay QR code...',
-      timeout: 'Timed out waiting for payment credentials, please retry',
-      qrFailed: 'Failed to get WeChat Pay QR code',
     },
     subscribeNow: 'Subscribe Now',
     renewNow: 'Renew',
     selectPlan: 'Select Plan',
-    planFeatures: 'Features',
     planCard: {
       rate: 'Rate',
       peakRate: 'Peak Rate',
@@ -449,11 +394,7 @@ export default {
     days: 'days',
     weeks: 'weeks',
     months: 'months',
-    years: 'years',
-    oneMonth: '1 Month',
-    oneYear: '1 Year',
     perMonth: 'month',
-    perYear: 'year',
     admin: {
       tabs: {
         overview: 'Overview',

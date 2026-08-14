@@ -1248,14 +1248,12 @@ export default {
         pointFormats: 'Point Formats',
         signatureAlgorithms: 'Signature Algorithms',
         alpnProtocols: 'ALPN Protocols',
-        alpnProtocolsHint: 'Comma-separated, e.g. h2, http/1.1',
         supportedVersions: 'Supported TLS Versions',
         keyShareGroups: 'Key Share Groups',
         pskModes: 'PSK Modes',
         extensions: 'Extensions'
       },
 
-      deleteConfirm: 'Delete Profile',
       deleteConfirmMessage: 'Are you sure you want to delete profile "{name}"? Accounts using this profile will fall back to the built-in default.',
       createSuccess: 'Profile created successfully',
       updateSuccess: 'Profile updated successfully',

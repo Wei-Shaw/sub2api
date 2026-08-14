@@ -48,14 +48,10 @@ export default {
     },
 
     backup: {
-      title: 'Database Backup',
-      description: 'Full database backup to S3-compatible storage with scheduled backup and restore',
       s3: {
         title: 'S3 Storage Configuration',
-        description: 'Configure S3-compatible storage (supports Cloudflare R2)',
         descriptionPrefix: 'Configure S3-compatible storage (supports',
         descriptionSuffix: ')',
-        enabled: 'Enable S3 Storage',
         endpoint: 'Endpoint',
         region: 'Region',
         bucket: 'Bucket',
@@ -171,7 +167,6 @@ export default {
         },
         step4: {
           title: 'Fill in the Configuration',
-          checkEnabled: 'Checked',
           bucketValue: 'Your bucket name',
           fromStep2: 'Value from Step 2',
           unchecked: 'Unchecked'
@@ -188,7 +183,6 @@ export default {
         loadFailed: 'Failed to load affiliate records'
       },
       records: {
-        search: 'Search',
         searchPlaceholder: 'Email, username, user ID, or order number',
         startAt: 'Start date',
         endAt: 'End date',

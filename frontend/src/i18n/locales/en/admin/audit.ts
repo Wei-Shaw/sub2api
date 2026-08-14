@@ -17,25 +17,19 @@ export default {
       result: 'Result',
       resultSuccess: 'Success',
       resultFailure: 'Failure',
-      startTime: 'Start Time',
-      endTime: 'End Time'
     },
     columns: {
       time: 'Time',
       actor: 'Actor',
       action: 'Action',
-      method: 'Method',
       result: 'Result',
       clientIp: 'Client IP',
       detail: 'Detail'
     },
     detail: {
       title: 'Audit Log Detail',
-      actorRole: 'Role',
-      methodPath: 'Method / Path',
       latency: 'Latency',
       requestId: 'Request ID',
-      credential: 'Credential (masked)',
       userAgent: 'User-Agent',
       requestBody: 'Request Body (redacted)',
       extra: 'Extra'

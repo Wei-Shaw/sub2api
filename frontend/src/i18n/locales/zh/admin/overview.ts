@@ -48,14 +48,10 @@ export default {
     },
 
     backup: {
-      title: '数据库备份',
-      description: '全量数据库备份到 S3 兼容存储，支持定时备份与恢复',
       s3: {
         title: 'S3 存储配置',
-        description: '配置 S3 兼容存储（支持 Cloudflare R2）',
         descriptionPrefix: '配置 S3 兼容存储（支持',
         descriptionSuffix: '）',
-        enabled: '启用 S3 存储',
         endpoint: '端点地址',
         region: '区域',
         bucket: '存储桶',
@@ -171,7 +167,6 @@ export default {
         },
         step4: {
           title: '填写以下配置',
-          checkEnabled: '勾选',
           bucketValue: '你创建的存储桶名称',
           fromStep2: '第 2 步获取的值',
           unchecked: '不勾选'
@@ -188,7 +183,6 @@ export default {
         loadFailed: '加载邀请返利记录失败'
       },
       records: {
-        search: '搜索',
         searchPlaceholder: '邮箱、用户名、用户 ID、订单号',
         startAt: '开始日期',
         endAt: '结束日期',

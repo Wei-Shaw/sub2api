@@ -13,7 +13,6 @@ export default {
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
-    noSubscriptions: '暂无有效订阅',
     unlimited: '无限制'
   },
 
@@ -23,13 +22,9 @@ export default {
     latestVersion: '最新版本',
     upToDate: '已是最新版本',
     updateAvailable: '有新版本可用！',
-    releaseNotes: '更新日志',
-    noReleaseNotes: '暂无更新日志',
-    viewUpdate: '查看更新',
     viewRelease: '查看发布',
     viewChangelog: '查看更新日志',
     refresh: '刷新',
-    sourceMode: '源码构建',
     sourceModeHint: '源码构建请使用 git pull 更新',
     updateNow: '立即更新',
     updating: '正在更新...',
@@ -60,13 +55,7 @@ export default {
 
   // Recharge / Subscription Page
   purchase: {
-    title: '充值/订阅',
     description: '通过内嵌页面完成充值/订阅',
-    openInNewTab: '新窗口打开',
-    notEnabledTitle: '该功能未开启',
-    notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',
-    notConfiguredTitle: '充值/订阅链接未配置',
-    notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
   },
 
   // Custom Page (iframe embed)
@@ -86,22 +75,13 @@ export default {
   // Announcements Page
   announcements: {
     title: '公告',
-    description: '查看系统公告',
-    unreadOnly: '仅显示未读',
     markRead: '标记已读',
     markAllRead: '全部已读',
-    viewAll: '查看全部公告',
     markedAsRead: '已标记为已读',
     allMarkedAsRead: '所有公告已标记为已读',
-    newCount: '有 {count} 条新公告',
-    readAt: '已读时间',
     read: '已读',
     unread: '未读',
-    startsAt: '开始时间',
-    endsAt: '结束时间',
     empty: '暂无公告',
-    emptyUnread: '暂无未读公告',
-    total: '条公告',
     emptyDescription: '暂时没有任何系统公告',
     readStatus: '您已阅读此公告',
     markReadHint: '点击"已读"标记此公告'
@@ -119,7 +99,6 @@ export default {
       expired: '已过期',
       revoked: '已撤销'
     },
-    usage: '用量',
     expires: '到期时间',
     noExpiration: '无到期时间',
     unlimited: '无限制',
@@ -128,20 +107,14 @@ export default {
     weekly: '每周',
     monthly: '每月',
     daysRemaining: '剩余 {days} 天',
-    expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
   },
 
   // Onboarding Tour
   onboarding: {
     restartTour: '重新查看新手引导',
-    dontShowAgain: '不再提示',
-    dontShowAgainTitle: '永久关闭新手引导',
-    confirmDontShow: '确定不再显示新手引导吗？\n\n您可以随时在右上角头像菜单中重新开启。',
-    confirmExit: '确定要退出新手引导吗？您可以随时在右上角菜单重新开始。',
     interactiveHint: '按 Enter 或点击继续',
     navigation: {
       flipPage: '翻页',
@@ -280,13 +253,11 @@ export default {
         title: '✏️ 密钥名称',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
-        nextBtn: '下一步'
       },
       keyGroup: {
         title: '🎯 选择分组',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
-        nextBtn: '下一步'
       },
       keySubmit: {
         title: '🎉 完成创建',
@@ -338,17 +309,8 @@ export default {
       cancelledDesc: '您已取消本次支付',
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
-      alipayOpening: '正在打开支付宝',
-      alipayContinueInApp: '请在支付宝中完成支付',
-      alipayWaitingHint: '支付结果将由服务端确认，本页面会自动更新',
-      alipayFallbackTitle: '打开支付宝未成功',
-      alipayFallbackHint: '可重新打开支付宝，或保存下方二维码后从支付宝相册识别',
-      reopenAlipay: '重新打开支付宝',
-      saveQRCode: '保存二维码',
-      alipaySaveAndScanHint: '保存二维码后，打开支付宝扫一扫，从相册选择二维码',
     },
     orders: {
-      title: '我的订单',
       empty: '暂无订单',
       orderId: '订单 ID',
       orderNo: '订单编号',
@@ -357,7 +319,6 @@ export default {
       creditedAmount: '到账金额',
       fee: '手续费',
       baseAmount: '充值金额',
-      includedInPayAmount: '已含在实付金额中',
       status: '状态',
       paymentMethod: '支付方式',
       createdAt: '创建时间',
@@ -380,12 +341,10 @@ export default {
     groupFallback: '分组 #{id}',
     rechargeAccount: '充值账户',
     activeSubscription: '当前订阅',
-    noActiveSubscription: '暂无有效订阅',
     tabTopUp: '充值',
     tabSubscribe: '订阅',
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',
-    confirmSubscription: '确认订阅',
     confirmCancel: '确定要取消此订单吗？',
     amountTooLow: '最低金额为 {min}',
     amountTooHigh: '最高金额为 {max}',
@@ -393,11 +352,6 @@ export default {
     rechargeRatePreview: '当前倍率：1 CNY = {usd} USD',
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
-    stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
-    stripeMissingParams: '缺少订单ID或支付密钥',
-    stripeNotConfigured: 'Stripe 未配置',
-    airwallexLoadFailed: 'Airwallex 支付组件加载失败，请刷新页面重试',
-    airwallexMissingParams: '缺少 Airwallex 支付参数',
     errors: {
       providerUnavailable: '该支付渠道暂时不可用。',
       methodNotConfigured: '该支付方式尚未配置。',
@@ -447,19 +401,11 @@ export default {
       REFUND_AMOUNT_EXCEEDED: '退款金额超过充值金额',
       REFUND_FAILED: '退款失败',
     },
-    airwallexPay: 'Airwallex 支付',
-    stripePay: '立即支付',
-    stripeSuccessProcessing: '支付成功，正在处理订单...',
     stripePopup: {
-      redirecting: '正在跳转到支付页面...',
-      loadingQr: '正在获取微信支付二维码...',
-      timeout: '等待支付凭证超时，请重试',
-      qrFailed: '未能获取微信支付二维码',
     },
     subscribeNow: '立即开通',
     renewNow: '续费',
     selectPlan: '选择套餐',
-    planFeatures: '功能特性',
     planCard: {
       rate: '倍率',
       peakRate: '高峰倍率',
@@ -473,11 +419,7 @@ export default {
     days: '天',
     weeks: '周',
     months: '个月',
-    years: '年',
-    oneMonth: '1 个月',
-    oneYear: '1 年',
     perMonth: '月',
-    perYear: '年',
     admin: {
       tabs: {
         overview: '概览',

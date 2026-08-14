@@ -120,7 +120,6 @@ export default {
     subtitle: 'Enter your API Key to view real-time spending and usage status',
     placeholder: 'sk-ant-mirror-xxxxxxxxxxxx',
     query: 'Query',
-    querying: 'Querying...',
     privacyNote: 'Your Key is processed locally in the browser and will not be stored',
     dateRange: 'Date Range:',
     dateRangeToday: 'Today',
@@ -129,7 +128,6 @@ export default {
     dateRange90d: '90 Days',
     dateRangeCustom: 'Custom',
     apply: 'Apply',
-    used: 'Used',
     detailInfo: 'Detail Information',
     tokenStats: 'Token Statistics',
     dailyDetail: 'Daily Detail',
@@ -250,10 +248,8 @@ export default {
       adminEmail: 'Admin Email'
     },
     status: {
-      testing: 'Testing...',
       success: 'Connection Successful',
       testConnection: 'Test Connection',
-      installing: 'Installing...',
       completeInstallation: 'Complete Installation',
       completed: 'Installation completed!',
       redirecting: 'Redirecting to login page...',
