@@ -30,6 +30,9 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 // Official WeChat Pay may require multiple candidates because the callback body
 // cannot be bound to a merchant before decryption.
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
+	if strings.TrimSpace(providerKey) == payment.TypeSePay {
+		outTradeNo = s.resolveSepayOutTradeNo(ctx, outTradeNo)
+	}
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
 		if err == nil {
@@ -80,6 +83,25 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 		return nil, err
 	}
 	return []payment.Provider{prov}, nil
+}
+
+// resolveSepayOutTradeNo maps a SePay webhook code back to the canonical
+// out_trade_no. Banks may uppercase the transfer content and SePay's payment
+// code extraction may drop the configured prefix, so resolution falls back to
+// case-insensitive lookups (raw code, then code with the sub2_ prefix).
+func (s *PaymentService) resolveSepayOutTradeNo(ctx context.Context, code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
+	}
+	for _, cand := range []string{code, orderIDPrefix + code} {
+		order, err := s.entClient.PaymentOrder.Query().
+			Where(paymentorder.OutTradeNoEqualFold(cand)).Only(ctx)
+		if err == nil && order != nil {
+			return order.OutTradeNo
+		}
+	}
+	return code
 }
 
 func (s *PaymentService) getPinnedOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
