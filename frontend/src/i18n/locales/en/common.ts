@@ -69,6 +69,8 @@ export default {
     noOptionsFound: 'No options found',
     noGroupsAvailable: 'No groups available',
     unknownError: 'Unknown error occurred',
+    userNotFound: 'User not found',
+    userWhitelistLimit: 'You can add at most {count} user IDs',
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',

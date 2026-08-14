@@ -58,6 +58,10 @@ export default {
           cyberSessionBlock: 'cyber 会话自动屏蔽',
           cyberSessionBlockHint: '开启后,被上游网络安全策略(cyber_policy)拦截的会话将在 TTL 内被本地屏蔽,不再发往上游。仅屏蔽该会话,不影响同 Key 其他会话。',
           cyberSessionBlockTTL: '屏蔽时长(秒)',
+          cyberSessionBlockUserWhitelist: '用户白名单',
+          cyberSessionBlockUserWhitelistHint: '名单内用户不执行会话屏蔽，上游命中后的事件仍会记录。输入用户 ID 后回车确认。',
+          cyberSessionBlockUserWhitelistPlaceholder: '输入用户 ID',
+          cyberSessionBlockUserWhitelistInputHint: '回车、逗号或空格确认；展示格式为 用户ID(邮箱)。',
         },
         affiliate: {
           title: '邀请返利',

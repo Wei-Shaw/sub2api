@@ -323,8 +323,9 @@ type SystemSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    bool `json:"cyber_session_block_enabled"`
-	CyberSessionBlockTTLSeconds int  `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled       bool    `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds    int     `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockUserWhitelist []int64 `json:"cyber_session_block_user_whitelist"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`

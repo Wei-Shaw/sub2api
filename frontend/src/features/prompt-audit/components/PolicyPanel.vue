@@ -43,6 +43,20 @@
         </div>
 
         <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
+          <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.userWhitelist') }}</legend>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.promptAudit.policy.userWhitelistHint') }}</p>
+          <div class="mt-3">
+            <UserIDWhitelistInput
+              :model-value="draft.user_whitelist"
+              :placeholder="t('admin.promptAudit.policy.userWhitelistPlaceholder')"
+              :hint="t('admin.promptAudit.policy.userWhitelistInputHint')"
+              :aria-label="t('admin.promptAudit.policy.userWhitelist')"
+              @update:model-value="patch({ user_whitelist: $event })"
+            />
+          </div>
+        </fieldset>
+
+        <fieldset class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-800">
           <legend class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.policy.scanners') }}</legend>
           <div class="mt-3 grid gap-2 sm:grid-cols-2">
             <label v-for="scanner in SCANNER_CATALOG" :key="scanner.id" class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800">
@@ -74,6 +88,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import UserIDWhitelistInput from '@/components/common/UserIDWhitelistInput.vue'
 import type { PromptAuditDraft, PromptAuditGroup } from '../types'
 import { cloneData, SCANNER_CATALOG } from '../viewModel'
 

@@ -65,6 +65,28 @@ func TestBlockingLatestTurnOnlyConfigRoundTrip(t *testing.T) {
 	require.True(t, public.BlockingLatestTurnOnly)
 }
 
+func TestUserWhitelistConfigRoundTrip(t *testing.T) {
+	manager := &ConfigManager{encryptor: prefixEncryptor{}, encryptionKeyConfigured: true}
+	request := UpdateConfigRequest{
+		ExpectedConfigVersion: 1, Enabled: true, Strategy: "priority", WorkerCount: 1, QueueCapacity: 10, Scanners: []string{"pii"}, AllGroups: true,
+		UserWhitelist: []int64{9, 1, 1, 0},
+		Endpoints: []UpdateEndpoint{{
+			ID: "guard-1", Name: "Guard", Protocol: "openai_compatible", BaseURL: "http://127.0.0.1:8080",
+			Model: DefaultGuardModel, TimeoutMS: 1000, InputLimit: 1000, Enabled: true,
+		}},
+	}
+	next, err := manager.buildNextStorage(DefaultStorageConfig(), request, 9)
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 9}, next.UserWhitelist)
+
+	active, err := ActiveFromStorage(next, true, prefixEncryptor{})
+	require.NoError(t, err)
+	require.True(t, active.IsUserWhitelisted(1))
+	require.True(t, active.IsUserWhitelisted(9))
+	require.False(t, active.IsUserWhitelisted(2))
+	require.Equal(t, []int64{1, 9}, PublicFromStorage(next, true, nil).UserWhitelist)
+}
+
 func TestConfigRejectsBlockingWithoutAudit(t *testing.T) {
 	storage := DefaultStorageConfig()
 	storage.BlockingEnabled = true

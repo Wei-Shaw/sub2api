@@ -32,6 +32,7 @@ export interface PromptAuditConfig {
   scanners: string[]
   all_groups: boolean
   group_ids: number[]
+  user_whitelist: number[]
   endpoints: PromptAuditEndpoint[]
   config_version: number
   updated_at: string
@@ -55,6 +56,7 @@ export interface PromptAuditUpdateRequest {
   scanners: string[]
   all_groups: boolean
   group_ids: number[]
+  user_whitelist: number[]
   endpoints: Array<{
     id: string
     name: string

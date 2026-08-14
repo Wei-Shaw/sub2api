@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -446,6 +447,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.CyberSessionBlockTTLSeconds > 0 {
 		updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	}
+	normalizedUserWhitelist, err := ValidateUserIDWhitelist(settings.CyberSessionBlockUserWhitelist)
+	if err != nil {
+		return nil, err
+	}
+	settings.CyberSessionBlockUserWhitelist = normalizedUserWhitelist
+	cyberSessionBlockUserWhitelistJSON, err := json.Marshal(settings.CyberSessionBlockUserWhitelist)
+	if err != nil {
+		return nil, fmt.Errorf("marshal cyber session block user whitelist: %w", err)
+	}
+	updates[SettingKeyCyberSessionBlockUserWhitelist] = string(cyberSessionBlockUserWhitelistJSON)
 
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
@@ -827,4 +838,49 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 	}
 
 	return nil
+}
+
+const maxUserIDWhitelistItems = 1000
+
+func NormalizeUserIDWhitelist(values []int64) []int64 {
+	normalized, _ := normalizeUserIDWhitelist(values, false)
+	return normalized
+}
+
+func ValidateUserIDWhitelist(values []int64) ([]int64, error) {
+	return normalizeUserIDWhitelist(values, true)
+}
+
+func normalizeUserIDWhitelist(values []int64, rejectOverflow bool) ([]int64, error) {
+	seen := make(map[int64]struct{}, len(values))
+	result := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		if rejectOverflow && len(result) == maxUserIDWhitelistItems {
+			return nil, infraerrors.BadRequest("INVALID_CYBER_SESSION_BLOCK_USER_WHITELIST", "cyber session block user whitelist exceeds the allowed size")
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+		if !rejectOverflow && len(result) == maxUserIDWhitelistItems {
+			break
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left] < result[right] })
+	return result, nil
+}
+
+func parseUserIDWhitelist(raw string) []int64 {
+	if strings.TrimSpace(raw) == "" {
+		return []int64{}
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return []int64{}
+	}
+	return NormalizeUserIDWhitelist(ids)
 }

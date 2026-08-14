@@ -143,3 +143,21 @@ func TestPromptServiceRejectsInvalidDeleteConfirmationClaims(t *testing.T) {
 		})
 	}
 }
+
+func TestPromptServiceEnqueueSkipsWhitelistedUsersBeforeTakingSlots(t *testing.T) {
+	cfg := asyncConfig()
+	cfg.UserWhitelist = []int64{7}
+	cfg.userWhitelistSet = map[int64]struct{}{7: {}}
+	service := &PromptService{
+		config:       &fakeConfigStore{cfg: cfg, active: true},
+		enqueuer:     NewEnqueuer(&fakeConfigStore{cfg: cfg, active: true}, &fakeJobRepository{}, &fakePayloadStore{}),
+		enqueueSlots: make(chan struct{}, 1),
+	}
+	service.enqueueSlots <- struct{}{}
+
+	require.NoError(t, service.Enqueue(context.Background(), Request{UserID: 7, RequestID: "whitelisted"}))
+	require.Len(t, service.enqueueSlots, 1)
+
+	require.NoError(t, service.Enqueue(context.Background(), Request{UserID: 8, RequestID: "other"}))
+	require.Len(t, service.enqueueSlots, 1)
+}

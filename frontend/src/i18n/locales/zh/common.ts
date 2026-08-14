@@ -69,6 +69,8 @@ export default {
     noOptionsFound: '无匹配选项',
     noGroupsAvailable: '无可用分组',
     unknownError: '发生未知错误',
+    userNotFound: '无此用户',
+    userWhitelistLimit: '最多添加 {count} 个用户 ID',
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',

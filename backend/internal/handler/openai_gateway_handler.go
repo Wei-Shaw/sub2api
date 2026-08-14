@@ -1739,7 +1739,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// F5a: 握手层会话屏蔽检查。WS 握手无 body，显式标识仅来自握手 header
 	// （session_id / conversation_id）；无标识则放行，连接内仍有本地 flag 兜底。
 	cyberBlockKey := service.CyberSessionBlockKey(apiKey.ID, c, nil)
-	if cyberBlockKey != "" && h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), cyberBlockKey) {
+	if cyberBlockKey != "" && h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), cyberBlockKey, apiKey.UserID) {
 		writeCyberSessionBlockedWSError(c.Request.Context(), wsConn)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "session blocked by cyber-security policy")
 		h.enqueueCyberSessionBlockedOpsEntry(c, apiKey, reqModel, cyberBlockKey)
@@ -3087,7 +3087,7 @@ func (h *OpenAIGatewayHandler) rejectIfCyberSessionBlocked(c *gin.Context, apiKe
 	if key == "" {
 		return false
 	}
-	if !h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), key) {
+	if !h.gatewayService.IsCyberSessionBlocked(c.Request.Context(), key, apiKey.UserID) {
 		return false
 	}
 	// body-signal compact 心跳可能已把响应头提交为 200（cyber 检查在用户槽位
@@ -3280,7 +3280,11 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 			})
 		}
 		if gwSvc != nil && cyberBlockKey != "" {
-			gwSvc.MarkCyberSessionBlocked(ctx, cyberBlockKey)
+			userID := int64(0)
+			if apiKey != nil {
+				userID = apiKey.UserID
+			}
+			gwSvc.MarkCyberSessionBlocked(ctx, cyberBlockKey, userID)
 		}
 		if opsSvc != nil {
 			enqueueOpsErrorLog(opsSvc, buildCyberPolicyOpsErrorEntry(opsMeta, mark))

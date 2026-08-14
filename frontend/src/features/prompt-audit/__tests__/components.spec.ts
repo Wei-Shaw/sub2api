@@ -68,11 +68,12 @@ describe('Prompt Audit components', () => {
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
       enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
-      worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99],
+      worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99], user_whitelist: [],
       endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
     }
     const wrapper = mount(PolicyPanel, {
       props: { draft, groups: [{ id: 1, name: 'Alpha', platform: 'openai', status: 'active' }, { id: 2, name: 'Beta', platform: 'claude', status: 'inactive' }] },
+      global: { stubs: { UserIDWhitelistInput: true } },
     })
     expect(wrapper.text()).toContain('99')
     expect(wrapper.findAll('input[type="checkbox"]').filter((input) => SCANNER_CATALOG.some((scanner) => input.attributes('aria-label') === `admin.promptAudit.scanners.${scanner.id}`))).toHaveLength(9)

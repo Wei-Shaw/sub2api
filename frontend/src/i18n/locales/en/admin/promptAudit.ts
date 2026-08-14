@@ -53,6 +53,7 @@ export default {
     policy: {
       title: 'Audit policy', description: 'Configure group scope, nine input-risk categories, workers, and queue bounds.', scope: 'Scope', allGroups: 'All groups', selectedGroups: 'Selected groups',
       searchGroups: 'Search groups', noGroups: 'No matching groups', missingGroups: 'Configured IDs for groups that no longer exist', selectedCount: '{count} groups selected',
+      userWhitelist: 'User whitelist', userWhitelistHint: 'Whitelisted users skip prompt audit. Enter a user ID and press Enter.', userWhitelistPlaceholder: 'Enter user ID', userWhitelistInputHint: 'Confirm with Enter, comma, or space. Chips show userID(email).',
       scanners: 'Qwen3Guard input-risk categories', workerCount: 'Worker count', queueCapacity: 'Persistent queue capacity', strategy: 'Node strategy', strategyHint: 'Try nodes in configuration order and fail over when allowed.',
     },
     saveBar: { enabled: 'Enable prompt audit', blocking: 'Synchronous blocking', blockingLatestTurnOnly: 'Only latest input and prior output', storePass: 'Store safe events', dirty: 'Unsaved changes', synced: 'Configuration synced' },
