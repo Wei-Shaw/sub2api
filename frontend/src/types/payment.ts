@@ -35,6 +35,7 @@ export interface PaymentConfig {
   balance_disabled: boolean
   balance_recharge_multiplier: number
   subscription_usd_to_cny_rate: number
+  subscription_usd_to_vnd_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -70,6 +71,7 @@ export interface CheckoutInfoResponse {
   balance_recharge_multiplier: number
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
+  subscription_usd_to_vnd_rate: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string

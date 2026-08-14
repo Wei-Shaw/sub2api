@@ -699,6 +699,8 @@ export default {
         subscriptionUsdToCnyRateHint:
           'CNY charged per 1 USD of plan price on CNY channels (e.g. 7.15). 0 or empty = disabled, plan price is charged as-is. When enabled, all plan prices must be set in USD',
         subscriptionUsdToCnyRateDisabled: 'Disabled (price charged as-is)',
+        subscriptionUsdToVndRate: 'Subscription USD→VND Rate (1 USD = X VND)',
+        subscriptionUsdToVndRateDisabled: 'Disabled — VND subscription checkout will be rejected',
         rechargeFeeRate: 'Recharge Fee Rate',
         rechargeFeeRateHint: 'Percentage of service fee charged on top of recharge amount, 0 means no fee',
         rechargeFeePreview: 'Preview: Recharge 100, fee {fee}',

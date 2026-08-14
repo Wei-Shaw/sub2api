@@ -107,6 +107,7 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     balance_disabled: false,
     balance_recharge_multiplier: 1,
     subscription_usd_to_cny_rate: 0,
+    subscription_usd_to_vnd_rate: 0,
     recharge_fee_rate: 0,
     help_text: '',
     help_image_url: '',
@@ -318,6 +319,29 @@ describe('PaymentView subscription confirmation amounts', () => {
     // 换算必须使用订阅汇率（×7.15），而不是余额倍率（÷0.14 = 71.36）
     expect(text).not.toContain(formatPaymentAmount(71.36, 'CNY'))
     expect(wrapper.findAll('button').some(button => button.text().includes(convertedPrice))).toBe(true)
+  })
+
+  it('converts subscription price to VND when the VND rate is configured', async () => {
+    const wrapper = await mountSubscriptionConfirm({
+      checkout: {
+        subscription_usd_to_vnd_rate: 25000,
+      },
+      method: {
+        currency: 'VND',
+      },
+      plan: {
+        price: 9.99,
+        original_price: 12.99,
+      },
+    })
+
+    const text = wrapper.text()
+    const convertedPrice = formatPaymentAmount(249750, 'VND')
+    const convertedOriginalPrice = formatPaymentAmount(324750, 'VND')
+
+    expect(text).toContain(convertedPrice)
+    expect(text).toContain(convertedOriginalPrice)
+    expect(text).not.toContain(formatPaymentAmount(9.99, 'VND'))
   })
 
   it('keeps plan price when the subscription rate is not configured or payment currency is not CNY', async () => {
