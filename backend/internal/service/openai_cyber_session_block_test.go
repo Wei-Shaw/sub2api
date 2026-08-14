@@ -226,4 +226,6 @@ func TestCyberSessionBlock_UserWhitelistSkipsMarkAndRead(t *testing.T) {
 	svc.MarkCyberSessionBlocked(ctx, "deadbeef1234", 8)
 	require.True(t, svc.IsCyberSessionBlocked(ctx, "deadbeef1234", 8))
 	require.False(t, svc.IsCyberSessionBlocked(ctx, "deadbeef1234", 9))
+	require.True(t, svc.IsCyberSessionBlockUserWhitelisted(ctx, 7))
+	require.False(t, svc.IsCyberSessionBlockUserWhitelisted(ctx, 8))
 }

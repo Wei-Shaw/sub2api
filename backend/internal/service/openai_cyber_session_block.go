@@ -64,6 +64,12 @@ func (s *OpenAIGatewayService) isCyberSessionBlockUserWhitelisted(ctx context.Co
 	return s.settingService.IsCyberSessionBlockUserWhitelisted(ctx, userID)
 }
 
+// IsCyberSessionBlockUserWhitelisted 判断用户是否豁免会话屏蔽。
+// 连接内本地 flag 也必须走同一判断，避免白名单用户在同 WS 连接的后续 turn 被拦。
+func (s *OpenAIGatewayService) IsCyberSessionBlockUserWhitelisted(ctx context.Context, userID int64) bool {
+	return s.isCyberSessionBlockUserWhitelisted(ctx, userID)
+}
+
 // MarkCyberSessionBlocked 把会话写入屏蔽表（写入点：cyber 命中后）。
 // 开关关闭、白名单用户、key 为空或存储不可用时静默跳过。
 // 白名单只豁免屏蔽表，不影响 RecordCyberPolicyEvent / 用量 / ops 事件落库。

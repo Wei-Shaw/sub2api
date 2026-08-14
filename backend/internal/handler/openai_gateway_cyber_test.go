@@ -139,6 +139,12 @@ func TestRejectIfCyberSessionBlocked_FailOpen(t *testing.T) {
 	require.False(t, h2.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil gateway service → pass")
 }
 
+func TestShouldSkipCyberSessionConnBlock(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	require.False(t, h.shouldSkipCyberSessionConnBlock(t.Context(), &service.APIKey{UserID: 7}))
+	require.False(t, h.shouldSkipCyberSessionConnBlock(t.Context(), nil))
+}
+
 // TestRecordCyberPolicyIfMarked_BlockKeyPlumbed verifies the 6th param is
 // accepted and a non-empty key with nil gateway service does not panic
 // (write-side guards live in the service layer).

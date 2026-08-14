@@ -2137,7 +2137,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				turnUsageFields := turnMapping.ToUsageFields(turnRequestedModel, turnUpstreamModel)
 				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockKey, turnUsageFields, requestPayloadHash)
-				if service.GetOpsCyberPolicy(c) != nil {
+				if service.GetOpsCyberPolicy(c) != nil && !h.shouldSkipCyberSessionConnBlock(ctx, apiKey) {
 					cyberBlockedThisConn = true
 				}
 				if turnErr != nil {
@@ -3070,6 +3070,15 @@ const (
 	cyberBlockFormatChat
 	cyberBlockFormatAnthropic
 )
+
+// shouldSkipCyberSessionConnBlock reports whether a WS connection-local block
+// flag should be skipped. The cyber mark still stays for event/usage recording.
+func (h *OpenAIGatewayHandler) shouldSkipCyberSessionConnBlock(ctx context.Context, apiKey *service.APIKey) bool {
+	if h == nil || h.gatewayService == nil || apiKey == nil {
+		return false
+	}
+	return h.gatewayService.IsCyberSessionBlockUserWhitelisted(ctx, apiKey.UserID)
+}
 
 // rejectIfCyberSessionBlocked checks the session-block table BEFORE account
 // selection. Returns true when the request was rejected (response already

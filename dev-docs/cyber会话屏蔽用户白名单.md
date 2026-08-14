@@ -27,7 +27,7 @@
 
 ## 验证方式
 
-开启屏蔽后，白名单用户的同一会话标识不会被 `IsCyberSessionBlocked` 拦截，也不会被 `MarkCyberSessionBlocked` 写入 Redis。`recordCyberPolicyIfMarked` 仍会写入 cyber 事件。非白名单用户行为保持原样。
+开启屏蔽后，白名单用户的同一会话标识不会被 `IsCyberSessionBlocked` 拦截，也不会被 `MarkCyberSessionBlocked` 写入 Redis。WebSocket 同连接内的 `cyberBlockedThisConn` 也不会因本 turn 的 cyber 命中而被置位，因此后续 turn 不会被本地关连接。`recordCyberPolicyIfMarked` 仍会写入 cyber 事件。非白名单用户行为保持原样。
 
 ## 后续
 
