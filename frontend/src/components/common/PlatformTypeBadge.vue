@@ -1,5 +1,11 @@
 <template>
-  <div class="inline-flex flex-col gap-0.5 text-xs font-medium">
+  <!--
+    `items-start` is load-bearing. A column flex container stretches its
+    children to the widest one, and now that each row carries a hairline that
+    stretch is visible: a one-word plan chip rendered as an empty box the full
+    width of the platform row above it.
+  -->
+  <div class="inline-flex flex-col items-start gap-0.5 text-xs font-medium">
     <!-- Row 1: Platform + Type -->
     <div class="inline-flex items-center overflow-hidden rounded-sm border border-line">
       <span :class="['inline-flex items-center gap-1 px-2 py-1', platformClass]">
