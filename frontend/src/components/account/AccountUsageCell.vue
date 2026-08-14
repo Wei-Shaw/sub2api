@@ -632,6 +632,7 @@ import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 const GROK_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+const GROK_FREE_TOKEN_LIMIT_FALLBACK = 500_000
 // How long a quota-reset response may suppress the row-patch usage refetch.
 const SUPPRESS_USAGE_REFRESH_WINDOW_MS = 5 * 1000
 
@@ -1157,17 +1158,18 @@ const grokPlanLabelIsPaid = (value: string) => {
 const isGrokFreeUsage = (usage: AccountUsageInfo | null) => {
   if (!usage) return false
   const billing = usage.grok_billing
+  const plan = (billing?.plan || '').trim().toLowerCase()
+  const tier = (usage.subscription_tier || '').trim().toLowerCase()
+  const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
+  // Live credential tier wins leftover Heavy billing.metrics (JWT / snapshot).
+  if (grokPlanLabelIsFree(tier)) return true
+  if (grokPlanLabelIsPaid(tier)) return false
   if (
     billing?.usage_percent != null ||
     billing?.used_percent != null ||
     (billing?.monthly_limit_cents != null && billing.monthly_limit_cents > 0)
   ) return false
-
-  const plan = (billing?.plan || '').trim().toLowerCase()
-  const tier = (usage.subscription_tier || '').trim().toLowerCase()
-  const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
-  if (grokPlanLabelIsFree(tier)) return true
-  if (grokPlanLabelIsPaid(tier) || grokPlanLabelIsPaid(plan)) return false
+  if (grokPlanLabelIsPaid(plan)) return false
   if (
     grokPlanLabelIsFree(plan) ||
     grokPlanLabelIsFree(entitlement)
@@ -1181,8 +1183,10 @@ const grokIsFree = computed(() => {
 const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
 const grokFreeTokenBar = computed(() => {
   if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
-  const limit = usageInfo.value?.grok_free_token_limit
-  if (typeof limit !== 'number' || limit <= 0) return null
+  const reported = usageInfo.value?.grok_free_token_limit
+  const limit = typeof reported === 'number' && reported > 0
+    ? reported
+    : GROK_FREE_TOKEN_LIMIT_FALLBACK
   const used = Math.max(0, grokFreeQuotaUsage.value.tokens || 0)
   return { utilization: Math.min(100, (used / limit) * 100), limit }
 })

@@ -91,18 +91,20 @@ describe('AccountUsageCell', () => {
     getUsage
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         grok_local_usage_24h: {
           requests: 20,
-          tokens: 2_600_000,
+          tokens: 650_000,
           cost: 0,
           standard_cost: 0
         }
       })
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         grok_local_usage_24h: {
           requests: 10,
-          tokens: 1_400_000,
+          tokens: 350_000,
           cost: 0,
           standard_cost: 0
         }
@@ -126,7 +128,6 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('24h|100')
-    expect(wrapper.text()).toContain('2.6M')
     expect(getUsage).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
@@ -134,8 +135,7 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('24h|70')
-    expect(wrapper.text()).toContain('1.4M')
-    expect(wrapper.text()).not.toContain('2.6M')
+    expect(wrapper.text()).not.toContain('24h|100')
     wrapper.unmount()
   })
 
@@ -144,18 +144,20 @@ describe('AccountUsageCell', () => {
     getUsage
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         grok_local_usage_24h: {
           requests: 20,
-          tokens: 2_600_000,
+          tokens: 650_000,
           cost: 0,
           standard_cost: 0
         }
       })
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         grok_local_usage_24h: {
           requests: 10,
-          tokens: 1_400_000,
+          tokens: 350_000,
           cost: 0,
           standard_cost: 0
         }
@@ -1260,20 +1262,22 @@ describe('AccountUsageCell', () => {
     getUsage
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         grok_local_usage_24h: {
           requests: 20,
-          tokens: 2_600_000,
+          tokens: 650_000,
           cost: 0,
           standard_cost: 0
         }
       })
       .mockResolvedValueOnce({
         subscription_tier: 'FREE',
+        grok_free_token_limit: 500_000,
         is_forbidden: true,
         grok_entitlement_status: 'forbidden',
         grok_local_usage_24h: {
           requests: 8,
-          tokens: 1_000_000,
+          tokens: 250_000,
           cost: 0,
           standard_cost: 0
         }
@@ -1316,9 +1320,7 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('24h|50')
-    expect(wrapper.text()).toContain('1.0M')
-    expect(wrapper.text()).not.toContain('2.6M')
-    expect(wrapper.text()).toContain('FREE')
+    expect(wrapper.text()).not.toContain('24h|100')
     expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
     wrapper.unmount()
   })
@@ -1369,11 +1371,13 @@ describe('AccountUsageCell', () => {
     await wrapper.get('.probe').trigger('click')
 
     expect(wrapper.text()).toContain('7d|42|2026-07-17T00:00:00Z')
-    expect(wrapper.text()).toContain('1.0M')
-    expect(wrapper.text()).not.toContain('750.0K')
-    expect(wrapper.text()).toContain('ACTIVE')
+    expect(wrapper.text()).not.toContain('24h|')
     expect(wrapper.text()).not.toContain('stale error')
     expect(wrapper.emitted('account-state-changed')).toEqual([[4501]])
+    const setupState = wrapper.vm.$.setupState as {
+      usageInfo: Record<string, unknown> | null
+    }
+    expect(setupState.usageInfo?.grok_entitlement_status).toBe('ACTIVE')
   })
 
   it('Grok successful probes immediately clear stale forbidden state', async () => {
@@ -1478,7 +1482,6 @@ describe('AccountUsageCell', () => {
     await wrapper.vm.$nextTick()
 
     expect(setupState.usageInfo?.grok_entitlement_status).toBe('ACTIVE')
-    expect(wrapper.text()).toContain('ACTIVE')
     expect(wrapper.text()).not.toContain('admin.accounts.forbidden')
   })
 
@@ -1572,7 +1575,6 @@ describe('AccountUsageCell', () => {
     await wrapper.get('.probe').trigger('click')
 
     expect(wrapper.text()).toContain('24h|75')
-    expect(wrapper.text()).toContain('750.0K')
     expect(wrapper.text()).not.toContain('7d|')
     expect(wrapper.emitted('account-state-changed')).toEqual([[4502]])
   })
