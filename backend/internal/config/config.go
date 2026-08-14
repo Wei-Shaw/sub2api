@@ -962,6 +962,8 @@ type GatewayConfig struct {
 	OpenAIScheduler GatewayOpenAISchedulerConfig `mapstructure:"openai_scheduler"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
+	// UpstreamHTTP2: 非 OpenAI 上游（Anthropic / Gemini / Grok / 自建中继等）的 HTTP/2 开关
+	UpstreamHTTP2 GatewayUpstreamHTTP2Config `mapstructure:"upstream_http2"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
@@ -1095,6 +1097,24 @@ type GatewayOpenAIHTTP2Config struct {
 	FallbackWindowSeconds int `mapstructure:"fallback_window_seconds"`
 	// FallbackTTLSeconds: 触发后回退 HTTP/1.1 的持续时间（秒）
 	FallbackTTLSeconds int `mapstructure:"fallback_ttl_seconds"`
+}
+
+// GatewayUpstreamHTTP2Config 控制默认上游 Transport（除 OpenAI 之外的全部平台：
+// Anthropic / Gemini / Grok / Antigravity / 自建中继）是否协商 HTTP/2。
+//
+// 背景：默认 Transport 设置了 DialContext，Go 的 http.Transport 在检测到自定义
+// dialer 时会跳过 HTTP/2 自动升级，因此这条链路一直只跑 HTTP/1.1。HTTP/1.1 下
+// 每个并发请求独占一条 TCP 连接，空闲连接被回收后下一个请求要重新做
+// TCP + TLS 握手，跨境上游上这一项就是数百毫秒，直接计入首字延迟；HTTP/2 的
+// 多路复用可以让同一账号的并发请求共用一条已握手的连接。
+//
+// 默认关闭：切到 HTTP/2 会把请求头统一改为小写、并改变连接层特征，对依赖
+// header wire casing 伪装的 OAuth 账号是可观测的变化，需由运维显式确认后开启。
+// 开启后同样启用 HTTP/2 PING 健康探测，剔除被代理/NAT 静默掐断的死连接
+// （复用 OpenAI H2 链路上已验证的探测参数）。
+type GatewayUpstreamHTTP2Config struct {
+	// Enabled: 是否允许默认上游 Transport 协商 HTTP/2
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // GatewayOpenAIProxyStreamCircuitConfig controls the bounded, in-process
@@ -2369,6 +2389,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	// Non-OpenAI upstream protocol strategy (opt-in; see GatewayUpstreamHTTP2Config)
+	viper.SetDefault("gateway.upstream_http2.enabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)

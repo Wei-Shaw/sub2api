@@ -875,6 +875,46 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
+// betaPolicySettingsCacheTTL 是 Beta 策略配置的进程内缓存 TTL。
+// 与 gatewayForwardingCacheTTL 一致：管理端改动最多 60s 后全量生效。
+const betaPolicySettingsCacheTTL = 60 * time.Second
+
+type cachedBetaPolicySettings struct {
+	settings  *BetaPolicySettings
+	expiresAt int64 // unix nano
+}
+
+// GetBetaPolicySettingsCached 返回 Beta 策略配置的进程内缓存副本，供网关热路径使用。
+//
+// 转发链路上每个 Anthropic 请求都要评估一次 Beta 策略，未缓存时等于给 settings 表
+// 加了一次同步查询，这次查询完整落在首字延迟（TTFT）的观测窗口内，并且在高并发下
+// 与业务查询抢同一个数据库连接池。策略规则本身是低频管理动作，60s TTL 足够。
+//
+// 返回值必须视为只读：命中缓存时所有调用方共享同一份指针。管理端读取仍走
+// GetBetaPolicySettings，保证面板上看到的永远是库里的最新值。
+func (s *SettingService) GetBetaPolicySettingsCached(ctx context.Context) (*BetaPolicySettings, error) {
+	if cached, ok := s.betaPolicyCache.Load().(*cachedBetaPolicySettings); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.settings, nil
+		}
+	}
+
+	settings, err := s.GetBetaPolicySettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.betaPolicyCache.Store(&cachedBetaPolicySettings{
+		settings:  settings,
+		expiresAt: time.Now().Add(betaPolicySettingsCacheTTL).UnixNano(),
+	})
+	return settings, nil
+}
+
+// invalidateBetaPolicySettingsCache 让缓存立即失效，供写入路径调用。
+func (s *SettingService) invalidateBetaPolicySettingsCache() {
+	s.betaPolicyCache.Store((*cachedBetaPolicySettings)(nil))
+}
+
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
@@ -938,7 +978,11 @@ func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *Be
 		return fmt.Errorf("marshal beta policy settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data)); err != nil {
+		return err
+	}
+	s.invalidateBetaPolicySettingsCache()
+	return nil
 }
 
 // GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置
