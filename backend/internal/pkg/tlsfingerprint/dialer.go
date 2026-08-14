@@ -32,6 +32,30 @@ type Profile struct {
 	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
 }
 
+// SupportedALPNProtocol is the only ALPN protocol the fingerprint transport can
+// actually speak.
+//
+// The transport built around this dialer keeps ForceAttemptHTTP2 disabled and
+// registers no TLSNextProto handler, so net/http always writes an HTTP/1.1
+// request over the connection returned here. A profile advertising "h2" lets
+// the server select HTTP/2 while the client still speaks HTTP/1.1; the upstream
+// then drops the connection instead of surfacing a readable config error.
+const SupportedALPNProtocol = "http/1.1"
+
+// SanitizeALPN returns the ALPN list with every protocol the fingerprint
+// transport cannot speak removed, plus the dropped entries for logging.
+// An empty result makes the dialer fall back to SupportedALPNProtocol.
+func SanitizeALPN(protocols []string) (kept, dropped []string) {
+	for _, proto := range protocols {
+		if proto == SupportedALPNProtocol {
+			kept = append(kept, proto)
+			continue
+		}
+		dropped = append(dropped, proto)
+	}
+	return kept, dropped
+}
+
 // Dialer creates TLS connections with custom fingerprints.
 type Dialer struct {
 	profile    *Profile

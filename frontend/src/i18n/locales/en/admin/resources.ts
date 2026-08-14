@@ -82,6 +82,8 @@ export default {
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (Remote DNS)'
       },
+      httpsTlsFingerprintWarning:
+        'HTTPS proxies disable TLS fingerprint impersonation. Use HTTP or SOCKS5 to keep it.',
       columns: {
         name: 'Name',
         protocol: 'Protocol',

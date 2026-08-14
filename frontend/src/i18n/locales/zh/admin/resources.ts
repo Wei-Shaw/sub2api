@@ -95,6 +95,7 @@ export default {
         socks5: 'SOCKS5',
         socks5h: 'SOCKS5H (远程 DNS)',
       },
+      httpsTlsFingerprintWarning: 'HTTPS 代理会关闭 TLS 指纹伪装，改用 HTTP 或 SOCKS5 才能保留。',
       name: '名称',
       protocol: '协议',
       host: '主机',

@@ -1386,7 +1386,9 @@ type TLSProfileConfig struct {
 	PointFormats []uint16 `mapstructure:"point_formats"`
 	// SignatureAlgorithms: 签名算法列表
 	SignatureAlgorithms []uint16 `mapstructure:"signature_algorithms"`
-	// ALPNProtocols: ALPN协议列表（如 ["h2", "http/1.1"]）
+	// ALPNProtocols: ALPN协议列表，只支持 ["http/1.1"]
+	// 指纹 Transport 不说 HTTP/2：通告 "h2" 会让服务端选中 HTTP/2 而客户端仍发
+	// HTTP/1.1，上游直接断连。运行时会丢弃 http/1.1 之外的取值并告警。
 	ALPNProtocols []string `mapstructure:"alpn_protocols"`
 	// SupportedVersions: 支持的TLS版本列表（如 [0x0304, 0x0303] 即 TLS1.3, TLS1.2）
 	SupportedVersions []uint16 `mapstructure:"supported_versions"`
