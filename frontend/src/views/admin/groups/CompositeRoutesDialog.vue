@@ -32,7 +32,7 @@
         </div>
 
         <div
-          class="overflow-hidden rounded-lg border border-line"
+          class="overflow-hidden rounded-sm border border-line"
         >
           <div
             v-if="compositeRoutesLoading"
@@ -47,8 +47,10 @@
             {{ t("admin.groups.compositeRoutes.empty") }}
           </div>
           <div v-else class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-dark-600">
-              <thead class="bg-surface-sunken text-left text-xs font-medium uppercase tracking-wide text-ink-secondary dark:text-gray-400">
+            <table class="min-w-full divide-y divide-line-strong text-sm">
+              <thead
+                class="bg-surface-sunken text-left text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary"
+              >
                 <tr>
                   <th class="px-3 py-2">
                     {{ t("admin.groups.compositeRoutes.publicModel") }}
@@ -64,7 +66,7 @@
                   </th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-100 bg-surface dark:divide-dark-700">
+              <tbody class="divide-y divide-line-subtle bg-surface">
                 <tr
                   v-for="route in compositeRoutes"
                   :key="route.id"
@@ -101,14 +103,16 @@
                     </div>
                     <div class="text-xs text-ink-secondary">
                       {{ t("admin.groups.compositeRoutes.priority") }}:
-                      {{ route.priority }}
+                      <span class="font-mono tabular-nums">{{
+                        route.priority
+                      }}</span>
                     </div>
                   </td>
                   <td class="px-3 py-2">
                     <div class="flex justify-end gap-1">
                       <button
                         type="button"
-                        class="rounded p-1.5 text-ink-secondary hover:bg-surface-hover hover:text-primary-600 dark:hover:text-primary-400"
+                        class="rounded-sm p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-accent"
                         :title="t('common.edit')"
                         @click="editCompositeRoute(route)"
                       >
@@ -116,7 +120,7 @@
                       </button>
                       <button
                         type="button"
-                        class="rounded p-1.5 text-ink-secondary hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                        class="rounded-sm p-1.5 text-ink-secondary transition-colors hover:bg-danger-tint hover:text-danger"
                         :title="t('common.delete')"
                         @click="deleteCompositeRoute(route)"
                       >
@@ -144,7 +148,7 @@
             <button
               v-if="compositeRouteEditingId"
               type="button"
-              class="text-xs font-medium text-ink-secondary hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              class="text-xs font-medium text-ink-secondary underline-offset-2 transition-colors hover:text-ink hover:underline"
               @click="resetCompositeRouteForm"
             >
               {{ t("common.cancel") }}
@@ -240,7 +244,7 @@
               <input
                 v-model="compositeRouteForm.enabled"
                 type="checkbox"
-                class="h-4 w-4 rounded border-line text-primary-600 focus:ring-primary-500 dark:bg-dark-700"
+                class="h-4 w-4 rounded-sm border-line text-accent dark:bg-dark-700"
               />
               {{ t("admin.groups.compositeRoutes.enabled") }}
             </label>
@@ -290,7 +294,7 @@
 
             <div
               v-if="compositePreviewDecision"
-              class="rounded-lg border border-line bg-surface-sunken p-3 text-sm"
+              class="rounded-sm border border-line bg-surface-sunken p-3 text-sm"
             >
               <div class="mb-2 flex items-center gap-2">
                 <span

@@ -55,19 +55,19 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.copyAccounts.tooltip") }}
                 </p>
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -95,7 +95,7 @@
                     (id) => id !== groupId,
                   )
               "
-              class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
+              class="ml-0.5 text-accent transition-colors hover:text-accent-hover"
             >
               <Icon name="x" size="xs" />
             </button>
@@ -182,14 +182,14 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <!-- Tooltip Popover -->
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="mb-2 text-xs font-medium">
                   {{ t("admin.groups.exclusiveTooltip.title") }}
@@ -197,7 +197,7 @@
                 <p class="mb-2 text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.exclusiveTooltip.description") }}
                 </p>
-                <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
+                <div class="rounded-sm bg-ink p-2">
                   <p class="text-xs leading-relaxed text-gray-300">
                     <span
                       class="inline-flex items-center gap-1 text-primary-400"
@@ -209,7 +209,7 @@
                 </div>
                 <!-- Arrow -->
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -335,7 +335,7 @@
         </div>
         <div
           v-if="createModelsListState.enabled"
-          class="overflow-hidden rounded-lg border border-line bg-gray-50/50 dark:bg-dark-800/40"
+          class="overflow-hidden rounded-sm border border-line bg-surface-sunken"
         >
           <div
             v-if="!createModelsListLoading && createModelsListState.items.length > 0"
@@ -394,7 +394,7 @@
               <button
                 type="button"
                 :disabled="index === 0"
-                class="rounded p-1 text-ink-tertiary hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
+                class="rounded-sm p-1 text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-40"
                 @click="moveCreateModelsListItem(index, index - 1)"
               >
                 <Icon name="arrowUp" size="sm" />
@@ -402,7 +402,7 @@
               <button
                 type="button"
                 :disabled="index === createModelsListState.items.length - 1"
-                class="rounded p-1 text-ink-tertiary hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:hover:bg-dark-600 dark:hover:text-gray-200"
+                class="rounded-sm p-1 text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-40"
                 @click="moveCreateModelsListItem(index, index + 1)"
               >
                 <Icon name="arrowDown" size="sm" />
@@ -430,7 +430,7 @@
             <input
               v-model="createForm.allow_image_generation"
               type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              class="rounded-sm border-line text-accent"
             />
             {{ t(imagePricingI18nKey(createForm.platform, "allowImageGeneration")) }}
           </label>
@@ -438,7 +438,7 @@
             <input
               v-model="createForm.image_rate_independent"
               type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              class="rounded-sm border-line text-accent"
             />
             {{ t(imagePricingI18nKey(createForm.platform, "independentMultiplier")) }}
           </label>
@@ -497,7 +497,7 @@
         <p class="mt-3 text-xs text-ink-secondary">
           {{ t(imagePricingI18nKey(createForm.platform, "modeHint")) }}
         </p>
-        <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-ink-secondary dark:bg-gray-800">
+        <div class="mt-2 rounded-sm bg-surface-sunken p-3 text-xs text-ink-secondary">
           <div class="mb-1 font-medium">
             {{ t(imagePricingI18nKey(createForm.platform, "finalPricePreview")) }}
           </div>
@@ -517,7 +517,7 @@
             <input
               v-model="createForm.allow_batch_image_generation"
               type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              class="rounded-sm border-line text-accent"
             />
             {{ t("admin.groups.imagePricing.allowBatchImageGeneration") }}
           </label>
@@ -582,7 +582,7 @@
             <input
               v-model="createForm.video_rate_independent"
               type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              class="rounded-sm border-line text-accent"
             />
             {{ t(videoPricingI18nKey("independentMultiplier")) }}
           </label>
@@ -680,7 +680,7 @@
         <p class="mt-3 text-xs text-ink-secondary">
           {{ t(videoPricingI18nKey("modeHint")) }}
         </p>
-        <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-ink-secondary dark:bg-gray-800">
+        <div class="mt-2 rounded-sm bg-surface-sunken p-3 text-xs text-ink-secondary">
           <div class="mb-1 font-medium">
             {{ t(videoPricingI18nKey("finalPricePreview")) }}
           </div>
@@ -702,7 +702,7 @@
             <input
               v-model="createForm.peak_rate_enabled"
               type="checkbox"
-              class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              class="rounded-sm border-line text-accent"
             />
             <span>{{ t("admin.groups.peakRate.enable") }}</span>
           </label>
@@ -748,7 +748,7 @@
           <input
             v-model="createForm.profit_control_enabled"
             type="checkbox"
-            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            class="rounded-sm border-line text-accent"
           />
           <span>{{ t("admin.groups.profitControl.enable") }}</span>
         </label>
@@ -804,19 +804,19 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.supportedScopes.tooltip") }}
                 </p>
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -828,7 +828,7 @@
               type="checkbox"
               :checked="createForm.supported_model_scopes.includes('claude')"
               @change="toggleCreateScope('claude')"
-              class="h-4 w-4 rounded border-line text-primary-600 focus:ring-primary-500 dark:bg-dark-700"
+              class="h-4 w-4 rounded-sm border-line text-accent dark:bg-dark-700"
             />
             <span class="text-sm text-ink-secondary">{{
               t("admin.groups.supportedScopes.claude")
@@ -841,7 +841,7 @@
                 createForm.supported_model_scopes.includes('gemini_text')
               "
               @change="toggleCreateScope('gemini_text')"
-              class="h-4 w-4 rounded border-line text-primary-600 focus:ring-primary-500 dark:bg-dark-700"
+              class="h-4 w-4 rounded-sm border-line text-accent dark:bg-dark-700"
             />
             <span class="text-sm text-ink-secondary">{{
               t("admin.groups.supportedScopes.geminiText")
@@ -854,7 +854,7 @@
                 createForm.supported_model_scopes.includes('gemini_image')
               "
               @change="toggleCreateScope('gemini_image')"
-              class="h-4 w-4 rounded border-line text-primary-600 focus:ring-primary-500 dark:bg-dark-700"
+              class="h-4 w-4 rounded-sm border-line text-accent dark:bg-dark-700"
             />
             <span class="text-sm text-ink-secondary">{{
               t("admin.groups.supportedScopes.geminiImage")
@@ -877,19 +877,19 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.mcpXml.tooltip") }}
                 </p>
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -935,19 +935,19 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.claudeCode.tooltip") }}
                 </p>
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -1023,7 +1023,7 @@
             {{ t("admin.groups.webSearchPricing.pricePerCallHint") }}
           </p>
           <div
-            class="mt-2 rounded-lg bg-surface-sunken p-3 text-xs text-ink-secondary"
+            class="mt-2 rounded-sm bg-surface-sunken p-3 text-xs text-ink-secondary"
           >
             {{
               t("admin.groups.webSearchPricing.finalPricePreview", {
@@ -1192,13 +1192,13 @@
 
         <div v-if="createForm.allow_messages_dispatch" class="mt-3">
           <div
-            class="relative overflow-hidden rounded-xl border border-line bg-surface shadow-sm"
+            class="relative overflow-hidden rounded-sm border border-line bg-surface"
           >
             <div
-              class="border-b border-line-subtle bg-gray-50/80 px-4 py-3 dark:bg-dark-700/50"
+              class="border-b border-line-subtle bg-surface-sunken px-4 py-3"
             >
               <div class="flex items-center gap-2">
-                <div class="h-2 w-2 rounded-full bg-blue-500"></div>
+                <div class="h-2 w-2 rounded-full bg-accent"></div>
                 <label
                   class="text-sm font-medium text-ink"
                   >{{
@@ -1256,7 +1256,7 @@
           </div>
 
           <div
-            class="mt-5 relative overflow-hidden rounded-xl border border-primary-200 bg-surface shadow-sm dark:border-primary-900/50"
+            class="mt-5 relative overflow-hidden rounded-sm border border-accent-line bg-surface"
           >
             <div
               class="border-b border-primary-100 border border-accent/40 bg-accent-tint/80 px-4 py-3 dark:border-primary-900/40"
@@ -1264,7 +1264,7 @@
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <div class="flex items-center gap-2">
-                    <div class="h-2 w-2 rounded-full bg-primary-500"></div>
+                    <div class="h-2 w-2 rounded-full bg-accent"></div>
                     <label
                       class="text-sm font-medium text-primary-900 dark:text-primary-100"
                       >{{
@@ -1281,10 +1281,10 @@
               </div>
             </div>
 
-            <div class="p-4 bg-gray-50/30 dark:bg-dark-800/30">
+            <div class="bg-surface-sunken p-4">
               <div
                 v-if="createForm.exact_model_mappings.length === 0"
-                class="flex items-center justify-between gap-3 rounded-xl border-2 border-dashed border-primary-200 bg-surface px-5 py-4 text-sm text-accent transition-colors hover:border-primary-300 dark:border-primary-900/40 dark:hover:border-primary-800"
+                class="flex items-center justify-between gap-3 rounded-sm border border-dashed border-accent-line bg-surface px-5 py-4 text-sm text-accent transition-colors hover:bg-accent-tint"
               >
                 <span>{{
                   t("admin.groups.openaiMessages.noExactMappings")
@@ -1292,7 +1292,7 @@
                 <button
                   type="button"
                   @click="addCreateMessagesDispatchMapping"
-                  class="flex items-center gap-1.5 text-sm font-medium text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  class="flex items-center gap-1.5 text-sm font-medium text-accent transition-colors hover:text-accent-hover"
                 >
                   <Icon name="plus" size="sm" />
                   {{ t("admin.groups.openaiMessages.addExactMapping") }}
@@ -1303,7 +1303,7 @@
                 <div
                   v-for="row in createForm.exact_model_mappings"
                   :key="getCreateMessagesDispatchRowKey(row)"
-                  class="group relative rounded-xl border border-line bg-surface p-4 shadow-sm transition-all hover:border-primary-300 hover:shadow-md dark:hover:border-primary-700"
+                  class="group relative rounded-sm border border-line bg-surface p-4 transition-colors hover:border-line-strong"
                 >
                   <div class="flex items-center gap-4">
                     <div
@@ -1321,7 +1321,7 @@
                               'admin.groups.openaiMessages.claudeModelPlaceholder',
                             )
                           "
-                          class="input bg-gray-50 focus:bg-surface dark:focus:bg-dark-900"
+                          class="input bg-surface-sunken focus:bg-surface"
                         />
                       </div>
                       <div
@@ -1345,14 +1345,14 @@
                               'admin.groups.openaiMessages.targetModelPlaceholder',
                             )
                           "
-                          class="input bg-gray-50 focus:bg-surface dark:focus:bg-dark-900"
+                          class="input bg-surface-sunken focus:bg-surface"
                         />
                       </div>
                     </div>
                     <button
                       type="button"
                       @click="removeCreateMessagesDispatchMapping(row)"
-                      class="mt-6 flex h-9 w-9 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                      class="mt-6 flex h-9 w-9 items-center justify-center rounded-sm text-ink-tertiary transition-colors hover:bg-danger-tint hover:text-danger"
                       :title="
                         t('admin.groups.openaiMessages.removeExactMapping')
                       "
@@ -1365,7 +1365,7 @@
                 <button
                   type="button"
                   @click="addCreateMessagesDispatchMapping"
-                  class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line bg-surface py-3 text-sm font-medium text-ink-secondary transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 dark:text-gray-400 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+                  class="flex w-full items-center justify-center gap-2 rounded-sm border border-dashed border-line bg-surface py-3 text-sm font-medium text-ink-secondary transition-colors hover:border-accent-line hover:bg-accent-tint hover:text-accent"
                 >
                   <Icon name="plus" size="sm" />
                   {{ t("admin.groups.openaiMessages.addExactMapping") }}
@@ -1497,19 +1497,19 @@
               name="questionCircle"
               size="sm"
               :stroke-width="2"
-              class="cursor-help text-ink-tertiary transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              class="cursor-help text-ink-tertiary transition-colors hover:text-accent"
             />
             <div
               class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
             >
               <div
-                class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                class="rounded-sm bg-ink p-3 text-ink-inverse shadow-popover"
               >
                 <p class="text-xs leading-relaxed text-gray-300">
                   {{ t("admin.groups.modelRouting.tooltip") }}
                 </p>
                 <div
-                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-ink"
                 ></div>
               </div>
             </div>
@@ -1561,7 +1561,7 @@
           <div
             v-for="rule in createModelRoutingRules"
             :key="getCreateRuleRenderKey(rule)"
-            class="rounded-lg border border-line p-3"
+            class="rounded-sm border border-line p-3"
           >
             <div class="flex items-start gap-3">
               <div class="flex-1 space-y-2">
@@ -1596,7 +1596,7 @@
                       <button
                         type="button"
                         @click="removeSelectedAccount(rule, account.id)"
-                        class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
+                        class="ml-0.5 text-accent transition-colors hover:text-accent-hover"
                       >
                         <Icon name="x" size="xs" />
                       </button>
@@ -1625,7 +1625,7 @@
                         accountSearchResults[getCreateRuleSearchKey(rule)]
                           ?.length > 0
                       "
-                      class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-surface shadow-lg dark:border-dark-600"
+                      class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-sm border border-line bg-surface-raised shadow-popover"
                     >
                       <button
                         v-for="account in accountSearchResults[
@@ -1659,7 +1659,7 @@
               <button
                 type="button"
                 @click="removeCreateRoutingRule(rule)"
-                class="mt-5 p-1.5 text-ink-tertiary hover:text-red-500 transition-colors"
+                class="mt-5 rounded-sm p-1.5 text-ink-tertiary transition-colors hover:text-danger"
                 :title="t('admin.groups.modelRouting.removeRule')"
               >
                 <Icon name="trash" size="sm" />
@@ -1672,7 +1672,7 @@
           v-if="createForm.model_routing_enabled"
           type="button"
           @click="addCreateRoutingRule"
-          class="mt-3 flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+          class="mt-3 flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-hover"
         >
           <Icon name="plus" size="sm" />
           {{ t("admin.groups.modelRouting.addRule") }}
