@@ -7,6 +7,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/styles/__tests__/tokens.parity.spec.ts \
 	src/i18n/__tests__/localeParity.spec.ts \
 	src/i18n/__tests__/localeKeyExistence.spec.ts \
+	src/i18n/__tests__/orphanKeys.spec.ts \
 	src/components/layout/__tests__/navTree.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/localeGraph.spec.ts \
