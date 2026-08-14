@@ -1375,8 +1375,15 @@ type GatewaySchedulingConfig struct {
 
 	// PreferSoonestReset 开启后，负载感知选择会优先选用「会话窗口最早重置」的账号
 	// （use-it-or-lose-it：先用尽即将重置的账号，保留重置时间还很久的账号）。
-	// 默认 false，保持原有「优先级 → 负载率 → LRU」行为不变。
+	// 默认 false；新的 quota reset 策略由 ResetPriorityMode 控制。
 	PreferSoonestReset bool `mapstructure:"prefer_soonest_reset"`
+	// ResetWindowMode selects the provider quota window: auto, 5h, 7d, or model_specific.
+	ResetWindowMode string `mapstructure:"reset_window_mode"`
+	// ResetPriorityMode is disabled, weighted, or lexicographic.
+	ResetPriorityMode string `mapstructure:"reset_priority_mode"`
+	ResetDataMaxAge time.Duration `mapstructure:"reset_data_max_age"`
+	StickyResetEscapeEnabled bool `mapstructure:"sticky_reset_escape_enabled"`
+	StickyResetEscapeThreshold time.Duration `mapstructure:"sticky_reset_escape_threshold"`
 
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
@@ -2384,6 +2391,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.prefer_soonest_reset", false)
+	viper.SetDefault("gateway.scheduling.reset_window_mode", "auto")
+	viper.SetDefault("gateway.scheduling.reset_priority_mode", "lexicographic")
+	viper.SetDefault("gateway.scheduling.reset_data_max_age", 15*time.Minute)
+	viper.SetDefault("gateway.scheduling.sticky_reset_escape_enabled", false)
+	viper.SetDefault("gateway.scheduling.sticky_reset_escape_threshold", 24*time.Hour)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
@@ -3500,6 +3512,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+	}
+	if mode := strings.ToLower(strings.TrimSpace(c.Gateway.Scheduling.ResetWindowMode)); mode != "" && mode != "auto" && mode != "5h" && mode != "7d" && mode != "model_specific" {
+		return fmt.Errorf("gateway.scheduling.reset_window_mode must be auto, 5h, 7d, or model_specific")
+	}
+	if mode := strings.ToLower(strings.TrimSpace(c.Gateway.Scheduling.ResetPriorityMode)); mode != "" && mode != "disabled" && mode != "weighted" && mode != "lexicographic" {
+		return fmt.Errorf("gateway.scheduling.reset_priority_mode must be disabled, weighted, or lexicographic")
+	}
+	if c.Gateway.Scheduling.ResetDataMaxAge < 0 {
+		return fmt.Errorf("gateway.scheduling.reset_data_max_age must be non-negative")
+	}
+	if c.Gateway.Scheduling.StickyResetEscapeThreshold < 0 {
+		return fmt.Errorf("gateway.scheduling.sticky_reset_escape_threshold must be non-negative")
 	}
 	if c.Gateway.Scheduling.LoadBatchCacheTTLMS < 0 {
 		return fmt.Errorf("gateway.scheduling.load_batch_cache_ttl_ms must be non-negative")

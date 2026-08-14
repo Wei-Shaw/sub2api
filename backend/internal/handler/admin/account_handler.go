@@ -200,10 +200,16 @@ type AccountWithConcurrency struct {
 }
 
 type AccountSchedulerScore struct {
+	Available             bool    `json:"available"`
 	BaseScore             float64 `json:"base_score"`
 	StickyScore           float64 `json:"sticky_score"`
 	StickyScoreInfinity   bool    `json:"sticky_score_infinity"`
 	StickyWeightedEnabled bool    `json:"sticky_weighted_enabled"`
+	ResetWindow           string     `json:"reset_window,omitempty"`
+	ResetAt               *time.Time `json:"reset_at,omitempty"`
+	ResetRemainingSeconds *int64     `json:"reset_remaining_seconds,omitempty"`
+	ResetDataSource       string     `json:"reset_data_source,omitempty"`
+	ResetStale            bool       `json:"reset_stale,omitempty"`
 }
 
 type AccountSchedulerGroupScore struct {
@@ -301,10 +307,16 @@ func (h *AccountHandler) scoreOpenAIAccountSchedulerPool(ctx context.Context, ac
 	result := make(map[int64]AccountSchedulerScore, len(scores))
 	for accountID, score := range scores {
 		result[accountID] = AccountSchedulerScore{
+			Available:             true,
 			BaseScore:             score.BaseScore,
 			StickyScore:           score.StickyScore,
 			StickyScoreInfinity:   score.StickyScoreInfinity,
 			StickyWeightedEnabled: score.StickyWeightedEnabled,
+			ResetWindow:           score.ResetWindow,
+			ResetAt:               score.ResetAt,
+			ResetRemainingSeconds: score.ResetRemainingSeconds,
+			ResetDataSource:       score.ResetDataSource,
+			ResetStale:            score.ResetStale,
 		}
 	}
 	return result
@@ -572,6 +584,27 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if includeSchedulerScore && pageHasOpenAIAccounts {
 		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
 		schedulerScores, schedulerGroupScores = h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
+	}
+	// Reset diagnostics are provider-neutral and are also exposed for Claude and
+	// other account types even when an OpenAI score is unavailable.
+	if includeSchedulerScore {
+		if schedulerScores == nil {
+			schedulerScores = make(map[int64]*AccountSchedulerScore)
+		}
+		for i := range accounts {
+			acc := &accounts[i]
+			snapshot := service.ResolveAccountQuotaReset(acc, acc.Platform, "", "auto", time.Now())
+			score := schedulerScores[acc.ID]
+			if score == nil {
+				score = &AccountSchedulerScore{}
+				schedulerScores[acc.ID] = score
+			}
+			score.ResetWindow = snapshot.Window
+			score.ResetAt = snapshot.ResetAt
+			score.ResetRemainingSeconds = snapshot.RemainingSeconds
+			score.ResetDataSource = snapshot.Source
+			score.ResetStale = snapshot.Stale
+		}
 	}
 
 	// 始终获取并发数（Redis ZCARD，极低开销）

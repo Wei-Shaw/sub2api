@@ -544,9 +544,17 @@ gateway:
     # 兜底最大排队长度
     fallback_max_waiting: 100
     # Prefer the account whose session window resets soonest (use-it-or-lose-it).
-    # 负载感知选择时优先用尽「会话窗口最早重置」的账号；false 保持
-    # 原有「优先级 → 负载率 → LRU」行为（默认）。
+    # Legacy session-window-only preference; quota reset policy is configured below.
     prefer_soonest_reset: false
+    # Provider-neutral quota reset scheduling: auto, 5h, 7d, model_specific.
+    reset_window_mode: auto
+    # disabled, weighted, or lexicographic (strict earliest-reset ordering).
+    reset_priority_mode: lexicographic
+    # Cached reset data older than this is ignored.
+    reset_data_max_age: 15m
+    # Keep sticky sessions unless the quota reset gap exceeds the threshold.
+    sticky_reset_escape_enabled: false
+    sticky_reset_escape_threshold: 24h
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true

@@ -140,6 +140,78 @@ type openAIAccountLoadPlan struct {
 	includeOverflowFallback   bool
 }
 
+func openAIQuotaResetFactors(candidates []openAIAccountCandidateScore, mode string, maxAge time.Duration, now time.Time) map[int64]float64 {
+	// A zero-value scheduler config is used by legacy unit callers; preserve
+	// their historical SessionWindowEnd scoring until reset_window_mode is set.
+	if strings.TrimSpace(mode) == "" {
+		mode = "5h"
+	}
+	remaining := make(map[int64]float64, len(candidates))
+	min, max := 0.0, 0.0
+	for _, candidate := range candidates {
+		snapshot := resolveAccountQuotaResetWithMaxAge(candidate.account, PlatformOpenAI, "", mode, now, maxAge)
+		if snapshot.RemainingSeconds == nil {
+			continue
+		}
+		value := float64(*snapshot.RemainingSeconds)
+		remaining[candidate.account.ID] = value
+		if len(remaining) == 1 || value < min { min = value }
+		if len(remaining) == 1 || value > max { max = value }
+	}
+	factors := make(map[int64]float64, len(remaining))
+	for id, value := range remaining {
+		if max > min {
+			factors[id] = 1 - clamp01((value-min)/(max-min))
+		} else {
+			factors[id] = 1
+		}
+	}
+	return factors
+}
+
+func filterOpenAIByQuotaReset(candidates []openAIAccountCandidateScore, mode string, maxAge time.Duration, now time.Time) []openAIAccountCandidateScore {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+	minPriority := candidates[0].account.Priority
+	for _, candidate := range candidates[1:] {
+		if candidate.account.Priority < minPriority {
+			minPriority = candidate.account.Priority
+		}
+	}
+	pool := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account.Priority == minPriority {
+			pool = append(pool, candidate)
+		}
+	}
+	valid := make(map[int64]AccountQuotaResetSnapshot, len(pool))
+	for _, candidate := range pool {
+		snapshot := resolveAccountQuotaResetWithMaxAge(candidate.account, PlatformOpenAI, "", mode, now, maxAge)
+		if snapshot.ResetAt == nil {
+			continue
+		}
+		valid[candidate.account.ID] = snapshot
+	}
+	if len(valid) == 0 {
+		return candidates
+	}
+	var best AccountQuotaResetSnapshot
+	hasBest := false
+	for _, snapshot := range valid {
+		if !hasBest || compareQuotaResetSnapshots(snapshot, best, now) < 0 {
+			hasBest, best = true, snapshot
+		}
+	}
+	result := make([]openAIAccountCandidateScore, 0, 1)
+	for _, candidate := range pool {
+		if snapshot, ok := valid[candidate.account.ID]; ok && compareQuotaResetSnapshots(snapshot, best, now) == 0 {
+			result = append(result, candidate)
+		}
+	}
+	return result
+}
+
 type openAIAccountLoadSelectionAttempt struct {
 	result              *AccountSelectionResult
 	selectionOrder      []openAIAccountCandidateScore
@@ -846,6 +918,10 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			candidates = append(candidates, candidate)
 		}
 	}
+	resetCfg := s.service.schedulingConfig()
+	if strings.EqualFold(resetCfg.ResetPriorityMode, "lexicographic") {
+		candidates = filterOpenAIByQuotaReset(candidates, resetCfg.ResetWindowMode, resetCfg.ResetDataMaxAge, time.Now())
+	}
 
 	plan := openAIAccountLoadPlan{
 		allCandidates:             allCandidates,
@@ -915,28 +991,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 	// Reset 因子（use-it-or-lose-it）：在拥有「未来会话窗口结束时间」的账号中，
 	// 剩余时间越短 → 因子越接近 1（越早重置越优先用尽）。无活跃窗口的账号因子为 0。
 	// 仅在 weights.Reset > 0 时计算，默认关闭不影响原有行为。
-	minResetRemaining, maxResetRemaining := 0.0, 0.0
-	hasResetSample := false
-	if weights.Reset > 0 {
-		for _, candidate := range candidates {
-			end := candidate.account.SessionWindowEnd
-			if end == nil || !now.Before(*end) {
-				continue
-			}
-			remaining := end.Sub(now).Seconds()
-			if !hasResetSample {
-				minResetRemaining, maxResetRemaining = remaining, remaining
-				hasResetSample = true
-				continue
-			}
-			if remaining < minResetRemaining {
-				minResetRemaining = remaining
-			}
-			if remaining > maxResetRemaining {
-				maxResetRemaining = remaining
-			}
-		}
-	}
+	resetFactors := openAIQuotaResetFactors(candidates, resetCfg.ResetWindowMode, resetCfg.ResetDataMaxAge, now)
 
 	for i := range candidates {
 		item := &candidates[i]
@@ -952,15 +1007,8 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			ttftFactor = 1 - clamp01((item.ttft-minTTFT)/(maxTTFT-minTTFT))
 		}
 		resetFactor := 0.0
-		if weights.Reset > 0 && hasResetSample {
-			if end := item.account.SessionWindowEnd; end != nil && now.Before(*end) {
-				if maxResetRemaining > minResetRemaining {
-					resetFactor = 1 - clamp01((end.Sub(now).Seconds()-minResetRemaining)/(maxResetRemaining-minResetRemaining))
-				} else {
-					// 所有有窗口的账号剩余时间相同：一律给满分，让其优于无窗口账号。
-					resetFactor = 1
-				}
-			}
+		if weights.Reset > 0 {
+			resetFactor = resetFactors[item.account.ID]
 		}
 		quotaHeadroomFactor := 0.0
 		if weights.QuotaHeadroom > 0 {
@@ -2493,6 +2541,11 @@ type OpenAIAccountSchedulerScoreSnapshot struct {
 	StickyScore           float64
 	StickyScoreInfinity   bool
 	StickyWeightedEnabled bool
+	ResetWindow           string
+	ResetAt               *time.Time
+	ResetRemainingSeconds *int64
+	ResetDataSource       string
+	ResetStale            bool
 }
 
 func (s *RateLimitService) BuildOpenAIAccountSchedulerScoreSnapshot(
@@ -2568,8 +2621,6 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		}
 	}
 
-	minResetRemaining, maxResetRemaining := 0.0, 0.0
-	hasResetSample := false
 	now := time.Now()
 	upstreamCostFactors := map[int64]float64(nil)
 	if weights.UpstreamCost > 0 {
@@ -2579,26 +2630,7 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		}
 		upstreamCostFactors = openAIUpstreamCostFactors(accounts, now, oauthSchedulingRateMultiplier)
 	}
-	if weights.Reset > 0 {
-		for _, candidate := range candidates {
-			end := candidate.account.SessionWindowEnd
-			if end == nil || !now.Before(*end) {
-				continue
-			}
-			remaining := end.Sub(now).Seconds()
-			if !hasResetSample {
-				minResetRemaining, maxResetRemaining = remaining, remaining
-				hasResetSample = true
-				continue
-			}
-			if remaining < minResetRemaining {
-				minResetRemaining = remaining
-			}
-			if remaining > maxResetRemaining {
-				maxResetRemaining = remaining
-			}
-		}
-	}
+	resetFactors := openAIQuotaResetFactors(candidates, "auto", defaultQuotaResetDataMaxAge, now)
 
 	result := make(map[int64]OpenAIAccountSchedulerScoreSnapshot, len(candidates))
 	for _, candidate := range candidates {
@@ -2611,14 +2643,8 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 		errorFactor := 1.0
 		ttftFactor := 0.5
 		resetFactor := 0.0
-		if weights.Reset > 0 && hasResetSample {
-			if end := candidate.account.SessionWindowEnd; end != nil && now.Before(*end) {
-				if maxResetRemaining > minResetRemaining {
-					resetFactor = 1 - clamp01((end.Sub(now).Seconds()-minResetRemaining)/(maxResetRemaining-minResetRemaining))
-				} else {
-					resetFactor = 1
-				}
-			}
+		if weights.Reset > 0 {
+			resetFactor = resetFactors[candidate.account.ID]
 		}
 		quotaHeadroomFactor := 0.0
 		if weights.QuotaHeadroom > 0 {
@@ -2641,6 +2667,12 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 			StickyWeightedEnabled: stickyWeightedEnabled,
 			StickyScoreInfinity:   !stickyWeightedEnabled,
 		}
+		resetSnapshot := ResolveAccountQuotaReset(candidate.account, PlatformOpenAI, "", "auto", now)
+		score.ResetWindow = resetSnapshot.Window
+		score.ResetAt = resetSnapshot.ResetAt
+		score.ResetRemainingSeconds = resetSnapshot.RemainingSeconds
+		score.ResetDataSource = resetSnapshot.Source
+		score.ResetStale = resetSnapshot.Stale
 		if stickyWeightedEnabled {
 			score.StickyScore = baseScore + weights.Previous + weights.SessionSticky
 		}
