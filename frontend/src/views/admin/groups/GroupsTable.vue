@@ -72,20 +72,20 @@
             </button>
             <div
               v-if="showColumnDropdown"
-              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg"
+              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-sm border border-line bg-surface-raised py-1 shadow-popover"
             >
               <button
                 v-for="col in toggleableColumns"
                 :key="col.key"
                 @click="toggleColumn(col.key)"
-                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-ink-secondary hover:bg-surface-hover"
+                class="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm text-ink-secondary hover:bg-surface-hover"
               >
                 <span>{{ col.label }}</span>
                 <Icon
                   v-if="isColumnVisible(col.key)"
                   name="check"
                   size="sm"
-                  class="text-primary-500"
+                  class="text-accent"
                   :stroke-width="2"
                 />
               </button>
@@ -128,26 +128,19 @@
         </template>
 
         <template #cell-id="{ value }">
-          <span class="font-mono text-xs text-ink-secondary"
+          <span class="font-mono text-xs tabular-nums text-ink-secondary"
             >#{{ value }}</span
           >
         </template>
 
+        <!--
+          Platform is an identity, not a status, so it gets no hue. The mark
+          carries the identity and the label spells it out; a five-way pastel
+          ladder was spending the table's whole colour budget on a column that
+          signals nothing.
+        -->
         <template #cell-platform="{ value }">
-          <span
-            :class="[
-              'inline-flex items-center gap-1.5 rounded-sm px-2.5 py-0.5 text-xs font-medium',
-              value === 'anthropic'
-                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                : value === 'openai'
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : value === 'antigravity'
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                    : value === 'grok'
-                      ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-            ]"
-          >
+          <span class="badge badge-gray">
             <PlatformIcon :platform="value" size="xs" />
             {{ t("admin.groups.platforms." + value) }}
           </span>
@@ -158,10 +151,10 @@
             <!-- Type Badge -->
             <span
               :class="[
-                'inline-block rounded-sm px-2 py-0.5 text-xs font-medium',
+                'badge',
                 row.subscription_type === 'subscription'
-                  ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400'
-                  : 'bg-gray-100 text-ink-secondary dark:bg-gray-700 dark:text-gray-300',
+                  ? 'badge-purple'
+                  : 'badge-gray',
               ]"
             >
               {{
@@ -183,7 +176,10 @@
                 "
                 class="flex flex-wrap items-center gap-x-1 gap-y-0.5"
               >
-                <span v-if="row.daily_limit_usd" class="whitespace-nowrap">
+                <span
+                  v-if="row.daily_limit_usd"
+                  class="whitespace-nowrap font-mono tabular-nums"
+                >
                   <span
                     v-if="usageLoading"
                     class="font-medium text-ink-tertiary"
@@ -215,7 +211,9 @@
                   class="mx-1 text-ink-disabled"
                   >·</span
                 >
-                <span v-if="row.weekly_limit_usd" class="whitespace-nowrap"
+                <span
+                  v-if="row.weekly_limit_usd"
+                  class="whitespace-nowrap font-mono tabular-nums"
                   >{{ formatUsd(row.weekly_limit_usd) }}/{{
                     t("admin.groups.limitWeek")
                   }}</span
@@ -225,7 +223,9 @@
                   class="mx-1 text-ink-disabled"
                   >·</span
                 >
-                <span v-if="row.monthly_limit_usd" class="whitespace-nowrap"
+                <span
+                  v-if="row.monthly_limit_usd"
+                  class="whitespace-nowrap font-mono tabular-nums"
                   >{{ formatUsd(row.monthly_limit_usd) }}/{{
                     t("admin.groups.limitMonth")
                   }}</span
@@ -236,7 +236,7 @@
               }}</span>
               <div class="text-ink-tertiary">
                 {{ t("admin.groups.usageTotal") }}
-                <span class="ml-1 font-medium text-ink-secondary"
+                <span class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
                   >{{
                     usageLoading
                       ? "—"
@@ -249,59 +249,66 @@
         </template>
 
         <template #cell-rate_multiplier="{ value }">
-          <span class="text-sm text-ink-secondary"
+          <span class="font-mono text-sm tabular-nums text-ink-secondary"
             >{{ value }}x</span
           >
         </template>
 
+        <!--
+          Only the exception is marked. Public is the norm here, and a badge on
+          every row makes the column a texture instead of a signal. Accent is
+          not used: it means interactive or selected, never a property.
+        -->
         <template #cell-is_exclusive="{ value }">
-          <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
-            {{
-              value ? t("admin.groups.exclusive") : t("admin.groups.public")
-            }}
+          <span v-if="value" class="badge badge-gray">
+            {{ t("admin.groups.exclusive") }}
+          </span>
+          <span v-else class="text-xs text-ink-tertiary">
+            {{ t("admin.groups.public") }}
           </span>
         </template>
 
+        <!--
+          The unit used to be a filled grey chip on every one of these three
+          lines, so each row carried up to three grey blobs that said nothing.
+          The unit is now a step down in size and ink, which is where a unit
+          belongs: readable, and never competing with the figure.
+        -->
         <template #cell-account_count="{ row }">
           <div class="space-y-0.5 text-xs">
             <div>
               <span class="text-ink-secondary">{{
                 t("admin.groups.accountsAvailable")
               }}</span>
-              <span
-                class="ml-1 font-medium text-success"
+              <span class="ml-1 font-mono font-medium tabular-nums text-success"
                 >{{ row.active_account_count || 0 }}</span
               >
-              <span
-                class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-ink dark:bg-dark-600 dark:text-gray-300"
-                >{{ t("admin.groups.accountsUnit") }}</span
-              >
+              <span class="ml-1 text-2xs text-ink-tertiary">{{
+                t("admin.groups.accountsUnit")
+              }}</span>
             </div>
             <div v-if="row.rate_limited_account_count">
               <span class="text-ink-secondary">{{
                 t("admin.groups.accountsRateLimited")
               }}</span>
-              <span
-                class="ml-1 font-medium text-warn"
+              <span class="ml-1 font-mono font-medium tabular-nums text-warn"
                 >{{ row.rate_limited_account_count }}</span
               >
-              <span
-                class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-ink dark:bg-dark-600 dark:text-gray-300"
-                >{{ t("admin.groups.accountsUnit") }}</span
-              >
+              <span class="ml-1 text-2xs text-ink-tertiary">{{
+                t("admin.groups.accountsUnit")
+              }}</span>
             </div>
             <div>
               <span class="text-ink-secondary">{{
                 t("admin.groups.accountsTotal")
               }}</span>
               <span
-                class="ml-1 font-medium text-ink-secondary"
+                class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
                 >{{ row.account_count || 0 }}</span
               >
-              <span
-                class="ml-1 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-medium text-ink dark:bg-dark-600 dark:text-gray-300"
-                >{{ t("admin.groups.accountsUnit") }}</span
-              >
+              <span class="ml-1 text-2xs text-ink-tertiary">{{
+                t("admin.groups.accountsUnit")
+              }}</span>
             </div>
           </div>
         </template>
@@ -326,7 +333,7 @@
               <span class="text-ink-tertiary">{{
                 t("admin.groups.usageToday")
               }}</span>
-              <span class="ml-1 font-medium text-ink-secondary"
+              <span class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
                 >${{
                   formatCost(usageMap.get(row.id)?.today_cost ?? 0)
                 }}</span
@@ -336,7 +343,7 @@
               <span class="text-ink-tertiary">{{
                 t("admin.groups.usageTotal")
               }}</span>
-              <span class="ml-1 font-medium text-ink-secondary"
+              <span class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
                 >${{
                   formatCost(usageMap.get(row.id)?.total_cost ?? 0)
                 }}</span
@@ -360,7 +367,7 @@
           <div class="flex items-center gap-1">
             <button
               @click="handleEdit(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-primary-600 dark:hover:text-primary-400"
+              class="row-action"
             >
               <Icon name="edit" size="sm" />
               <span class="text-xs">{{ t("common.edit") }}</span>
@@ -374,7 +381,7 @@
               "
               :disabled="duplicatingGroupIds.has(row.id)"
               @click="handleDuplicate(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-primary-400"
+              class="row-action disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Icon name="copy" size="sm" />
               <span class="text-xs">
@@ -388,7 +395,7 @@
             <button
               v-if="row.platform === 'composite'"
               @click="handleCompositeRoutes(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-cyan-600 dark:hover:text-cyan-400"
+              class="row-action"
             >
               <Icon name="swap" size="sm" />
               <span class="text-xs">{{
@@ -397,7 +404,7 @@
             </button>
             <button
               @click="handleRateMultipliers(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-purple-600 dark:hover:text-purple-400"
+              class="row-action"
             >
               <Icon name="dollar" size="sm" />
               <span class="text-xs">{{
@@ -406,7 +413,7 @@
             </button>
             <button
               @click="handleRPMOverrides(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-surface-hover hover:text-orange-600 dark:hover:text-orange-400"
+              class="row-action"
             >
               <Icon name="bolt" size="sm" />
               <span class="text-xs">{{
@@ -415,7 +422,7 @@
             </button>
             <button
               @click="handleDelete(row)"
-              class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-ink-secondary transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+              class="row-action row-action-danger"
             >
               <Icon name="trash" size="sm" />
               <span class="text-xs">{{ t("common.delete") }}</span>
@@ -498,3 +505,22 @@ const {
   openSortModal,
 } = ctx;
 </script>
+
+<style scoped>
+/*
+ * Row actions used to hand every button its own hover hue — accent, cyan,
+ * purple, orange, red. Six colours for six equally ordinary verbs is
+ * decoration, and it spent the signal budget the status column needs. One
+ * interactive colour for all of them, danger reserved for the one action that
+ * destroys something.
+ */
+.row-action {
+  @apply flex flex-col items-center gap-0.5 rounded-sm p-1.5;
+  @apply text-ink-secondary transition-colors;
+  @apply hover:bg-surface-hover hover:text-accent;
+}
+
+.row-action-danger {
+  @apply hover:bg-danger-tint hover:text-danger;
+}
+</style>
