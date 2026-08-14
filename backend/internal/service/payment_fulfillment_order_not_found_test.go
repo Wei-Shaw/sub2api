@@ -3,7 +3,6 @@
 package service
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"testing"
@@ -14,7 +13,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
 

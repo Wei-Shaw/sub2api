@@ -265,21 +265,38 @@ func TestContentModerationRuntimeSnapshotRefreshFailureKeepsStaleConfig(t *testi
 		SettingKeyRiskControlEnabled:      "true",
 		SettingKeyContentModerationConfig: runtimeCacheTestConfig(t, "blocked"),
 	}}
-	svc := runtimeCacheTestService(repo, time.Nanosecond)
+	// A sub-millisecond TTL cannot be used to force expiry here: the monotonic
+	// clock is coarse enough that both Checks can read the same instant, making
+	// now.Sub(loadedAt) zero and the snapshot look fresh. Age the snapshot by
+	// hand instead, the way the back-off test below does.
+	svc := runtimeCacheTestService(repo, time.Minute)
 	input := runtimeCacheTestInput("blocked")
 
 	decision, err := svc.Check(context.Background(), input)
 	require.NoError(t, err)
 	require.True(t, decision.Blocked)
 
+	current := svc.runtimeSnapshot.Load()
+	require.NotNil(t, current)
+	expired := *current
+	expired.loadedAt = time.Now().Add(-2 * time.Minute)
+	svc.runtimeSnapshot.Store(&expired)
+	_, before := repo.calls()
+
 	repo.failMultiple(errors.New("database unavailable"))
 	decision, err = svc.Check(context.Background(), input)
 	require.NoError(t, err)
-	require.True(t, decision.Blocked)
+	require.True(t, decision.Blocked, "a failed refresh must keep serving the stale snapshot")
 	require.Eventually(t, func() bool {
 		_, calls := repo.calls()
-		return calls >= 2
-	}, time.Second, time.Millisecond)
+		return calls > before
+	}, 5*time.Second, time.Millisecond, "the expired snapshot should have triggered a refresh attempt")
+
+	// The failure has to arm the backoff, or every subsequent Check would
+	// hammer a repository that is already known to be down.
+	require.Eventually(t, func() bool {
+		return svc.runtimeRefreshRetryAt.Load() > 0
+	}, 5*time.Second, time.Millisecond, "a failed refresh should defer the next attempt")
 }
 
 func TestContentModerationRuntimeSnapshotRefreshFailureBacksOff(t *testing.T) {

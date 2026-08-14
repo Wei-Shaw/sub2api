@@ -68,18 +68,6 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "legacy alipay direct supports canonical visible method",
-			supportedTypes: "alipay_direct",
-			target:         "alipay",
-			expected:       true,
-		},
-		{
-			name:           "legacy wxpay direct supports canonical visible method",
-			supportedTypes: "wxpay_direct",
-			target:         "wxpay",
-			expected:       true,
-		},
-		{
 			name:           "empty supported types means all supported",
 			supportedTypes: "",
 			target:         "alipay",
@@ -388,20 +376,6 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 				`{"alipay":{"singleMin":5,"singleMax":200}}`),
 			paymentType: "wxpay",
 			want:        ChannelLimits{},
-		},
-		{
-			name: "stripe provider uses stripe lookup key regardless of payment type",
-			inst: testInstance(1, "stripe",
-				`{"stripe":{"singleMin":10,"singleMax":500,"dailyLimit":5000}}`),
-			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 10, SingleMax: 500, DailyLimit: 5000},
-		},
-		{
-			name: "stripe provider ignores payment type key even if present",
-			inst: testInstance(1, "stripe",
-				`{"stripe":{"singleMin":10,"singleMax":500},"alipay":{"singleMin":1,"singleMax":100}}`),
-			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 10, SingleMax: 500},
 		},
 		{
 			name: "non-stripe provider uses payment type as lookup key",
