@@ -87,7 +87,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, feeRate, payAmount, sel)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	return plan, nil
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -145,7 +145,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}
-	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
+	// orderAmount, not limitAmount: the stored Amount every other order
+	// contributes to the total is the credited USD figure, so the incoming
+	// order has to be measured the same way.
+	if err := s.checkDailyLimit(ctx, tx, req.UserID, orderAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
 	tm := cfg.OrderTimeoutMin
@@ -296,12 +299,13 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 	if err != nil {
 		return fmt.Errorf("query daily usage: %w", err)
 	}
+	// `amount` arrives in USD, so the running total has to be USD as well.
+	// PayAmount is whatever the gateway settled in, which since balance orders
+	// started converting is dong on a SePay channel — summing it into a dollar
+	// cap made one top-up look like it blew the limit by four orders of
+	// magnitude.
 	var used float64
 	for _, o := range orders {
-		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
-			continue
-		}
 		used += o.Amount
 	}
 	if used+amount > limit {
@@ -449,7 +453,14 @@ func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limit
 	if sel != nil {
 		currency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
-	amountStr := payment.FormatAmountForCurrency(limitAmount, currency)
+	// The subject names the sum the user is about to transfer, so it has to be
+	// the converted gateway amount — a dong transfer labelled with the USD
+	// figure is the bank statement telling the user they paid ₫10.
+	usdToVndRate := 0.0
+	if cfg != nil {
+		usdToVndRate = cfg.SubscriptionUSDToVNDRate
+	}
+	amountStr := payment.FormatAmountForCurrency(calculateGatewayBaseAmount(limitAmount, usdToVndRate, currency), currency)
 	if hasPaymentProductNameAffix(cfg) {
 		return applyPaymentProductNameAffix(amountStr, cfg)
 	}
@@ -504,7 +515,7 @@ func calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate float64, curr
 // amount would be charged as a dong figure, i.e. off by four orders of
 // magnitude, so an unset rate leaves the amount alone rather than guessing.
 func calculateGatewayBaseAmount(amount, usdToVndRate float64, currency string) float64 {
-	rate := normalizeSubscriptionUSDToVNDRate(usdToVndRate)
+	rate := normalizeUSDToVNDRate(usdToVndRate)
 	if rate <= 0 || currency != payment.CurrencySePay {
 		return amount
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -192,5 +193,33 @@ func TestBuildPaymentSubjectAppliesAffixToSubscriptionPlanDefaultName(t *testing
 	got := svc.buildPaymentSubject(plan, 0, cfg, nil)
 	if got != "PRE Sub2API Subscription Team Monthly SUF" {
 		t.Fatalf("buildPaymentSubject() = %q, want %q", got, "PRE Sub2API Subscription Team Monthly SUF")
+	}
+}
+
+// The subject is what the payer reads on the transfer, so it names the dong
+// sum actually being collected rather than the USD figure behind it.
+func TestBuildPaymentSubjectNamesConvertedAmountOnVNDChannel(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{}
+	cfg := &PaymentConfig{SubscriptionUSDToVNDRate: 26000}
+	sel := &payment.InstanceSelection{ProviderKey: string(payment.TypeSePay)}
+
+	got := svc.buildPaymentSubject(nil, 10, cfg, sel)
+	if got != "Sub2API 260000 VND" {
+		t.Fatalf("buildPaymentSubject() = %q, want %q", got, "Sub2API 260000 VND")
+	}
+}
+
+func TestBuildPaymentSubjectKeepsAmountWhenRateDisabled(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{}
+	cfg := &PaymentConfig{}
+	sel := &payment.InstanceSelection{ProviderKey: string(payment.TypeSePay)}
+
+	got := svc.buildPaymentSubject(nil, 10, cfg, sel)
+	if got != "Sub2API 10 VND" {
+		t.Fatalf("buildPaymentSubject() = %q, want %q", got, "Sub2API 10 VND")
 	}
 }

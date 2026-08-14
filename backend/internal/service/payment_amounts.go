@@ -16,9 +16,9 @@ func normalizeBalanceRechargeMultiplier(multiplier float64) float64 {
 	return multiplier
 }
 
-// normalizeSubscriptionUSDToVNDRate 将非法值归一为 0（换算关闭）。
-// 与余额倍率不同，0 是合法状态：表示订阅保持 price 直付的存量行为。
-func normalizeSubscriptionUSDToVNDRate(rate float64) float64 {
+// normalizeUSDToVNDRate 将非法值归一为 0（换算关闭）。
+// 与余额倍率不同，0 是合法状态：表示订阅与充值都保持金额直付的存量行为。
+func normalizeUSDToVNDRate(rate float64) float64 {
 	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 {
 		return 0
 	}

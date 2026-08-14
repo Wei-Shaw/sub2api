@@ -449,6 +449,26 @@ describe('PaymentView recharge amounts', () => {
 
     expect(wrapper.text()).toContain(formatPaymentAmount(10, 'VND'))
   })
+
+  // Once the summary converts, every figure in it is dong. The credited row is
+  // the only line naming the USD credit, so a 1× multiplier must not hide it.
+  it('states the USD credit even on a 1x multiplier when the gateway settles in dong', async () => {
+    const wrapper = await mountRecharge(10, {
+      checkout: { subscription_usd_to_vnd_rate: 26000, balance_recharge_multiplier: 1 },
+      method: { currency: 'VND' },
+    })
+
+    expect(wrapper.text()).toContain(formatPaymentAmount(10, 'USD'))
+  })
+
+  it('leaves the credited row out on a dollar gateway with a 1x multiplier', async () => {
+    const wrapper = await mountRecharge(10, {
+      checkout: { balance_recharge_multiplier: 1 },
+      method: { currency: 'USD' },
+    })
+
+    expect(wrapper.text()).not.toContain('payment.creditedBalance')
+  })
 })
 
 describe('PaymentView payment recovery', () => {
