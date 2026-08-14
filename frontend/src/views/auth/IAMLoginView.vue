@@ -2,7 +2,7 @@
   <AuthLayout>
     <div class="space-y-6">
       <div class="grid grid-cols-2 rounded-md bg-gray-100 p-1 dark:bg-dark-800">
-        <router-link to="/login" class="rounded px-3 py-2 text-center text-sm text-gray-600 dark:text-dark-300">
+        <router-link :to="personalLoginTo" class="rounded px-3 py-2 text-center text-sm text-gray-600 dark:text-dark-300">
           {{ t('organization.login.personal') }}
         </router-link>
         <span class="rounded bg-white px-3 py-2 text-center text-sm font-medium text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white">
@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AuthLayout from '@/components/layout/AuthLayout.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { getPublicSettings } from '@/api/auth'
@@ -74,6 +74,7 @@ import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const appStore = useAppStore()
 const loading = ref(false)
@@ -111,6 +112,12 @@ const captchaEnabled = computed(
 
 const form = reactive({ principal: '', password: '' })
 const authActionDisabled = computed(() => loading.value || !publicSettingsLoaded.value)
+
+// 切回“个人登录”时保留当前的 redirect query，避免在两个 tab 之间切换丢失 /oidc/authorize 回跳目标。
+const personalLoginTo = computed(() => {
+  const redirect = route.query.redirect
+  return redirect ? { path: '/login', query: { redirect } } : '/login'
+})
 
 onMounted(async () => {
   try {
@@ -188,9 +195,16 @@ async function submit(): Promise<void> {
       tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
       tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
     })
-    await router.replace(
-      response.user.must_change_password ? '/organization/change-password' : '/dashboard'
-    )
+    // 强制改密码优先于 redirect（后续改完密码后重新登录时会回到 /login?redirect=... 链路）。
+    if (response.user.must_change_password) {
+      await router.replace('/organization/change-password')
+      return
+    }
+    // 与普通登录保持一致：优先回跳 route.query.redirect。
+    // redirect 可能指向后端 API 路径（如 /oidc/authorize?...），非前端 SPA 路由，
+    // 此时必须用整页跳转 window.location.href 才能真正打到后端。
+    const redirectTo = (route.query.redirect as string) || '/dashboard'
+    await redirectAfterLogin(redirectTo)
   } catch (error: unknown) {
     appStore.showError(extractI18nErrorMessage(error, t, 'auth.errors', t('auth.loginFailed')))
   } finally {
@@ -198,6 +212,41 @@ async function submit(): Promise<void> {
       resetCaptchaProof()
     }
     loading.value = false
+  }
+}
+
+/**
+ * 只接受本站同源相对路径（以 / 开头且不以 //、/\ 开头），防止开放重定向。
+ */
+function isSafeInternalPath(target: string): boolean {
+  return /^\/(?![/\\])/.test(target)
+}
+
+/**
+ * 登录成功后的跳转。
+ *
+ * redirect 可能是后端路径（如 OIDC 授权端点 /oidc/authorize?...，由后端在未登录时
+ * 重定向到 /login?redirect=... 带过来）。这类路径不是前端 SPA 路由，若直接 router.push
+ * 会匠酒到 catch-all 的 NotFound 页。因此先用 router.resolve 判断：解析为 NotFound 的改用
+ * 整页跳转，其余前端路由仍走 SPA 内部跳转。与 LoginView.vue 的处理一致。
+ */
+async function redirectAfterLogin(redirectTo: string): Promise<void> {
+  if (!isSafeInternalPath(redirectTo)) {
+    await router.replace('/dashboard')
+    return
+  }
+
+  let isFrontendRoute = false
+  try {
+    isFrontendRoute = router.resolve(redirectTo).name !== 'NotFound'
+  } catch {
+    isFrontendRoute = false
+  }
+
+  if (isFrontendRoute) {
+    await router.replace(redirectTo)
+  } else {
+    window.location.href = redirectTo
   }
 }
 </script>

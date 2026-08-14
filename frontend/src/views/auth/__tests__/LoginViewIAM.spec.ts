@@ -31,7 +31,9 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     currentRoute: { value: { query: {} } },
     replace: mocks.routerReplace,
+    resolve: (path: string) => ({ name: path.startsWith('/oidc') ? 'NotFound' : 'Route' }),
   }),
+  useRoute: () => ({ query: {} }),
 }))
 
 vi.mock('vue-i18n', async importOriginal => {
