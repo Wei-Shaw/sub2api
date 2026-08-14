@@ -588,9 +588,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	return group, nil
 }
 
-// normalizeLimit 将负数转换为 nil（表示无限制），0 保留（表示限额为零）
+// normalizeLimit 将 nil、负数、0 统一转换为 nil（表示无限制）。
+// 说明：前端"清空限额"（提交 null / 空字符串）经过 optionalLimitField.ToServiceInput
+// 会得到 *0，与"用户显式输入 0"无法区分。且"限额=0（禁用一切消费）"业务上没有
+// 意义（若要禁用应走账户状态/分组黑名单等机制），故统一将 <=0 视为无限额。
 func normalizeLimit(limit *float64) *float64 {
-	if limit == nil || *limit < 0 {
+	if limit == nil || *limit <= 0 {
 		return nil
 	}
 	return limit
