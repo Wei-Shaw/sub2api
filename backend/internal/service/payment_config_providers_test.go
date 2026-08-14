@@ -805,3 +805,50 @@ func validWxpayProviderConfigWithJSAPIAppID(t *testing.T) map[string]string {
 	cfg["mpAppId"] = "wx-mp-app-test"
 	return cfg
 }
+
+func TestSepayProviderRegistrationAndRefundBlock(t *testing.T) {
+	if !validProviderKeys[payment.TypeSePay] {
+		t.Error("sepay must be a valid provider key")
+	}
+	if err := validateProviderRequest(payment.TypeSePay, "SePay VN", "sepay"); err != nil {
+		t.Fatalf("sepay provider request should validate: %v", err)
+	}
+	if providerSupportsRefund(payment.TypeSePay) {
+		t.Error("sepay has no refund API and must not report refund support")
+	}
+	if !providerSupportsRefund(payment.TypeStripe) {
+		t.Error("stripe refund support regression")
+	}
+	if err := validateProviderRefundSupport(payment.TypeSePay, true); err == nil {
+		t.Error("enabling refund on sepay must be rejected")
+	}
+	if err := validateProviderRefundSupport(payment.TypeSePay, false); err != nil {
+		t.Errorf("refund disabled should always be accepted: %v", err)
+	}
+	if err := validateProviderRefundSupport(payment.TypeStripe, true); err != nil {
+		t.Errorf("stripe refund enabled should be accepted: %v", err)
+	}
+}
+
+func TestSepaySensitiveConfigFields(t *testing.T) {
+	for _, field := range []string{"apiToken", "webhookSecret", "webhookApiKey"} {
+		if !isSensitiveProviderConfigField(payment.TypeSePay, field) {
+			t.Errorf("%s should be sensitive for sepay", field)
+		}
+	}
+	for _, field := range []string{"bankAccountNumber", "bankBin", "accountName", "apiBase"} {
+		if isSensitiveProviderConfigField(payment.TypeSePay, field) {
+			t.Errorf("%s should not be sensitive for sepay", field)
+		}
+	}
+	if !hasPendingOrderProtectedConfigChange(payment.TypeSePay,
+		map[string]string{"bankAccountNumber": "1"},
+		map[string]string{"bankAccountNumber": "2"}) {
+		t.Error("bankAccountNumber change must be blocked with pending orders")
+	}
+	if hasPendingOrderProtectedConfigChange(payment.TypeSePay,
+		map[string]string{"accountName": "A"},
+		map[string]string{"accountName": "B"}) {
+		t.Error("accountName change must be allowed with pending orders")
+	}
+}

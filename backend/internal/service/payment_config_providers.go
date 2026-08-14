@@ -116,6 +116,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
 	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
+	payment.TypeSePay:     {"apitoken": {}, "webhooksecret": {}, "webhookapikey": {}},
 }
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -128,6 +129,7 @@ var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
 	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
+	payment.TypeSePay:     {"apitoken": {}, "webhooksecret": {}, "webhookapikey": {}, "bankaccountnumber": {}, "bankbin": {}},
 }
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
@@ -178,7 +180,27 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 }
 
 var validProviderKeys = map[string]bool{
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true, payment.TypeSePay: true,
+}
+
+// refundCapableProviders lists provider keys whose upstream API supports
+// refunds. SePay monitors bank transfers and has no refund API.
+var refundCapableProviders = map[string]bool{
 	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
+}
+
+func providerSupportsRefund(providerKey string) bool {
+	return refundCapableProviders[providerKey]
+}
+
+// validateProviderRefundSupport rejects enabling refunds on providers whose
+// upstream has no refund API (currently sepay only).
+func validateProviderRefundSupport(providerKey string, refundEnabled bool) error {
+	if refundEnabled && !providerSupportsRefund(providerKey) {
+		return infraerrors.BadRequest("VALIDATION_ERROR",
+			fmt.Sprintf("provider %s does not support refunds", providerKey))
+	}
+	return nil
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
@@ -201,6 +223,9 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	}
 	enc, err := s.encryptConfig(req.Config)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateProviderRefundSupport(req.ProviderKey, req.RefundEnabled); err != nil {
 		return nil, err
 	}
 	allowUserRefund := req.AllowUserRefund && req.RefundEnabled
@@ -421,6 +446,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetLimits(*req.Limits)
 	}
 	if req.RefundEnabled != nil {
+		if err := validateProviderRefundSupport(current.ProviderKey, *req.RefundEnabled); err != nil {
+			return nil, err
+		}
 		u.SetRefundEnabled(*req.RefundEnabled)
 		// Cascade: turning off refund_enabled also disables allow_user_refund
 		if !*req.RefundEnabled {
