@@ -26,11 +26,11 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
  *     treated as reached. Deleting one of them would render the key path into
  *     the UI, silently.
  *
- * Measured when this landed: 63 dynamic prefixes across 119 sites in 514 files,
- * and exactly 6 template literals that interpolate a variable BASE rather than
- * a suffix — none of them i18n keys (they build filenames and quota paths). A
- * variable base is the one shape this scan cannot see, so if that count starts
- * growing, the prefix scan has stopped being sufficient.
+ * The one shape a call-site scan genuinely cannot see is a key assembled inside
+ * a helper, where neither half is written next to the other — the namespace
+ * arrives as an argument and the code as data. The interior-node rule below
+ * covers the case that occurs in this tree. A key whose namespace is ALSO
+ * computed would still slip through, and nothing here would notice.
  *
  * ADDING A NUMBER HERE IS NOT A FIX. The only correct direction is down, and
  * the counts are exact on purpose: paying debt off means editing this file,
@@ -39,13 +39,7 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const ALLOWED_ORPHANS: Record<string, number> = {
   'admin.settings': 73,
   'admin.accounts': 75,
-  'payment.errors': 39,
-  'admin.groups': 38,
-  'admin.dashboard': 33,
-  'admin.availableChannels': 31,
-  'admin.proxies': 31,
-  'admin.redeem': 31,
-  'availableChannels.pricing': 15,
+  'admin.availableChannels': 17,
   'onboarding.admin': 11,
   'admin.channels': 9,
   'admin.riskControl': 8,
@@ -65,7 +59,7 @@ const ALLOWED_ORPHANS: Record<string, number> = {
   'admin.usage': 3,
   'auth.dingtalk': 3,
   'auth.oidc': 3,
-  'admin.affiliates': 2,
+  'admin.affiliates': 1,
   'admin.tlsFingerprintProfiles': 2,
   'onboarding.user': 2,
   'payment.orders': 2,
@@ -83,7 +77,6 @@ const ALLOWED_ORPHANS: Record<string, number> = {
   'announcements.unreadOnly': 1,
   'announcements.viewAll': 1,
   'auth.captchaLoading': 1,
-  'auth.errors': 1,
   'auth.oauthFlow': 1,
   'auth.passkeySigningIn': 1,
   'auth.processing': 1,
@@ -206,12 +199,15 @@ const ALLOWED_ORPHANS: Record<string, number> = {
   'version.viewUpdate': 1,
 }
 
-function flatten(node: unknown, prefix: string, out: Set<string>): void {
+function flatten(node: unknown, prefix: string, out: Set<string>, interior: Set<string>): void {
   if (node === null || typeof node !== 'object') return
   for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
     const path = prefix ? `${prefix}.${k}` : k
     if (typeof v === 'string') out.add(path)
-    else if (typeof v === 'object' && v !== null) flatten(v, path, out)
+    else if (typeof v === 'object' && v !== null) {
+      interior.add(path)
+      flatten(v, path, out, interior)
+    }
   }
 }
 
@@ -231,8 +227,9 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const keys = new Set<string>()
-flatten(en, '', keys)
-flatten(zh, '', keys)
+const interior = new Set<string>()
+flatten(en, '', keys, interior)
+flatten(zh, '', keys, interior)
 
 const sources = walk(SRC).map((f) => readFileSync(f, 'utf8'))
 
@@ -252,6 +249,22 @@ for (const source of sources) {
   for (const m of source.matchAll(/`((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]*)\$\{/g)) {
     dynamicPrefixes.add(m[1])
   }
+}
+
+/**
+ * A literal that names an INTERIOR node — a subtree, not a leaf — is a
+ * namespace being handed to something that will append a code to it.
+ * `extractI18nErrorMessage(err, t, 'payment.errors', fallback)` builds
+ * `` `${namespace}.${code}` `` inside the helper, so the head never appears
+ * next to the interpolation and no amount of pattern-matching at the call site
+ * can see it. Thirty-nine backend error codes were reported dead this way.
+ *
+ * Writing a subtree's own path in code has no other purpose, so treating the
+ * whole subtree as reached is both correct here and safe in general: it errs
+ * toward keeping keys.
+ */
+for (const literal of literals) {
+  if (interior.has(literal)) dynamicPrefixes.add(`${literal}.`)
 }
 
 const prefixes = [...dynamicPrefixes]
