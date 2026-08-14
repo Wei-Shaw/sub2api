@@ -37,10 +37,7 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
  * which puts it in the diff where a reviewer can see it.
  */
 const ALLOWED_ORPHANS: Record<string, number> = {
-  'admin.settings': 73,
-  'admin.accounts': 75,
-  'admin.availableChannels': 17,
-  'onboarding.admin': 11,
+  'admin.settings': 13,
   'admin.channels': 9,
   'admin.riskControl': 8,
   'payment.qr': 8,
