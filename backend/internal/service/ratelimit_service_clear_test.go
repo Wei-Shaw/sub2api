@@ -17,7 +17,9 @@ type rateLimitClearRepoStub struct {
 	mockAccountRepoForGemini
 	getByIDAccount            *Account
 	getByIDErr                error
+	getByIDErrAfter           int
 	getByIDCalls              int
+	getByIDHook               func()
 	clearErrorCalls           int
 	clearRateLimitCalls       int
 	clearAntigravityCalls     int
@@ -34,7 +36,10 @@ type rateLimitClearRepoStub struct {
 
 func (r *rateLimitClearRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
 	r.getByIDCalls++
-	if r.getByIDErr != nil {
+	if r.getByIDHook != nil {
+		r.getByIDHook()
+	}
+	if r.getByIDErr != nil && (r.getByIDErrAfter == 0 || r.getByIDCalls > r.getByIDErrAfter) {
 		return nil, r.getByIDErr
 	}
 	return r.getByIDAccount, nil
@@ -108,6 +113,133 @@ type tempUnschedCacheRecorder struct {
 type recoverTokenInvalidatorStub struct {
 	accounts []*Account
 	err      error
+}
+
+func TestRateLimitService_RecoverErrorTargetClearsGatewayModelTransientState(t *testing.T) {
+	limit := map[string]any{"rate_limit_reset_at": time.Now().Add(10 * time.Minute).Format(time.RFC3339)}
+	repo := &rateLimitClearRepoStub{getByIDAccount: &Account{
+		ID: 42, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{modelRateLimitsKey: map[string]any{
+			"gpt-5.6-sol": limit,
+		}},
+	}}
+	state := newOpenAIAccountModelTransientState(1)
+	now := time.Now()
+	var initialClaim openAIAccountModelTransientDecision
+	for i, requestID := range []string{"initial-1", "initial-2", "initial-3"} {
+		initialClaim = state.recordFailure(42, "gpt-5.6-sol", now.Add(time.Duration(i)*time.Millisecond), requestID)
+	}
+	state.finishCircuitPersistence(42, "gpt-5.6-sol", initialClaim.PersistenceGeneration, true)
+	gateway := &OpenAIGatewayService{openaiModelTransient: state}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(gateway)
+	targets, err := svc.ErrorRecoveryTargets(context.Background(), 42, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+
+	result, err := svc.RecoverErrorTargetAfterSuccessfulTest(context.Background(), 42, targets[0])
+
+	require.NoError(t, err)
+	require.True(t, result.ClearedModelRateLimit)
+	require.Zero(t, state.size())
+	var rearmedClaim openAIAccountModelTransientDecision
+	for i, requestID := range []string{"rearmed-1", "rearmed-2", "rearmed-3"} {
+		rearmedClaim = state.recordFailure(42, "gpt-5.6-sol", now.Add(time.Duration(i+3)*time.Millisecond), requestID)
+	}
+	require.True(t, rearmedClaim.OpenCircuit)
+	require.NotEqual(t, initialClaim.PersistenceGeneration, rearmedClaim.PersistenceGeneration)
+}
+
+func TestRateLimitService_RecoverErrorTargetPreservesFailureAfterProbeSnapshot(t *testing.T) {
+	limit := map[string]any{"rate_limit_reset_at": time.Now().Add(10 * time.Minute).Format(time.RFC3339)}
+	account := &Account{
+		ID: 43, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{modelRateLimitsKey: map[string]any{"gpt-5.6-sol": limit}},
+	}
+	repo := &rateLimitClearRepoStub{getByIDAccount: account}
+	state := newOpenAIAccountModelTransientState(1)
+	now := time.Now()
+	var claim openAIAccountModelTransientDecision
+	for i, requestID := range []string{"initial-1", "initial-2", "initial-3"} {
+		claim = state.recordFailure(account.ID, "gpt-5.6-sol", now.Add(time.Duration(i)*time.Millisecond), requestID)
+	}
+	state.finishCircuitPersistence(account.ID, "gpt-5.6-sol", claim.PersistenceGeneration, true)
+	gateway := &OpenAIGatewayService{openaiModelTransient: state}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(gateway)
+	targets, err := svc.ErrorRecoveryTargets(context.Background(), account.ID, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+
+	state.recordFailure(account.ID, "gpt-5.6-sol", now.Add(4*time.Millisecond), "after-probe-snapshot")
+	result, err := svc.RecoverErrorTargetAfterSuccessfulTest(context.Background(), account.ID, targets[0])
+
+	require.NoError(t, err)
+	require.False(t, result.ClearedModelRateLimit)
+	require.Empty(t, repo.clearModelRateLimitKeys)
+	require.Equal(t, 1, state.size())
+}
+
+func TestRateLimitService_ErrorRecoveryTargetPreservesFailureDuringAccountRead(t *testing.T) {
+	limit := map[string]any{"rate_limit_reset_at": time.Now().Add(10 * time.Minute).Format(time.RFC3339)}
+	account := &Account{
+		ID: 44, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{modelRateLimitsKey: map[string]any{"gpt-5.6-sol": limit}},
+	}
+	state := newOpenAIAccountModelTransientState(1)
+	now := time.Now()
+	var claim openAIAccountModelTransientDecision
+	for i, requestID := range []string{"initial-1", "initial-2", "initial-3"} {
+		claim = state.recordFailure(account.ID, "gpt-5.6-sol", now.Add(time.Duration(i)*time.Millisecond), requestID)
+	}
+	state.finishCircuitPersistence(account.ID, "gpt-5.6-sol", claim.PersistenceGeneration, true)
+	repo := &rateLimitClearRepoStub{getByIDAccount: account}
+	repo.getByIDHook = func() {
+		state.recordFailure(account.ID, "gpt-5.6-sol", now.Add(4*time.Millisecond), "during-account-read")
+		repo.getByIDHook = nil
+	}
+	gateway := &OpenAIGatewayService{openaiModelTransient: state}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(gateway)
+
+	targets, err := svc.ErrorRecoveryTargets(context.Background(), account.ID, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+	result, err := svc.RecoverErrorTargetAfterSuccessfulTest(context.Background(), account.ID, targets[0])
+
+	require.NoError(t, err)
+	require.False(t, result.ClearedModelRateLimit)
+	require.Empty(t, repo.clearModelRateLimitKeys)
+	require.Equal(t, 1, state.size())
+}
+
+func TestRateLimitService_ErrorRecoveryTargetMatchesCanonicalModelCase(t *testing.T) {
+	limit := map[string]any{"rate_limit_reset_at": time.Now().Add(10 * time.Minute).Format(time.RFC3339)}
+	account := &Account{
+		ID: 45, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{modelRateLimitsKey: map[string]any{"GPT-5.6-SOL": limit}},
+	}
+	repo := &rateLimitClearRepoStub{getByIDAccount: account}
+	state := newOpenAIAccountModelTransientState(1)
+	now := time.Now()
+	var claim openAIAccountModelTransientDecision
+	for i, requestID := range []string{"initial-1", "initial-2", "initial-3"} {
+		claim = state.recordFailure(account.ID, "GPT-5.6-SOL", now.Add(time.Duration(i)*time.Millisecond), requestID)
+	}
+	state.finishCircuitPersistence(account.ID, "GPT-5.6-SOL", claim.PersistenceGeneration, true)
+	gateway := &OpenAIGatewayService{openaiModelTransient: state}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc.SetAccountRuntimeBlocker(gateway)
+
+	targets, err := svc.ErrorRecoveryTargets(context.Background(), account.ID, "")
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+	result, err := svc.RecoverErrorTargetAfterSuccessfulTest(context.Background(), account.ID, targets[0])
+
+	require.NoError(t, err)
+	require.True(t, result.ClearedModelRateLimit)
+	require.Equal(t, []string{"GPT-5.6-SOL"}, repo.clearModelRateLimitKeys)
+	require.Zero(t, state.size())
 }
 
 func (c *tempUnschedCacheRecorder) SetTempUnsched(ctx context.Context, accountID int64, state *TempUnschedState) error {

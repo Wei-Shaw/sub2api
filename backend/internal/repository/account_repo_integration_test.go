@@ -6,17 +6,46 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
+
+type canonicalRecoveryProbeUpstream struct {
+	model string
+}
+
+func (u *canonicalRecoveryProbeUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	return u.DoWithTLS(req, proxyURL, accountID, accountConcurrency, nil)
+}
+
+func (u *canonicalRecoveryProbeUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	u.model, _ = payload["model"].(string)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\"}\n\n")),
+	}, nil
+}
 
 type AccountRepoSuite struct {
 	suite.Suite
@@ -993,6 +1022,43 @@ func (s *AccountRepoSuite) TestClearModelRateLimitPreservesSiblingModels() {
 	s.Require().Contains(limits, "gpt-5.6-luna")
 	s.Require().Contains(limits, "gpt-5.6-terra")
 	s.Require().Contains(limits, "AICredits")
+}
+
+func (s *AccountRepoSuite) TestModelRateLimitWriterFeedsConditionalRecoveryReader() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "transient-circuit-recovery", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true, Credentials: map[string]any{
+			"api_key": "test-key",
+			"model_mapping": map[string]any{
+				"public-alias": "upstream-a",
+				"upstream-a":   "upstream-b",
+			},
+		}, Extra: map[string]any{}, Concurrency: 1,
+	})
+
+	err := s.repo.SetModelRateLimit(s.ctx, account.ID, "upstream-a", time.Now().Add(10*time.Minute), "openai_transient_failure_circuit")
+	s.Require().NoError(err)
+
+	rateLimits := service.NewRateLimitService(s.repo, nil, nil, nil, nil)
+	targets, err := rateLimits.ErrorRecoveryTargets(s.ctx, account.ID, "")
+	s.Require().NoError(err)
+	s.Require().Len(targets, 1)
+	s.Equal("upstream-a", targets[0].ModelID)
+	s.NotEmpty(targets[0].ObservedModelRateLimit)
+	upstream := &canonicalRecoveryProbeUpstream{}
+	tester := service.NewAccountTestService(s.repo, nil, nil, nil, nil, upstream, &config.Config{}, nil)
+	probe, err := tester.RunCanonicalTestBackground(s.ctx, account.ID, targets[0].ModelID)
+	s.Require().NoError(err)
+	s.Equal("success", probe.Status)
+	s.Equal("upstream-a", upstream.model)
+
+	recovered, err := rateLimits.RecoverErrorTargetAfterSuccessfulTest(s.ctx, account.ID, targets[0])
+	s.Require().NoError(err)
+	s.True(recovered.ClearedModelRateLimit)
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.True(got.IsSchedulableForModelWithContext(s.ctx, "upstream-a"))
 }
 
 func (s *AccountRepoSuite) TestRecoverAccountRuntimeStateOnlyIfUnchanged() {

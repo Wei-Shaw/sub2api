@@ -72,15 +72,25 @@ func (r *scheduledResultRepoStub) PruneOldResults(context.Context, int64, string
 }
 
 type scheduledTesterStub struct {
-	models       []string
-	status       map[string]string
-	err          map[string]error
-	delay        time.Duration
-	beforeReturn func(string)
+	models          []string
+	canonicalModels []string
+	status          map[string]string
+	err             map[string]error
+	delay           time.Duration
+	beforeReturn    func(string)
 }
 
 func (s *scheduledTesterStub) RunTestBackground(_ context.Context, _ int64, modelID string) (*ScheduledTestResult, error) {
 	s.models = append(s.models, modelID)
+	return s.run(modelID)
+}
+
+func (s *scheduledTesterStub) RunCanonicalTestBackground(_ context.Context, _ int64, modelID string) (*ScheduledTestResult, error) {
+	s.canonicalModels = append(s.canonicalModels, modelID)
+	return s.run(modelID)
+}
+
+func (s *scheduledTesterStub) run(modelID string) (*ScheduledTestResult, error) {
 	if s.delay > 0 {
 		time.Sleep(s.delay)
 	}
@@ -144,7 +154,7 @@ func TestScheduledTestRunner_ErrorRecoveryTestsEachModelAndClearsOnlySuccess(t *
 
 	runner.runOnePlan(context.Background(), plan)
 
-	require.Equal(t, []string{"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}, tester.models)
+	require.Equal(t, []string{"gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"}, tester.canonicalModels)
 	require.Len(t, resultRepo.results, 3)
 	require.Equal(t, []string{"running", "running", "running"}, resultRepo.createStatuses)
 	require.Equal(t, []string{"failed", "success", "failed"}, resultRepo.updateStatuses)
@@ -172,7 +182,107 @@ func TestScheduledTestRunner_ErrorRecoveryOnlyTestsSelectedFailedModels(t *testi
 		TriggerMode: ScheduledTestTriggerErrorRecovery, RetryIntervalMinutes: &interval, AutoRecover: true, MaxResults: 100,
 	})
 
-	require.Equal(t, []string{"gpt-5.6-sol"}, tester.models)
+	require.Equal(t, []string{"gpt-5.6-sol"}, tester.canonicalModels)
+}
+
+func TestScheduledTestRunner_ErrorRecoveryMapsPlanModelOnceAndProbesCanonicalTarget(t *testing.T) {
+	interval := 5
+	account := &Account{
+		ID:          143,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"model_mapping": map[string]any{
+			"public-alias": "upstream-a",
+			"upstream-a":   "upstream-b",
+		}},
+		Extra: map[string]any{modelRateLimitsKey: activeModelLimits(time.Now().Add(time.Hour), "upstream-a")},
+	}
+	accountRepo := &rateLimitClearRepoStub{getByIDAccount: account}
+	planRepo := &scheduledPlanRepoStub{}
+	tester := &scheduledTesterStub{status: map[string]string{"upstream-a": "success"}}
+	runner := &ScheduledTestRunnerService{
+		planRepo: planRepo, scheduledSvc: NewScheduledTestService(planRepo, &scheduledResultRepoStub{}),
+		accountTestSvc: tester, rateLimitSvc: NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil),
+	}
+
+	runner.runOnePlan(context.Background(), &ScheduledTestPlan{
+		ID: 113, AccountID: account.ID, ModelID: "public-alias", ModelIDs: []string{"public-alias"},
+		TriggerMode: ScheduledTestTriggerErrorRecovery, RetryIntervalMinutes: &interval, AutoRecover: true, MaxResults: 100,
+	})
+
+	require.Empty(t, tester.models)
+	require.Equal(t, []string{"upstream-a"}, tester.canonicalModels)
+	require.Equal(t, []string{"upstream-a"}, accountRepo.clearModelRateLimitKeys)
+}
+
+func TestScheduledTestRunner_ErrorRecoveryExactTargetWinsOverMappedSibling(t *testing.T) {
+	interval := 5
+	account := &Account{
+		ID: 144, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+		Credentials: map[string]any{"model_mapping": map[string]any{"upstream-a": "upstream-b"}},
+		Extra: map[string]any{modelRateLimitsKey: activeModelLimits(
+			time.Now().Add(time.Hour), "upstream-a", "upstream-b",
+		)},
+	}
+	accountRepo := &rateLimitClearRepoStub{getByIDAccount: account}
+	planRepo := &scheduledPlanRepoStub{}
+	tester := &scheduledTesterStub{status: map[string]string{"upstream-a": "success", "upstream-b": "success"}}
+	runner := &ScheduledTestRunnerService{
+		planRepo: planRepo, scheduledSvc: NewScheduledTestService(planRepo, &scheduledResultRepoStub{}),
+		accountTestSvc: tester, rateLimitSvc: NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil),
+	}
+
+	runner.runOnePlan(context.Background(), &ScheduledTestPlan{
+		ID: 114, AccountID: account.ID, ModelID: "upstream-a", ModelIDs: []string{"upstream-a"},
+		TriggerMode: ScheduledTestTriggerErrorRecovery, RetryIntervalMinutes: &interval, AutoRecover: true, MaxResults: 100,
+	})
+
+	require.Equal(t, []string{"upstream-a"}, tester.canonicalModels)
+	require.Equal(t, []string{"upstream-a"}, accountRepo.clearModelRateLimitKeys)
+}
+
+func TestScheduledTestRunner_ErrorRecoveryConstrainedPlanWithNoMatchRunsNothing(t *testing.T) {
+	tests := []struct {
+		name        string
+		modelIDs    []string
+		mapping     map[string]any
+		getByIDFail bool
+	}{
+		{name: "unknown model", modelIDs: []string{"unknown"}},
+		{name: "mapped target missing", modelIDs: []string{"public-alias"}, mapping: map[string]any{"public-alias": "missing-upstream"}},
+		{name: "mapping lookup fails", modelIDs: []string{"public-alias"}, mapping: map[string]any{"public-alias": "upstream-a"}, getByIDFail: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			interval := 5
+			account := &Account{
+				ID: 145, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true,
+				Credentials: map[string]any{"model_mapping": tt.mapping},
+				Extra:       map[string]any{modelRateLimitsKey: activeModelLimits(time.Now().Add(time.Hour), "upstream-a")},
+			}
+			repo := &rateLimitClearRepoStub{getByIDAccount: account}
+			if tt.getByIDFail {
+				repo.getByIDErr = context.DeadlineExceeded
+				repo.getByIDErrAfter = 1
+			}
+			planRepo := &scheduledPlanRepoStub{}
+			tester := &scheduledTesterStub{status: map[string]string{"upstream-a": "success"}}
+			runner := &ScheduledTestRunnerService{
+				planRepo: planRepo, scheduledSvc: NewScheduledTestService(planRepo, &scheduledResultRepoStub{}),
+				accountTestSvc: tester, rateLimitSvc: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+			}
+
+			runner.runOnePlan(context.Background(), &ScheduledTestPlan{
+				ID: 115, AccountID: account.ID, ModelID: tt.modelIDs[0], ModelIDs: tt.modelIDs,
+				TriggerMode: ScheduledTestTriggerErrorRecovery, RetryIntervalMinutes: &interval, AutoRecover: true, MaxResults: 100,
+			})
+
+			require.Empty(t, tester.canonicalModels)
+			require.Empty(t, repo.clearModelRateLimitKeys)
+		})
+	}
 }
 
 func TestScheduledTestRunner_ErrorRecoveryDoesNotRecoverWhenDisabled(t *testing.T) {
@@ -192,7 +302,7 @@ func TestScheduledTestRunner_ErrorRecoveryDoesNotRecoverWhenDisabled(t *testing.
 		RetryIntervalMinutes: &interval, AutoRecover: false, MaxResults: 100,
 	})
 
-	require.Equal(t, []string{"gpt-5.6-sol"}, tester.models)
+	require.Equal(t, []string{"gpt-5.6-sol"}, tester.canonicalModels)
 	require.Empty(t, accountRepo.clearModelRateLimitKeys)
 }
 

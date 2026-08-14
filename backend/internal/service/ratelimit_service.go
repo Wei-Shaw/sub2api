@@ -47,10 +47,11 @@ type modelRateLimitRecoveryRepository interface {
 }
 
 type ErrorRecoveryTarget struct {
-	ModelID                  string
-	ObservedModelRateLimit   json.RawMessage
-	ObservedAccountUpdatedAt time.Time
-	RecoverAccountState      bool
+	ModelID                     string
+	ObservedModelRateLimit      json.RawMessage
+	ObservedAccountUpdatedAt    time.Time
+	ObservedTransientGeneration uint64
+	RecoverAccountState         bool
 }
 
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
@@ -1881,7 +1882,18 @@ func (s *RateLimitService) RecoverErrorTargetAfterSuccessfulTest(ctx context.Con
 		result.ClearedRateLimit = recovered
 	}
 	if len(target.ObservedModelRateLimit) > 0 {
-		cleared, err := repo.ClearModelRateLimitIfMatch(ctx, accountID, target.ModelID, target.ObservedModelRateLimit)
+		clear := func() (bool, error) {
+			return repo.ClearModelRateLimitIfMatch(ctx, accountID, target.ModelID, target.ObservedModelRateLimit)
+		}
+		cleared := false
+		var err error
+		if guard, ok := s.runtimeBlocker.(interface {
+			clearOpenAIAccountModelTransientStateIfGeneration(int64, string, uint64, func() (bool, error)) (bool, error)
+		}); ok {
+			cleared, err = guard.clearOpenAIAccountModelTransientStateIfGeneration(accountID, target.ModelID, target.ObservedTransientGeneration, clear)
+		} else {
+			cleared, err = clear()
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1939,6 +1951,12 @@ func hasAccountRecoverableRuntimeState(account *Account) bool {
 }
 
 func (s *RateLimitService) ErrorRecoveryTargets(ctx context.Context, accountID int64, accountProbeModel string) ([]ErrorRecoveryTarget, error) {
+	var observedTransientGenerations map[string]uint64
+	if observer, ok := s.runtimeBlocker.(interface {
+		openAIAccountModelTransientGenerations(int64) map[string]uint64
+	}); ok {
+		observedTransientGenerations = observer.openAIAccountModelTransientGenerations(accountID)
+	}
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -1970,6 +1988,9 @@ func (s *RateLimitService) ErrorRecoveryTargets(ctx context.Context, accountID i
 				targets[modelID] = ErrorRecoveryTarget{
 					ModelID: modelID, ObservedModelRateLimit: observed, ObservedAccountUpdatedAt: account.UpdatedAt,
 				}
+				target := targets[modelID]
+				target.ObservedTransientGeneration = observedTransientGenerations[normalizeOpenAIAccountModelTransientModel(modelID)]
+				targets[modelID] = target
 			}
 		}
 	}

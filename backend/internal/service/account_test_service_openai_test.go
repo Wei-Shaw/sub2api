@@ -223,6 +223,40 @@ func TestAccountTestService_OpenAIShadowUsesParentCredentialsAndShadowModel(t *t
 	require.Contains(t, recorder.Body.String(), `"success":true`)
 }
 
+func TestAccountTestService_RunCanonicalTestBackgroundDoesNotMapModelTwice(t *testing.T) {
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"}
+
+`))
+	account := &Account{
+		ID:          201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "test-token",
+			"model_mapping": map[string]any{
+				"public-alias": "upstream-a",
+				"upstream-a":   "upstream-b",
+			},
+		},
+	}
+	repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{
+		accountsByID: map[int64]*Account{account.ID: account},
+	}}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{resp}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+
+	result, err := svc.RunCanonicalTestBackground(context.Background(), account.ID, "upstream-a")
+
+	require.NoError(t, err)
+	require.Equal(t, "success", result.Status)
+	require.Len(t, upstream.requests, 1)
+	body, err := io.ReadAll(upstream.requests[0].Body)
+	require.NoError(t, err)
+	require.Equal(t, "upstream-a", gjson.GetBytes(body, "model").String())
+}
+
 func TestAccountTestService_OpenAIStreamEOFBeforeCompletedFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ const scheduledTestDefaultMaxWorkers = 10
 
 type scheduledAccountTester interface {
 	RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
+	RunCanonicalTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error)
 }
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
@@ -164,8 +166,9 @@ func (s *ScheduledTestRunnerService) runErrorRecoveryPlan(ctx context.Context, p
 		return
 	}
 
+	allowedModels := s.recoveryPlanTargetIDs(ctx, plan.AccountID, plan.ModelIDs, targets)
 	for _, target := range targets {
-		if len(plan.ModelIDs) > 0 && !containsModelID(plan.ModelIDs, target.ModelID) && !target.RecoverAccountState {
+		if len(plan.ModelIDs) > 0 && !containsModelID(allowedModels, target.ModelID) && !target.RecoverAccountState {
 			continue
 		}
 		s.runModelTest(ctx, plan, target.ModelID, &target)
@@ -178,6 +181,47 @@ func (s *ScheduledTestRunnerService) runErrorRecoveryPlan(ctx context.Context, p
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) recoveryPlanTargetIDs(ctx context.Context, accountID int64, modelIDs []string, targets []ErrorRecoveryTarget) []string {
+	if len(modelIDs) == 0 {
+		return nil
+	}
+	allowed := make([]string, 0, len(modelIDs))
+	missingExact := make([]string, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if recoveryTargetsContainModel(targets, modelID) {
+			allowed = append(allowed, modelID)
+		} else {
+			missingExact = append(missingExact, modelID)
+		}
+	}
+	if len(missingExact) == 0 {
+		return allowed
+	}
+	if s == nil || s.rateLimitSvc == nil || s.rateLimitSvc.accountRepo == nil {
+		return allowed
+	}
+	account, err := s.rateLimitSvc.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil || account.Platform != PlatformOpenAI {
+		return allowed
+	}
+	for _, modelID := range missingExact {
+		mapped := strings.TrimSpace(account.GetMappedModel(modelID))
+		if mapped != "" && recoveryTargetsContainModel(targets, mapped) && !containsModelID(allowed, mapped) {
+			allowed = append(allowed, mapped)
+		}
+	}
+	return allowed
+}
+
+func recoveryTargetsContainModel(targets []ErrorRecoveryTarget, modelID string) bool {
+	for _, target := range targets {
+		if target.ModelID == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 func containsModelID(modelIDs []string, modelID string) bool {
@@ -203,7 +247,12 @@ func (s *ScheduledTestRunnerService) runModelTest(ctx context.Context, plan *Sch
 		return
 	}
 
-	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, modelID)
+	var result *ScheduledTestResult
+	if len(recoveryTarget) > 0 && recoveryTarget[0] != nil {
+		result, err = s.accountTestSvc.RunCanonicalTestBackground(ctx, plan.AccountID, modelID)
+	} else {
+		result, err = s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, modelID)
+	}
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d model=%s RunTestBackground error: %v", plan.ID, modelID, err)
 		runningResult.ID = savedResult.ID

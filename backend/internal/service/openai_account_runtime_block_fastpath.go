@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const (
@@ -105,8 +107,13 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		if len(canonicalModel) > 0 {
 			model = canonicalModel[0]
 		}
-		decision := s.recordOpenAIAccountModelTransientFailure(account, model, time.Now())
-		if decision.FailureStreak > 0 {
+		now := time.Now()
+		requestID := ""
+		if shouldPersistOpenAITransientCircuit(statusCode) {
+			requestID = openAITransientRequestID(ctx)
+		}
+		decision := s.recordOpenAIAccountModelTransientFailure(account, model, now, requestID)
+		if decision.Counted {
 			slog.Warn("openai_model_transient_state",
 				"account_id", account.ID,
 				"model", openAIAccountModelTransientModel(model),
@@ -115,8 +122,29 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 				"block_scope", "account_model",
 			)
 		}
+		if decision.OpenCircuit && strings.TrimSpace(model) != "" {
+			persisted := false
+			if s.rateLimitService.accountRepo != nil {
+				resetAt := now.Add(openAIModelTransientCircuitTTL)
+				if err := s.rateLimitService.accountRepo.SetModelRateLimit(stateCtx, account.ID, model, resetAt, "openai_transient_failure_circuit"); err != nil {
+					slog.Warn("openai_model_transient_circuit_persist_failed", "account_id", account.ID, "model", model, "error", err)
+				} else {
+					persisted = true
+					slog.Warn("openai_model_transient_circuit_opened", "account_id", account.ID, "model", model, "failure_streak", decision.FailureStreak, "reset_at", resetAt)
+				}
+			}
+			s.finishOpenAIAccountModelTransientPersistence(account.ID, model, decision.PersistenceGeneration, persisted)
+		}
 	}
 	return shouldDisable
+}
+
+func openAITransientRequestID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	requestID, _ := ctx.Value(ctxkey.RequestID).(string)
+	return strings.TrimSpace(requestID)
 }
 
 func shouldCooldownOpenAITransientUpstreamError(statusCode int, responseBody []byte) bool {
@@ -125,6 +153,15 @@ func shouldCooldownOpenAITransientUpstreamError(statusCode int, responseBody []b
 		return true
 	case http.StatusBadRequest:
 		return isOpenAITransientProcessingError(statusCode, "", responseBody)
+	default:
+		return false
+	}
+}
+
+func shouldPersistOpenAITransientCircuit(statusCode int) bool {
+	switch statusCode {
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
+		return true
 	default:
 		return false
 	}
@@ -274,7 +311,7 @@ func openAIAccountModelTransientModel(canonicalModel string) string {
 	return normalizeOpenAIAccountModelTransientModel(canonicalModel)
 }
 
-func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailure(account *Account, canonicalModel string, now time.Time) openAIAccountModelTransientDecision {
+func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailure(account *Account, canonicalModel string, now time.Time, requestID ...string) openAIAccountModelTransientDecision {
 	if s == nil || account == nil {
 		return openAIAccountModelTransientDecision{}
 	}
@@ -282,7 +319,7 @@ func (s *OpenAIGatewayService) recordOpenAIAccountModelTransientFailure(account 
 	if state == nil {
 		return openAIAccountModelTransientDecision{}
 	}
-	return state.recordFailure(account.ID, openAIAccountModelTransientModel(canonicalModel), now)
+	return state.recordFailure(account.ID, openAIAccountModelTransientModel(canonicalModel), now, requestID...)
 }
 
 func (s *OpenAIGatewayService) clearOpenAIAccountModelTransientState(accountID int64, model string) {
@@ -291,6 +328,35 @@ func (s *OpenAIGatewayService) clearOpenAIAccountModelTransientState(accountID i
 		return
 	}
 	state.recordSuccess(accountID, model)
+}
+
+func (s *OpenAIGatewayService) openAIAccountModelTransientGenerations(accountID int64) map[string]uint64 {
+	state := s.getOpenAIAccountModelTransientState()
+	if state == nil {
+		return nil
+	}
+	return state.mutationGenerations(accountID)
+}
+
+func (s *OpenAIGatewayService) clearOpenAIAccountModelTransientStateIfGeneration(
+	accountID int64,
+	model string,
+	observedGeneration uint64,
+	clear func() (bool, error),
+) (bool, error) {
+	state := s.getOpenAIAccountModelTransientState()
+	if state == nil {
+		return clear()
+	}
+	return state.clearCircuitIfGeneration(accountID, model, observedGeneration, clear)
+}
+
+func (s *OpenAIGatewayService) finishOpenAIAccountModelTransientPersistence(accountID int64, model string, generation uint64, persisted bool) {
+	state := s.getOpenAIAccountModelTransientState()
+	if state == nil {
+		return
+	}
+	state.finishCircuitPersistence(accountID, model, generation, persisted)
 }
 
 func (s *OpenAIGatewayService) isOpenAIAccountModelRuntimeBlocked(account *Account, requestedModel string) bool {
