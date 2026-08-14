@@ -2001,7 +2001,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
-				if prefer, decided := preferAccountByQuotaReset(acc, selected, nativePlatform, requestedModel, s.schedulingConfig()); decided {
+				if prefer, decided := preferAccountByQuotaReset(acc, selected, platform, requestedModel, s.schedulingConfig()); decided {
 					if prefer {
 						selected = acc
 					}
@@ -2124,7 +2124,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
-			if prefer, decided := preferAccountByQuotaReset(acc, selected, nativePlatform, requestedModel, s.schedulingConfig()); decided {
+			if prefer, decided := preferAccountByQuotaReset(acc, selected, platform, requestedModel, s.schedulingConfig()); decided {
 				if prefer {
 					selected = acc
 				}
