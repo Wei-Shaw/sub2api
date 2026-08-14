@@ -240,7 +240,7 @@ func (s *SePay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	if outTradeNo == "" {
 		return nil, fmt.Errorf("sepay query: empty order reference")
 	}
-	endpoint := s.config["apiBase"] + "/v2/transactions?q=" + url.QueryEscape(outTradeNo) + "&transfer_type=in"
+	endpoint := s.config["apiBase"] + "/v2/transactions?q=" + url.QueryEscape(outTradeNo) + "&transfer_type=in&per_page=100"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err

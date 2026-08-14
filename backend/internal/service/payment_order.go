@@ -311,6 +311,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	if providerKey == payment.TypeSePay {
+		if bankAccountNumber := strings.TrimSpace(sel.Config["bankAccountNumber"]); bankAccountNumber != "" {
+			snapshot["merchant_id"] = bankAccountNumber
+		}
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
 
 	if len(snapshot) == 1 {
 		return nil

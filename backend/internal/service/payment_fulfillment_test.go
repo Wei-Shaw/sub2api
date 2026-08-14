@@ -579,6 +579,46 @@ func TestValidateProviderNotificationMetadataRejectsStripeCurrencyMismatch(t *te
 	assert.ErrorContains(t, err, "stripe currency mismatch")
 }
 
+func TestValidateProviderNotificationMetadataSePayAccountNumber(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeSePay,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+			"merchant_id":    "0123456789",
+		},
+	}
+
+	// Matching bank account passes.
+	assert.NoError(t, validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"accountNumber": "0123456789",
+		"gateway":       "Vietcombank",
+	}))
+
+	// Transfer to a different bank account must not fulfill the order.
+	err := validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"accountNumber": "9999999999",
+	})
+	assert.ErrorContains(t, err, "sepay accountNumber mismatch")
+
+	// Missing accountNumber in the notification is rejected when the snapshot pins one.
+	err = validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"gateway": "Vietcombank",
+	})
+	assert.ErrorContains(t, err, "sepay notification missing accountNumber")
+
+	// Legacy orders without a snapshotted bank account tolerate any account.
+	assert.NoError(t, validateProviderNotificationMetadata(&dbent.PaymentOrder{
+		PaymentType: payment.TypeSePay,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+		},
+	}, payment.TypeSePay, map[string]string{
+		"accountNumber": "9999999999",
+	}))
+}
+
 func TestPaymentAmountToleranceForThreeDecimalCurrency(t *testing.T) {
 	t.Parallel()
 

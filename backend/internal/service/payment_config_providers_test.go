@@ -852,3 +852,16 @@ func TestSepaySensitiveConfigFields(t *testing.T) {
 		t.Error("accountName change must be allowed with pending orders")
 	}
 }
+
+func TestValidProviderKeysRefundCapabilitySync(t *testing.T) {
+	t.Parallel()
+
+	for key := range validProviderKeys {
+		if key == payment.TypeSePay {
+			continue
+		}
+		if !providerSupportsRefund(key) {
+			t.Errorf("provider %s is valid but not refund-capable; keep validProviderKeys and refundCapableProviders in sync", key)
+		}
+	}
+}

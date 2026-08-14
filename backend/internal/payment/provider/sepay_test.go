@@ -244,7 +244,7 @@ func TestSePayQueryOrderPaid(t *testing.T) {
 	if resp.PaidAt != "2026-08-14 09:30:00" {
 		t.Fatalf("paidAt = %q", resp.PaidAt)
 	}
-	if len(queries) != 1 || queries[0].Get("q") != "sub2_20260814aB3kX9mQ" || queries[0].Get("transfer_type") != "in" {
+	if len(queries) != 1 || queries[0].Get("q") != "sub2_20260814aB3kX9mQ" || queries[0].Get("transfer_type") != "in" || queries[0].Get("per_page") != "100" {
 		t.Fatalf("queries = %v", queries)
 	}
 }
