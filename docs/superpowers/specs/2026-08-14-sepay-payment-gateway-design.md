@@ -161,3 +161,12 @@ Song song với `SUBSCRIPTION_USD_TO_CNY_RATE` hiện có:
 - **Framework generic bank-transfer**: over-engineering, YAGNI.
 - **Sinh mã thanh toán riêng** (random hex riêng, khác out_trade_no): phức tạp hóa storage/matching mà out_trade_no đã unique + khó đoán (8 ký tự random).
 - **Dùng `id` làm TradeNo chính**: `referenceCode` ngân hàng hữu ích hơn cho đối soát; `id` chỉ là fallback.
+
+## Amendment 2026-08-15 (sau khi test sandbox thật)
+
+SePay trích mã thanh toán dạng chuỗi alphanumeric liền — **mất dấu `_`** bên trong `sub2_YYYYMMDD...` (code thực tế nhận được: `sub220260815...`). Do đó mọi phép khớp mã phải so dạng normalized (chỉ giữ chữ+cif, không phân biệt hoa thường), đã fix ở commit `4b5408b80`:
+- Thêm `payment.NormalizeTransferCode` dùng chung.
+- Service layer: `findSepayOrderByCode` — sau exact/EqualFold, quét đơn PENDING (24h, sepay) khớp normalized.
+- Provider `QueryOrder`: retry `q=` với dạng normalized khi lượt đầu không thấy (q= của SePay không match chuỗi chứa `_`).
+
+Đã xác minh end-to-end trên sandbox SePay thật (webhook HMAC qua tunnel + QueryOrder): đơn hoàn tất tự động, cộng tiền đúng.
