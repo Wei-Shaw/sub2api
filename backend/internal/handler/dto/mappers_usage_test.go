@@ -28,6 +28,24 @@ func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	require.False(t, UsageLogFromServiceAdmin(httpLog).OpenAIWSMode)
 }
 
+func TestUsageLogFromService_UserPromptIsAdminOnly(t *testing.T) {
+	t.Parallel()
+
+	prompt := "用户提示词"
+	log := &service.UsageLog{RequestID: "req_prompt", UserPrompt: &prompt}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "user_prompt")
+	require.Contains(t, string(adminJSON), `"user_prompt":"用户提示词"`)
+	require.Equal(t, &prompt, adminDTO.UserPrompt)
+}
+
 func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	t.Parallel()
 

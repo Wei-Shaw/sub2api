@@ -691,6 +691,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		userPrompt := service.ExtractUserPrompt(body, "responses")
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -701,6 +702,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
+				UserPrompt:         userPrompt,
 				APIKey:             apiKey,
 				User:               apiKey.User,
 				Account:            account,
@@ -1222,6 +1224,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		userPrompt := service.ExtractUserPrompt(body, "anthropic")
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
@@ -1231,6 +1234,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
+				UserPrompt:         userPrompt,
 				APIKey:             apiKey,
 				User:               apiKey.User,
 				Account:            account,
@@ -2013,6 +2017,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 		maxReasoningEffort, reasoningEffortMappings, _ := openAIReasoningEffortPolicyForRequest(c, apiKey)
 		var requestPayloadHash string
+		var turnUserPrompt *string
 		// Passthrough rejects overlapping response.create frames, so one immutable
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
@@ -2027,6 +2032,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			MaxReasoningEffort:      maxReasoningEffort,
 			ReasoningEffortMappings: reasoningEffortMappings,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+				turnUserPrompt = service.ExtractUserPrompt(payload, "responses")
 				c.Set(securityAuditWSTurnContextKey, turn)
 				if turn == 1 {
 					return nil
@@ -2183,6 +2189,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
+						UserPrompt:         turnUserPrompt,
 						APIKey:             apiKey,
 						User:               apiKey.User,
 						Account:            account,

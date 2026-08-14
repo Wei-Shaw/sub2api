@@ -538,6 +538,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 			requestPayloadHash := service.HashUsageRequestPayload(body)
+			userPrompt := service.ExtractUserPrompt(body, "anthropic")
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
@@ -563,6 +564,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					UserPrompt:         userPrompt,
 					QuotaPlatform:      quotaPlatform,
 					APIKey:             apiKey,
 					User:               apiKey.User,
@@ -898,10 +900,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 				forceCacheBilling := fs.ForceCacheBilling
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+				userPrompt := service.ExtractUserPrompt(body, "anthropic")
 				sessionID := service.ExtractClientSessionID(c)
 				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 					if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 						Result:             result,
+						UserPrompt:         userPrompt,
 						QuotaPlatform:      quotaPlatform,
 						APIKey:             currentAPIKey,
 						User:               currentAPIKey.User,

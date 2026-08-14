@@ -238,6 +238,17 @@
           <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
 
+        <template #cell-user_prompt="{ row }">
+          <button
+            v-if="row.user_prompt"
+            type="button"
+            class="block max-w-[280px] truncate text-left text-sm text-gray-600 underline decoration-dashed underline-offset-2 transition-colors hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400"
+            :title="t('usage.viewUserPrompt')"
+            @click="openUserPrompt(row.user_prompt)"
+          >{{ row.user_prompt }}</button>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-request_id="{ row }">
           <div v-if="row.request_id" class="flex max-w-[160px] items-center gap-1.5">
             <span class="truncate font-mono text-xs text-gray-500 dark:text-gray-400" :title="row.request_id">
@@ -273,6 +284,25 @@
       </DataTable>
     </div>
   </div>
+
+  <BaseDialog
+    :show="selectedUserPrompt !== null"
+    :title="t('usage.userPromptDetail')"
+    width="wide"
+    :close-on-click-outside="true"
+    @close="closeUserPrompt"
+  >
+    <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200">{{ selectedUserPrompt }}</pre>
+    <template #footer>
+      <button type="button" class="btn btn-secondary" @click="copyUserPrompt">
+        <Icon name="copy" size="sm" />
+        {{ t('common.copy') }}
+      </button>
+      <button type="button" class="btn btn-primary" @click="closeUserPrompt">
+        {{ t('common.close') }}
+      </button>
+    </template>
+  </BaseDialog>
 
   <!-- Token Tooltip Portal -->
   <Teleport to="body">
@@ -544,6 +574,7 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
 
 
 import DataTable from '@/components/common/DataTable.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -581,6 +612,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const copiedRequestId = ref<string | null>(null)
+const selectedUserPrompt = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
@@ -638,6 +670,24 @@ const copyRequestId = async (requestId: string) => {
     window.setTimeout(() => {
       if (copiedRequestId.value === requestId) copiedRequestId.value = null
     }, 2000)
+  } catch {
+    appStore.showError(t('common.copyFailed'))
+  }
+}
+
+const openUserPrompt = (prompt: string) => {
+  selectedUserPrompt.value = prompt
+}
+
+const closeUserPrompt = () => {
+  selectedUserPrompt.value = null
+}
+
+const copyUserPrompt = async () => {
+  if (!selectedUserPrompt.value) return
+  try {
+    await navigator.clipboard.writeText(selectedUserPrompt.value)
+    appStore.showSuccess(t('common.copiedToClipboard'))
   } catch {
     appStore.showError(t('common.copyFailed'))
   }

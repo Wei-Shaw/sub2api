@@ -635,6 +635,7 @@ const allColumns = computed(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'account', label: t('admin.usage.account'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
+  { key: 'user_prompt', label: t('usage.userPrompt'), sortable: false },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
   { key: 'group', label: t('admin.usage.group'), sortable: false },

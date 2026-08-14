@@ -687,6 +687,7 @@ func recordGrokMediaUsage(
 	h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
+			UserPrompt:         service.ExtractUserPrompt(body, "openai_media"),
 			APIKey:             apiKey,
 			User:               apiKey.User,
 			Account:            account,

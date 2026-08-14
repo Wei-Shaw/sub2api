@@ -328,6 +328,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		userPrompt := service.ExtractUserPrompt(body, "chat_completions")
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
@@ -336,6 +337,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
+				UserPrompt:         userPrompt,
 				QuotaPlatform:      quotaPlatform,
 				APIKey:             apiKey,
 				User:               apiKey.User,

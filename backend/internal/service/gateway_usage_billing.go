@@ -38,6 +38,7 @@ func (s *GatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, use
 // 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {
 	Result             *ForwardResult
+	UserPrompt         *string
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -607,6 +608,7 @@ type recordUsageOpts struct {
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
 		Result:             input.Result,
+		UserPrompt:         input.UserPrompt,
 		APIKey:             input.APIKey,
 		User:               input.User,
 		Account:            input.Account,
@@ -628,6 +630,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
 type RecordUsageLongContextInput struct {
 	Result                *ForwardResult
+	UserPrompt            *string
 	APIKey                *APIKey
 	User                  *User
 	Account               *Account
@@ -652,6 +655,7 @@ type RecordUsageLongContextInput struct {
 func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
 		Result:             input.Result,
+		UserPrompt:         input.UserPrompt,
 		APIKey:             input.APIKey,
 		User:               input.User,
 		Account:            input.Account,
@@ -676,6 +680,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 // recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
 type recordUsageCoreInput struct {
 	Result             *ForwardResult
+	UserPrompt         *string
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -1211,6 +1216,7 @@ func (s *GatewayService) buildRecordUsageLog(
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
 		RequestID:             requestID,
+		UserPrompt:            input.UserPrompt,
 		Model:                 result.Model,
 		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalTrimmedStringPtr(result.UpstreamModel),
