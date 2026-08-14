@@ -26,17 +26,18 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
  *     treated as reached. Deleting one of them would render the key path into
  *     the UI, silently.
  *
- * Measured when this landed: 58 dynamic prefixes across 111 sites, and exactly
- * 7 template literals in the tree that interpolate a variable BASE rather than
- * a suffix — none of them i18n keys (they build filenames and quota paths). If
- * that ever changes, the prefix scan below stops being sufficient.
+ * Measured when this landed: 63 dynamic prefixes across 119 sites in 514 files,
+ * and exactly 6 template literals that interpolate a variable BASE rather than
+ * a suffix — none of them i18n keys (they build filenames and quota paths). A
+ * variable base is the one shape this scan cannot see, so if that count starts
+ * growing, the prefix scan has stopped being sufficient.
  *
  * ADDING A NUMBER HERE IS NOT A FIX. The only correct direction is down, and
  * the counts are exact on purpose: paying debt off means editing this file,
  * which puts it in the diff where a reviewer can see it.
  */
 const ALLOWED_ORPHANS: Record<string, number> = {
-  'admin.settings': 220,
+  'admin.settings': 73,
   'admin.accounts': 130,
   'admin.ops': 91,
   'admin.users': 89,
@@ -61,7 +62,6 @@ const ALLOWED_ORPHANS: Record<string, number> = {
   'admin.subscriptions': 4,
   'auth.linuxdo': 4,
   'auth.wechatPayment': 4,
-  'batchImage.guide': 4,
   'keys.useKeyModal': 4,
   'payment.stripePopup': 4,
   'admin.usage': 3,
@@ -197,9 +197,6 @@ const ALLOWED_ORPHANS: Record<string, number> = {
   'usage.exportCancelled': 1,
   'usage.exportExcelFailed': 1,
   'usage.exportExcelSuccess': 1,
-  'usage.imageSizeSourceDefault': 1,
-  'usage.imageSizeSourceInput': 1,
-  'usage.imageSizeSourceOutput': 1,
   'usage.perRequest': 1,
   'usage.timeRange': 1,
   'userSubscriptions.expiresOn': 1,
@@ -247,10 +244,14 @@ for (const source of sources) {
   for (const m of source.matchAll(/['"`]([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)['"`]/g)) {
     literals.add(m[1])
   }
-  for (const m of source.matchAll(/['"]([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*\.)['"]\s*\+/g)) {
+  // The static head can end mid-segment, not only at a dot: the payment dialog
+  // writes `` t(`admin.settings.payment.field_${f.key}`) ``, and a prefix
+  // pattern that insisted on a trailing dot reported all thirty of those keys
+  // as dead. Capture whatever dotted head precedes the interpolation.
+  for (const m of source.matchAll(/['"]((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]*)['"]\s*\+/g)) {
     dynamicPrefixes.add(m[1])
   }
-  for (const m of source.matchAll(/`([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*\.)\$\{/g)) {
+  for (const m of source.matchAll(/`((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]*)\$\{/g)) {
     dynamicPrefixes.add(m[1])
   }
 }
