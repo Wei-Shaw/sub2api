@@ -121,9 +121,14 @@ import type { Account } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
-const { t } = useI18n(); const appStore = useAppStore(); const now = new Date(); const prior = new Date(now); prior.setDate(now.getDate() - 30)
-const dateOnly = (d: Date) => d.toISOString().slice(0, 10)
-const filters = reactive({ start: dateOnly(prior), end: dateOnly(now), model: '', source_type: '', category: '' }); const summary = ref<CostCenterSummary | null>(null); const events = ref<CostCenterEvent[]>([]); const loading = ref(false)
+const { t } = useI18n(); const appStore = useAppStore(); const now = new Date()
+const dateOnly = (d: Date) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+const filters = reactive({ start: dateOnly(now), end: dateOnly(now), model: '', source_type: '', category: '' }); const summary = ref<CostCenterSummary | null>(null); const events = ref<CostCenterEvent[]>([]); const loading = ref(false)
 const knownModels = ref<string[]>([])
 const knownCategories = ref<string[]>([])
 const showAppendCost = ref(false)

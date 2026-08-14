@@ -30,19 +30,19 @@ func TestOrganizationDashboardIncludesIAMUsersInAccountCounts(t *testing.T) {
 		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{"total_api_keys", "active_api_keys"}).AddRow(int64(0), int64(0)))
 	mock.ExpectQuery("WITH used_accounts AS").
-		WithArgs(int64(7), effectiveAt, sqlmock.AnyArg()).
+		WithArgs(int64(7), effectiveAt, int64(99), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"total_accounts", "normal_accounts", "error_accounts", "ratelimit_accounts", "overload_accounts"}).
 			AddRow(int64(2), int64(1), int64(0), int64(0), int64(0)))
-	mock.ExpectQuery("SELECT count\\(\\*\\), COALESCE\\(sum\\(input_tokens\\),0\\)").
-		WithArgs(int64(7), effectiveAt).
+	mock.ExpectQuery("SELECT count\\(\\*\\), COALESCE\\(sum\\(l\\.input_tokens\\),0\\)").
+		WithArgs(int64(7), effectiveAt, int64(99)).
 		WillReturnRows(sqlmock.NewRows([]string{"requests", "input", "output", "cache_creation", "cache_read", "cost", "actual_cost", "account_cost", "duration"}).
 			AddRow(int64(0), int64(0), int64(0), int64(0), int64(0), float64(0), float64(0), float64(0), float64(0)))
-	mock.ExpectQuery("SELECT count\\(\\*\\), count\\(DISTINCT user_id\\)").
-		WithArgs(int64(7), sqlmock.AnyArg()).
+	mock.ExpectQuery("SELECT count\\(\\*\\), count\\(DISTINCT l\\.user_id\\)").
+		WithArgs(int64(7), sqlmock.AnyArg(), int64(99)).
 		WillReturnRows(sqlmock.NewRows([]string{"requests", "active_users", "input", "output", "cache_creation", "cache_read", "cost", "actual_cost", "account_cost"}).
 			AddRow(int64(0), int64(0), int64(0), int64(0), int64(0), int64(0), float64(0), float64(0), float64(0)))
-	mock.ExpectQuery("SELECT count\\(\\*\\), COALESCE\\(sum\\(input_tokens\\+output_tokens").
-		WithArgs(int64(7), sqlmock.AnyArg()).
+	mock.ExpectQuery("SELECT count\\(\\*\\), COALESCE\\(sum\\(l\\.input_tokens\\+l\\.output_tokens").
+		WithArgs(int64(7), sqlmock.AnyArg(), int64(99)).
 		WillReturnRows(sqlmock.NewRows([]string{"requests", "tokens"}).AddRow(int64(0), int64(0)))
 
 	stats, err := repo.OrganizationDashboard(context.Background(), 99)

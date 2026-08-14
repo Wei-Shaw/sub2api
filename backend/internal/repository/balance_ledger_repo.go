@@ -108,16 +108,9 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		return nil, err
 	}
 
-	// 2. 扣减余额。
-	// 语义变更（透支策略）：
-	//   - company（企业钱包）：允许一次性透支到负数。理由：预检时企业余额可能是微量正数，
-	//     但请求实际成本远大于该余额，此时结算若因 balance >= amount 失败会导致响应已返回却扣不到钱。
-	//     现在改为强制扣成负数，下一次预检 organizations.balance > 0 不成立即被拒绝。
-	//   - allocated（IAM 划拨）：同样允许透支到负数。理由：预检口径是「划拨余额 > 0 就走 allocated」，
-	//     结算必须忠实按同一口径扣款，把 IAM 用户余额扣成负数，下次预检 balance > 0 不成立即切 company。
-	//   - self（普通用户）：同样允许透支一次，避免预检-结算金额差导致响应已返回却扣款失败。
-	// 结果：任一方一旦被扣成负数，下一次请求预检必然拦截；不会重复透支。
-	// UPDATE 只有在「记录不存在」时才返回 0 行，因此保留 classify*DeductFailure 用于区分该情况。
+	// 2. 扣减余额。企业钱包允许一次性透支；普通用户和 IAM 划拨余额必须
+	// 保持不透支，避免账本扣款绕过余额预检。IAM 划拨余额不足时由上层
+	// BillingContextResolver 选择企业钱包作为扣款来源。
 	var newBalance float64
 	if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
 		err = tx.QueryRowContext(ctx, `
@@ -129,10 +122,46 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		err = tx.QueryRowContext(ctx, `
 			UPDATE users SET balance = balance - $1, updated_at = NOW()
 			WHERE id = $2 AND deleted_at IS NULL
+			  AND balance >= $1
 			RETURNING balance
 		`, cmd.Amount, payerUserID).Scan(&newBalance)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
+		// IAM 划拨余额不足时，将整笔扣款切换到企业钱包。这里必须在
+		// 同一事务内完成，避免预检看到正余额后结算阶段丢失扣款。
+		if balanceSource == service.BalanceSourceAllocated && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
+			var companyBalance float64
+			var ownerUserID int64
+			companyErr := tx.QueryRowContext(ctx, `
+				UPDATE organizations
+				SET balance = balance - $1, updated_at = NOW()
+				WHERE id = $2
+				RETURNING balance, owner_user_id
+			`, cmd.Amount, *cmd.OrganizationID).Scan(&companyBalance, &ownerUserID)
+			if companyErr == nil {
+				if _, companyErr = tx.ExecContext(ctx, `
+					UPDATE balance_ledger
+					SET payer_user_id=$1, balance_source=$2, balance_after=$3
+					WHERE id=$4
+				`, ownerUserID, service.BalanceSourceCompany, companyBalance, ledgerID); companyErr != nil {
+					return nil, companyErr
+				}
+				if companyErr = tx.Commit(); companyErr != nil {
+					return nil, companyErr
+				}
+				tx = nil
+				orgID := *cmd.OrganizationID
+				return &service.LedgerDeductResult{
+					Applied: true, BalanceAfter: companyBalance, OrganizationID: &orgID,
+					PayerUserID: ownerUserID, BalanceSource: service.BalanceSourceCompany,
+					AuthzGeneration: cmd.AuthzGeneration,
+				}, nil
+			}
+			if !errors.Is(companyErr, sql.ErrNoRows) {
+				return nil, companyErr
+			}
+			return nil, r.classifyOrganizationDeductFailure(ctx, tx, *cmd.OrganizationID)
+		}
 		if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
 			return nil, r.classifyOrganizationDeductFailure(ctx, tx, *cmd.OrganizationID)
 		}

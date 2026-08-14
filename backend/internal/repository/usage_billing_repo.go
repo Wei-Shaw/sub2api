@@ -327,7 +327,7 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 		RETURNING balance
 	`, amount, userID).Scan(&newBalance)
 	if err == nil {
-		return newBalance, true, nil
+		return newBalance, newBalance >= 0, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, false, err
@@ -377,7 +377,7 @@ func deductUsageBillingOrganizationBalance(ctx context.Context, tx *sql.Tx, orga
 		RETURNING balance
 	`, amount, organizationID).Scan(&newBalance)
 	if err == nil {
-		return newBalance, true, nil
+		return newBalance, newBalance >= 0, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, false, err

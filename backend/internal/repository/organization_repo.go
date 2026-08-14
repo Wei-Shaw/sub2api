@@ -1872,11 +1872,8 @@ func (r *organizationRepository) ResolveBillingContext(ctx context.Context, cons
 	}
 	payer, source := consumerUserID, service.BalanceSourceAllocated
 	hasSharedBalanceUse := org.HasAction(service.ActionSharedBalanceUse)
-	// 语义变更：只要 IAM 用户自己账上还有正的划拨余额，就继续用 allocated 扣，
-	// 允许扣成负数（透支一次）；一旦划拨余额已 <= 0，才切到 company 由企业钱包承担。
-	// 这样能保证预检与结算的口径一致：预检只关心「划拨账户是否非负」，结算按同一规则扣。
-	// 副作用：IAM 用户余额可能出现负数；下一次请求预检 balance > 0 不成立 → 切 company →
-	// 若企业也已透支为负则被拒绝，白嫖漏洞被彻底堵住。
+	// 只要 IAM 用户仍有正的划拨余额，就先选择 allocated；账本结算时
+	// 如果本次金额超过该余额，再在同一事务内把扣款切换到企业钱包。
 	allocationHasPositiveBalance := false
 	if hasSharedBalanceUse {
 		if err := r.db.QueryRowContext(ctx, `
@@ -1990,6 +1987,10 @@ func (r *organizationRepository) organizationUsageScope(ctx context.Context, use
 		args = append(args, value)
 		conditions = append(conditions, fmt.Sprintf(sqlCondition, len(args)))
 	}
+	// 排除主账号(owner)使用个人余额或个人套餐（即 balance_source='self'/NULL 且
+	// api_key 未绑定企业订阅）的消费记录，避免个人消费混入企业记录。
+	args = append(args, org.OwnerUserID)
+	conditions = append(conditions, fmt.Sprintf("(l.user_id <> $%d OR (l.balance_source IS NOT NULL AND l.balance_source <> 'self') OR EXISTS(SELECT 1 FROM api_keys ak WHERE ak.id=l.api_key_id AND ak.organization_subscription_id IS NOT NULL))", len(args)))
 	if !filter.Start.IsZero() && filter.Start.After(org.EffectiveAt) {
 		args[1] = filter.Start
 	}
@@ -2182,6 +2183,9 @@ func (r *organizationRepository) OrganizationDashboard(ctx context.Context, user
 	if org.EffectiveAt.After(todayStart) {
 		todayStart = org.EffectiveAt
 	}
+	// 主账号(owner) 使用个人余额/个人套餐的消费不应计入企业统计。
+	// 使用 usage_logs 别名 l 时统一附加此过滤条件。
+	excludeOwnerSelfSpend := "(l.user_id <> $3 OR (l.balance_source IS NOT NULL AND l.balance_source <> 'self') OR EXISTS(SELECT 1 FROM api_keys ak WHERE ak.id=l.api_key_id AND ak.organization_subscription_id IS NOT NULL))"
 	var totalIAMUsers, activeIAMUsers int64
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT count(*), count(*) FILTER (WHERE created_at >= $2),
@@ -2201,39 +2205,40 @@ func (r *organizationRepository) OrganizationDashboard(ctx context.Context, user
 	}
 	if err := r.db.QueryRowContext(ctx, `
 		WITH used_accounts AS (
-			SELECT DISTINCT account_id FROM usage_logs
-			WHERE organization_id=$1 AND created_at >= $2 AND account_id IS NOT NULL
+			SELECT DISTINCT l.account_id FROM usage_logs l
+			WHERE l.organization_id=$1 AND l.created_at >= $2 AND l.account_id IS NOT NULL
+			  AND `+excludeOwnerSelfSpend+`
 		)
 		SELECT count(*),
 			count(*) FILTER (WHERE a.status='active' AND a.schedulable=true),
 			count(*) FILTER (WHERE a.status='error'),
-			count(*) FILTER (WHERE a.rate_limited_at IS NOT NULL AND a.rate_limit_reset_at > $3),
-			count(*) FILTER (WHERE a.overload_until IS NOT NULL AND a.overload_until > $3)
+			count(*) FILTER (WHERE a.rate_limited_at IS NOT NULL AND a.rate_limit_reset_at > $4),
+			count(*) FILTER (WHERE a.overload_until IS NOT NULL AND a.overload_until > $4)
 		FROM accounts a JOIN used_accounts ua ON ua.account_id=a.id
-		WHERE a.deleted_at IS NULL`, org.OrganizationID, org.EffectiveAt, now).
+		WHERE a.deleted_at IS NULL`, org.OrganizationID, org.EffectiveAt, org.OwnerUserID, now).
 		Scan(&stats.TotalAccounts, &stats.NormalAccounts, &stats.ErrorAccounts, &stats.RateLimitAccounts, &stats.OverloadAccounts); err != nil {
 		return nil, err
 	}
 	stats.TotalAccounts += totalIAMUsers
 	stats.NormalAccounts += activeIAMUsers
 	if err := r.db.QueryRowContext(ctx, `
-		SELECT count(*), COALESCE(sum(input_tokens),0), COALESCE(sum(output_tokens),0),
-			COALESCE(sum(cache_creation_tokens),0), COALESCE(sum(cache_read_tokens),0),
-			COALESCE(sum(total_cost),0)::float8, COALESCE(sum(actual_cost),0)::float8,
-			COALESCE(sum(COALESCE(account_stats_cost,total_cost)*COALESCE(account_rate_multiplier,1)),0)::float8,
-			COALESCE(avg(duration_ms),0)::float8
-		FROM usage_logs WHERE organization_id=$1 AND created_at >= $2`, org.OrganizationID, org.EffectiveAt).
+		SELECT count(*), COALESCE(sum(l.input_tokens),0), COALESCE(sum(l.output_tokens),0),
+			COALESCE(sum(l.cache_creation_tokens),0), COALESCE(sum(l.cache_read_tokens),0),
+			COALESCE(sum(l.total_cost),0)::float8, COALESCE(sum(l.actual_cost),0)::float8,
+			COALESCE(sum(COALESCE(l.account_stats_cost,l.total_cost)*COALESCE(l.account_rate_multiplier,1)),0)::float8,
+			COALESCE(avg(l.duration_ms),0)::float8
+		FROM usage_logs l WHERE l.organization_id=$1 AND l.created_at >= $2 AND `+excludeOwnerSelfSpend, org.OrganizationID, org.EffectiveAt, org.OwnerUserID).
 		Scan(&stats.TotalRequests, &stats.TotalInputTokens, &stats.TotalOutputTokens,
 			&stats.TotalCacheCreationTokens, &stats.TotalCacheReadTokens, &stats.TotalCost,
 			&stats.TotalActualCost, &stats.TotalAccountCost, &stats.AverageDurationMs); err != nil {
 		return nil, err
 	}
 	if err := r.db.QueryRowContext(ctx, `
-		SELECT count(*), count(DISTINCT user_id), COALESCE(sum(input_tokens),0), COALESCE(sum(output_tokens),0),
-			COALESCE(sum(cache_creation_tokens),0), COALESCE(sum(cache_read_tokens),0),
-			COALESCE(sum(total_cost),0)::float8, COALESCE(sum(actual_cost),0)::float8,
-			COALESCE(sum(COALESCE(account_stats_cost,total_cost)*COALESCE(account_rate_multiplier,1)),0)::float8
-		FROM usage_logs WHERE organization_id=$1 AND created_at >= $2`, org.OrganizationID, todayStart).
+		SELECT count(*), count(DISTINCT l.user_id), COALESCE(sum(l.input_tokens),0), COALESCE(sum(l.output_tokens),0),
+			COALESCE(sum(l.cache_creation_tokens),0), COALESCE(sum(l.cache_read_tokens),0),
+			COALESCE(sum(l.total_cost),0)::float8, COALESCE(sum(l.actual_cost),0)::float8,
+			COALESCE(sum(COALESCE(l.account_stats_cost,l.total_cost)*COALESCE(l.account_rate_multiplier,1)),0)::float8
+		FROM usage_logs l WHERE l.organization_id=$1 AND l.created_at >= $2 AND `+excludeOwnerSelfSpend, org.OrganizationID, todayStart, org.OwnerUserID).
 		Scan(&stats.TodayRequests, &stats.ActiveUsers, &stats.TodayInputTokens, &stats.TodayOutputTokens,
 			&stats.TodayCacheCreationTokens, &stats.TodayCacheReadTokens, &stats.TodayCost,
 			&stats.TodayActualCost, &stats.TodayAccountCost); err != nil {
@@ -2244,8 +2249,8 @@ func (r *organizationRepository) OrganizationDashboard(ctx context.Context, user
 
 	var recentRequests, recentTokens int64
 	if err := r.db.QueryRowContext(ctx, `
-		SELECT count(*), COALESCE(sum(input_tokens+output_tokens+cache_creation_tokens+cache_read_tokens),0)
-		FROM usage_logs WHERE organization_id=$1 AND created_at >= $2`, org.OrganizationID, now.Add(-5*time.Minute)).
+		SELECT count(*), COALESCE(sum(l.input_tokens+l.output_tokens+l.cache_creation_tokens+l.cache_read_tokens),0)
+		FROM usage_logs l WHERE l.organization_id=$1 AND l.created_at >= $2 AND `+excludeOwnerSelfSpend, org.OrganizationID, now.Add(-5*time.Minute), org.OwnerUserID).
 		Scan(&recentRequests, &recentTokens); err != nil {
 		return nil, err
 	}
