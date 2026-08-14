@@ -102,6 +102,23 @@ func TestSePayRefundUnsupported(t *testing.T) {
 	}
 }
 
+// TestSePayMerchantIdentityMetadata pins the identity metadata contract shared
+// by the query/reconcile path and the snapshot validator: the key is
+// "accountNumber" (same as webhook notifications), never "bankAccountNumber".
+func TestSePayMerchantIdentityMetadata(t *testing.T) {
+	provider, err := NewSePay("1", sepayTestConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := provider.MerchantIdentityMetadata()
+	if metadata["accountNumber"] != "0123456789" {
+		t.Fatalf("metadata[accountNumber] = %q, want %q (metadata = %v)", metadata["accountNumber"], "0123456789", metadata)
+	}
+	if _, ok := metadata["bankAccountNumber"]; ok {
+		t.Fatalf("metadata must not carry legacy bankAccountNumber key: %v", metadata)
+	}
+}
+
 func TestSepayCodeMatchesOrder(t *testing.T) {
 	const out = "sub2_20260814aB3kX9mQ"
 	cases := []struct {
@@ -243,6 +260,14 @@ func TestSePayQueryOrderPaid(t *testing.T) {
 	}
 	if resp.PaidAt != "2026-08-14 09:30:00" {
 		t.Fatalf("paidAt = %q", resp.PaidAt)
+	}
+	// Query metadata must use the same identity key as the webhook path
+	// ("accountNumber") so snapshot validation accepts reconciled orders.
+	if resp.Metadata["accountNumber"] != "0123456789" {
+		t.Fatalf("metadata accountNumber = %q, want %q (metadata = %v)", resp.Metadata["accountNumber"], "0123456789", resp.Metadata)
+	}
+	if _, ok := resp.Metadata["bankAccountNumber"]; ok {
+		t.Fatalf("metadata must not carry legacy bankAccountNumber key: %v", resp.Metadata)
 	}
 	if len(queries) != 1 || queries[0].Get("q") != "sub2_20260814aB3kX9mQ" || queries[0].Get("transfer_type") != "in" || queries[0].Get("per_page") != "100" {
 		t.Fatalf("queries = %v", queries)

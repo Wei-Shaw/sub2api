@@ -5,11 +5,15 @@ package service
 import (
 	"context"
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
@@ -667,6 +671,186 @@ func TestReconcilePendingWxpayOrdersBackfillsPaidOrder(t *testing.T) {
 	require.Equal(t, "wxpay-upstream-trade-123", reloaded.PaymentTradeNo)
 	require.Equal(t, 50.0, userRepo.getByIDUser.Balance)
 	require.Len(t, redeemRepo.useCalls, 1)
+}
+
+// sepayQueryRegressionEnv wires a pending sepay order whose provider snapshot
+// pins merchant_id (bank account number) and currency, backed by a real SePay
+// provider instance whose QueryOrder hits a local stub of the SePay API v2.
+// This mirrors the missed-webhook rescue path: VerifyOrderByOutTradeNo ->
+// reconcilePaid -> checkPaidWithOptions -> HandlePaymentNotification.
+type sepayQueryRegressionEnv struct {
+	client     *dbent.Client
+	order      *dbent.PaymentOrder
+	user       *dbent.User
+	userRepo   *mockUserRepo
+	redeemRepo *paymentOrderLifecycleRedeemRepo
+	svc        *PaymentService
+}
+
+func newSepayQueryRegressionEnv(t *testing.T, instanceBankAccount, snapshotBankAccount string) *sepayQueryRegressionEnv {
+	t.Helper()
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer tok_sepay_query_regression", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"ft1","transaction_date":"2026-08-14 09:30:00","transfer_type":"in","amount_in":50000,"transaction_content":"sub2_sepay_query_meta chuyen tien","reference_number":"FT2608SEPAY","code":"sub2_sepay_query_meta"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeSePay).
+		SetName("sepay-query-regression").
+		SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+			"apiToken":          "tok_sepay_query_regression",
+			"apiBase":           srv.URL,
+			"bankAccountNumber": instanceBankAccount,
+			"bankBin":           "970422",
+			"webhookSecret":     "secret",
+		})).
+		SetSupportedTypes(payment.TypeSePay).
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	user, err := client.User.Create().
+		SetEmail("sepay-query-" + instanceBankAccount + "@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sepay-query-regression-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	// Snapshot mirrors what buildPaymentOrderProviderSnapshot produces for
+	// sepay: bank account number stored as merchant_id, currency pinned to VND.
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(50000).
+		SetPayAmount(50000).
+		SetFeeRate(0).
+		SetRechargeCode("SEPAY-QUERY-REGRESSION").
+		SetOutTradeNo("sub2_sepay_query_meta").
+		SetPaymentType(payment.TypeSePay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderSnapshot(map[string]any{
+			"schema_version":       2,
+			"provider_instance_id": strconv.FormatInt(inst.ID, 10),
+			"provider_key":         payment.TypeSePay,
+			"merchant_id":          snapshotBankAccount,
+			"currency":             "VND",
+		}).
+		Save(ctx)
+	require.NoError(t, err)
+
+	userRepo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+			Balance:  0,
+		},
+	}
+	userRepo.updateBalanceFn = func(ctx context.Context, id int64, amount float64) error {
+		require.Equal(t, user.ID, id)
+		if userRepo.getByIDUser != nil {
+			userRepo.getByIDUser.Balance += amount
+		}
+		return nil
+	}
+	redeemRepo := &paymentOrderLifecycleRedeemRepo{
+		codesByCode: map[string]*RedeemCode{
+			order.RechargeCode: {
+				ID:     1,
+				Code:   order.RechargeCode,
+				Type:   RedeemTypeBalance,
+				Value:  order.Amount,
+				Status: StatusUnused,
+			},
+		},
+	}
+	redeemService := NewRedeemService(
+		redeemRepo,
+		userRepo,
+		nil,
+		nil,
+		nil,
+		client,
+		nil,
+		nil,
+	)
+
+	return &sepayQueryRegressionEnv{
+		client:     client,
+		order:      order,
+		user:       user,
+		userRepo:   userRepo,
+		redeemRepo: redeemRepo,
+		svc: &PaymentService{
+			entClient:     client,
+			loadBalancer:  newWebhookProviderTestLoadBalancer(client),
+			redeemService: redeemService,
+			userRepo:      userRepo,
+		},
+	}
+}
+
+// TestVerifyOrderByOutTradeNoFulfillsSepaySnapshotOrder guards the query/
+// reconcile path (missed-webhook rescue): the SePay QueryOrder metadata must
+// carry the identity key ("accountNumber") that the snapshot validator reads,
+// so a paid upstream transfer actually fulfills the order. With the legacy
+// "bankAccountNumber" metadata key, validation failed with "sepay notification
+// missing accountNumber" and crediting never happened while the user was told
+// the order was paid.
+func TestVerifyOrderByOutTradeNoFulfillsSepaySnapshotOrder(t *testing.T) {
+	env := newSepayQueryRegressionEnv(t, "0123456789", "0123456789")
+	ctx := context.Background()
+
+	got, err := env.svc.VerifyOrderByOutTradeNo(ctx, env.order.OutTradeNo, env.user.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, got.Status)
+	require.Equal(t, "FT2608SEPAY", got.PaymentTradeNo)
+
+	reloaded, err := env.client.PaymentOrder.Get(ctx, env.order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+
+	require.Equal(t, 50000.0, env.userRepo.getByIDUser.Balance)
+	require.Len(t, env.redeemRepo.useCalls, 1)
+}
+
+// TestVerifyOrderByOutTradeNoRejectsSepayAccountMismatch asserts the negative:
+// query metadata whose accountNumber differs from the snapshot-pinned
+// merchant_id must not fulfill the order (e.g. bank account rotated after the
+// order was created).
+func TestVerifyOrderByOutTradeNoRejectsSepayAccountMismatch(t *testing.T) {
+	env := newSepayQueryRegressionEnv(t, "999988887777", "0123456789")
+	ctx := context.Background()
+
+	got, err := env.svc.VerifyOrderByOutTradeNo(ctx, env.order.OutTradeNo, env.user.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, got.Status)
+
+	reloaded, err := env.client.PaymentOrder.Get(ctx, env.order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+
+	require.Equal(t, 0.0, env.userRepo.getByIDUser.Balance)
+	require.Empty(t, env.redeemRepo.useCalls)
+
+	mismatchCount, err := env.client.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(env.order.ID, 10)),
+			paymentauditlog.ActionEQ("PAYMENT_PROVIDER_METADATA_MISMATCH"),
+		).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, mismatchCount, "metadata mismatch must be audited")
 }
 
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {

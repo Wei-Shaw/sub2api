@@ -608,6 +608,13 @@ func TestValidateProviderNotificationMetadataSePayAccountNumber(t *testing.T) {
 	})
 	assert.ErrorContains(t, err, "sepay notification missing accountNumber")
 
+	// The legacy QueryOrder metadata shape (key "bankAccountNumber") must not
+	// validate: both provider paths must carry "accountNumber".
+	err = validateProviderNotificationMetadata(order, payment.TypeSePay, map[string]string{
+		"bankAccountNumber": "0123456789",
+	})
+	assert.ErrorContains(t, err, "sepay notification missing accountNumber")
+
 	// Legacy orders without a snapshotted bank account tolerate any account.
 	assert.NoError(t, validateProviderNotificationMetadata(&dbent.PaymentOrder{
 		PaymentType: payment.TypeSePay,

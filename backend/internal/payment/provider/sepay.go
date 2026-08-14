@@ -74,7 +74,11 @@ func (s *SePay) MerchantIdentityMetadata() map[string]string {
 	if s == nil {
 		return nil
 	}
-	return map[string]string{"bankAccountNumber": strings.TrimSpace(s.config["bankAccountNumber"])}
+	// Key must match the webhook notification shape ("accountNumber", set in
+	// VerifyNotification) so snapshot validation accepts both the webhook and
+	// the query/reconcile paths. The snapshot builder stores this value as the
+	// order's pinned merchant_id.
+	return map[string]string{"accountNumber": strings.TrimSpace(s.config["bankAccountNumber"])}
 }
 
 // sepayNormalizeCode canonicalizes a transfer code for matching: uppercase,
