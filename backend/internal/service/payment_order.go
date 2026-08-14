@@ -66,7 +66,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
-	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, methodCurrency, req.OrderType, cfg.SubscriptionUSDToVNDRate)
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate, methodCurrency, cfg.SubscriptionUSDToVNDRate)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
 	}
 	if selectedCurrency != methodCurrency {
-		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate, selectedCurrency, req.OrderType, cfg.SubscriptionUSDToVNDRate)
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate, selectedCurrency, cfg.SubscriptionUSDToVNDRate)
 		if err != nil {
 			return nil, err
 		}
@@ -491,22 +491,19 @@ func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string
 	return payAmountStr, payAmount, nil
 }
 
-func calculateCreateOrderPayAmountForOrderType(limitAmount, feeRate float64, currency, orderType string, usdToVndRate float64) (string, float64, error) {
-	paymentAmount := limitAmount
-	if orderType == payment.OrderTypeSubscription {
-		paymentAmount = calculateSubscriptionGatewayBaseAmount(limitAmount, usdToVndRate, currency)
-	}
-	return calculateCreateOrderPayAmount(paymentAmount, feeRate, currency)
+func calculateCreateOrderPayAmountForCurrency(limitAmount, feeRate float64, currency string, usdToVndRate float64) (string, float64, error) {
+	return calculateCreateOrderPayAmount(calculateGatewayBaseAmount(limitAmount, usdToVndRate, currency), feeRate, currency)
 }
 
-// calculateSubscriptionGatewayBaseAmount converts a USD-priced plan into the
-// amount the gateway will actually collect.
+// calculateGatewayBaseAmount converts a USD amount into the amount the gateway
+// will actually collect.
 //
-// Plans are priced in USD, which NOWPayments charges directly. SePay collects
-// Vietnamese dong, so a VND channel needs the admin-configured rate — without
-// one the price would be charged as a dong figure, i.e. off by four orders of
+// Every figure the panel works in is USD — plan prices and recharge amounts
+// alike — and NOWPayments charges that directly. SePay collects Vietnamese
+// dong, so a VND channel needs the admin-configured rate: without one the
+// amount would be charged as a dong figure, i.e. off by four orders of
 // magnitude, so an unset rate leaves the amount alone rather than guessing.
-func calculateSubscriptionGatewayBaseAmount(amount, usdToVndRate float64, currency string) float64 {
+func calculateGatewayBaseAmount(amount, usdToVndRate float64, currency string) float64 {
 	rate := normalizeSubscriptionUSDToVNDRate(usdToVndRate)
 	if rate <= 0 || currency != payment.CurrencySePay {
 		return amount

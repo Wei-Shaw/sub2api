@@ -655,10 +655,10 @@ export default {
         balanceRechargeMultiplier: 'Balance Recharge Multiplier',
         balanceRechargeMultiplierHint: 'How many USD balance the user receives per 1 unit of the payment currency',
         balanceRechargePreview: 'Preview: 1 unit paid = {usd} USD',
-        subscriptionUsdToVndRate: 'Subscription USD to VND Rate',
+        subscriptionUsdToVndRate: 'USD to VND Rate',
         subscriptionUsdToVndRateHint:
-          'VND charged per 1 USD of plan price on VND channels (e.g. 26000). 0 or empty = disabled, plan price is charged as-is. When enabled, all plan prices must be set in USD',
-        subscriptionUsdToVndRateDisabled: 'Disabled (price charged as-is)',
+          'VND charged per 1 USD on VND channels (e.g. 26000), for plan prices and balance recharges alike. 0 or empty = disabled, the USD figure is charged as-is. When enabled, all plan prices must be set in USD',
+        subscriptionUsdToVndRateDisabled: 'Disabled (amount charged as-is)',
         rechargeFeeRate: 'Recharge Fee Rate',
         rechargeFeeRateHint: 'Percentage of service fee charged on top of recharge amount, 0 means no fee',
         rechargeFeePreview: 'Preview: Recharge 100, fee {fee}',

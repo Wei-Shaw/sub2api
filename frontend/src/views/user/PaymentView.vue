@@ -123,7 +123,7 @@
                   <dt class="shrink-0 text-ink-tertiary">{{ t('payment.paymentAmount') }}</dt>
                   <dd class="inline-flex items-baseline justify-end gap-0.5">
                     <span class="text-2xs text-ink-tertiary">{{ gatewayCurrencySymbol }}</span>
-                    <NumCell :value="validAmount" :precision="gatewayPrecision" />
+                    <NumCell :value="gatewayAmount" :precision="gatewayPrecision" />
                   </dd>
                 </div>
                 <div v-if="feeRate > 0" class="flex items-baseline justify-between gap-4 py-2">
@@ -537,6 +537,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
+  DEFAULT_PAYMENT_CURRENCY,
   SEPAY_CURRENCY,
   currencySymbol,
   formatPaymentAmount,
@@ -697,9 +698,9 @@ const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
-// USD→VND rate for dong channels. 0 = unset, in which case the plan price is
+// USD→VND rate for dong channels. 0 = unset, in which case the amount is
 // charged as-is — the same opt-in condition the backend applies.
-const subscriptionUsdToVndRate = computed(() => {
+const usdToVndRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_vnd_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
@@ -722,18 +723,26 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Visible methods decide the amount range shown to users.
+// Visible methods decide the amount range shown to users. The amount box is
+// USD, so each method's bound is converted out of its settlement currency
+// first — a raw dong figure would otherwise land in the box as dollars.
 const globalMinAmount = computed(() => {
   const limits = Object.values(visibleMethods.value)
   if (limits.length === 0) return 0
   if (limits.some(limit => limit.single_min <= 0)) return 0
-  return Math.min(...limits.map(limit => limit.single_min))
+  return Math.min(...limits.map(limit => ceilPaymentAmount(
+    usdAmountFromGatewayAmount(limit.single_min, normalizePaymentCurrency(limit.currency)),
+    DEFAULT_PAYMENT_CURRENCY,
+  )))
 })
 const globalMaxAmount = computed(() => {
   const limits = Object.values(visibleMethods.value)
   if (limits.length === 0) return 0
   if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
+  return Math.max(...limits.map(limit => floorPaymentAmount(
+    usdAmountFromGatewayAmount(limit.single_max, normalizePaymentCurrency(limit.currency)),
+    DEFAULT_PAYMENT_CURRENCY,
+  )))
 })
 
 // Selected method's limits (for validation and error messages)
@@ -773,10 +782,36 @@ function ceilPaymentAmount(value: number, currency: string): number {
   return Math.ceil(value * factor) / factor
 }
 
-function subscriptionPaymentAmountForCurrency(value: number, currency: string): number {
-  const rate = subscriptionUsdToVndRate.value
+function floorPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** paymentCurrencyFractionDigits(currency)
+  return Math.floor(value * factor) / factor
+}
+
+/**
+ * A USD figure — plan price or recharge amount alike — as the gateway will
+ * collect it. Mirrors the backend's `calculateGatewayBaseAmount`.
+ */
+function gatewayPaymentAmountForCurrency(value: number, currency: string): number {
+  const rate = usdToVndRate.value
   if (rate <= 0 || currency !== SEPAY_CURRENCY) return roundPaymentAmount(value, currency)
   return roundPaymentAmount(value * rate, currency)
+}
+
+/**
+ * The inverse. Per-method `single_min` / `single_max` are stated in the
+ * gateway's settlement currency, but the amount box takes USD, so the bounds
+ * handed to it have to come back the other way — otherwise a dong channel with
+ * a ₫20,000 floor would tell the user to top up at least 20,000 dollars.
+ *
+ * Left unrounded on purpose: a bound has to be rounded *inward* (min up, max
+ * down) or the hinted figure converts back to just outside the bound it came
+ * from, and the amount box then rejects the very number it suggested.
+ */
+function usdAmountFromGatewayAmount(value: number, currency: string): number {
+  const rate = usdToVndRate.value
+  if (rate <= 0 || currency !== SEPAY_CURRENCY) return value
+  return value / rate
 }
 
 /**
@@ -794,54 +829,70 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: ml?.available !== false && amountFitsMethod(rechargeTotalForMethod(type), type),
     }
   })
 )
 
 const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
+
+/**
+ * The recharge amount as the selected gateway will collect it. The box takes
+ * USD; a dong channel charges that times the configured rate, so every figure
+ * in the summary below has to be the converted one — printing the USD number
+ * under a `₫` symbol is how a $10 top-up came to ask for ten dong.
+ */
+const gatewayAmount = computed(() => gatewayPaymentAmountForCurrency(validAmount.value, selectedCurrency.value))
 const feeAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
+  feeRate.value > 0 && gatewayAmount.value > 0
+    ? ceilPaymentAmount((gatewayAmount.value * feeRate.value) / 100, selectedCurrency.value)
     : 0
 )
 const totalAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.round((validAmount.value + feeAmount.value) * 100) / 100
-    : validAmount.value
+  feeRate.value > 0 && gatewayAmount.value > 0
+    ? roundPaymentAmount(gatewayAmount.value + feeAmount.value, selectedCurrency.value)
+    : gatewayAmount.value
 )
+
+/** The recharge total in the settlement currency of one specific method. */
+function rechargeTotalForMethod(methodType: string): number {
+  const ml = visibleMethods.value[methodType]
+  return gatewayTotalAmountForCurrency(validAmount.value, normalizePaymentCurrency(ml?.currency))
+}
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
+  if (!enabledMethods.value.some((m) => amountFitsMethod(rechargeTotalForMethod(m), m))) {
     return t('payment.amountNoMethod')
   }
-  // Selected method can't handle this amount (but others can)
+  // Selected method can't handle this amount (but others can). Both sides of
+  // the comparison are in the gateway's currency, fee included — the same
+  // figure the backend checks the limits against.
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
+    if (ml.single_min > 0 && totalAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && totalAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
 
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && amountFitsMethod(totalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 const subPaymentAmount = computed(() => {
   const price = selectedPlan.value?.price ?? 0
-  return subscriptionPaymentAmountForCurrency(price, selectedCurrency.value)
+  return gatewayPaymentAmountForCurrency(price, selectedCurrency.value)
 })
 
 /** `null`, not `0`, when the plan carries no list price — there is no strike-through to draw. */
 const subOriginalPriceAmount = computed<number | null>(() => {
   const original = selectedPlan.value?.original_price ?? 0
   if (!original || original <= 0) return null
-  return subscriptionPaymentAmountForCurrency(original, selectedCurrency.value)
+  return gatewayPaymentAmountForCurrency(original, selectedCurrency.value)
 })
 
 const selectedPlanHasNoLimit = computed(() =>
@@ -860,8 +911,8 @@ const subTotalAmount = computed(() => {
   return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
 })
 
-function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
-  const paymentAmount = subscriptionPaymentAmountForCurrency(value, currency)
+function gatewayTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = gatewayPaymentAmountForCurrency(value, currency)
   if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
   const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
   return roundPaymentAmount(paymentAmount + fee, currency)
@@ -876,7 +927,7 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
+      available: ml?.available !== false && amountFitsMethod(gatewayTotalAmountForCurrency(price, currency), type),
     }
   })
 })
