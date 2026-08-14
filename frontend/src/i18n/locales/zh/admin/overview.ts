@@ -814,6 +814,7 @@ export default {
         userStatus: '状态'
       REDACTED,
       usageToday: '今日',
+      usageYesterday: '昨日',
       usageTotal: '累计',
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',

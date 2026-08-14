@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,7 +15,8 @@ import (
 )
 
 type dashboardAggregationRepository struct {
-	sql sqlExecutor
+	sql   sqlExecutor
+	clock func() time.Time
 REDACTED
 
 const usageLogsCleanupBatchSize = 10000
@@ -33,7 +35,14 @@ REDACTED
 REDACTED
 
 func newDashboardAggregationRepositoryWithSQL(sqlq sqlExecutor) *dashboardAggregationRepository {
-	return &dashboardAggregationRepository{sql: sqlqREDACTED
+	return &dashboardAggregationRepository{sql: sqlq, clock: time.NowREDACTED
+REDACTED
+
+func (r *dashboardAggregationRepository) now() time.Time {
+	if r.clock != nil {
+		return r.clock()
+REDACTED
+	return time.Now()
 REDACTED
 
 func isPostgresDriver(db *sql.DB) bool {
@@ -128,8 +137,20 @@ REDACTED
 		if err != nil {
 			return err
 	REDACTED
+		if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+			_ = tx.Rollback()
+			return err
+	REDACTED
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, start); err != nil {
+			_ = tx.Rollback()
+			return err
+	REDACTED
 		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
 		if err := txRepo.recomputeRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd); err != nil {
+			_ = tx.Rollback()
+			return err
+	REDACTED
+		if err := txRepo.syncGroupUsageRollupsInTx(ctx, service.GroupUsageTodayStart(r.now())); err != nil {
 			_ = tx.Rollback()
 			return err
 	REDACTED
@@ -215,14 +236,35 @@ func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, c
 		return err
 REDACTED
 	if isPartitioned {
-		return r.dropUsageLogsPartitions(ctx, cutoff)
+		if err := r.dropUsageLogsPartitions(ctx, cutoff); err != nil {
+			return err
+	REDACTED
+REDACTED else if err := r.cleanupUsageLogsBatches(ctx, cutoff); err != nil {
+		return err
 REDACTED
+	return r.SyncGroupUsageRollups(ctx, service.GroupUsageTodayStart(r.now()))
+REDACTED
+
+func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Context, cutoff time.Time) error {
+	db, transactional := r.sql.(*sql.DB)
 	for {
+		if transactional {
+			affected, err := cleanupUsageLogsBatchWithRollupInvalidation(ctx, db, cutoff)
+			if err != nil {
+				return err
+		REDACTED
+			if affected < usageLogsCleanupBatchSize {
+				return nil
+		REDACTED
+			continue
+	REDACTED
+
 		res, err := r.sql.ExecContext(ctx, `
 			WITH victims AS (
 				SELECT ctid
 				FROM usage_logs
 				WHERE created_at < $1
+				ORDER BY created_at ASC, id ASC
 				LIMIT $2
 			)
 			DELETE FROM usage_logs
@@ -239,6 +281,66 @@ REDACTED
 			return nil
 	REDACTED
 REDACTED
+REDACTED
+
+func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+REDACTED
+	rollback := func(err error) (int64, error) {
+		_ = tx.Rollback()
+		return 0, err
+REDACTED
+
+	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+		return rollback(err)
+REDACTED
+	rows, err := tx.QueryContext(ctx, `
+		WITH victims AS (
+			SELECT ctid
+			FROM usage_logs
+			WHERE created_at < $1
+			ORDER BY created_at ASC, id ASC
+			LIMIT $2
+		)
+		DELETE FROM usage_logs
+		WHERE ctid IN (SELECT ctid FROM victims)
+		RETURNING created_at
+	`, cutoff.UTC(), usageLogsCleanupBatchSize)
+	if err != nil {
+		return rollback(err)
+REDACTED
+
+	var affected int64
+	var earliestDeletedAt time.Time
+	for rows.Next() {
+		var deletedAt time.Time
+		if err := rows.Scan(&deletedAt); err != nil {
+			_ = rows.Close()
+			return rollback(err)
+	REDACTED
+		affected++
+		if earliestDeletedAt.IsZero() || deletedAt.Before(earliestDeletedAt) {
+			earliestDeletedAt = deletedAt
+	REDACTED
+REDACTED
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return rollback(err)
+REDACTED
+	if err := rows.Close(); err != nil {
+		return rollback(err)
+REDACTED
+	if affected > 0 {
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt); err != nil {
+			return rollback(err)
+	REDACTED
+REDACTED
+	if err := tx.Commit(); err != nil {
+		return 0, err
+REDACTED
+	return affected, nil
 REDACTED
 
 func (r *dashboardAggregationRepository) CleanupUsageBillingDedup(ctx context.Context, cutoff time.Time) error {
@@ -489,14 +591,16 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 	if err != nil {
 		return err
 REDACTED
-	defer func() {
-		_ = rows.Close()
-REDACTED()
-
 	cutoffMonth := truncateToMonthUTC(cutoff)
+	type usageLogsPartition struct {
+		name  string
+		month time.Time
+REDACTED
+	partitions := make([]usageLogsPartition, 0)
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
+			_ = rows.Close()
 			return err
 	REDACTED
 		if !strings.HasPrefix(name, "usage_logs_") {
@@ -509,12 +613,56 @@ REDACTED()
 	REDACTED
 		month = month.UTC()
 		if month.Before(cutoffMonth) {
-			if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {
+			partitions = append(partitions, usageLogsPartition{name: name, month: monthREDACTED)
+	REDACTED
+REDACTED
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+REDACTED
+	if err := rows.Close(); err != nil {
+		return err
+REDACTED
+
+	sort.Slice(partitions, func(i, j int) bool {
+		return partitions[i].month.Before(partitions[j].month)
+REDACTED)
+	if db, ok := r.sql.(*sql.DB); ok {
+		for _, partition := range partitions {
+			if err := dropUsageLogsPartitionWithRollupInvalidation(ctx, db, partition.name, partition.month); err != nil {
 				return err
 		REDACTED
 	REDACTED
+		return nil
 REDACTED
-	return rows.Err()
+	for _, partition := range partitions {
+		if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(partition.name))); err != nil {
+			return err
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+REDACTED
+	rollback := func(err error) error {
+		_ = tx.Rollback()
+		return err
+REDACTED
+
+	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+		return rollback(err)
+REDACTED
+	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
+		return rollback(err)
+REDACTED
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(name))); err != nil {
+		return rollback(err)
+REDACTED
+	return tx.Commit()
 REDACTED
 
 func (r *dashboardAggregationRepository) createUsageLogsPartition(ctx context.Context, month time.Time) error {
