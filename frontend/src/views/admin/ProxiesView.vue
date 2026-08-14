@@ -440,6 +440,9 @@
         <div>
           <label class="input-label">{{ t('admin.proxies.protocol') }}</label>
           <Select v-model="createForm.protocol" :options="protocolSelectOptions" />
+          <p class="input-hint-warning">
+            {{ createForm.protocol === 'https' ? t('admin.proxies.httpsTlsFingerprintWarning') : '' }}
+          </p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -680,6 +683,9 @@
         <div>
           <label class="input-label">{{ t('admin.proxies.protocol') }}</label>
           <Select v-model="editForm.protocol" :options="protocolSelectOptions" />
+          <p class="input-hint-warning">
+            {{ editForm.protocol === 'https' ? t('admin.proxies.httpsTlsFingerprintWarning') : '' }}
+          </p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>

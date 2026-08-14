@@ -293,6 +293,7 @@
    * jumped on every blur.
    */
   .input-hint,
+  .input-hint-warning,
   .input-error-text {
     @apply mt-1 block text-2xs;
     min-height: var(--ds-lh-2xs);
@@ -300,6 +301,11 @@
 
   .input-hint {
     @apply text-ink-tertiary;
+  }
+
+  /* A hint that flags a working-but-degraded choice, not a validation failure. */
+  .input-hint-warning {
+    @apply text-amber-600 dark:text-amber-300;
   }
 
   .input-error-text {

@@ -1342,6 +1342,43 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 	return h2, nil
 }
 
+// profileName 返回用于日志的 Profile 名称，nil 时返回 "none"
+func profileName(profile *tlsfingerprint.Profile) string {
+	if profile == nil {
+		return "none"
+	}
+	if profile.Name == "" {
+		return "unnamed"
+	}
+	return profile.Name
+}
+
+// sanitizeProfileALPN 移除指纹链路无法使用的 ALPN 协议
+//
+// 模板可能来自 admin API 之外（迁移、种子数据、手工 SQL），
+// 这些路径绕过了 model 层校验。此处是最后一道防线：
+// 让握手退回 HTTP/1.1，而不是让上游在协议不匹配时静默断连。
+// 返回原对象表示无需改动；有改动时复制一份，避免污染共享缓存中的 Profile。
+func sanitizeProfileALPN(profile *tlsfingerprint.Profile) *tlsfingerprint.Profile {
+	if profile == nil || len(profile.ALPNProtocols) == 0 {
+		return profile
+	}
+
+	kept, dropped := tlsfingerprint.SanitizeALPN(profile.ALPNProtocols)
+	if len(dropped) == 0 {
+		return profile
+	}
+
+	slog.Warn("tls_fingerprint_alpn_dropped",
+		"profile", profileName(profile),
+		"dropped", strings.Join(dropped, ","),
+		"effective", tlsfingerprint.SupportedALPNProtocol)
+
+	sanitized := *profile
+	sanitized.ALPNProtocols = kept
+	return &sanitized
+}
+
 // buildUpstreamTransportWithTLSFingerprint 构建带 TLS 指纹伪装的 Transport
 // 使用 utls 库模拟 Claude CLI 的 TLS 指纹
 //
@@ -1356,9 +1393,12 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 //
 // 代理类型处理:
 //   - nil/空: 直连，使用 TLSFingerprintDialer
-//   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
+//   - http: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
+//   - https/其它: 无法保留指纹，回退到普通 Transport 并告警
 func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
+	profile = sanitizeProfileALPN(profile)
+
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
@@ -1386,6 +1426,14 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		case "https":
 			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
 			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
+			// This silently drops the fingerprint, so warn: an operator who moved a
+			// proxy from http:// to https:// otherwise loses TLS impersonation with
+			// no signal anywhere.
+			slog.Warn("tls_fingerprint_disabled_by_proxy_scheme",
+				"scheme", scheme,
+				"proxy", proxyURL.Host,
+				"profile", profileName(profile),
+				"reason", "https proxies require a TLS handshake the fingerprint dialer cannot perform; use http:// or socks5:// to keep the fingerprint")
 			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
 		case "http":
 			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
@@ -1394,7 +1442,11 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			transport.DialTLSContext = httpDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
-			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
+			slog.Warn("tls_fingerprint_disabled_by_proxy_scheme",
+				"scheme", scheme,
+				"proxy", proxyURL.Host,
+				"profile", profileName(profile),
+				"reason", "unsupported proxy scheme; use http:// or socks5:// to keep the fingerprint")
 			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 				return nil, err
 			}
