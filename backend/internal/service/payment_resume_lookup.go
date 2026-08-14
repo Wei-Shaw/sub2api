@@ -10,7 +10,14 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token string) (*dbent.PaymentOrder, error) {
+// GetPublicOrderByResumeToken resolves an order from a signed resume token and
+// reconciles it against the provider.
+//
+// paymentReference is the provider payment id a hosted checkout appended to its
+// return URL, empty when the redirect carried none. The resume token proves the
+// caller holds this checkout session; the reference itself proves nothing and is
+// verified upstream before it is believed.
+func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token string, paymentReference string) (*dbent.PaymentOrder, error) {
 	claims, err := s.paymentResume().ParseToken(strings.TrimSpace(token))
 	if err != nil {
 		return nil, err
@@ -55,6 +62,10 @@ func (s *PaymentService) GetPublicOrderByResumeToken(ctx context.Context, token 
 		}
 	}
 	if order.Status == OrderStatusPending || order.Status == OrderStatusExpired {
+		// Before asking whether the order was paid, take the payment id off the
+		// redirect: without it the question is asked against an invoice id the
+		// pollable endpoint does not accept.
+		s.adoptPaymentReference(ctx, order, paymentReference)
 		result := s.reconcilePaid(ctx, order)
 		if result == checkPaidResultAlreadyPaid {
 			order, err = s.entClient.PaymentOrder.Get(ctx, order.ID)

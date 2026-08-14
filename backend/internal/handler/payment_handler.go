@@ -334,6 +334,11 @@ type VerifyOrderRequest struct {
 
 type ResolveOrderByResumeTokenRequest struct {
 	ResumeToken string `json:"resume_token" binding:"required"`
+	// PaymentReference is the provider payment id a hosted checkout appended to
+	// its return URL — NOWPayments sends it as NP_id. It is a hint read off the
+	// browser's address bar, so the service verifies it upstream before acting
+	// on it; a wrong or absent one only costs the caller a slower recovery.
+	PaymentReference string `json:"payment_reference"`
 }
 
 // VerifyOrder actively queries the upstream payment provider to check
@@ -458,7 +463,7 @@ func (h *PaymentHandler) ResolveOrderPublicByResumeToken(c *gin.Context) {
 		return
 	}
 
-	order, err := h.paymentService.GetPublicOrderByResumeToken(c.Request.Context(), req.ResumeToken)
+	order, err := h.paymentService.GetPublicOrderByResumeToken(c.Request.Context(), req.ResumeToken, req.PaymentReference)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

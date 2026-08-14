@@ -74,9 +74,19 @@ export const paymentAPI = {
     return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/verify', { out_trade_no: outTradeNo })
   },
 
-  /** Resolve an order from a signed resume token without auth */
-  resolveOrderPublicByResumeToken(resumeToken: string) {
-    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
+  /**
+   * Resolve an order from a signed resume token without auth.
+   *
+   * `paymentReference` is the provider payment id the gateway put on its return
+   * URL — NOWPayments sends it as `NP_id`. Passing it lets the backend poll the
+   * payment itself instead of the invoice it was opened from; it is a hint out
+   * of the address bar, so the backend verifies it upstream before believing it.
+   */
+  resolveOrderPublicByResumeToken(resumeToken: string, paymentReference?: string) {
+    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/resolve', {
+      resume_token: resumeToken,
+      ...(paymentReference ? { payment_reference: paymentReference } : {}),
+    })
   },
 
   /** Request a refund for a completed order */

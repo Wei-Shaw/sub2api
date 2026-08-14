@@ -48,6 +48,31 @@ const (
 	defaultMaxPendingOrders = 3
 )
 
+// minCryptoOrderTimeoutMin is the shortest window a crypto order may be given.
+//
+// A crypto payment is settled by a chain rather than by a bank, and a buyer on
+// a congested network routinely needs an hour between sending and `finished`.
+// An order that expires mid-confirmation is only recoverable inside the few
+// minutes of grace toPaid allows, after which a real payment lands on a closed
+// order — so the global timeout, which is set with bank transfers in mind, is
+// raised to this floor for the crypto channel instead of being obeyed.
+const minCryptoOrderTimeoutMin = 60
+
+// orderTimeoutMinutes resolves the expiry window for one order's channel.
+func orderTimeoutMinutes(cfg *PaymentConfig, paymentType string) int {
+	timeout := 0
+	if cfg != nil {
+		timeout = cfg.OrderTimeoutMin
+	}
+	if timeout <= 0 {
+		timeout = defaultOrderTimeoutMin
+	}
+	if payment.GetBasePaymentType(strings.TrimSpace(paymentType)) == payment.TypeNowPayments && timeout < minCryptoOrderTimeoutMin {
+		return minCryptoOrderTimeoutMin
+	}
+	return timeout
+}
+
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
 	Enabled                   bool     `json:"enabled"`

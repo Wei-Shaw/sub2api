@@ -214,11 +214,32 @@ const returnInfo = ref<ReturnInfo | null>(null)
 
 const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
 const PENDING_STATUSES = new Set(['PENDING', 'CREATED', 'WAITING', 'PROCESSING'])
-const STATUS_REFRESH_INTERVAL_MS = 2000
-const STATUS_REFRESH_MAX_ATTEMPTS = 15
+
+/**
+ * The refresh schedule has to outlast what it is waiting for.
+ *
+ * A card gateway answers in seconds, and this page used to poll for exactly 30
+ * of them — but a crypto payment is confirmed by a chain, and a busy network
+ * routinely takes half an hour to reach `finished`. Giving up first left the
+ * page insisting it would refresh automatically while it had already stopped,
+ * which is the one thing a payment screen must never say.
+ *
+ * So: quick polls while a fast settlement is still plausible, then a slow beat
+ * that stays honest for the length of a real confirmation.
+ */
+const STATUS_REFRESH_FAST_INTERVAL_MS = 2000
+const STATUS_REFRESH_FAST_ATTEMPTS = 15
+const STATUS_REFRESH_SLOW_INTERVAL_MS = 15000
+const STATUS_REFRESH_MAX_ATTEMPTS = 135 // ~30 fast seconds, then ~30 minutes
 
 let statusRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const refreshAttempts = ref(0)
+
+function statusRefreshDelayMs(attempts: number): number {
+  return attempts < STATUS_REFRESH_FAST_ATTEMPTS
+    ? STATUS_REFRESH_FAST_INTERVAL_MS
+    : STATUS_REFRESH_SLOW_INTERVAL_MS
+}
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
@@ -384,9 +405,22 @@ function restoreRecoverySnapshot(context: {
   return restored
 }
 
+/**
+ * The gateway payment id off the return URL.
+ *
+ * NOWPayments opens a hosted invoice and only creates the payment once the
+ * buyer picks a coin, so the identifier we stored at checkout is the invoice's.
+ * `NP_id` on the redirect is the first time the payment's own id reaches us,
+ * and it is the one the backend can actually poll — see the payment-reference
+ * note on `resolveOrderPublicByResumeToken`.
+ */
+function readPaymentReference(): string {
+  return readRouteQueryString('NP_id').trim()
+}
+
 async function resolveOrderFromResumeToken(resumeToken: string): Promise<ResolvedOrder | null> {
   try {
-    const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken)
+    const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken, readPaymentReference())
     return result.data
   } catch (_err: unknown) {
     return null
@@ -443,7 +477,7 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<ResolvedOrder | null
     if (isPendingStatus(order.value?.status)) {
       scheduleStatusRefresh(refreshOrder)
     }
-  }, STATUS_REFRESH_INTERVAL_MS)
+  }, statusRefreshDelayMs(refreshAttempts.value))
 }
 
 onMounted(async () => {

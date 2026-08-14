@@ -247,10 +247,14 @@ func TestNOWPaymentsCreatePaymentSendsNumericPrice(t *testing.T) {
 func TestNOWPaymentsQueryOrderFallsBackToInvoiceLookup(t *testing.T) {
 	t.Parallel()
 
+	// invoiceId is not a documented filter on the listing endpoint, so the
+	// fixture answers with a foreign payment first: an implementation that
+	// trusts the filter would settle this order against someone else's money.
 	listing := `{"data":[` +
-		`{"payment_id":2,"parent_payment_id":1,"payment_status":"finished","price_amount":3,"price_currency":"usd"},` +
-		`{"payment_id":1,"payment_status":"finished","price_amount":10.5,"price_currency":"usd",` +
-		`"updated_at":"2026-01-01T00:00:00Z"}],"total":2}`
+		`{"payment_id":9,"invoice_id":7777777777,"payment_status":"finished","price_amount":999,"price_currency":"usd"},` +
+		`{"payment_id":2,"invoice_id":4942419698,"parent_payment_id":1,"payment_status":"finished","price_amount":3,"price_currency":"usd"},` +
+		`{"payment_id":1,"invoice_id":4942419698,"payment_status":"finished","price_amount":10.5,"price_currency":"usd",` +
+		`"updated_at":"2026-01-01T00:00:00Z"}],"total":3}`
 
 	t.Run("resolves the original payment", func(t *testing.T) {
 		t.Parallel()
@@ -268,12 +272,53 @@ func TestNOWPaymentsQueryOrderFallsBackToInvoiceLookup(t *testing.T) {
 		if resp.Status != payment.ProviderStatusPaid {
 			t.Fatalf("Status = %q, want paid", resp.Status)
 		}
-		// The re-deposit is listed first; settling on it would credit 3 USD.
+		// A foreign payment and the re-deposit are both listed first; settling
+		// on them would credit 999 USD or 3 USD.
 		if resp.Amount != 10.5 {
 			t.Fatalf("Amount = %v, want the original payment's 10.5", resp.Amount)
 		}
 		if resp.TradeNo != "1" {
 			t.Fatalf("TradeNo = %q, want the original payment id", resp.TradeNo)
+		}
+	})
+
+	t.Run("stays pending when the listing holds no payment for this invoice", func(t *testing.T) {
+		t.Parallel()
+		foreign := `{"data":[{"payment_id":9,"invoice_id":7777777777,"payment_status":"finished",` +
+			`"price_amount":999,"price_currency":"usd"}],"total":1}`
+		p := newNOWPaymentsServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("invoiceId") != "" {
+				_, _ = w.Write([]byte(foreign))
+				return
+			}
+			http.Error(w, `{"message":"payment not found"}`, http.StatusNotFound)
+		})
+		resp, err := p.QueryOrder(context.Background(), "4942419698")
+		if err != nil {
+			t.Fatalf("QueryOrder() error: %v", err)
+		}
+		if resp.Status != payment.ProviderStatusPending {
+			t.Fatalf("Status = %q, want pending — the listed payment belongs to another invoice", resp.Status)
+		}
+	})
+
+	// The listing needs a bearer token minted from dashboard credentials, which
+	// an API key alone does not buy. A 401 must not read as "not paid".
+	t.Run("reports the listing's own auth requirement", func(t *testing.T) {
+		t.Parallel()
+		p := newNOWPaymentsServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("invoiceId") != "" {
+				http.Error(w, `{"message":"Unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+			http.Error(w, `{"message":"payment not found"}`, http.StatusNotFound)
+		})
+		_, err := p.QueryOrder(context.Background(), "4942419698")
+		if err == nil {
+			t.Fatal("QueryOrder() reported no error for a 401 listing")
+		}
+		if !strings.Contains(err.Error(), "bearer token") {
+			t.Fatalf("error = %v, want it to name the missing bearer token", err)
 		}
 	})
 
