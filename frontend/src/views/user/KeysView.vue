@@ -121,7 +121,7 @@
           </template>
 
           <template #cell-name="{ value, row }">
-            <div class="flex items-center gap-1.5">
+            <div class="flex flex-wrap items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
               <Icon
                 v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
@@ -138,7 +138,8 @@
               <button
                 :ref="(el) => setGroupButtonRef(row.id, el)"
                 @click="openGroupSelector(row)"
-                class="-mx-2 -my-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
+                class="-mx-2 -my-1 flex cursor-pointer flex-wrap items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
+                data-test="group-selector-trigger"
                 :title="t('keys.clickToChangeGroup')"
               >
                 <GroupBadge
@@ -156,6 +157,14 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
+                <span
+                  v-if="row.organization_subscription_id"
+                  class="badge badge-info whitespace-nowrap text-xs"
+                  data-test="enterprise-subscription-badge"
+                  :title="t('keys.orgSubscriptionHint')"
+                >
+                  {{ t('keys.orgSubscriptionLabel') }}
+                </span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
@@ -1214,41 +1223,58 @@
         </div>
         <!-- Group list -->
         <div class="max-h-80 overflow-y-auto p-1.5">
-          <button
-            v-for="option in filteredGroupOptions"
-            :key="option.value ?? 'null'"
-            @click="changeGroup(selectedKeyForGroup!, option.value)"
-            :class="[
-              'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
-              'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              (typeof option.value === 'string' && option.value.startsWith('org:')
-                ? selectedKeyForGroup?.organization_subscription_id === Number(option.value.slice(4))
-                : selectedKeyForGroup?.group_id === option.value) ||
-              (!selectedKeyForGroup?.group_id && !selectedKeyForGroup?.organization_subscription_id && option.value === null)
-                ? 'bg-primary-50 dark:bg-primary-900/20'
-                : 'hover:bg-gray-100 dark:hover:bg-dark-700'
-            ]"
-            :title="option.description || undefined"
-          >
-            <GroupOptionItem
-              :name="option.label"
-              :platform="option.platform"
-              :subscription-type="option.subscriptionType"
-              :rate-multiplier="option.rate"
-              :user-rate-multiplier="option.userRate"
-              :peak-rate-enabled="option.peakRateEnabled"
-              :peak-start="option.peakStart"
-              :peak-end="option.peakEnd"
-              :peak-rate-multiplier="option.peakRateMultiplier"
-              :description="option.description"
-              :selected="
+          <template v-for="(option, index) in filteredGroupOptions" :key="option.value ?? 'null'">
+            <div
+              v-if="index === 0 || option.isEnterprise !== filteredGroupOptions[index - 1]?.isEnterprise"
+              class="px-3 pb-1 pt-2 text-xs font-semibold text-gray-500 dark:text-gray-400"
+              :data-test="option.isEnterprise ? 'enterprise-group-section' : 'personal-group-section'"
+            >
+              {{ option.isEnterprise ? t('keys.orgSubscriptionLabel') : t('keys.group') }}
+            </div>
+            <button
+              @click="changeGroup(selectedKeyForGroup!, option.value)"
+              :class="[
+                'flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors',
+                'border-b border-gray-100 last:border-0 dark:border-dark-700',
                 (typeof option.value === 'string' && option.value.startsWith('org:')
                   ? selectedKeyForGroup?.organization_subscription_id === Number(option.value.slice(4))
                   : selectedKeyForGroup?.group_id === option.value) ||
                 (!selectedKeyForGroup?.group_id && !selectedKeyForGroup?.organization_subscription_id && option.value === null)
-              "
-            />
-          </button>
+                  ? 'bg-primary-50 dark:bg-primary-900/20'
+                  : 'hover:bg-gray-100 dark:hover:bg-dark-700'
+              ]"
+              data-test="group-selector-option"
+              :data-enterprise="option.isEnterprise ? 'true' : 'false'"
+              :title="option.description || undefined"
+            >
+              <span
+                v-if="option.isEnterprise"
+                class="badge badge-info shrink-0 whitespace-nowrap text-xs"
+                data-test="enterprise-group-option-badge"
+                :title="t('keys.orgSubscriptionHint')"
+              >
+                {{ t('keys.orgSubscriptionLabel') }}
+              </span>
+              <GroupOptionItem
+                :name="option.label"
+                :platform="option.platform"
+                :subscription-type="option.subscriptionType"
+                :rate-multiplier="option.rate"
+                :user-rate-multiplier="option.userRate"
+                :peak-rate-enabled="option.peakRateEnabled"
+                :peak-start="option.peakStart"
+                :peak-end="option.peakEnd"
+                :peak-rate-multiplier="option.peakRateMultiplier"
+                :description="option.description"
+                :selected="
+                  (typeof option.value === 'string' && option.value.startsWith('org:')
+                    ? selectedKeyForGroup?.organization_subscription_id === Number(option.value.slice(4))
+                    : selectedKeyForGroup?.group_id === option.value) ||
+                  (!selectedKeyForGroup?.group_id && !selectedKeyForGroup?.organization_subscription_id && option.value === null)
+                "
+              />
+            </button>
+          </template>
           <!-- Empty state when search has no results -->
           <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
             {{ t('keys.noGroupFound') }}
@@ -1571,7 +1597,8 @@ const groupOptions = computed(() =>
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
     subscriptionType: group.subscription_type,
-    platform: group.platform
+    platform: group.platform,
+    isEnterprise: false,
   }))
 )
 
@@ -1679,11 +1706,9 @@ const orgSubscriptionOptions = computed(() => {
 // Group dropdown search
 const groupSearchQuery = ref('')
 const quickGroupOptions = computed(() => [
-  ...groupOptions.value,
   ...orgSubscriptionOptions.value.map(option => ({
     ...option,
     value: `org:${option.value}`,
-    label: `${t('keys.orgSubscriptionLabel')}: ${option.label}`,
     platform: 'composite' as const,
     rate: option.rate,
     userRate: undefined,
@@ -1692,7 +1717,9 @@ const quickGroupOptions = computed(() => [
     peakEnd: undefined,
     peakRateMultiplier: undefined,
     subscriptionType: undefined,
+    isEnterprise: true,
   })),
+  ...groupOptions.value,
 ])
 const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
@@ -1882,6 +1909,9 @@ const openGroupSelector = (key: ApiKey) => {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
   } else {
+    // Refresh when opening so newly provisioned enterprise subscriptions are
+    // visible without requiring a full page reload.
+    void loadOrgSubscriptions()
     const buttonEl = groupButtonRefs.value.get(key.id)
     if (buttonEl) {
       const rect = buttonEl.getBoundingClientRect()

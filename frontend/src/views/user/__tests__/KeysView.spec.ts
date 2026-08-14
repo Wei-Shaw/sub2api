@@ -240,7 +240,9 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
-        <slot name="cell-group" :value="row.group" :row="row" />
+        <div data-test="group-cell">
+          <slot name="cell-group" :value="row.group" :row="row" />
+        </div>
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -404,6 +406,78 @@ describe('user KeysView column settings', () => {
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
     expect(visibleColumnKeys(wrapper)).not.toContain('last_used_ip')
     expect(visibleColumnKeys(wrapper)).not.toContain('id')
+  })
+
+  it('marks enterprise subscriptions in the API key group cell', async () => {
+    const enterpriseGroup = createGroup({ id: 99, name: 'Enterprise Group' })
+    listKeys.mockResolvedValueOnce({
+      items: [
+        {
+          ...createApiKey(),
+          id: 1,
+          name: 'enterprise-key',
+          group_id: enterpriseGroup.id,
+          group: enterpriseGroup,
+          organization_subscription_id: 90,
+        },
+        { ...createApiKey(), id: 2, name: 'personal-key' },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = await mountView()
+    const groupCells = wrapper.findAll('[data-test="group-cell"]')
+    const badges = groupCells.flatMap(groupCell =>
+      groupCell.findAll('[data-test="enterprise-subscription-badge"]')
+    )
+
+    expect(badges).toHaveLength(1)
+    expect(badges[0].text()).toBe('Enterprise Subscription')
+    expect(badges[0].attributes('title')).toBe('Enterprise subscription hint')
+  })
+
+  it('shows enterprise subscriptions first with a marker in the group selector', async () => {
+    const personalGroup = createGroup({ id: 1, name: 'Personal Group' })
+    getAvailableGroups.mockResolvedValue([personalGroup])
+    listKeys.mockResolvedValue({
+      items: [{ ...createApiKey(), group_id: personalGroup.id, group: personalGroup }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    listOrganizationSubscriptions.mockResolvedValue([{
+      id: 90,
+      organization_id: 8,
+      group_id: 99,
+      group_name: 'Enterprise Group',
+      platform: 'openai',
+      subscription_type: 'monthly',
+      rate_multiplier: 0.2,
+      status: 'active',
+    }])
+
+    const wrapper = await mountView()
+    await wrapper.get('[data-test="group-selector-trigger"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="enterprise-group-section"]').text()).toBe('Enterprise Subscription')
+    expect(wrapper.get('[data-test="enterprise-group-option-badge"]').text()).toBe('Enterprise Subscription')
+    const options = wrapper.findAll('[data-test="group-selector-option"]')
+    expect(options).toHaveLength(2)
+    expect(options[0].attributes('data-enterprise')).toBe('true')
+    expect(options[1].attributes('data-enterprise')).toBe('false')
+    expect(listOrganizationSubscriptions).toHaveBeenCalledTimes(2)
+
+    await options[0].trigger('click')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(1, {
+      organization_subscription_id: 90,
+      fallback_group_ids: [],
+    })
   })
 
   it('shows a hidden column when toggled and persists the preference', async () => {
