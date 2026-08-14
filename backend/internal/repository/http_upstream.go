@@ -96,6 +96,7 @@ const (
 
 const (
 	upstreamProtocolModeDefault          = "default"
+	upstreamProtocolModeDefaultH2        = "default_h2"
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
@@ -984,6 +985,13 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
 	if profile != service.HTTPUpstreamProfileOpenAI {
+		// 非 OpenAI 上游默认仍是 HTTP/1.1：Transport 设了 DialContext，Go 不会自动
+		// 升级 HTTP/2。开关打开后显式协商 H2，让同账号的并发请求复用同一条已握手
+		// 的连接，省掉 HTTP/1.1 下每条并发连接各自的 TCP + TLS 握手（跨境上游上
+		// 这部分完整计入首字延迟）。
+		if s != nil && s.cfg != nil && s.cfg.Gateway.UpstreamHTTP2.Enabled {
+			return upstreamProtocolModeDefaultH2
+		}
 		return upstreamProtocolModeDefault
 	}
 	settings := s.resolveOpenAIHTTP2Settings()
@@ -1305,7 +1313,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
 	}
 	switch protocolMode {
-	case upstreamProtocolModeOpenAIH2:
+	case upstreamProtocolModeDefaultH2, upstreamProtocolModeOpenAIH2:
 		transport.ForceAttemptHTTP2 = true
 		// 显式配置 http2 并启用 PING 健康探测，剔除代理/NAT 静默掐断的死连接，
 		// 避免请求挂在死连接上直到 TCP 重传超时（分钟级）。

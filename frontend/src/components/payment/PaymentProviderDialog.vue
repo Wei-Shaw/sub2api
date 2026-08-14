@@ -36,32 +36,15 @@
         </FormField>
       </div>
 
-      <!-- Toggles + Payment mode + Supported types (single row) -->
+      <!-- Toggles + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
         <!--
-          Payment mode and supported types are a SELECTION, not a status — which
-          of several mutually exclusive (or multiple) options is currently in
-          effect. Accent is this system's one and only selection signal, so the
-          active chip gets the tint and everything else stays a plain hairline.
+          Supported types are a SELECTION, not a status — which of several
+          options is currently in effect. Accent is this system's one and only
+          selection signal, so the active chip gets the tint and everything
+          else stays a plain hairline.
         -->
-        <div v-if="supportsPaymentMode" class="flex items-center gap-2">
-          <span class="text-xs font-medium text-ink-tertiary">{{ t('admin.settings.payment.paymentMode') }}</span>
-          <div class="flex gap-1.5">
-            <button
-              v-for="mode in paymentModeOptions"
-              :key="mode.value"
-              type="button"
-              @click="form.payment_mode = mode.value"
-              :class="[
-                'rounded border px-2.5 py-1 text-xs font-medium transition-colors duration-fast ease-out',
-                form.payment_mode === mode.value
-                  ? 'border-accent bg-accent-tint text-accent'
-                  : 'border-line bg-surface text-ink-secondary hover:border-line-strong hover:bg-surface-hover',
-              ]"
-            >{{ mode.label }}</button>
-          </div>
-        </div>
         <div v-if="availableTypes.length > 1" class="flex items-center gap-2">
           <span class="text-xs font-medium text-ink-tertiary">{{ t('admin.settings.payment.supportedTypes') }}</span>
           <div class="flex flex-wrap gap-1.5">
@@ -88,45 +71,7 @@
           <h4 class="text-sm font-semibold text-ink">
             {{ t('admin.settings.payment.providerConfig') }}
           </h4>
-          <HelpTooltip v-if="paymentGuide" trigger="click" width-class="w-80">
-            <template #trigger>
-              <button
-                type="button"
-                class="inline-flex h-5 w-5 items-center justify-center rounded border border-line text-2xs font-semibold text-ink-tertiary transition-colors duration-fast ease-out hover:border-accent hover:text-accent"
-                :aria-label="t('admin.settings.payment.paymentGuideTrigger')"
-                :title="t('admin.settings.payment.paymentGuideTrigger')"
-              >
-                ?
-              </button>
-            </template>
-            <!--
-              This popover's own ground (`bg-gray-900`, themed separately in
-              HelpTooltip.vue) never flips with the page theme, so its content
-              cannot use the Family B ink tokens either — those flip. `white`
-              at full and reduced opacity is the correct pairing for a ground
-              that stays dark in both themes.
-            -->
-            <div class="space-y-3">
-              <p class="font-medium text-white">{{ paymentGuide.summary }}</p>
-              <div
-                v-for="item in paymentGuide.items"
-                :key="item.title"
-                class="space-y-1.5 border-t border-white/10 pt-2 first:border-t-0 first:pt-0"
-              >
-                <p class="font-medium text-white">{{ item.title }}</p>
-                <p><span class="text-white/70">{{ t('admin.settings.payment.guideOpenLabel') }}</span>{{ item.open }}</p>
-                <p><span class="text-white/70">{{ t('admin.settings.payment.guideCallLabel') }}</span>{{ item.call }}</p>
-                <p><span class="text-white/70">{{ t('admin.settings.payment.guideFallbackLabel') }}</span>{{ item.fallback }}</p>
-              </div>
-              <p v-if="paymentGuide.note" class="border-t border-white/10 pt-2 text-2xs text-white/70">
-                {{ paymentGuide.note }}
-              </p>
-            </div>
-          </HelpTooltip>
         </div>
-        <p v-if="paymentGuide" class="mb-3 text-xs text-ink-tertiary">
-          {{ paymentGuide.summary }}
-        </p>
         <div class="space-y-3">
           <FormField
             v-for="field in resolvedFields"
@@ -334,7 +279,6 @@ import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Button from '@/components/common/Button.vue'
 import FormField from '@/components/common/FormField.vue'
-import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -345,36 +289,17 @@ import {
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
-  PAYMENT_MODE_QRCODE,
-  PAYMENT_MODE_REDIRECT,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
 
-/** Default payment_mode per provider key — "" means "no preference, use
- * provider's built-in default behavior". */
-function defaultPaymentMode(providerKey: string): string {
-  if (providerKey === 'easypay') return PAYMENT_MODE_QRCODE
-  return ''
-}
-
-/** Provider keys whose admin UI exposes a payment_mode selector.
- * Other providers always send payment_mode = ''. */
-function providerSupportsPaymentMode(providerKey: string): boolean {
-  return providerKey === 'easypay' || providerKey === 'alipay'
-}
-
-/** Allowed payment_mode values per provider. Used to coerce DB values
- * from a different provider (or stale data) back to the default. */
-function isValidPaymentMode(providerKey: string, mode: string): boolean {
-  if (providerKey === 'easypay') {
-    return mode === PAYMENT_MODE_QRCODE
-  }
-  if (providerKey === 'alipay') {
-    return mode === '' || mode === PAYMENT_MODE_REDIRECT
-  }
-  return mode === ''
-}
+/**
+ * payment_mode is always sent empty: neither SePay (a VietQR code is the only
+ * flow) nor NOWPayments (a hosted invoice is the only flow) offers a choice,
+ * so there is nothing for the admin to pick. Stale values written by an older
+ * client are coerced back to "" on load.
+ */
+const PAYMENT_MODE_NONE = ''
 
 const props = defineProps<{
   show: boolean
@@ -401,26 +326,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-interface PaymentGuideItem {
-  title: string
-  open: string
-  call: string
-  fallback: string
-}
-
-interface PaymentGuide {
-  summary: string
-  items: PaymentGuideItem[]
-  note?: string
-}
-
 // --- Form state ---
 const form = reactive({
   name: '',
-  provider_key: 'easypay',
+  provider_key: 'sepay',
   supported_types: [] as string[],
   enabled: true,
-  payment_mode: PAYMENT_MODE_QRCODE,
+  payment_mode: PAYMENT_MODE_NONE,
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
@@ -432,37 +344,23 @@ const visibleFields = reactive<Record<string, boolean>>({})
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
+// SePay's webhook lives in the SePay dashboard and NOWPayments' IPN URL is sent
+// per invoice, so in both cases the admin needs to see the exact URL this
+// deployment answers on — not just the base they typed above.
 const providerWebhookHintMap: Record<string, string> = {
-  stripe: 'admin.settings.payment.stripeWebhookHint',
-  airwallex: 'admin.settings.payment.airwallexWebhookHint',
+  sepay: 'admin.settings.payment.sepayWebhookHint',
+  nowpayments: 'admin.settings.payment.nowpaymentsWebhookHint',
 }
 
 const providerWebhookUrl = computed(() => {
   const path = WEBHOOK_PATHS[form.provider_key]
-  return providerWebhookHintMap[form.provider_key] && path ? defaultBaseUrl + path : ''
+  if (!providerWebhookHintMap[form.provider_key] || !path) return ''
+  return (notifyBaseUrl.value.trim() || defaultBaseUrl) + path
 })
 
-const providerWebhookHint = computed(() =>
-  providerWebhookHintMap[form.provider_key] || 'admin.settings.payment.stripeWebhookHint',
-)
+const providerWebhookHint = computed(() => providerWebhookHintMap[form.provider_key] || '')
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
-
-const supportsPaymentMode = computed(() => providerSupportsPaymentMode(form.provider_key))
-
-const paymentModeOptions = computed(() => {
-  if (form.provider_key === 'alipay') {
-    // For Alipay official: "" = default (precreate → page.pay fallback);
-    // "redirect" = always open the Alipay checkout page in a new tab.
-    return [
-      { value: '', label: t('admin.settings.payment.modeQRCode') },
-      { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
-    ]
-  }
-  return [
-    { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-  ]
-})
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
@@ -482,82 +380,12 @@ const resolvedFields = computed(() => {
   }))
 })
 
-const paymentGuide = computed<PaymentGuide | null>(() => {
-  if (form.provider_key === 'alipay') {
-    return {
-      summary: t('admin.settings.payment.alipayGuideSummary'),
-      items: [
-        {
-          title: t('admin.settings.payment.alipayGuideFaceToFaceTitle'),
-          open: t('admin.settings.payment.alipayGuideFaceToFaceOpen'),
-          call: t('admin.settings.payment.alipayGuideFaceToFaceCall'),
-          fallback: t('admin.settings.payment.alipayGuideFaceToFaceFallback'),
-        },
-        {
-          title: t('admin.settings.payment.alipayGuidePagePayTitle'),
-          open: t('admin.settings.payment.alipayGuidePagePayOpen'),
-          call: t('admin.settings.payment.alipayGuidePagePayCall'),
-          fallback: t('admin.settings.payment.alipayGuidePagePayFallback'),
-        },
-        {
-          title: t('admin.settings.payment.alipayGuideWapTitle'),
-          open: t('admin.settings.payment.alipayGuideWapOpen'),
-          call: t('admin.settings.payment.alipayGuideWapCall'),
-          fallback: t('admin.settings.payment.alipayGuideWapFallback'),
-        },
-      ],
-    }
-  }
-
-  if (form.provider_key === 'wxpay') {
-    return {
-      summary: t('admin.settings.payment.wxpayGuideSummary'),
-      note: t('admin.settings.payment.wxpayGuideNote'),
-      items: [
-        {
-          title: t('admin.settings.payment.wxpayGuideNativeTitle'),
-          open: t('admin.settings.payment.wxpayGuideNativeOpen'),
-          call: t('admin.settings.payment.wxpayGuideNativeCall'),
-          fallback: t('admin.settings.payment.wxpayGuideNativeFallback'),
-        },
-        {
-          title: t('admin.settings.payment.wxpayGuideJsapiTitle'),
-          open: t('admin.settings.payment.wxpayGuideJsapiOpen'),
-          call: t('admin.settings.payment.wxpayGuideJsapiCall'),
-          fallback: t('admin.settings.payment.wxpayGuideJsapiFallback'),
-        },
-        {
-          title: t('admin.settings.payment.wxpayGuideH5Title'),
-          open: t('admin.settings.payment.wxpayGuideH5Open'),
-          call: t('admin.settings.payment.wxpayGuideH5Call'),
-          fallback: t('admin.settings.payment.wxpayGuideH5Fallback'),
-        },
-      ],
-    }
-  }
-
-  if (form.provider_key === 'airwallex') {
-    return {
-      summary: t('admin.settings.payment.airwallexGuideSummary'),
-      note: t('admin.settings.payment.airwallexGuideNote'),
-      items: [],
-    }
-  }
-
-  return null
-})
-
-const limitableTypes = computed(() => {
-  // Stripe: single "stripe" entry (one set of shared limits)
-  if (form.provider_key === 'stripe') {
-    return [{ value: 'stripe', label: 'Stripe' }]
-  }
-  const selected = form.supported_types.filter(t => t !== 'easypay')
-  return selected.map(v => {
+const limitableTypes = computed(() =>
+  form.supported_types.map(v => {
     const found = props.allPaymentTypes.find(pt => pt.value === v)
     return found || { value: v, label: v }
-  })
-})
+  }),
+)
 
 // --- Methods ---
 function isTypeSelected(type: string): boolean {
@@ -578,7 +406,7 @@ function toggleType(type: string) {
 
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
-  form.payment_mode = defaultPaymentMode(form.provider_key)
+  form.payment_mode = PAYMENT_MODE_NONE
   clearConfig()
   applyDefaults()
 }
@@ -676,8 +504,6 @@ function handleSave() {
     }
     filteredConfig[k] = v
   }
-  if (form.provider_key === 'easypay') {
-  }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
   // If base URL is empty, auto-fill with current domain
@@ -696,7 +522,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: supportsPaymentMode.value ? form.payment_mode : '',
+    payment_mode: PAYMENT_MODE_NONE,
     config: filteredConfig,
     limits: serializeLimits(),
   })
@@ -713,7 +539,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultPaymentMode(defaultKey)
+  form.payment_mode = PAYMENT_MODE_NONE
   clearConfig()
   applyDefaults()
 }
@@ -725,12 +551,9 @@ function loadProvider(provider: ProviderInstance) {
     ? [...provider.supported_types]
     : []
   form.enabled = provider.enabled
-  // Coerce to a valid value for this provider. Guards against stale data
-  // (e.g. "popup" written by an older client) showing up as an unselected
-  // button in the dialog.
-  form.payment_mode = isValidPaymentMode(provider.provider_key, provider.payment_mode || '')
-    ? (provider.payment_mode || '')
-    : defaultPaymentMode(provider.provider_key)
+  // Stale modes written by an older client ("qrcode", "redirect", …) are
+  // dropped rather than round-tripped back to the backend.
+  form.payment_mode = PAYMENT_MODE_NONE
   clearConfig()
   // Pre-fill config from API response. Backend omits sensitive fields entirely,
   // so those inputs stay blank — submitting blank preserves the stored secret.
@@ -738,9 +561,6 @@ function loadProvider(provider: ProviderInstance) {
     for (const [k, v] of Object.entries(provider.config)) {
       // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl
       if (k === 'notifyUrl' || k === 'returnUrl') continue
-      if (k === 'customMethods' && provider.provider_key === 'easypay') {
-        continue
-      }
       config[k] = v
     }
     // Extract base URLs from existing callback URLs

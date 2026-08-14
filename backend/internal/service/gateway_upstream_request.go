@@ -622,7 +622,7 @@ func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader stri
 	if s.settingService == nil {
 		return betaPolicyResult{}
 	}
-	settings, err := s.settingService.GetBetaPolicySettings(ctx)
+	settings, err := s.settingService.GetBetaPolicySettingsCached(ctx)
 	if err != nil || settings == nil {
 		return betaPolicyResult{}
 	}
@@ -804,7 +804,7 @@ func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, toke
 	if s.settingService == nil || len(tokens) == 0 {
 		return nil
 	}
-	settings, err := s.settingService.GetBetaPolicySettings(ctx)
+	settings, err := s.settingService.GetBetaPolicySettingsCached(ctx)
 	if err != nil || settings == nil {
 		return nil
 	}

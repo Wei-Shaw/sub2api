@@ -87,7 +87,7 @@ func claudeCodeBodyMapFromParsedRequest(parsedReq *service.ParsedRequest) map[st
 // 2. 固定间隔可能导致多个请求同时重试（惊群效应）
 //
 // 新实现使用指数退避 + 抖动算法：
-// 1. 初始退避 100ms，每次乘以 1.5，最大 2s
+// 1. 初始退避 100ms，每次乘以 1.5，最大 maxBackoff
 // 2. 添加 ±20% 的随机抖动，分散重试时间点
 // 3. 减少 Redis 压力，避免惊群效应
 const (
@@ -99,8 +99,15 @@ const (
 	initialBackoff = 100 * time.Millisecond
 	// backoffMultiplier 退避时间乘数（指数退避）
 	backoffMultiplier = 1.5
-	// maxBackoff 最大退避时间
-	maxBackoff = 2 * time.Second
+	// maxBackoff 最大退避时间。
+	//
+	// 槽位释放是事件式的，但等待方只能轮询感知：退避上限就是"槽位已空但请求还没
+	// 发出去"的死等上限，会原样计入端到端首字延迟。上限 2s 时，一个繁忙账号上的
+	// 等待方平均要白等 ~1s，且 LLM 请求普遍是秒级长连接，等待方在队列里往往会撞上
+	// 多轮退避。收敛到 400ms 后单次死等上限降低 5 倍，代价是每个等待方最多
+	// 2.5 次/秒的 Redis 轮询（原 0.5 次/秒）——槽位竞争本就只在少量账号上发生，
+	// 这点增量对 Redis 可忽略。
+	maxBackoff = 400 * time.Millisecond
 )
 
 // SSEPingFormat defines the format of SSE ping events for different platforms

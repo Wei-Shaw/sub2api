@@ -365,7 +365,7 @@ describe('PaymentView subscription confirmation amounts', () => {
   })
 })
 
-async function mountRecharge(options: {
+async function mountRecharge(amount: number, options: {
   checkout?: Partial<CheckoutInfoResponse>
   method?: Partial<MethodLimit>
 } = {}) {
@@ -386,6 +386,7 @@ async function mountRecharge(options: {
     data: {
       ...base,
       methods: {
+        ...base.methods,
         sepay: { ...base.methods.sepay, ...options.method },
       },
     },
@@ -407,69 +408,46 @@ async function mountRecharge(options: {
   })
   await flushPromises()
   await flushPromises()
+  // `AmountInput` is stubbed, so the typed amount arrives as its update event.
+  wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', amount)
+  await flushPromises()
   return wrapper
 }
 
-async function enterRechargeAmount(wrapper: Awaited<ReturnType<typeof mountRecharge>>, value: number) {
-  await wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', value)
-  await flushPromises()
-}
-
 describe('PaymentView recharge amounts', () => {
-  // The top-up field takes USD credit, so a dong channel has to quote the
-  // converted sum. Quoting the dollar figure with a ₫ symbol is how "5000"
-  // showed as ₫5,000 and still credited $5,000.
-  it('quotes the converted VND amount for a USD top-up', async () => {
-    const wrapper = await mountRecharge({
+  it('converts the recharge amount for a dong channel instead of charging the USD figure as dong', async () => {
+    const wrapper = await mountRecharge(10, {
       checkout: { subscription_usd_to_vnd_rate: 26000 },
       method: { currency: 'VND' },
     })
-    await enterRechargeAmount(wrapper, 5000)
 
     const text = wrapper.text()
-    expect(text).toContain(formatPaymentAmount(130000000, 'VND'))
-    expect(text).not.toContain(formatPaymentAmount(5000, 'VND'))
-    // The credit stays in dollars, and the row shows even on a 1× multiplier.
-    expect(text).toContain(formatPaymentAmount(5000, 'USD'))
+    const converted = formatPaymentAmount(260000, 'VND')
+
+    expect(text).toContain(converted)
+    expect(text).not.toContain(formatPaymentAmount(10, 'VND'))
+    expect(wrapper.findAll('button').some(button => button.text().includes(converted))).toBe(true)
   })
 
-  it('takes the fee on the converted amount, matching the backend pay_amount', async () => {
-    const wrapper = await mountRecharge({
+  it('adds the fee after conversion, matching the backend pay amount', async () => {
+    const wrapper = await mountRecharge(10, {
       checkout: { subscription_usd_to_vnd_rate: 26000, recharge_fee_rate: 2.5 },
       method: { currency: 'VND' },
     })
-    await enterRechargeAmount(wrapper, 10)
 
     const text = wrapper.text()
-    expect(text).toContain(formatPaymentAmount(260000, 'VND'))
+    // 2.5% of ₫260,000 is ₫6,500, charged on top of the converted amount.
     expect(text).toContain(formatPaymentAmount(6500, 'VND'))
     expect(text).toContain(formatPaymentAmount(266500, 'VND'))
   })
 
-  it('keeps the amount as-is when no rate is configured', async () => {
-    const wrapper = await mountRecharge({
+  it('charges the amount as-is when no rate is configured', async () => {
+    const wrapper = await mountRecharge(10, {
       checkout: { subscription_usd_to_vnd_rate: 0 },
       method: { currency: 'VND' },
     })
-    await enterRechargeAmount(wrapper, 50)
 
-    expect(wrapper.text()).toContain(formatPaymentAmount(50, 'VND'))
-    expect(wrapper.text()).not.toContain(formatPaymentAmount(1300000, 'VND'))
-  })
-
-  // The per-method bounds arrive in dong; comparing them against the raw USD
-  // figure marked every method unavailable and blocked the submit button.
-  it('compares gateway limits against the converted amount', async () => {
-    const wrapper = await mountRecharge({
-      checkout: { subscription_usd_to_vnd_rate: 26000 },
-      method: { currency: 'VND', single_min: 50000, single_max: 500000000 },
-    })
-    await enterRechargeAmount(wrapper, 10)
-
-    // `t()` is stubbed to return the key, so the raw key IS the error text.
-    const amountInput = wrapper.findComponent({ name: 'AmountInput' })
-    expect(amountInput.props('error')).toBe('')
-    expect(amountInput.props('min')).toBeCloseTo(1.92, 2)
+    expect(wrapper.text()).toContain(formatPaymentAmount(10, 'VND'))
   })
 })
 

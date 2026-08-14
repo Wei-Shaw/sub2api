@@ -27,7 +27,7 @@ func TestCalculateCreateOrderPayAmountUsesCurrencyPrecision(t *testing.T) {
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionConvertsVNDPriceWhenRateConfigured(t *testing.T) {
+func TestCalculateCreateOrderPayAmountConvertsVNDPriceWhenRateConfigured(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 0, "VND", 26000)
@@ -35,11 +35,11 @@ func TestCalculateCreateOrderPayAmountForSubscriptionConvertsVNDPriceWhenRateCon
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if amountStr != "259740" || amount != 259740 {
-		t.Fatalf("subscription VND pay amount = (%q, %v), want (259740, 259740)", amountStr, amount)
+		t.Fatalf("VND pay amount = (%q, %v), want (259740, 259740)", amountStr, amount)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterVNDConversion(t *testing.T) {
+func TestCalculateCreateOrderPayAmountAppliesFeeAfterVNDConversion(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 2.5, "VND", 26000)
@@ -48,11 +48,11 @@ func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterVNDConversio
 	}
 	// 2.5% of 259,740 is 6,493.5, rounded up to a whole dong.
 	if amountStr != "266234" || amount != 266234 {
-		t.Fatalf("subscription VND pay amount with fee = (%q, %v), want (266234, 266234)", amountStr, amount)
+		t.Fatalf("VND pay amount with fee = (%q, %v), want (266234, 266234)", amountStr, amount)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonVNDPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountKeepsNonVNDPrice(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(9.99, 0, "USD", 26000)
@@ -60,14 +60,14 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonVNDPrice(t *testing
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if amountStr != "9.99" || amount != 9.99 {
-		t.Fatalf("subscription USD pay amount = (%q, %v), want (9.99, 9.99)", amountStr, amount)
+		t.Fatalf("USD pay amount = (%q, %v), want (9.99, 9.99)", amountStr, amount)
 	}
 }
 
-// Conversion is opt-in: with no rate configured a dong channel charges the plan
-// price as-is. Guessing a rate would be worse than charging the wrong currency
+// Conversion is opt-in: with no rate configured a dong channel charges the
+// amount as-is. Guessing a rate would be worse than charging the wrong currency
 // visibly, so this pins the do-nothing branch.
-func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDisabled(t *testing.T) {
+func TestCalculateCreateOrderPayAmountKeepsDirectPriceWhenRateDisabled(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(10, 0, "VND", 0)
@@ -75,12 +75,12 @@ func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDis
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if amountStr != "10" || amount != 10 {
-		t.Fatalf("subscription VND pay amount without rate = (%q, %v), want (10, 10)", amountStr, amount)
+		t.Fatalf("VND pay amount without rate = (%q, %v), want (10, 10)", amountStr, amount)
 	}
 }
 
-// 汇率只针对 VND 通道，其他币种的充值订单金额保持原样。
-func TestCalculateCreateOrderPayAmountForBalanceKeepsNonVNDAmount(t *testing.T) {
+// 汇率只针对越南盾通道，其他币种通道不受影响。
+func TestCalculateCreateOrderPayAmountIgnoresRateOnNonVNDChannel(t *testing.T) {
 	t.Parallel()
 
 	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(50, 0, "CNY", 7.15)
@@ -88,49 +88,21 @@ func TestCalculateCreateOrderPayAmountForBalanceKeepsNonVNDAmount(t *testing.T) 
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if amountStr != "50.00" || amount != 50 {
-		t.Fatalf("balance CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
+		t.Fatalf("CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
 	}
 }
 
-// A top-up buys USD credit, so a dong channel has to collect amount × rate.
-// Charging the figure as-is is the ₫5,000-for-$5,000 bug.
-func TestCalculateCreateOrderPayAmountForBalanceConvertsVND(t *testing.T) {
+// The bug this pins: a balance recharge over a dong channel used to skip the
+// conversion entirely, so a $10 top-up asked the user for ₫10.
+func TestCalculateCreateOrderPayAmountConvertsBalanceRechargeOnVNDChannel(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(5000, 0, "VND", 26000)
+	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(10, 0, "VND", 26000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "130000000" || amount != 130000000 {
-		t.Fatalf("balance VND pay amount = (%q, %v), want (130000000, 130000000)", amountStr, amount)
-	}
-}
-
-// The conversion runs before the fee, so the fee is a percentage of the dong
-// amount rather than of the dollar figure.
-func TestCalculateCreateOrderPayAmountForBalanceAppliesFeeAfterConversion(t *testing.T) {
-	t.Parallel()
-
-	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(10, 2.5, "VND", 26000)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if amountStr != "266500" || amount != 266500 {
-		t.Fatalf("balance VND pay amount with fee = (%q, %v), want (266500, 266500)", amountStr, amount)
-	}
-}
-
-// Opt-in on the balance side too: an unset rate leaves the amount alone rather
-// than guessing a rate.
-func TestCalculateCreateOrderPayAmountForBalanceKeepsAmountWhenRateDisabled(t *testing.T) {
-	t.Parallel()
-
-	amountStr, amount, err := calculateCreateOrderPayAmountForCurrency(50, 0, "VND", 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if amountStr != "50" || amount != 50 {
-		t.Fatalf("balance VND pay amount without rate = (%q, %v), want (50, 50)", amountStr, amount)
+	if amountStr != "260000" || amount != 260000 {
+		t.Fatalf("balance VND pay amount = (%q, %v), want (260000, 260000)", amountStr, amount)
 	}
 }
 

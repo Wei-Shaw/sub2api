@@ -229,10 +229,12 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "enabled_allows_wechat_payment_oauth_callback",
+			// The WeChat payment OAuth flow is gone, so its callback is no
+			// longer allowlisted and falls through to the default block.
+			name:       "enabled_blocks_wechat_payment_oauth_callback",
 			enabled:    "true",
 			path:       "/api/v1/auth/oauth/wechat/payment/callback",
-			wantStatus: http.StatusOK,
+			wantStatus: http.StatusForbidden,
 		},
 		{
 			name:       "enabled_blocks_oidc_oauth_start",
