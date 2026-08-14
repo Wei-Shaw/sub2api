@@ -54,18 +54,18 @@
             }}
           </p>
           <div
-            class="mt-3 rounded-lg border border-gray-300 bg-surface p-2 dark:border-dark-500"
+            class="mt-3 rounded-sm border border-line bg-surface p-2"
           >
             <div class="flex flex-wrap items-center gap-2">
               <span
                 v-for="suffix in registrationEmailSuffixWhitelistTags"
                 :key="suffix"
-                class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-ink-secondary dark:bg-dark-600"
+                class="inline-flex items-center gap-1 rounded bg-surface-sunken px-2 py-1 text-xs font-mono text-ink-secondary"
               >
                 <span>{{ suffix }}</span>
                 <button
                   type="button"
-                  class="rounded-full text-ink-secondary hover:bg-gray-200 hover:text-ink-secondary dark:hover:bg-dark-500 dark:hover:text-white"
+                  class="rounded-full text-ink-secondary hover:bg-surface-hover hover:text-ink-secondary"
                   @click="
                     removeRegistrationEmailSuffixWhitelistTag(suffix)
                   "
@@ -80,12 +80,12 @@
               </span>
 
               <div
-                class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-accent dark:focus-within:border-accent"
               >
                 <input
                   v-model="registrationEmailSuffixWhitelistDraft"
                   type="text"
-                  class="w-full bg-transparent text-sm font-mono text-ink outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  class="w-full bg-transparent text-sm font-mono text-ink outline-none placeholder:text-ink-tertiary dark:placeholder:text-ink-tertiary"
                   :placeholder="
                     t(
                       'admin.settings.registration.emailSuffixWhitelistPlaceholder',
@@ -242,12 +242,12 @@
             />
           </div>
           <div
-            class="mt-3 rounded-lg border px-3 py-2 text-sm"
+            class="mt-3 rounded-sm border px-3 py-2 text-sm"
             :class="
-              form.passkey_configured
-                ? 'border-green-200 bg-green-50 text-success dark:border-green-900 dark:bg-green-950/40'
-                : 'border-amber-200 bg-amber-50 text-warn dark:border-amber-900 dark:bg-amber-950/40'
-            "
+ form.passkey_configured
+ ? 'border-success/40 bg-green-50 text-success dark:border-green-900 dark:bg-green-950/40'
+ : 'border-amber-200 bg-amber-50 text-warn dark:border-amber-900 dark:bg-amber-950/40'
+"
             data-testid="passkey-config-status"
           >
             <p class="font-medium">
@@ -371,19 +371,19 @@
             {{ t("admin.settings.apiKeyAcl.forwardedClientIpHeadersHint") }}
           </p>
           <div
-            class="mt-3 rounded-lg border border-gray-300 bg-surface p-2 dark:border-dark-500"
+            class="mt-3 rounded-sm border border-line bg-surface p-2"
           >
             <div class="flex flex-wrap items-center gap-2">
               <span
                 v-for="header in form.forwarded_client_ip_headers"
                 :key="header"
                 data-testid="forwarded-client-ip-header-tag"
-                class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-ink-secondary dark:bg-dark-600"
+                class="inline-flex items-center gap-1 rounded bg-surface-sunken px-2 py-1 text-xs font-mono text-ink-secondary"
               >
                 <span>{{ header }}</span>
                 <button
                   type="button"
-                  class="rounded-full text-ink-secondary hover:bg-gray-200 hover:text-ink-secondary dark:hover:bg-dark-500 dark:hover:text-white"
+                  class="rounded-full text-ink-secondary hover:bg-surface-hover hover:text-ink-secondary"
                   :aria-label="t('admin.settings.apiKeyAcl.removeForwardedClientIpHeader', { header })"
                   @click="removeForwardedClientIpHeader(header)"
                 >
@@ -396,14 +396,14 @@
                 </button>
               </span>
               <div
-                class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-accent dark:focus-within:border-accent"
               >
                 <input
                   id="forwarded-client-ip-headers"
                   v-model="forwardedClientIpHeaderDraft"
                   data-testid="forwarded-client-ip-headers-input"
                   type="text"
-                  class="w-full bg-transparent text-sm font-mono text-ink outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  class="w-full bg-transparent text-sm font-mono text-ink outline-none placeholder:text-ink-tertiary dark:placeholder:text-ink-tertiary"
                   :placeholder="t('admin.settings.apiKeyAcl.forwardedClientIpHeadersPlaceholder')"
                   @keydown="handleForwardedClientIpHeaderKeydown"
                   @blur="commitForwardedClientIpHeaderDraft"
@@ -428,7 +428,7 @@
           <Icon
             name="shield"
             size="md"
-            class="text-primary-500"
+            class="text-accent"
           />
           <h2 class="text-lg font-semibold text-ink">
             {{ t("admin.settings.panelRateLimit.title") }}
@@ -444,7 +444,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -452,13 +452,13 @@
         <template v-else>
           <!-- 计数维度说明：按账号计数，反代部署无误伤 -->
           <div
-            class="rounded-lg border border-sky-200 border border-info/40 bg-info-tint p-4 dark:border-sky-800"
+            class="rounded-sm border border border-info/40 bg-info-tint p-4"
           >
             <div class="flex items-start">
               <Icon
                 name="infoCircle"
                 size="md"
-                class="mt-0.5 flex-shrink-0 text-sky-500"
+                class="mt-0.5 flex-shrink-0 text-info"
               />
               <p class="ml-3 text-sm text-info">
                 {{ t("admin.settings.panelRateLimit.proxySafeNote") }}
@@ -652,17 +652,17 @@
               {{ t("admin.settings.captcha.provider") }}
             </label>
             <div
-              class="grid grid-cols-3 gap-2 rounded-lg bg-surface-sunken p-1"
+              class="grid grid-cols-3 gap-2 rounded-sm bg-surface-sunken p-1"
             >
               <button
                 type="button"
                 data-testid="captcha-provider-turnstile"
-                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                class="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
                 :class="
-                  captchaProviderSelection === 'turnstile'
-                    ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                    : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                "
+ captchaProviderSelection === 'turnstile'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                 @click="selectCaptchaProvider('turnstile')"
               >
                 {{ t("admin.settings.captcha.providerTurnstile") }}
@@ -670,12 +670,12 @@
               <button
                 type="button"
                 data-testid="captcha-provider-tencent"
-                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                class="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
                 :class="
-                  captchaProviderSelection === 'tencent'
-                    ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                    : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                "
+ captchaProviderSelection === 'tencent'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                 @click="selectCaptchaProvider('tencent')"
               >
                 {{ t("admin.settings.captcha.providerTencent") }}
@@ -683,12 +683,12 @@
               <button
                 type="button"
                 data-testid="captcha-provider-aliyun"
-                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                class="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
                 :class="
-                  captchaProviderSelection === 'aliyun'
-                    ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                    : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                "
+ captchaProviderSelection === 'aliyun'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                 @click="selectCaptchaProvider('aliyun')"
               >
                 {{ t("admin.settings.captcha.providerAliyun") }}
@@ -718,7 +718,7 @@
                 <a
                   href="https://dash.cloudflare.com/"
                   target="_blank"
-                  class="text-primary-600 hover:text-primary-500"
+                  class="text-accent hover:text-accent-hover"
                   >{{
                     t("admin.settings.turnstile.cloudflareDashboard")
                   }}</a
@@ -755,16 +755,16 @@
               <label class="mb-2 block text-sm font-medium text-ink-secondary">
                 {{ t("admin.settings.tencentCaptcha.region") }}
               </label>
-              <div class="grid grid-cols-2 gap-2 rounded-lg bg-surface-sunken p-1">
+              <div class="grid grid-cols-2 gap-2 rounded-sm bg-surface-sunken p-1">
                 <button
                   type="button"
                   data-testid="tencent-captcha-region-cn"
-                  class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                  class="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors"
                   :class="
-                    form.tencent_captcha_region !== 'intl'
-                      ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                      : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                  "
+ form.tencent_captcha_region !== 'intl'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                   @click="form.tencent_captcha_region = 'cn'"
                 >
                   {{ t("admin.settings.tencentCaptcha.regionCn") }}
@@ -772,12 +772,12 @@
                 <button
                   type="button"
                   data-testid="tencent-captcha-region-intl"
-                  class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                  class="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors"
                   :class="
-                    form.tencent_captcha_region === 'intl'
-                      ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                      : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                  "
+ form.tencent_captcha_region === 'intl'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                   @click="form.tencent_captcha_region = 'intl'"
                 >
                   {{ t("admin.settings.tencentCaptcha.regionIntl") }}
@@ -873,7 +873,7 @@
                 :href="tencentCaptchaLinks.console"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-primary-600 hover:text-primary-500"
+                class="text-accent hover:text-accent-hover"
               >
                 {{ t("admin.settings.tencentCaptcha.openCaptchaConsole") }}
               </a>
@@ -881,7 +881,7 @@
                 :href="tencentCaptchaLinks.cloudKeys"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-primary-600 hover:text-primary-500"
+                class="text-accent hover:text-accent-hover"
               >
                 {{ t("admin.settings.tencentCaptcha.createCloudKeys") }}
               </a>
@@ -889,7 +889,7 @@
                 :href="tencentCaptchaLinks.webDocs"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-primary-600 hover:text-primary-500"
+                class="text-accent hover:text-accent-hover"
               >
                 {{ t("admin.settings.tencentCaptcha.openWebDocs") }}
               </a>
@@ -906,28 +906,28 @@
                   {{ t("admin.settings.aliyunCaptcha.region") }}
                 </label>
                 <div
-                  class="grid grid-cols-2 gap-2 rounded-lg bg-surface-sunken p-1"
+                  class="grid grid-cols-2 gap-2 rounded-sm bg-surface-sunken p-1"
                 >
                   <button
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                    class="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors"
                     :class="
-                      form.aliyun_captcha_region !== 'sgp'
-                        ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                        : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                    "
+ form.aliyun_captcha_region !== 'sgp'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                     @click="form.aliyun_captcha_region = 'cn'"
                   >
                     {{ t("admin.settings.aliyunCaptcha.regionCn") }}
                   </button>
                   <button
                     type="button"
-                    class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition"
+                    class="inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors"
                     :class="
-                      form.aliyun_captcha_region === 'sgp'
-                        ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                        : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                    "
+ form.aliyun_captcha_region === 'sgp'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                     @click="form.aliyun_captcha_region = 'sgp'"
                   >
                     {{ t("admin.settings.aliyunCaptcha.regionSgp") }}
@@ -1151,7 +1151,7 @@
       </div>
       <div class="space-y-6 p-6">
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div class="rounded-lg border border-line p-4">
+          <div class="rounded-sm border border-line p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h3 class="font-medium text-ink">
@@ -1170,7 +1170,7 @@
             </div>
 
             <div v-if="form.github_oauth_enabled" class="mt-4 space-y-4">
-              <div class="rounded-lg bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+              <div class="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
                 <template v-if="isZhLocale">
                   开通引导：GitHub Settings → Developer settings →
                   <a
@@ -1178,7 +1178,7 @@
                     href="https://github.com/settings/developers"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    class="font-medium text-accent hover:underline"
                   >OAuth Apps</a>
                   → New OAuth App；Homepage URL 填站点域名，Authorization callback URL 填下面的后端回调地址。
                 </template>
@@ -1189,7 +1189,7 @@
                     href="https://github.com/settings/developers"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                    class="font-medium text-accent hover:underline"
                   >OAuth Apps</a>
                   → New OAuth App. Use your site origin as Homepage URL and the backend callback URL below as Authorization callback URL.
                 </template>
@@ -1261,7 +1261,7 @@
             </div>
           </div>
 
-          <div class="rounded-lg border border-line p-4">
+          <div class="rounded-sm border border-line p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <h3 class="font-medium text-ink">
@@ -1280,7 +1280,7 @@
             </div>
 
             <div v-if="form.google_oauth_enabled" class="mt-4 space-y-4">
-              <div class="rounded-lg bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
+              <div class="rounded-sm bg-surface-sunken px-3 py-2 text-xs text-ink-secondary">
                 {{
                   localText(
                     "开通引导：Google Cloud Console → APIs & Services → OAuth consent screen 完成同意屏幕；Credentials → Create Credentials → OAuth client ID，类型选择 Web application，并把下面地址加入 Authorized redirect URIs。",
@@ -1392,7 +1392,7 @@
         >
           <div class="space-y-4">
             <div
-              class="rounded-lg border border-line p-4"
+              class="rounded-sm border border-line p-4"
             >
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -1465,7 +1465,7 @@
             </div>
 
             <div
-              class="rounded-lg border border-line p-4"
+              class="rounded-sm border border-line p-4"
             >
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -1543,7 +1543,7 @@
             </div>
 
             <div
-              class="rounded-lg border border-line p-4"
+              class="rounded-sm border border-line p-4"
             >
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -1622,7 +1622,7 @@
               (form.wechat_connect_mp_enabled ||
                 form.wechat_connect_mobile_enabled)
             "
-            class="rounded-lg border border-amber-200 border border-warn/40 bg-warn-tint px-4 py-3 text-sm text-warn dark:border-amber-900/40"
+            class="rounded-sm border border border-warn/40 bg-warn-tint px-4 py-3 text-sm text-warn"
           >
             {{
               localText(
@@ -1811,7 +1811,7 @@
                     v-model="form.dingtalk_connect_corp_restriction_policy"
                     type="radio"
                     value="none"
-                    class="h-4 w-4 text-primary-600"
+                    class="h-4 w-4 text-accent"
                   />
                   <span class="text-sm text-ink-secondary">
                     {{ t("admin.settings.dingtalk.corpPolicy.none") }}
@@ -1822,7 +1822,7 @@
                     v-model="form.dingtalk_connect_corp_restriction_policy"
                     type="radio"
                     value="internal_only"
-                    class="h-4 w-4 text-primary-600"
+                    class="h-4 w-4 text-accent"
                   />
                   <span class="text-sm text-ink-secondary">
                     {{ t("admin.settings.dingtalk.corpPolicy.internalOnly") }}

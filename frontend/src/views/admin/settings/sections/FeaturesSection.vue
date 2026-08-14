@@ -12,7 +12,7 @@
       <p class="mt-1.5 text-xs">
         <router-link
           to="/admin/channels/monitor"
-          class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+          class="inline-flex items-center gap-1 text-accent hover:underline"
         >
           {{ t('admin.settings.features.channelMonitor.configureLink') }}
           <span aria-hidden="true">→</span>
@@ -37,27 +37,27 @@
           <label class="input-label">
             {{ t('admin.settings.features.channelMonitor.mode') }}
           </label>
-          <div class="mt-1.5 inline-flex w-full max-w-md rounded-lg border border-line bg-gray-50 p-1 dark:bg-dark-900/40">
+          <div class="mt-1.5 inline-flex w-full max-w-md rounded-sm border border-line bg-surface-sunken p-1">
             <button
               type="button"
-              class="inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+              class="inline-flex flex-1 items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
               :class="
-                form.channel_monitor_mode === 'v2'
-                  ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                  : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-              "
+ form.channel_monitor_mode === 'v2'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
               @click="form.channel_monitor_mode = 'v2'"
             >
               {{ t('admin.settings.features.channelMonitor.modeV2') }}
             </button>
             <button
               type="button"
-              class="inline-flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+              class="inline-flex flex-1 items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
               :class="
-                form.channel_monitor_mode === 'v1'
-                  ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                  : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-              "
+ form.channel_monitor_mode === 'v1'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
               @click="form.channel_monitor_mode = 'v1'"
             >
               {{ t('admin.settings.features.channelMonitor.modeV1') }}
@@ -78,7 +78,7 @@
         <div v-if="form.channel_monitor_mode === 'v1'">
           <label class="input-label">
             {{ t('admin.settings.features.channelMonitor.defaultInterval') }}
-            <span class="text-red-500">*</span>
+            <span class="text-danger">*</span>
           </label>
           <input
             v-model.number="form.channel_monitor_default_interval_seconds"
@@ -118,7 +118,7 @@
       <p class="mt-1.5 text-xs">
         <router-link
           to="/admin/channels/pricing"
-          class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+          class="inline-flex items-center gap-1 text-accent hover:underline"
         >
           {{ t('admin.settings.features.availableChannels.configureLink') }}
           <span aria-hidden="true">→</span>
@@ -201,7 +201,7 @@
       <p class="mt-1.5 text-xs">
         <router-link
           to="/admin/risk-control"
-          class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+          class="inline-flex items-center gap-1 text-accent hover:underline"
         >
           {{ t('admin.settings.features.riskControl.configureLink') }}
           <span aria-hidden="true">→</span>
@@ -236,7 +236,7 @@
       <div v-if="form.cyber_session_block_enabled">
         <label class="input-label">
           {{ t('admin.settings.features.riskControl.cyberSessionBlockTTL') }}
-          <span class="text-red-500">*</span>
+          <span class="text-danger">*</span>
         </label>
         <input
           v-model.number="form.cyber_session_block_ttl_seconds"
@@ -393,7 +393,7 @@
             </button>
           </div>
 
-          <div class="overflow-x-auto rounded-lg border border-line">
+          <div class="overflow-x-auto rounded-sm border border-line">
             <table class="min-w-full divide-y divide-line">
               <thead class="bg-surface-sunken">
                 <tr>
@@ -411,7 +411,7 @@
                   <th class="px-3 py-2 text-left text-xs font-medium uppercase text-ink-secondary">{{ t('admin.settings.features.affiliate.customUsers.col.actions') }}</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-gray-200 bg-surface dark:divide-dark-700">
+              <tbody class="divide-y divide-line-subtle bg-surface">
                 <tr v-if="affiliateState.loading">
                   <td colspan="6" class="px-3 py-6 text-center text-sm text-ink-secondary">
                     {{ t('common.loading') }}
@@ -436,7 +436,7 @@
                     {{ entry.aff_code }}
                     <span
                       v-if="entry.aff_code_custom"
-                      class="ml-1 inline-block rounded bg-primary-100 px-1.5 py-0.5 text-[10px] font-medium text-accent dark:bg-primary-900/30"
+                      class="ml-1 inline-block rounded bg-accent-tint px-1.5 py-0.5 text-[10px] font-medium text-accent"
                     >{{ t('admin.settings.features.affiliate.customUsers.customBadge') }}</span>
                   </td>
                   <td class="px-3 py-2 text-sm">
@@ -445,12 +445,12 @@
                   </td>
                   <td class="px-3 py-2 text-sm">
                     <div class="flex items-center gap-2">
-                      <button type="button" class="text-primary-600 hover:underline" @click="openAffiliateModal(entry)">
+                      <button type="button" class="text-accent hover:underline" @click="openAffiliateModal(entry)">
                         {{ t('common.edit') }}
                       </button>
                       <button
                         type="button"
-                        class="text-red-600 hover:underline"
+                        class="text-danger hover:underline"
                         @click="askResetAffiliateUser(entry)"
                       >
                         {{ t('common.delete') }}
@@ -497,7 +497,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
     @click.self="closeAffiliateModal"
   >
-    <div class="w-full max-w-md rounded-lg bg-surface p-6 shadow-xl">
+    <div class="w-full max-w-md rounded-sm bg-surface p-6 shadow-modal">
       <h3 class="mb-4 text-lg font-semibold">
         {{ affiliateModal.mode === 'add' ? t('admin.settings.features.affiliate.modal.addTitle') : t('admin.settings.features.affiliate.modal.editTitle') }}
       </h3>
@@ -507,7 +507,7 @@
           <!-- Chip showing the picked user; clicking it re-opens the search -->
           <div
             v-if="affiliateModal.selectedUser"
-            class="flex items-center justify-between rounded-md border border-primary-200 border border-accent/40 bg-accent-tint px-3 py-2 dark:border-primary-700/50"
+            class="flex items-center justify-between rounded-sm border border-accent-line border border-accent/40 bg-accent-tint px-3 py-2"
           >
             <div class="text-sm">
               <span class="font-medium text-ink">{{ affiliateModal.selectedUser.email }}</span>
@@ -515,7 +515,7 @@
             </div>
             <button
               type="button"
-              class="text-lg leading-none text-ink-tertiary hover:text-red-600"
+              class="text-lg leading-none text-ink-tertiary hover:text-danger"
               :title="t('admin.settings.features.affiliate.modal.changeUser')"
               @click="clearSelectedAffiliateUser"
             >
@@ -539,7 +539,7 @@
                 v-for="u in affiliateModal.userResults"
                 :key="u.id"
                 type="button"
-                class="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-800"
+                class="w-full px-3 py-1.5 text-left text-sm hover:bg-surface-hover"
                 @click="selectAffiliateUser(u)"
               >
                 {{ u.email }} <span class="text-xs text-ink-secondary">({{ u.username }})</span>
@@ -622,7 +622,7 @@
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
     @click.self="affiliateBatchModal.open = false"
   >
-    <div class="w-full max-w-md rounded-lg bg-surface p-6 shadow-xl">
+    <div class="w-full max-w-md rounded-sm bg-surface p-6 shadow-modal">
       <h3 class="mb-4 text-lg font-semibold">
         {{ t('admin.settings.features.affiliate.batchModal.title', { count: affiliateState.selected.length }) }}
       </h3>

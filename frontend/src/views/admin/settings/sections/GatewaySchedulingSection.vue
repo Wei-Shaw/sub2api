@@ -139,7 +139,7 @@
               </label>
               <button
                 type="button"
-                class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                class="btn btn-secondary btn-sm shrink-0 text-danger hover:text-danger"
                 @click="removeCodexFingerprintRow(i)"
               >
                 {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
@@ -150,7 +150,7 @@
             </button>
             <p
               v-if="codexFingerprintNoRequired"
-              class="mt-2 text-xs text-amber-600 dark:text-amber-500"
+              class="mt-2 text-xs text-warn"
             >
               {{ t("admin.settings.gatewayForwarding.codexFingerprintNoRequiredWarn") }}
             </p>
@@ -214,7 +214,7 @@
               />
               <button
                 type="button"
-                class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                class="btn btn-secondary btn-sm shrink-0 text-danger hover:text-danger"
                 @click="removeCodexBlacklistRow(i)"
               >
                 {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
@@ -283,7 +283,7 @@
               </label>
               <button
                 type="button"
-                class="btn btn-secondary btn-sm shrink-0 text-red-600 hover:text-red-700 dark:text-red-400"
+                class="btn btn-secondary btn-sm shrink-0 text-danger hover:text-danger"
                 @click="removeCodexWhitelistRow(i)"
               >
                 {{ t("admin.settings.gatewayForwarding.codexRemoveRow") }}
@@ -318,7 +318,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -398,7 +398,7 @@
       </div>
       <div class="space-y-5 p-6">
         <div v-if="ollamaCloudUsageLoading" class="flex items-center gap-2 text-ink-secondary">
-          <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+          <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"></div>
           {{ t("common.loading") }}
         </div>
         <template v-else>
@@ -532,7 +532,7 @@
             <div
               v-for="platform in schedulingThresholdPlatforms"
               :key="platform"
-              class="rounded-lg border border-line p-4"
+              class="rounded-sm border border-line p-4"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
@@ -927,7 +927,7 @@
             <div
               v-for="(block, index) in claudeOAuthSystemPromptBlocks"
               :key="block.id"
-              class="rounded-lg border border-line bg-gray-50 p-4 dark:bg-dark-800/60"
+              class="rounded-sm border border-line bg-surface-sunken p-4"
             >
               <div
                 :class="[
@@ -1002,7 +1002,7 @@
                   <Toggle v-model="block.enabled" />
                   <button
                     type="button"
-                    class="btn btn-secondary btn-sm px-2 text-red-600 hover:text-red-700 dark:text-red-400"
+                    class="btn btn-secondary btn-sm px-2 text-danger hover:text-danger"
                     @click="removeClaudeOAuthSystemPromptBlock(index)"
                   >
                     <Icon name="trash" size="xs" />
@@ -1361,7 +1361,7 @@
 
           <div
             v-if="webSearchConfig.providers.length === 0"
-            class="rounded-lg border border-dashed border-line p-4 text-center text-sm text-ink-tertiary"
+            class="rounded-sm border border-dashed border-line p-4 text-center text-sm text-ink-tertiary"
           >
             {{ t("admin.settings.webSearchEmulation.noProviders") }}
           </div>
@@ -1369,7 +1369,7 @@
           <div
             v-for="(provider, pIdx) in webSearchConfig.providers"
             :key="pIdx"
-            class="rounded-lg border border-line"
+            class="rounded-sm border border-line"
           >
             <!-- Collapsible header -->
             <div
@@ -1415,7 +1415,7 @@
                     !expandedProviders[pIdx] &&
                     provider.api_key_configured
                   "
-                  class="text-xs text-green-500"
+                  class="text-xs text-success"
                 >
                   {{
                     t(
@@ -1426,7 +1426,7 @@
               </div>
               <button
                 type="button"
-                class="text-red-500 hover:text-red-700 text-xs"
+                class="text-danger hover:text-danger text-xs"
                 @click.stop="removeWebSearchProvider(pIdx)"
               >
                 {{
@@ -1604,7 +1604,7 @@
                     provider.quota_limit != null &&
                     provider.quota_limit > 0
                   "
-                  class="flex-1 rounded-full bg-gray-200 dark:bg-dark-600"
+                  class="flex-1 rounded-full bg-surface-sunken"
                   style="height: 6px"
                 >
                   <div
@@ -1635,7 +1635,7 @@
                 <button
                   v-if="(provider.quota_used ?? 0) > 0"
                   type="button"
-                  class="text-xs text-primary-600 hover:text-primary-700"
+                  class="text-xs text-accent hover:text-accent-hover"
                   @click="resetWebSearchUsage(pIdx)"
                 >
                   {{ t("admin.settings.webSearchEmulation.resetUsage") }}
@@ -1674,7 +1674,7 @@
       @click.self="wsTestDialogOpen = false"
     >
       <div
-        class="mx-4 w-full max-w-lg rounded-xl bg-surface p-6 shadow-xl"
+        class="mx-4 w-full max-w-lg rounded-sm bg-surface p-6 shadow-modal"
       >
         <h3
           class="mb-4 text-lg font-semibold text-ink"
@@ -1707,7 +1707,7 @@
         <!-- Test results -->
         <div
           v-if="wsTestResult"
-          class="mt-4 max-h-80 overflow-y-auto rounded-lg bg-surface-sunken p-4"
+          class="mt-4 max-h-80 overflow-y-auto rounded-sm bg-surface-sunken p-4"
         >
           <p
             class="mb-2 text-sm font-medium text-ink-secondary"
@@ -1730,7 +1730,7 @@
             <a
               :href="r.url"
               target="_blank"
-              class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+              class="text-sm font-medium text-accent hover:underline"
               >{{ r.title }}</a
             >
             <p class="mt-0.5 text-xs text-ink-secondary">

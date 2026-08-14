@@ -31,15 +31,15 @@
             <label class="mb-2 block text-sm font-medium text-ink-secondary">
               {{ localText("展示形式", "Display mode") }}
             </label>
-            <div class="grid grid-cols-2 gap-2 rounded-lg bg-surface-sunken p-1">
+            <div class="grid grid-cols-2 gap-2 rounded-sm bg-surface-sunken p-1">
               <button
                 type="button"
-                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                class="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
                 :class="
-                  form.login_agreement_mode === 'modal'
-                    ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                    : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                "
+ form.login_agreement_mode === 'modal'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                 @click="form.login_agreement_mode = 'modal'"
               >
                 <Icon name="shield" size="sm" />
@@ -47,12 +47,12 @@
               </button>
               <button
                 type="button"
-                class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition"
+                class="inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-sm font-medium transition-colors"
                 :class="
-                  form.login_agreement_mode === 'checkbox'
-                    ? 'bg-white text-accent shadow-sm dark:bg-dark-800'
-                    : 'text-ink-secondary hover:text-gray-900 dark:text-dark-300 dark:hover:text-white'
-                "
+ form.login_agreement_mode === 'checkbox'
+ ? 'bg-surface text-accent shadow-sm '
+ : 'text-ink-secondary hover:text-gray-900 '
+"
                 @click="form.login_agreement_mode = 'checkbox'"
               >
                 <Icon name="checkCircle" size="sm" />
@@ -112,11 +112,11 @@
             <div
               v-for="(doc, index) in form.login_agreement_documents"
               :key="doc.id || index"
-              class="rounded-lg border border-line bg-white p-4 dark:bg-dark-800/60"
+              class="rounded-sm border border-line bg-surface p-4"
             >
               <div class="mb-3 flex items-center justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-3">
-                  <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-secondary dark:text-dark-200">
+                  <span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-sm bg-surface-sunken text-ink-secondary">
                     <Icon
                       :name="
                         index === 1
@@ -141,7 +141,7 @@
                 </div>
                 <button
                   type="button"
-                  class="rounded-md p-2 text-red-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20"
+                  class="rounded-sm p-2 text-danger transition-colors hover:bg-danger-tint hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
                   :disabled="
                     form.login_agreement_enabled &&
                     form.login_agreement_documents.length <= 1
@@ -168,14 +168,14 @@
                   <label class="mb-1 block text-xs font-medium text-ink-secondary">
                     {{ localText("路由标识", "Route slug") }}
                   </label>
-                  <div class="flex overflow-hidden rounded-lg border border-line bg-surface focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500">
-                    <span class="inline-flex flex-shrink-0 items-center border-r border-line bg-surface-sunken px-3 text-sm text-ink-secondary dark:text-dark-400">
+                  <div class="flex overflow-hidden rounded-sm border border-line bg-surface focus-within:border-accent">
+                    <span class="inline-flex flex-shrink-0 items-center border-r border-line bg-surface-sunken px-3 text-sm text-ink-secondary">
                       /legal/
                     </span>
                     <input
                       v-model="doc.id"
                       type="text"
-                      class="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-gray-400 focus:ring-0 dark:placeholder:text-dark-500"
+                      class="min-w-0 flex-1 border-0 bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-tertiary focus:ring-0 dark:placeholder:text-ink-tertiary"
                       placeholder="usage-policy"
                     />
                   </div>

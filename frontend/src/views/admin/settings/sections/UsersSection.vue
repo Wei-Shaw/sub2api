@@ -93,7 +93,7 @@
 
           <div
             v-if="form.default_subscriptions.length === 0"
-            class="rounded border border-dashed border-line px-4 py-3 text-sm text-ink-secondary dark:text-gray-400"
+            class="rounded border border-dashed border-line px-4 py-3 text-sm text-ink-secondary"
           >
             {{ t("admin.settings.defaults.defaultSubscriptionsEmpty") }}
           </div>
@@ -197,7 +197,7 @@
               <div class="flex items-end">
                 <button
                   type="button"
-                  class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                  class="btn btn-secondary default-sub-delete-btn w-full text-danger hover:text-danger"
                   @click="removeDefaultSubscription(index)"
                 >
                   {{ t("common.delete") }}
@@ -304,7 +304,7 @@
           <div
             v-for="authSource in authSourceDefaultsMeta"
             :key="authSource.source"
-            class="rounded-xl border border-line p-4"
+            class="rounded-sm border border-line p-4"
           >
             <div class="flex items-center justify-between gap-4">
               <div>
@@ -421,7 +421,7 @@
                   authSourceDefaults[authSource.source].subscriptions
                     .length === 0
                 "
-                class="rounded border border-dashed border-line px-4 py-3 text-sm text-ink-secondary dark:text-gray-400"
+                class="rounded border border-dashed border-line px-4 py-3 text-sm text-ink-secondary"
               >
                 {{ t("admin.settings.authSourceDefaults.noSourceSubscriptions") }}
               </div>
@@ -531,7 +531,7 @@
                   <div class="flex items-end">
                     <button
                       type="button"
-                      class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                      class="btn btn-secondary w-full text-danger hover:text-danger"
                       @click="
                         removeAuthSourceDefaultSubscription(
                           authSource.source,

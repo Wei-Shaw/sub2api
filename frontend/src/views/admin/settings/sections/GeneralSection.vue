@@ -15,7 +15,7 @@
       <div class="space-y-6 p-6">
         <!-- Backend Mode -->
         <div
-          class="flex items-center justify-between rounded-lg border border-amber-200 border border-warn/40 bg-warn-tint p-4 dark:border-amber-800"
+          class="flex items-center justify-between rounded-sm border border border-warn/40 bg-warn-tint p-4"
         >
           <div>
             <h3 class="text-sm font-medium text-ink">
@@ -146,7 +146,7 @@
             <div
               v-for="(ep, index) in form.custom_endpoints"
               :key="index"
-              class="rounded-lg border border-line p-4"
+              class="rounded-sm border border-line p-4"
             >
               <div class="mb-3 flex items-center justify-between">
                 <span
@@ -160,7 +160,7 @@
                 </span>
                 <button
                   type="button"
-                  class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  class="rounded p-1 text-danger hover:bg-danger-tint hover:text-danger"
                   @click="removeEndpoint(index)"
                 >
                   <svg
@@ -242,7 +242,7 @@
 
           <button
             type="button"
-            class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line px-4 py-2.5 text-sm text-ink-secondary transition-colors hover:border-primary-400 hover:text-primary-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+            class="mt-3 flex w-full items-center justify-center gap-2 rounded-sm border-2 border-dashed border-line px-4 py-2.5 text-sm text-ink-secondary transition-colors hover:border-accent-line hover:text-accent-hover dark:hover:border-accent-line"
             @click="addEndpoint"
           >
             <svg
@@ -384,7 +384,7 @@
         <div
           v-for="(item, index) in form.custom_menu_items"
           :key="item.id || index"
-          class="rounded-lg border border-line p-4"
+          class="rounded-sm border border-line p-4"
         >
           <div class="mb-3 flex items-center justify-between">
             <span
@@ -399,7 +399,7 @@
               <button
                 v-if="index > 0"
                 type="button"
-                class="rounded p-1 text-ink-tertiary hover:bg-surface-hover hover:text-gray-600"
+                class="rounded p-1 text-ink-tertiary hover:bg-surface-hover hover:text-ink"
                 :title="t('admin.settings.customMenu.moveUp')"
                 @click="moveMenuItem(index, -1)"
               >
@@ -421,7 +421,7 @@
               <button
                 v-if="index < form.custom_menu_items.length - 1"
                 type="button"
-                class="rounded p-1 text-ink-tertiary hover:bg-surface-hover hover:text-gray-600"
+                class="rounded p-1 text-ink-tertiary hover:bg-surface-hover hover:text-ink"
                 :title="t('admin.settings.customMenu.moveDown')"
                 @click="moveMenuItem(index, 1)"
               >
@@ -442,7 +442,7 @@
               <!-- Delete -->
               <button
                 type="button"
-                class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                class="rounded p-1 text-danger hover:bg-danger-tint hover:text-danger"
                 :title="t('admin.settings.customMenu.remove')"
                 @click="removeMenuItem(index)"
               >
@@ -537,7 +537,7 @@
         <!-- Add button -->
         <button
           type="button"
-          class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-line py-3 text-sm text-ink-secondary transition-colors hover:border-primary-400 hover:text-primary-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+          class="flex w-full items-center justify-center gap-2 rounded-sm border-2 border-dashed border-line py-3 text-sm text-ink-secondary transition-colors hover:border-accent-line hover:text-accent-hover dark:hover:border-accent-line"
           @click="addMenuItem"
         >
           <svg

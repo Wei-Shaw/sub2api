@@ -14,7 +14,7 @@
             :href="paymentGuideHref"
             target="_blank"
             rel="noopener noreferrer"
-            class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            class="ml-2 inline-flex items-center text-accent hover:text-accent-hover"
           >
             <svg
               class="mr-0.5 h-3.5 w-3.5"
@@ -76,7 +76,7 @@
                 t("admin.settings.payment.preview")
               }}</label>
               <div
-                class="rounded-lg border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary"
+                class="rounded-sm border border-line bg-surface-sunken px-3 py-2 text-sm text-ink-secondary"
               >
                 {{
                   (form.payment_product_name_prefix || "Sub2API") +
@@ -170,7 +170,7 @@
                 }}
               </p>
               <p
-                class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
+                class="mt-1 text-xs font-medium text-accent"
               >
                 {{
                   t("admin.settings.payment.balanceRechargePreview", {
@@ -247,7 +247,7 @@
               </p>
               <p
                 v-if="(Number(form.payment_recharge_fee_rate) || 0) > 0"
-                class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
+                class="mt-1 text-xs font-medium text-accent"
               >
                 {{
                   t("admin.settings.payment.rechargeFeePreview", {
@@ -261,7 +261,7 @@
             <div>
               <label class="input-label"
                 >{{ t("admin.settings.payment.orderTimeout") }}
-                <span class="text-red-500">*</span></label
+                <span class="text-danger">*</span></label
               ><input
                 v-model.number="form.payment_order_timeout_minutes"
                 type="number"
@@ -305,11 +305,11 @@
                 <button
                   type="button"
                   :class="[
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                    form.payment_cancel_rate_limit_enabled
-                      ? 'bg-primary-500'
-                      : 'bg-gray-300 dark:bg-dark-600',
-                  ]"
+ 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+ form.payment_cancel_rate_limit_enabled
+ ? 'bg-accent-tint'
+ : 'bg-gray-300 dark:bg-dark-600',
+ ]"
                   @click="
                     form.payment_cancel_rate_limit_enabled =
                       !form.payment_cancel_rate_limit_enabled
@@ -317,11 +317,11 @@
                 >
                   <span
                     :class="[
-                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                      form.payment_cancel_rate_limit_enabled
-                        ? 'translate-x-5'
-                        : 'translate-x-0',
-                    ]"
+ 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition-colors duration-200 ease-in-out',
+ form.payment_cancel_rate_limit_enabled
+ ? 'translate-x-5'
+ : 'translate-x-0',
+ ]"
                   />
                 </button>
                 <Select
@@ -332,11 +332,11 @@
                 />
                 <span
                   :class="[
-                    'text-sm whitespace-nowrap',
-                    form.payment_cancel_rate_limit_enabled
-                      ? 'text-ink-secondary'
-                      : 'text-gray-400 dark:text-gray-600',
-                  ]"
+ 'text-sm whitespace-nowrap',
+ form.payment_cancel_rate_limit_enabled
+ ? 'text-ink-secondary'
+ : 'text-gray-400 ',
+ ]"
                   >{{
                     t("admin.settings.payment.cancelRateLimitEvery")
                   }}</span
@@ -357,11 +357,11 @@
                 />
                 <span
                   :class="[
-                    'text-sm whitespace-nowrap',
-                    form.payment_cancel_rate_limit_enabled
-                      ? 'text-ink-secondary'
-                      : 'text-gray-400 dark:text-gray-600',
-                  ]"
+ 'text-sm whitespace-nowrap',
+ form.payment_cancel_rate_limit_enabled
+ ? 'text-ink-secondary'
+ : 'text-gray-400 ',
+ ]"
                   >{{
                     t("admin.settings.payment.cancelRateLimitAllowMax")
                   }}</span
@@ -376,11 +376,11 @@
                 />
                 <span
                   :class="[
-                    'text-sm whitespace-nowrap',
-                    form.payment_cancel_rate_limit_enabled
-                      ? 'text-ink-secondary'
-                      : 'text-gray-400 dark:text-gray-600',
-                  ]"
+ 'text-sm whitespace-nowrap',
+ form.payment_cancel_rate_limit_enabled
+ ? 'text-ink-secondary'
+ : 'text-gray-400 ',
+ ]"
                   >{{
                     t("admin.settings.payment.cancelRateLimitTimes")
                   }}</span
@@ -395,11 +395,11 @@
                 <button
                   type="button"
                   :class="[
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                    form.payment_alipay_force_qrcode
-                      ? 'bg-primary-500'
-                      : 'bg-gray-300 dark:bg-dark-600',
-                  ]"
+ 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+ form.payment_alipay_force_qrcode
+ ? 'bg-accent-tint'
+ : 'bg-gray-300 dark:bg-dark-600',
+ ]"
                   @click="
                     form.payment_alipay_force_qrcode =
                       !form.payment_alipay_force_qrcode
@@ -407,11 +407,11 @@
                 >
                   <span
                     :class="[
-                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                      form.payment_alipay_force_qrcode
-                        ? 'translate-x-5'
-                        : 'translate-x-0',
-                    ]"
+ 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition-colors duration-200 ease-in-out',
+ form.payment_alipay_force_qrcode
+ ? 'translate-x-5'
+ : 'translate-x-0',
+ ]"
                   />
                 </button>
                 <span class="text-sm text-ink-secondary">{{
@@ -427,11 +427,11 @@
                 <button
                   type="button"
                   :class="[
-                    'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                    form.payment_alipay_mobile_precreate_deep_link
-                      ? 'bg-primary-500'
-                      : 'bg-gray-300 dark:bg-dark-600',
-                  ]"
+ 'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+ form.payment_alipay_mobile_precreate_deep_link
+ ? 'bg-accent-tint'
+ : 'bg-gray-300 dark:bg-dark-600',
+ ]"
                   @click="
                     form.payment_alipay_mobile_precreate_deep_link =
                       !form.payment_alipay_mobile_precreate_deep_link
@@ -439,11 +439,11 @@
                 >
                   <span
                     :class="[
-                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                      form.payment_alipay_mobile_precreate_deep_link
-                        ? 'translate-x-5'
-                        : 'translate-x-0',
-                    ]"
+ 'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface shadow ring-0 transition-colors duration-200 ease-in-out',
+ form.payment_alipay_mobile_precreate_deep_link
+ ? 'translate-x-5'
+ : 'translate-x-0',
+ ]"
                   />
                 </button>
                 <span class="text-sm text-ink-secondary">{{
@@ -464,11 +464,11 @@
                 type="button"
                 @click="togglePaymentType(pt.value)"
                 :class="[
-                  'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-                  isPaymentTypeEnabled(pt.value)
-                    ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                    : 'border-gray-300 bg-white text-ink-secondary hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-                ]"
+ 'rounded-sm border px-3 py-1.5 text-sm font-medium transition-all',
+ isPaymentTypeEnabled(pt.value)
+ ? 'border-accent-line bg-accent-tint text-white shadow-sm'
+ : 'border-line bg-surface text-ink-secondary hover:border-line hover:bg-surface-hover ',
+ ]"
               >
                 {{ pt.label }}
               </button>
@@ -479,7 +479,7 @@
                 :href="paymentMethodsHref"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
+                class="ml-1 text-accent hover:text-accent-hover"
               >
                 {{ t("admin.settings.payment.findProvider") }}
                 <svg

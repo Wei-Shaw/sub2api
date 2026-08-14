@@ -18,7 +18,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -119,7 +119,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -227,7 +227,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -407,7 +407,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -522,7 +522,7 @@
                       1,
                     )
                   "
-                  class="btn btn-ghost btn-xs text-red-500 hover:text-red-700"
+                  class="btn btn-ghost btn-xs text-danger hover:text-danger"
                 >
                   <svg
                     class="h-4 w-4"
@@ -542,7 +542,7 @@
               <button
                 type="button"
                 @click="rectifierForm.apikey_signature_patterns.push('')"
-                class="btn btn-ghost btn-xs text-primary-600 dark:text-primary-400"
+                class="btn btn-ghost btn-xs text-accent"
               >
                 + {{ t("admin.settings.rectifier.addPattern") }}
               </button>
@@ -606,7 +606,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -616,7 +616,7 @@
           <div
             v-for="rule in betaPolicyForm.rules"
             :key="rule.beta_token"
-            class="rounded-lg border border-line p-4"
+            class="rounded-sm border border-line p-4"
           >
             <div class="mb-3 flex items-center gap-2">
               <span
@@ -625,7 +625,7 @@
                 {{ getBetaDisplayName(rule.beta_token) }}
               </span>
               <span
-                class="rounded bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary dark:text-gray-400"
+                class="rounded bg-surface-sunken px-2 py-0.5 text-xs text-ink-secondary"
               >
                 {{ rule.beta_token }}
               </span>
@@ -693,7 +693,7 @@
                   v-for="preset in betaPresets[rule.beta_token]"
                   :key="preset.label"
                   type="button"
-                  class="inline-flex items-center gap-1 rounded-md border border-primary-200 border border-accent/40 bg-accent-tint px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-primary-100 dark:border-primary-800 dark:hover:bg-primary-900/50"
+                  class="inline-flex items-center gap-1 rounded-sm border border-accent-line border border-accent/40 bg-accent-tint px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-tint"
                   @click="applyBetaPreset(rule, preset)"
                   :title="preset.description"
                 >
@@ -729,7 +729,7 @@
                 <button
                   type="button"
                   @click="rule.model_whitelist!.splice(index, 1)"
-                  class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  class="shrink-0 rounded p-1 text-danger transition-colors hover:bg-danger-tint hover:text-danger"
                 >
                   <svg
                     class="h-4 w-4"
@@ -753,7 +753,7 @@
                   if (!rule.model_whitelist) rule.model_whitelist = [];
                   rule.model_whitelist.push('');
                 "
-                class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                class="mb-2 inline-flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent-hover"
               >
                 <svg
                   class="h-3.5 w-3.5"
@@ -781,7 +781,7 @@
                   v-for="pattern in commonModelPatterns"
                   :key="pattern"
                   type="button"
-                  class="rounded border border-line px-2 py-0.5 text-xs text-ink-secondary transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:text-gray-400 dark:hover:border-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                  class="rounded border border-line px-2 py-0.5 text-xs text-ink-secondary transition-colors hover:border-accent-line hover:bg-accent-tint hover:text-accent-hover dark:hover:border-accent-line"
                   @click="addQuickPattern(rule, pattern)"
                 >
                   {{ pattern }}
@@ -882,7 +882,7 @@
         <!-- Empty state -->
         <div
           v-if="openaiFastPolicyForm.rules.length === 0"
-          class="rounded-lg border border-dashed border-line p-6 text-center text-sm text-ink-secondary dark:text-gray-400"
+          class="rounded-sm border border-dashed border-line p-6 text-center text-sm text-ink-secondary"
         >
           {{ t("admin.settings.openaiFastPolicy.empty") }}
         </div>
@@ -891,7 +891,7 @@
         <div
           v-for="(rule, ruleIndex) in openaiFastPolicyForm.rules"
           :key="ruleIndex"
-          class="rounded-lg border border-line p-4"
+          class="rounded-sm border border-line p-4"
         >
           <div class="mb-3 flex items-center justify-between">
             <span
@@ -906,7 +906,7 @@
             <button
               type="button"
               @click="removeOpenAIFastPolicyRule(ruleIndex)"
-              class="rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+              class="rounded p-1 text-danger transition-colors hover:bg-danger-tint hover:text-danger"
               :title="t('admin.settings.openaiFastPolicy.removeRule')"
             >
               <svg
@@ -1056,7 +1056,7 @@
                 @click="
                   removeOpenAIFastPolicyModelPattern(rule, patternIdx)
                 "
-                class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                class="shrink-0 rounded p-1 text-danger transition-colors hover:bg-danger-tint hover:text-danger"
               >
                 <svg
                   class="h-4 w-4"
@@ -1076,7 +1076,7 @@
             <button
               type="button"
               @click="addOpenAIFastPolicyModelPattern(rule)"
-              class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              class="mb-2 inline-flex items-center gap-1 text-xs text-accent transition-colors hover:text-accent-hover"
             >
               <svg
                 class="h-3.5 w-3.5"

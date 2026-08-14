@@ -15,13 +15,13 @@
       <div class="space-y-4 p-6">
         <!-- Security Warning -->
         <div
-          class="rounded-lg border border-amber-200 border border-warn/40 bg-warn-tint p-4 dark:border-amber-800"
+          class="rounded-sm border border border-warn/40 bg-warn-tint p-4"
         >
           <div class="flex items-start">
             <Icon
               name="exclamationTriangle"
               size="md"
-              class="mt-0.5 flex-shrink-0 text-amber-500"
+              class="mt-0.5 flex-shrink-0 text-warn"
             />
             <p class="ml-3 text-sm text-warn">
               {{ t("admin.settings.adminApiKey.securityWarning") }}
@@ -35,7 +35,7 @@
           class="flex items-center gap-2 text-ink-secondary"
         >
           <div
-            class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+            class="h-4 w-4 animate-spin rounded-full border-b-2 border-accent-line"
           ></div>
           {{ t("common.loading") }}
         </div>
@@ -92,7 +92,7 @@
                 {{ t("admin.settings.adminApiKey.currentKey") }}
               </label>
               <code
-                class="rounded bg-surface-sunken px-2 py-1 font-mono text-sm text-ink dark:text-gray-100"
+                class="rounded bg-surface-sunken px-2 py-1 font-mono text-sm text-ink"
               >
                 {{ adminApiKeyMasked }}
               </code>
@@ -114,7 +114,7 @@
                 type="button"
                 @click="deleteAdminApiKey"
                 :disabled="adminApiKeyOperating"
-                class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                class="btn btn-secondary btn-sm text-danger hover:text-danger"
               >
                 {{ t("admin.settings.adminApiKey.delete") }}
               </button>
@@ -124,7 +124,7 @@
           <!-- Newly Generated Key Display -->
           <div
             v-if="newAdminApiKey"
-            class="space-y-3 rounded-lg border border-green-200 border border-success/40 bg-success-tint p-4 dark:border-green-800"
+            class="space-y-3 rounded-sm border border border-success/40 bg-success-tint p-4"
           >
             <p
               class="text-sm font-medium text-success"
@@ -133,7 +133,7 @@
             </p>
             <div class="flex items-center gap-2">
               <code
-                class="flex-1 select-all break-all rounded border border-green-300 bg-surface px-3 py-2 font-mono text-sm dark:border-green-700"
+                class="flex-1 select-all break-all rounded border border-success/40 bg-surface px-3 py-2 font-mono text-sm dark:border-green-700"
               >
                 {{ newAdminApiKey }}
               </code>
