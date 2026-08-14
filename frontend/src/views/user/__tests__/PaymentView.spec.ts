@@ -365,6 +365,92 @@ describe('PaymentView subscription confirmation amounts', () => {
   })
 })
 
+async function mountRecharge(amount: number, options: {
+  checkout?: Partial<CheckoutInfoResponse>
+  method?: Partial<MethodLimit>
+} = {}) {
+  vi.useRealTimers()
+  routeState.path = '/purchase'
+  routeState.query = {}
+  routerReplace.mockReset().mockResolvedValue(undefined)
+  routerPush.mockReset().mockResolvedValue(undefined)
+  routerResolve.mockClear()
+  createOrder.mockReset()
+  refreshUser.mockReset()
+  fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+  showError.mockReset()
+  showInfo.mockReset()
+  showWarning.mockReset()
+  const base = checkoutInfoFixture(options.checkout).data
+  getCheckoutInfo.mockReset().mockResolvedValue({
+    data: {
+      ...base,
+      methods: {
+        ...base.methods,
+        sepay: { ...base.methods.sepay, ...options.method },
+      },
+    },
+  })
+  bridgeInvoke.mockReset()
+  window.localStorage.clear()
+  ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
+
+  const wrapper = shallowMount(PaymentView, {
+    global: {
+      stubs: {
+        AppLayout: { template: '<div><slot /></div>' },
+        NumCell: false,
+        Button: { template: '<button><slot /></button>' },
+        Teleport: true,
+        Transition: false,
+      },
+    },
+  })
+  await flushPromises()
+  await flushPromises()
+  // `AmountInput` is stubbed, so the typed amount arrives as its update event.
+  wrapper.findComponent({ name: 'AmountInput' }).vm.$emit('update:modelValue', amount)
+  await flushPromises()
+  return wrapper
+}
+
+describe('PaymentView recharge amounts', () => {
+  it('converts the recharge amount for a dong channel instead of charging the USD figure as dong', async () => {
+    const wrapper = await mountRecharge(10, {
+      checkout: { subscription_usd_to_vnd_rate: 26000 },
+      method: { currency: 'VND' },
+    })
+
+    const text = wrapper.text()
+    const converted = formatPaymentAmount(260000, 'VND')
+
+    expect(text).toContain(converted)
+    expect(text).not.toContain(formatPaymentAmount(10, 'VND'))
+    expect(wrapper.findAll('button').some(button => button.text().includes(converted))).toBe(true)
+  })
+
+  it('adds the fee after conversion, matching the backend pay amount', async () => {
+    const wrapper = await mountRecharge(10, {
+      checkout: { subscription_usd_to_vnd_rate: 26000, recharge_fee_rate: 2.5 },
+      method: { currency: 'VND' },
+    })
+
+    const text = wrapper.text()
+    // 2.5% of ₫260,000 is ₫6,500, charged on top of the converted amount.
+    expect(text).toContain(formatPaymentAmount(6500, 'VND'))
+    expect(text).toContain(formatPaymentAmount(266500, 'VND'))
+  })
+
+  it('charges the amount as-is when no rate is configured', async () => {
+    const wrapper = await mountRecharge(10, {
+      checkout: { subscription_usd_to_vnd_rate: 0 },
+      method: { currency: 'VND' },
+    })
+
+    expect(wrapper.text()).toContain(formatPaymentAmount(10, 'VND'))
+  })
+})
+
 describe('PaymentView payment recovery', () => {
   beforeEach(() => {
     vi.useRealTimers()
