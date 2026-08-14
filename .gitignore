@@ -138,6 +138,10 @@ docs/*
 !docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
+# Public API documentation. The frontend imports these at build time
+# (`frontend/src/views/public/docsPages.ts`), so an ignored file is a broken build.
+!docs/public/
+!docs/public/*.md
 .serena/
 .codex/
 frontend/coverage/

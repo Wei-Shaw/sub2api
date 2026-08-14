@@ -1,0 +1,130 @@
+/*
+ * Shared long-form reading surface. Extracted verbatim from
+ * `views/public/LegalDocumentView.vue` when `views/public/DocsView.vue` needed
+ * the same typography — two 200-line copies of the same measure is worse than
+ * one global class, and both callers render sanitized markdown into `v-html`,
+ * where scoped styles never reached the generated nodes without `:deep()`
+ * anyway.
+ *
+ * Family B throughout — every colour below flips at `.dark` on its own, so
+ * this file writes no dark-mode variant at all. Hierarchy is carried by
+ * size, weight and the space above a heading; no coloured left rules, no
+ * decorative dividers, no shadow, radius at or under 2px.
+ */
+.long-form-prose {
+  @apply text-md text-ink-secondary;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * A heading belongs to the section that follows it, so the space above is
+ * always larger than the space below. That single asymmetry is what makes the
+ * document scannable without a rule under every title.
+ *
+ * The markdown `# Title` duplicates the page `<h1>` above, so it is set at the
+ * section rank instead of competing with it.
+ */
+.long-form-prose h1,
+.long-form-prose h2 {
+  @apply mb-4 mt-12 scroll-mt-8 text-xl font-semibold text-ink;
+}
+
+.long-form-prose h3 {
+  @apply mb-3 mt-9 scroll-mt-8 text-lg font-medium text-ink;
+}
+
+.long-form-prose h4 {
+  @apply mb-2 mt-7 scroll-mt-8 text-md font-semibold text-ink;
+}
+
+/* The article already sits against its own rule; do not push it off. */
+.long-form-prose > *:first-child {
+  @apply mt-0;
+}
+
+.long-form-prose > *:last-child {
+  @apply mb-0;
+}
+
+.long-form-prose p {
+  @apply mb-5;
+}
+
+/* Accent means "you can act on this" and nothing else. */
+.long-form-prose a {
+  @apply text-accent underline-offset-2 transition-colors duration-fast;
+  @apply hover:text-accent-hover hover:underline;
+}
+
+.long-form-prose ul {
+  @apply mb-5 list-disc pl-6;
+}
+
+.long-form-prose ol {
+  @apply mb-5 list-decimal pl-6;
+}
+
+.long-form-prose li {
+  @apply mb-2 pl-1;
+}
+
+.long-form-prose li::marker {
+  @apply text-ink-tertiary;
+}
+
+.long-form-prose li > ul,
+.long-form-prose li > ol {
+  @apply mb-0 mt-2;
+}
+
+.long-form-prose strong {
+  @apply font-semibold text-ink;
+}
+
+.long-form-prose em {
+  @apply italic;
+}
+
+.long-form-prose code {
+  @apply rounded-sm border border-line-subtle bg-surface-sunken px-1.5 py-0.5;
+  @apply font-mono text-[0.875em] text-ink;
+}
+
+.long-form-prose pre {
+  @apply mb-5 overflow-x-auto rounded border border-line bg-surface-sunken p-4;
+}
+
+.long-form-prose pre code {
+  @apply rounded-none border-0 bg-transparent p-0 text-sm;
+}
+
+.long-form-prose blockquote {
+  @apply mb-5 border-l border-line-strong bg-surface-sunken px-5 py-4 text-ink-secondary;
+}
+
+.long-form-prose blockquote > *:last-child {
+  @apply mb-0;
+}
+
+/* `block` is what makes a markdown table scroll instead of blowing the measure. */
+.long-form-prose table {
+  @apply mb-5 block w-full overflow-x-auto border-collapse text-sm;
+}
+
+.long-form-prose th,
+.long-form-prose td {
+  @apply border border-line-subtle px-3 py-2 text-left align-top;
+}
+
+.long-form-prose th {
+  @apply bg-surface-sunken font-semibold text-ink;
+}
+
+.long-form-prose img {
+  @apply mb-5 h-auto max-w-full rounded border border-line;
+}
+
+.long-form-prose hr {
+  @apply my-10 h-px border-0 bg-line-subtle;
+}

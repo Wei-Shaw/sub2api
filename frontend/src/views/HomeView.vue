@@ -36,10 +36,9 @@
         <div class="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1">
           <LocaleSwitcher />
           <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            :href="docsHref"
+            :target="docsIsExternal ? '_blank' : undefined"
+            :rel="docsIsExternal ? 'noopener noreferrer' : undefined"
             :class="ICON_BUTTON"
             :title="t('home.viewDocs')"
           >
@@ -114,10 +113,9 @@
         <div class="flex shrink-0 items-center gap-1">
           <LocaleSwitcher />
           <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            :href="docsHref"
+            :target="docsIsExternal ? '_blank' : undefined"
+            :rel="docsIsExternal ? 'noopener noreferrer' : undefined"
             :class="ICON_BUTTON"
             :title="t('home.viewDocs')"
           >
@@ -174,16 +172,20 @@
                 </template>
               </Button>
               <Button
-                v-if="docUrl"
-                :href="docUrl"
-                target="_blank"
-                rel="noopener noreferrer"
+                :href="docsIsExternal ? docsHref : undefined"
+                :to="docsIsExternal ? undefined : docsHref"
+                :target="docsIsExternal ? '_blank' : undefined"
+                :rel="docsIsExternal ? 'noopener noreferrer' : undefined"
                 variant="outline"
                 size="md"
               >
                 {{ t('home.docs') }}
                 <template #trailing>
-                  <Icon name="externalLink" size="xs" :stroke-width="2" />
+                  <Icon
+                    :name="docsIsExternal ? 'externalLink' : 'arrowRight'"
+                    size="xs"
+                    :stroke-width="2"
+                  />
                 </template>
               </Button>
             </div>
@@ -384,10 +386,9 @@
         </p>
         <div class="flex items-center gap-5">
           <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            :href="docsHref"
+            :target="docsIsExternal ? '_blank' : undefined"
+            :rel="docsIsExternal ? 'noopener noreferrer' : undefined"
             class="text-xs text-ink-tertiary underline-offset-2 transition-colors duration-fast hover:text-ink hover:underline"
           >
             {{ t('home.docs') }}
@@ -443,6 +444,15 @@ const siteSubtitle = computed(
 const docUrl = computed(() =>
   sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 )
+/**
+ * The documentation link is now unconditional: an operator who configured an
+ * external site still gets theirs, and everyone else gets the built-in public
+ * pages under `/docs` instead of no link at all. `docsIsExternal` is what
+ * decides whether the anchor leaves the application, so `target` and `rel` are
+ * only set when it does.
+ */
+const docsIsExternal = computed(() => Boolean(docUrl.value))
+const docsHref = computed(() => docUrl.value || '/docs')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(
