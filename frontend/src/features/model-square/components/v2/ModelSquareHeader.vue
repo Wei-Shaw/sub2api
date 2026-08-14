@@ -8,7 +8,7 @@
       <h1 class='text-4xl font-black tracking-tight bg-gradient-to-r from-gray-900 via-gray-800 to-gray-600 bg-clip-text text-transparent dark:from-white dark:via-gray-100 dark:to-gray-400'>
         模型广场
       </h1>
-      <p class='mt-2 text-sm text-gray-500 dark:text-dark-400 leading-relaxed'>汇聚所有可用模型、渠道与分组定价，一键对比并快速选择最优接入方案。</p>
+      <p class='mt-2 text-base text-gray-500 dark:text-dark-400 leading-relaxed'>汇聚所有可用模型、渠道与分组定价，一键对比并快速选择最优接入方案。</p>
     </div>
     <div class='flex items-center gap-3'>
       <div class='relative group flex-1 lg:flex-none'>
@@ -29,7 +29,7 @@
         type='button'
         class='flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80 dark:bg-dark-900/60 border border-gray-200 dark:border-dark-700/60 hover:bg-white dark:hover:bg-dark-800/80 transition-all shadow-lg shadow-black/5 dark:shadow-black/20 active:scale-95 backdrop-blur'
         :aria-label='isDark ? "切换到亮色模式" : "切换到暗色模式"'
-        @click='toggleTheme'
+        @click='$emit("toggle-dark")'
       >
         <Icon v-if='isDark' name='sun' size='sm' class='text-amber-500' />
         <Icon v-else name='moon' size='sm' class='text-indigo-500' />
@@ -48,12 +48,13 @@
 </template>
 
 <script setup lang='ts'>
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
 
 interface Props {
   search: string
   loading: boolean
+  isDark: boolean
 }
 
 const props = defineProps<Props>()
@@ -61,29 +62,8 @@ const props = defineProps<Props>()
 defineEmits<{
   'update:search': [value: string]
   refresh: []
+  'toggle-dark': []
 }>()
 
 const iconClass = computed(() => (props.loading ? 'animate-spin' : ''))
-
-const isDark = ref(false)
-
-function applyTheme(dark: boolean) {
-  isDark.value = dark
-  if (dark) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-  localStorage.setItem('model-square-theme', dark ? 'dark' : 'light')
-}
-
-function toggleTheme() {
-  applyTheme(!isDark.value)
-}
-
-onMounted(() => {
-  const saved = localStorage.getItem('model-square-theme')
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  applyTheme(saved ? saved === 'dark' : prefersDark)
-})
 </script>

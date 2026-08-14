@@ -27,7 +27,9 @@ const item = (id: number, tokens: number) => ({
   output_tokens: 0,
   cache_tokens: 0,
   total_tokens: tokens,
+  cost: 0.5,
   actual_cost: 0.5,
+  account_cost: 0.3,
 })
 
 const mountRanking = (props: Record<string, unknown> = {}) =>

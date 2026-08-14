@@ -14,14 +14,14 @@
             {{ model.name.slice(0, 1).toUpperCase() }}
           </div>
           <div>
-            <h2 class='text-2xl font-black tracking-tight text-gray-900 dark:text-white truncate leading-tight'>{{ model.name }}</h2>
-            <p class='mt-0.5 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest'>{{ platformLabel(model.platform) }} · {{ model.channels.length }} 个渠道</p>
+            <h2 class='text-3xl font-black tracking-tight text-gray-900 dark:text-white truncate leading-tight'>{{ model.name }}</h2>
+            <p class='mt-0.5 text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest'>{{ platformLabel(model.platform) }} · {{ model.channels.length }} 个渠道</p>
           </div>
         </div>
       </div>
       <button
         type='button'
-        class='shrink-0 inline-flex items-center gap-2 rounded-2xl border border-gray-200 dark:border-dark-700/60 bg-white/80 dark:bg-dark-800/60 px-4 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-500/50 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-500/10 transition-all shadow-sm'
+        class='shrink-0 inline-flex items-center gap-2 rounded-2xl border border-gray-200 dark:border-dark-700/60 bg-white/80 dark:bg-dark-800/60 px-4 py-2.5 text-base font-bold text-gray-700 dark:text-gray-300 hover:border-indigo-500/50 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-500/10 transition-all shadow-sm'
         @click='showConfig = !showConfig'
       >
         <svg class='h-4 w-4 transition-transform duration-300' :class='showConfig ? "rotate-180" : ""' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /></svg>
@@ -34,6 +34,7 @@
         v-for='channel in model.channels'
         :key='channel.key'
         :channel='channel'
+        :platform='model.platform'
         :user-group-rates='userGroupRates'
       />
     </div>

@@ -6,34 +6,38 @@
     @keydown='onKeydown'
   >
     <div class='px-5 py-4 border-b border-white/10 dark:border-dark-700/60'>
-      <h2 class='text-xs font-black uppercase tracking-[0.25em] text-gray-500 dark:text-dark-400'>模型索引</h2>
-      <p class='mt-1 text-xs text-gray-600 dark:text-dark-400'>↑↓ 选择 · Enter 跳转 · 共 {{ models.length }} 个</p>
+      <h2 class='text-sm font-black uppercase tracking-[0.25em] text-gray-500 dark:text-dark-400'>模型索引</h2>
+      <p class='mt-1 text-sm text-gray-600 dark:text-dark-400'>↑↓ 选择 · Enter 跳转 · 共 {{ models.length }} 个</p>
     </div>
-    <div class='overflow-y-auto p-2.5 space-y-1 no-scrollbar'>
+    <div class='overflow-y-auto p-3 space-y-1 no-scrollbar'>
       <template v-for='group in groupedModels' :key='group.platform'>
-        <div class='px-3 pt-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-gray-500 dark:text-dark-500'>{{ platformLabel(group.platform) }}</div>
+        <div class='px-3 pt-4 pb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-gray-500 dark:text-dark-500'>
+          <PlatformIcon :platform='group.platform' size='sm' />
+          <span>{{ platformLabel(group.platform) }}</span>
+        </div>
         <button
           v-for='item in group.items'
           :key='item.model.key'
           type='button'
-          class='w-full text-left rounded-2xl px-3.5 py-3 text-sm font-semibold transition-all duration-200 group'
+          class='w-full text-left rounded-2xl px-4 py-3.5 text-base font-semibold transition-all duration-200 group'
           :class='modelValue === item.model.key ? activeClass : inactiveClass'
           @click='selectModel(item.model.key, item.index)'
         >
-          <span class='flex items-center gap-2.5'>
-            <span class='h-1.5 w-1.5 rounded-full shrink-0' :class='dotClass(item.model.platform)'></span>
+          <span class='flex items-center gap-3'>
+            <span class='h-2 w-2 rounded-full shrink-0' :class='dotClass(item.model.platform)'></span>
             <span class='block truncate' v-html='highlight(item.model.name)'></span>
           </span>
-          <span class='mt-1 block text-xs font-mono uppercase tracking-wider opacity-50'>{{ item.model.channels.length }} 渠道</span>
+          <span class='mt-1.5 block text-sm font-mono uppercase tracking-wider opacity-50'>{{ item.model.channels.length }} 渠道</span>
         </button>
       </template>
-      <p v-if='models.length === 0' class='px-4 py-8 text-center text-xs text-gray-500 dark:text-dark-500'>没有匹配的模型</p>
+      <p v-if='models.length === 0' class='px-4 py-8 text-center text-sm text-gray-500 dark:text-dark-500'>没有匹配的模型</p>
     </div>
   </aside>
 </template>
 
 <script setup lang='ts'>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import type { ModelSquareModel } from '../../types'
 import { platformLabel, platformBadgeLightClass } from '@/utils/platformColors'
 

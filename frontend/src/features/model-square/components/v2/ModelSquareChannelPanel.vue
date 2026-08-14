@@ -3,8 +3,9 @@
     <div class='flex flex-col xl:flex-row xl:items-start gap-6'>
       <div class='min-w-0 flex-1'>
         <div class='flex items-center gap-2.5'>
-          <span class='text-xs font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400'>渠道</span>
-          <span class='text-base font-bold text-gray-900 dark:text-white'>{{ channel.name }}</span>
+          <span class='text-sm font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400'>渠道</span>
+          <PlatformIcon :platform='platform' size='sm' />
+          <span class='text-lg font-bold text-gray-900 dark:text-white'>{{ channel.name }}</span>
         </div>
         <div class='mt-3 flex flex-wrap gap-2'>
           <GroupBadge
@@ -26,13 +27,13 @@
       </div>
       <div class='flex-1 min-w-0'>
         <div class='flex items-center justify-between mb-3'>
-          <span class='text-xs font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400'>基础定价</span>
+          <span class='text-sm font-black uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400'>基础定价</span>
           <span class='text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/20'>{{ billingModeLabel(channel.pricing) }}</span>
         </div>
         <div class='grid grid-cols-3 gap-4'>
           <div v-for='item in priceItems' :key='item.label' class='space-y-1'>
-            <span class='text-xs font-bold text-gray-500 dark:text-gray-400 uppercase'>{{ item.label }}</span>
-            <span class='block text-base font-black font-mono text-gray-900 dark:text-white'>{{ formatTokenPrice(item.value) }}</span>
+            <span class='text-sm font-bold text-gray-500 dark:text-gray-400 uppercase'>{{ item.label }}</span>
+            <span class='block text-lg font-black font-mono text-gray-900 dark:text-white'>{{ formatTokenPrice(item.value) }}</span>
           </div>
         </div>
         <div v-if='extraVisible' class='mt-3 flex flex-wrap gap-3 text-xs'>
@@ -53,6 +54,7 @@
 <script setup lang='ts'>
 import { computed } from 'vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import type { ModelSquareChannel } from '../../types'
@@ -61,6 +63,7 @@ import { formatTokenPrice, formatRequestPrice, billingModeLabel, isRequestBillin
 
 interface Props {
   channel: ModelSquareChannel
+  platform: string
   userGroupRates: Record<number, number>
 }
 
