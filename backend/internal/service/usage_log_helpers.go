@@ -23,3 +23,15 @@ func optionalInt64Ptr(v int64) *int64 {
 	}
 	return &v
 }
+
+// usedProxyID returns the proxy actually used for the upstream request.
+// Matches gateway_forward: skip when custom BaseURL is enabled.
+func usedProxyID(account *Account) *int64 {
+	if account == nil || account.ProxyID == nil || *account.ProxyID == 0 || account.Proxy == nil {
+		return nil
+	}
+	if account.IsCustomBaseURLEnabled() && account.GetCustomBaseURL() != "" {
+		return nil
+	}
+	return account.ProxyID
+}

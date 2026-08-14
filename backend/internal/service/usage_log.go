@@ -122,6 +122,10 @@ type UsageLog struct {
 	UpstreamModelMismatch *bool
 	// ChannelID 渠道 ID
 	ChannelID *int64
+	// ProxyID is the proxy actually used for the upstream request.
+	// Nil when the request did not go through a proxy (no proxy bound,
+	// proxy object missing, or custom BaseURL skipped the proxy).
+	ProxyID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"
 	ModelMappingChain *string
 	// BillingTier 计费层级标签（per_request/image 模式）
