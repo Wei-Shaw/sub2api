@@ -136,6 +136,8 @@ docs/*
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/superpowers/
+!docs/superpowers/**
 !docs/legal/
 !docs/legal/*.md
 .serena/
