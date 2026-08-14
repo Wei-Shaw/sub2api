@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -25,6 +26,21 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	body []byte,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+
+	// Codex remote compaction v2 的 compaction_trigger / compaction item 在 CC
+	// 协议里没有等价物，需要先在 Responses 层改写成普通消息，否则会被
+	// buildChatMessagesFromItems 静默丢弃。详见 openai_gateway_compat_compact.go。
+	compactRequest := isCompatCompactionRequest(body)
+	compactClientStream := false
+	if compactRequest {
+		compactClientStream = gjson.GetBytes(body, "stream").Bool()
+		rewritten, rewriteErr := rewriteCompatCompactRequestBody(body)
+		if rewriteErr != nil {
+			writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", rewriteErr.Error())
+			return nil, fmt.Errorf("rewrite compact request: %w", rewriteErr)
+		}
+		body = rewritten
+	}
 
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
@@ -111,10 +127,78 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return s.handleErrorResponse(ctx, resp, c, account, chatBody, billingModel)
 	}
 
+	if compactRequest {
+		return s.bufferCompatCompactAsResponses(c, resp, originalModel, compactClientStream, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
 	if clientStream {
 		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+}
+
+// bufferCompatCompactAsResponses 把 CC 上游的压缩回复收敛成 Codex remote
+// compaction v2 期望的单 compaction item 响应。上游一定是非流式（请求改写时已
+// 置 stream=false），但客户端可能按 SSE 消费，此时复用 compact SSE 桥合成
+// output_item.done + response.completed 两类事件。
+func (s *OpenAIGatewayService) bufferCompatCompactAsResponses(
+	c *gin.Context,
+	resp *http.Response,
+	originalModel string,
+	clientWantsStream bool,
+	billingModel string,
+	upstreamModel string,
+	reasoningEffort *string,
+	serviceTier *string,
+	startTime time.Time,
+) (*OpenAIForwardResult, error) {
+	requestID := resp.Header.Get("x-request-id")
+	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
+	if err != nil {
+		return nil, err
+	}
+
+	compactResp, err := buildCompatCompactResponse(ccResp, originalModel)
+	if err != nil {
+		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "upstream_error", err.Error())
+		return nil, fmt.Errorf("build compact response: %w", err)
+	}
+	encoded, err := json.Marshal(compactResp)
+	if err != nil {
+		return nil, fmt.Errorf("encode compact response: %w", err)
+	}
+
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	}
+	if clientWantsStream {
+		payload, ok := buildOpenAICompactSSEPayload(encoded)
+		if !ok {
+			writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "upstream_error", "Failed to build compact stream payload")
+			return nil, fmt.Errorf("build compact SSE payload")
+		}
+		header := c.Writer.Header()
+		header.Set("Content-Type", "text/event-stream")
+		header.Set("Cache-Control", "no-cache")
+		header.Set("Connection", "keep-alive")
+		header.Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(payload)
+		c.Writer.Flush()
+	} else {
+		c.Data(http.StatusOK, "application/json", encoded)
+	}
+
+	return &OpenAIForwardResult{
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		ReasoningEffort: reasoningEffort,
+		ServiceTier:     serviceTier,
+		Stream:          clientWantsStream,
+		Duration:        time.Since(startTime),
+	}, nil
 }
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
