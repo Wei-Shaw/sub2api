@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -261,6 +262,23 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// 企业 Key：校验所绑定公司订阅的活跃性与限额（不检查个人余额）
 			if isEnterpriseKey {
 				if validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); validateErr != nil {
+					// DIAG_USAGE_LIMIT: 记录企业订阅命中日/周/月限额的原因，便于排查 IAM 侧误判
+					orgSubIDForLog := int64(0)
+					if apiKey.OrganizationSubscriptionID != nil {
+						orgSubIDForLog = *apiKey.OrganizationSubscriptionID
+					}
+					logger.LegacyPrintf(
+						"middleware.api_key_auth",
+						"DIAG_USAGE_LIMIT branch=enterprise user_id=%d api_key_id=%d org_sub_id=%d group=%s validate_err=%v",
+						apiKey.User.ID, apiKey.ID, orgSubIDForLog,
+						func() string {
+							if apiKey.Group != nil {
+								return apiKey.Group.Name
+							}
+							return ""
+						}(),
+						validateErr,
+					)
 					code := "SUBSCRIPTION_INVALID"
 					status := 403
 					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
@@ -290,6 +308,48 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 					_, validateErr = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				}
 				if validateErr != nil {
+					// DIAG_USAGE_LIMIT: 记录个人订阅命中限额的具体上下文，用于确认 IAM 是否误挂订阅
+					var (
+						dailyUsage, weeklyUsage, monthlyUsage float64
+						dailyLimit, weeklyLimit, monthlyLimit float64
+						hasDaily, hasWeekly, hasMonthly       bool
+						subID                                 int64
+					)
+					if subscription != nil {
+						dailyUsage = subscription.DailyUsageUSD
+						weeklyUsage = subscription.WeeklyUsageUSD
+						monthlyUsage = subscription.MonthlyUsageUSD
+						subID = subscription.ID
+					}
+					if apiKey.Group != nil {
+						if apiKey.Group.DailyLimitUSD != nil {
+							dailyLimit = *apiKey.Group.DailyLimitUSD
+							hasDaily = true
+						}
+						if apiKey.Group.WeeklyLimitUSD != nil {
+							weeklyLimit = *apiKey.Group.WeeklyLimitUSD
+							hasWeekly = true
+						}
+						if apiKey.Group.MonthlyLimitUSD != nil {
+							monthlyLimit = *apiKey.Group.MonthlyLimitUSD
+							hasMonthly = true
+						}
+					}
+					logger.LegacyPrintf(
+						"middleware.api_key_auth",
+						"DIAG_USAGE_LIMIT branch=personal user_id=%d api_key_id=%d sub_id=%d group=%s daily_usage=%f daily_limit=%f has_daily=%v weekly_usage=%f weekly_limit=%f has_weekly=%v monthly_usage=%f monthly_limit=%f has_monthly=%v validate_err=%v",
+						apiKey.User.ID, apiKey.ID, subID,
+						func() string {
+							if apiKey.Group != nil {
+								return apiKey.Group.Name
+							}
+							return ""
+						}(),
+						dailyUsage, dailyLimit, hasDaily,
+						weeklyUsage, weeklyLimit, hasWeekly,
+						monthlyUsage, monthlyLimit, hasMonthly,
+						validateErr,
+					)
 					code := "SUBSCRIPTION_INVALID"
 					status := 403
 					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
@@ -303,9 +363,41 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
+				// DIAG_BILLING_BYPASS: 记录鉴权层看到的实际余额，用于排查 IAM 子账户绕过余额检查的问题
+				orgSubIDForLog := int64(0)
+				if apiKey.OrganizationSubscriptionID != nil {
+					orgSubIDForLog = *apiKey.OrganizationSubscriptionID
+				}
+				logger.LegacyPrintf(
+					"middleware.api_key_auth",
+					"DIAG_BILLING_BYPASS auth_balance_gate user_id=%d api_key_id=%d identity_type=%s user_balance=%f is_enterprise_key=%v org_sub_id=%d group=%s is_subscription_type=%v has_personal_subscription=%v",
+					apiKey.User.ID, apiKey.ID, apiKey.User.IdentityType, apiKey.User.Balance,
+					isEnterpriseKey, orgSubIDForLog,
+					func() string {
+						if apiKey.Group != nil {
+							return apiKey.Group.Name
+						}
+						return ""
+					}(),
+					isSubscriptionType, subscription != nil,
+				)
 				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
-					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
-					return
+					// IAM 用户即使自身余额已 <=0，若归属企业组织且具备 SharedBalanceUse
+					// 权限，仍可由企业钱包代付。此处调用 resolver 询问支付源：
+					//   - 若返回 BalanceSourceCompany：放行到 BillingCacheService 做企业
+					//     余额预检，让企业钱包承担后续消费；
+					//   - 若返回 Self/Allocated：说明没有企业代付能力，维持 403。
+					// 非 IAM 用户 resolver 恒返回 Self，等价于原逻辑。
+					if billingCtx := apiKeyService.ResolveBillingContextForUser(c.Request.Context(), apiKey.User.ID); billingCtx != nil && billingCtx.BalanceSource == service.BalanceSourceCompany {
+						logger.LegacyPrintf(
+							"middleware.api_key_auth",
+							"DIAG_BILLING_BYPASS auth_balance_gate_allow_company user_id=%d api_key_id=%d user_balance=%f payer_user_id=%d balance_source=%s",
+							apiKey.User.ID, apiKey.ID, apiKey.User.Balance, billingCtx.PayerUserID, billingCtx.BalanceSource,
+						)
+					} else {
+						AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
+						return
+					}
 				}
 			}
 		}

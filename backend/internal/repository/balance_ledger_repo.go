@@ -108,18 +108,27 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		return nil, err
 	}
 
-	// 2. 不透支扣减。
+	// 2. 扣减余额。
+	// 语义变更（透支策略）：
+	//   - company（企业钱包）：允许一次性透支到负数。理由：预检时企业余额可能是微量正数，
+	//     但请求实际成本远大于该余额，此时结算若因 balance >= amount 失败会导致响应已返回却扣不到钱。
+	//     现在改为强制扣成负数，下一次预检 organizations.balance > 0 不成立即被拒绝。
+	//   - allocated（IAM 划拨）：同样允许透支到负数。理由：预检口径是「划拨余额 > 0 就走 allocated」，
+	//     结算必须忠实按同一口径扣款，把 IAM 用户余额扣成负数，下次预检 balance > 0 不成立即切 company。
+	//   - self（普通用户）：同样允许透支一次，避免预检-结算金额差导致响应已返回却扣款失败。
+	// 结果：任一方一旦被扣成负数，下一次请求预检必然拦截；不会重复透支。
+	// UPDATE 只有在「记录不存在」时才返回 0 行，因此保留 classify*DeductFailure 用于区分该情况。
 	var newBalance float64
 	if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
 		err = tx.QueryRowContext(ctx, `
 			UPDATE organizations SET balance = balance - $1, updated_at = NOW()
-			WHERE id = $2 AND balance >= $1
+			WHERE id = $2
 			RETURNING balance
 		`, cmd.Amount, *cmd.OrganizationID).Scan(&newBalance)
 	} else {
 		err = tx.QueryRowContext(ctx, `
 			UPDATE users SET balance = balance - $1, updated_at = NOW()
-			WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
+			WHERE id = $2 AND deleted_at IS NULL
 			RETURNING balance
 		`, cmd.Amount, payerUserID).Scan(&newBalance)
 	}
@@ -127,7 +136,7 @@ func (r *balanceLedgerRepository) Deduct(ctx context.Context, cmd *service.Ledge
 		if balanceSource == service.BalanceSourceCompany && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
 			return nil, r.classifyOrganizationDeductFailure(ctx, tx, *cmd.OrganizationID)
 		}
-		// 区分「用户不存在」与「余额不足」。
+		// 记录不存在（用户被删除等异常）。
 		return nil, r.classifyDeductFailure(ctx, tx, payerUserID)
 	}
 	if err != nil {

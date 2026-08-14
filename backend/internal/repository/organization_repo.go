@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/accountid"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -1855,6 +1856,14 @@ func (r *organizationRepository) ResolveBillingContext(ctx context.Context, cons
 		if err == nil {
 			orgID, generation = &org.OrganizationID, org.AuthzGeneration
 		}
+		// DIAG_BILLING_BYPASS: 非 IAM 身份走 self 分支
+		var orgIDLog int64
+		if orgID != nil {
+			orgIDLog = *orgID
+		}
+		logger.LegacyPrintf("repository.organization",
+			"DIAG_BILLING_BYPASS resolve_non_iam consumer_user_id=%d identity=%s organization_id=%d required_amount=%f branch=self",
+			consumerUserID, identity, orgIDLog, requiredAmount)
 		return &service.BillingContext{ConsumerUserID: consumerUserID, OrganizationID: orgID, PayerUserID: consumerUserID, BalanceSource: service.BalanceSourceSelf, AuthzGeneration: generation}, nil
 	}
 	org, err := r.GetContextForUser(ctx, consumerUserID)
@@ -1862,24 +1871,31 @@ func (r *organizationRepository) ResolveBillingContext(ctx context.Context, cons
 		return nil, service.ErrOrganizationPermission
 	}
 	payer, source := consumerUserID, service.BalanceSourceAllocated
-	if org.HasAction(service.ActionSharedBalanceUse) {
-		var allocationCoversCharge bool
+	hasSharedBalanceUse := org.HasAction(service.ActionSharedBalanceUse)
+	// 语义变更：只要 IAM 用户自己账上还有正的划拨余额，就继续用 allocated 扣，
+	// 允许扣成负数（透支一次）；一旦划拨余额已 <= 0，才切到 company 由企业钱包承担。
+	// 这样能保证预检与结算的口径一致：预检只关心「划拨账户是否非负」，结算按同一规则扣。
+	// 副作用：IAM 用户余额可能出现负数；下一次请求预检 balance > 0 不成立 → 切 company →
+	// 若企业也已透支为负则被拒绝，白嫖漏洞被彻底堵住。
+	allocationHasPositiveBalance := false
+	if hasSharedBalanceUse {
 		if err := r.db.QueryRowContext(ctx, `
-			SELECT CASE
-				WHEN $2::numeric > 0 THEN balance >= $2::numeric
-				ELSE balance > 0
-			END
+			SELECT balance > 0
 			FROM users
 			WHERE id=$1 AND status='active' AND deleted_at IS NULL
-		`, consumerUserID, requiredAmount).Scan(&allocationCoversCharge); err != nil {
+		`, consumerUserID).Scan(&allocationHasPositiveBalance); err != nil {
 			return nil, err
 		}
-		if !allocationCoversCharge {
+		if !allocationHasPositiveBalance {
 			// PayerUserID remains owner attribution for compatibility, while the
 			// company source routes all money movement to organizations.balance.
 			payer, source = org.OwnerUserID, service.BalanceSourceCompany
 		}
 	}
+	// DIAG_BILLING_BYPASS: IAM 分支决策关键字段
+	logger.LegacyPrintf("repository.organization",
+		"DIAG_BILLING_BYPASS resolve_iam consumer_user_id=%d organization_id=%d owner_user_id=%d has_shared_balance_use=%v allocation_has_positive_balance=%v required_amount=%f -> payer_user_id=%d balance_source=%s",
+		consumerUserID, org.OrganizationID, org.OwnerUserID, hasSharedBalanceUse, allocationHasPositiveBalance, requiredAmount, payer, source)
 	return &service.BillingContext{ConsumerUserID: consumerUserID, OrganizationID: &org.OrganizationID, PayerUserID: payer, BalanceSource: source, AuthzGeneration: org.AuthzGeneration}, nil
 }
 
@@ -1888,9 +1904,13 @@ func (r *organizationRepository) GetOrganizationBalance(ctx context.Context, org
 }
 
 func (r *organizationRepository) DeductOrganizationBalance(ctx context.Context, organizationID int64, amount float64) (float64, error) {
+	// 语义变更（透支策略）：允许企业钱包一次性透支到负数。
+	// 理由：预检读到微量正余额而放行、结算实际金额远大于余额时，若坚持 balance >= amount
+	// 会让请求已经返回却扣不到钱；改为强扣到负后，下一次预检 balance > 0 不成立即被拒绝，
+	// 不会造成重复透支。
 	balance, err := r.organizationBalanceValue(ctx, `
 		UPDATE organizations SET balance=balance-$2,updated_at=NOW()
-		WHERE id=$1 AND balance >= $2
+		WHERE id=$1
 		RETURNING balance`, organizationID, amount)
 	if !errors.Is(err, sql.ErrNoRows) {
 		return balance, err
@@ -1902,6 +1922,7 @@ func (r *organizationRepository) DeductOrganizationBalance(ctx context.Context, 
 	if !exists {
 		return 0, service.ErrCompanyNotFound
 	}
+	// 理论上不会走到（UPDATE 只有在 id 不存在时才 0 行），保留兜底。
 	return 0, service.ErrBalanceInsufficient
 }
 

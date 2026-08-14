@@ -14,7 +14,9 @@ import (
 )
 
 const (
-	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
+	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
+	restoreBalanceToZeroSQL     = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
+	deductOrgBalanceSQL         = `(?s)UPDATE organizations\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2\s+RETURNING balance`
 	reserveBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance, frozen_balance`
 	captureBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
 	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
@@ -87,6 +89,116 @@ func TestApplyUsageBillingEffects_RejectsBalanceOverdraft(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrBalanceInsufficient)
 	require.Nil(t, result.NewBalance)
 	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_IAMAllocatedOverflowSpillsToOrganization(t *testing.T) {
+	// 场景：IAM 用户划拨账户余额 0.000239，本次消费 0.169947。
+	// 扣完 IAM = -0.169708 → 补回 0，同时企业余额被扣 0.169708。
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	const cost = 0.169947
+	const iamStartBalance = 0.000239
+	const iamAfterDeduct = iamStartBalance - cost // -0.169708
+	const overflow = -iamAfterDeduct              // 0.169708
+	const orgBalanceAfter = 100.0 - overflow
+
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(cost, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(iamAfterDeduct))
+	mock.ExpectQuery(restoreBalanceToZeroSQL).
+		WithArgs(overflow, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(0.0))
+	mock.ExpectQuery(deductOrgBalanceSQL).
+		WithArgs(overflow, int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(orgBalanceAfter))
+	mock.ExpectCommit()
+
+	orgID := int64(9)
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:         42,
+		PayerUserID:    42,
+		OrganizationID: &orgID,
+		BalanceSource:  service.BalanceSourceAllocated,
+		BalanceCost:    cost,
+	}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, 0.0, *result.NewBalance, 0.000001)
+	require.False(t, result.BalanceOverdrafted)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_IAMAllocatedNoOverflowKeepsOrgUntouched(t *testing.T) {
+	// 场景：IAM 用户划拨账户余额充足，扣完仍为正数 → 不触发企业扣款。
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(0.1, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(9.9))
+	mock.ExpectCommit()
+
+	orgID := int64(9)
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:         42,
+		PayerUserID:    42,
+		OrganizationID: &orgID,
+		BalanceSource:  service.BalanceSourceAllocated,
+		BalanceCost:    0.1,
+	}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, 9.9, *result.NewBalance, 0.000001)
+	require.False(t, result.BalanceOverdrafted)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyUsageBillingEffects_SelfSourceDoesNotSpillToOrganization(t *testing.T) {
+	// 场景：非 IAM 用户（BalanceSource=self）扣穿后，即使 OrganizationID 非空
+	// 也不应触发企业扣款——spillover 分支仅对 BalanceSourceAllocated 生效。
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectQuery(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(-1.0))
+	mock.ExpectCommit()
+
+	orgID := int64(9)
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:         42,
+		PayerUserID:    42,
+		OrganizationID: &orgID,
+		BalanceSource:  service.BalanceSourceSelf,
+		BalanceCost:    10,
+	}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, -1.0, *result.NewBalance, 0.000001)
+	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

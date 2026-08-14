@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
@@ -390,6 +391,24 @@ func (s *APIKeyService) SetOrganizationRepository(repo OrganizationRepository) {
 	s.organizationRepo = repo
 }
 
+// ResolveBillingContextForUser 供鉴权中间件在 IAM 用户余额已 <=0 时，
+// 判断是否可以切换到企业钱包支付。若返回 BillingContext.BalanceSource==
+// BalanceSourceCompany，则中间件应放行请求，交给 BillingCacheService 做企业
+// 余额预检；否则维持"余额不足"拒绝。
+// requiredAmount 传 0：中间件只需要知道支付源，不做实际金额判定。
+// 若 organizationRepo 未注入或返回错误，返回 nil，nil，让调用方按 fail-closed
+// 走原逻辑（余额不足即拒）。
+func (s *APIKeyService) ResolveBillingContextForUser(ctx context.Context, userID int64) *BillingContext {
+	if s == nil || s.organizationRepo == nil {
+		return nil
+	}
+	ctxResult, err := s.organizationRepo.ResolveBillingContext(ctx, userID, 0)
+	if err != nil {
+		return nil
+	}
+	return ctxResult
+}
+
 func (s *APIKeyService) ValidateOrganizationAccess(ctx context.Context, user *User) error {
 	if s == nil || s.organizationRepo == nil || user == nil {
 		return nil
@@ -530,16 +549,70 @@ func (s *APIKeyService) ValidateEnterpriseSubscription(ctx context.Context, apiK
 		return nil
 	}
 	if s.organizationRepo == nil {
+		logger.LegacyPrintf(
+			"service.api_key",
+			"DIAG_ENTERPRISE_LIMIT stage=repo_nil api_key_id=%d org_sub_id=%d",
+			apiKey.ID, *apiKey.OrganizationSubscriptionID,
+		)
 		return ErrOrgSubscriptionNotFound
 	}
-	rt, err := s.organizationRepo.GetOrganizationSubscriptionForBilling(ctx, *apiKey.OrganizationSubscriptionID)
+	orgSubID := *apiKey.OrganizationSubscriptionID
+	rt, err := s.organizationRepo.GetOrganizationSubscriptionForBilling(ctx, orgSubID)
 	if err != nil {
+		logger.LegacyPrintf(
+			"service.api_key",
+			"DIAG_ENTERPRISE_LIMIT stage=fetch_failed api_key_id=%d org_sub_id=%d err=%v",
+			apiKey.ID, orgSubID, err,
+		)
 		return err
 	}
+	// 打印订阅原始快照，覆盖 CheckAllLimits 判定所需的全部输入
+	now := time.Now()
+	fmtLimit := func(p *float64) string {
+		if p == nil {
+			return "nil"
+		}
+		return fmt.Sprintf("%f", *p)
+	}
+	fmtWin := func(t *time.Time) string {
+		if t == nil {
+			return "nil"
+		}
+		return t.Format(time.RFC3339)
+	}
+	winAge := func(t *time.Time) string {
+		if t == nil {
+			return "nil"
+		}
+		return now.Sub(*t).String()
+	}
+	logger.LegacyPrintf(
+		"service.api_key",
+		"DIAG_ENTERPRISE_LIMIT stage=snapshot api_key_id=%d org_sub_id=%d org_id=%d group_id=%d status=%s starts_at=%s expires_at=%s now=%s "+
+			"daily_usage=%f daily_limit=%s daily_window_start=%s daily_window_age=%s "+
+			"weekly_usage=%f weekly_limit=%s weekly_window_start=%s weekly_window_age=%s "+
+			"monthly_usage=%f monthly_limit=%s monthly_window_start=%s monthly_window_age=%s",
+		apiKey.ID, rt.ID, rt.OrganizationID, rt.GroupID, rt.Status,
+		rt.StartsAt.Format(time.RFC3339), rt.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339),
+		rt.DailyUsageUSD, fmtLimit(rt.DailyLimitUSD), fmtWin(rt.DailyWindowStart), winAge(rt.DailyWindowStart),
+		rt.WeeklyUsageUSD, fmtLimit(rt.WeeklyLimitUSD), fmtWin(rt.WeeklyWindowStart), winAge(rt.WeeklyWindowStart),
+		rt.MonthlyUsageUSD, fmtLimit(rt.MonthlyLimitUSD), fmtWin(rt.MonthlyWindowStart), winAge(rt.MonthlyWindowStart),
+	)
 	if !rt.IsActive() {
+		logger.LegacyPrintf(
+			"service.api_key",
+			"DIAG_ENTERPRISE_LIMIT stage=inactive api_key_id=%d org_sub_id=%d status=%s starts_at=%s expires_at=%s now=%s",
+			apiKey.ID, rt.ID, rt.Status,
+			rt.StartsAt.Format(time.RFC3339), rt.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339),
+		)
 		return ErrOrgSubscriptionNotFound
 	}
 	daily, weekly, monthly := rt.CheckAllLimits(0)
+	logger.LegacyPrintf(
+		"service.api_key",
+		"DIAG_ENTERPRISE_LIMIT stage=decision api_key_id=%d org_sub_id=%d daily_pass=%v weekly_pass=%v monthly_pass=%v",
+		apiKey.ID, rt.ID, daily, weekly, monthly,
+	)
 	switch {
 	case !daily:
 		return ErrDailyLimitExceeded

@@ -765,6 +765,14 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 func (s *BillingCacheService) checkBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
+		logger.LegacyPrintf("service.billing_cache",
+			"DIAG_BILLING_BYPASS preflight_skip_simple_mode user_id=%d api_key_id=%d",
+			user.ID, func() int64 {
+				if apiKey != nil {
+					return apiKey.ID
+				}
+				return 0
+			}())
 		return nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
@@ -776,6 +784,27 @@ func (s *BillingCacheService) checkBillingEligibility(ctx context.Context, user 
 	isEnterpriseSubscription := apiKey != nil && apiKey.OrganizationSubscriptionID != nil
 	isSubscriptionMode := isEnterpriseSubscription ||
 		(group != nil && group.IsSubscriptionType() && subscription != nil)
+
+	// DIAG_BILLING_BYPASS: 进入预检时记录关键判定字段
+	{
+		var apiKeyID, orgSubID int64
+		if apiKey != nil {
+			apiKeyID = apiKey.ID
+			if apiKey.OrganizationSubscriptionID != nil {
+				orgSubID = *apiKey.OrganizationSubscriptionID
+			}
+		}
+		var groupName string
+		var groupSubType bool
+		if group != nil {
+			groupName = group.Name
+			groupSubType = group.IsSubscriptionType()
+		}
+		logger.LegacyPrintf("service.billing_cache",
+			"DIAG_BILLING_BYPASS preflight_enter user_id=%d identity_type=%s api_key_id=%d org_sub_id=%d group=%s group_is_sub_type=%v has_personal_subscription=%v isEnterpriseSubscription=%v isSubscriptionMode=%v platform=%s",
+			user.ID, user.IdentityType, apiKeyID, orgSubID, groupName, groupSubType,
+			subscription != nil, isEnterpriseSubscription, isSubscriptionMode, platform)
+	}
 
 	if isSubscriptionMode {
 		// 订阅消费也计入企业成员限额。普通个人账号没有有效的企业成员关系，
@@ -821,6 +850,20 @@ func (s *BillingCacheService) checkBillingEligibility(ctx context.Context, user 
 				return ErrBillingServiceUnavailable.WithCause(fmt.Errorf("invalid billing payer for user %d", user.ID))
 			}
 			payerUserID = resolved.PayerUserID
+		}
+		// DIAG_BILLING_BYPASS: 记录 ResolveForAmount 决定的 payer/source
+		if resolved != nil {
+			var orgID int64
+			if resolved.OrganizationID != nil {
+				orgID = *resolved.OrganizationID
+			}
+			logger.LegacyPrintf("service.billing_cache",
+				"DIAG_BILLING_BYPASS preflight_resolved consumer_user_id=%d payer_user_id=%d balance_source=%s organization_id=%d required_amount=%f",
+				resolved.ConsumerUserID, resolved.PayerUserID, resolved.BalanceSource, orgID, s.minimumBalanceReserve())
+		} else {
+			logger.LegacyPrintf("service.billing_cache",
+				"DIAG_BILLING_BYPASS preflight_resolved_nil user_id=%d resolver_nil=%v (fallback payerUserID=%d)",
+				user.ID, s.billingContextResolver == nil, payerUserID)
 		}
 		if resolved != nil && resolved.UsesCompanyBalance() {
 			if err := s.checkOrganizationBalanceEligibility(ctx, resolved); err != nil {
@@ -966,7 +1009,12 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		s.circuitBreaker.OnSuccess()
 	}
 
-	if s.balanceBelowEligibilityThreshold(balance) {
+	below := s.balanceBelowEligibilityThreshold(balance)
+	// DIAG_BILLING_BYPASS: 记录读到的余额与阈值判定
+	logger.LegacyPrintf("service.billing_cache",
+		"DIAG_BILLING_BYPASS preflight_balance_check payer_user_id=%d balance=%f min_reserve=%f below_threshold=%v",
+		userID, balance, s.minimumBalanceReserve(), below)
+	if below {
 		return ErrInsufficientBalance
 	}
 
@@ -985,7 +1033,31 @@ func (s *BillingCacheService) checkOrganizationBalanceEligibility(ctx context.Co
 	if s.circuitBreaker != nil {
 		s.circuitBreaker.OnSuccess()
 	}
-	if s.balanceBelowEligibilityThreshold(balance) {
+	below := s.balanceBelowEligibilityThreshold(balance)
+	// DIAG_BILLING_BYPASS: 记录读到的企业余额
+	{
+		var orgID int64
+		if billing != nil && billing.OrganizationID != nil {
+			orgID = *billing.OrganizationID
+		}
+		logger.LegacyPrintf("service.billing_cache",
+			"DIAG_BILLING_BYPASS preflight_org_balance_check organization_id=%d consumer_user_id=%d payer_user_id=%d balance=%f min_reserve=%f below_threshold=%v",
+			orgID,
+			func() int64 {
+				if billing != nil {
+					return billing.ConsumerUserID
+				}
+				return 0
+			}(),
+			func() int64 {
+				if billing != nil {
+					return billing.PayerUserID
+				}
+				return 0
+			}(),
+			balance, s.minimumBalanceReserve(), below)
+	}
+	if below {
 		return ErrInsufficientBalance
 	}
 	return nil

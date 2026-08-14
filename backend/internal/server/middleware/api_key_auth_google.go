@@ -231,8 +231,15 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			}
 		} else {
 			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
-				abortWithGoogleError(c, 403, "Insufficient account balance")
-				return
+				// IAM 用户若归属企业组织且有 SharedBalanceUse 权限，可由企业钱包代付；
+				// resolver 返回 BalanceSourceCompany 则放行，交由 BillingCacheService
+				// 做企业余额预检。
+				if billingCtx := apiKeyService.ResolveBillingContextForUser(c.Request.Context(), apiKey.User.ID); billingCtx != nil && billingCtx.BalanceSource == service.BalanceSourceCompany {
+					// pass through
+				} else {
+					abortWithGoogleError(c, 403, "Insufficient account balance")
+					return
+				}
 			}
 		}
 

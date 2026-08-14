@@ -198,6 +198,29 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 				payerUserID = cmd.UserID
 			}
 			newBalance, sufficient, err = deductUsageBillingBalance(ctx, tx, payerUserID, cmd.BalanceCost)
+			// IAM 划拨账户扣穿后，把超额部分转由企业余额承担：
+			//   - Resolver 已确保 allocated 分支意味着 has_shared_balance_use=true 且组织 active；
+			//   - 本次扣款可能远大于 IAM 用户实际余额（预检只看 min_reserve，不看总额）；
+			//   - 语义：IAM 只能承担它自己划拨到的钱，超额部分由企业钱包兜底。
+			// 实现：把 IAM 余额从负数补回 0，同时从企业余额继续扣掉 overflow（也允许一次性透支到负数）。
+			// 下一次预检 IAM balance > 0 = false → 切 company，若企业也 <= 0 直接 403，堵住白嫖。
+			if err == nil && newBalance < 0 && cmd.BalanceSource == service.BalanceSourceAllocated && cmd.OrganizationID != nil && *cmd.OrganizationID > 0 {
+				overflow := -newBalance
+				iamBalanceAfter, iamRestoreErr := restoreUsageBillingBalanceToZero(ctx, tx, payerUserID, overflow)
+				if iamRestoreErr != nil {
+					return iamRestoreErr
+				}
+				orgBalanceAfter, orgSufficient, orgErr := deductUsageBillingOrganizationBalance(ctx, tx, *cmd.OrganizationID, overflow)
+				if orgErr != nil {
+					return orgErr
+				}
+				logger.LegacyPrintf("repository.usage_billing",
+					"DIAG_BILLING_SPILLOVER iam_user_id=%d org_id=%d cost=%f iam_charged=%f overflow=%f iam_balance_after=%f org_balance_after=%f org_sufficient=%v",
+					payerUserID, *cmd.OrganizationID, cmd.BalanceCost, cmd.BalanceCost-overflow, overflow, iamBalanceAfter, orgBalanceAfter, orgSufficient)
+				newBalance = iamBalanceAfter
+				// 溢出补扣完成，扣款已在事务内落库；BalanceOverdrafted 反映 IAM+企业整体是否透支。
+				sufficient = orgSufficient
+			}
 		}
 		if err != nil {
 			return err
@@ -289,13 +312,18 @@ func incrementUsageBillingOrgSubscription(ctx context.Context, tx *sql.Tx, subsc
 	return service.ErrOrgSubscriptionNotFound
 }
 
+// deductUsageBillingBalance 扣减用户（IAM 划拨或普通 self）余额。
+// 语义变更：允许一次性透支到负数。理由：网关预检时只知道最小保留额，实际结算金额
+// 可能远大于预检时的余额；若坚持 balance >= amount，会出现「响应已返回但扣不到钱」
+// 的白嫖漏洞。改为强扣到负数后，下一次预检 balance > 0 不成立即被拒绝，不会重复透支。
+// UPDATE 只有在「记录不存在」时才返回 0 行，因此保留 ErrBalanceInsufficient 兜底。
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE users
 		SET balance = balance - $1,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL AND balance >= $1
+		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING balance
 	`, amount, userID).Scan(&newBalance)
 	if err == nil {
@@ -313,17 +341,39 @@ func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, am
 	return 0, false, service.ErrBalanceInsufficient
 }
 
+// restoreUsageBillingBalanceToZero 把 IAM 划拨用户扣到负数的余额补回 0。
+// 场景：IAM 用户划拨账户扣穿后，overflow 部分由企业余额承担；IAM 自己不应保留负数
+// （负数没有账务意义，且下一次 preflight 才能靠 balance <= 0 切换到 company 分支）。
+// 语义：balance += overflow，等价于 IAM 只承担了本次消费中它自己曾持有的正数部分。
+func restoreUsageBillingBalanceToZero(ctx context.Context, tx *sql.Tx, userID int64, overflow float64) (float64, error) {
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, `
+		UPDATE users
+		SET balance = balance + $1,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+		RETURNING balance
+	`, overflow, userID).Scan(&newBalance)
+	if err != nil {
+		return 0, err
+	}
+	return newBalance, nil
+}
+
 func usageBillingUsesOrganizationBalance(balanceSource string, organizationID *int64) bool {
 	return balanceSource == service.BalanceSourceCompany && organizationID != nil && *organizationID > 0
 }
 
+// deductUsageBillingOrganizationBalance 扣减企业钱包余额。
+// 语义变更：同 deductUsageBillingBalance，允许一次性透支到负数。
+// 前置条件：organizations.balance 的 CHECK (balance >= 0) 约束已在 migration 222 中移除。
 func deductUsageBillingOrganizationBalance(ctx context.Context, tx *sql.Tx, organizationID int64, amount float64) (float64, bool, error) {
 	var newBalance float64
 	err := tx.QueryRowContext(ctx, `
 		UPDATE organizations
 		SET balance = balance - $1,
 			updated_at = NOW()
-		WHERE id = $2 AND balance >= $1
+		WHERE id = $2
 		RETURNING balance
 	`, amount, organizationID).Scan(&newBalance)
 	if err == nil {
