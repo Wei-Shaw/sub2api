@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -153,6 +154,7 @@ func (n *NOWPayments) CreatePayment(ctx context.Context, req payment.CreatePayme
 
 	raw, err := n.post(ctx, "/invoice", body)
 	if err != nil {
+		n.logInvoiceRejection(body, err)
 		return nil, err
 	}
 	var invoice nowPaymentsInvoiceResponse
@@ -168,6 +170,47 @@ func (n *NOWPayments) CreatePayment(ctx context.Context, req payment.CreatePayme
 		IntentID: invoice.ID.String(),
 		Currency: currency,
 	}, nil
+}
+
+// logInvoiceRejection records the values an invoice was refused for.
+//
+// NOWPayments answers a rejected invoice with a bare "HTTP 500: The server
+// encountered an internal error" that names neither the offending field nor its
+// value, so the request itself is the only evidence of what upstream disliked.
+// None of these fields are secret; the redirect URLs carry a resume token in
+// their query string, which redirectURLForLog strips.
+func (n *NOWPayments) logInvoiceRejection(body nowPaymentsInvoiceRequest, cause error) {
+	slog.Warn("[NOWPayments] invoice rejected",
+		"instance", n.instanceID,
+		"price_amount", string(body.PriceAmount),
+		"price_currency", body.PriceCurrency,
+		"order_id", body.OrderID,
+		"order_description", body.OrderDescription,
+		"ipn_callback_url", redirectURLForLog(body.IPNCallbackURL),
+		"success_url", redirectURLForLog(body.SuccessURL),
+		"cancel_url", redirectURLForLog(body.CancelURL),
+		"partially_paid_url", redirectURLForLog(body.PartiallyPaidURL),
+		"is_fixed_rate", body.IsFixedRate,
+		"is_fee_paid_by_user", body.IsFeePaidByUser,
+		"error", cause,
+	)
+}
+
+// redirectURLForLog reduces a URL to the part that can be read in a log: its
+// origin and path, plus the full length so an over-long URL is still visible as
+// a suspect.
+func redirectURLForLog(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Sprintf("<unparsable, %d chars>", len(raw))
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return fmt.Sprintf("%s (%d chars)", parsed.String(), len(raw))
 }
 
 // resolveRedirectURL prefers the per-instance override so an admin can pin the
