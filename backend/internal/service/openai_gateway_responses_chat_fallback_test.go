@@ -53,6 +53,50 @@ REDACTED
 	require.False(t, result.Stream)
 REDACTED
 
+func TestForwardResponses_PassthroughFlagWithUnsupportedResponsesUsesAccountMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, path := range []string{"/v1/responses", "/v1/responses/compact"REDACTED {
+		path := path
+		t.Run(path, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.4-channel","input":"hello","stream":falseREDACTED`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"chatcmpl_mapping","object":"chat.completion","model":"gpt-5.4-account","choices":[{"index":0,"message":{"role":"assistant","content":"ok"REDACTED,"finish_reason":"stop"REDACTED],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2REDACTEDREDACTED`,
+				)),
+		REDACTEDREDACTED
+			svc := &OpenAIGatewayService{
+				cfg:          rawChatCompletionsTestConfig(),
+				httpUpstream: upstream,
+		REDACTED
+			account := rawChatCompletionsTestAccount()
+			account.Credentials["model_mapping"] = map[string]any{
+				"gpt-5.4-channel": "gpt-5.4-account",
+		REDACTED
+			account.Credentials["compact_model_mapping"] = map[string]any{
+				"gpt-5.4-account": "gpt-5.4-compact",
+		REDACTED
+			account.Extra = map[string]any{
+				"openai_passthrough":                     true,
+				openai_compat.ExtraKeyResponsesSupported: false,
+		REDACTED
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+		REDACTED
+			require.NotNil(t, result)
+			require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+			require.Equal(t, "gpt-5.4-account", gjson.GetBytes(upstream.lastBody, "model").String())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestForwardResponses_ForceChatCompletionsRoutesStreamingToChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

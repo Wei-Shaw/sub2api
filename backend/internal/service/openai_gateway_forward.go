@@ -108,7 +108,7 @@ REDACTED
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 REDACTED
 
-	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
+	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 REDACTED
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
@@ -1026,6 +1026,12 @@ REDACTED
 	REDACTED
 		return forwardResult, nil
 REDACTED
+REDACTED
+
+func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
+	return account != nil &&
+		account.Type == AccountTypeAPIKey &&
+		!openai_compat.ShouldUseResponsesAPI(account.Extra)
 REDACTED
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
