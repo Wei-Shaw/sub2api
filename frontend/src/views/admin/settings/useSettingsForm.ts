@@ -3444,12 +3444,14 @@ const providerDialogRef = ref<InstanceType<
   typeof PaymentProviderDialog
 > | null>(null);
 
+// One option per provider key the backend actually accepts
+// (see validProviderKeys in backend/internal/service/payment_config_providers.go).
 const providerKeyOptions = computed(() => [
-  { value: "easypay", label: t("admin.settings.payment.providerEasypay") },
-  { value: "alipay", label: t("admin.settings.payment.providerAlipay") },
-  { value: "wxpay", label: t("admin.settings.payment.providerWxpay") },
-  { value: "stripe", label: t("admin.settings.payment.providerStripe") },
-  { value: "airwallex", label: t("admin.settings.payment.providerAirwallex") },
+  { value: "sepay", label: t("admin.settings.payment.providerSepay") },
+  {
+    value: "nowpayments",
+    label: t("admin.settings.payment.providerNowpayments"),
+  },
 ]);
 
 const enabledProviderKeyOptions = computed(() => {
@@ -3535,7 +3537,7 @@ async function loadProviders() {
 function openCreateProvider() {
   editingProvider.value = null;
   providerDialogRef.value?.reset(
-    enabledProviderKeyOptions.value[0]?.value || "easypay",
+    enabledProviderKeyOptions.value[0]?.value || "sepay",
   );
   showProviderDialog.value = true;
 }
