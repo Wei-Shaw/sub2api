@@ -97,25 +97,13 @@ export default {
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
       groupCountTotal: '{count} groups total',
-      platforms: {
-        anthropic: 'Anthropic',
-        claude: 'Claude',
-        openai: 'OpenAI',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity',
-        grok: 'Grok',
-      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
-        googleOauth: 'Google OAuth',
-        codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
-        upstream: 'Upstream',
-        upstreamDesc: 'Connect via Base URL + API Key'
       },
       antigravityProjectIdLabel: 'GCP Project ID (optional)',
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
@@ -178,8 +166,6 @@ export default {
         actions: 'Actions'
       },
       schedulerScore: {
-        baseShort: 'Base',
-        stickyShort: 'Sticky',
         ungrouped: 'Ungrouped',
         hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, billing rate, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       },
@@ -389,9 +375,6 @@ export default {
       quotaLimitAmountHint: 'Cumulative spending limit. Does not auto-reset.',
       quotaNotify: {
         alert: 'Alert',
-        enabled: 'Enable Alert',
-        threshold: 'Alert Amount',
-        thresholdPlaceholder: 'Enter percentage',
       },
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
@@ -1210,9 +1193,6 @@ export default {
           title: 'Gemini Usage Guide',
           apiKeySection: 'API Key Links'
         },
-        modelPassthrough: 'Gemini Model Passthrough',
-        modelPassthroughDesc:
-          'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
         tier: {
@@ -1247,7 +1227,6 @@ export default {
         oauthType: {
           builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
           builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
-          builtInRequirement: 'Requires a GCP project and Project ID.',
           googleOneDesc: 'Personal account with Google One subscription quota',
           codeAssistDesc: 'Enterprise-grade, requires a GCP project',
           codeAssistRequirement: 'Requires an active GCP project with billing enabled',
@@ -1258,12 +1237,10 @@ export default {
           customDesc: 'Uses admin-configured OAuth client for org management.',
           customRequirement: 'Admin must configure Client ID and add you as a test user.',
           badges: {
-            recommended: 'Recommended',
             highConcurrency: 'High concurrency',
             individuals: 'Recommended for individuals',
             noGcp: 'No GCP required',
             enterprise: 'Enterprise users',
-            noAdmin: 'No admin setup',
             orgManaged: 'Org managed',
             adminRequired: 'Admin required'
           }
@@ -1314,36 +1291,14 @@ export default {
               limitsStandard: 'Shared pool: 1500 RPD / 120 RPM',
               limitsEnterprise: 'Shared pool: 2000 RPD / 120 RPM'
             },
-            cli: {
-              channel: 'Gemini CLI (Official Google Login / Code Assist)',
-              free: 'Free Google Account',
-              premium: 'Google One AI Premium',
-              limitsFree: 'RPD ~1000; RPM ~60 (soft)',
-              limitsPremium: 'RPD ~1500+; RPM ~60+ (priority queue)'
-            },
-            gcloud: {
-              channel: 'GCP Code Assist (gcloud auth)',
-              account: 'No Code Assist subscription',
-              limits: 'RPD ~1000; RPM ~60 (preview)'
-            },
             aiStudio: {
               channel: 'AI Studio API Key / OAuth',
-              free: 'No billing (free tier)',
-              paid: 'Billing enabled (pay-as-you-go)',
               limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
               limitsPaid: 'RPD unlimited; RPM 1000 (Pro) / 2000 (Flash) (per model)'
             },
-            customOAuth: {
-              channel: 'Custom OAuth Client (GCP)',
-              free: 'Project not billed',
-              paid: 'Project billed',
-              limitsFree: 'RPD 50; RPM 2 (project quota)',
-              limitsPaid: 'RPD unlimited; RPM 1000+ (project quota)'
-            }
           }
         },
         rateLimit: {
-          ok: 'Not rate limited',
           unlimited: 'Unlimited',
           limited: 'Rate limited {time}',
           now: 'now'
@@ -1437,34 +1392,20 @@ export default {
         noData: 'No usage data available for this account'
       },
       usageWindow: {
-        statsTitle: '5-Hour Window Usage Statistics',
-        statsTitleDaily: 'Daily Usage Statistics',
-        geminiProDaily: 'Pro',
-        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
-        grokRequests: 'Req',
-        grokTokens: 'Tok',
         grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limit} limit)',
         grokWeeklyUsage: 'Weekly {percent}%',
         grokUsed: 'Used $',
-        grokBalance: 'Bal $',
         grokPrepaid: 'Prepaid balance',
         grokMonthlyLimit: 'Monthly used / limit (USD)',
-        grokOverage: 'Overage onDemandUsed/onDemandCap',
-        grokOverageShort: 'OD $',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {time}',
         grokProbe: 'Probe',
         grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
-        grokResetUnsupported: 'Reset unsupported',
-        grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
         grokNoHeaders: 'No quota headers observed',
-        grokLastStatus: 'Status {status}',
-        grokLastProbe: 'Probe {time}',
-        grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },
@@ -1495,11 +1436,6 @@ export default {
         free: 'Free',
         pro: 'Pro',
         ultra: 'Ultra',
-        aiPremium: 'AI Premium',
-        standard: 'Standard',
-        basic: 'Basic',
-        personal: 'Personal',
-        unlimited: 'Unlimited'
       },
       ineligibleWarning:
         'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.',

@@ -120,8 +120,6 @@ export default {
         actions: '操作'
       },
       schedulerScore: {
-        baseShort: '普通',
-        stickyShort: '粘性',
         ungrouped: '未分组',
         hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量、计费倍率等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
       },
@@ -284,9 +282,6 @@ export default {
       quotaLimitAmountHint: '累计消费上限，不会自动重置。',
       quotaNotify: {
         alert: '提醒阈值',
-        enabled: '启用告警',
-        threshold: '告警金额',
-        thresholdPlaceholder: '输入百分比',
       },
       testConnection: '测试连接',
       reAuthorize: '重新授权',
@@ -300,25 +295,13 @@ export default {
       apiKey: 'API Key',
       deleteConfirm: "确定要删除账号 '{name}' 吗？此操作无法撤销。",
       failedToClearRateLimit: '清除速率限制失败',
-      platforms: {
-        claude: 'Claude',
-        openai: 'OpenAI',
-        anthropic: 'Anthropic',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity',
-        grok: 'Grok',
-      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
-        googleOauth: 'Google OAuth',
-        codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
-        upstream: '对接上游',
-        upstreamDesc: '通过 Base URL + API Key 连接上游'
       },
       antigravityProjectIdLabel: 'GCP Project ID（可选）',
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
@@ -404,34 +387,20 @@ export default {
         }
       },
       usageWindow: {
-        statsTitle: '5小时窗口用量统计',
-        statsTitleDaily: '每日用量统计',
-        geminiProDaily: 'Pro',
-        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
-        grokRequests: '请求',
-        grokTokens: 'Token',
         grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limit}）',
         grokWeeklyUsage: '周额度已用 {percent}%',
         grokUsed: '已用 $',
-        grokBalance: '余额 $',
         grokPrepaid: '预付余额',
         grokMonthlyLimit: '月度已用/上限（USD）',
-        grokOverage: '超额 onDemandUsed/onDemandCap',
-        grokOverageShort: '超额 $',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{time} 后重试',
         grokProbe: '探测',
         grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
-        grokResetUnsupported: '不支持重置',
-        grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
         grokNoHeaders: '未观察到配额响应头',
-        grokLastStatus: '状态 {status}',
-        grokLastProbe: '探测 {time}',
-        grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       },
@@ -462,11 +431,6 @@ export default {
         free: 'Free',
         pro: 'Pro',
         ultra: 'Ultra',
-        aiPremium: 'AI Premium',
-        standard: '标准版',
-        basic: '基础版',
-        personal: '个人版',
-        unlimited: '无限制'
       },
       ineligibleWarning:
         '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
@@ -1263,8 +1227,6 @@ export default {
           title: 'Gemini 使用指南',
           apiKeySection: 'API Key 相关链接'
         },
-        modelPassthrough: 'Gemini 直接转发模型',
-        modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
         tier: {
@@ -1298,7 +1260,6 @@ export default {
         oauthType: {
           builtInTitle: '内置授权（Gemini CLI / Code Assist）',
           builtInDesc: '使用 Google 内置客户端 ID，无需管理员配置。',
-          builtInRequirement: '需要 GCP 项目并填写 Project ID。',
           googleOneDesc: '个人账号，享受 Google One 订阅配额',
           codeAssistDesc: '企业级，需要 GCP 项目',
           codeAssistRequirement: '需要激活 GCP 项目并绑定信用卡',
@@ -1309,12 +1270,10 @@ export default {
           customDesc: '使用管理员预设的 OAuth 客户端，适合组织管理。',
           customRequirement: '需管理员配置 Client ID 并加入测试用户白名单。',
           badges: {
-            recommended: '推荐',
             highConcurrency: '高并发',
             individuals: '推荐个人用户',
             noGcp: '无需 GCP',
             enterprise: '企业用户',
-            noAdmin: '无需管理员配置',
             orgManaged: '组织管理',
             adminRequired: '需要管理员'
           }
@@ -1365,36 +1324,14 @@ export default {
               limitsStandard: '共享池：1500 RPD / 120 RPM（不分模型）',
               limitsEnterprise: '共享池：2000 RPD / 120 RPM（不分模型）'
             },
-            cli: {
-              channel: 'Gemini CLI（官方 Google 登录 / Code Assist）',
-              free: '免费 Google 账号',
-              premium: 'Google One AI Premium',
-              limitsFree: 'RPD ~1000；RPM ~60（软限制）',
-              limitsPremium: 'RPD ~1500+；RPM ~60+（优先队列）'
-            },
-            gcloud: {
-              channel: 'GCP Code Assist（gcloud 登录）',
-              account: '未购买 Code Assist 订阅',
-              limits: 'RPD ~1000；RPM ~60（预览期）'
-            },
             aiStudio: {
               channel: 'AI Studio API Key / OAuth',
-              free: '未绑卡（免费层）',
-              paid: '已绑卡（按量付费）',
               limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
               limitsPaid: 'RPD 不限；RPM 1000（Pro）/ 2000（Flash）（按模型配额）'
             },
-            customOAuth: {
-              channel: 'Custom OAuth Client（GCP）',
-              free: '项目未绑卡',
-              paid: '项目已绑卡',
-              limitsFree: 'RPD 50；RPM 2（项目配额）',
-              limitsPaid: 'RPD 不限；RPM 1000+（项目配额）'
-            }
           }
         },
         rateLimit: {
-          ok: '未限流',
           unlimited: '无限流',
           limited: '限流 {time}',
           now: '现在'
