@@ -105,21 +105,29 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestIsOpenAIRemoteCompactPath(t *testing.T) {
-	require.False(t, isOpenAIRemoteCompactPath(nil))
+func TestIsOpenAILegacyCompactPath(t *testing.T) {
+	require.False(t, isOpenAILegacyCompactPath(nil))
 
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", nil)
-	require.True(t, isOpenAIRemoteCompactPath(c))
-
-	c.Request = httptest.NewRequest(http.MethodPost, "/responses/compact/", nil)
-	require.True(t, isOpenAIRemoteCompactPath(c))
-
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	require.False(t, isOpenAIRemoteCompactPath(c))
+	for _, test := range []struct {
+		path string
+		want bool
+REDACTED{
+		{path: "/v1/responses/compact", want: trueREDACTED,
+		{path: "/v1/responses/compact/detail", want: trueREDACTED,
+		{path: "/responses/compact/", want: trueREDACTED,
+		{path: "/v1/responses", want: falseREDACTED,
+		{path: "/openai/v1/responses", want: falseREDACTED,
+		{path: "/responses", want: falseREDACTED,
+		{path: "/backend-api/codex/responses", want: falseREDACTED,
+		{path: "/v1/responses/resp_123/cancel", want: falseREDACTED,
+REDACTED {
+		c.Request = httptest.NewRequest(http.MethodPost, test.path, nil)
+		require.Equal(t, test.want, isOpenAILegacyCompactPath(c), test.path)
+REDACTED
 REDACTED
 
 func TestLogOpenAIRemoteCompactOutcome_Succeeded(t *testing.T) {

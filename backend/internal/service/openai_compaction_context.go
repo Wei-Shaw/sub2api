@@ -10,9 +10,9 @@ type openAIForwardModel struct {
 REDACTED
 
 // WithOpenAIForwardModel records the model present in the forwarded request
-// body after channel mapping and whether the legacy compact-only model mapping
-// applies. Channel restriction checks then follow the same model chain used by
-// Forward.
+// body after channel mapping and whether the legacy /responses/compact-only
+// model mapping applies. Native remote compaction v2 keeps this false, so
+// channel restriction checks follow the same model chain used by Forward.
 func WithOpenAIForwardModel(ctx context.Context, forwardModel string, useCompactModelMapping bool) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
