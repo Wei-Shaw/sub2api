@@ -309,6 +309,15 @@ export default {
       cancelledDesc: '您已取消本次支付',
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
+      transfer: {
+        title: '或手动转账',
+        hint: '请按金额转账，并保持转账备注不变——系统通过该备注码匹配订单。',
+        bank: '银行',
+        accountNumber: '账号',
+        accountName: '账户名',
+        amount: '金额',
+        content: '转账备注',
+      },
     },
     orders: {
       empty: '暂无订单',

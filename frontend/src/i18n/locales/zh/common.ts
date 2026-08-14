@@ -128,6 +128,46 @@ export default {
     acceptFailed: '提交确认失败'
   },
 
+  // Public API documentation (`views/public/DocsView.vue`). Page bodies are
+  // markdown under `docs/public/`, one file per locale — only the chrome and
+  // the sidebar labels are translated here.
+  docs: {
+    title: '开发文档',
+    sectionsLabel: '文档目录',
+    tableOfContents: '本页内容',
+    next: '下一篇',
+    loadFailed: '页面加载失败',
+    retryLater: '请稍后刷新页面重试。',
+    notFound: '页面不存在',
+    notFoundDescription: '该文档页面不存在，请从左侧列表中选择。',
+    pages: {
+      overview: {
+        title: '概览',
+        summary: '一个 Key、一个 Base URL，沿用你已经在写的请求格式。'
+      },
+      quickstart: {
+        title: '快速开始',
+        summary: '从创建 Key 到跑通请求，含 curl 与各语言 SDK 示例。'
+      },
+      authentication: {
+        title: '认证',
+        summary: '支持的三种请求头，以及为什么 query 参数会被拒绝。'
+      },
+      apiReference: {
+        title: 'API 参考',
+        summary: '按能力分组的完整端点清单，附可用性说明。'
+      },
+      billingAndUsage: {
+        title: '计费与用量',
+        summary: '通过 API 读取当前生效倍率与消耗明细。'
+      },
+      errors: {
+        title: '错误',
+        summary: '各协议的响应结构、状态码，以及哪些该重试。'
+      }
+    }
+  },
+
   legal: {
     loadFailed: '文档加载失败',
     retryLater: '请稍后刷新页面重试。',

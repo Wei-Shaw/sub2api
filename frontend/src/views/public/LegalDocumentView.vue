@@ -90,7 +90,7 @@
             <div
               v-if="hasContent"
               data-testid="legal-prose"
-              class="legal-prose mt-10"
+              class="long-form-prose mt-10"
               v-html="renderedHtml"
             ></div>
             <p
@@ -148,6 +148,8 @@ import { getLocale } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 import type { LoginAgreementDocument } from '@/types'
 import { sanitizeUrl } from '@/utils/url'
+
+import '@/styles/long-form-prose.css'
 import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
 
@@ -251,132 +253,3 @@ onMounted(async () => {
   loading.value = false
 })
 </script>
-
-<style scoped>
-/*
- * The one long-form reading surface in the product, so this block is doing
- * typographic work rather than token bookkeeping.
- *
- * Family B throughout — every colour below flips at `.dark` on its own, so
- * this file writes no dark-mode variant at all. Hierarchy is carried by
- * size, weight and the space above a heading; no coloured left rules, no
- * decorative dividers, no shadow, radius at or under 2px.
- */
-.legal-prose {
-  @apply text-md text-ink-secondary;
-  line-height: 1.75;
-  overflow-wrap: anywhere;
-}
-
-/*
- * A heading belongs to the section that follows it, so the space above is
- * always larger than the space below. That single asymmetry is what makes the
- * document scannable without a rule under every title.
- *
- * The markdown `# Title` duplicates the page `<h1>` above, so it is set at the
- * section rank instead of competing with it.
- */
-.legal-prose :deep(h1),
-.legal-prose :deep(h2) {
-  @apply mb-4 mt-12 scroll-mt-8 text-xl font-semibold text-ink;
-}
-
-.legal-prose :deep(h3) {
-  @apply mb-3 mt-9 scroll-mt-8 text-lg font-medium text-ink;
-}
-
-.legal-prose :deep(h4) {
-  @apply mb-2 mt-7 scroll-mt-8 text-md font-semibold text-ink;
-}
-
-/* The article already sits against its own rule; do not push it off. */
-.legal-prose > :deep(*:first-child) {
-  @apply mt-0;
-}
-
-.legal-prose > :deep(*:last-child) {
-  @apply mb-0;
-}
-
-.legal-prose :deep(p) {
-  @apply mb-5;
-}
-
-/* Accent means "you can act on this" and nothing else. */
-.legal-prose :deep(a) {
-  @apply text-accent underline-offset-2 transition-colors duration-fast;
-  @apply hover:text-accent-hover hover:underline;
-}
-
-.legal-prose :deep(ul) {
-  @apply mb-5 list-disc pl-6;
-}
-
-.legal-prose :deep(ol) {
-  @apply mb-5 list-decimal pl-6;
-}
-
-.legal-prose :deep(li) {
-  @apply mb-2 pl-1;
-}
-
-.legal-prose :deep(li::marker) {
-  @apply text-ink-tertiary;
-}
-
-.legal-prose :deep(li > ul),
-.legal-prose :deep(li > ol) {
-  @apply mb-0 mt-2;
-}
-
-.legal-prose :deep(strong) {
-  @apply font-semibold text-ink;
-}
-
-.legal-prose :deep(em) {
-  @apply italic;
-}
-
-.legal-prose :deep(code) {
-  @apply rounded-sm border border-line-subtle bg-surface-sunken px-1.5 py-0.5;
-  @apply font-mono text-[0.875em] text-ink;
-}
-
-.legal-prose :deep(pre) {
-  @apply mb-5 overflow-x-auto rounded border border-line bg-surface-sunken p-4;
-}
-
-.legal-prose :deep(pre code) {
-  @apply rounded-none border-0 bg-transparent p-0 text-sm;
-}
-
-.legal-prose :deep(blockquote) {
-  @apply mb-5 border-l border-line-strong bg-surface-sunken px-5 py-4 text-ink-secondary;
-}
-
-.legal-prose :deep(blockquote > *:last-child) {
-  @apply mb-0;
-}
-
-/* `block` is what makes a markdown table scroll instead of blowing the measure. */
-.legal-prose :deep(table) {
-  @apply mb-5 block w-full overflow-x-auto border-collapse text-sm;
-}
-
-.legal-prose :deep(th),
-.legal-prose :deep(td) {
-  @apply border border-line-subtle px-3 py-2 text-left align-top;
-}
-
-.legal-prose :deep(th) {
-  @apply bg-surface-sunken font-semibold text-ink;
-}
-
-.legal-prose :deep(img) {
-  @apply mb-5 h-auto max-w-full rounded border border-line;
-}
-
-.legal-prose :deep(hr) {
-  @apply my-10 h-px border-0 bg-line-subtle;
-}
-</style>

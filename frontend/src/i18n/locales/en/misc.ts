@@ -284,6 +284,15 @@ export default {
       cancelledDesc: 'You have cancelled this payment.',
       waitingPayment: 'Waiting for payment...',
       cancelOrder: 'Cancel Order',
+      transfer: {
+        title: 'Or transfer manually',
+        hint: 'Transfer the exact amount and keep the transfer content unchanged — the payment is matched by that code.',
+        bank: 'Bank',
+        accountNumber: 'Account Number',
+        accountName: 'Account Name',
+        amount: 'Amount',
+        content: 'Transfer Content',
+      },
     },
     orders: {
       empty: 'No orders yet',

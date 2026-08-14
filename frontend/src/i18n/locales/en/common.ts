@@ -130,6 +130,46 @@ export default {
     acceptFailed: 'Failed to submit acknowledgment'
   },
 
+  // Public API documentation (`views/public/DocsView.vue`). Page bodies are
+  // markdown under `docs/public/`, one file per locale — only the chrome and
+  // the sidebar labels are translated here.
+  docs: {
+    title: 'Documentation',
+    sectionsLabel: 'Documentation pages',
+    tableOfContents: 'On this page',
+    next: 'Next',
+    loadFailed: 'Failed to load this page',
+    retryLater: 'Refresh the page and try again later.',
+    notFound: 'Page not found',
+    notFoundDescription: 'This documentation page does not exist. Pick one from the list.',
+    pages: {
+      overview: {
+        title: 'Overview',
+        summary: 'One key, one base URL, and the request formats you already use.'
+      },
+      quickstart: {
+        title: 'Quickstart',
+        summary: 'From a new key to a working request, with curl and SDK examples.'
+      },
+      authentication: {
+        title: 'Authentication',
+        summary: 'The three accepted headers, and why a query parameter is refused.'
+      },
+      apiReference: {
+        title: 'API reference',
+        summary: 'Every endpoint, grouped by capability, with availability notes.'
+      },
+      billingAndUsage: {
+        title: 'Billing and usage',
+        summary: 'Read your effective rate multiplier and your consumption from the API.'
+      },
+      errors: {
+        title: 'Errors',
+        summary: 'Response shapes per protocol, status codes, and what to retry.'
+      }
+    }
+  },
+
   legal: {
     loadFailed: 'Failed to load document',
     retryLater: 'Refresh the page and try again later.',

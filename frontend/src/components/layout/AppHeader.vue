@@ -280,6 +280,16 @@ const quickLinks = computed(() => {
 
   if (docUrl.value) {
     links.push({ key: 'docs', label: t('nav.docs'), icon: 'book', external: true, href: docUrl.value })
+  } else {
+    // No external documentation site configured, so the entry points at the
+    // built-in public pages rather than vanishing from the header.
+    links.push({
+      key: 'docs',
+      label: t('nav.docs'),
+      icon: 'book',
+      external: false,
+      to: { path: '/docs', query: {} },
+    })
   }
   if (user.value && modelPlazaEnabled.value) {
     links.push({

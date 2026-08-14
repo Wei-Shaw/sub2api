@@ -165,6 +165,30 @@ const routes: RouteRecordRaw[] = [
       title: 'Legal Document'
     }
   },
+  // Public API documentation. `/docs/:slug` does not swallow the authenticated
+  // `/docs/batch-image` alias above: vue-router ranks a static segment above a
+  // param regardless of declaration order, so that guide keeps its URL and only
+  // slugs nothing else claims reach this view.
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/public/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Docs',
+      titleKey: 'docs.title'
+    }
+  },
+  {
+    path: '/docs/:slug',
+    name: 'DocsPage',
+    component: () => import('@/views/public/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Docs',
+      titleKey: 'docs.title'
+    }
+  },
   {
     path: '/model-plaza',
     name: 'ModelPlaza',
