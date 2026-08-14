@@ -38,10 +38,10 @@
         <div>
           <label class="input-label">{{ t('payment.admin.price') }} <span class="text-red-500">*</span></label>
           <input v-model.number="planForm.price" type="number" step="0.01" min="0.01" class="input" required />
-          <p v-if="subscriptionCnyPreview" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
-            {{ t('payment.admin.subscriptionCnyPayPreview', { amount: subscriptionCnyPreview.amount }) }}
-            <span v-if="subscriptionCnyPreview.feeRate > 0">
-              {{ t('payment.admin.subscriptionCnyPayPreviewWithFee', { feeRate: subscriptionCnyPreview.feeRate, total: subscriptionCnyPreview.total }) }}
+          <p v-if="subscriptionVndPreview" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
+            {{ t('payment.admin.subscriptionVndPayPreview', { amount: subscriptionVndPreview.amount }) }}
+            <span v-if="subscriptionVndPreview.feeRate > 0">
+              {{ t('payment.admin.subscriptionVndPayPreviewWithFee', { feeRate: subscriptionVndPreview.feeRate, total: subscriptionVndPreview.total }) }}
             </span>
           </p>
         </div>
@@ -97,7 +97,7 @@ import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import type { AdminPaymentConfig } from '@/api/admin/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { formatPaymentAmount } from '@/components/payment/currency'
+import { formatPaymentAmount, SEPAY_CURRENCY } from '@/components/payment/currency'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -146,28 +146,28 @@ const selectedGroupInfo = computed(() => {
   return props.groups.find(g => g.id === planForm.group_id) || null
 })
 
-function roundCnyAmount(value: number): number {
-  return Math.round(value * 100) / 100
+function roundVndAmount(value: number): number {
+  return Math.round(value)
 }
 
-function ceilCnyAmount(value: number): number {
-  return Math.ceil(value * 100) / 100
+function ceilVndAmount(value: number): number {
+  return Math.ceil(value)
 }
 
-const subscriptionCnyPreview = computed(() => {
+const subscriptionVndPreview = computed(() => {
   const price = Number(planForm.price) || 0
-  const rate = Number(props.paymentConfig?.subscription_usd_to_cny_rate) || 0
+  const rate = Number(props.paymentConfig?.subscription_usd_to_vnd_rate) || 0
   if (price <= 0 || rate <= 0) return null
 
-  const amount = roundCnyAmount(price * rate)
+  const amount = roundVndAmount(price * rate)
   const feeRate = Number(props.paymentConfig?.recharge_fee_rate) || 0
-  const fee = feeRate > 0 ? ceilCnyAmount((amount * feeRate) / 100) : 0
-  const total = feeRate > 0 ? roundCnyAmount(amount + fee) : amount
+  const fee = feeRate > 0 ? ceilVndAmount((amount * feeRate) / 100) : 0
+  const total = feeRate > 0 ? roundVndAmount(amount + fee) : amount
 
   return {
-    amount: formatPaymentAmount(amount, 'CNY'),
+    amount: formatPaymentAmount(amount, SEPAY_CURRENCY),
     feeRate,
-    total: formatPaymentAmount(total, 'CNY'),
+    total: formatPaymentAmount(total, SEPAY_CURRENCY),
   }
 })
 
