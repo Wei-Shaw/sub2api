@@ -118,11 +118,18 @@ func TestUsageBillingRepositoryApply_CompanyBalanceLeavesOwnerBalanceUnchanged(t
 	insufficient := *cmd
 	insufficient.RequestID = uuid.NewString()
 	insufficient.BalanceCost = 41
-	_, err = billingRepo.Apply(ctx, &insufficient)
-	require.ErrorIs(t, err, service.ErrBalanceInsufficient)
+	// 新语义：企业余额允许一次性透支到负数，扣款本身不再返回 ErrBalanceInsufficient；
+	// 预检层（ResolveBillingContext / 网关鉴权）在下一次请求时通过 balance <= 0 拦截。
+	// 因此这里期望：扣款成功、企业余额变为 -1、result.BalanceOverdrafted=true。
+	overdraft, err := billingRepo.Apply(ctx, &insufficient)
+	require.NoError(t, err)
+	require.True(t, overdraft.Applied)
+	require.True(t, overdraft.BalanceOverdrafted)
+	require.NotNil(t, overdraft.NewBalance)
+	require.InDelta(t, -1, *overdraft.NewBalance, 1e-9)
 	assertUserBalances(t, owner.ID, "50.00000000", "0.00000000")
 	assertUserBalances(t, memberID, "0.00000000", "0.00000000")
-	assertOrganizationBalances(t, organizationID, "40.00000000", "0.00000000")
+	assertOrganizationBalances(t, organizationID, "-1.00000000", "0.00000000")
 }
 
 func TestUsageServiceCreate_CompanyBalanceUsesExistingTransaction(t *testing.T) {

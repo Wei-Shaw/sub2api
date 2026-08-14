@@ -464,6 +464,9 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 	require.Equal(t, "allocated", resolved.BalanceSource)
 
 	require.NoError(t, repo.SetPolicyAttachment(ctx, owner.ID, memberID, service.PolicyCompanySharedBalance, true, uuid.NewString()))
+	// 新语义：预检只看划拨余额是否 > 0，不再比较 requiredAmount 与余额大小。
+	// 只要 IAM 用户账上还有正数划拨余额，即便本次金额远大于余额，也仍走 allocated；
+	// 允许扣成负数，下一次预检再切 company。
 	resolved, err = repo.ResolveBillingContext(ctx, memberID, 10)
 	require.NoError(t, err)
 	require.Equal(t, memberID, resolved.PayerUserID)
@@ -471,8 +474,20 @@ func TestOrganizationAllocationPayerSelectionAndFinanceRedaction(t *testing.T) {
 
 	resolved, err = repo.ResolveBillingContext(ctx, memberID, 30)
 	require.NoError(t, err)
+	require.Equal(t, memberID, resolved.PayerUserID)
+	require.Equal(t, "allocated", resolved.BalanceSource)
+
+	// 把 memberID 的划拨余额清零，模拟已经透支后的场景：此时应切到 company 分支。
+	_, err = integrationDB.ExecContext(ctx, `UPDATE users SET balance=0 WHERE id=$1`, memberID)
+	require.NoError(t, err)
+	resolved, err = repo.ResolveBillingContext(ctx, memberID, 10)
+	require.NoError(t, err)
 	require.Equal(t, owner.ID, resolved.PayerUserID)
 	require.Equal(t, service.BalanceSourceCompany, resolved.BalanceSource)
+	// 把 memberID 的划拨余额恢复为 25，供后续断言使用。
+	_, err = integrationDB.ExecContext(ctx, `UPDATE users SET balance=25 WHERE id=$1`, memberID)
+	require.NoError(t, err)
+
 	redacted, err := repo.FinanceSummary(ctx, memberID)
 	require.NoError(t, err)
 	require.Nil(t, redacted.Available)

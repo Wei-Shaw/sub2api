@@ -223,7 +223,7 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$0.069568')
   })
 
-  it('shows the account used alongside account-billed cost', () => {
+  it('shows account-billed cost without exposing the account name', () => {
     const wrapper = mount(UsageTable, {
       props: {
         data: [{
@@ -245,7 +245,8 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('atlas-primary · A $0.600000')
+    expect(wrapper.text()).toContain('A $0.600000')
+    expect(wrapper.text()).not.toContain('atlas-primary')
   })
 
   it('shows requested and upstream models separately for admin rows', () => {

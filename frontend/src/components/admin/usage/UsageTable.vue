@@ -261,8 +261,8 @@
                 </div>
               </div>
             </div>
-            <div v-if="showAccountBilling && (row.account || row.account_id)" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400" :title="row.account?.name || undefined">
-              {{ row.account?.name || `#${row.account_id}` }} · A ${{ accountBilled(row).toFixed(6) }}
+            <div v-if="showAccountBilling && (row.account || row.account_id)" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
+              A ${{ accountBilled(row).toFixed(6) }}
             </div>
           </div>
         </template>

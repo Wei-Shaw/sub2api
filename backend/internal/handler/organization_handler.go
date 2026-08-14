@@ -22,6 +22,10 @@ type OrganizationHandler struct {
 	auth         *service.AuthService
 	operations   *service.CompanyOperationsMonitor
 	ops          *service.OpsService
+	// sso 用于在 IAM 子账号登录/改密/禁用时联动 sub2api_sso（HttpOnly Cookie）。
+	// 当 oidc_provider.enabled=false 时 IssueIfProviderEnabled 为 no-op；
+	// RevokeAllForUser 幂等，无 SSO 会话时也安全。允许为 nil（测试场景）。
+	sso *service.SsoSessionService
 }
 
 const OrganizationContextKey = "organization_context"
@@ -67,8 +71,32 @@ func (f optionalDecimalString) Pointer() *string {
 	return f.value
 }
 
-func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService) *OrganizationHandler {
-	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops}
+func NewOrganizationHandler(organization *service.OrganizationService, auth *service.AuthService, operations *service.CompanyOperationsMonitor, ops *service.OpsService, sso *service.SsoSessionService) *OrganizationHandler {
+	return &OrganizationHandler{organization: organization, auth: auth, operations: operations, ops: ops, sso: sso}
+}
+
+// issueIAMSsoSession 在 IAM 子账号登录/改密后，尽力签发 OIDC Provider 的 HttpOnly SSO cookie，
+// 使随后 sub2api 作为 OP 处理 /oidc/authorize 时能识别到登录态，正确 302 回跳 RP 的 redirect_uri。
+// 仅当 oidc_provider.enabled=true 时实际生效（见 SsoSessionService.IssueIfProviderEnabled）；
+// 失败只记日志，绝不阻断主登录流程。
+func (h *OrganizationHandler) issueIAMSsoSession(c *gin.Context, userID int64) {
+	if h == nil || h.sso == nil || userID <= 0 {
+		return
+	}
+	if _, err := h.sso.IssueIfProviderEnabled(c.Request.Context(), c.Writer, c.Request, userID); err != nil {
+		fmt.Printf("[organization] failed to issue sso session cookie for iam user_id=%d err=%v\n", userID, err)
+	}
+}
+
+// revokeIAMSsoSessions 吊销指定 IAM 用户的全部 SSO 会话（尽力而为）。
+// 用于成员被禁用/改密/被 Owner 重置密码时联动清理浏览器端 SSO cookie 对应的服务端会话。
+func (h *OrganizationHandler) revokeIAMSsoSessions(c *gin.Context, userID int64) {
+	if h == nil || h.sso == nil || userID <= 0 {
+		return
+	}
+	if _, err := h.sso.RevokeAllForUser(c.Request.Context(), userID); err != nil {
+		fmt.Printf("[organization] failed to revoke sso sessions for iam user_id=%d err=%v\n", userID, err)
+	}
 }
 
 // RequireOrganization derives organization scope exclusively from the
@@ -303,6 +331,9 @@ func (h *OrganizationHandler) SetMemberStatus(c *gin.Context) {
 	}
 	if req.Status != service.MembershipStatusActive && h.auth != nil {
 		_ = h.auth.RevokeAllUserSessions(c.Request.Context(), memberID)
+		// 同步吊销该 IAM 成员的全部 OIDC Provider SSO 会话，防止浏览器 SSO cookie
+		// 仍能通过 /oidc/authorize 换取新的授权码。
+		h.revokeIAMSsoSessions(c, memberID)
 	}
 	response.Success(c, gin.H{"status": req.Status})
 }
@@ -324,6 +355,9 @@ func (h *OrganizationHandler) ResetMemberPassword(c *gin.Context) {
 	if h.auth != nil {
 		_ = h.auth.RevokeAllUserSessions(c.Request.Context(), memberID)
 	}
+	// Owner 重置成员密码后，同步吊销该成员的全部 OIDC Provider SSO 会话，
+	// 保证已在浏览器中登录的旧会话无法再走 /oidc/authorize 换新码。
+	h.revokeIAMSsoSessions(c, memberID)
 	response.Success(c, gin.H{"initial_password": password, "must_change_password": true})
 }
 
@@ -349,11 +383,15 @@ func (h *OrganizationHandler) ChangePassword(c *gin.Context) {
 		return
 	}
 	_ = h.auth.RevokeAllUserSessions(c.Request.Context(), userID)
+	// 改密同时吊销服务端 SSO 会话（作用于所有浏览器实例），必须先于新 cookie 签发。
+	h.revokeIAMSsoSessions(c, userID)
 	pair, err := h.auth.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
 		response.InternalError(c, "Failed to generate token")
 		return
 	}
+	// 为当前浏览器重签 SSO cookie，使刚改完密码的用户能继续走 /oidc/authorize 回跳 RP。
+	h.issueIAMSsoSession(c, userID)
 	response.Success(c, gin.H{
 		"access_token": pair.AccessToken, "refresh_token": pair.RefreshToken,
 		"expires_in": pair.ExpiresIn, "token_type": "Bearer", "user": dto.UserFromService(user),
@@ -434,6 +472,11 @@ func (h *OrganizationHandler) IAMLogin(c *gin.Context) {
 		return
 	}
 	h.auth.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	// IAM 子账号登录成功后，尽力签发 sub2api_sso HttpOnly Cookie，
+	// 使 sub2api 作为 OIDC Provider 处理 /oidc/authorize 时能识别到登录态，
+	// 正确 302 回跳客户 RP 的 redirect_uri（否则 sso.Resolve 拿不到会话会再次跳 /login）。
+	// 必须在写响应体前调用，才能挂到响应头 Set-Cookie 上。
+	h.issueIAMSsoSession(c, user.ID)
 	response.Success(c, gin.H{
 		"access_token": pair.AccessToken, "refresh_token": pair.RefreshToken,
 		"expires_in": pair.ExpiresIn, "token_type": "Bearer", "user": dto.UserFromService(user),

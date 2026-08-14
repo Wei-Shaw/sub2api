@@ -52,7 +52,7 @@ func (s *spendLimitHandlerRepositoryStub) UpsertSpendLimitRules(
 func TestUpsertSpendLimitsAcceptsNumericJSONAmounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repository := &spendLimitHandlerRepositoryStub{}
-	handler := NewOrganizationHandler(service.NewOrganizationService(repository, nil, &config.Config{}), nil, nil, nil)
+	handler := NewOrganizationHandler(service.NewOrganizationService(repository, nil, &config.Config{}), nil, nil, nil, nil)
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPut, "/organization/spend-limits", bytes.NewBufferString(
 		`{"target":"all","daily_limit_usd":10,"monthly_limit_usd":10,"alert_enabled":false,"alert_threshold_pct":80,"additional_recipients":[]}`,
