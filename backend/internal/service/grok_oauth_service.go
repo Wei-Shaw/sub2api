@@ -16,10 +16,11 @@ import (
 const grokDefaultAccessTokenTTL = 6 * time.Hour
 
 type GrokOAuthService struct {
-	sessionStore *xai.SessionStore
-	proxyRepo    ProxyRepository
-	oauthClient  GrokOAuthClient
-	config       *config.Config
+	sessionStore      *xai.SessionStore
+	proxyRepo         ProxyRepository
+	oauthClient       GrokOAuthClient
+	config            *config.Config
+	ssoStateInspector grokSSOStateInspector
 }
 
 func NewGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthClient, configs ...*config.Config) *GrokOAuthService {
@@ -138,6 +139,9 @@ type GrokTokenInfo struct {
 	// BotFlagSource mirrors the access_token JWT claim bot_flag_source when present.
 	// 1 indicates xAI risk-control marking that degrades media generation quality.
 	BotFlagSource *int64 `json:"bot_flag_source,omitempty"`
+	// HasBFS is true when the JWT carries a bfs claim (presence is the signal).
+	HasBFS bool `json:"has_bfs,omitempty"`
+	BFS    any  `json:"bfs,omitempty"`
 }
 
 // GrokPasswordLoginResult is an ephemeral password-login outcome.
@@ -388,6 +392,12 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 	if tokenInfo.BotFlagSource != nil {
 		creds["bot_flag_source"] = *tokenInfo.BotFlagSource
 	}
+	if tokenInfo.HasBFS {
+		creds["bfs"] = true
+		if tokenInfo.BFS != nil {
+			creds["bfs_value"] = tokenInfo.BFS
+		}
+	}
 	creds["base_url"] = xai.DefaultCLIBaseURL
 	return creds
 }
@@ -504,5 +514,9 @@ func applyGrokTokenClaims(info *GrokTokenInfo, token string, includeTier bool) {
 	if flag, ok := xai.JWTClaimInt64(claims, "bot_flag_source"); ok {
 		value := flag
 		info.BotFlagSource = &value
+	}
+	if raw, ok := claims["bfs"]; ok && raw != nil {
+		info.HasBFS = true
+		info.BFS = raw
 	}
 }

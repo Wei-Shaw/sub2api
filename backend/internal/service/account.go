@@ -1788,14 +1788,18 @@ func isGrokOAuthBotFlagged(account *Account) bool {
 		return false
 	}
 	if token := strings.TrimSpace(account.GetCredential("access_token")); token != "" {
-		claims := xai.DecodeJWTClaims(token)
-		if claims != nil {
-			flag, ok := xai.JWTClaimInt64(claims, "bot_flag_source")
-			return ok && flag == 1
+		if xai.IsRiskFlaggedToken(token) {
+			return true
+		}
+		if claims := xai.DecodeJWTClaims(token); claims != nil {
+			return false
 		}
 	}
 	if account.Credentials == nil {
 		return false
+	}
+	if raw, exists := account.Credentials["bfs"]; exists && isTruthyCredential(raw) {
+		return true
 	}
 	raw, exists := account.Credentials["bot_flag_source"]
 	if !exists || raw == nil {

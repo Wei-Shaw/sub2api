@@ -359,6 +359,47 @@ func TestGrokSSOImportCredentialsDefaultsToOfficialBaseURL(t *testing.T) {
 	require.Equal(t, "at-2", credentials["access_token"])
 }
 
+func TestGrokSSOImportSkipsRiskFlaggedAccounts(t *testing.T) {
+	source := int64(1)
+	oauthService := service.NewGrokOAuthService(nil, &grokOAuthHandlerClient{})
+	defer oauthService.Stop()
+	oauthService.WithSSOStateInspector(func(context.Context, string, string) xai.GrokAccountState {
+		return xai.GrokAccountState{
+			Found:          true,
+			BotFlagSource:  &source,
+			BotFlagDetails: "policy=deny,event=$registration",
+			Policy:         "deny",
+			Denied:         true,
+			StatusCode:     http.StatusOK,
+		}
+	})
+	handler := NewGrokOAuthHandler(oauthService, newGrokImportAdminService(), nil, nil)
+	result := handler.createAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{SkipRiskFlagged: true}, "sso-token", 1, 1)
+	require.False(t, result.created)
+	require.Contains(t, result.item.Error, "GROK_SSO_RISK_FLAGGED")
+	require.NotContains(t, result.item.Error, "sso-token")
+}
+
+func TestGrokCheckSSOStateDoesNotEchoTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	source := int64(0)
+	oauthService := service.NewGrokOAuthService(nil, &grokOAuthHandlerClient{})
+	defer oauthService.Stop()
+	oauthService.WithSSOStateInspector(func(context.Context, string, string) xai.GrokAccountState {
+		return xai.GrokAccountState{Found: true, BotFlagSource: &source, StatusCode: http.StatusOK}
+	})
+	handler := NewGrokOAuthHandler(oauthService, nil, nil, nil)
+	router := gin.New()
+	router.POST("/api/v1/admin/grok/sso-check-state", handler.CheckSSOState)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grok/sso-check-state", strings.NewReader(`{"sso_tokens":["super-secret-sso-cookie"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"verdict":"clean"`)
+	require.NotContains(t, rec.Body.String(), "super-secret-sso-cookie")
+}
+
 func TestGrokSSOImportWorkerHandlesMissingOAuthService(t *testing.T) {
 	h := &GrokOAuthHandler{}
 	result := h.safeCreateAccountFromSSOToken(context.Background(), GrokSSOToOAuthRequest{}, "token", 2, 3)

@@ -266,12 +266,28 @@
               </p>
             </div>
 
-            <button
-              type="button"
-              class="btn btn-primary w-full"
-              :disabled="loading || !ssoCookieInput.trim()"
-              @click="handleImportSSO"
+            <label
+              v-if="platform === 'grok'"
+              class="mb-3 flex cursor-pointer items-start gap-2 text-sm text-blue-900 dark:text-blue-200"
             >
+              <input v-model="skipRiskFlagged" type="checkbox" class="mt-0.5 text-blue-600 focus:ring-blue-500" />
+              <span>{{ t(getOAuthKey('skipRiskFlagged')) }}</span>
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                class="btn btn-secondary w-full"
+                :disabled="loading || !ssoCookieInput.trim()"
+                @click="handleCheckSSO"
+              >
+                {{ t(getOAuthKey('checkSSORisk')) }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-primary w-full"
+                :disabled="loading || !ssoCookieInput.trim()"
+                @click="handleImportSSO"
+              >
               <svg
                 v-if="loading"
                 class="-ml-1 mr-2 h-4 w-4 animate-spin"
@@ -293,8 +309,9 @@
                 ></path>
               </svg>
               <Icon v-else name="sparkles" size="sm" class="mr-2" />
-              {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndCreate')) }}
-            </button>
+                {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndCreate')) }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -971,6 +988,7 @@ const emit = defineEmits<{
   'import-codex-session': [content: string]
   'import-codex-pat': [accessToken: string]
   'import-sso': [content: string]
+  'check-sso': [content: string]
   'authorize-password': [emailPasswordInput: string]
   'update:inputMethod': [method: AuthInputMethod]
 }>()
@@ -1021,6 +1039,7 @@ const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
 const codexPATInput = ref('')
 const ssoCookieInput = ref('')
+const skipRiskFlagged = ref(true)
 const emailPasswordInput = ref(props.initialEmailPassword || '')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
@@ -1213,6 +1232,12 @@ const handleImportSSO = () => {
   }
 }
 
+const handleCheckSSO = () => {
+  if (ssoCookieInput.value.trim()) {
+    emit('check-sso', ssoCookieInput.value.trim())
+  }
+}
+
 // Expose methods and state
 defineExpose({
   authCode: authCodeInput,
@@ -1224,6 +1249,7 @@ defineExpose({
   codexSession: codexSessionInput,
   codexPAT: codexPATInput,
   ssoCookie: ssoCookieInput,
+  skipRiskFlagged,
   emailPassword: emailPasswordInput,
   inputMethod,
   reset: () => {
