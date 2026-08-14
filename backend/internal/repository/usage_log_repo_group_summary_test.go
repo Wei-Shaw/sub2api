@@ -8,15 +8,13 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := newUsageLogRepositoryWithSQL(nil, db)
-	require.NoError(t, appTimezone.Init("America/New_York"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
 	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
 	yesterdayStart := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
 

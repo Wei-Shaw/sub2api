@@ -9,7 +9,6 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -24,8 +23,7 @@ REDACTED
 
 func setUsageCleanupRollupTestTimezone(t *testing.T) {
 REDACTED
-	require.NoError(t, appTimezone.Init("Asia/Shanghai"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
 REDACTED
 
 func TestNewUsageCleanupRepository(t *testing.T) {

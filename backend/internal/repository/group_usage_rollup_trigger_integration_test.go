@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -259,8 +258,7 @@ REDACTED
 
 func TestGroupUsageSummaryIncludesYesterdayAcrossWatermark(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, appTimezone.Init("Asia/Shanghai"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
 	todayStart := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -317,8 +315,7 @@ REDACTED
 
 func TestGroupUsageRollupSyncRebuildsAfterTimezoneChange(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, appTimezone.Init("America/New_York"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
 	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
@@ -373,8 +370,7 @@ REDACTED
 
 func TestGroupUsageSummaryUsesConfiguredDSTBoundaries(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, appTimezone.Init("America/New_York"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
 	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
 	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
 	tx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)

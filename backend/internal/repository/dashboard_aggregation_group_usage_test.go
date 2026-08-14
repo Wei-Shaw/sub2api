@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -32,8 +31,7 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsNoopsAtCurrentDate(t
 REDACTED
 
 func TestDashboardAggregationRepositorySyncGroupUsageRollupsRebuildsWhenTimezoneChanges(t *testing.T) {
-	require.NoError(t, appTimezone.Init("America/New_York"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
 
 	db, mock := newSQLMock(t)
 	repo := newDashboardAggregationRepositoryWithSQL(db)
@@ -317,6 +315,5 @@ REDACTED
 
 func setGroupUsageRollupTestTimezone(t *testing.T) {
 REDACTED
-	require.NoError(t, appTimezone.Init("Asia/Shanghai"))
-	t.Cleanup(func() { require.NoError(t, appTimezone.Init("Asia/Shanghai")) REDACTED)
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
 REDACTED
