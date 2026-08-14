@@ -117,6 +117,12 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.1-flash-image": "gemini-3.1-flash-image",
 	// Gemini 3.1 image preview 映射
 	"gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+	// Gemini 3.7 Flash
+	"gemini-3.7-flash": "gemini-3.7-flash",
+	"gemini-3.7-flash-high": "gemini-3.7-flash-high",
+	"gemini-3.7-flash-low": "gemini-3.7-flash-low",
+	"gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+	"gemini-3.7-flash-tiered": "gemini-3.7-flash-tiered",
 	// Gemini 3.6 Flash tiered models
 	"gemini-3.6-flash":        "gemini-3.6-flash",
 	"gemini-3.6-flash-high":   "gemini-3.6-flash-high",
@@ -160,3 +166,5 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-haiku-4-5":          "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 	"claude-haiku-4-5-20251001": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 }
+
+
