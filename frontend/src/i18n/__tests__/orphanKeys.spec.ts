@@ -39,8 +39,6 @@ const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const ALLOWED_ORPHANS: Record<string, number> = {
   'admin.settings': 73,
   'admin.accounts': 75,
-  'admin.ops': 91,
-  'admin.users': 89,
   'payment.errors': 39,
   'admin.groups': 38,
   'admin.dashboard': 33,
