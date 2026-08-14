@@ -29,10 +29,6 @@ const (
 	FieldSortOrder = "sort_order"
 	// FieldLimits holds the string denoting the limits field in the database.
 	FieldLimits = "limits"
-	// FieldRefundEnabled holds the string denoting the refund_enabled field in the database.
-	FieldRefundEnabled = "refund_enabled"
-	// FieldAllowUserRefund holds the string denoting the allow_user_refund field in the database.
-	FieldAllowUserRefund = "allow_user_refund"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -52,8 +48,6 @@ var Columns = []string{
 	FieldPaymentMode,
 	FieldSortOrder,
 	FieldLimits,
-	FieldRefundEnabled,
-	FieldAllowUserRefund,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -89,10 +83,6 @@ var (
 	DefaultSortOrder int
 	// DefaultLimits holds the default value on creation for the "limits" field.
 	DefaultLimits string
-	// DefaultRefundEnabled holds the default value on creation for the "refund_enabled" field.
-	DefaultRefundEnabled bool
-	// DefaultAllowUserRefund holds the default value on creation for the "allow_user_refund" field.
-	DefaultAllowUserRefund bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -147,16 +137,6 @@ func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
 // ByLimits orders the results by the limits field.
 func ByLimits(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLimits, opts...).ToFunc()
-}
-
-// ByRefundEnabled orders the results by the refund_enabled field.
-func ByRefundEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundEnabled, opts...).ToFunc()
-}
-
-// ByAllowUserRefund orders the results by the allow_user_refund field.
-func ByAllowUserRefund(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAllowUserRefund, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -63,9 +63,14 @@ const messages: Record<string, string> = {
   'keyUsage.totalCacheRead': 'Total Cache Read',
   'keyUsage.totalCost': 'Total Cost',
   'keyUsage.avgDuration': 'Avg Duration',
+  'keyUsage.noDailyUsage': 'No daily usage data',
   'keyUsage.querySuccess': 'Query successful',
   'keyUsage.queryFailed': 'Query failed',
   'keyUsage.queryFailedRetry': 'Query failed, please try again later',
+  'dashboard.apiKey': 'API Key',
+  'common.showPassword': 'Show password',
+  'common.hidePassword': 'Hide password',
+  'home.docs': 'Docs',
   'home.viewDocs': 'Docs',
   'home.switchToLight': 'Light',
   'home.switchToDark': 'Dark',
@@ -191,18 +196,25 @@ describe('KeyUsageView daily detail', () => {
     )
     expect(String(fetchMock.mock.calls[0][0])).toContain('days=30')
 
-    const text = wrapper.text()
-    expect(text).toContain('Daily Detail')
-    expect(text).toContain('Date')
-    expect(text).toContain('Cache Read')
-    expect(text).toContain('Cache Write')
-    expect(text).toContain('2026-05-19')
-    expect(text).toContain('12')
-    expect(text).toContain('100')
-    expect(text).toContain('200')
-    expect(text).toContain('30')
-    expect(text).toContain('10')
-    expect(text).toContain('$0.12')
+    expect(wrapper.text()).toContain('Daily Detail')
+
+    // Anchored on the table itself rather than the whole page: short numbers
+    // like "10" and "30" appear all over a usage summary, so a page-wide
+    // `toContain` would pass even if the table rendered nothing.
+    const table = wrapper.get('[data-testid="key-usage-daily-table"]')
+    const headers = table.findAll('th[scope="col"]').map((th) => th.text())
+    expect(headers).toEqual([
+      'Date',
+      'Requests',
+      'Input Tokens',
+      'Output Tokens',
+      'Cache Read',
+      'Cache Write',
+      'Cost (USD)',
+    ])
+
+    const cells = table.findAll('tbody tr:first-child > *').map((cell) => cell.text())
+    expect(cells).toEqual(['2026-05-19', '12', '100', '200', '30', '10', '0.12'])
 
     wrapper.unmount()
   })

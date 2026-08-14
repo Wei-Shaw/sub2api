@@ -12,14 +12,12 @@ export type OrderStatus =
   | 'EXPIRED'
   | 'CANCELLED'
   | 'FAILED'
-  | 'REFUND_REQUESTED'
-  | 'REFUNDING'
-  | 'REFUND_PENDING'
-  | 'PARTIALLY_REFUNDED'
-  | 'REFUNDED'
-  | 'REFUND_FAILED'
 
-export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
+/**
+ * Each provider backs exactly one user-facing method, so a payment type and a
+ * provider key are the same string.
+ */
+export type PaymentType = 'sepay' | 'nowpayments'
 
 export type OrderType = 'balance' | 'subscription'
 
@@ -34,16 +32,14 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
-  subscription_usd_to_cny_rate: number
+  subscription_usd_to_vnd_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
-  stripe_publishable_key: string
 }
 
 export interface MethodLimit {
   currency?: string
-  display_name?: string
   daily_limit: number
   daily_used: number
   daily_remaining: number
@@ -68,16 +64,11 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
-  /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
-  subscription_usd_to_cny_rate: number
+  /** USD→VND rate for dong channels; 0 = disabled, plan price is charged as-is */
+  subscription_usd_to_vnd_rate: number
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
-  stripe_publishable_key: string
-  /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
-  alipay_force_qrcode?: boolean
-  /** When true, official Alipay mobile orders use precreate plus an Alipay app deep link */
-  alipay_mobile_precreate_deep_link?: boolean
 }
 
 // ==================== Orders ====================
@@ -97,11 +88,6 @@ export interface PaymentOrder {
   expires_at: string
   paid_at?: string
   completed_at?: string
-  refund_amount: number
-  refund_reason?: string
-  refund_requested_at?: string
-  refund_requested_by?: number
-  refund_request_reason?: string
   plan_id?: number
   provider_instance_id?: string
 }
@@ -158,8 +144,6 @@ export interface ProviderInstance {
   supported_types: string[]
   enabled: boolean
   payment_mode: string
-  refund_enabled: boolean
-  allow_user_refund: boolean
   limits: string
   sort_order: number
 }
@@ -173,29 +157,22 @@ export interface CreateOrderRequest {
   plan_id?: number
   return_url?: string
   payment_source?: string
-  openid?: string
-  wechat_resume_token?: string
   is_mobile?: boolean
 }
 
-export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
+export type CreateOrderResultType = 'order_created'
 
-export interface WechatOAuthInfo {
-  authorize_url?: string
-  appid?: string
-  openid?: string
-  scope?: string
-  state?: string
-  redirect_url?: string
-}
-
-export interface WechatJSAPIPayload {
-  appId?: string
-  timeStamp?: string
-  nonceStr?: string
-  package?: string
-  signType?: string
-  paySign?: string
+/**
+ * Bank transfer instructions shown beside a SePay QR code, for payers who would
+ * rather type the details into their banking app than scan.
+ */
+export interface BankTransferInfo {
+  bank_code?: string
+  bank_bin?: string
+  account_number?: string
+  account_name?: string
+  content?: string
+  amount?: string
 }
 
 export interface CreateOrderResult {
@@ -203,11 +180,8 @@ export interface CreateOrderResult {
   amount: number
   pay_url?: string
   qr_code?: string
-  client_secret?: string
   intent_id?: string
   currency?: string
-  country_code?: string
-  payment_env?: string
   pay_amount: number
   fee_rate: number
   expires_at: string
@@ -216,10 +190,7 @@ export interface CreateOrderResult {
   out_trade_no?: string
   payment_mode?: string
   resume_token?: string
-  alipay_mobile_precreate_deep_link?: boolean
-  oauth?: WechatOAuthInfo
-  jsapi?: WechatJSAPIPayload
-  jsapi_payload?: WechatJSAPIPayload
+  transfer?: BankTransferInfo
 }
 
 export type CurrencyAmounts = Record<string, number>

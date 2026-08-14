@@ -1,114 +1,90 @@
 <template>
   <AppLayout>
     <div class="space-y-6 pb-12">
-      <!-- Ops-style elevated shell: title toolbar + filters (mirrors OpsDashboardHeader) -->
-      <section
-        class="card sticky top-0 z-20 !rounded-3xl !border-0 p-0 shadow-sm ring-1 ring-gray-900/5 backdrop-blur-sm dark:!bg-dark-800 dark:ring-dark-700 supports-[backdrop-filter]:bg-white/95 dark:supports-[backdrop-filter]:bg-dark-800/95"
-      >
-        <header class="page-header mb-0 flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700 sm:px-6">
+      <!--
+        Page chrome. One hairline under the lockup, one under the toolbar, no
+        elevated shell: the old version was a `rounded-3xl` card floating on a
+        `ring-1 ring-gray-900/5` with a `dark:` twin for every colour, which
+        made the page read as a stack of tiles rather than one document.
+      -->
+      <section class="sticky top-0 z-20 border-b border-line bg-surface">
+        <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
           <div class="min-w-0">
-            <h1 class="page-title flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-              <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400">
-                <Icon name="chart" size="sm" />
-              </span>
-              {{ t('channelMonitorV2.title') }}
-            </h1>
-            <div class="page-description mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-              <span class="relative flex h-2 w-2 shrink-0">
-                <span
-                  class="relative inline-flex h-2 w-2 rounded-full"
-                  :class="loading || refreshing ? 'bg-gray-400' : 'bg-green-500'"
-                ></span>
-              </span>
-              <span v-if="refreshing" class="inline-flex items-center gap-1 text-primary-600 dark:text-primary-300">
-                <LoadingSpinner size="sm" />
-                {{ t('channelMonitorV2.updating') }}
-              </span>
-              <span v-else-if="snapshot?.coverage.data_through">
+            <h1 class="page-title">{{ t('channelMonitorV2.title') }}</h1>
+            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-tertiary">
+              <span v-if="refreshing">{{ t('channelMonitorV2.updating') }}</span>
+              <span v-else-if="snapshot?.coverage.data_through" class="font-mono tabular-nums">
                 {{ t('channelMonitorV2.updatedTo', { time: formatTime(snapshot.coverage.data_through) }) }}
               </span>
-              <span v-else class="text-gray-400">{{ t('common.loading') }}</span>
-              <span
-                v-if="snapshot && !snapshot.coverage.coverage_complete && !bootstrapActive"
-                class="badge badge-warning"
-              >
+              <span v-else>{{ t('common.loading') }}</span>
+              <!--
+                The page's ONE status indicator, with a word beside the dot.
+                What it replaces: a permanently-green "live" dot that reported
+                nothing but that the page had rendered.
+              -->
+              <StatusDot
+                v-if="snapshot"
+                :tone="healthTone(snapshot.health.overall)"
+                :label="healthLabel(snapshot.health.overall)"
+              />
+              <Badge v-if="snapshot && !snapshot.coverage.coverage_complete && !bootstrapActive" tone="warn">
                 {{ t('channelMonitorV2.partialCoverage') }}
-              </span>
-              <span
-                v-if="bootstrapActive"
-                class="badge badge-primary inline-flex items-center gap-1"
-              >
-                <LoadingSpinner size="sm" />
+              </Badge>
+              <Badge v-if="bootstrapActive">
                 {{ t('channelMonitorV2.bootstrap.progress', { percent: bootstrapPercent }) }}
-              </span>
+              </Badge>
             </div>
           </div>
-          <button
-            class="btn btn-secondary btn-icon flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600"
-            type="button"
+          <Button
+            class="shrink-0"
             :title="t('common.refresh')"
-            :disabled="loading"
+            :aria-label="t('common.refresh')"
+            :loading="loading"
             @click="reload(false)"
           >
-            <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-          </button>
+            <template #icon>
+              <Icon name="refresh" size="xs" />
+            </template>
+          </Button>
         </header>
 
-        <!-- First-upgrade silent backfill: show until 30d product window is covered -->
+        <!-- First-upgrade silent backfill: shown until the 30d product window is covered. -->
         <div
           v-if="bootstrapActive"
-          class="border-b border-blue-100 bg-blue-50/90 px-5 py-3 dark:border-blue-900/40 dark:bg-blue-950/40 sm:px-6"
+          class="border-t border-line-subtle py-3"
           role="status"
           aria-live="polite"
         >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-              <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                {{ t('channelMonitorV2.bootstrap.title') }}
-              </p>
-              <p class="mt-0.5 text-xs text-blue-800/80 dark:text-blue-200/80">
-                {{ t('channelMonitorV2.bootstrap.description') }}
-              </p>
-            </div>
-            <span class="shrink-0 text-xs font-medium tabular-nums text-blue-700 dark:text-blue-300">
-              {{ t('channelMonitorV2.bootstrap.progress', { percent: bootstrapPercent }) }}
-            </span>
-          </div>
-          <div
-            class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-blue-200/80 dark:bg-blue-900/60"
-            role="progressbar"
-            :aria-valuenow="bootstrapPercent"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-label="t('channelMonitorV2.bootstrap.working')"
-          >
-            <div
-              class="h-full rounded-full bg-blue-500 transition-[width] duration-500 ease-out dark:bg-blue-400"
-              :style="{ width: `${bootstrapPercent}%` }"
-            />
-          </div>
+          <p class="text-xs font-medium text-ink">{{ t('channelMonitorV2.bootstrap.title') }}</p>
+          <p class="mt-0.5 max-w-3xl text-xs text-ink-tertiary">
+            {{ t('channelMonitorV2.bootstrap.description') }}
+          </p>
+          <Meter
+            class="mt-2"
+            :value="bootstrapPercent"
+            :max="100"
+            :label="t('channelMonitorV2.bootstrap.working')"
+            :warn-at="1"
+            :danger-at="1"
+          />
         </div>
 
         <!-- Single compact toolbar row: range · filters · view controls -->
-        <div class="monitor-toolbar flex flex-nowrap items-center gap-1.5 overflow-x-auto px-4 py-3 sm:gap-2 sm:px-5">
-          <div
-            class="tabs inline-flex shrink-0"
-            role="group"
-            :aria-label="t('channelMonitorV2.timeRange')"
-          >
+        <div class="monitor-toolbar flex flex-nowrap items-center gap-2 overflow-x-auto border-t border-line-subtle py-2">
+          <div class="inline-flex shrink-0 -space-x-px" role="group" :aria-label="t('channelMonitorV2.timeRange')">
             <button
               v-for="option in ranges"
               :key="option.value"
               type="button"
-              class="tab !px-2 !py-1 text-xs sm:!px-2.5"
-              :class="filter.range === option.value ? 'tab-active' : ''"
+              :aria-pressed="filter.range === option.value"
+              :class="[SEGMENT, filter.range === option.value ? SEGMENT_ON : SEGMENT_OFF]"
               @click="setRange(option.value)"
             >
               {{ option.label }}
             </button>
           </div>
 
-          <span class="mx-0.5 hidden h-5 w-px shrink-0 bg-gray-200 dark:bg-dark-700 sm:block" aria-hidden="true"></span>
+          <span class="mx-1 hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true"></span>
 
           <FilterMultiSelect
             v-model="filter.platforms"
@@ -131,51 +107,41 @@
             :all-label="t('channelMonitorV2.filters.allModels')"
             :options="modelOptions"
           />
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm shrink-0 !px-2 !py-1 text-xs"
+          <Button
+            variant="quiet"
+            size="xs"
+            class="shrink-0"
             :disabled="!hasDimensionFilter"
-            :class="!hasDimensionFilter ? 'opacity-40' : ''"
             @click="clearDimensions"
           >
             {{ t('channelMonitorV2.clearFilters') }}
-          </button>
+          </Button>
 
-          <span class="mx-0.5 hidden h-5 w-px shrink-0 bg-gray-200 dark:bg-dark-700 md:block" aria-hidden="true"></span>
+          <span class="mx-1 hidden h-5 w-px shrink-0 bg-line md:block" aria-hidden="true"></span>
 
           <Select
             v-model="matrixGroupBy"
             :options="matrixGroupOptions"
             :placeholder="t('channelMonitorV2.groupBy.label')"
-            class="monitor-toolbar-select w-[7.5rem] shrink-0 sm:w-[8.5rem]"
+            class="w-[7.5rem] shrink-0 sm:w-[8.5rem]"
           />
 
-          <div
-            class="tabs inline-flex shrink-0"
-            role="group"
-            :aria-label="t('channelMonitorV2.trendView.label')"
-          >
+          <div class="inline-flex shrink-0 -space-x-px" role="group" :aria-label="t('channelMonitorV2.trendView.label')">
             <button
+              v-for="option in trendViewOptions"
+              :key="option.value"
               type="button"
-              class="tab !px-2 !py-1 text-xs"
-              :class="trendView === 'pulse' ? 'tab-active' : ''"
-              @click="trendView = 'pulse'"
+              :aria-pressed="trendView === option.value"
+              :class="[SEGMENT, trendView === option.value ? SEGMENT_ON : SEGMENT_OFF]"
+              @click="trendView = option.value"
             >
-              {{ t('channelMonitorV2.trendView.pulse') }}
-            </button>
-            <button
-              type="button"
-              class="tab !px-2 !py-1 text-xs"
-              :class="trendView === 'line' ? 'tab-active' : ''"
-              @click="trendView = 'line'"
-            >
-              {{ t('channelMonitorV2.trendView.line') }}
+              {{ option.label }}
             </button>
           </div>
 
           <div
             v-if="trendView === 'pulse'"
-            class="tabs inline-flex shrink-0"
+            class="inline-flex shrink-0 -space-x-px"
             role="group"
             :aria-label="t('channelMonitorV2.healthMode.label')"
           >
@@ -183,8 +149,8 @@
               v-for="option in healthModeOptions"
               :key="option.value"
               type="button"
-              class="tab !px-2 !py-1 text-xs"
-              :class="healthMode === option.value ? 'tab-active' : ''"
+              :aria-pressed="healthMode === option.value"
+              :class="[SEGMENT, healthMode === option.value ? SEGMENT_ON : SEGMENT_OFF]"
               @click="healthMode = option.value"
             >
               {{ option.label }}
@@ -193,58 +159,77 @@
         </div>
       </section>
 
-      <!-- Overview KPI: success · TTFT · tokens/s(optional) · cache · (+ RPM when throughput visible) -->
+      <!--
+        Overview KPI strip: success · TTFT · tokens/s(optional) · cache · RPM.
+        One panel, hairline-separated cells — not five floating stat cards.
+      -->
       <section
         v-if="snapshot"
-        class="grid grid-cols-2 gap-3 sm:grid-cols-3"
-        :class="showThroughput ? 'xl:grid-cols-5' : 'xl:grid-cols-4'"
+        class="rounded border border-line bg-line-subtle"
         :aria-label="t('channelMonitorV2.summaryAria')"
       >
-        <MetricCell
-          :label="t('channelMonitorV2.metrics.successRate')"
-          :value="formatPercent(1 - snapshot.metrics.error_rate)"
-          :detail="t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(snapshot.metrics.error_rate) })"
-          :state="snapshot.health.error_rate"
-        />
-        <MetricCell
-          :label="t('channelMonitorV2.metrics.ttftP50')"
-          :value="formatMs(snapshot.metrics.ttft.p50_ms)"
-          :detail="latencyKpiSecondary(snapshot.metrics.ttft)"
-          :title="latencyDetail(snapshot.metrics.ttft)"
-          :state="snapshot.health.ttft"
-        />
-        <MetricCell
-          v-if="showThroughput"
-          :label="t('channelMonitorV2.metrics.tps')"
-          :value="formatTps(snapshot.metrics.tpm)"
-          :detail="t('channelMonitorV2.metrics.tpsDetail')"
-          :title="exactTps(snapshot.metrics.tpm)"
-        />
-        <MetricCell
-          :label="t('channelMonitorV2.metrics.cacheRate')"
-          :value="formatPercent(snapshot.metrics.cache_rate)"
-          :detail="t('channelMonitorV2.metrics.cacheDetail')"
-          :state="snapshot.health.cache || snapshot.health.overall"
-        />
-        <MetricCell
-          v-if="showThroughput"
-          :label="t('channelMonitorV2.metrics.rpm')"
-          :value="formatRate(snapshot.metrics.rpm)"
-          :detail="t('channelMonitorV2.metrics.rpmDetail')"
-          :title="exactRate(snapshot.metrics.rpm)"
-        />
-      </section>
-      <section
-        v-else-if="loading"
-        class="grid grid-cols-2 gap-3 sm:grid-cols-3"
-        :class="showThroughput ? 'xl:grid-cols-5' : 'xl:grid-cols-4'"
-        aria-hidden="true"
-      >
         <div
-          v-for="i in (showThroughput ? 5 : 4)"
-          :key="i"
-          class="h-24 animate-pulse rounded-2xl bg-gray-50 dark:bg-dark-900/30"
-        />
+          class="grid grid-cols-2 gap-px sm:grid-cols-3"
+          :class="showThroughput ? 'xl:grid-cols-5' : 'xl:grid-cols-4'"
+        >
+          <MetricCell
+            class="bg-surface"
+            :label="t('channelMonitorV2.metrics.successRate')"
+            :value="formatPercent(1 - snapshot.metrics.error_rate)"
+            :detail="t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(snapshot.metrics.error_rate) })"
+            :state="snapshot.health.error_rate"
+            :state-label="healthLabel(snapshot.health.error_rate)"
+          />
+          <MetricCell
+            class="bg-surface"
+            :label="t('channelMonitorV2.metrics.ttftP50')"
+            :value="formatMs(snapshot.metrics.ttft.p50_ms)"
+            :detail="latencyKpiSecondary(snapshot.metrics.ttft)"
+            :title="latencyDetail(snapshot.metrics.ttft)"
+            :state="snapshot.health.ttft"
+            :state-label="healthLabel(snapshot.health.ttft)"
+          />
+          <MetricCell
+            v-if="showThroughput"
+            class="bg-surface"
+            :label="t('channelMonitorV2.metrics.tps')"
+            :value="formatTps(snapshot.metrics.tpm)"
+            :detail="t('channelMonitorV2.metrics.tpsDetail')"
+            :title="exactTps(snapshot.metrics.tpm)"
+          />
+          <MetricCell
+            class="bg-surface"
+            :label="t('channelMonitorV2.metrics.cacheRate')"
+            :value="formatPercent(snapshot.metrics.cache_rate)"
+            :detail="t('channelMonitorV2.metrics.cacheDetail')"
+            :state="snapshot.health.cache || snapshot.health.overall"
+            :state-label="healthLabel(snapshot.health.cache || snapshot.health.overall)"
+          />
+          <MetricCell
+            v-if="showThroughput"
+            class="bg-surface"
+            :label="t('channelMonitorV2.metrics.rpm')"
+            :value="formatRate(snapshot.metrics.rpm)"
+            :detail="t('channelMonitorV2.metrics.rpmDetail')"
+            :title="exactRate(snapshot.metrics.rpm)"
+          />
+        </div>
+      </section>
+      <section v-else-if="loading" class="rounded border border-line bg-line-subtle" aria-hidden="true">
+        <div
+          class="grid grid-cols-2 gap-px sm:grid-cols-3"
+          :class="showThroughput ? 'xl:grid-cols-5' : 'xl:grid-cols-4'"
+        >
+          <div
+            v-for="i in (showThroughput ? 5 : 4)"
+            :key="i"
+            class="space-y-2 bg-surface px-4 py-3"
+          >
+            <div class="skeleton h-2.5 w-16"></div>
+            <div class="skeleton h-6 w-24"></div>
+            <div class="skeleton h-2.5 w-20"></div>
+          </div>
+        </div>
       </section>
 
       <div class="relative min-h-[320px]">
@@ -263,15 +248,15 @@
         />
         <div
           v-else-if="loading"
-          class="card flex min-h-[320px] items-center justify-center !rounded-3xl !border-0 text-sm text-gray-400 shadow-sm ring-1 ring-gray-900/5 dark:ring-dark-700"
+          class="flex min-h-[320px] flex-col justify-end gap-3 rounded border border-line bg-surface p-4"
         >
-          <span class="animate-pulse">{{ t('common.loading') }}</span>
+          <div v-for="i in 5" :key="i" class="skeleton h-3" :style="{ width: `${34 + i * 13}%` }"></div>
         </div>
       </div>
 
-      <section class="card flex min-h-0 flex-col overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
-        <div class="border-b border-gray-100 px-5 pt-4 dark:border-dark-700 sm:px-6">
-          <nav class="tabs w-full max-w-md sm:w-auto" role="tablist" :aria-label="t('channelMonitorV2.tabs.aria')">
+      <section class="flex min-h-0 min-w-0 flex-col rounded border border-line bg-surface">
+        <div class="px-4">
+          <nav class="tabs w-full sm:w-auto" role="tablist" :aria-label="t('channelMonitorV2.tabs.aria')">
             <button
               v-for="item in tabs"
               :key="item.value"
@@ -286,17 +271,18 @@
             </button>
           </nav>
         </div>
-        <div class="min-h-0 max-h-[min(52vh,520px)] overflow-auto p-4 sm:p-5">
-          <div v-if="activeTab === 'models'" class="table-container border-0">
-            <table class="table monitor-table min-w-[720px]">
+
+        <div class="min-h-0 max-h-[min(52vh,520px)] overflow-auto">
+          <div v-if="activeTab === 'models'" class="min-w-0 overflow-x-auto">
+            <table class="table min-w-[44rem]">
               <thead>
                 <tr>
-                  <th>{{ t('channelMonitorV2.table.platformModel') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.successRate') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.ttftP50') }}</th>
-                  <th v-if="showThroughput">{{ t('channelMonitorV2.metrics.tps') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.cacheRate') }}</th>
-                  <th v-if="showThroughput">{{ t('channelMonitorV2.metrics.rpm') }}</th>
+                  <th scope="col">{{ t('channelMonitorV2.table.platformModel') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.successRate') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.ttftP50') }}</th>
+                  <th v-if="showThroughput" scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.tps') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.cacheRate') }}</th>
+                  <th v-if="showThroughput" scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.rpm') }}</th>
                 </tr>
               </thead>
               <tbody>
@@ -306,151 +292,208 @@
                   class="cursor-pointer"
                   @click="drillModel(row)"
                 >
-                  <td>
-                    <div class="flex items-center gap-2">
-                      <span :class="statusDot(row.health)" aria-hidden="true"></span>
-                      <div>
-                        <span class="block text-xs text-gray-500 dark:text-dark-400">{{ row.platform }}</span>
-                        <strong class="font-semibold text-gray-900 dark:text-white">
-                          {{ row.model === '__other__' ? t('channelMonitorV2.otherModels') : row.model }}
-                        </strong>
-                      </div>
-                    </div>
+                  <th scope="row" class="min-w-0 text-left font-normal">
+                    <span class="block truncate text-2xs text-ink-tertiary">{{ row.platform }}</span>
+                    <span class="block truncate font-mono text-xs text-ink">
+                      {{ row.model === '__other__' ? t('channelMonitorV2.otherModels') : row.model }}
+                    </span>
+                  </th>
+                  <!--
+                    Tone only where a threshold has been crossed. A table whose
+                    every healthy row is green has no colour left for the row
+                    that is failing — and the number itself is the channel that
+                    survives grayscale.
+                  -->
+                  <td class="is-numeric">
+                    <NumCell
+                      :value="successPct(row.metrics)"
+                      :precision="1"
+                      unit="%"
+                      :tone="healthRowTone(row.health)"
+                    />
+                    <span class="mt-0.5 block text-2xs text-ink-tertiary">
+                      {{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}
+                    </span>
                   </td>
-                  <td>
-                    <span class="block">{{ formatPercent(1 - row.metrics.error_rate) }}</span>
-                    <small class="text-xs text-gray-400">{{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}</small>
+                  <td class="is-numeric">
+                    <NumCell
+                      :value="ttftMs(row.metrics)"
+                      :precision="0"
+                      unit="ms"
+                      :title="latencyDetail(row.metrics.ttft)"
+                    />
                   </td>
-                  <td>
-                    <span class="block">{{ formatMs(row.metrics.ttft.p50_ms) }}</span>
-                    <small class="text-xs text-gray-400">{{ latencyDetail(row.metrics.ttft) }}</small>
+                  <td v-if="showThroughput" class="is-numeric">
+                    <NumCell :value="tpsValue(row.metrics)" :precision="1" />
                   </td>
-                  <td v-if="showThroughput" :title="exactTps(row.metrics.tpm)">{{ formatTps(row.metrics.tpm) }}</td>
-                  <td>{{ formatPercent(row.metrics.cache_rate) }}</td>
-                  <td v-if="showThroughput">{{ formatRate(row.metrics.rpm) }}</td>
+                  <td class="is-numeric">
+                    <NumCell :value="cachePct(row.metrics)" :precision="1" unit="%" />
+                  </td>
+                  <td v-if="showThroughput" class="is-numeric">
+                    <NumCell :value="rpmValue(row.metrics)" :precision="1" />
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div v-else-if="activeTab === 'errors'" class="space-y-3">
+          <div v-else-if="activeTab === 'errors'" class="divide-y divide-line-subtle">
             <div
               v-for="row in errorRows"
               :key="row.category"
-              class="rounded-2xl bg-gray-50 p-4 text-sm dark:bg-dark-900/30"
               :class="row.ignored ? 'opacity-60' : ''"
             >
-              <button
-                type="button"
-                class="grid w-full grid-cols-[minmax(100px,200px)_1fr_auto_auto] items-center gap-3 text-left"
-                @click="toggleError(row.category)"
+              <div class="flex items-center gap-2 px-4 py-2">
+                <!--
+                  A 4px flat track with the share beside it, and the category
+                  name is the meter's own label so it is never printed twice.
+                  What it replaces: a `rounded-full` bar filled
+                  `bg-gradient-to-r from-red-400 to-red-500` — a gradient on a
+                  share bar reads as a value ramp when the only thing varying is
+                  width, and the red claimed every category was an incident.
+                -->
+                <div class="min-w-0 flex-1">
+                  <Meter
+                    :value="row.rate * 100"
+                    :max="100"
+                    :warn-at="1"
+                    :danger-at="1"
+                    :label="errorLabel(row.category)"
+                  />
+                </div>
+                <Badge v-if="row.ignored" class="shrink-0">{{ t('channelMonitorV2.ignored') }}</Badge>
+                <button
+                  type="button"
+                  class="ds-focus-inset flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors duration-fast hover:bg-surface-hover hover:text-ink"
+                  :title="errorLabel(row.category)"
+                  :aria-label="errorLabel(row.category)"
+                  :aria-expanded="expandedErrors.has(row.category)"
+                  :aria-controls="`monitor-error-${row.category}`"
+                  @click="toggleError(row.category)"
+                >
+                  <Icon
+                    name="chevronDown"
+                    size="xs"
+                    :class="[
+                      'transition-transform duration-fast',
+                      expandedErrors.has(row.category) ? 'rotate-180' : '',
+                    ]"
+                  />
+                </button>
+              </div>
+
+              <div
+                v-if="expandedErrors.has(row.category)"
+                :id="`monitor-error-${row.category}`"
+                class="space-y-1.5 border-t border-line-subtle bg-surface-sunken px-4 py-2.5"
               >
-                <span class="flex min-w-0 items-center gap-1.5 truncate text-gray-700 dark:text-gray-200">
-                  <span class="truncate">{{ errorLabel(row.category) }}</span>
-                  <span v-if="row.ignored" class="badge badge-gray shrink-0 !px-1.5 !py-0 text-[10px]">{{ t('channelMonitorV2.ignored') }}</span>
-                </span>
-                <span class="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
-                  <i
-                    class="block h-full rounded-full"
-                    :class="row.ignored ? 'bg-gray-400 dark:bg-gray-500' : 'bg-gradient-to-r from-red-400 to-red-500'"
-                    :style="{ width: `${Math.max(2, row.rate * 100)}%` }"
-                  ></i>
-                </span>
-                <small
-                  class="w-14 text-right text-xs tabular-nums"
-                  :class="row.ignored ? 'text-gray-400' : 'text-gray-500'"
-                >{{ formatPercent(row.rate) }}</small>
-                <Icon name="chevronDown" size="sm" :class="['text-gray-400 transition-transform', expandedErrors.has(row.category) ? 'rotate-180' : '']" />
-              </button>
-              <div v-if="expandedErrors.has(row.category)" class="mt-3 space-y-2 border-t border-gray-100 pt-3 dark:border-dark-700">
                 <template v-if="isAdmin && (row.details || []).length">
                   <div
                     v-for="(detail, index) in row.details || []"
                     :key="`${row.category}:${index}:${detail.message}`"
-                    class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-900/50 dark:text-dark-300"
+                    class="rounded-sm border border-line-subtle bg-surface px-2.5 py-2 text-xs text-ink-secondary"
                   >
-                    <div class="mb-1 flex flex-wrap items-center gap-2">
-                      <span class="badge badge-gray !px-1.5 !py-0 text-[10px]">{{ detail.platform || '-' }}</span>
-                      <span class="truncate font-medium">{{ detail.model || '-' }}</span>
-                      <span v-if="detail.status_code" class="text-gray-400">{{ t('channelMonitorV2.errorDetail.http', { code: detail.status_code }) }}</span>
-                      <span v-if="detail.upstream_status_code" class="text-gray-400">{{ t('channelMonitorV2.errorDetail.upstream', { code: detail.upstream_status_code }) }}</span>
-                      <span class="ml-auto text-gray-400">×{{ detail.count }}</span>
+                    <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <Badge mono>{{ detail.platform || '–' }}</Badge>
+                      <span class="min-w-0 truncate font-mono text-2xs text-ink">{{ detail.model || '–' }}</span>
+                      <span v-if="detail.status_code" class="font-mono text-2xs text-ink-tertiary">
+                        {{ t('channelMonitorV2.errorDetail.http', { code: detail.status_code }) }}
+                      </span>
+                      <span v-if="detail.upstream_status_code" class="font-mono text-2xs text-ink-tertiary">
+                        {{ t('channelMonitorV2.errorDetail.upstream', { code: detail.upstream_status_code }) }}
+                      </span>
+                      <span class="ml-auto inline-flex items-baseline gap-1">
+                        <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">×</span>
+                        <NumCell :value="detail.count" />
+                      </span>
                     </div>
-                    <p class="break-words leading-relaxed">{{ detail.message || detail.error_type || t('channelMonitorV2.errorDetail.noMessage') }}</p>
+                    <p class="break-words leading-relaxed">
+                      {{ detail.message || detail.error_type || t('channelMonitorV2.errorDetail.noMessage') }}
+                    </p>
                   </div>
                 </template>
-                <p v-else class="text-xs text-gray-400">{{ t('channelMonitorV2.errorDetail.empty') }}</p>
+                <p v-else class="text-xs text-ink-tertiary">{{ t('channelMonitorV2.errorDetail.empty') }}</p>
               </div>
             </div>
           </div>
 
-          <div v-else class="table-container border-0">
-            <table class="table monitor-table min-w-[640px]">
+          <div v-else class="min-w-0 overflow-x-auto">
+            <table class="table min-w-[40rem]">
               <thead>
                 <tr>
-                  <th class="w-16">{{ t('channelMonitorV2.table.rank') }}</th>
-                  <th>{{ t('channelMonitorV2.table.user') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.successRate') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.ttftP50') }}</th>
-                  <th v-if="showThroughput">{{ t('channelMonitorV2.metrics.tps') }}</th>
-                  <th>{{ t('channelMonitorV2.metrics.cacheRate') }}</th>
-                  <th v-if="showThroughput">{{ t('channelMonitorV2.metrics.rpm') }}</th>
+                  <th scope="col" class="w-14 is-numeric">{{ t('channelMonitorV2.table.rank') }}</th>
+                  <th scope="col">{{ t('channelMonitorV2.table.user') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.successRate') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.ttftP50') }}</th>
+                  <th v-if="showThroughput" scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.tps') }}</th>
+                  <th scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.cacheRate') }}</th>
+                  <th v-if="showThroughput" scope="col" class="is-numeric">{{ t('channelMonitorV2.metrics.rpm') }}</th>
                 </tr>
               </thead>
               <tbody>
+                <!--
+                  `is-selected` is the system's selection treatment: an accent
+                  tint plus a 2px inset accent bar. Accent means "this is you",
+                  never "this is healthy".
+                -->
                 <tr
                   v-for="row in userRows"
                   :key="row.user_id || row.display_label"
-                  :class="row.is_self
-                    ? 'bg-primary-50 ring-1 ring-inset ring-primary-200/80 dark:bg-primary-900/25 dark:ring-primary-700/50'
-                    : ''"
+                  :class="row.is_self ? 'is-selected' : ''"
                 >
-                  <td><MonitorRankBadge :rank="row.rank" /></td>
-                  <td>
-                    <strong
-                      class="font-semibold"
-                      :class="row.is_self ? 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white'"
-                    >
-                      {{ row.display_label }}
-                      <span
-                        v-if="row.is_self"
-                        class="badge badge-primary ml-2 !px-1.5 !py-0 text-[10px]"
-                      >{{ t('channelMonitorV2.currentUser') }}</span>
-                    </strong>
+                  <td class="is-numeric"><MonitorRankBadge :rank="row.rank" /></td>
+                  <th scope="row" class="min-w-0 text-left">
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span class="truncate font-medium" :class="row.is_self ? 'text-accent' : 'text-ink'">
+                        {{ row.display_label }}
+                      </span>
+                      <Badge v-if="row.is_self" tone="accent" class="shrink-0">
+                        {{ t('channelMonitorV2.currentUser') }}
+                      </Badge>
+                    </span>
+                  </th>
+                  <!-- MonitorUserRow carries no health payload, so no tone. -->
+                  <td class="is-numeric">
+                    <NumCell :value="successPct(row.metrics)" :precision="1" unit="%" />
+                    <span class="mt-0.5 block text-2xs text-ink-tertiary">
+                      {{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}
+                    </span>
                   </td>
-                  <td>
-                    <span class="block">{{ formatPercent(1 - row.metrics.error_rate) }}</span>
-                    <small class="text-xs text-gray-400">{{ t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(row.metrics.error_rate) }) }}</small>
+                  <td class="is-numeric">
+                    <NumCell
+                      :value="ttftMs(row.metrics)"
+                      :precision="0"
+                      unit="ms"
+                      :title="latencyDetail(row.metrics.ttft)"
+                    />
                   </td>
-                  <td>
-                    <span class="block">{{ formatMs(row.metrics.ttft.p50_ms) }}</span>
-                    <small class="text-xs text-gray-400">{{ latencyDetail(row.metrics.ttft) }}</small>
+                  <td v-if="showThroughput" class="is-numeric">
+                    <NumCell :value="tpsValue(row.metrics)" :precision="1" />
                   </td>
-                  <td v-if="showThroughput" :title="exactTps(row.metrics.tpm)">{{ formatTps(row.metrics.tpm) }}</td>
-                  <td>{{ formatPercent(row.metrics.cache_rate) }}</td>
-                  <td v-if="showThroughput">{{ formatRate(row.metrics.rpm) }}</td>
+                  <td class="is-numeric">
+                    <NumCell :value="cachePct(row.metrics)" :precision="1" unit="%" />
+                  </td>
+                  <td v-if="showThroughput" class="is-numeric">
+                    <NumCell :value="rpmValue(row.metrics)" :precision="1" />
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div v-if="tabLoading" class="empty-state py-10 text-sm text-gray-400">{{ t('common.loading') }}</div>
-          <div v-else-if="activeRowsEmpty" class="empty-state py-10">
-            <p class="empty-state-title text-base">
-              {{
-                bootstrapActive
-                  ? t('channelMonitorV2.bootstrap.title')
-                  : t('channelMonitorV2.empty.title')
-              }}
-            </p>
-            <p class="empty-state-description">
-              {{
-                bootstrapActive
-                  ? t('channelMonitorV2.bootstrap.description')
-                  : t('channelMonitorV2.empty.description')
-              }}
-            </p>
-          </div>
+          <p v-if="tabLoading" class="px-4 py-10 text-center text-xs text-ink-tertiary">
+            {{ t('common.loading') }}
+          </p>
+          <EmptyState
+            v-else-if="activeRowsEmpty"
+            class="py-10"
+            :title="bootstrapActive
+              ? t('channelMonitorV2.bootstrap.title')
+              : t('channelMonitorV2.empty.title')"
+            :description="bootstrapActive
+              ? t('channelMonitorV2.bootstrap.description')
+              : t('channelMonitorV2.empty.description')"
+          />
         </div>
       </section>
     </div>
@@ -463,8 +506,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Badge from '@/components/common/Badge.vue'
+import Button from '@/components/common/Button.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import Meter from '@/components/common/Meter.vue'
+import NumCell from '@/components/common/NumCell.vue'
 import Select from '@/components/common/Select.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
+import type { Tone } from '@/components/common/primitives'
 import FilterMultiSelect from '@/features/channel-monitor-v2/FilterMultiSelect.vue'
 import MetricCell from '@/features/channel-monitor-v2/MetricCell.vue'
 import MonitorRankBadge from '@/features/channel-monitor-v2/MonitorRankBadge.vue'
@@ -483,6 +532,7 @@ import type {
   MonitorHealth,
   MonitorMatrixGroupBy,
   MonitorMatrixResponse,
+  MonitorMetric,
   MonitorModelRow,
   MonitorRange,
   MonitorSnapshot,
@@ -496,13 +546,24 @@ import {
   formatMonitorThroughput,
   formatMonitorTokensPerSecond,
   tokensPerSecondFromTpm,
-  healthScoreClass,
+  healthModeScore,
   monitorErrorCategoryLabel,
 } from '@/features/channel-monitor-v2/monitorFormat'
 
 type Tab = 'models' | 'errors' | 'users'
 type HealthMode = 'overall' | 'success' | 'ttft' | 'cache'
 type TrendView = 'pulse' | 'line'
+
+/**
+ * Segmented control. Hairlines collapse via `-space-x-px` so the group reads as
+ * one object; only the ground and the border change. Replaces the `.tabs` /
+ * `.tab-active` underline strip on the toolbar — an underline is for switching
+ * CONTENT (the detail panel below still uses it), not for a filter value.
+ */
+const SEGMENT =
+  'h-7 shrink-0 border px-2.5 text-xs font-medium transition-colors duration-fast first:rounded-l last:rounded-r'
+const SEGMENT_ON = 'relative z-10 border-accent-solid bg-accent-solid text-accent-on'
+const SEGMENT_OFF = 'border-line bg-surface text-ink-secondary hover:bg-surface-hover hover:text-ink'
 
 const route = useRoute()
 const router = useRouter()
@@ -535,6 +596,10 @@ const healthModeOptions = computed(() => [
   { value: 'success' as HealthMode, label: t('channelMonitorV2.healthMode.success') },
   { value: 'ttft' as HealthMode, label: t('channelMonitorV2.healthMode.ttft') },
   { value: 'cache' as HealthMode, label: t('channelMonitorV2.healthMode.cache') },
+])
+const trendViewOptions = computed(() => [
+  { value: 'pulse' as TrendView, label: t('channelMonitorV2.trendView.pulse') },
+  { value: 'line' as TrendView, label: t('channelMonitorV2.trendView.line') },
 ])
 
 const filter = ref<MonitorFilter>({
@@ -815,6 +880,35 @@ function drillModel(row: MonitorModelRow) {
   filter.value.platforms = [row.platform]
   filter.value.models = [row.model]
 }
+
+/**
+ * "Nothing was measured" and "the measurement was zero" are different facts,
+ * and on a monitor that difference is the whole point: a channel that has not
+ * reported is not a channel reporting a 0% error rate. Every numeric getter
+ * below returns `null` for the former, which `NumCell` renders as an en dash.
+ */
+function measured(metrics: MonitorMetric): boolean {
+  if (metrics.request_count > 0) return true
+  if ((metrics.rpm || 0) > 0 || (metrics.tpm || 0) > 0) return true
+  // With throughput hidden, a zero count cannot prove absence.
+  return !showThroughput.value
+}
+function successPct(metrics: MonitorMetric): number | null {
+  return measured(metrics) ? (1 - (metrics.error_rate || 0)) * 100 : null
+}
+function cachePct(metrics: MonitorMetric): number | null {
+  return measured(metrics) ? (metrics.cache_rate || 0) * 100 : null
+}
+function ttftMs(metrics: MonitorMetric): number | null {
+  return measured(metrics) ? metrics.ttft.p50_ms : null
+}
+function tpsValue(metrics: MonitorMetric): number | null {
+  return measured(metrics) ? tokensPerSecondFromTpm(metrics.tpm) : null
+}
+function rpmValue(metrics: MonitorMetric): number | null {
+  return measured(metrics) ? metrics.rpm : null
+}
+
 function formatRate(value: number) {
   return formatMonitorThroughput(value)
 }
@@ -859,18 +953,40 @@ function formatTime(value: string) {
     minute: '2-digit',
   }).format(new Date(value))
 }
-function statusDot(health?: MonitorHealth | HealthState) {
-  if (!health || typeof health === 'string') {
-    return `status-dot health-${health || 'unknown'}`
-  }
-  // Prefer multi-band score when available; otherwise fall back to the coarse
-  // overall state for mixed-version/older payloads.
-  const klass =
-    health.score != null
-      ? healthScoreClass(health, 'overall', 0)
-      : `health-${health.overall || 'unknown'}`
-  return `status-dot ${klass}`
+
+/**
+ * Health → tone. `healthy` and `unknown` are both unremarkable and get no
+ * colour; only a crossed threshold does. The 16-declaration `.health-score*`
+ * ramp that used to live in this file's `<style scoped>` block was a near-exact
+ * duplicate of the one in `RelayPulseMatrix.vue` — two copies of one scale, so
+ * every band change had to be made twice. The scale now lives only in the
+ * component that owns the matrix; this view renders state through primitives.
+ */
+function healthTone(state?: HealthState): Tone {
+  if (state === 'warning') return 'warn'
+  if (state === 'critical') return 'danger'
+  return 'neutral'
 }
+function healthLabel(state?: HealthState): string {
+  if (state === 'healthy') return t('channelMonitorV2.matrix.healthyLegend')
+  if (state === 'warning') return t('channelMonitorV2.matrix.warningLegend')
+  if (state === 'critical') return t('channelMonitorV2.matrix.criticalLegend')
+  return t('channelMonitorV2.matrix.unknownLegend')
+}
+/**
+ * Row-level tone for the success column. Prefers the blended score when the
+ * payload carries one; falls back to the coarse overall state for older or
+ * mixed-version payloads.
+ */
+function healthRowTone(health?: MonitorHealth): Tone {
+  if (!health) return 'neutral'
+  const score = healthModeScore(health, 'overall')
+  if (score == null) return healthTone(health.overall)
+  if (score < 50) return 'danger'
+  if (score < 80) return 'warn'
+  return 'neutral'
+}
+
 function errorLabel(value: string) {
   const key = `channelMonitorV2.errorCategories.${value}`
   return te(key) ? t(key) : monitorErrorCategoryLabel(value)
@@ -911,34 +1027,12 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
-.status-dot {
-  display: inline-block;
-  height: 0.5rem;
-  width: 0.5rem;
-  flex: none;
-  border-radius: 9999px;
-}
-/* Multi-stop green → yellow → red score bands */
-.health-score10 { background: #16a34a; }
-.health-score9  { background: #22c55e; }
-.health-score8  { background: #4ade80; }
-.health-score7  { background: #a3e635; }
-.health-score6  { background: #facc15; }
-.health-score5  { background: #fbbf24; }
-.health-score4  { background: #f59e0b; }
-.health-score3  { background: #f97316; }
-.health-score2  { background: #fb7185; }
-.health-score1  { background: #f87171; }
-.health-score0  { background: rgb(239, 67, 67); }
-.health-healthy  { background: #22c55e; }
-.health-warning  { background: #f59e0b; }
-.health-critical { background: #ef4444; }
-.health-unknown  { background: #9ca3af; }
-.matrix-select {
-  min-width: 10rem;
-}
-details > summary::-webkit-details-marker {
-  display: none;
-}
-</style>
+<!--
+  No `<style scoped>`.
+  What used to be here: a duplicate of the `.health-score*` / `.health-<state>`
+  ramp that `RelayPulseMatrix.vue` also declares (16 near-identical rules, so a
+  band edit had to land twice), a `.status-dot` reimplementation of the
+  `StatusDot` primitive, an unused `.matrix-select` width, and a
+  `::-webkit-details-marker` reset for a `<details>` element this view does not
+  render.
+-->

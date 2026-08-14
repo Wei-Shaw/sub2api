@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -34,7 +35,9 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 
-const isDarkMode = computed(() => document.documentElement.classList.contains('dark'))
+// Was a dependency-free `computed`, which caches forever — this chart never
+// re-themed on toggle. `useTheme().isDark` is a real ref.
+const { isDark: isDarkMode } = useTheme()
 const colors = computed(() => ({
   red: '#ef4444',
   redAlpha: '#ef444420',
@@ -70,20 +73,14 @@ const chartData = computed(() => {
         data: props.points.map((p) => p.error_count_sla ?? 0),
         borderColor: colors.value.red,
         backgroundColor: colors.value.redAlpha,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 0,
-        pointHitRadius: 10
+        fill: true
       },
       {
         label: t('admin.ops.upstreamExcl429529'),
         data: props.points.map((p) => p.upstream_error_count_excl_429_529 ?? 0),
         borderColor: colors.value.purple,
         backgroundColor: colors.value.purpleAlpha,
-        fill: true,
-        tension: 0.35,
-        pointRadius: 0,
-        pointHitRadius: 10
+        fill: true
       },
       {
         label: t('admin.ops.businessLimited'),
@@ -91,10 +88,7 @@ const chartData = computed(() => {
         borderColor: colors.value.gray,
         backgroundColor: 'transparent',
         borderDash: [6, 6],
-        fill: false,
-        tension: 0.35,
-        pointRadius: 0,
-        pointHitRadius: 10
+        fill: false
       }
     ]
   }
@@ -123,7 +117,6 @@ const options = computed(() => {
         titleColor: isDarkMode.value ? '#f3f4f6' : '#111827',
         bodyColor: isDarkMode.value ? '#d1d5db' : '#4b5563',
         borderColor: c.grid,
-        borderWidth: 1,
         padding: 10,
         displayColors: true
       }
@@ -153,9 +146,9 @@ const options = computed(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col rounded-3xl bg-white p-6 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700">
+  <div class="flex h-full flex-col rounded-3xl bg-surface p-6 shadow-sm ring-1 ring-gray-900/5 dark:ring-dark-700">
     <div class="mb-4 flex shrink-0 items-center justify-between">
-      <h3 class="flex items-center gap-2 text-sm font-bold text-gray-900 dark:text-white">
+      <h3 class="flex items-center gap-2 text-sm font-bold text-ink">
         <svg class="h-4 w-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path
             stroke-linecap="round"
@@ -170,7 +163,7 @@ const options = computed(() => {
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
+          class="inline-flex items-center rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-semibold text-ink-secondary hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-dark-800"
           :disabled="!hasRequestErrors"
           @click="emit('openRequestErrors')"
         >
@@ -178,7 +171,7 @@ const options = computed(() => {
         </button>
         <button
           type="button"
-          class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
+          class="inline-flex items-center rounded-lg border border-line bg-surface px-2 py-1 text-[11px] font-semibold text-ink-secondary hover:bg-gray-50 disabled:opacity-50 dark:hover:bg-dark-800"
           :disabled="!hasUpstreamErrors"
           @click="emit('openUpstreamErrors')"
         >
@@ -190,7 +183,7 @@ const options = computed(() => {
     <div class="min-h-0 flex-1">
       <Line v-if="state === 'ready' && chartData" :data="chartData" :options="options" />
       <div v-else class="flex h-full items-center justify-center">
-        <div v-if="state === 'loading'" class="animate-pulse text-sm text-gray-400">{{ t('common.loading') }}</div>
+        <div v-if="state === 'loading'" class="animate-pulse text-sm text-ink-tertiary">{{ t('common.loading') }}</div>
         <EmptyState v-else :title="t('common.noData')" :description="t('admin.ops.charts.emptyError')" />
       </div>
     </div>

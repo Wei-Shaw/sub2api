@@ -1,7 +1,11 @@
-export const DEFAULT_PAYMENT_CURRENCY = 'CNY'
+export const DEFAULT_PAYMENT_CURRENCY = 'USD'
+
+/** The currency SePay settles in — Vietnamese bank transfers are dong-only. */
+export const SEPAY_CURRENCY = 'VND'
 
 const PAYMENT_CURRENCY_SYMBOLS: Record<string, string> = {
   USD: '$',
+  VND: '₫',
   CNY: '¥',
   RMB: '¥',
   EUR: '€',
@@ -31,11 +35,19 @@ export function currencySymbol(currency?: string | null): string {
   return PAYMENT_CURRENCY_SYMBOLS[normalized] || normalized
 }
 
-function paymentCurrencyFractionDigits(currency: string): number {
+/**
+ * Minor-unit precision for a currency, from Intl rather than a hand-kept table.
+ *
+ * Exported because `NumCell` takes a `precision` and knows nothing about money:
+ * hardcoding `:precision="2"` next to a JPY or KRW amount invents two decimal
+ * places that the currency does not have, and the number would then disagree
+ * with `formatPaymentAmount` on the very same screen.
+ */
+export function paymentCurrencyFractionDigits(currency?: string | null): number {
   try {
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency,
+      currency: normalizePaymentCurrency(currency),
     }).resolvedOptions().maximumFractionDigits ?? 2
   } catch {
     return 2
@@ -44,7 +56,7 @@ function paymentCurrencyFractionDigits(currency: string): number {
 
 export function formatPaymentAmount(amount: number, currency?: string | null, locale?: string): string {
   const normalized = normalizePaymentCurrency(currency)
-  const fractionDigits = paymentCurrencyFractionDigits(normalized)
+  const fractionDigits = paymentCurrencyFractionDigits(currency)
   try {
     return new Intl.NumberFormat(locale || undefined, {
       style: 'currency',

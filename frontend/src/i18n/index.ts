@@ -1,44 +1,46 @@
+import { isRef, watch } from 'vue'
 import { createI18n } from 'vue-i18n'
-
-type LocaleCode = 'en' | 'zh'
+import {
+  DEFAULT_LOCALE,
+  LOCALE_STORAGE_KEY,
+  getLocale,
+  isLocaleCode,
+  setCurrentLocale,
+  type LocaleCode
+} from './locale'
 
 type LocaleMessages = Record<string, any>
 
-const LOCALE_KEY = 'sub2api_locale'
-const DEFAULT_LOCALE: LocaleCode = 'en'
+// `getLocale` owns the locale value (see ./locale.ts — a leaf module that never builds an
+// i18n instance, so `api/client` can read the locale without dragging `createI18n` along).
+// Re-exported because callers outside the API layer already import it from `@/i18n`.
+export { getLocale }
+export type { LocaleCode }
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
   zh: () => import('./locales/zh')
 }
 
-function isLocaleCode(value: string): value is LocaleCode {
-  return value === 'en' || value === 'zh'
-}
-
-function getDefaultLocale(): LocaleCode {
-  const saved = localStorage.getItem(LOCALE_KEY)
-  if (saved && isLocaleCode(saved)) {
-    return saved
-  }
-
-  const browserLang = navigator.language.toLowerCase()
-  if (browserLang.startsWith('zh')) {
-    return 'zh'
-  }
-
-  return DEFAULT_LOCALE
-}
-
 export const i18n = createI18n({
   legacy: false,
-  locale: getDefaultLocale(),
+  locale: getLocale(),
   fallbackLocale: DEFAULT_LOCALE,
   messages: {},
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false
 })
+
+// Single guarantee that the two locale readers cannot drift: every write to the vue-i18n
+// locale — `setLocale()` below, or any component reaching for `useI18n().locale` directly —
+// pushes the same value into ./locale.ts. Synchronous flush matters: a request fired in the
+// same tick as the switch must already carry the new `Accept-Language`.
+// Guarded because specs may stub `createI18n` with an object that has no locale ref.
+const localeRef = i18n.global.locale
+if (isRef(localeRef)) {
+  watch(localeRef, (locale) => setCurrentLocale(locale), { flush: 'sync' })
+}
 
 const loadedLocales = new Set<LocaleCode>()
 
@@ -66,7 +68,10 @@ export async function setLocale(locale: string): Promise<void> {
 
   await loadLocaleMessages(locale)
   i18n.global.locale.value = locale
-  localStorage.setItem(LOCALE_KEY, locale)
+  // Belt and braces alongside the watcher above, so the value is correct even if the
+  // watcher is ever torn down or the locale ref is stubbed in a test.
+  setCurrentLocale(locale)
+  localStorage.setItem(LOCALE_STORAGE_KEY, locale)
   document.documentElement.setAttribute('lang', locale)
 
   // 同步更新浏览器页签标题，使其跟随语言切换
@@ -84,11 +89,6 @@ export async function setLocale(locale: string): Promise<void> {
     ...(authStore.isAdmin ? adminSettingsStore.customMenuItems : []),
   ]
   document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
-}
-
-export function getLocale(): LocaleCode {
-  const current = i18n.global.locale.value
-  return isLocaleCode(current) ? current : DEFAULT_LOCALE
 }
 
 export const availableLocales = [

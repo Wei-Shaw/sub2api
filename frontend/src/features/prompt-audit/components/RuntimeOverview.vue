@@ -14,17 +14,17 @@
       </button>
     </div>
 
-    <div v-if="error" role="alert" class="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">
+    <div v-if="error" role="alert" class="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-danger dark:bg-red-950/30">
       {{ error }}
     </div>
     <div v-else-if="loading && !runtime" class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-busy="true">
-      <div v-for="index in 6" :key="index" class="h-16 animate-pulse rounded-xl bg-gray-100 dark:bg-dark-800" />
+      <div v-for="index in 6" :key="index" class="h-16 animate-pulse rounded-xl bg-surface-sunken" />
     </div>
     <template v-else-if="runtime">
       <dl class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <div v-for="item in statusItems" :key="item.label" class="rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-3 dark:border-dark-700/60 dark:bg-dark-900/40">
-          <dt class="text-xs text-gray-500 dark:text-dark-400">{{ item.label }}</dt>
-          <dd class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+          <dt class="text-xs text-ink-secondary">{{ item.label }}</dt>
+          <dd class="mt-1.5 flex items-center gap-2 text-sm font-semibold text-ink">
             <span v-if="item.dot" class="h-2 w-2 shrink-0 rounded-full" :class="item.dot" />
             <span class="min-w-0 truncate">{{ item.value }}</span>
           </dd>
@@ -33,14 +33,14 @@
 
       <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(220px,0.6fr)]">
         <div class="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-700/60 dark:bg-dark-900/20">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.runtime.guardMetrics') }}</h3>
+          <h3 class="text-sm font-medium text-ink">{{ t('admin.promptAudit.runtime.guardMetrics') }}</h3>
           <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div v-for="metric in guardMetricItems" :key="metric.label" class="rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-dark-900/60">
-              <p class="text-[11px] text-gray-500 dark:text-dark-400">{{ metric.label }}</p>
-              <p class="mt-0.5 text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ metric.value }}</p>
+              <p class="text-[11px] text-ink-secondary">{{ metric.label }}</p>
+              <p class="mt-0.5 text-sm font-semibold tabular-nums text-ink">{{ metric.value }}</p>
             </div>
           </div>
-          <p class="mt-3 text-xs leading-5 text-gray-500 dark:text-dark-400">
+          <p class="mt-3 text-xs leading-5 text-ink-secondary">
             {{ t('admin.promptAudit.runtime.queueBreakdown', {
               queued: runtime.queue.queued,
               processing: runtime.queue.processing,
@@ -53,15 +53,15 @@
           </p>
         </div>
         <div class="rounded-xl border border-gray-100 px-4 py-3 dark:border-dark-700/60 dark:bg-dark-900/20">
-          <h3 class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.promptAudit.runtime.latest') }}</h3>
-          <p class="mt-2 text-sm text-gray-600 dark:text-dark-300">
+          <h3 class="text-sm font-medium text-ink">{{ t('admin.promptAudit.runtime.latest') }}</h3>
+          <p class="mt-2 text-sm text-ink-secondary">
             {{ runtime.last_processed_at ? formatDate(runtime.last_processed_at) : t('admin.promptAudit.common.never') }}
           </p>
           <p v-if="runtime.last_error_code" class="mt-1 break-words text-sm text-red-600 dark:text-red-300">
             {{ runtime.last_error_code }}<span v-if="runtime.last_error_message"> · {{ runtime.last_error_message }}</span>
           </p>
           <div v-if="Object.keys(runtime.endpoints).length" class="mt-3 flex flex-wrap gap-2">
-            <span v-for="(probe, id) in runtime.endpoints" :key="id" class="rounded-md px-2 py-1 text-xs" :class="probe.ok ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'">
+            <span v-for="(probe, id) in runtime.endpoints" :key="id" class="rounded-md px-2 py-1 text-xs" :class="probe.ok ? 'bg-emerald-50 text-success dark:bg-emerald-950/40' : 'bg-red-50 text-danger dark:bg-red-950/40'">
               {{ id }} · {{ probe.status }} · {{ probe.latency_ms }} ms
             </span>
           </div>
@@ -113,9 +113,9 @@ function formatDate(value: string): string {
 }
 
 function statusDot(status: string): string {
-  if (status === 'running') return 'bg-emerald-500'
+  if (status === 'running') return 'bg-success'
   if (status === 'disabled') return 'bg-gray-400'
-  if (status === 'degraded') return 'bg-amber-500'
-  return 'bg-red-500'
+  if (status === 'degraded') return 'bg-warn'
+  return 'bg-danger'
 }
 </script>

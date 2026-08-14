@@ -29681,14 +29681,6 @@ type PaymentOrderMutation struct {
 	provider_key             *string
 	provider_snapshot        *map[string]interface{}
 	status                   *string
-	refund_amount            *float64
-	addrefund_amount         *float64
-	refund_reason            *string
-	refund_at                *time.Time
-	force_refund             *bool
-	refund_requested_at      *time.Time
-	refund_request_reason    *string
-	refund_requested_by      *string
 	expires_at               *time.Time
 	paid_at                  *time.Time
 	completed_at             *time.Time
@@ -30850,343 +30842,6 @@ func (m *PaymentOrderMutation) ResetStatus() {
 	m.status = nil
 }
 
-// SetRefundAmount sets the "refund_amount" field.
-func (m *PaymentOrderMutation) SetRefundAmount(f float64) {
-	m.refund_amount = &f
-	m.addrefund_amount = nil
-}
-
-// RefundAmount returns the value of the "refund_amount" field in the mutation.
-func (m *PaymentOrderMutation) RefundAmount() (r float64, exists bool) {
-	v := m.refund_amount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundAmount returns the old "refund_amount" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundAmount(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundAmount is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundAmount requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundAmount: %w", err)
-	}
-	return oldValue.RefundAmount, nil
-}
-
-// AddRefundAmount adds f to the "refund_amount" field.
-func (m *PaymentOrderMutation) AddRefundAmount(f float64) {
-	if m.addrefund_amount != nil {
-		*m.addrefund_amount += f
-	} else {
-		m.addrefund_amount = &f
-	}
-}
-
-// AddedRefundAmount returns the value that was added to the "refund_amount" field in this mutation.
-func (m *PaymentOrderMutation) AddedRefundAmount() (r float64, exists bool) {
-	v := m.addrefund_amount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetRefundAmount resets all changes to the "refund_amount" field.
-func (m *PaymentOrderMutation) ResetRefundAmount() {
-	m.refund_amount = nil
-	m.addrefund_amount = nil
-}
-
-// SetRefundReason sets the "refund_reason" field.
-func (m *PaymentOrderMutation) SetRefundReason(s string) {
-	m.refund_reason = &s
-}
-
-// RefundReason returns the value of the "refund_reason" field in the mutation.
-func (m *PaymentOrderMutation) RefundReason() (r string, exists bool) {
-	v := m.refund_reason
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundReason returns the old "refund_reason" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundReason(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundReason is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundReason requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundReason: %w", err)
-	}
-	return oldValue.RefundReason, nil
-}
-
-// ClearRefundReason clears the value of the "refund_reason" field.
-func (m *PaymentOrderMutation) ClearRefundReason() {
-	m.refund_reason = nil
-	m.clearedFields[paymentorder.FieldRefundReason] = struct{}{}
-}
-
-// RefundReasonCleared returns if the "refund_reason" field was cleared in this mutation.
-func (m *PaymentOrderMutation) RefundReasonCleared() bool {
-	_, ok := m.clearedFields[paymentorder.FieldRefundReason]
-	return ok
-}
-
-// ResetRefundReason resets all changes to the "refund_reason" field.
-func (m *PaymentOrderMutation) ResetRefundReason() {
-	m.refund_reason = nil
-	delete(m.clearedFields, paymentorder.FieldRefundReason)
-}
-
-// SetRefundAt sets the "refund_at" field.
-func (m *PaymentOrderMutation) SetRefundAt(t time.Time) {
-	m.refund_at = &t
-}
-
-// RefundAt returns the value of the "refund_at" field in the mutation.
-func (m *PaymentOrderMutation) RefundAt() (r time.Time, exists bool) {
-	v := m.refund_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundAt returns the old "refund_at" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundAt: %w", err)
-	}
-	return oldValue.RefundAt, nil
-}
-
-// ClearRefundAt clears the value of the "refund_at" field.
-func (m *PaymentOrderMutation) ClearRefundAt() {
-	m.refund_at = nil
-	m.clearedFields[paymentorder.FieldRefundAt] = struct{}{}
-}
-
-// RefundAtCleared returns if the "refund_at" field was cleared in this mutation.
-func (m *PaymentOrderMutation) RefundAtCleared() bool {
-	_, ok := m.clearedFields[paymentorder.FieldRefundAt]
-	return ok
-}
-
-// ResetRefundAt resets all changes to the "refund_at" field.
-func (m *PaymentOrderMutation) ResetRefundAt() {
-	m.refund_at = nil
-	delete(m.clearedFields, paymentorder.FieldRefundAt)
-}
-
-// SetForceRefund sets the "force_refund" field.
-func (m *PaymentOrderMutation) SetForceRefund(b bool) {
-	m.force_refund = &b
-}
-
-// ForceRefund returns the value of the "force_refund" field in the mutation.
-func (m *PaymentOrderMutation) ForceRefund() (r bool, exists bool) {
-	v := m.force_refund
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldForceRefund returns the old "force_refund" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldForceRefund(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldForceRefund is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldForceRefund requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldForceRefund: %w", err)
-	}
-	return oldValue.ForceRefund, nil
-}
-
-// ResetForceRefund resets all changes to the "force_refund" field.
-func (m *PaymentOrderMutation) ResetForceRefund() {
-	m.force_refund = nil
-}
-
-// SetRefundRequestedAt sets the "refund_requested_at" field.
-func (m *PaymentOrderMutation) SetRefundRequestedAt(t time.Time) {
-	m.refund_requested_at = &t
-}
-
-// RefundRequestedAt returns the value of the "refund_requested_at" field in the mutation.
-func (m *PaymentOrderMutation) RefundRequestedAt() (r time.Time, exists bool) {
-	v := m.refund_requested_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundRequestedAt returns the old "refund_requested_at" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundRequestedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundRequestedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundRequestedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundRequestedAt: %w", err)
-	}
-	return oldValue.RefundRequestedAt, nil
-}
-
-// ClearRefundRequestedAt clears the value of the "refund_requested_at" field.
-func (m *PaymentOrderMutation) ClearRefundRequestedAt() {
-	m.refund_requested_at = nil
-	m.clearedFields[paymentorder.FieldRefundRequestedAt] = struct{}{}
-}
-
-// RefundRequestedAtCleared returns if the "refund_requested_at" field was cleared in this mutation.
-func (m *PaymentOrderMutation) RefundRequestedAtCleared() bool {
-	_, ok := m.clearedFields[paymentorder.FieldRefundRequestedAt]
-	return ok
-}
-
-// ResetRefundRequestedAt resets all changes to the "refund_requested_at" field.
-func (m *PaymentOrderMutation) ResetRefundRequestedAt() {
-	m.refund_requested_at = nil
-	delete(m.clearedFields, paymentorder.FieldRefundRequestedAt)
-}
-
-// SetRefundRequestReason sets the "refund_request_reason" field.
-func (m *PaymentOrderMutation) SetRefundRequestReason(s string) {
-	m.refund_request_reason = &s
-}
-
-// RefundRequestReason returns the value of the "refund_request_reason" field in the mutation.
-func (m *PaymentOrderMutation) RefundRequestReason() (r string, exists bool) {
-	v := m.refund_request_reason
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundRequestReason returns the old "refund_request_reason" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundRequestReason(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundRequestReason is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundRequestReason requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundRequestReason: %w", err)
-	}
-	return oldValue.RefundRequestReason, nil
-}
-
-// ClearRefundRequestReason clears the value of the "refund_request_reason" field.
-func (m *PaymentOrderMutation) ClearRefundRequestReason() {
-	m.refund_request_reason = nil
-	m.clearedFields[paymentorder.FieldRefundRequestReason] = struct{}{}
-}
-
-// RefundRequestReasonCleared returns if the "refund_request_reason" field was cleared in this mutation.
-func (m *PaymentOrderMutation) RefundRequestReasonCleared() bool {
-	_, ok := m.clearedFields[paymentorder.FieldRefundRequestReason]
-	return ok
-}
-
-// ResetRefundRequestReason resets all changes to the "refund_request_reason" field.
-func (m *PaymentOrderMutation) ResetRefundRequestReason() {
-	m.refund_request_reason = nil
-	delete(m.clearedFields, paymentorder.FieldRefundRequestReason)
-}
-
-// SetRefundRequestedBy sets the "refund_requested_by" field.
-func (m *PaymentOrderMutation) SetRefundRequestedBy(s string) {
-	m.refund_requested_by = &s
-}
-
-// RefundRequestedBy returns the value of the "refund_requested_by" field in the mutation.
-func (m *PaymentOrderMutation) RefundRequestedBy() (r string, exists bool) {
-	v := m.refund_requested_by
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundRequestedBy returns the old "refund_requested_by" field's value of the PaymentOrder entity.
-// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundRequestedBy(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundRequestedBy is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundRequestedBy requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundRequestedBy: %w", err)
-	}
-	return oldValue.RefundRequestedBy, nil
-}
-
-// ClearRefundRequestedBy clears the value of the "refund_requested_by" field.
-func (m *PaymentOrderMutation) ClearRefundRequestedBy() {
-	m.refund_requested_by = nil
-	m.clearedFields[paymentorder.FieldRefundRequestedBy] = struct{}{}
-}
-
-// RefundRequestedByCleared returns if the "refund_requested_by" field was cleared in this mutation.
-func (m *PaymentOrderMutation) RefundRequestedByCleared() bool {
-	_, ok := m.clearedFields[paymentorder.FieldRefundRequestedBy]
-	return ok
-}
-
-// ResetRefundRequestedBy resets all changes to the "refund_requested_by" field.
-func (m *PaymentOrderMutation) ResetRefundRequestedBy() {
-	m.refund_requested_by = nil
-	delete(m.clearedFields, paymentorder.FieldRefundRequestedBy)
-}
-
 // SetExpiresAt sets the "expires_at" field.
 func (m *PaymentOrderMutation) SetExpiresAt(t time.Time) {
 	m.expires_at = &t
@@ -31673,7 +31328,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 39)
+	fields := make([]string, 0, 32)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -31739,27 +31394,6 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, paymentorder.FieldStatus)
-	}
-	if m.refund_amount != nil {
-		fields = append(fields, paymentorder.FieldRefundAmount)
-	}
-	if m.refund_reason != nil {
-		fields = append(fields, paymentorder.FieldRefundReason)
-	}
-	if m.refund_at != nil {
-		fields = append(fields, paymentorder.FieldRefundAt)
-	}
-	if m.force_refund != nil {
-		fields = append(fields, paymentorder.FieldForceRefund)
-	}
-	if m.refund_requested_at != nil {
-		fields = append(fields, paymentorder.FieldRefundRequestedAt)
-	}
-	if m.refund_request_reason != nil {
-		fields = append(fields, paymentorder.FieldRefundRequestReason)
-	}
-	if m.refund_requested_by != nil {
-		fields = append(fields, paymentorder.FieldRefundRequestedBy)
 	}
 	if m.expires_at != nil {
 		fields = append(fields, paymentorder.FieldExpiresAt)
@@ -31843,20 +31477,6 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.ProviderSnapshot()
 	case paymentorder.FieldStatus:
 		return m.Status()
-	case paymentorder.FieldRefundAmount:
-		return m.RefundAmount()
-	case paymentorder.FieldRefundReason:
-		return m.RefundReason()
-	case paymentorder.FieldRefundAt:
-		return m.RefundAt()
-	case paymentorder.FieldForceRefund:
-		return m.ForceRefund()
-	case paymentorder.FieldRefundRequestedAt:
-		return m.RefundRequestedAt()
-	case paymentorder.FieldRefundRequestReason:
-		return m.RefundRequestReason()
-	case paymentorder.FieldRefundRequestedBy:
-		return m.RefundRequestedBy()
 	case paymentorder.FieldExpiresAt:
 		return m.ExpiresAt()
 	case paymentorder.FieldPaidAt:
@@ -31930,20 +31550,6 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldProviderSnapshot(ctx)
 	case paymentorder.FieldStatus:
 		return m.OldStatus(ctx)
-	case paymentorder.FieldRefundAmount:
-		return m.OldRefundAmount(ctx)
-	case paymentorder.FieldRefundReason:
-		return m.OldRefundReason(ctx)
-	case paymentorder.FieldRefundAt:
-		return m.OldRefundAt(ctx)
-	case paymentorder.FieldForceRefund:
-		return m.OldForceRefund(ctx)
-	case paymentorder.FieldRefundRequestedAt:
-		return m.OldRefundRequestedAt(ctx)
-	case paymentorder.FieldRefundRequestReason:
-		return m.OldRefundRequestReason(ctx)
-	case paymentorder.FieldRefundRequestedBy:
-		return m.OldRefundRequestedBy(ctx)
 	case paymentorder.FieldExpiresAt:
 		return m.OldExpiresAt(ctx)
 	case paymentorder.FieldPaidAt:
@@ -32127,55 +31733,6 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetStatus(v)
 		return nil
-	case paymentorder.FieldRefundAmount:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundAmount(v)
-		return nil
-	case paymentorder.FieldRefundReason:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundReason(v)
-		return nil
-	case paymentorder.FieldRefundAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundAt(v)
-		return nil
-	case paymentorder.FieldForceRefund:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetForceRefund(v)
-		return nil
-	case paymentorder.FieldRefundRequestedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundRequestedAt(v)
-		return nil
-	case paymentorder.FieldRefundRequestReason:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundRequestReason(v)
-		return nil
-	case paymentorder.FieldRefundRequestedBy:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundRequestedBy(v)
-		return nil
 	case paymentorder.FieldExpiresAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -32272,9 +31829,6 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addsubscription_days != nil {
 		fields = append(fields, paymentorder.FieldSubscriptionDays)
 	}
-	if m.addrefund_amount != nil {
-		fields = append(fields, paymentorder.FieldRefundAmount)
-	}
 	return fields
 }
 
@@ -32295,8 +31849,6 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSubscriptionGroupID()
 	case paymentorder.FieldSubscriptionDays:
 		return m.AddedSubscriptionDays()
-	case paymentorder.FieldRefundAmount:
-		return m.AddedRefundAmount()
 	}
 	return nil, false
 }
@@ -32348,13 +31900,6 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddSubscriptionDays(v)
 		return nil
-	case paymentorder.FieldRefundAmount:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddRefundAmount(v)
-		return nil
 	}
 	return fmt.Errorf("unknown PaymentOrder numeric field %s", name)
 }
@@ -32392,21 +31937,6 @@ func (m *PaymentOrderMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(paymentorder.FieldProviderSnapshot) {
 		fields = append(fields, paymentorder.FieldProviderSnapshot)
-	}
-	if m.FieldCleared(paymentorder.FieldRefundReason) {
-		fields = append(fields, paymentorder.FieldRefundReason)
-	}
-	if m.FieldCleared(paymentorder.FieldRefundAt) {
-		fields = append(fields, paymentorder.FieldRefundAt)
-	}
-	if m.FieldCleared(paymentorder.FieldRefundRequestedAt) {
-		fields = append(fields, paymentorder.FieldRefundRequestedAt)
-	}
-	if m.FieldCleared(paymentorder.FieldRefundRequestReason) {
-		fields = append(fields, paymentorder.FieldRefundRequestReason)
-	}
-	if m.FieldCleared(paymentorder.FieldRefundRequestedBy) {
-		fields = append(fields, paymentorder.FieldRefundRequestedBy)
 	}
 	if m.FieldCleared(paymentorder.FieldPaidAt) {
 		fields = append(fields, paymentorder.FieldPaidAt)
@@ -32466,21 +31996,6 @@ func (m *PaymentOrderMutation) ClearField(name string) error {
 		return nil
 	case paymentorder.FieldProviderSnapshot:
 		m.ClearProviderSnapshot()
-		return nil
-	case paymentorder.FieldRefundReason:
-		m.ClearRefundReason()
-		return nil
-	case paymentorder.FieldRefundAt:
-		m.ClearRefundAt()
-		return nil
-	case paymentorder.FieldRefundRequestedAt:
-		m.ClearRefundRequestedAt()
-		return nil
-	case paymentorder.FieldRefundRequestReason:
-		m.ClearRefundRequestReason()
-		return nil
-	case paymentorder.FieldRefundRequestedBy:
-		m.ClearRefundRequestedBy()
 		return nil
 	case paymentorder.FieldPaidAt:
 		m.ClearPaidAt()
@@ -32570,27 +32085,6 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldStatus:
 		m.ResetStatus()
-		return nil
-	case paymentorder.FieldRefundAmount:
-		m.ResetRefundAmount()
-		return nil
-	case paymentorder.FieldRefundReason:
-		m.ResetRefundReason()
-		return nil
-	case paymentorder.FieldRefundAt:
-		m.ResetRefundAt()
-		return nil
-	case paymentorder.FieldForceRefund:
-		m.ResetForceRefund()
-		return nil
-	case paymentorder.FieldRefundRequestedAt:
-		m.ResetRefundRequestedAt()
-		return nil
-	case paymentorder.FieldRefundRequestReason:
-		m.ResetRefundRequestReason()
-		return nil
-	case paymentorder.FieldRefundRequestedBy:
-		m.ResetRefundRequestedBy()
 		return nil
 	case paymentorder.FieldExpiresAt:
 		m.ResetExpiresAt()
@@ -32703,26 +32197,24 @@ func (m *PaymentOrderMutation) ResetEdge(name string) error {
 // PaymentProviderInstanceMutation represents an operation that mutates the PaymentProviderInstance nodes in the graph.
 type PaymentProviderInstanceMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	provider_key      *string
-	name              *string
-	_config           *string
-	supported_types   *string
-	enabled           *bool
-	payment_mode      *string
-	sort_order        *int
-	addsort_order     *int
-	limits            *string
-	refund_enabled    *bool
-	allow_user_refund *bool
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*PaymentProviderInstance, error)
-	predicates        []predicate.PaymentProviderInstance
+	op              Op
+	typ             string
+	id              *int64
+	provider_key    *string
+	name            *string
+	_config         *string
+	supported_types *string
+	enabled         *bool
+	payment_mode    *string
+	sort_order      *int
+	addsort_order   *int
+	limits          *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*PaymentProviderInstance, error)
+	predicates      []predicate.PaymentProviderInstance
 }
 
 var _ ent.Mutation = (*PaymentProviderInstanceMutation)(nil)
@@ -33131,78 +32623,6 @@ func (m *PaymentProviderInstanceMutation) ResetLimits() {
 	m.limits = nil
 }
 
-// SetRefundEnabled sets the "refund_enabled" field.
-func (m *PaymentProviderInstanceMutation) SetRefundEnabled(b bool) {
-	m.refund_enabled = &b
-}
-
-// RefundEnabled returns the value of the "refund_enabled" field in the mutation.
-func (m *PaymentProviderInstanceMutation) RefundEnabled() (r bool, exists bool) {
-	v := m.refund_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldRefundEnabled returns the old "refund_enabled" field's value of the PaymentProviderInstance entity.
-// If the PaymentProviderInstance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentProviderInstanceMutation) OldRefundEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldRefundEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldRefundEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldRefundEnabled: %w", err)
-	}
-	return oldValue.RefundEnabled, nil
-}
-
-// ResetRefundEnabled resets all changes to the "refund_enabled" field.
-func (m *PaymentProviderInstanceMutation) ResetRefundEnabled() {
-	m.refund_enabled = nil
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (m *PaymentProviderInstanceMutation) SetAllowUserRefund(b bool) {
-	m.allow_user_refund = &b
-}
-
-// AllowUserRefund returns the value of the "allow_user_refund" field in the mutation.
-func (m *PaymentProviderInstanceMutation) AllowUserRefund() (r bool, exists bool) {
-	v := m.allow_user_refund
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAllowUserRefund returns the old "allow_user_refund" field's value of the PaymentProviderInstance entity.
-// If the PaymentProviderInstance object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentProviderInstanceMutation) OldAllowUserRefund(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAllowUserRefund is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAllowUserRefund requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAllowUserRefund: %w", err)
-	}
-	return oldValue.AllowUserRefund, nil
-}
-
-// ResetAllowUserRefund resets all changes to the "allow_user_refund" field.
-func (m *PaymentProviderInstanceMutation) ResetAllowUserRefund() {
-	m.allow_user_refund = nil
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (m *PaymentProviderInstanceMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -33309,7 +32729,7 @@ func (m *PaymentProviderInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentProviderInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 10)
 	if m.provider_key != nil {
 		fields = append(fields, paymentproviderinstance.FieldProviderKey)
 	}
@@ -33333,12 +32753,6 @@ func (m *PaymentProviderInstanceMutation) Fields() []string {
 	}
 	if m.limits != nil {
 		fields = append(fields, paymentproviderinstance.FieldLimits)
-	}
-	if m.refund_enabled != nil {
-		fields = append(fields, paymentproviderinstance.FieldRefundEnabled)
-	}
-	if m.allow_user_refund != nil {
-		fields = append(fields, paymentproviderinstance.FieldAllowUserRefund)
 	}
 	if m.created_at != nil {
 		fields = append(fields, paymentproviderinstance.FieldCreatedAt)
@@ -33370,10 +32784,6 @@ func (m *PaymentProviderInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case paymentproviderinstance.FieldLimits:
 		return m.Limits()
-	case paymentproviderinstance.FieldRefundEnabled:
-		return m.RefundEnabled()
-	case paymentproviderinstance.FieldAllowUserRefund:
-		return m.AllowUserRefund()
 	case paymentproviderinstance.FieldCreatedAt:
 		return m.CreatedAt()
 	case paymentproviderinstance.FieldUpdatedAt:
@@ -33403,10 +32813,6 @@ func (m *PaymentProviderInstanceMutation) OldField(ctx context.Context, name str
 		return m.OldSortOrder(ctx)
 	case paymentproviderinstance.FieldLimits:
 		return m.OldLimits(ctx)
-	case paymentproviderinstance.FieldRefundEnabled:
-		return m.OldRefundEnabled(ctx)
-	case paymentproviderinstance.FieldAllowUserRefund:
-		return m.OldAllowUserRefund(ctx)
 	case paymentproviderinstance.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case paymentproviderinstance.FieldUpdatedAt:
@@ -33475,20 +32881,6 @@ func (m *PaymentProviderInstanceMutation) SetField(name string, value ent.Value)
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLimits(v)
-		return nil
-	case paymentproviderinstance.FieldRefundEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetRefundEnabled(v)
-		return nil
-	case paymentproviderinstance.FieldAllowUserRefund:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAllowUserRefund(v)
 		return nil
 	case paymentproviderinstance.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -33591,12 +32983,6 @@ func (m *PaymentProviderInstanceMutation) ResetField(name string) error {
 		return nil
 	case paymentproviderinstance.FieldLimits:
 		m.ResetLimits()
-		return nil
-	case paymentproviderinstance.FieldRefundEnabled:
-		m.ResetRefundEnabled()
-		return nil
-	case paymentproviderinstance.FieldAllowUserRefund:
-		m.ResetAllowUserRefund()
 		return nil
 	case paymentproviderinstance.FieldCreatedAt:
 		m.ResetCreatedAt()

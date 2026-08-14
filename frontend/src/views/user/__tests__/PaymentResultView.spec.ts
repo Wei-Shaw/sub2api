@@ -26,6 +26,12 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      // `NumCell` reads `locale` off `useI18n()`. Left undefined on purpose:
+      // `Intl` then falls back to the system default, which is what the views'
+      // own `localeCode` computed resolves to for an empty locale — so the
+      // expectations below can keep comparing against `formatPaymentAmount(...)`
+      // called with no locale at all.
+      locale: { value: undefined as unknown as string },
     }),
   }
 })
@@ -475,14 +481,14 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).toContain(formatPaymentAmount(103, 'HKD'))
   })
 
-  it('normalizes aliased payment methods before rendering the label', async () => {
+  it('renders an unrecognised payment method verbatim', async () => {
     routeState.query = {
       resume_token: 'resume-88',
     }
     resolveOrderPublicByResumeToken.mockResolvedValueOnce({
       data: {
         ...orderFactory('PAID'),
-        payment_type: 'alipay_direct',
+        payment_type: 'legacy_gateway',
       },
     })
 
@@ -496,7 +502,8 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('payment.methods.alipay')
-    expect(wrapper.text()).not.toContain('payment.methods.alipay_direct')
+    // Orders paid through a since-removed gateway keep their historical type;
+    // inventing a label for one would misreport what the user actually used.
+    expect(wrapper.text()).toContain('payment.methods.legacy_gateway')
   })
 })

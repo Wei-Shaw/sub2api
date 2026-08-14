@@ -1,206 +1,195 @@
 <template>
-  <div class="plaza-pricing-table overflow-x-auto" :style="accentStyle">
-    <table class="w-full min-w-[860px] table-fixed border-collapse text-sm tabular-nums">
+  <!--
+    A price list. The only job of this surface is that a column of numbers
+    reads as a column: mono tabular figures, right aligned, one hairline under
+    every row, one heavy rule under the header, and no zebra.
+
+    What used to be here: a platform-hued wash behind the "your price" zone
+    (`color-mix` off the platform accent), a second hue on hover, colored
+    pills for the tier chips, and eight `dark:` pairs per row. Tinting a third
+    of a pricing table is how a reader stops seeing the numbers.
+  -->
+  <div class="overflow-x-auto">
+    <table class="table min-w-[54rem] table-fixed" data-testid="plaza-pricing-table">
       <colgroup>
         <col class="w-[22%]" />
-        <col class="w-[10%]" />
-        <col class="w-[10%]" />
-        <col class="w-[14%]" />
-        <col class="w-[10%]" />
-        <col class="w-[10%]" />
-        <col class="w-[14%]" />
-        <col class="w-[10%]" />
+        <col class="w-[11%]" />
+        <col class="w-[11%]" />
+        <col class="w-[13%]" />
+        <col class="w-[11%]" />
+        <col class="w-[11%]" />
+        <col class="w-[13%]" />
+        <col class="w-[8%]" />
       </colgroup>
       <thead>
-        <tr
-          class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400"
-        >
-          <th
-            rowspan="2"
-            class="border-r border-gray-100 py-2.5 pl-5 pr-4 text-left align-middle dark:border-dark-700/60"
-          >
+        <!--
+          Two-level header. Only the SECOND row carries the strong rule, so the
+          page keeps exactly one heavy line; the zone labels above it are
+          separated by a hairline. The two `rowspan` cells keep the strong
+          border because their bottom edge lands on that same line.
+        -->
+        <tr>
+          <th rowspan="2" scope="col" class="align-bottom">
             {{ t('modelPlaza.table.model') }}
-          </th>
-          <th colspan="3" class="pz-bg pt-2 text-center">
-            <div class="pz-title border-b pb-2 font-semibold">
-              {{ t('modelPlaza.table.paidPrice') }}
-              <span class="pz-unit ml-1 normal-case font-normal">{{ t('modelPlaza.table.unitPerMillion') }}</span>
-            </div>
           </th>
           <th
             colspan="3"
-            class="border-l border-gray-100 pt-2 text-center dark:border-dark-700/60"
+            scope="colgroup"
+            class="border-b border-b-line-subtle border-l border-l-line text-center"
           >
-            <div class="border-b border-gray-200 pb-2 text-gray-400 dark:border-dark-600 dark:text-dark-500">
-              {{ t('modelPlaza.table.officialPrice') }}
-              <span class="ml-1 normal-case font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.unitPerMillion') }}</span>
-            </div>
+            {{ t('modelPlaza.table.paidPrice') }}
+            <span class="ml-1 font-normal normal-case tracking-normal">
+              {{ t('modelPlaza.table.unitPerMillion') }}
+            </span>
           </th>
           <th
-            rowspan="2"
-            class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle dark:border-dark-700/60"
+            colspan="3"
+            scope="colgroup"
+            class="border-b border-b-line-subtle border-l border-l-line text-center"
           >
+            {{ t('modelPlaza.table.officialPrice') }}
+            <span class="ml-1 font-normal normal-case tracking-normal">
+              {{ t('modelPlaza.table.unitPerMillion') }}
+            </span>
+          </th>
+          <th rowspan="2" scope="col" class="is-numeric border-l border-l-line align-bottom">
             {{ t('modelPlaza.table.rate') }}
           </th>
         </tr>
-        <tr
-          class="border-b border-gray-200 text-left text-[11px] font-medium uppercase leading-4 tracking-wide text-gray-400 dark:border-dark-700 dark:text-dark-500"
-        >
-          <th class="pz-bg px-3 py-2 font-medium">{{ t('modelPlaza.table.input') }}</th>
-          <th class="pz-bg px-3 py-2 font-medium">{{ t('modelPlaza.table.output') }}</th>
-          <th class="pz-bg px-3 py-2 font-medium">{{ t('modelPlaza.table.cache') }}</th>
-          <th class="border-l border-gray-100 px-3 py-2 font-medium dark:border-dark-700/60">
+        <tr>
+          <th scope="col" class="is-numeric border-l border-l-line">
             {{ t('modelPlaza.table.input') }}
           </th>
-          <th class="px-3 py-2 font-medium">{{ t('modelPlaza.table.output') }}</th>
-          <th class="px-3 py-2 font-medium">{{ t('modelPlaza.table.cache') }}</th>
+          <th scope="col" class="is-numeric">{{ t('modelPlaza.table.output') }}</th>
+          <th scope="col" class="is-numeric">{{ t('modelPlaza.table.cache') }}</th>
+          <th scope="col" class="is-numeric border-l border-l-line">
+            {{ t('modelPlaza.table.input') }}
+          </th>
+          <th scope="col" class="is-numeric">{{ t('modelPlaza.table.output') }}</th>
+          <th scope="col" class="is-numeric">{{ t('modelPlaza.table.cache') }}</th>
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="m in sortedModels"
-          :key="`${m.platform}:${m.name}`"
-          class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
-        >
-          <!-- 模型名 + 非 token 计费模式徽章 -->
-          <td class="border-r border-gray-100 py-2.5 pl-5 pr-4 align-middle dark:border-dark-700/60">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="font-medium text-gray-900 dark:text-white">{{ m.name }}</span>
-              <span
-                v-if="platform && m.platform !== platform"
-                :class="[
-                  'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium',
-                  platformBadgeLightClass(m.platform)
-                ]"
-              >
+        <tr v-for="m in sortedModels" :key="`${m.platform}:${m.name}`">
+          <!-- Model name is an identifier, so it is mono like every other -->
+          <!-- fixed-width value on the page. Badges are neutral: platform is a -->
+          <!-- category, and a category is not a status. -->
+          <td>
+            <div class="flex flex-wrap items-center gap-1.5 py-1">
+              <span class="font-mono text-xs text-ink">{{ m.name }}</span>
+              <Badge v-if="platform && m.platform !== platform" caps>
                 {{ platformLabel(m.platform) }}
-              </span>
-              <span
-                v-if="billingMode(m) !== BILLING_MODE_TOKEN"
-                class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
-              >
+              </Badge>
+              <Badge v-if="billingMode(m) !== BILLING_MODE_TOKEN" caps>
                 {{ billingModeLabel(m) }}
-              </span>
+              </Badge>
             </div>
           </td>
 
-          <!-- token 计费:输入 / 输出(阶梯内联)/ 缓存(写/读) -->
+          <!-- token billing: input / output (tiers inline) / cache (write, read) -->
           <template v-if="billingMode(m) === BILLING_MODE_TOKEN">
-            <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
-              <template v-if="tokenIntervals(m).length">
-                <div
-                  v-for="(iv, idx) in tokenIntervals(m)"
-                  :key="idx"
-                  class="whitespace-nowrap text-xs leading-5"
-                >
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ tierLabel(iv) }}</span>
-                  {{ paidPerMillion(iv.input_price) }}
-                </div>
-              </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.input_price) }}</template>
-            </td>
-            <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
-              <template v-if="tokenIntervals(m).length">
-                <div
-                  v-for="(iv, idx) in tokenIntervals(m)"
-                  :key="idx"
-                  class="whitespace-nowrap text-xs leading-5"
-                >
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ tierLabel(iv) }}</span>
-                  {{ paidPerMillion(iv.output_price) }}
-                </div>
-              </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.output_price) }}</template>
-            </td>
-            <td class="pz-cell px-3 py-2.5 align-middle">
-              <div
-                v-if="hasCachePricing(m)"
-                class="space-y-0.5 font-mono text-xs text-gray-800 dark:text-gray-200"
-              >
-                <div>
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_write_price) }}
-                </div>
-                <div>
-                  <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_read_price) }}
+            <td class="is-numeric border-l border-l-line font-medium">
+              <div v-if="tokenIntervals(m).length" class="space-y-0.5 py-1.5">
+                <div v-for="(iv, idx) in tokenIntervals(m)" :key="idx" :class="TIER_ROW">
+                  <span :class="TIER_LABEL">{{ tierLabel(iv) }}</span>
+                  <NumCell v-bind="paidPerMillion(iv.input_price)" />
                 </div>
               </div>
-              <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+              <NumCell v-else v-bind="paidPerMillion(m.pricing?.input_price)" />
+            </td>
+            <td class="is-numeric font-medium">
+              <div v-if="tokenIntervals(m).length" class="space-y-0.5 py-1.5">
+                <div v-for="(iv, idx) in tokenIntervals(m)" :key="idx" :class="TIER_ROW">
+                  <span :class="TIER_LABEL">{{ tierLabel(iv) }}</span>
+                  <NumCell v-bind="paidPerMillion(iv.output_price)" />
+                </div>
+              </div>
+              <NumCell v-else v-bind="paidPerMillion(m.pricing?.output_price)" />
+            </td>
+            <td class="is-numeric font-medium">
+              <div v-if="hasCachePricing(m)" class="space-y-0.5 py-1.5">
+                <div :class="TIER_ROW">
+                  <span :class="TIER_LABEL">{{ t('modelPlaza.table.cacheWrite') }}</span>
+                  <NumCell v-bind="paidPerMillion(m.pricing?.cache_write_price)" />
+                </div>
+                <div :class="TIER_ROW">
+                  <span :class="TIER_LABEL">{{ t('modelPlaza.table.cacheRead') }}</span>
+                  <NumCell v-bind="paidPerMillion(m.pricing?.cache_read_price)" />
+                </div>
+              </div>
+              <NumCell v-else :value="null" />
             </td>
           </template>
 
-          <!-- 按次 / 按图片计费:实付区整体合并,阶梯芯片或单一按次价 -->
+          <!-- per-request / per-image billing: the paid zone merges, because a -->
+          <!-- price per image has no input/output/cache decomposition. -->
           <template v-else>
-            <td colspan="3" class="pz-cell px-3 py-2.5 align-middle">
-              <div
-                v-if="requestIntervals(m).length"
-                class="flex flex-wrap items-center gap-1.5"
-              >
-                <span
-                  v-for="(iv, idx) in requestIntervals(m)"
-                  :key="idx"
-                  class="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-800 dark:bg-dark-700/60 dark:text-gray-200"
-                >
-                  <span class="font-sans text-gray-400 dark:text-dark-500">{{ tierLabel(iv) }}</span>
-                  {{ paidRequestPrice(m, iv.per_request_price)
-                  }}<span class="font-sans text-gray-400 dark:text-dark-500">{{ perUnitSuffix(m) }}</span>
-                </span>
+            <td colspan="3" class="is-numeric border-l border-l-line font-medium">
+              <div v-if="requestIntervals(m).length" class="space-y-0.5 py-1.5">
+                <div v-for="(iv, idx) in requestIntervals(m)" :key="idx" :class="TIER_ROW">
+                  <span :class="TIER_LABEL">{{ tierLabel(iv) }}</span>
+                  <NumCell
+                    v-bind="paidRequestPrice(m, iv.per_request_price)"
+                    :unit="perUnitSuffix(m)"
+                  />
+                </div>
               </div>
-              <template v-else-if="m.pricing?.per_request_price != null">
-                <span class="font-mono font-semibold text-gray-900 dark:text-gray-50">
-                  {{ paidRequestPrice(m, m.pricing.per_request_price) }}
-                </span>
-                <span class="ml-1 text-xs text-gray-400 dark:text-dark-500">{{ perUnitSuffix(m) }}</span>
-              </template>
-              <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+              <NumCell
+                v-else-if="m.pricing?.per_request_price != null"
+                v-bind="paidRequestPrice(m, m.pricing.per_request_price)"
+                :unit="perUnitSuffix(m)"
+              />
+              <NumCell v-else :value="null" />
             </td>
           </template>
 
-          <!-- 官方价格(LiteLLM 参考价,不乘倍率) -->
-          <td
-            class="border-l border-gray-100 px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:border-dark-700/60 dark:text-dark-400"
-          >
-            {{ official(m.official_pricing?.input_price) }}
+          <!-- Official reference price (LiteLLM), never multiplied by the rate. -->
+          <!-- One step down in size: the number the user pays leads. -->
+          <td class="is-numeric border-l border-l-line text-xs">
+            <NumCell v-bind="official(m.official_pricing?.input_price)" />
           </td>
-          <td class="px-3 py-2.5 align-middle font-mono text-xs text-gray-500 dark:text-dark-400">
-            {{ official(m.official_pricing?.output_price) }}
+          <td class="is-numeric text-xs">
+            <NumCell v-bind="official(m.official_pricing?.output_price)" />
           </td>
-          <td class="px-3 py-2.5 align-middle">
+          <td class="is-numeric text-xs">
             <div
               v-if="m.official_pricing && hasOfficialCache(m.official_pricing)"
-              class="space-y-0.5 font-mono text-xs text-gray-500 dark:text-dark-400"
+              class="space-y-0.5 py-1.5"
             >
-              <div>
-                <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                {{ official(m.official_pricing.cache_write_price)
-                }}<template v-if="m.official_pricing.cache_write_1h_price != null"
-                  ><span class="font-sans text-gray-400 dark:text-dark-500"> (1h </span>{{ official(m.official_pricing.cache_write_1h_price)
-                  }}<span class="font-sans text-gray-400 dark:text-dark-500">)</span></template
-                >
+              <div :class="TIER_ROW">
+                <span :class="TIER_LABEL">{{ t('modelPlaza.table.cacheWrite') }}</span>
+                <NumCell v-bind="official(m.official_pricing.cache_write_price)" />
               </div>
-              <div>
-                <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                {{ official(m.official_pricing.cache_read_price) }}
+              <div v-if="m.official_pricing.cache_write_1h_price != null" :class="TIER_ROW">
+                <span :class="TIER_LABEL">1h</span>
+                <NumCell v-bind="official(m.official_pricing.cache_write_1h_price)" />
+              </div>
+              <div :class="TIER_ROW">
+                <span :class="TIER_LABEL">{{ t('modelPlaza.table.cacheRead') }}</span>
+                <NumCell v-bind="official(m.official_pricing.cache_read_price)" />
               </div>
             </div>
-            <span v-else class="text-gray-400 dark:text-dark-500">-</span>
+            <NumCell v-else :value="null" />
           </td>
 
-          <!-- 折扣倍率(生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
-          <td
-            class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle font-mono text-xs dark:border-dark-700/60"
-          >
-            <span
+          <!-- Effective rate. A personal rate strikes the group default rather -->
+          <!-- than recoloring it: the accent means interaction, never status. -->
+          <td class="is-numeric border-l border-l-line text-xs">
+            <NumCell
               v-if="usesIndependentImageRate(m)"
-              class="font-bold text-gray-700 dark:text-gray-300"
-              >{{ requestRate(m) }}x</span
-            >
+              :value="requestRate(m)"
+              unit="x"
+              data-testid="plaza-rate-effective"
+            />
             <template v-else-if="hasCustomRate">
-              <span class="mr-1 text-gray-400 line-through dark:text-dark-500">{{ rateMultiplier }}x</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">{{ effectiveRate }}x</span>
+              <span
+                class="mr-1.5 font-mono text-2xs text-ink-tertiary line-through"
+                data-testid="plaza-rate-original"
+                >{{ rateMultiplier }}x</span
+              >
+              <NumCell :value="effectiveRate" unit="x" data-testid="plaza-rate-effective" />
             </template>
-            <span v-else class="font-bold text-gray-700 dark:text-gray-300">{{ effectiveRate }}x</span>
+            <NumCell v-else :value="effectiveRate" unit="x" data-testid="plaza-rate-effective" />
           </td>
         </tr>
       </tbody>
@@ -211,8 +200,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatScaled } from '@/utils/pricing'
-import { platformAccentColor, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
+import Badge from '@/components/common/Badge.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import { platformLabel } from '@/utils/platformColors'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_IMAGE,
@@ -223,7 +213,7 @@ import type { UserPricingInterval } from '@/api/channels'
 
 const props = defineProps<{
   models: PlazaModel[]
-  /** 分组平台;实付分区底色随平台着色,未知平台回退品牌青。 */
+  /** 分组平台;用于判断复合分组中哪些行需要标注具体平台。 */
   platform?: string
   /** 分组默认倍率。 */
   rateMultiplier: number
@@ -236,8 +226,9 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-/** 实付分区只从平台拿一个主色,浅底/标题/下划线全部由 scoped CSS 用 color-mix 派生。 */
-const accentStyle = computed(() => ({ '--plaza-accent': platformAccentColor(props.platform ?? '') }))
+/** A tier/qualifier label sits left, its number right, on one baseline. */
+const TIER_ROW = 'flex items-baseline justify-end gap-2 whitespace-nowrap'
+const TIER_LABEL = 'font-sans text-2xs font-normal text-ink-tertiary'
 
 const PER_MILLION = 1_000_000
 
@@ -278,11 +269,46 @@ function billingModeLabel(m: PlazaModel): string {
 
 /** 价格统一保底 2 位小数,更长的有效小数原样保留。 */
 const MIN_DECIMALS = 2
+/** 上限只是防御 IEEE 754 的指数尾巴,正常价格永远够不到。 */
+const MAX_DECIMALS = 10
+
+/**
+ * What `NumCell` needs to render one price.
+ *
+ * `precision` is per value rather than a global 2, because this table spans
+ * four orders of magnitude: $15.00 per 1M output tokens and $0.001 per image
+ * are both prices here, and rounding the second to two places prints "$0.00".
+ */
+interface PriceCell {
+  value: number | null
+  precision: number
+}
+
+/**
+ * Decimals actually carried by the value, floored at 2.
+ *
+ * `toPrecision(10)` first, for the same reason `formatScaled` does it: the
+ * float behind "$3.00" is 3.0000000000000004, and its raw decimal expansion is
+ * display noise, not data.
+ */
+function significantDecimals(n: number): number {
+  const s = Math.abs(n).toPrecision(10)
+  if (s.includes('e')) return MAX_DECIMALS
+  const trimmed = s.replace(/\.?0+$/, '')
+  const dot = trimmed.indexOf('.')
+  const digits = dot === -1 ? 0 : trimmed.length - dot - 1
+  return Math.min(MAX_DECIMALS, Math.max(MIN_DECIMALS, digits))
+}
+
+function priceCell(scaled: number | null): PriceCell {
+  if (scaled == null || !Number.isFinite(scaled)) return { value: null, precision: MIN_DECIMALS }
+  return { value: scaled, precision: significantDecimals(scaled) }
+}
 
 /** 实付价 = 渠道单价 × 生效倍率,按 $/1M token 展示。 */
-function paidPerMillion(value: number | null | undefined): string {
-  if (value == null) return '-'
-  return formatScaled(value * effectiveRate.value, PER_MILLION, MIN_DECIMALS)
+function paidPerMillion(value: number | null | undefined): PriceCell {
+  if (value == null) return priceCell(null)
+  return priceCell(value * effectiveRate.value * PER_MILLION)
 }
 
 /** 图片计费模型且分组开启生图独立倍率:实付倍率取独立倍率,与计费口径一致。 */
@@ -296,15 +322,15 @@ function requestRate(m: PlazaModel): number {
 }
 
 /** 按次 / 按图片单价(乘该行生效倍率,不换算 1M)。 */
-function paidRequestPrice(m: PlazaModel, value: number | null | undefined): string {
-  if (value == null) return '-'
-  return formatScaled(value * requestRate(m), 1, MIN_DECIMALS)
+function paidRequestPrice(m: PlazaModel, value: number | null | undefined): PriceCell {
+  if (value == null) return priceCell(null)
+  return priceCell(value * requestRate(m))
 }
 
 /** 官方参考价不乘倍率。 */
-function official(value: number | null | undefined): string {
-  if (value == null) return '-'
-  return formatScaled(value, PER_MILLION, MIN_DECIMALS)
+function official(value: number | null | undefined): PriceCell {
+  if (value == null) return priceCell(null)
+  return priceCell(value * PER_MILLION)
 }
 
 /** 非 token 计费的单位后缀:按图片 → “/ 张”,按次 → “/ 次”。 */
@@ -352,41 +378,10 @@ function trimZero(n: number): string {
 }
 </script>
 
-<style scoped>
-/* 实付分区配色统一从 --plaza-accent(平台主色)派生,新增平台无需扩展样式 */
-.plaza-pricing-table {
-  --pz-title: color-mix(in srgb, var(--plaza-accent) 88%, black);
-  --pz-bg: color-mix(in srgb, var(--plaza-accent) 7%, transparent);
-  --pz-bg-hover: color-mix(in srgb, var(--plaza-accent) 13%, transparent);
-}
-
-.dark .plaza-pricing-table {
-  --pz-title: color-mix(in srgb, var(--plaza-accent) 70%, white);
-  --pz-bg: color-mix(in srgb, var(--plaza-accent) 6%, transparent);
-  --pz-bg-hover: color-mix(in srgb, var(--plaza-accent) 10%, transparent);
-}
-
-.pz-bg,
-.pz-cell {
-  background-color: var(--pz-bg);
-}
-
-.pz-cell {
-  transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-tbody tr:hover .pz-cell {
-  background-color: var(--pz-bg-hover);
-}
-
-.pz-title {
-  /* color-mix 不可用的老浏览器回退为平台原色 */
-  color: var(--plaza-accent);
-  color: var(--pz-title);
-  border-color: color-mix(in srgb, var(--pz-title) 30%, transparent);
-}
-
-.pz-unit {
-  color: color-mix(in srgb, var(--pz-title) 62%, transparent);
-}
-</style>
+<!--
+  No `<style scoped>`.
+  What used to be here: `--pz-title` / `--pz-bg` / `--pz-bg-hover` derived from
+  the platform accent via `color-mix`, a `.dark` duplicate of all three, and a
+  hover rule that changed the background of half the row to a second hue. Row
+  hover is now a single neutral ground, from `.table` in style.css.
+-->

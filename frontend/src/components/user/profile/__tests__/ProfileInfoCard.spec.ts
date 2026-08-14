@@ -27,6 +27,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return {
     ...actual,
     useI18n: () => ({
+      // `NumCell` reads `locale` to pick an `Intl.NumberFormat`. A mock that
+      // returns only `t` no longer satisfies the composable's contract.
+      locale: { value: 'en' },
       t: (key: string, params?: Record<string, string>) => {
         if (key === 'profile.accountBalance') return 'Account Balance'
         if (key === 'profile.concurrencyLimit') return 'Concurrency Limit'

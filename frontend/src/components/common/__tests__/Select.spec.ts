@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
+import FormField from '../FormField.vue'
 import Select from '../Select.vue'
 
 vi.mock('vue-i18n', async () => {
@@ -62,6 +63,80 @@ afterEach(() => {
   document.body.innerHTML = ''
   setViewportWidth(originalInnerWidth)
   vi.restoreAllMocks()
+})
+
+describe('Select accessible name', () => {
+  const options = [{ value: 'monthly', label: 'Monthly' }]
+
+  it('does not render aria-label when FormField already links a real label', async () => {
+    const wrapper = mount(
+      {
+        components: { FormField, Select },
+        data: () => ({ options }),
+        template: `
+          <FormField label="Billing cycle">
+            <template #default="{ id }">
+              <Select :id="id" :model-value="null" :options="options" />
+            </template>
+          </FormField>
+        `,
+      },
+      { attachTo: document.body }
+    )
+    unmountWrapper = () => wrapper.unmount()
+    await nextTick()
+
+    const trigger = wrapper.get('button')
+    const label = wrapper.get('label')
+
+    // The label is genuinely wired to this control...
+    expect(label.attributes('for')).toBe(trigger.attributes('id'))
+    expect(label.text()).toContain('Billing cycle')
+    // ...so the control must not shout a name of its own over it.
+    expect(trigger.attributes('aria-label')).toBeUndefined()
+  })
+
+  it('renders the aria-label a consumer explicitly passes', () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: null, options, ariaLabel: 'Billing cycle' },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    expect(wrapper.get('button').attributes('aria-label')).toBe('Billing cycle')
+  })
+
+  it('forwards a consumer aria-labelledby to the trigger instead of naming itself', () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: null, options },
+      attrs: { 'aria-labelledby': 'billing-heading' },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    const trigger = wrapper.get('button')
+    expect(trigger.attributes('aria-labelledby')).toBe('billing-heading')
+    expect(trigger.attributes('aria-label')).toBeUndefined()
+  })
+
+  it('falls back to its own text — not an invented label — with no naming source', () => {
+    const wrapper = mount(Select, { props: { modelValue: null, options } })
+    unmountWrapper = () => wrapper.unmount()
+
+    const trigger = wrapper.get('button')
+    expect(trigger.attributes('aria-label')).toBeUndefined()
+    expect(trigger.attributes('aria-labelledby')).toBeUndefined()
+    // The name comes from content, which is localized: the placeholder key here,
+    // the selected option's label once there is a value.
+    expect(trigger.text()).toContain('common.selectOption')
+  })
+
+  it('keeps the clear affordance labelled from the translation catalog', () => {
+    const wrapper = mount(Select, {
+      props: { modelValue: 'monthly', options, clearable: true },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    expect(wrapper.get('.select-clear').attributes('aria-label')).toBe('common.clear')
+  })
 })
 
 describe('Select dropdown viewport constraints', () => {

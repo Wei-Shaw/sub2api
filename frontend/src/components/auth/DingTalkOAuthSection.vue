@@ -1,35 +1,35 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="disabled" class="btn btn-secondary w-full" @click="startLogin">
-      <svg
-        class="icon mr-2"
-        viewBox="0 0 24 24"
-        xmlns="http://www.w3.org/2000/svg"
-        width="20"
-        height="20"
-        aria-hidden="true"
-        style="flex-shrink: 0"
-      >
-        <circle cx="12" cy="12" r="12" fill="#1677FF" />
-        <text
-          x="12"
-          y="17"
-          font-family="sans-serif"
-          font-size="13"
-          font-weight="bold"
-          fill="white"
-          text-anchor="middle"
-        >D</text>
-      </svg>
+    <Button variant="outline" size="md" block :disabled="disabled" @click="startLogin">
+      <template #icon>
+        <!-- Squared, like every other mark in the system. The blue is DingTalk's. -->
+        <svg
+          class="h-4 w-4 shrink-0"
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <rect width="24" height="24" fill="#1677FF" />
+          <text
+            x="12"
+            y="17"
+            font-family="sans-serif"
+            font-size="14"
+            font-weight="bold"
+            fill="white"
+            text-anchor="middle"
+          >D</text>
+        </svg>
+      </template>
       {{ t('auth.dingtalk.signIn') }}
-    </button>
+    </Button>
 
     <div v-if="showDivider" class="flex items-center gap-3">
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-      <span class="text-xs text-gray-500 dark:text-dark-400">
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
+      <span class="text-2xs uppercase tracking-[0.08em] text-ink-tertiary">
         {{ t('auth.oauthOrContinue') }}
       </span>
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
     </div>
   </div>
 </template>
@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
 import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 

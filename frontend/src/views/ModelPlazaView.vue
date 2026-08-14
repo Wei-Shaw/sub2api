@@ -5,9 +5,14 @@
   </AppLayout>
 
   <!-- 独立形态:自带导航条(logo/站名 + 登录/回后台) -->
-  <div v-else class="min-h-screen bg-gray-50 dark:bg-dark-950">
+  <div v-else class="min-h-screen bg-canvas text-ink" data-testid="model-plaza-standalone">
     <PlazaNavBar />
-    <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <!--
+      Wider than the 5xl the marketing surfaces use: the price table is a
+      real data surface with eight columns, and squeezing it into a reading
+      measure just moves the reader onto a horizontal scrollbar.
+    -->
+    <main class="mx-auto max-w-6xl px-6 py-10">
       <ModelPlazaContent :response="data" :loading="loading" :error="loadFailed" />
     </main>
   </div>

@@ -1,25 +1,53 @@
 <template>
-  <form class="space-y-3" @submit.prevent="handleSubmit">
-    <input
-      v-model="email"
-      :data-testid="`${testIdPrefix}-create-account-email`"
-      type="email"
-      class="input w-full"
-      :placeholder="t('auth.emailPlaceholder')"
-      :disabled="isSubmitting || isSendingCode"
-    />
-    <input
-      v-model="password"
-      :data-testid="`${testIdPrefix}-create-account-password`"
-      type="password"
-      class="input w-full"
-      :placeholder="t('auth.passwordPlaceholder')"
-      :disabled="isSubmitting"
-    />
-    <div v-if="captchaEnabled" class="space-y-2">
+  <form class="space-y-4" @submit.prevent="handleSubmit">
+    <!--
+      Every field here used to be a bare `<input>` carrying nothing but a
+      placeholder: no label, no `for`/`id` pair, no described-by. A placeholder
+      is not a label — it disappears the moment the user types, and a screen
+      reader announces an unlabelled edit box. `FormField` owns all three, plus
+      the reserved message row.
+    -->
+    <FormField :id="fieldId('email')" :label="t('auth.emailLabel')">
+      <template #default="{ describedBy }">
+        <input
+          :id="fieldId('email')"
+          v-model="email"
+          :data-testid="`${testIdPrefix}-create-account-email`"
+          type="email"
+          autocomplete="email"
+          :aria-describedby="describedBy"
+          class="input"
+          :placeholder="t('auth.emailPlaceholder')"
+          :disabled="isSubmitting || isSendingCode"
+        />
+      </template>
+    </FormField>
+
+    <!--
+      The 6-character minimum was enforced only by `disabled` and an early
+      return in `handleSubmit`. A user who typed four characters got a dead
+      button and no explanation, and pressing Enter did nothing at all. The rule
+      is now stated up front in the row `FormField` reserves anyway.
+    -->
+    <FormField :id="fieldId('password')" :label="t('auth.passwordLabel')" :hint="t('auth.passwordHint')">
+      <template #default="{ describedBy }">
+        <input
+          :id="fieldId('password')"
+          v-model="password"
+          :data-testid="`${testIdPrefix}-create-account-password`"
+          type="password"
+          autocomplete="new-password"
+          :aria-describedby="describedBy"
+          class="input"
+          :placeholder="t('auth.passwordPlaceholder')"
+          :disabled="isSubmitting"
+        />
+      </template>
+    </FormField>
+
+    <div v-if="captchaEnabled">
       <TurnstileWidget
         ref="turnstileRef"
-        :site-key="turnstileSiteKey"
         :turnstile-enabled="turnstileEnabled"
         :turnstile-site-key="turnstileSiteKey"
         :tencent-enabled="tencentCaptchaEnabled"
@@ -34,71 +62,123 @@
         @error="onTurnstileError"
       />
     </div>
-    <div v-if="emailVerifyEnabled" class="flex gap-3">
-      <input
-        v-model="verifyCode"
-        :data-testid="`${testIdPrefix}-create-account-verify-code`"
-        type="text"
-        inputmode="numeric"
-        maxlength="6"
-        class="input min-w-0 flex-1"
-        placeholder="123456"
-        :disabled="isSubmitting"
-      />
-      <button
-        :data-testid="`${testIdPrefix}-create-account-send-code`"
-        type="button"
-        class="btn btn-secondary shrink-0"
-        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (turnstileEnabled && !turnstileToken)"
-        @click="handleSendCode"
-      >
-        {{
-          isSendingCode
-            ? t('auth.sendingCode')
-            : countdown > 0
-              ? t('auth.resendCountdown', { countdown })
-              : t('auth.sendCode')
-        }}
-      </button>
-    </div>
-    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
-      {{ t('auth.codeSentSuccess') }}
-    </p>
-    <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
-      {{ t('auth.verificationCodeHint') }}
-    </p>
-    <input
+
+    <!--
+      Code + send-code on one row. The "sent" confirmation used to be a separate
+      `<p>` that appeared under the row and pushed the submit button down by a
+      line; it now replaces the hint inside the reserved message row, so nothing
+      moves. The send button is `md` (32px) against a 36px field — the two
+      scales are deliberate, so the row is centred rather than stretched.
+    -->
+    <!--
+      `hint` is passed even though `#message` overrides what is rendered:
+      `FormField` only advertises `aria-describedby` when it has hint or error
+      text, so without it the message row would be invisible to a screen reader.
+    -->
+    <FormField
+      v-if="emailVerifyEnabled"
+      :id="fieldId('verify-code')"
+      :label="t('auth.verificationCode')"
+      :hint="t('auth.verificationCodeHint')"
+    >
+      <template #default="{ describedBy }">
+        <div class="flex items-center gap-2">
+          <input
+            :id="fieldId('verify-code')"
+            v-model="verifyCode"
+            :data-testid="`${testIdPrefix}-create-account-verify-code`"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            maxlength="6"
+            :aria-describedby="describedBy"
+            class="input min-w-0 flex-1 font-mono tabular-nums tracking-[0.18em]"
+            placeholder="123456"
+            :disabled="isSubmitting"
+          />
+          <!--
+            The label no longer swaps to "Sending…" mid-press: `Button` keeps
+            the label's box, overlays the spinner and sets `aria-busy`, so the
+            control does not change width under the cursor. The countdown is a
+            state change rather than a press, and it is tabular so the digits
+            do not jitter as it ticks down.
+          -->
+          <Button
+            :data-testid="`${testIdPrefix}-create-account-send-code`"
+            type="button"
+            variant="outline"
+            size="md"
+            class="shrink-0 tabular-nums"
+            :loading="isSendingCode"
+            :disabled="sendCodeDisabled"
+            @click="handleSendCode"
+          >
+            {{ sendCodeLabel }}
+          </Button>
+        </div>
+      </template>
+      <template #message>
+        <span v-if="sendCodeSuccess" class="text-success">{{ t('auth.codeSentSuccess') }}</span>
+        <span v-else>{{ t('auth.verificationCodeHint') }}</span>
+      </template>
+    </FormField>
+
+    <FormField
       v-if="invitationCodeEnabled"
-      v-model="invitationCode"
-      :data-testid="`${testIdPrefix}-create-account-invitation-code`"
-      type="text"
-      class="input w-full"
-      :placeholder="t('auth.invitationCodePlaceholder')"
-      :disabled="isSubmitting"
-    />
-    <button
-      :data-testid="`${testIdPrefix}-create-account-submit`"
-      type="button"
-      class="btn btn-primary w-full"
-      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim()) || (turnstileEnabled && !turnstileToken)"
-      @click="handleSubmit"
+      :id="fieldId('invitation-code')"
+      :label="t('auth.invitationCodeLabel')"
     >
-      {{ isSubmitting ? t('common.processing') : t('auth.createAccount') }}
-    </button>
-    <button
-      type="button"
-      class="btn btn-secondary w-full"
-      :disabled="isSubmitting"
-      @click="emitSwitchToBind"
-    >
-      {{ t('auth.alreadyHaveAccount') }}
-    </button>
+      <template #default="{ describedBy }">
+        <input
+          :id="fieldId('invitation-code')"
+          v-model="invitationCode"
+          :data-testid="`${testIdPrefix}-create-account-invitation-code`"
+          type="text"
+          :aria-describedby="describedBy"
+          class="input"
+          :placeholder="t('auth.invitationCodePlaceholder')"
+          :disabled="isSubmitting"
+        />
+      </template>
+    </FormField>
+
+    <div class="space-y-2">
+      <Button
+        :data-testid="`${testIdPrefix}-create-account-submit`"
+        type="button"
+        tone="accent"
+        variant="solid"
+        size="md"
+        block
+        :loading="isSubmitting"
+        :disabled="submitDisabled"
+        @click="handleSubmit"
+      >
+        {{ t('auth.createAccount') }}
+      </Button>
+      <Button
+        :data-testid="`${testIdPrefix}-create-account-switch-to-bind`"
+        type="button"
+        variant="outline"
+        size="md"
+        block
+        :disabled="isSubmitting"
+        @click="emitSwitchToBind"
+      >
+        {{ t('auth.alreadyHaveAccount') }}
+      </Button>
+    </div>
   </form>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+// By path, not through `components/common/index.ts`: the barrel re-exports
+// LocaleSwitcher, which pulls `createI18n` into the graph and breaks the specs
+// that mock `vue-i18n` with a partial factory.
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
 import TurnstileWidget from '@/components/CaptchaChallenge.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
 import { useAppStore } from '@/stores'
@@ -165,6 +245,33 @@ const actionCaptchaEnabled = computed(
 const captchaEnabled = computed(
   () =>
     (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
+)
+
+/** `FormField` owns `for`/`id`; the prefix keeps the ids unique per provider. */
+function fieldId(name: string): string {
+  return `${props.testIdPrefix}-create-account-${name}`
+}
+
+const sendCodeLabel = computed(() =>
+  countdown.value > 0 ? t('auth.resendCountdown', { countdown: countdown.value }) : t('auth.sendCode')
+)
+
+const sendCodeDisabled = computed(
+  () =>
+    props.isSubmitting ||
+    isSendingCode.value ||
+    countdown.value > 0 ||
+    !email.value.trim() ||
+    (turnstileEnabled.value && !turnstileToken.value)
+)
+
+const submitDisabled = computed(
+  () =>
+    props.isSubmitting ||
+    !email.value.trim() ||
+    password.value.length < 6 ||
+    (invitationCodeEnabled.value && !invitationCode.value.trim()) ||
+    (turnstileEnabled.value && !turnstileToken.value)
 )
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
@@ -262,6 +369,11 @@ async function acquireActionProof(): Promise<boolean> {
 }
 
 async function handleSendCode() {
+  // Cleared BEFORE the guards below, not after. The toast is driven by a watcher
+  // on this ref, so re-raising an identical message (two clicks with no proof)
+  // was a no-op and the second click failed in silence.
+  sendCodeError.value = ''
+
   const trimmedEmail = email.value.trim()
   if (!trimmedEmail) {
     return
@@ -277,7 +389,6 @@ async function handleSendCode() {
   }
 
   isSendingCode.value = true
-  sendCodeError.value = ''
   sendCodeSuccess.value = false
 
   try {
@@ -301,6 +412,8 @@ async function handleSendCode() {
 }
 
 async function handleSubmit() {
+  sendCodeError.value = ''
+
   const trimmedEmail = email.value.trim()
   if (!trimmedEmail || password.value.length < 6) {
     return
@@ -377,15 +490,8 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-</style>
+<!--
+  The `<style scoped>` block held `.fade-*` classes for a `<transition
+  name="fade">` this template never had — dead CSS carrying a banned
+  `transition: all`.
+-->

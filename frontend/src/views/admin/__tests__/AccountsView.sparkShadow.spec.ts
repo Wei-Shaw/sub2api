@@ -332,12 +332,16 @@ describe('admin AccountsView — 账号行展示', () => {
       target: '_blank',
       rel: 'noopener noreferrer',
     })
+    // The point of this assertion is that the account name reads as ordinary
+    // ink rather than as an accent link — the accent is reserved for
+    // interaction and selection. `text-ink` is the single token that used to
+    // be spelled `text-gray-900 dark:text-white`.
     expect(link.classes()).toEqual(expect.arrayContaining([
       'border-dotted',
-      'text-gray-900',
-      'dark:text-white',
+      'text-ink',
     ]))
     expect(link.classes()).not.toContain('text-primary-600')
+    expect(link.classes()).not.toContain('text-accent')
     const tooltip = wrapper.findComponent(HelpTooltip)
     expect(tooltip.props('content')).toBe('https://relay.example.com')
     expect(tooltip.props('widthClass')).toBe('w-max max-w-sm break-all')

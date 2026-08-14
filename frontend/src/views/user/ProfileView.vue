@@ -15,22 +15,22 @@
         :wechat-mp-enabled="wechatOAuthMPEnabled"
       />
 
-      <div
-        v-if="contactInfo"
-        class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
-      >
-        <div class="flex items-center gap-4">
-          <div class="rounded-xl bg-primary-100 p-3 text-primary-600">
-            <Icon name="chat" size="lg" />
-          </div>
-          <div>
-            <h3 class="font-semibold text-primary-800 dark:text-primary-200">
-              {{ t('common.contactSupport') }}
-            </h3>
-            <p class="text-sm font-medium">{{ contactInfo }}</p>
+      <!--
+        Support contact. Was a tinted primary panel with a pastel icon tile —
+        two colour channels spent on a line of text that is neither a status
+        nor an action. It is a hairline block like everything else now.
+      -->
+      <Surface v-if="contactInfo" data-testid="profile-contact-info">
+        <div class="flex items-start gap-3">
+          <Icon name="chat" size="sm" class="mt-0.5 shrink-0 text-ink-tertiary" />
+          <div class="min-w-0">
+            <h2 class="text-sm font-semibold text-ink">{{ t('common.contactSupport') }}</h2>
+            <p class="mt-1 text-sm text-ink-secondary [overflow-wrap:anywhere]">
+              {{ contactInfo }}
+            </p>
           </div>
         </div>
-      </div>
+      </Surface>
 
       <ProfilePasswordForm />
 
@@ -52,7 +52,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Icon } from '@/components/icons'
+import Surface from '@/components/common/Surface.vue'
+import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'

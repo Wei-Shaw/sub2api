@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 
 import type { DashboardStats } from '@/types'
 import DashboardView from '../DashboardView.vue'
@@ -33,12 +34,17 @@ vi.mock('vue-router', () => ({
   })
 }))
 
+// `locale` is part of this mock because the view now renders primitives that
+// format numbers through `Intl` — a mock that returns only `t` makes every
+// child component throw on `locale.value`, and the failure surfaces as an
+// unhandled rejection rather than as a failed assertion.
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string) => key,
+      locale: ref('en')
     })
   }
 })

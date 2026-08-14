@@ -52,26 +52,33 @@ const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
 
 // ── Accent (single raw color per platform; consumers derive washes/tints
 //    from it via CSS color-mix, e.g. plaza paid-price zone) ──
+// Platform accents are CATEGORY colors, not status. They are drawn from the
+// re-tinted Family A ramps (see tailwind.config.js) so they sit inside the new
+// palette instead of alongside it.
 const ACCENT: Record<Platform, string> = {
-  anthropic: '#f97316', // orange-500
-  openai: '#22c55e', // green-500
-  antigravity: '#a855f7', // purple-500
-  gemini: '#3b82f6', // blue-500
-  grok: '#71717a', // zinc-500
-  composite: '#06b6d4', // cyan-500
+  anthropic: '#C25A19', // orange-500
+  openai: '#0F7B3F', // green-600
+  antigravity: '#6F4E96', // purple-600
+  gemini: '#1E56C8', // blue-600
+  grok: '#5C6068', // gray-500
+  composite: '#2C66D8', // cyan-500
 }
-const ACCENT_DEFAULT = '#14b8a6' // primary-500 (teal)
+// The old default was the teal brand color. The accent is ultramarine now.
+const ACCENT_DEFAULT = '#2A3BD4' // primary-600
 
-// ── Accent bar (gradient) ───────────────────────────────────────────
+// ── Accent bar (flat) ───────────────────────────────────────────────
+// Was a set of `bg-gradient-to-r from-… to-…` fills. There are no gradients in
+// this system; a bar in a single category color does the same job without
+// implying a value ramp that does not exist.
 const ACCENT_BAR: Record<Platform, string> = {
-  anthropic: 'bg-gradient-to-r from-orange-400 to-orange-500',
-  openai: 'bg-gradient-to-r from-emerald-400 to-emerald-500',
-  antigravity: 'bg-gradient-to-r from-purple-400 to-purple-500',
-  gemini: 'bg-gradient-to-r from-blue-400 to-blue-500',
-  grok: 'bg-gradient-to-r from-zinc-700 to-zinc-900',
-  composite: 'bg-gradient-to-r from-slate-500 to-cyan-500',
+  anthropic: 'bg-orange-500',
+  openai: 'bg-emerald-600',
+  antigravity: 'bg-purple-600',
+  gemini: 'bg-blue-600',
+  grok: 'bg-gray-500',
+  composite: 'bg-cyan-500',
 }
-const ACCENT_BAR_DEFAULT = 'bg-gradient-to-r from-primary-400 to-primary-500'
+const ACCENT_BAR_DEFAULT = 'bg-primary-600'
 
 // ── Text (price, icon) ─────────────────────────────────────────────
 const TEXT: Record<Platform, string> = {

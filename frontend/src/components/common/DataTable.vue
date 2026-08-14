@@ -1,29 +1,29 @@
 <template>
   <div v-if="!isDesktopViewport" class="space-y-3">
     <template v-if="loading">
-      <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+      <div v-for="i in 5" :key="i" class="rounded-lg border border-line bg-surface p-4">
         <div class="space-y-3">
           <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
-            <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
-            <div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+            <div class="h-4 w-20 animate-pulse rounded bg-surface-active"></div>
+            <div class="h-4 w-32 animate-pulse rounded bg-surface-active"></div>
           </div>
-          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
-            <div class="h-8 w-full animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          <div v-if="hasActionsColumn" class="border-t border-line pt-3">
+            <div class="h-8 w-full animate-pulse rounded bg-surface-active"></div>
           </div>
         </div>
       </div>
     </template>
 
     <template v-else-if="!data || data.length === 0">
-      <div class="rounded-lg border border-gray-200 bg-white p-12 text-center dark:border-dark-700 dark:bg-dark-900">
+      <div class="rounded-lg border border-line bg-surface p-12 text-center">
         <slot name="empty">
           <div class="flex flex-col items-center">
             <Icon
               name="inbox"
               size="xl"
-              class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
+              class="mb-4 h-12 w-12 text-ink-disabled"
             />
-            <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
+            <p class="text-lg font-medium text-ink">
               {{ t('empty.noData') }}
             </p>
           </div>
@@ -33,10 +33,10 @@
 
     <template v-else>
       <div v-if="selectable" class="flex items-center justify-end gap-2 px-1">
-        <label class="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-300">
+        <label class="flex items-center gap-2 text-sm font-medium text-ink-secondary">
           <input
             type="checkbox"
-            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+            class="h-4 w-4 rounded border-line-strong bg-surface text-accent focus:ring-focus"
             :checked="allVisibleSelected"
             :indeterminate="someVisibleSelected"
             data-test="select-all-mobile"
@@ -48,10 +48,10 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        class="rounded-lg border border-line bg-surface p-4"
         :class="{
           'cursor-pointer': clickableRows,
-          'border-primary-300 bg-primary-50/40 dark:border-primary-700 dark:bg-primary-900/10': selectable && isRowSelected(row, index)
+          'border-accent-line bg-accent-tint': selectable && isRowSelected(row, index)
         }"
         @click="clickableRows && emit('rowClick', row)"
       >
@@ -59,7 +59,7 @@
           <div v-if="selectable" class="flex justify-end">
             <input
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              class="h-4 w-4 rounded border-line-strong bg-surface text-accent focus:ring-focus"
               :checked="isRowSelected(row, index)"
               :aria-label="getRowSelectionLabel(row, index)"
               data-test="select-row"
@@ -73,16 +73,16 @@
             :data-field="column.key"
             class="flex min-w-0 items-start justify-between gap-4"
           >
-            <span class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400">
+            <span class="text-xs font-medium uppercase tracking-wider text-ink-tertiary">
               {{ column.label }}
             </span>
-            <div class="min-w-0 max-w-full text-right text-sm text-gray-900 dark:text-gray-100">
+            <div class="min-w-0 max-w-full text-right text-sm text-ink">
               <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]" :expanded="actionsExpanded">
                 {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] }}
               </slot>
             </div>
           </div>
-          <div v-if="hasActionsColumn" class="border-t border-gray-200 pt-3 dark:border-dark-700">
+          <div v-if="hasActionsColumn" class="border-t border-line pt-3">
             <slot name="cell-actions" :row="row" :value="row['actions']" :expanded="actionsExpanded"></slot>
           </div>
         </div>
@@ -99,17 +99,17 @@
       'is-scrollable': isScrollable
     }"
   >
-    <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
-      <thead class="table-header bg-gray-50 dark:bg-dark-800">
+    <table class="w-full min-w-max divide-y divide-line-strong">
+      <thead class="table-header bg-surface-sunken">
         <tr>
           <th
             v-if="selectable"
             scope="col"
-            class="sticky-header-cell w-11 min-w-11 px-3 py-3 text-center"
+            class="ds-header-cell sticky-header-cell w-11 min-w-11 px-3 text-center"
           >
             <input
               type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+              class="h-4 w-4 rounded border-line-strong bg-surface text-accent focus:ring-focus"
               :checked="allVisibleSelected"
               :indeterminate="someVisibleSelected"
               :aria-label="t('common.selectAll')"
@@ -123,9 +123,9 @@
             scope="col"
             :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'ds-header-cell sticky-header-cell text-left text-xs font-medium uppercase tracking-wider text-ink-tertiary',
               getAdaptivePaddingClass(),
-              { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
+              { 'cursor-pointer hover:bg-surface-active': column.sortable },
               getStickyColumnClass(column, index),
               column.class
             ]"
@@ -148,6 +148,9 @@
                 <svg
                   class="h-2.5 w-2.5"
                   :class="getSortIndicatorClass(column.key, 'asc')"
+                  data-test="sort-arrow"
+                  data-sort-arrow="asc"
+                  :data-active="isSortIndicatorActive(column.key, 'asc')"
                   fill="currentColor"
                   viewBox="0 0 10 10"
                 >
@@ -156,6 +159,9 @@
                 <svg
                   class="-mt-0.5 h-2.5 w-2.5"
                   :class="getSortIndicatorClass(column.key, 'desc')"
+                  data-test="sort-arrow"
+                  data-sort-arrow="desc"
+                  :data-active="isSortIndicatorActive(column.key, 'desc')"
                   fill="currentColor"
                   viewBox="0 0 10 10"
                 >
@@ -166,15 +172,15 @@
           </th>
         </tr>
       </thead>
-      <tbody class="table-body divide-y divide-gray-200 bg-white dark:divide-dark-700 dark:bg-dark-900">
+      <tbody class="table-body divide-y divide-line-subtle bg-surface">
         <!-- Loading skeleton -->
         <tr v-if="loading" v-for="i in 5" :key="i">
-          <td v-if="selectable" class="w-11 min-w-11 px-3 py-4">
-            <div class="mx-auto h-4 w-4 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
+          <td v-if="selectable" class="ds-row-cell w-11 min-w-11 px-3">
+            <div class="mx-auto h-4 w-4 animate-pulse rounded bg-surface-active"></div>
           </td>
-          <td v-for="column in columns" :key="column.key" :class="['whitespace-nowrap py-4', getAdaptivePaddingClass()]">
+          <td v-for="column in columns" :key="column.key" :class="['ds-row-cell whitespace-nowrap', getAdaptivePaddingClass()]">
             <div class="animate-pulse">
-              <div class="h-4 w-3/4 rounded bg-gray-200 dark:bg-dark-700"></div>
+              <div class="h-4 w-3/4 rounded bg-surface-active"></div>
             </div>
           </td>
         </tr>
@@ -183,16 +189,16 @@
         <tr v-else-if="!data || data.length === 0">
           <td
             :colspan="tableColumnCount"
-            :class="['py-12 text-center text-gray-500 dark:text-dark-400', getAdaptivePaddingClass()]"
+            :class="['py-12 text-center text-ink-tertiary', getAdaptivePaddingClass()]"
           >
             <slot name="empty">
               <div class="flex flex-col items-center">
                 <Icon
                   name="inbox"
                   size="xl"
-                  class="mb-4 h-12 w-12 text-gray-400 dark:text-dark-500"
+                  class="mb-4 h-12 w-12 text-ink-disabled"
                 />
-                <p class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                <p class="text-lg font-medium text-ink">
                   {{ t('empty.noData') }}
                 </p>
               </div>
@@ -213,17 +219,17 @@
             :data-row-id="resolveRowKey(item.row, item.index)"
             :data-index="item.index"
             :ref="item.measure ? measureElement : undefined"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            class="hover:bg-surface-hover"
             :class="{
               'cursor-pointer': clickableRows,
-              'bg-primary-50/40 dark:bg-primary-900/10': selectable && isRowSelected(item.row, item.index)
+              'bg-accent-tint': selectable && isRowSelected(item.row, item.index)
             }"
             @click="clickableRows && emit('rowClick', item.row)"
           >
-            <td v-if="selectable" class="w-11 min-w-11 px-3 py-4 text-center">
+            <td v-if="selectable" class="ds-row-cell w-11 min-w-11 px-3 text-center">
               <input
                 type="checkbox"
-                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800"
+                class="h-4 w-4 rounded border-line-strong bg-surface text-accent focus:ring-focus"
                 :checked="isRowSelected(item.row, item.index)"
                 :aria-label="getRowSelectionLabel(item.row, item.index)"
                 data-test="select-row"
@@ -235,7 +241,7 @@
               v-for="(column, colIndex) in columns"
               :key="column.key"
               :class="[
-                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                'ds-row-cell whitespace-nowrap text-sm text-ink',
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
                 column.class
@@ -455,7 +461,7 @@ interface Props {
   serverSideSort?: boolean
   /** Emit 'rowClick' on row/card click and show pointer cursor (interactive cells should @click.stop) */
   clickableRows?: boolean
-  /** Estimated row height in px for the virtualizer (default 56) */
+  /** Estimated row height in px for the virtualizer (default: the `--ds-row-h` compact row, 32) */
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
@@ -555,10 +561,15 @@ const applySortState = (state: PersistedSortState | null) => {
   sortOrder.value = state.order
 }
 
+// Split out from the class helper so the arrows can expose their state as a
+// `data-active` attribute. Tests then assert the state, not the paint.
+const isSortIndicatorActive = (key: string, order: 'asc' | 'desc') =>
+  sortKey.value === key && sortOrder.value === order
+
 const getSortIndicatorClass = (key: string, order: 'asc' | 'desc') => {
-  return sortKey.value === key && sortOrder.value === order
-    ? 'text-primary-600 dark:text-primary-400'
-    : 'text-gray-300 transition-colors dark:text-dark-500'
+  return isSortIndicatorActive(key, order)
+    ? 'text-accent'
+    : 'text-ink-disabled transition-colors'
 }
 
 const getColumnAriaSort = (key: string) => {
@@ -599,13 +610,10 @@ const toSortableString = (value: any): string => {
   }
 }
 
-const compareSortValues = (a: any, b: any): number => {
-  const aEmpty = isNullishOrEmpty(a)
-  const bEmpty = isNullishOrEmpty(b)
-  if (aEmpty && bEmpty) return 0
-  if (aEmpty) return 1
-  if (bEmpty) return -1
-
+// Compares two values that are both known to be non-empty.
+// Emptiness is handled by the sort comparator so that empty cells stay last in
+// both directions (the direction flip must not be applied to them).
+const compareNonEmptyValues = (a: any, b: any): number => {
   const aNum = toFiniteNumberOrNull(a)
   const bNum = toFiniteNumberOrNull(b)
   if (aNum !== null && bNum !== null) {
@@ -697,8 +705,16 @@ const sortedData = computed(() => {
   return props.data
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
-      const cmp = compareSortValues(a.row?.[key], b.row?.[key])
-      if (cmp !== 0) return order === 'asc' ? cmp : -cmp
+      const av = a.row?.[key]
+      const bv = b.row?.[key]
+      const aEmpty = isNullishOrEmpty(av)
+      const bEmpty = isNullishOrEmpty(bv)
+      // Empty cells always sink to the bottom, in both sort directions.
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1
+      if (!aEmpty) {
+        const cmp = compareNonEmptyValues(av, bv)
+        if (cmp !== 0) return order === 'asc' ? cmp : -cmp
+      }
       return a.index - b.index
     })
     .map(item => item.row)
@@ -751,6 +767,14 @@ const toggleAllVisible = (checked: boolean) => {
 }
 
 // --- Virtual scrolling ---
+// MUST track `--ds-row-h` (32px, the compact default declared in the style block
+// below). The virtualizer positions every not-yet-measured row with this number
+// and derives the total scroll height from it; if it drifts from the real row
+// height the scrollbar jumps as rows are measured and corrected. It was 56 —
+// the height the old `py-4` cells happened to have — so leaving it would have
+// re-introduced the very jank the row-height fix removes.
+const DEFAULT_ESTIMATED_ROW_HEIGHT = 32
+
 // 是否启用虚拟化:仅桌面端且行数超过阈值时开启。小列表全量渲染,彻底绕开虚拟器的
 // 估算/测量/滚动补偿链路,消除可变行高导致的滚动抖动。
 const shouldVirtualize = computed(() =>
@@ -766,7 +790,7 @@ const rowVirtualizer = useVirtualizer(computed(() => ({
     const row = sortedData.value?.[index]
     return row != null ? resolveRowKey(row, index) : index
   },
-  estimateSize: () => props.estimateRowHeight ?? 56,
+  estimateSize: () => props.estimateRowHeight ?? DEFAULT_ESTIMATED_ROW_HEIGHT,
   overscan: props.overscan ?? 5,
   // 兜底高度:首个有效高度读数到来前,先按一屏渲染,避免空白帧
   initialRect: { width: 0, height: estimatedViewportHeight() },
@@ -962,16 +986,69 @@ defineExpose({
   isolation: isolate;
 }
 
-/* 表头容器，确保在滚动时覆盖表体内容 */
+/*
+ * Row geometry — owned here, by the table that draws the rows.
+ *
+ * Every `<td>` used to carry `py-4`: 16px above and 16px below the line box, so
+ * a row landed near 56px against a 32px spec. The fix is not "less padding" but
+ * a height taken from the token, because vertical padding is content-relative
+ * (a cell holding a button and a cell holding text disagree about what it adds
+ * up to) while `--ds-row-h` is the single number the design system defines.
+ * `height` on a table cell is a floor, not a clamp, so a genuinely taller cell
+ * still grows — it just no longer has 32px of dead padding baked underneath it.
+ *
+ * This lives in the component and not in a page shell on purpose. DataTable has
+ * 21 call sites and only some of them are wrapped in TablePageLayout, whose
+ * `:deep(td)` rule reaches none of the others; a primitive that cannot state its
+ * own geometry has none. The selectors are element-qualified (`td.`/`th.`) so
+ * they also outrank that ancestor rule instead of tying with it — the outcome
+ * must not depend on which component's <style> was injected first.
+ */
+.table-wrapper .table-body td.ds-row-cell {
+  height: var(--ds-row-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.table-wrapper .table-header th.ds-header-cell {
+  height: var(--ds-header-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/*
+ * Touch floor. The breakpoint mirrors TablePageLayout's own `isMobile` query
+ * (`max-width: 1023.98px`) rather than Tailwind's `md`, because the two switch
+ * at different widths: this component swaps to cards below 768px, so 768–1023px
+ * is a real range where a table renders inside a layout that already considers
+ * itself mobile. Same breakpoint and same token means the two declarations
+ * agree there rather than racing.
+ */
+@media (max-width: 1023.98px) {
+  .table-wrapper .table-body td.ds-row-cell {
+    height: var(--ds-row-h-touch);
+  }
+}
+
+/*
+ * Sticky backgrounds are tokenized rather than hardcoded.
+ *
+ * These declarations are unreachable from Tailwind — they were literal
+ * `rgb(249 250 251)` / `rgb(31 41 55)` / `rgb(17 24 39)` / `white`, so a
+ * palette change at the config level could not touch them. Left alone, sticky
+ * headers and pinned columns would have kept rendering the old Tailwind grays
+ * against the new paper / near-black surfaces: a very visible seam, on the
+ * most-used screens in the app.
+ *
+ * Every `.dark`-prefixed duplicate below is DELETED rather than re-tinted.
+ * `--ds-surface*` are Family B tokens that already flip at `.dark`, so a dark
+ * override would be redundant at best and a light-mode bug at worst.
+ */
 .table-wrapper .table-header {
   position: sticky;
   top: 0;
   z-index: 200;
-  background-color: rgb(249 250 251);
-}
-
-.dark .table-wrapper .table-header {
-  background-color: rgb(31 41 55);
+  background-color: rgb(var(--ds-surface-sunken));
 }
 
 /* 表体保持在表头下方 */
@@ -985,11 +1062,7 @@ defineExpose({
   position: sticky;
   top: 0;
   z-index: 210; /* 必须高于所有表体内容 */
-  background-color: rgb(249 250 251);
-}
-
-.dark .sticky-header-cell {
-  background-color: rgb(31 41 55);
+  background-color: rgb(var(--ds-surface-sunken));
 }
 
 /* Sticky 列基础样式 */
@@ -1025,70 +1098,48 @@ defineExpose({
 
 /* 表体 sticky 列背景 */
 tbody .sticky-col {
-  background-color: white;
-}
-
-.dark tbody .sticky-col {
-  background-color: rgb(17 24 39);
+  background-color: rgb(var(--ds-surface));
 }
 
 /* hover 状态保持 */
 tbody tr:hover .sticky-col {
-  background-color: rgb(249 250 251);
+  background-color: rgb(var(--ds-surface-hover));
 }
 
-.dark tbody tr:hover .sticky-col {
-  background-color: rgb(31 41 55);
-}
-
-/* 阴影只在可滚动时显示 */
-/* 单列固定右侧阴影 */
-.is-scrollable .sticky-col-left::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 10px;
-  transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
-  pointer-events: none;
-}
-
-/* 双列固定：只在第二列显示阴影 */
+/*
+ * Pinned-column edges: a 1px rule, not a 10px gradient fade.
+ *
+ * Swiss reading of the same signal — "content continues past here" is a
+ * boundary, and a boundary is a line. It is also cheaper to paint: a solid 1px
+ * strip avoids re-rasterizing a gradient on every frame of a horizontal scroll,
+ * which is exactly when this element is visible.
+ *
+ * Only shown while the table is actually scrollable (`.is-scrollable`), and the
+ * `.dark` duplicates are gone because `--ds-line-strong` flips on its own.
+ */
+.is-scrollable .sticky-col-left::after,
 .is-scrollable .sticky-col-left-second::after {
   content: '';
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.08), transparent);
+  background: rgb(var(--ds-line-strong));
   pointer-events: none;
 }
 
-/* 操作列左侧阴影 */
 .is-scrollable .sticky-col-right::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   bottom: 0;
-  width: 10px;
+  width: 1px;
   transform: translateX(-100%);
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.08), transparent);
+  background: rgb(var(--ds-line-strong));
   pointer-events: none;
-}
-
-/* 暗色模式阴影 */
-.dark .is-scrollable .sticky-col-left::after,
-.dark .is-scrollable .sticky-col-left-second::after {
-  background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
-}
-
-.dark .is-scrollable .sticky-col-right::before {
-  background: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent);
 }
 </style>
 

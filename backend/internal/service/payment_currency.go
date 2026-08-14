@@ -7,13 +7,18 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
+// paymentProviderConfigCurrency reports the currency a provider instance
+// settles in. SePay is fixed to dong by the banking rails it reads; NOWPayments
+// prices in whatever fiat the admin configured.
 func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) string {
 	switch strings.TrimSpace(providerKey) {
-	case payment.TypeStripe, payment.TypeAirwallex:
-		currency, err := payment.NormalizePaymentCurrency(cfg["currency"])
-		if err == nil {
+	case payment.TypeSePay:
+		return payment.CurrencySePay
+	case payment.TypeNowPayments:
+		if currency, err := payment.NormalizePaymentCurrency(cfg["currency"]); err == nil && strings.TrimSpace(cfg["currency"]) != "" {
 			return currency
 		}
+		return payment.CurrencyNowPayments
 	}
 	return payment.DefaultPaymentCurrency
 }

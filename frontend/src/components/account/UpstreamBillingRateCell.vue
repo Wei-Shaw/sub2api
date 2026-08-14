@@ -3,8 +3,8 @@
     <HelpTooltip class="-ml-1" width-class="w-max max-w-[calc(100vw-2rem)]" data-testid="upstream-billing-details">
       <template #trigger>
         <span
-          class="cursor-help border-b border-dotted border-gray-300 text-sm font-medium dark:border-dark-600"
-          :class="hasEffectiveRate ? 'font-mono text-gray-800 dark:text-gray-200' : statusClass || 'text-gray-400 dark:text-gray-500'"
+          class="cursor-help border-b border-dotted border-line text-sm font-medium"
+          :class="hasEffectiveRate ? 'font-mono text-ink' : statusClass || 'text-ink-tertiary'"
           data-testid="upstream-billing-rate"
         >
           {{ primaryValue }}
@@ -80,7 +80,7 @@
       <Icon name="refresh" size="xs" :class="{ 'animate-spin': probing }" />
     </button>
   </div>
-  <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+  <span v-else class="text-sm text-ink-tertiary">-</span>
 </template>
 
 <script setup lang="ts">
@@ -202,10 +202,10 @@ const statusLabel = computed(() => {
   return ''
 })
 const statusClass = computed(() => {
-  if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'
-  if (snapshot.value.status === 'unsupported') return 'text-gray-500 dark:text-gray-400'
-  if (stale.value) return 'text-amber-600 dark:text-amber-400'
-  if (snapshot.value.status === 'failed') return 'text-red-600 dark:text-red-400'
+  if (!snapshot.value) return 'text-ink-tertiary'
+  if (snapshot.value.status === 'unsupported') return 'text-ink-secondary'
+  if (stale.value) return 'text-warn'
+  if (snapshot.value.status === 'failed') return 'text-danger'
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')

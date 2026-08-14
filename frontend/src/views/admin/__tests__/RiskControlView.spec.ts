@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { DOMWrapper, VueWrapper } from '@vue/test-utils'
 
 import RiskControlView from '../RiskControlView.vue'
-import type { ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
+import type {
+  ContentModerationAPIKeyStatus,
+  ContentModerationConfig,
+  UpdateContentModerationConfig,
+} from '@/api/admin/riskControl'
 
 const {
   getConfig,
@@ -190,6 +194,42 @@ function findButtonByText(wrapper: VueWrapper, text: string): DOMWrapper<HTMLBut
   return button
 }
 
+function findButtonsByTitle(wrapper: VueWrapper, title: string): DOMWrapper<HTMLButtonElement>[] {
+  return wrapper.findAll<HTMLButtonElement>('button').filter((item) => item.attributes('title') === title)
+}
+
+const viewStubs = {
+  AppLayout: AppLayoutStub,
+  BaseDialog: BaseDialogStub,
+  Icon: true,
+  Select: true,
+  Toggle: true,
+  Pagination: true,
+  ModelWhitelistSelector: ModelWhitelistSelectorStub,
+  ProxySelector: true,
+}
+
+function mountView(): VueWrapper {
+  return mount(RiskControlView, { global: { stubs: viewStubs } }) as unknown as VueWrapper
+}
+
+const storedApiKeyStatus = (
+  overrides: Partial<ContentModerationAPIKeyStatus> = {}
+): ContentModerationAPIKeyStatus => ({
+  index: 0,
+  key_hash: 'hash-a',
+  masked: 'sk-...a',
+  status: 'ok',
+  failure_count: 0,
+  success_count: 3,
+  last_error: '',
+  last_latency_ms: 42,
+  last_http_status: 200,
+  last_tested: true,
+  configured: true,
+  ...overrides,
+})
+
 describe('admin RiskControlView', () => {
   beforeEach(() => {
     getConfig.mockReset()
@@ -215,6 +255,10 @@ describe('admin RiskControlView', () => {
       api_key_masks: [],
       api_key_statuses: [],
     }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('saves the selected model filter mode and models', async () => {
@@ -414,5 +458,91 @@ describe('admin RiskControlView', () => {
       'max-h-[280px]',
       'overflow-y-auto',
     ]))
+  })
+
+  it('keeps queued API key deletions when the 15s background status poll fires', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      api_key_configured: true,
+      api_key_count: 2,
+      api_key_masks: ['sk-...a', 'sk-...b'],
+      api_key_statuses: [
+        storedApiKeyStatus(),
+        storedApiKeyStatus({ index: 1, key_hash: 'hash-b', masked: 'sk-...b' }),
+      ],
+    })
+    getStatus
+      .mockResolvedValueOnce({
+        ...runtimeStatus(),
+        api_key_statuses: [
+          storedApiKeyStatus(),
+          storedApiKeyStatus({ index: 1, key_hash: 'hash-b', masked: 'sk-...b' }),
+        ],
+      })
+      // worker 重载/空闲时 /status 会返回空的 Key 快照，这正是轮询清空用户选择的场景
+      .mockResolvedValueOnce(runtimeStatus())
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+
+    const deleteButtons = findButtonsByTitle(wrapper, 'admin.riskControl.deleteApiKey')
+    expect(deleteButtons).toHaveLength(2)
+    await deleteButtons[0].trigger('click')
+    expect(wrapper.text()).toContain('admin.riskControl.apiKeyPendingDelete')
+
+    vi.advanceTimersByTime(15000)
+    await flushPromises()
+
+    expect(getStatus).toHaveBeenCalledTimes(2)
+    // 轮询之后，排队中的删除操作必须还在（行还在、标记还在）
+    expect(wrapper.text()).toContain('sk-...a')
+    expect(wrapper.text()).toContain('admin.riskControl.apiKeyPendingDelete')
+
+    await findButtonByText(wrapper, 'admin.riskControl.saveConfig').trigger('click')
+    await flushPromises()
+
+    expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      delete_api_key_hashes: ['hash-a'],
+    }))
+    expect(showError).not.toHaveBeenCalled()
+  })
+
+  it('still refreshes read-only runtime data on poll when nothing is pending', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    getConfig.mockResolvedValue({
+      ...baseConfig(),
+      api_key_configured: true,
+      api_key_count: 1,
+      api_key_masks: ['sk-...a'],
+      api_key_statuses: [storedApiKeyStatus()],
+    })
+    getStatus
+      .mockResolvedValueOnce({ ...runtimeStatus(), mode: 'observe' })
+      .mockResolvedValueOnce({
+        ...runtimeStatus(),
+        mode: 'observe',
+        processed: 4242,
+        queue_length: 7,
+        api_key_statuses: [storedApiKeyStatus({ key_hash: 'hash-c', masked: 'sk-...c', status: 'frozen' })],
+      })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('4,242')
+
+    vi.advanceTimersByTime(15000)
+    await flushPromises()
+
+    expect(getStatus).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('4,242')
+    expect(wrapper.text()).toContain('7 / 32,768')
+
+    await findButtonByText(wrapper, 'admin.riskControl.openSettings').trigger('click')
+    expect(wrapper.text()).toContain('sk-...c')
+    expect(wrapper.text()).not.toContain('sk-...a')
   })
 })

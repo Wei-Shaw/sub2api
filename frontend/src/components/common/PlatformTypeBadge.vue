@@ -1,7 +1,13 @@
 <template>
-  <div class="inline-flex flex-col gap-0.5 text-xs font-medium">
+  <!--
+    `items-start` is load-bearing. A column flex container stretches its
+    children to the widest one, and now that each row carries a hairline that
+    stretch is visible: a one-word plan chip rendered as an empty box the full
+    width of the platform row above it.
+  -->
+  <div class="inline-flex flex-col items-start gap-0.5 text-xs font-medium">
     <!-- Row 1: Platform + Type -->
-    <div class="inline-flex items-center overflow-hidden rounded-md">
+    <div class="inline-flex items-center overflow-hidden rounded-sm border border-line">
       <span :class="['inline-flex items-center gap-1 px-2 py-1', platformClass]">
         <PlatformIcon :platform="platform" size="xs" />
         <span>{{ platformLabel }}</span>
@@ -31,7 +37,10 @@
       </span>
     </div>
     <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
-    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+    <div
+      v-if="planLabel || privacyBadge"
+      class="inline-flex items-center overflow-hidden rounded-sm border border-line"
+    >
       <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <GrokFreeIcon
           v-if="isGrokFreePlan"
@@ -48,7 +57,11 @@
       </span>
       <span
         v-if="privacyBadge"
-        :class="['inline-flex items-center gap-1 px-1.5 py-1', privacyBadge.class]"
+        :class="[
+          'inline-flex items-center gap-1 px-1.5 py-1',
+          planLabel && 'border-l border-line',
+          privacyBadge.class,
+        ]"
         :title="privacyBadge.title"
       >
         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -58,7 +71,11 @@
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
-    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
+    <div
+      v-if="expiresLabel"
+      class="pl-0.5 font-mono text-2xs leading-tight tabular-nums text-ink-tertiary"
+      :title="subscriptionExpiresAt"
+    >
       {{ expiresLabel }}
     </div>
   </div>
@@ -175,73 +192,33 @@ const planIconName = computed<'bolt' | null>(() => {
   return null
 })
 
-const platformClass = computed(() => {
-  if (props.platform === 'anthropic') {
-    return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-  }
-  if (props.platform === 'openai') {
-    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-  }
-  if (props.platform === 'antigravity') {
-    return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-  }
-  if (props.platform === 'grok') {
-    return 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
-  }
-  return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-})
+/**
+ * Platform, type and plan are IDENTITIES, not statuses.
+ *
+ * This badge used to run a five-way pastel ladder for the platform and a
+ * seven-way one for the plan — orange, emerald, purple, zinc, blue, cyan,
+ * amber, sky, indigo, violet. Every account row in the product therefore spent
+ * most of its colour budget restating a label that was already spelled out in
+ * words right next to the swatch, which left nothing for the things that
+ * genuinely signal: a rate-limited account, a failed privacy setting, an
+ * abnormal subscription.
+ *
+ * The fields are separated by a hairline instead, and the marks (`PlatformIcon`,
+ * `GrokFreeIcon`, the auth-type glyphs) carry identity as shape. Colour is
+ * spent only where it means something.
+ */
+const FIELD = 'bg-surface-sunken text-ink-secondary'
 
-const typeClass = computed(() => {
-  if (props.platform === 'anthropic') {
-    return 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-  }
-  if (props.platform === 'openai') {
-    return 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
-  }
-  if (props.platform === 'antigravity') {
-    return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
-  }
-  if (props.platform === 'grok') {
-    return 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
-  }
-  return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-})
+const platformClass = computed(() => `${FIELD} text-ink`)
+
+const typeClass = computed(() => `border-l border-line ${FIELD}`)
 
 const planBadgeClass = computed(() => {
+  // The one plan value that is a status rather than a label.
   if (normalizedPlanType.value === 'abnormal') {
-    return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+    return 'bg-danger-tint text-danger'
   }
-  // Free stays muted gray; paid Grok tiers get distinct colors.
-  if (
-    normalizedPlanType.value === 'free' ||
-    normalizedPlanType.value === 'basic' ||
-    normalizedPlanType.value === 'xbasic'
-  ) {
-    return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-  }
-  if (props.platform === 'grok' && normalizedPlanType.value) {
-    // Heavy / SuperGrok Heavy → purple
-    if (normalizedPlanType.value.includes('heavy')) {
-      return 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300'
-    }
-    // SuperGrok → cyan
-    if (normalizedPlanType.value.includes('supergrok')) {
-      return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300'
-    }
-    // Any other non-free Grok plan (future tiers) → amber so it still stands out
-    return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  }
-  // OpenAI / other paid plan labels: keep readable distinction from free gray
-  if (normalizedPlanType.value === 'plus') {
-    return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
-  }
-  if (normalizedPlanType.value === 'team') {
-    return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
-  }
-  if (normalizedPlanType.value === 'pro' || normalizedPlanType.value === 'chatgptpro') {
-    return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
-  }
-  return typeClass.value
+  return FIELD
 })
 
 // Subscription expiration label (non-free only)
@@ -275,16 +252,16 @@ const privacyBadge = computed(() => {
   switch (props.privacyMode) {
     // OpenAI states
     case 'training_off':
-      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyTrainingOff'), class: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' }
+      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyTrainingOff'), class: 'bg-success-tint text-success' }
     case 'training_set_cf_blocked':
-      return { label: 'CF', icon: shieldX, title: t('admin.accounts.privacyCfBlocked'), class: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' }
+      return { label: 'CF', icon: shieldX, title: t('admin.accounts.privacyCfBlocked'), class: 'bg-warn-tint text-warn' }
     case 'training_set_failed':
-      return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyFailed'), class: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' }
+      return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyFailed'), class: 'bg-danger-tint text-danger' }
     // Antigravity states
     case 'privacy_set':
-      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyAntigravitySet'), class: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' }
+      return { label: 'Private', icon: shieldCheck, title: t('admin.accounts.privacyAntigravitySet'), class: 'bg-success-tint text-success' }
     case 'privacy_set_failed':
-      return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyAntigravityFailed'), class: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' }
+      return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyAntigravityFailed'), class: 'bg-danger-tint text-danger' }
     default:
       return null
   }

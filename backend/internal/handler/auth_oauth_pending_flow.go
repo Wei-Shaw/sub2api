@@ -1523,11 +1523,6 @@ func clearOAuthLogoutCookies(c *gin.Context) {
 	wechatClearCookie(c, wechatOAuthIntentCookieName, secureCookie)
 	wechatClearCookie(c, wechatOAuthModeCookieName, secureCookie)
 	wechatClearCookie(c, wechatOAuthBindUserCookieName, secureCookie)
-
-	wechatPaymentClearCookie(c, wechatPaymentOAuthStateName, secureCookie)
-	wechatPaymentClearCookie(c, wechatPaymentOAuthRedirect, secureCookie)
-	wechatPaymentClearCookie(c, wechatPaymentOAuthContextName, secureCookie)
-	wechatPaymentClearCookie(c, wechatPaymentOAuthScope, secureCookie)
 }
 
 func buildPendingOAuthSessionStatusPayload(session *dbent.PendingAuthSession) gin.H {

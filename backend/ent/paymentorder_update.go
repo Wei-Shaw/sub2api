@@ -431,141 +431,6 @@ func (_u *PaymentOrderUpdate) SetNillableStatus(v *string) *PaymentOrderUpdate {
 	return _u
 }
 
-// SetRefundAmount sets the "refund_amount" field.
-func (_u *PaymentOrderUpdate) SetRefundAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetRefundAmount()
-	_u.mutation.SetRefundAmount(v)
-	return _u
-}
-
-// SetNillableRefundAmount sets the "refund_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundAmount(v *float64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundAmount(*v)
-	}
-	return _u
-}
-
-// AddRefundAmount adds value to the "refund_amount" field.
-func (_u *PaymentOrderUpdate) AddRefundAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddRefundAmount(v)
-	return _u
-}
-
-// SetRefundReason sets the "refund_reason" field.
-func (_u *PaymentOrderUpdate) SetRefundReason(v string) *PaymentOrderUpdate {
-	_u.mutation.SetRefundReason(v)
-	return _u
-}
-
-// SetNillableRefundReason sets the "refund_reason" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundReason(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundReason(*v)
-	}
-	return _u
-}
-
-// ClearRefundReason clears the value of the "refund_reason" field.
-func (_u *PaymentOrderUpdate) ClearRefundReason() *PaymentOrderUpdate {
-	_u.mutation.ClearRefundReason()
-	return _u
-}
-
-// SetRefundAt sets the "refund_at" field.
-func (_u *PaymentOrderUpdate) SetRefundAt(v time.Time) *PaymentOrderUpdate {
-	_u.mutation.SetRefundAt(v)
-	return _u
-}
-
-// SetNillableRefundAt sets the "refund_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundAt(v *time.Time) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundAt(*v)
-	}
-	return _u
-}
-
-// ClearRefundAt clears the value of the "refund_at" field.
-func (_u *PaymentOrderUpdate) ClearRefundAt() *PaymentOrderUpdate {
-	_u.mutation.ClearRefundAt()
-	return _u
-}
-
-// SetForceRefund sets the "force_refund" field.
-func (_u *PaymentOrderUpdate) SetForceRefund(v bool) *PaymentOrderUpdate {
-	_u.mutation.SetForceRefund(v)
-	return _u
-}
-
-// SetNillableForceRefund sets the "force_refund" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableForceRefund(v *bool) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetForceRefund(*v)
-	}
-	return _u
-}
-
-// SetRefundRequestedAt sets the "refund_requested_at" field.
-func (_u *PaymentOrderUpdate) SetRefundRequestedAt(v time.Time) *PaymentOrderUpdate {
-	_u.mutation.SetRefundRequestedAt(v)
-	return _u
-}
-
-// SetNillableRefundRequestedAt sets the "refund_requested_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundRequestedAt(v *time.Time) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundRequestedAt(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestedAt clears the value of the "refund_requested_at" field.
-func (_u *PaymentOrderUpdate) ClearRefundRequestedAt() *PaymentOrderUpdate {
-	_u.mutation.ClearRefundRequestedAt()
-	return _u
-}
-
-// SetRefundRequestReason sets the "refund_request_reason" field.
-func (_u *PaymentOrderUpdate) SetRefundRequestReason(v string) *PaymentOrderUpdate {
-	_u.mutation.SetRefundRequestReason(v)
-	return _u
-}
-
-// SetNillableRefundRequestReason sets the "refund_request_reason" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundRequestReason(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundRequestReason(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestReason clears the value of the "refund_request_reason" field.
-func (_u *PaymentOrderUpdate) ClearRefundRequestReason() *PaymentOrderUpdate {
-	_u.mutation.ClearRefundRequestReason()
-	return _u
-}
-
-// SetRefundRequestedBy sets the "refund_requested_by" field.
-func (_u *PaymentOrderUpdate) SetRefundRequestedBy(v string) *PaymentOrderUpdate {
-	_u.mutation.SetRefundRequestedBy(v)
-	return _u
-}
-
-// SetNillableRefundRequestedBy sets the "refund_requested_by" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundRequestedBy(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetRefundRequestedBy(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestedBy clears the value of the "refund_requested_by" field.
-func (_u *PaymentOrderUpdate) ClearRefundRequestedBy() *PaymentOrderUpdate {
-	_u.mutation.ClearRefundRequestedBy()
-	return _u
-}
-
 // SetExpiresAt sets the "expires_at" field.
 func (_u *PaymentOrderUpdate) SetExpiresAt(v time.Time) *PaymentOrderUpdate {
 	_u.mutation.SetExpiresAt(v)
@@ -818,11 +683,6 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.RefundRequestedBy(); ok {
-		if err := paymentorder.RefundRequestedByValidator(v); err != nil {
-			return &ValidationError{Name: "refund_requested_by", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.refund_requested_by": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.ClientIP(); ok {
 		if err := paymentorder.ClientIPValidator(v); err != nil {
 			return &ValidationError{Name: "client_ip", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.client_ip": %w`, err)}
@@ -961,45 +821,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RefundAmount(); ok {
-		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedRefundAmount(); ok {
-		_spec.AddField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.RefundReason(); ok {
-		_spec.SetField(paymentorder.FieldRefundReason, field.TypeString, value)
-	}
-	if _u.mutation.RefundReasonCleared() {
-		_spec.ClearField(paymentorder.FieldRefundReason, field.TypeString)
-	}
-	if value, ok := _u.mutation.RefundAt(); ok {
-		_spec.SetField(paymentorder.FieldRefundAt, field.TypeTime, value)
-	}
-	if _u.mutation.RefundAtCleared() {
-		_spec.ClearField(paymentorder.FieldRefundAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.ForceRefund(); ok {
-		_spec.SetField(paymentorder.FieldForceRefund, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.RefundRequestedAt(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestedAt, field.TypeTime, value)
-	}
-	if _u.mutation.RefundRequestedAtCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.RefundRequestReason(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestReason, field.TypeString, value)
-	}
-	if _u.mutation.RefundRequestReasonCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestReason, field.TypeString)
-	}
-	if value, ok := _u.mutation.RefundRequestedBy(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestedBy, field.TypeString, value)
-	}
-	if _u.mutation.RefundRequestedByCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestedBy, field.TypeString)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(paymentorder.FieldExpiresAt, field.TypeTime, value)
@@ -1494,141 +1315,6 @@ func (_u *PaymentOrderUpdateOne) SetNillableStatus(v *string) *PaymentOrderUpdat
 	return _u
 }
 
-// SetRefundAmount sets the "refund_amount" field.
-func (_u *PaymentOrderUpdateOne) SetRefundAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetRefundAmount()
-	_u.mutation.SetRefundAmount(v)
-	return _u
-}
-
-// SetNillableRefundAmount sets the "refund_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundAmount(v *float64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundAmount(*v)
-	}
-	return _u
-}
-
-// AddRefundAmount adds value to the "refund_amount" field.
-func (_u *PaymentOrderUpdateOne) AddRefundAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddRefundAmount(v)
-	return _u
-}
-
-// SetRefundReason sets the "refund_reason" field.
-func (_u *PaymentOrderUpdateOne) SetRefundReason(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetRefundReason(v)
-	return _u
-}
-
-// SetNillableRefundReason sets the "refund_reason" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundReason(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundReason(*v)
-	}
-	return _u
-}
-
-// ClearRefundReason clears the value of the "refund_reason" field.
-func (_u *PaymentOrderUpdateOne) ClearRefundReason() *PaymentOrderUpdateOne {
-	_u.mutation.ClearRefundReason()
-	return _u
-}
-
-// SetRefundAt sets the "refund_at" field.
-func (_u *PaymentOrderUpdateOne) SetRefundAt(v time.Time) *PaymentOrderUpdateOne {
-	_u.mutation.SetRefundAt(v)
-	return _u
-}
-
-// SetNillableRefundAt sets the "refund_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundAt(v *time.Time) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundAt(*v)
-	}
-	return _u
-}
-
-// ClearRefundAt clears the value of the "refund_at" field.
-func (_u *PaymentOrderUpdateOne) ClearRefundAt() *PaymentOrderUpdateOne {
-	_u.mutation.ClearRefundAt()
-	return _u
-}
-
-// SetForceRefund sets the "force_refund" field.
-func (_u *PaymentOrderUpdateOne) SetForceRefund(v bool) *PaymentOrderUpdateOne {
-	_u.mutation.SetForceRefund(v)
-	return _u
-}
-
-// SetNillableForceRefund sets the "force_refund" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableForceRefund(v *bool) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetForceRefund(*v)
-	}
-	return _u
-}
-
-// SetRefundRequestedAt sets the "refund_requested_at" field.
-func (_u *PaymentOrderUpdateOne) SetRefundRequestedAt(v time.Time) *PaymentOrderUpdateOne {
-	_u.mutation.SetRefundRequestedAt(v)
-	return _u
-}
-
-// SetNillableRefundRequestedAt sets the "refund_requested_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundRequestedAt(v *time.Time) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundRequestedAt(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestedAt clears the value of the "refund_requested_at" field.
-func (_u *PaymentOrderUpdateOne) ClearRefundRequestedAt() *PaymentOrderUpdateOne {
-	_u.mutation.ClearRefundRequestedAt()
-	return _u
-}
-
-// SetRefundRequestReason sets the "refund_request_reason" field.
-func (_u *PaymentOrderUpdateOne) SetRefundRequestReason(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetRefundRequestReason(v)
-	return _u
-}
-
-// SetNillableRefundRequestReason sets the "refund_request_reason" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundRequestReason(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundRequestReason(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestReason clears the value of the "refund_request_reason" field.
-func (_u *PaymentOrderUpdateOne) ClearRefundRequestReason() *PaymentOrderUpdateOne {
-	_u.mutation.ClearRefundRequestReason()
-	return _u
-}
-
-// SetRefundRequestedBy sets the "refund_requested_by" field.
-func (_u *PaymentOrderUpdateOne) SetRefundRequestedBy(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetRefundRequestedBy(v)
-	return _u
-}
-
-// SetNillableRefundRequestedBy sets the "refund_requested_by" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundRequestedBy(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetRefundRequestedBy(*v)
-	}
-	return _u
-}
-
-// ClearRefundRequestedBy clears the value of the "refund_requested_by" field.
-func (_u *PaymentOrderUpdateOne) ClearRefundRequestedBy() *PaymentOrderUpdateOne {
-	_u.mutation.ClearRefundRequestedBy()
-	return _u
-}
-
 // SetExpiresAt sets the "expires_at" field.
 func (_u *PaymentOrderUpdateOne) SetExpiresAt(v time.Time) *PaymentOrderUpdateOne {
 	_u.mutation.SetExpiresAt(v)
@@ -1894,11 +1580,6 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.RefundRequestedBy(); ok {
-		if err := paymentorder.RefundRequestedByValidator(v); err != nil {
-			return &ValidationError{Name: "refund_requested_by", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.refund_requested_by": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.ClientIP(); ok {
 		if err := paymentorder.ClientIPValidator(v); err != nil {
 			return &ValidationError{Name: "client_ip", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.client_ip": %w`, err)}
@@ -2054,45 +1735,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.RefundAmount(); ok {
-		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedRefundAmount(); ok {
-		_spec.AddField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.RefundReason(); ok {
-		_spec.SetField(paymentorder.FieldRefundReason, field.TypeString, value)
-	}
-	if _u.mutation.RefundReasonCleared() {
-		_spec.ClearField(paymentorder.FieldRefundReason, field.TypeString)
-	}
-	if value, ok := _u.mutation.RefundAt(); ok {
-		_spec.SetField(paymentorder.FieldRefundAt, field.TypeTime, value)
-	}
-	if _u.mutation.RefundAtCleared() {
-		_spec.ClearField(paymentorder.FieldRefundAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.ForceRefund(); ok {
-		_spec.SetField(paymentorder.FieldForceRefund, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.RefundRequestedAt(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestedAt, field.TypeTime, value)
-	}
-	if _u.mutation.RefundRequestedAtCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestedAt, field.TypeTime)
-	}
-	if value, ok := _u.mutation.RefundRequestReason(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestReason, field.TypeString, value)
-	}
-	if _u.mutation.RefundRequestReasonCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestReason, field.TypeString)
-	}
-	if value, ok := _u.mutation.RefundRequestedBy(); ok {
-		_spec.SetField(paymentorder.FieldRefundRequestedBy, field.TypeString, value)
-	}
-	if _u.mutation.RefundRequestedByCleared() {
-		_spec.ClearField(paymentorder.FieldRefundRequestedBy, field.TypeString)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(paymentorder.FieldExpiresAt, field.TypeTime, value)

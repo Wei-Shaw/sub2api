@@ -1,0 +1,162 @@
+/*
+ * Self-hosted IBM Plex. Three files, 73.5 KB total.
+ *
+ * WHY THESE FILES LIVE IN src/assets AND NOT public/
+ *
+ * `backend/internal/web/static_cache.go:19` grants
+ * `Cache-Control: public, max-age=31536000, immutable` to exactly one shape:
+ * `assets/<name>-<8-char-hash>.<ext>`. Anything dropped in `public/` lands at
+ * the dist root and gets NO cache header, which costs a revalidation
+ * round-trip for all 73.5 KB on every navigation. Importing from CSS makes
+ * Vite fingerprint them into the cacheable shape.
+ *
+ * The bytes are vendored rather than pulled from @fontsource at build time.
+ * That pins them, survives a registry outage, keeps the Go embed reproducible,
+ * and stops the `latin-ext` / `cyrillic` / `greek` slices from sneaking in.
+ *   sans: @fontsource-variable/ibm-plex-sans@5.3.0 → files/ibm-plex-sans-latin-wght-normal.woff2
+ *   mono: @fontsource/ibm-plex-mono@5.3.0          → files/ibm-plex-mono-latin-{400,500}-normal.woff2
+ *
+ * CSP: `backend/internal/config/config.go:33` already allows
+ * `font-src 'self'`, which covers `/assets/*.woff2`. No backend change needed.
+ * The stale `fonts.gstatic.com` / `fonts.googleapis.com` entries have been
+ * dropped from that policy: nothing in the tree references either host.
+ *
+ * NO ITALIC. There is no legitimate use for it in an ops console, and skipping
+ * it saves ~50 KB. The rare `<em>` gets a synthetic oblique, which is fine.
+ */
+
+/*
+ * Sans: ONE file for three weights.
+ *
+ * This is the weight-axis variable cut, so 400 / 500 / 600 all come out of a
+ * single 45 KB download. The axis is deliberately clamped to `400 600` rather
+ * than the font's native `100 700`:
+ *   - 300 is illegible at the 11–13px that dominates this UI.
+ *   - 700 is where "editorial" turns into "shouty"; 600 already reads bold at
+ *     these sizes. Clamping means the existing `font-bold` (700) utilities
+ *     resolve to 600 automatically, with no codemod.
+ */
+@font-face {
+  font-family: 'IBM Plex Sans';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexSans-Var-latin.woff2') format('woff2-variations');
+  /*
+   * Latin only. This range is what actually keeps CJK legible: a Chinese
+   * codepoint never matches this face, so the browser falls straight through to
+   * the next family in `--ds-font-sans` with no download and no tofu. It works
+   * even when a zh string is rendered while `lang="en"`, which is why the
+   * `html[lang="zh"]` block in tokens.css is a refinement, not the mechanism.
+   */
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* Mono 400 — every numeral, ID, key and code span in the app. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexMono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* Mono 500 — mono column headers and emphasized identifiers. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('@/assets/fonts/IBMPlexMono-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/*
+ * ── METRIC-MATCHED FALLBACKS ─────────────────────────────────────────────────
+ *
+ * MEASURED, not guessed, with fontTools — against the exact subsetted files
+ * shipped above and against the fallback fonts themselves:
+ *
+ *   font           upm    hhea asc/desc/gap   x-height    weighted avg advance
+ *   IBM Plex Sans  1000   1025 / -275 / 0     0.5160 em   0.44445 em
+ *   IBM Plex Mono  1000   1025 / -275 / 0     0.5160 em   0.60000 em
+ *   Arial          2048   1854 / -434 / 67    0.5186 em   0.43921 em
+ *   Consolas       2048   1521 / -527 / 350   0.4902 em   0.54980 em
+ *
+ * `size-adjust` is the ratio of weighted average advance width — weights are
+ * English character frequencies over [a-z] plus space, glyphs resolved through
+ * cmap and advances read from hmtx, the same character set for both fonts.
+ *
+ * The OS/2 `xAvgCharWidth` field CANNOT be used for this. It is not computed
+ * the same way across fonts: the subsetted Plex Sans reports 533/1000 = 0.533
+ * (an arithmetic mean over all its glyphs, uppercase and punctuation included)
+ * while Arial reports 904/2048 = 0.4414 (the legacy lowercase-weighted
+ * formula). Comparing those two fields yields size-adjust: 120.75% — a
+ * permanent 20% oversize through the whole fallback window, arrived at in the
+ * name of matching metrics. The like-for-like measurement gives 101.19%: in
+ * running text Plex Sans and Arial are within 1.2% of each other.
+ *
+ * The override percentages are the WEB font's normalized metrics DIVIDED BY
+ * `size-adjust`, because size-adjust scales the em that the overrides resolve
+ * against. Both faces therefore reproduce Plex's 1.300 em line box exactly.
+ *
+ * This is a refinement, not the load-bearing anti-CLS mechanism. The type scale
+ * in tokens.css sets every `line-height` in PIXELS, so line box height is
+ * already independent of which font wins and the vertical axis — the one that
+ * dominates CLS — does not move on swap. What these faces buy is a correct
+ * baseline inside that fixed box, and near-zero horizontal reflow.
+ *
+ * ONE `local()` PER FACE, DELIBERATELY. The overrides are valid only for the
+ * font they were measured against. Adding `local('Helvetica Neue')` to the sans
+ * face would apply Arial's numbers to a font with different metrics, which is
+ * the mis-sizing this block exists to prevent. Arial is safe to target broadly
+ * because Liberation Sans and Arimo — what Linux resolves — are metric-clones
+ * of it by design. Consolas is Windows-only, so mac and Linux skip the mono
+ * fallback face entirely and land on `ui-monospace` / Menlo unadjusted. Fixing
+ * that needs Menlo measured on a mac; a guessed face here would be worse than
+ * no face.
+ *
+ * The `unicode-range` mirrors the real faces on purpose. It is what keeps the
+ * CJK path intact: under `html[lang="zh"]`, `--ds-font-sans` lists this
+ * fallback ahead of PingFang SC, and without the range a Chinese codepoint
+ * would consult it before reaching a font that can actually draw one.
+ */
+@font-face {
+  font-family: 'IBM Plex Sans Fallback';
+  font-style: normal;
+  font-weight: 400 600;
+  src: local('Arial');
+  size-adjust: 101.19%;
+  ascent-override: 101.29%;
+  descent-override: 27.18%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/*
+ * One face covers both mono weights. 400 and 500 ship identical vertical
+ * metrics and, being monospace, an identical 0.600 em advance, so the same
+ * numbers hold for each; the browser synthesizes the 500.
+ */
+@font-face {
+  font-family: 'IBM Plex Mono Fallback';
+  font-style: normal;
+  font-weight: 400 500;
+  src: local('Consolas');
+  size-adjust: 109.13%;
+  ascent-override: 93.92%;
+  descent-override: 25.2%;
+  line-gap-override: 0%;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}

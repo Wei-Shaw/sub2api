@@ -129,7 +129,9 @@ describe('TOTP 弹窗定时器清理', () => {
     await flushPromises()
 
     await wrapper.get('input[type="password"]').setValue('correct horse battery staple')
-    await wrapper.get('button[type="button"].btn-primary').trigger('click')
+    // Was `button[type="button"].btn-primary`. The action is a `Button` now, so
+    // it is addressed by test id rather than by the class it happens to emit.
+    await wrapper.get('[data-testid="totp-setup-next"]').trigger('click')
     await flushPromises()
 
     expect(mocks.showError).toHaveBeenCalledWith('setup failed')

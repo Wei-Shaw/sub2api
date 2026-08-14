@@ -1,28 +1,32 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="buttonDisabled" class="btn btn-secondary w-full" @click="startLogin">
-      <span
-        class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300"
-      >
-        W
-      </span>
+    <Button variant="outline" size="md" block :disabled="buttonDisabled" @click="startLogin">
+      <template #icon>
+        <!--
+          WeChat's own green, not the success token. A brand mark tinted with
+          the semantic palette reads as "this provider is healthy", which is a
+          statement the button is not making.
+        -->
+        <span
+          class="inline-flex h-4 w-4 items-center justify-center bg-[#07C160] font-mono text-2xs font-semibold text-white"
+          aria-hidden="true"
+        >
+          W
+        </span>
+      </template>
       {{ t('auth.oidc.signIn', { providerName }) }}
-    </button>
+    </Button>
 
-    <p
-      v-if="disabledHint"
-      data-testid="wechat-oauth-hint"
-      class="text-sm text-amber-600 dark:text-amber-400"
-    >
+    <p v-if="disabledHint" data-testid="wechat-oauth-hint" class="text-xs text-warn">
       {{ disabledHint }}
     </p>
 
     <div v-if="showDivider" class="flex items-center gap-3">
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-      <span class="text-xs text-gray-500 dark:text-dark-400">
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
+      <span class="text-2xs uppercase tracking-[0.08em] text-ink-tertiary">
         {{ t('auth.oauthOrContinue') }}
       </span>
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
     </div>
   </div>
 </template>
@@ -31,6 +35,7 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
 import { resolveWeChatOAuthStart, type OAuthLoginStart } from '@/api/auth'
 import { useAppStore } from '@/stores'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'

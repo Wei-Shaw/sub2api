@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useChartTheme } from './chartTheme'
 import { useI18n } from 'vue-i18n'
 import {
   Chart as ChartJS,
@@ -54,13 +55,14 @@ const props = defineProps<{
   loading?: boolean
 }>()
 
-const isDarkMode = computed(() => {
-  return document.documentElement.classList.contains('dark')
-})
+// Was `computed(() => document.documentElement.classList.contains('dark'))`,
+// which has no reactive dependency and therefore cached forever — this chart
+// never re-themed on toggle.
+const chartTheme = useChartTheme()
 
 const chartColors = computed(() => ({
-  text: isDarkMode.value ? '#e5e7eb' : '#374151',
-  grid: isDarkMode.value ? '#374151' : '#e5e7eb',
+  text: chartTheme.value.axis,
+  grid: chartTheme.value.grid,
   input: '#3b82f6',
   output: '#10b981',
   cacheCreation: '#f59e0b',
@@ -79,32 +81,28 @@ const chartData = computed(() => {
         data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
         backgroundColor: `${chartColors.value.input}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Output',
         data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
         backgroundColor: `${chartColors.value.output}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Creation',
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
         backgroundColor: `${chartColors.value.cacheCreation}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Read',
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
         backgroundColor: `${chartColors.value.cacheRead}20`,
-        fill: true,
-        tension: 0.3
+        fill: true
       },
       {
         label: 'Cache Hit Rate',
@@ -116,7 +114,6 @@ const chartData = computed(() => {
         backgroundColor: `${chartColors.value.cacheHitRate}20`,
         borderDash: [5, 5],
         fill: false,
-        tension: 0.3,
         yAxisID: 'yPercent'
       }
     ]

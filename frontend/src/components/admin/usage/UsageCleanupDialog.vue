@@ -10,13 +10,13 @@
         @change="noop"
       />
 
-      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-warn dark:border-amber-500/30 dark:bg-warn/10">
         {{ t('admin.usage.cleanup.warning') }}
       </div>
 
-      <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+      <div class="rounded-xl border border-line p-4">
         <div class="flex items-center justify-between">
-          <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <h4 class="text-sm font-semibold text-ink-secondary">
             {{ t('admin.usage.cleanup.recentTasks') }}
           </h4>
           <button type="button" class="btn btn-ghost btn-sm" @click="loadTasks">
@@ -25,38 +25,38 @@
         </div>
 
         <div class="mt-3 space-y-2">
-          <div v-if="tasksLoading" class="text-sm text-gray-500 dark:text-gray-400">
+          <div v-if="tasksLoading" class="text-sm text-ink-secondary">
             {{ t('admin.usage.cleanup.loadingTasks') }}
           </div>
-          <div v-else-if="tasks.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+          <div v-else-if="tasks.length === 0" class="text-sm text-ink-secondary">
             {{ t('admin.usage.cleanup.noTasks') }}
           </div>
           <div v-else class="space-y-2">
             <div
               v-for="task in tasks"
               :key="task.id"
-              class="flex flex-col gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-gray-600 dark:border-dark-700 dark:text-gray-300"
+              class="flex flex-col gap-2 rounded-lg border border-line-subtle px-3 py-2 text-sm text-ink-secondary"
             >
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-2">
                   <span :class="statusClass(task.status)" class="rounded-full px-2 py-0.5 text-xs font-semibold">
                     {{ statusLabel(task.status) }}
                   </span>
-                  <span class="text-xs text-gray-400">#{{ task.id }}</span>
+                  <span class="text-xs text-ink-tertiary">#{{ task.id }}</span>
                   <button
                     v-if="canCancel(task)"
                     type="button"
-                    class="btn btn-ghost btn-xs text-rose-600 hover:text-rose-700 dark:text-rose-300"
+                    class="btn btn-ghost btn-xs text-rose-600 hover:text-danger"
                     @click="openCancelConfirm(task)"
                   >
                     {{ t('admin.usage.cleanup.cancel') }}
                   </button>
                 </div>
-                <div class="text-xs text-gray-400">
+                <div class="text-xs text-ink-tertiary">
                   {{ formatDateTime(task.created_at) }}
                 </div>
               </div>
-              <div class="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+              <div class="flex flex-wrap items-center gap-4 text-xs text-ink-secondary">
                 <span>{{ t('admin.usage.cleanup.range') }}: {{ formatRange(task) }}</span>
                 <span>{{ t('admin.usage.cleanup.deletedRows') }}: {{ task.deleted_rows.toLocaleString() }}</span>
               </div>
@@ -205,13 +205,13 @@ const statusLabel = (status: string) => {
 
 const statusClass = (status: string) => {
   const map: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-    running: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
-    succeeded: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
-    failed: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    canceled: 'bg-gray-200 text-gray-600 dark:bg-dark-600 dark:text-gray-300'
+    pending: 'bg-amber-100 text-warn dark:bg-warn/20',
+    running: 'bg-blue-100 text-info dark:bg-blue-500/20',
+    succeeded: 'bg-emerald-100 text-success dark:bg-success/20',
+    failed: 'bg-rose-100 text-danger dark:bg-rose-500/20',
+    canceled: 'bg-gray-200 text-ink-secondary dark:bg-dark-600 dark:text-gray-300'
   }
-  return map[status] || 'bg-gray-100 text-gray-600'
+  return map[status] || 'bg-gray-100 text-ink-secondary'
 }
 
 const formatDateTime = (value?: string | null) => {

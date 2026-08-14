@@ -22,7 +22,6 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 		return nil, fmt.Errorf("query provider instances: %w", err)
 	}
 	typeInstances := pcGroupByPaymentType(instances)
-	typeInstances = s.pcApplyEnabledVisibleMethodInstances(ctx, typeInstances, instances)
 	resp := &MethodLimitsResponse{
 		Methods: make(map[string]MethodLimits, len(typeInstances)),
 	}
@@ -32,47 +31,11 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) (*M
 			continue
 		}
 		ml := pcAggregateMethodLimits(pt, insts)
-		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, insts)
 		ml.Currency = currency
 		resp.Methods[ml.PaymentType] = ml
 	}
 	resp.GlobalMin, resp.GlobalMax = pcComputeGlobalRange(resp.Methods)
 	return resp, nil
-}
-
-func (s *PaymentConfigService) pcApplyEnabledVisibleMethodInstances(ctx context.Context, typeInstances map[string][]*dbent.PaymentProviderInstance, instances []*dbent.PaymentProviderInstance) map[string][]*dbent.PaymentProviderInstance {
-	if len(typeInstances) == 0 {
-		return typeInstances
-	}
-
-	filtered := make(map[string][]*dbent.PaymentProviderInstance, len(typeInstances))
-	for paymentType, groupedInstances := range typeInstances {
-		filtered[paymentType] = groupedInstances
-	}
-
-	for _, method := range []string{payment.TypeAlipay, payment.TypeWxpay} {
-		matching := filterEnabledVisibleMethodInstances(instances, method)
-		providerKey, err := s.resolveVisibleMethodProviderKey(ctx, method, matching)
-		if err != nil {
-			delete(filtered, method)
-			continue
-		}
-		if providerKey == "" {
-			if len(matching) == 0 {
-				delete(filtered, method)
-				continue
-			}
-			filtered[method] = matching
-			continue
-		}
-		selectedInstances := filterVisibleMethodInstancesByProviderKey(instances, method, providerKey)
-		if len(selectedInstances) == 0 {
-			delete(filtered, method)
-			continue
-		}
-		filtered[method] = selectedInstances
-	}
-	return filtered
 }
 
 // GetMethodLimits returns per-payment-type limits from enabled provider instances.
@@ -95,7 +58,6 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 			continue
 		}
 		ml := pcAggregateMethodLimits(pt, matching)
-		ml.DisplayName = s.pcAggregateMethodDisplayName(pt, matching)
 		ml.Currency = currency
 		result = append(result, ml)
 	}
@@ -103,7 +65,7 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 }
 
 func (s *PaymentConfigService) ValidateMethodCurrencyConsistency(ctx context.Context, paymentType string) (string, error) {
-	method := NormalizeVisibleMethod(paymentType)
+	method := strings.TrimSpace(paymentType)
 	if method == "" || s == nil || s.entClient == nil {
 		return payment.DefaultPaymentCurrency, nil
 	}
@@ -114,9 +76,7 @@ func (s *PaymentConfigService) ValidateMethodCurrencyConsistency(ctx context.Con
 		return "", fmt.Errorf("query provider instances: %w", err)
 	}
 
-	typeInstances := pcGroupByPaymentType(instances)
-	typeInstances = s.pcApplyEnabledVisibleMethodInstances(ctx, typeInstances, instances)
-	matching := typeInstances[method]
+	matching := pcGroupByPaymentType(instances)[method]
 	if len(matching) == 0 {
 		return payment.DefaultPaymentCurrency, nil
 	}
@@ -166,56 +126,7 @@ func (s *PaymentConfigService) pcInstancePaymentCurrency(inst *dbent.PaymentProv
 	return paymentProviderConfigCurrency(inst.ProviderKey, cfg)
 }
 
-type easyPayCustomMethodDisplayConfig struct {
-	Type        string `json:"type"`
-	DisplayName string `json:"displayName"`
-}
-
-func (s *PaymentConfigService) pcAggregateMethodDisplayName(pt string, instances []*dbent.PaymentProviderInstance) string {
-	pt = strings.TrimSpace(pt)
-	if pt == "" {
-		return ""
-	}
-	for _, inst := range instances {
-		displayName := s.pcInstanceEasyPayCustomMethodDisplayName(inst, pt)
-		if displayName != "" {
-			return displayName
-		}
-	}
-	return ""
-}
-
-func (s *PaymentConfigService) pcInstanceEasyPayCustomMethodDisplayName(inst *dbent.PaymentProviderInstance, pt string) string {
-	if inst == nil || inst.ProviderKey != payment.TypeEasyPay {
-		return ""
-	}
-	cfg := map[string]string{}
-	if s != nil {
-		decrypted, err := s.decryptConfig(inst.Config)
-		if err == nil && decrypted != nil {
-			cfg = decrypted
-		}
-	}
-	raw := strings.TrimSpace(cfg["customMethods"])
-	if raw == "" {
-		return ""
-	}
-
-	var methods []easyPayCustomMethodDisplayConfig
-	if err := json.Unmarshal([]byte(raw), &methods); err != nil {
-		return ""
-	}
-	for _, method := range methods {
-		if strings.TrimSpace(method.Type) == pt {
-			return strings.TrimSpace(method.DisplayName)
-		}
-	}
-	return ""
-}
-
 // pcGroupByPaymentType groups instances by user-facing payment type.
-// For Stripe providers, ALL sub-types (card, link, alipay, wxpay) map to "stripe"
-// because the user sees a single "Stripe" button, not individual sub-methods.
 // Uses a seen set to avoid counting one instance twice.
 func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string][]*dbent.PaymentProviderInstance {
 	typeInstances := make(map[string][]*dbent.PaymentProviderInstance)
@@ -230,11 +141,6 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 		}
 	}
 	for _, inst := range instances {
-		// Stripe provider: all sub-types → single "stripe" group
-		if inst.ProviderKey == payment.TypeStripe {
-			add(payment.TypeStripe, inst)
-			continue
-		}
 		for _, t := range splitTypes(inst.SupportedTypes) {
 			add(t, inst)
 		}
@@ -244,7 +150,6 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 
 // pcInstanceTypeLimits extracts per-type limits from a provider instance.
 // Returns (limits, true) if configured; (zero, false) if unlimited.
-// For Stripe instances, limits are stored under "stripe" key regardless of sub-types.
 func pcInstanceTypeLimits(inst *dbent.PaymentProviderInstance, pt string) (payment.ChannelLimits, bool) {
 	if inst.Limits == "" {
 		return payment.ChannelLimits{}, false

@@ -18,7 +18,7 @@ defineProps<{
   >
     <slot />
     <span class="font-mono">{{ current }}</span>
-    <span class="text-gray-400 dark:text-gray-500">/</span>
+    <span class="text-ink-tertiary">/</span>
     <span class="font-mono">{{ max }}</span>
     <span v-if="suffix" class="text-[9px] opacity-60">{{ suffix }}</span>
   </span>

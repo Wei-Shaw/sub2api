@@ -1,41 +1,51 @@
 <template>
-  <header
-    class="glass sticky top-0 z-30 border-b border-gray-200/50 dark:border-dark-700/50"
-  >
-    <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-      <!-- 左:站点 logo + 名称 -->
+  <!--
+    Standalone-mode header. Same lockup as the landing page and the key-usage
+    page: logo, site name, one action, and a single hairline under the row.
+    The CTA was a gradient-filled, glow-shadowed pill; it is the Button
+    primitive now, which is the only accent-filled control on the page.
+  -->
+  <header class="sticky top-0 z-30 border-b border-line bg-surface">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
       <div class="flex min-w-0 items-center gap-3">
         <template v-if="settings">
-          <span
-            class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-700"
-          >
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-          </span>
-          <span class="truncate text-base font-semibold text-gray-950 dark:text-white">
+          <img
+            :src="siteLogo || '/logo.svg'"
+            alt=""
+            class="h-7 w-7 shrink-0 rounded object-contain"
+          />
+          <span class="min-w-0 truncate text-sm font-semibold text-ink [overflow-wrap:anywhere]">
             {{ siteName }}
           </span>
         </template>
         <template v-else>
-          <span class="h-9 w-9 flex-shrink-0 animate-pulse rounded-xl bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
-          <span class="h-5 w-28 animate-pulse rounded bg-gray-200 dark:bg-dark-700" aria-hidden="true"></span>
+          <span class="skeleton h-7 w-7 shrink-0 rounded" aria-hidden="true"></span>
+          <span class="skeleton h-4 w-28 rounded" aria-hidden="true"></span>
         </template>
       </div>
 
-      <!-- 右:登录 / 回到后台 -->
-      <RouterLink
+      <Button
         v-if="isAuthenticated"
         :to="backTarget"
-        class="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
+        tone="accent"
+        variant="solid"
+        size="md"
+        class="shrink-0"
+        data-testid="plaza-nav-dashboard"
       >
         {{ t('modelPlaza.nav.backToDashboard') }}
-      </RouterLink>
-      <RouterLink
+      </Button>
+      <Button
         v-else
         :to="{ path: '/login', query: { redirect: '/model-plaza' } }"
-        class="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
+        tone="accent"
+        variant="solid"
+        size="md"
+        class="shrink-0"
+        data-testid="plaza-nav-login"
       >
         {{ t('modelPlaza.nav.login') }}
-      </RouterLink>
+      </Button>
     </div>
   </header>
 </template>
@@ -43,6 +53,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'

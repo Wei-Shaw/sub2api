@@ -34,7 +34,6 @@ export default {
       dataImportButton: '开始导入',
       dataImporting: '导入中...',
       dataImportSelectFile: '请选择数据文件',
-      dataImportParseFailed: '数据解析失败',
       dataImportParseFailedFile: '文件 {name} 解析失败',
       dataImportInvalidFile: '文件 {name} 不是受支持的导出数据文件',
       dataImportIgnoredFiles: '已忽略 {count} 个非 JSON 文件',
@@ -89,8 +88,6 @@ export default {
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
       // Schedulable toggle
-      schedulable: '参与调度',
-      schedulableHint: '开启后账号参与API请求调度',
       schedulableEnabled: '调度已开启',
       schedulableDisabled: '调度已关闭',
       failedToToggleSchedulable: '切换调度状态失败',
@@ -99,14 +96,11 @@ export default {
         name: '名称',
         id: '账号ID',
         platformType: '平台/类型',
-        platform: '平台',
-        type: '类型',
         capacity: '容量',
         notes: '备注',
         priority: '优先级',
         billingRateMultiplier: '账号倍率',
         upstreamBillingRate: '上游声明倍率',
-        weight: '权重',
         schedulerScore: '调度权值',
         status: '状态',
         schedulable: '调度',
@@ -120,8 +114,6 @@ export default {
         actions: '操作'
       },
       schedulerScore: {
-        baseShort: '普通',
-        stickyShort: '粘性',
         ungrouped: '未分组',
         hint: '显示格式为“分组名 / 基础分 / 粘性加分”。基础分按当前筛选条件限定的候选账号计算，包含优先级、负载、排队、错误率、首包延迟、重置窗口、额度余量、计费倍率等因子；粘性加分只在开启粘性加权时用于 previous_response_id 或 session_hash。分数越大越优先。'
       },
@@ -234,9 +226,6 @@ export default {
           normal: '活跃会话正常（空闲超时：{idle}分钟）'
         },
         rpm: {
-          full: '已达 RPM 上限',
-          warning: 'RPM 接近上限',
-          normal: 'RPM 正常',
           tieredNormal: 'RPM 限制 (三区模型) - 正常',
           tieredWarning: 'RPM 限制 (三区模型) - 接近阈值',
           tieredStickyOnly: 'RPM 限制 (三区模型) - 仅粘性会话 | 缓冲区: {buffer}',
@@ -250,9 +239,7 @@ export default {
           normal: '配额正常'
         },
       },
-      clearRateLimit: '清除速率限制',
       resetQuota: '重置配额',
-      quotaLimit: '配额限制',
       quotaLimitPlaceholder: '0 表示不限制',
       quotaLimitHint: '设置日/周/总使用额度（美元），任一维度达到限额后账号暂停调度。Anthropic API Key 账号还可配置客户端亲和。修改限额不会重置已用额度。',
       quotaLimitToggle: '启用配额限制',
@@ -268,7 +255,6 @@ export default {
       quotaResetModeFixed: '固定时间',
       quotaResetHour: '重置时间',
       quotaWeeklyResetDay: '重置日',
-      quotaResetTimezone: '重置时区',
       quotaDailyLimitHintFixed: '每天 {hour}:00（{timezone}）重置。',
       quotaWeeklyLimitHintFixed: '每{day} {hour}:00（{timezone}）重置。',
       dayOfWeek: {
@@ -280,45 +266,22 @@ export default {
         saturday: '周六',
         sunday: '周日',
       },
-      quotaLimitAmount: '总限额',
-      quotaLimitAmountHint: '累计消费上限，不会自动重置。',
       quotaNotify: {
         alert: '提醒阈值',
-        enabled: '启用告警',
-        threshold: '告警金额',
-        thresholdPlaceholder: '输入百分比',
       },
       testConnection: '测试连接',
       reAuthorize: '重新授权',
       refreshToken: '刷新令牌',
-      noAccountsYet: '暂无账号',
-      createFirstAccount: '添加 AI 平台账号以开始使用 API 网关。',
-      tokenRefreshed: 'Token 刷新成功',
-      accountDeleted: '账号删除成功',
-      rateLimitCleared: '速率限制已清除',
       setupToken: 'Setup Token',
       apiKey: 'API Key',
       deleteConfirm: "确定要删除账号 '{name}' 吗？此操作无法撤销。",
-      failedToClearRateLimit: '清除速率限制失败',
-      platforms: {
-        claude: 'Claude',
-        openai: 'OpenAI',
-        anthropic: 'Anthropic',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity',
-        grok: 'Grok',
-      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
-        googleOauth: 'Google OAuth',
-        codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         antigravityApikey: '通过 Base URL + API Key 连接',
-        upstream: '对接上游',
-        upstreamDesc: '通过 Base URL + API Key 连接上游'
       },
       antigravityProjectIdLabel: 'GCP Project ID（可选）',
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
@@ -333,6 +296,10 @@ export default {
       status: {
         active: '正常',
         inactive: '停用',
+        // ProxiesView 通过 `t('admin.accounts.status.' + value)` 渲染
+        // Proxy['status']，其中包含静态扫描看不到的 'expired'。
+        // 该联合类型的每个取值都需要在此命名空间下有对应文案。
+        expired: '已过期',
         error: '错误',
         cooldown: '冷却中',
         paused: '暂停',
@@ -374,16 +341,12 @@ export default {
         description: '描述',
         descriptionPlaceholder: '可选，便于记忆规则用途',
         rulesInvalid: '请至少填写一条包含错误码、关键词和时长的规则。',
-        viewDetails: '查看临时不可调度详情',
         accountName: '账号',
         triggeredAt: '触发时间',
         until: '解除时间',
         remaining: '剩余时间',
         matchedKeyword: '匹配关键词',
         errorMessage: '错误详情',
-        reset: '恢复状态',
-        resetSuccess: '账号状态已恢复',
-        resetFailed: '恢复账号状态失败',
         failedToLoad: '加载临时不可调度状态失败',
         notActive: '当前账号未处于临时不可调度状态。',
         expired: '已到期',
@@ -400,34 +363,20 @@ export default {
         }
       },
       usageWindow: {
-        statsTitle: '5小时窗口用量统计',
-        statsTitleDaily: '每日用量统计',
-        geminiProDaily: 'Pro',
-        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
-        grokRequests: '请求',
-        grokTokens: 'Token',
         grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limit}）',
         grokWeeklyUsage: '周额度已用 {percent}%',
         grokUsed: '已用 $',
-        grokBalance: '余额 $',
         grokPrepaid: '预付余额',
         grokMonthlyLimit: '月度已用/上限（USD）',
-        grokOverage: '超额 onDemandUsed/onDemandCap',
-        grokOverageShort: '超额 $',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{time} 后重试',
         grokProbe: '探测',
         grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
-        grokResetUnsupported: '不支持重置',
-        grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
         grokNoHeaders: '未观察到配额响应头',
-        grokLastStatus: '状态 {status}',
-        grokLastProbe: '探测 {time}',
-        grokLastHeadersSeen: '响应头 {time}',
         passiveSampled: '被动采样',
         activeQuery: '查询'
       },
@@ -458,11 +407,6 @@ export default {
         free: 'Free',
         pro: 'Pro',
         ultra: 'Ultra',
-        aiPremium: 'AI Premium',
-        standard: '标准版',
-        basic: '基础版',
-        personal: '个人版',
-        unlimited: '无限制'
       },
       ineligibleWarning:
         '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
@@ -517,11 +461,6 @@ export default {
         rateSyncConflict: '无法修改账号倍率：{count} 个目标账号已开启上游倍率同步。',
         mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
       },
-      bulkDeleteTitle: '批量删除账号',
-      bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',
-      bulkDeleteSuccess: '成功删除 {count} 个账号',
-      bulkDeletePartial: '部分删除成功：成功 {success} 个，失败 {failed} 个',
-      bulkDeleteFailed: '批量删除失败',
       recoverState: '恢复状态',
       recoverStateHint: '用于恢复错误、限流和临时不可调度等可恢复状态。',
       recoverStateSuccess: '账号状态已恢复',
@@ -538,14 +477,7 @@ export default {
       duplicateAccount: '复制账号',
       duplicateSuccess: '账号已复制为「{name}」，已暂停调度，请确认凭据后再启用',
       duplicateFailed: '复制账号失败',
-      resetStatus: '重置状态',
-      statusReset: '账号状态已重置',
-      failedToResetStatus: '重置账号状态失败',
       testFailed: '账号测试失败',
-      failedToLoad: '加载账号列表失败',
-      failedToDelete: '删除账号失败',
-      failedToRefresh: '刷新 Cookie 失败',
-      // Create/Edit Account Modal
       platform: '平台',
       accountName: '账号名称',
       enterAccountName: '请输入账号名称',
@@ -554,11 +486,8 @@ export default {
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',
       bedrockDesc: 'SigV4 / API Key',
-      vertexLabel: 'Vertex',
-      vertexDesc: 'Service Account',
       vertexAnthropicHint: '使用 Google Cloud Service Account JSON 通过 Vertex AI 调用 Anthropic Claude。建议配置模型映射，将客户端 Claude 模型名映射到 Vertex 模型 ID。',
       vertexGeminiHint: '使用 Google Cloud Service Account JSON 访问 Vertex AI Gemini。建议将 Vertex 账号放入独立分组，避免和 AI Studio/Gemini OAuth 同模型混调。',
-      vertexSaJsonLabel: 'Service Account JSON',
       vertexSaJsonLoaded: '已读取 Service Account JSON',
       vertexSaJsonDrop: '拖入 Service Account JSON',
       vertexSaJsonKeyHidden: '密钥内容不会在表单中显示。',
@@ -580,7 +509,6 @@ export default {
       baseUrl: 'Base URL',
       baseUrlHint: '留空使用官方 Anthropic API',
       apiKeyRequired: 'API Key *',
-      apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: '您的 Claude Console API Key',
       // OpenAI specific hints
       openai: {
@@ -594,9 +522,6 @@ export default {
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',
         longContextBilling: 'API 长上下文计费',
         longContextBillingDesc: '默认关闭。仅当该账号的上游会按模型阈值收取 OpenAI API 长上下文费率时开启。',
-        responsesWebsocketsV2: 'Responses WebSocket v2',
-        responsesWebsocketsV2Desc:
-          '默认关闭。开启后可启用 responses_websockets_v2 协议能力（受网关全局开关与账号类型开关约束）。',
         wsMode: 'WS mode',
         wsModeDesc:
           '仅对当前 OpenAI 账号类型生效；包括 http_bridge 在内的账号 WS mode 仅在全局 gateway.openai_ws.mode_router_v2_enabled=true 时生效。',
@@ -604,17 +529,8 @@ export default {
         wsModeCtxPool: '上下文池（ctx_pool）',
         wsModePassthrough: '透传（passthrough）',
         wsModeHttpBridge: 'HTTP 桥接（http_bridge）',
-        wsModeShared: '共享（shared）',
-        wsModeDedicated: '独享（dedicated）',
         wsModeConcurrencyHint: '启用 WS mode 后，该账号并发数将作为该账号 WS 连接池上限。',
         wsModePassthroughHint: 'passthrough 模式不使用 WS 连接池。',
-        oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
-        oauthResponsesWebsocketsV2Desc:
-          '仅对 OpenAI OAuth 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',
-        apiKeyResponsesWebsocketsV2: 'API Key WebSocket Mode',
-        apiKeyResponsesWebsocketsV2Desc:
-          '仅对 OpenAI API Key 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',
-        responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
         responsesMode: 'Responses API 支持',
         responsesModeDesc:
           '仅对 OpenAI API Key 的文本转发链路生效。自动跟随探测结果，强制模式会覆盖自动探测。',
@@ -676,7 +592,6 @@ export default {
         compactSupported: '支持 Compact',
         compactUnsupported: '不支持 Compact',
         compactAuto: 'Compact Auto',
-        compactUnknown: 'Compact Auto',
         compactLastChecked: '最近探测',
         testMode: '测试模式',
         testModeDefault: '常规请求',
@@ -684,9 +599,6 @@ export default {
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
       grok: {
-        baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
-        apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。',
-        // 账号连通性测试弹窗
         testMode: '测试模式',
         testModeHint:
           '文本 / 图片 / 视频使用所选模型。网页搜索、TTS、STT、Realtime 走独立接口探测（不是对话里的 tools）。',
@@ -758,6 +670,9 @@ export default {
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',
       actualModel: '实际模型',
+      // 模型映射「from → to」两个输入框的占位文案。
+      fromModel: '请求模型',
+      toModel: '实际模型',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -793,7 +708,6 @@ export default {
         '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
       customErrorCodes529Warning:
         '529 已有内置的过载处理机制。添加到自定义错误码后，将直接停止调度而非临时标记过载。确定要添加吗？',
-      selectedErrorCodes: '已选择',
       noneSelectedUsesDefault: '未选择（使用默认策略）',
       enterErrorCode: '输入错误码 (100-599)',
       invalidErrorCode: '请输入有效的 HTTP 错误码 (100-599)',
@@ -881,7 +795,6 @@ export default {
           strategyStickyExempt: '粘性豁免',
           strategyTieredHint: '绿区→黄区→仅粘性→阻塞，逐步限流',
           strategyStickyExemptHint: '超限后仅允许粘性会话',
-          strategyHint: '三区模型: 超限后逐步限制; 粘性豁免: 已有会话不受限',
           stickyBuffer: '粘性缓冲区',
           stickyBufferPlaceholder: '默认: base RPM 的 20%',
           stickyBufferHint: '超过 base RPM 后，粘性会话额外允许的请求数。为空则使用默认值（base RPM 的 20%，最小为 1）',
@@ -913,24 +826,8 @@ export default {
           urlHint: '中继服务地址（如 https://relay.example.com）',
         },
         clientAffinity: {
-          label: '客户端亲和调度',
-          hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'
         }
       },
-      affinityNoClients: '无亲和客户端',
-      affinityClients: '{count} 个亲和客户端：',
-      affinitySection: '客户端亲和',
-      affinitySectionHint: '控制客户端在账号间的分布。通过配置区域阈值来平衡负载。',
-      affinityToggle: '启用客户端亲和',
-      affinityToggleHint: '新会话优先调度到该客户端之前使用过的账号',
-      affinityBase: '基础限额（绿区）',
-      affinityBasePlaceholder: '留空表示不限制',
-      affinityBaseHint: '绿区最大客户端数量（完整优先级调度）',
-      affinityBaseOffHint: '未开启绿区限制，所有客户端均享受完整优先级调度',
-      affinityBuffer: '缓冲区（黄区）',
-      affinityBufferPlaceholder: '例如 3',
-      affinityBufferHint: '黄区允许的额外客户端数量（降级优先级调度）',
-      affinityBufferInfinite: '不限制',
       expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',
@@ -943,9 +840,7 @@ export default {
       billingRateMultiplierHint: '0 表示不计费，仅影响账号计费',
       expiresAt: '过期时间',
       expiresAtHint: '留空表示不过期',
-      higherPriorityFirst: '数值越小优先级越高',
       mixedScheduling: '在 /v1/messages 中使用',
-      mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
         '！！注意！！ Antigravity Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Antigravity 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Antigravity 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
       aiCreditsBalance: 'AI Credits',
@@ -956,6 +851,10 @@ export default {
       updating: '更新中...',
       accountCreated: '账号创建成功',
       accountUpdated: '账号更新成功',
+      // CreateAccountModal 使用嵌套路径，需与上方扁平的 accountCreated 保持一致。
+      messages: {
+        accountCreated: '账号创建成功',
+      },
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
       pleaseSelectStatus: '请选择有效的账号状态',
@@ -972,14 +871,11 @@ export default {
       bedrockForceGlobalHint: '启用后模型 ID 使用 global. 前缀（如 global.anthropic.claude-...），请求可路由到全球任意支持的区域，获得更高可用性',
       bedrockAccessKeyIdRequired: '请输入 AWS Access Key ID',
       bedrockSecretAccessKeyRequired: '请输入 AWS Secret Access Key',
-      bedrockRegionRequired: '请选择 AWS Region',
       bedrockSessionTokenHint: '可选，用于临时凭证',
       bedrockSecretKeyLeaveEmpty: '留空以保持当前密钥',
       bedrockAuthMode: '认证方式',
       bedrockAuthModeSigv4: 'SigV4 签名',
       bedrockAuthModeApikey: 'Bedrock API Key',
-      bedrockApiKeyLabel: 'Bedrock API Key',
-      bedrockApiKeyDesc: 'Bearer Token 认证',
       bedrockApiKeyInput: 'API Key',
       bedrockApiKeyRequired: '请输入 Bedrock API Key',
       bedrockApiKeyLeaveEmpty: '留空以保持当前密钥',
@@ -1252,8 +1148,6 @@ export default {
           title: 'Gemini 使用指南',
           apiKeySection: 'API Key 相关链接'
         },
-        modelPassthrough: 'Gemini 直接转发模型',
-        modelPassthroughDesc: '所有模型请求将直接转发至 Gemini API，不进行模型限制或映射。',
         baseUrlHint: '留空使用官方 Gemini API',
         apiKeyHint: '您的 Gemini API Key（以 AIza 开头）',
         tier: {
@@ -1287,7 +1181,6 @@ export default {
         oauthType: {
           builtInTitle: '内置授权（Gemini CLI / Code Assist）',
           builtInDesc: '使用 Google 内置客户端 ID，无需管理员配置。',
-          builtInRequirement: '需要 GCP 项目并填写 Project ID。',
           googleOneDesc: '个人账号，享受 Google One 订阅配额',
           codeAssistDesc: '企业级，需要 GCP 项目',
           codeAssistRequirement: '需要激活 GCP 项目并绑定信用卡',
@@ -1298,12 +1191,10 @@ export default {
           customDesc: '使用管理员预设的 OAuth 客户端，适合组织管理。',
           customRequirement: '需管理员配置 Client ID 并加入测试用户白名单。',
           badges: {
-            recommended: '推荐',
             highConcurrency: '高并发',
             individuals: '推荐个人用户',
             noGcp: '无需 GCP',
             enterprise: '企业用户',
-            noAdmin: '无需管理员配置',
             orgManaged: '组织管理',
             adminRequired: '需要管理员'
           }
@@ -1354,36 +1245,14 @@ export default {
               limitsStandard: '共享池：1500 RPD / 120 RPM（不分模型）',
               limitsEnterprise: '共享池：2000 RPD / 120 RPM（不分模型）'
             },
-            cli: {
-              channel: 'Gemini CLI（官方 Google 登录 / Code Assist）',
-              free: '免费 Google 账号',
-              premium: 'Google One AI Premium',
-              limitsFree: 'RPD ~1000；RPM ~60（软限制）',
-              limitsPremium: 'RPD ~1500+；RPM ~60+（优先队列）'
-            },
-            gcloud: {
-              channel: 'GCP Code Assist（gcloud 登录）',
-              account: '未购买 Code Assist 订阅',
-              limits: 'RPD ~1000；RPM ~60（预览期）'
-            },
             aiStudio: {
               channel: 'AI Studio API Key / OAuth',
-              free: '未绑卡（免费层）',
-              paid: '已绑卡（按量付费）',
               limitsFree: 'RPD 50；RPM 2（Pro）/ 15（Flash）',
               limitsPaid: 'RPD 不限；RPM 1000（Pro）/ 2000（Flash）（按模型配额）'
             },
-            customOAuth: {
-              channel: 'Custom OAuth Client（GCP）',
-              free: '项目未绑卡',
-              paid: '项目已绑卡',
-              limitsFree: 'RPD 50；RPM 2（项目配额）',
-              limitsPaid: 'RPD 不限；RPM 1000+（项目配额）'
-            }
           }
         },
         rateLimit: {
-          ok: '未限流',
           unlimited: '无限流',
           limited: '限流 {time}',
           now: '现在'
@@ -1455,7 +1324,6 @@ export default {
         avgDailyRequests: '日均请求',
         avgDailyUsage: '平均每日调用',
         todayOverview: '今日概览',
-        cost: '费用',
         requests: '请求',
         tokens: 'Token',
         highestCostDay: '最高费用日',

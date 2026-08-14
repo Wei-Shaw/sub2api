@@ -41,8 +41,6 @@ func RegisterPaymentRoutes(
 			orders.GET("/my", paymentHandler.GetMyOrders)
 			orders.GET("/:id", paymentHandler.GetOrder)
 			orders.POST("/:id/cancel", paymentHandler.CancelOrder)
-			orders.POST("/:id/refund-request", paymentHandler.RequestRefund)
-			orders.GET("/refund-eligible-providers", paymentHandler.GetRefundEligibleProviders)
 		}
 	}
 
@@ -59,13 +57,8 @@ func RegisterPaymentRoutes(
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
 	{
-		// EasyPay sends GET callbacks with query params
-		webhook.GET("/easypay", webhookHandler.EasyPayNotify)
-		webhook.POST("/easypay", webhookHandler.EasyPayNotify)
-		webhook.POST("/alipay", webhookHandler.AlipayNotify)
-		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
-		webhook.POST("/stripe", webhookHandler.StripeWebhook)
-		webhook.POST("/airwallex", webhookHandler.AirwallexWebhook)
+		webhook.POST("/sepay", webhookHandler.SePayNotify)
+		webhook.POST("/nowpayments", webhookHandler.NOWPaymentsNotify)
 	}
 
 	// --- Admin payment endpoints (admin auth) ---
@@ -88,8 +81,6 @@ func RegisterPaymentRoutes(
 			adminOrders.GET("/:id", adminPaymentHandler.GetOrderDetail)
 			adminOrders.POST("/:id/cancel", adminPaymentHandler.CancelOrder)
 			adminOrders.POST("/:id/retry", adminPaymentHandler.RetryFulfillment)
-			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
-			adminOrders.POST("/:id/refund/query", adminPaymentHandler.QueryAndFinalizeRefund)
 		}
 
 		// Subscription Plans

@@ -1,33 +1,74 @@
 <template>
   <AppLayout>
-    <div class="mx-auto flex max-w-md flex-col items-center space-y-6 py-8">
-      <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
-        {{ qrUrl ? scanTitle : t('payment.qr.payInNewWindow') }}
-      </h2>
-      <div v-if="qrUrl" class="rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
-        <canvas ref="qrCanvas" class="mx-auto"></canvas>
+    <div class="mx-auto max-w-md space-y-6 py-8">
+      <header>
+        <h1 class="text-lg font-semibold text-ink">
+          {{ qrUrl ? scanTitle : t('payment.qr.payInNewWindow') }}
+        </h1>
+        <p v-if="qrUrl && !expired && scanHint" class="mt-1 text-sm text-ink-tertiary">
+          {{ scanHint }}
+        </p>
+      </header>
+
+      <div v-if="qrUrl" class="flex justify-center">
+        <QrFrame :tone="qrTone" :logo="qrLogoIcon">
+          <canvas ref="qrCanvas" class="mx-auto block"></canvas>
+        </QrFrame>
       </div>
-      <!-- Scan prompt for QR code -->
-      <p v-if="qrUrl && !expired && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
-        {{ scanHint }}
-      </p>
-      <div v-if="expired" class="text-center">
-        <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
-        <button class="btn btn-primary mt-4" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+
+      <!--
+        The expiry used to be a bare `text-lg text-red-500` line with no word
+        for the state and no live region, so a screen reader user watching a
+        countdown was simply never told it had run out.
+      -->
+      <div v-if="expired" class="rounded border border-line bg-surface p-5">
+        <div aria-live="polite">
+          <p class="text-2xs font-medium uppercase tracking-[0.08em] text-warn">
+            {{ t('payment.status.expired') }}
+          </p>
+          <p class="mt-2 text-sm font-medium text-ink">{{ t('payment.qr.expired') }}</p>
+        </div>
+        <Button
+          class="mt-5"
+          tone="accent"
+          variant="solid"
+          size="md"
+          @click="router.push('/purchase')"
+        >
+          {{ t('payment.result.backToRecharge') }}
+        </Button>
       </div>
-      <div v-else class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ qrUrl ? t('payment.qr.expiresIn') : t('payment.qr.payInNewWindowHint') }}</p>
-        <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
-        <p class="mt-2 text-sm text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
-      </div>
-      <a v-if="payUrl && !qrUrl && !expired" :href="payUrl" target="_blank" rel="noopener noreferrer"
-        class="btn btn-primary w-full py-3">
-        {{ t('payment.qr.openPayWindow') }}
-      </a>
-      <!-- Cancel button -->
-      <button v-if="!expired && orderId" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
-        {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
-      </button>
+
+      <template v-else>
+        <CountdownPanel
+          :label="qrUrl ? t('payment.qr.expiresIn') : t('payment.qr.payInNewWindowHint')"
+          :value="countdownDisplay"
+          :caption="t('payment.qr.waitingPayment')"
+        />
+
+        <Button
+          v-if="payUrl && !qrUrl"
+          :href="payUrl"
+          variant="outline"
+          size="md"
+          block
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {{ t('payment.qr.openPayWindow') }}
+        </Button>
+
+        <Button
+          v-if="orderId"
+          variant="outline"
+          size="md"
+          block
+          :loading="cancelling"
+          @click="handleCancel"
+        >
+          {{ t('payment.qr.cancelOrder') }}
+        </Button>
+      </template>
     </div>
   </AppLayout>
 </template>
@@ -37,11 +78,15 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+// Direct path, never the `components/common` barrel — it pulls `createI18n`
+// into the graph and breaks partial `vue-i18n` factory mocks.
+import Button from '@/components/common/Button.vue'
+import CountdownPanel from '@/components/payment/CountdownPanel.vue'
+import QrFrame from '@/components/payment/QrFrame.vue'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
-import { isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
@@ -70,8 +115,21 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
 
-const isAlipay = computed(() => isBuiltInAlipayMethod(paymentType.value))
-const isWxpay = computed(() => isBuiltInWxpayMethod(paymentType.value))
+const isAlipay = computed(() => false)
+const isWxpay = computed(() => false)
+
+const qrTone = computed<'alipay' | 'wxpay' | ''>(() => {
+  if (isAlipay.value) return 'alipay'
+  if (isWxpay.value) return 'wxpay'
+  return ''
+})
+
+/** No mark for an unrecognised provider — an invented logo is worse than none. */
+const qrLogoIcon = computed(() => {
+  if (isAlipay.value) return alipayIcon
+  if (isWxpay.value) return wxpayIcon
+  return ''
+})
 
 const scanTitle = computed(() => {
   if (isAlipay.value) return t('payment.qr.scanAlipay')
@@ -85,51 +143,22 @@ const scanHint = computed(() => {
   return ''
 })
 
-function getLogoForType(): string | null {
-  if (isAlipay.value) return alipayIcon
-  if (isWxpay.value) return wxpayIcon
-  return null
-}
-
 async function renderQR() {
   await nextTick()
   if (!qrCanvas.value || !qrUrl.value) return
 
-  // Use medium error correction to support logo overlay while keeping QR code scannable
-  const logoSrc = getLogoForType()
+  /*
+   * The brand mark is a DOM overlay now (see `QrFrame`) rather than being
+   * composited into the canvas by hand — 25 lines of `arcTo` drawing a white
+   * rounded rectangle that CSS already does. `M` error correction is still
+   * required whenever a mark covers the centre modules, or the code stops
+   * scanning; without one, `L` keeps the modules larger for the camera.
+   */
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 256,
     margin: 2,
-    errorCorrectionLevel: logoSrc ? 'M' : 'L',
+    errorCorrectionLevel: qrLogoIcon.value ? 'M' : 'L',
   })
-
-  if (!logoSrc) return
-
-  // Draw logo in center of QR code
-  const canvas = qrCanvas.value
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  const img = new Image()
-  img.src = logoSrc
-  img.onload = () => {
-    const logoSize = 48
-    const x = (canvas.width - logoSize) / 2
-    const y = (canvas.height - logoSize) / 2
-    // White background with rounded corners
-    const pad = 5
-    ctx.fillStyle = '#FFFFFF'
-    ctx.beginPath()
-    const r = 6
-    ctx.moveTo(x - pad + r, y - pad)
-    ctx.arcTo(x + logoSize + pad, y - pad, x + logoSize + pad, y + logoSize + pad, r)
-    ctx.arcTo(x + logoSize + pad, y + logoSize + pad, x - pad, y + logoSize + pad, r)
-    ctx.arcTo(x - pad, y + logoSize + pad, x - pad, y - pad, r)
-    ctx.arcTo(x - pad, y - pad, x + logoSize + pad, y - pad, r)
-    ctx.fill()
-    // Draw logo
-    ctx.drawImage(img, x, y, logoSize, logoSize)
-  }
 }
 
 let pollInFlight = false

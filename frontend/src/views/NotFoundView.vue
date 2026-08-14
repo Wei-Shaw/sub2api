@@ -1,78 +1,51 @@
 <template>
+  <!--
+    404, editorial. What used to be here: two blurred `bg-primary-*/10` orbs, a
+    12rem ghost numeral, a gradient-filled rounded tile with a warning glyph and
+    a glow shadow, and a `href="#"` "Contact support" link that navigated
+    nowhere. A page that cannot show the user anything should not be the loudest
+    screen in the product — one rule, one line of type, two ways out.
+  -->
   <div
-    class="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-50 px-4 dark:bg-dark-950"
+    data-testid="not-found"
+    class="flex min-h-screen flex-col justify-center bg-canvas px-6 py-16 text-ink"
   >
-    <!-- Background Decoration -->
-    <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div
-        class="absolute -right-40 -top-40 h-80 w-80 rounded-full bg-primary-400/10 blur-3xl"
-      ></div>
-      <div
-        class="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-primary-500/10 blur-3xl"
-      ></div>
-    </div>
-
-    <div class="relative z-10 w-full max-w-md text-center">
-      <!-- 404 Display -->
-      <div class="mb-8">
-        <div class="relative inline-block">
-          <span class="text-[12rem] font-bold leading-none text-gray-100 dark:text-dark-800"
-            >404</span
-          >
-          <div class="absolute inset-0 flex items-center justify-center">
-            <div
-              class="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30"
-            >
-              <svg
-                class="h-12 w-12 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                stroke-width="1.5"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Text Content -->
-      <div class="mb-8">
-        <h1 class="mb-3 text-2xl font-bold text-gray-900 dark:text-white">
-          {{ t('errors.pageNotFound') }}
-        </h1>
-        <p class="text-gray-500 dark:text-dark-400">
-          The page you are looking for doesn't exist or has been moved.
-        </p>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="flex flex-col justify-center gap-3 sm:flex-row">
-        <button @click="goBack" class="btn btn-secondary">
-          <Icon name="arrowLeft" size="md" class="mr-2" />
-          Go Back
-        </button>
-        <router-link to="/dashboard" class="btn btn-primary">
-          <Icon name="home" size="md" class="mr-2" />
-          Go to Dashboard
-        </router-link>
-      </div>
-
-      <!-- Help Link -->
-      <p class="mt-8 text-sm text-gray-400 dark:text-dark-500">
-        Need help?
-        <a
-          href="#"
-          class="text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
-        >
-          Contact support
-        </a>
+    <div class="mx-auto w-full max-w-2xl">
+      <p class="font-mono text-2xs uppercase tracking-[0.04em] tabular-nums text-ink-tertiary">
+        404
       </p>
+
+      <h1 class="mt-5 text-3xl font-semibold">
+        {{ t('errors.pageNotFound') }}
+      </h1>
+
+      <p class="mt-4 max-w-lg text-md text-ink-secondary">
+        {{ t('errors.pageNotFoundDescription') }}
+      </p>
+
+      <hr class="mt-8 h-px w-full border-0 bg-line-subtle" />
+
+      <div class="mt-8 flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="md" data-testid="not-found-back" @click="goBack">
+          <template #icon>
+            <Icon name="arrowLeft" size="xs" :stroke-width="2" />
+          </template>
+          {{ t('common.back') }}
+        </Button>
+
+        <Button
+          to="/dashboard"
+          tone="accent"
+          variant="solid"
+          size="md"
+          data-testid="not-found-dashboard"
+        >
+          {{ t('home.goToDashboard') }}
+          <template #trailing>
+            <Icon name="arrowRight" size="xs" :stroke-width="2" />
+          </template>
+        </Button>
+      </div>
     </div>
   </div>
 </template>
@@ -80,6 +53,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+
+import Button from '@/components/common/Button.vue'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()

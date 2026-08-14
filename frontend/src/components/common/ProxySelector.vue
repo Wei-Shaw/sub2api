@@ -261,7 +261,7 @@ const handleTestProxy = async (proxy: Proxy) => {
   } catch (error: any) {
     testResults[proxy.id] = {
       success: false,
-      message: error.response?.data?.detail || 'Test failed'
+      message: error.response?.data?.detail || t('admin.proxies.testFailedMessage')
     }
   } finally {
     testingProxyIds.delete(proxy.id)
@@ -282,7 +282,7 @@ const handleBatchTest = async () => {
     } catch (error: any) {
       testResults[proxy.id] = {
         success: false,
-        message: error.response?.data?.detail || 'Test failed'
+        message: error.response?.data?.detail || t('admin.proxies.testFailedMessage')
       }
     } finally {
       testingProxyIds.delete(proxy.id)

@@ -45,7 +45,6 @@ func backendModeAllowsAuthPath(path string) bool {
 	for _, suffix := range []string{
 		"/auth/oauth/linuxdo/callback",
 		"/auth/oauth/wechat/callback",
-		"/auth/oauth/wechat/payment/callback",
 		"/auth/oauth/oidc/callback",
 		"/auth/oauth/github/callback",
 		"/auth/oauth/google/callback",

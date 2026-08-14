@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -37,63 +36,35 @@ func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *
 	}
 }
 
-// EasyPayNotify handles EasyPay payment notifications.
-// POST /api/v1/payment/webhook/easypay
-func (h *PaymentWebhookHandler) EasyPayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeEasyPay)
+// SePayNotify handles SePay bank-transfer notifications.
+// POST /api/v1/payment/webhook/sepay
+func (h *PaymentWebhookHandler) SePayNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeSePay)
 }
 
-// AlipayNotify handles Alipay payment notifications.
-// POST /api/v1/payment/webhook/alipay
-func (h *PaymentWebhookHandler) AlipayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeAlipay)
-}
-
-// WxpayNotify handles WeChat Pay payment notifications.
-// POST /api/v1/payment/webhook/wxpay
-func (h *PaymentWebhookHandler) WxpayNotify(c *gin.Context) {
-	h.handleNotify(c, payment.TypeWxpay)
-}
-
-// StripeWebhook handles Stripe webhook events.
-// POST /api/v1/payment/webhook/stripe
-func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
-	h.handleNotify(c, payment.TypeStripe)
-}
-
-// AirwallexWebhook 处理空中云汇 Webhook 事件。
-// POST /api/v1/payment/webhook/airwallex
-func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
-	h.handleNotify(c, payment.TypeAirwallex)
+// NOWPaymentsNotify handles NOWPayments IPN callbacks.
+// POST /api/v1/payment/webhook/nowpayments
+func (h *PaymentWebhookHandler) NOWPaymentsNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeNowPayments)
 }
 
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
-	var rawBody string
-	if c.Request.Method == http.MethodGet {
-		// GET callbacks (e.g. EasyPay) pass params as URL query string
-		rawBody = c.Request.URL.RawQuery
-	} else {
-		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
-		if err != nil {
-			slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
-			c.String(http.StatusBadRequest, "failed to read body")
-			return
-		}
-		rawBody = string(body)
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
+	if err != nil {
+		slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
+		c.String(http.StatusBadRequest, "failed to read body")
+		return
 	}
+	rawBody := string(body)
 
 	// Extract out_trade_no to look up the order's specific provider instance.
-	// This is needed when multiple instances of the same provider exist (e.g. multiple EasyPay accounts).
+	// This is needed when multiple instances of the same provider exist.
 	outTradeNo := extractOutTradeNo(rawBody, providerKey)
 
 	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
-		if providerKey == payment.TypeWxpay {
-			c.String(http.StatusBadRequest, "verify failed")
-			return
-		}
 		writeSuccessResponse(c, providerKey)
 		return
 	}
@@ -115,7 +86,8 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		return
 	}
 
-	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
+	// A nil notification means an event we have nothing to do with — an outgoing
+	// bank transfer, or a NOWPayments status still in flight. Ack it.
 	if notification == nil {
 		writeSuccessResponse(c, resolvedProviderKey)
 		return
@@ -148,40 +120,48 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
-	case payment.TypeEasyPay, payment.TypeAlipay:
-		values, err := url.ParseQuery(rawBody)
-		if err == nil {
-			return values.Get("out_trade_no")
-		}
-	case payment.TypeAirwallex:
+	case payment.TypeSePay:
 		var payload struct {
-			Data struct {
-				Object struct {
-					MerchantOrderID string `json:"merchant_order_id"`
-				} `json:"object"`
-			} `json:"data"`
+			Code        *string `json:"code"`
+			Content     string  `json:"content"`
+			Description string  `json:"description"`
 		}
-		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
-			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
+		if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
+			return ""
 		}
+		if payload.Code != nil {
+			if code := payment.ExtractOrderCode(*payload.Code); code != "" {
+				return code
+			}
+		}
+		if code := payment.ExtractOrderCode(payload.Content); code != "" {
+			return code
+		}
+		return payment.ExtractOrderCode(payload.Description)
+	case payment.TypeNowPayments:
+		var payload struct {
+			OrderID string `json:"order_id"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
+			return ""
+		}
+		return strings.TrimSpace(payload.OrderID)
 	}
-	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
-	// typically has only one instance, so no instance lookup is needed.
 	return ""
 }
 
 func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (string, *payment.PaymentNotification, error) {
 	var lastErr error
-	for _, provider := range providers {
-		if provider == nil {
+	for _, prov := range providers {
+		if prov == nil {
 			continue
 		}
-		notification, err := provider.VerifyNotification(ctx, rawBody, headers)
+		notification, err := prov.VerifyNotification(ctx, rawBody, headers)
 		if err != nil {
 			lastErr = err
 			continue
 		}
-		return provider.ProviderKey(), notification, nil
+		return prov.ProviderKey(), notification, nil
 	}
 	if lastErr != nil {
 		return "", nil, lastErr
@@ -189,28 +169,18 @@ func verifyNotificationWithProviders(ctx context.Context, providers []payment.Pr
 	return "", nil, fmt.Errorf("no webhook provider could verify notification")
 }
 
-// wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.
-type wxpaySuccessResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+// sepaySuccessResponse is the JSON body SePay expects so it marks the callback
+// as delivered instead of retrying it.
+type sepaySuccessResponse struct {
+	Success bool `json:"success"`
 }
 
-// WeChat Pay webhook success response constants.
-const (
-	wxpaySuccessCode    = "SUCCESS"
-	wxpaySuccessMessage = "成功"
-)
-
-// writeSuccessResponse 返回各支付服务商要求的成功响应。
-// 微信支付需要 JSON {"code":"SUCCESS","message":"成功"}；
-// Stripe 和空中云汇接受空 200，其它服务商接受纯文本 "success"。
+// writeSuccessResponse returns the acknowledgement each provider expects.
 func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
-	case payment.TypeWxpay:
-		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessage})
-	case payment.TypeStripe, payment.TypeAirwallex:
-		c.String(http.StatusOK, "")
+	case payment.TypeSePay:
+		c.JSON(http.StatusOK, sepaySuccessResponse{Success: true})
 	default:
-		c.String(http.StatusOK, "success")
+		c.String(http.StatusOK, "")
 	}
 }

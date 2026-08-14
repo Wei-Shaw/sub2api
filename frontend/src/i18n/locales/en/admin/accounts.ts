@@ -34,7 +34,6 @@ export default {
       dataImportButton: 'Start Import',
       dataImporting: 'Importing...',
       dataImportSelectFile: 'Please select a data file',
-      dataImportParseFailed: 'Failed to parse data file',
       dataImportParseFailedFile: 'Failed to parse {name}',
       dataImportInvalidFile: '{name} is not a supported data export file',
       dataImportIgnoredFiles: 'Ignored {count} non-JSON file(s)',
@@ -91,31 +90,17 @@ export default {
       setupToken: 'Setup Token',
       apiKey: 'API Key',
       // Schedulable toggle
-      schedulable: 'Schedulable',
-      schedulableHint: 'Enable to include this account in API request scheduling',
       schedulableEnabled: 'Scheduling enabled',
       schedulableDisabled: 'Scheduling disabled',
       failedToToggleSchedulable: 'Failed to toggle scheduling status',
       groupCountTotal: '{count} groups total',
-      platforms: {
-        anthropic: 'Anthropic',
-        claude: 'Claude',
-        openai: 'OpenAI',
-        gemini: 'Gemini',
-        antigravity: 'Antigravity',
-        grok: 'Grok',
-      },
       types: {
         oauth: 'OAuth',
         chatgptOauth: 'ChatGPT OAuth',
         responsesApi: 'Responses API',
-        googleOauth: 'Google OAuth',
-        codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
-        upstream: 'Upstream',
-        upstreamDesc: 'Connect via Base URL + API Key'
       },
       antigravityProjectIdLabel: 'GCP Project ID (optional)',
       antigravityProjectIdPlaceholder: 'your-gcp-project-id',
@@ -130,6 +115,10 @@ export default {
       status: {
         active: 'Active',
         inactive: 'Inactive',
+        // ProxiesView renders `t('admin.accounts.status.' + value)` over
+        // Proxy['status'], which includes 'expired' — a member no static scan
+        // can see. Keep this namespace covering every member of that union.
+        expired: 'Expired',
         error: 'Error',
         cooldown: 'Cooldown',
         paused: 'Paused',
@@ -153,14 +142,11 @@ export default {
         name: 'Name',
         id: 'Account ID',
         platformType: 'Platform/Type',
-        platform: 'Platform',
-        type: 'Type',
         capacity: 'Capacity',
         notes: 'Notes',
         priority: 'Priority',
         billingRateMultiplier: 'Billing Rate',
         upstreamBillingRate: 'Upstream Declared Rate',
-        weight: 'Weight',
         schedulerScore: 'Scheduler Score',
         status: 'Status',
         schedulable: 'Schedulable',
@@ -174,8 +160,6 @@ export default {
         actions: 'Actions'
       },
       schedulerScore: {
-        baseShort: 'Base',
-        stickyShort: 'Sticky',
         ungrouped: 'Ungrouped',
         hint: 'Displayed as "group / base score / sticky bonus". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, billing rate, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred.'
       },
@@ -288,9 +272,6 @@ export default {
           normal: 'Active sessions normal (idle timeout: {idle} min)'
         },
         rpm: {
-          full: 'RPM limit reached',
-          warning: 'RPM approaching limit',
-          normal: 'RPM normal',
           tieredNormal: 'RPM limit (Tiered) - Normal',
           tieredWarning: 'RPM limit (Tiered) - Approaching limit',
           tieredStickyOnly: 'RPM limit (Tiered) - Sticky only | Buffer: {buffer}',
@@ -326,16 +307,12 @@ export default {
         description: 'Description',
         descriptionPlaceholder: 'Optional note for this rule',
         rulesInvalid: 'Add at least one rule with error code, keywords, and duration.',
-        viewDetails: 'View temp unschedulable details',
         accountName: 'Account',
         triggeredAt: 'Triggered At',
         until: 'Until',
         remaining: 'Remaining',
         matchedKeyword: 'Matched Keyword',
         errorMessage: 'Error Details',
-        reset: 'Recover State',
-        resetSuccess: 'Account state recovered successfully',
-        resetFailed: 'Failed to recover account state',
         failedToLoad: 'Failed to load temp unschedulable status',
         notActive: 'This account is not temporarily unschedulable.',
         expired: 'Expired',
@@ -351,9 +328,7 @@ export default {
           unavailableDesc: 'Unavailable - pause 30 minutes'
         }
       },
-      clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
-      quotaLimit: 'Quota Limit',
       quotaLimitPlaceholder: '0 means unlimited',
       quotaLimitHint: 'Set daily/weekly/total spending limits (USD). Anthropic API key accounts can also configure client affinity. Changing limits won\'t reset usage.',
       quotaLimitToggle: 'Enable Quota Limit',
@@ -369,7 +344,6 @@ export default {
       quotaResetModeFixed: 'Fixed Time',
       quotaResetHour: 'Reset Hour',
       quotaWeeklyResetDay: 'Reset Day',
-      quotaResetTimezone: 'Reset Timezone',
       quotaDailyLimitHintFixed: 'Resets daily at {hour}:00 ({timezone}).',
       quotaWeeklyLimitHintFixed: 'Resets every {day} at {hour}:00 ({timezone}).',
       dayOfWeek: {
@@ -381,22 +355,12 @@ export default {
         saturday: 'Saturday',
         sunday: 'Sunday',
       },
-      quotaLimitAmount: 'Total Limit',
-      quotaLimitAmountHint: 'Cumulative spending limit. Does not auto-reset.',
       quotaNotify: {
         alert: 'Alert',
-        enabled: 'Enable Alert',
-        threshold: 'Alert Amount',
-        thresholdPlaceholder: 'Enter percentage',
       },
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
       refreshToken: 'Refresh Token',
-      noAccountsYet: 'No accounts yet',
-      createFirstAccount: 'Create your first account to start using AI services.',
-      tokenRefreshed: 'Token refreshed successfully',
-      accountDeleted: 'Account deleted successfully',
-      rateLimitCleared: 'Rate limit cleared successfully',
       bulkSchedulableEnabled: 'Successfully enabled scheduling for {count} account(s)',
       bulkSchedulableDisabled: 'Successfully disabled scheduling for {count} account(s)',
       bulkSchedulablePartial: 'Scheduling updated partially: {success} succeeded, {failed} failed',
@@ -439,11 +403,6 @@ export default {
         rateSyncConflict: 'Cannot change account rates: {count} target account(s) have upstream rate sync enabled.',
         mixedPlatformWarning: 'Selected accounts span multiple platforms ({platforms}). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
       },
-      bulkDeleteTitle: 'Bulk Delete Accounts',
-      bulkDeleteConfirm: 'Delete the selected {count} account(s)? This action cannot be undone.',
-      bulkDeleteSuccess: 'Deleted {count} account(s)',
-      bulkDeletePartial: 'Partially deleted: {success} succeeded, {failed} failed',
-      bulkDeleteFailed: 'Bulk delete failed',
       recoverState: 'Recover State',
       recoverStateHint: 'Used to recover error, rate-limit, and temporary unschedulable runtime state.',
       recoverStateSuccess: 'Account state recovered successfully',
@@ -460,13 +419,6 @@ export default {
       duplicateAccount: 'Duplicate Account',
       duplicateSuccess: 'Account duplicated as "{name}" and paused. Review its credentials before enabling it.',
       duplicateFailed: 'Failed to duplicate account',
-      resetStatus: 'Reset Status',
-      statusReset: 'Account status reset successfully',
-      failedToResetStatus: 'Failed to reset account status',
-      failedToLoad: 'Failed to load accounts',
-      failedToRefresh: 'Failed to refresh token',
-      failedToDelete: 'Failed to delete account',
-      failedToClearRateLimit: 'Failed to clear rate limit',
       deleteConfirm: "Are you sure you want to delete '{name}'? This action cannot be undone.",
       // Create/Edit Account Modal
       platform: 'Platform',
@@ -477,11 +429,8 @@ export default {
       claudeConsole: 'Claude Console',
       bedrockLabel: 'AWS Bedrock',
       bedrockDesc: 'SigV4 / API Key',
-      vertexLabel: 'Vertex',
-      vertexDesc: 'Service Account',
       vertexAnthropicHint: 'Use a Google Cloud Service Account JSON to call Anthropic Claude via Vertex AI. It is recommended to configure model mapping to map client Claude model names to Vertex model IDs.',
       vertexGeminiHint: 'Use a Google Cloud Service Account JSON to access Vertex AI Gemini. It is recommended to place Vertex accounts in a separate group to avoid mixing with AI Studio/Gemini OAuth on the same models.',
-      vertexSaJsonLabel: 'Service Account JSON',
       vertexSaJsonLoaded: 'Service Account JSON loaded',
       vertexSaJsonDrop: 'Drop Service Account JSON here',
       vertexSaJsonKeyHidden: 'Key content is not displayed in the form.',
@@ -503,7 +452,6 @@ export default {
       baseUrl: 'Base URL',
       baseUrlHint: 'Leave default for official Anthropic API',
       apiKeyRequired: 'API Key *',
-      apiKeyPlaceholder: 'sk-ant-api03-...',
       apiKeyHint: 'Your Claude Console API Key',
       // OpenAI specific hints
       openai: {
@@ -518,9 +466,6 @@ export default {
         longContextBilling: 'API long-context pricing',
         longContextBillingDesc:
           'Disabled by default. Enable only when this account\'s upstream charges OpenAI API long-context rates above the model threshold.',
-        responsesWebsocketsV2: 'Responses WebSocket v2',
-        responsesWebsocketsV2Desc:
-          'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
         wsMode: 'WS mode',
         wsModeDesc:
           'Only applies to the current OpenAI account type; account WS modes, including http_bridge, take effect only when the global gateway.openai_ws.mode_router_v2_enabled=true.',
@@ -528,19 +473,9 @@ export default {
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
         wsModeHttpBridge: 'HTTP Bridge (http_bridge)',
-        wsModeShared: 'Shared (shared)',
-        wsModeDedicated: 'Dedicated (dedicated)',
         wsModeConcurrencyHint:
           'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
         wsModePassthroughHint: 'Passthrough mode does not use the WS connection pool.',
-        oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
-        oauthResponsesWebsocketsV2Desc:
-          'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',
-        apiKeyResponsesWebsocketsV2: 'API Key WebSocket Mode',
-        apiKeyResponsesWebsocketsV2Desc:
-          'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
-        responsesWebsocketsV2PassthroughHint:
-          'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         responsesMode: 'Responses API support',
         responsesModeDesc:
           'Only applies to the OpenAI API Key text forwarding path. Auto follows probe results; force modes override probing.',
@@ -606,7 +541,6 @@ export default {
         compactSupported: 'Compact supported',
         compactUnsupported: 'Compact unsupported',
         compactAuto: 'Compact Auto',
-        compactUnknown: 'Compact Auto',
         compactLastChecked: 'Last compact probe',
         testMode: 'Test mode',
         testModeDefault: 'Default request',
@@ -614,9 +548,6 @@ export default {
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {
-        baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
-        apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.',
-        // Account connectivity test modal
         testMode: 'Test mode',
         testModeHint:
           'Text / image / video use the selected model. Web search, TTS, STT and Realtime hit standalone endpoints (not free-form chat tools).',
@@ -690,6 +621,9 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      // Placeholders for the two inputs of a "from → to" model mapping row.
+      fromModel: 'Request model',
+      toModel: 'Actual model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -728,7 +662,6 @@ export default {
         '429 already has built-in rate limit handling. Adding it to custom error codes will disable the account instead of temporary rate limiting. Are you sure?',
       customErrorCodes529Warning:
         '529 already has built-in overload handling. Adding it to custom error codes will disable the account instead of temporary overload marking. Are you sure?',
-      selectedErrorCodes: 'Selected',
       noneSelectedUsesDefault: 'None selected (uses default policy)',
       enterErrorCode: 'Enter error code (100-599)',
       invalidErrorCode: 'Please enter a valid HTTP error code (100-599)',
@@ -817,7 +750,6 @@ export default {
           strategyStickyExempt: 'Sticky Exempt',
           strategyTieredHint: 'Green → Yellow → Sticky only → Blocked, progressive throttling',
           strategyStickyExemptHint: 'Only sticky sessions allowed when over limit',
-          strategyHint: 'Tiered: gradually restrict when exceeded; Sticky Exempt: existing sessions unrestricted',
           stickyBuffer: 'Sticky Buffer',
           stickyBufferPlaceholder: 'Default: 20% of base RPM',
           stickyBufferHint: 'Extra requests allowed for sticky sessions after exceeding base RPM. Leave empty to use default (20% of base RPM, min 1)',
@@ -849,24 +781,8 @@ export default {
           urlHint: 'Relay service URL (e.g., https://relay.example.com)',
         },
         clientAffinity: {
-          label: 'Client Affinity Scheduling',
-          hint: 'When enabled, new sessions prefer accounts previously used by this client to reduce account switching'
         }
       },
-      affinityNoClients: 'No affinity clients',
-      affinityClients: '{count} affinity clients:',
-      affinitySection: 'Client Affinity',
-      affinitySectionHint: 'Control how clients are distributed across accounts. Configure zone thresholds to balance load.',
-      affinityToggle: 'Enable Client Affinity',
-      affinityToggleHint: 'New sessions prefer accounts previously used by this client',
-      affinityBase: 'Base Limit (Green Zone)',
-      affinityBasePlaceholder: 'Empty = no limit',
-      affinityBaseHint: 'Max clients in green zone (full priority scheduling)',
-      affinityBaseOffHint: 'No green zone limit. All clients receive full priority scheduling.',
-      affinityBuffer: 'Buffer (Yellow Zone)',
-      affinityBufferPlaceholder: 'e.g. 3',
-      affinityBufferHint: 'Additional clients allowed in the yellow zone (degraded priority)',
-      affinityBufferInfinite: 'Unlimited',
       expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
@@ -879,9 +795,7 @@ export default {
       billingRateMultiplierHint: '0 = free, affects account billing only',
       expiresAt: 'Expires At',
       expiresAtHint: 'Leave empty for no expiration',
-      higherPriorityFirst: 'Lower value means higher priority',
       mixedScheduling: 'Use in /v1/messages',
-      mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
         '!! WARNING !! Antigravity Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Antigravity accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Antigravity accounts from Anthropic accounts. Make sure you understand this before enabling!!',
       aiCreditsBalance: 'AI Credits',
@@ -892,6 +806,11 @@ export default {
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
       accountUpdated: 'Account updated successfully',
+      // CreateAccountModal reaches for the nested path; keep it in step with
+      // the flat `accountCreated` above.
+      messages: {
+        accountCreated: 'Account created successfully',
+      },
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
       pleaseSelectStatus: 'Please select a valid account status',
@@ -908,14 +827,11 @@ export default {
       bedrockForceGlobalHint: 'When enabled, model IDs use the global. prefix (e.g. global.anthropic.claude-...), routing requests to any supported region worldwide for higher availability',
       bedrockAccessKeyIdRequired: 'Please enter AWS Access Key ID',
       bedrockSecretAccessKeyRequired: 'Please enter AWS Secret Access Key',
-      bedrockRegionRequired: 'Please select AWS Region',
       bedrockSessionTokenHint: 'Optional, for temporary credentials',
       bedrockSecretKeyLeaveEmpty: 'Leave empty to keep current key',
       bedrockAuthMode: 'Authentication Mode',
       bedrockAuthModeSigv4: 'SigV4 Signing',
       bedrockAuthModeApikey: 'Bedrock API Key',
-      bedrockApiKeyLabel: 'Bedrock API Key',
-      bedrockApiKeyDesc: 'Bearer Token',
       bedrockApiKeyInput: 'API Key',
       bedrockApiKeyRequired: 'Please enter Bedrock API Key',
       bedrockApiKeyLeaveEmpty: 'Leave empty to keep current key',
@@ -1198,9 +1114,6 @@ export default {
           title: 'Gemini Usage Guide',
           apiKeySection: 'API Key Links'
         },
-        modelPassthrough: 'Gemini Model Passthrough',
-        modelPassthroughDesc:
-          'All model requests are forwarded directly to the Gemini API without model restrictions or mappings.',
         baseUrlHint: 'Leave default for official Gemini API',
         apiKeyHint: 'Your Gemini API Key (starts with AIza)',
         tier: {
@@ -1235,7 +1148,6 @@ export default {
         oauthType: {
           builtInTitle: 'Built-in OAuth (Gemini CLI / Code Assist)',
           builtInDesc: 'Uses Google built-in client ID. No admin configuration required.',
-          builtInRequirement: 'Requires a GCP project and Project ID.',
           googleOneDesc: 'Personal account with Google One subscription quota',
           codeAssistDesc: 'Enterprise-grade, requires a GCP project',
           codeAssistRequirement: 'Requires an active GCP project with billing enabled',
@@ -1246,12 +1158,10 @@ export default {
           customDesc: 'Uses admin-configured OAuth client for org management.',
           customRequirement: 'Admin must configure Client ID and add you as a test user.',
           badges: {
-            recommended: 'Recommended',
             highConcurrency: 'High concurrency',
             individuals: 'Recommended for individuals',
             noGcp: 'No GCP required',
             enterprise: 'Enterprise users',
-            noAdmin: 'No admin setup',
             orgManaged: 'Org managed',
             adminRequired: 'Admin required'
           }
@@ -1302,36 +1212,14 @@ export default {
               limitsStandard: 'Shared pool: 1500 RPD / 120 RPM',
               limitsEnterprise: 'Shared pool: 2000 RPD / 120 RPM'
             },
-            cli: {
-              channel: 'Gemini CLI (Official Google Login / Code Assist)',
-              free: 'Free Google Account',
-              premium: 'Google One AI Premium',
-              limitsFree: 'RPD ~1000; RPM ~60 (soft)',
-              limitsPremium: 'RPD ~1500+; RPM ~60+ (priority queue)'
-            },
-            gcloud: {
-              channel: 'GCP Code Assist (gcloud auth)',
-              account: 'No Code Assist subscription',
-              limits: 'RPD ~1000; RPM ~60 (preview)'
-            },
             aiStudio: {
               channel: 'AI Studio API Key / OAuth',
-              free: 'No billing (free tier)',
-              paid: 'Billing enabled (pay-as-you-go)',
               limitsFree: 'RPD 50; RPM 2 (Pro) / 15 (Flash)',
               limitsPaid: 'RPD unlimited; RPM 1000 (Pro) / 2000 (Flash) (per model)'
             },
-            customOAuth: {
-              channel: 'Custom OAuth Client (GCP)',
-              free: 'Project not billed',
-              paid: 'Project billed',
-              limitsFree: 'RPD 50; RPM 2 (project quota)',
-              limitsPaid: 'RPD unlimited; RPM 1000+ (project quota)'
-            }
           }
         },
         rateLimit: {
-          ok: 'Not rate limited',
           unlimited: 'Unlimited',
           limited: 'Rate limited {time}',
           now: 'now'
@@ -1405,7 +1293,6 @@ export default {
         avgDailyRequests: 'Daily Avg Requests',
         avgDailyUsage: 'Average daily usage',
         todayOverview: 'Today Overview',
-        cost: 'Cost',
         requests: 'Requests',
         tokens: 'Tokens',
         highestCostDay: 'Highest Cost Day',
@@ -1425,34 +1312,20 @@ export default {
         noData: 'No usage data available for this account'
       },
       usageWindow: {
-        statsTitle: '5-Hour Window Usage Statistics',
-        statsTitleDaily: 'Daily Usage Statistics',
-        geminiProDaily: 'Pro',
-        geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
         claude: 'Claude',
-        grokRequests: 'Req',
-        grokTokens: 'Tok',
         grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limit} limit)',
         grokWeeklyUsage: 'Weekly {percent}%',
         grokUsed: 'Used $',
-        grokBalance: 'Bal $',
         grokPrepaid: 'Prepaid balance',
         grokMonthlyLimit: 'Monthly used / limit (USD)',
-        grokOverage: 'Overage onDemandUsed/onDemandCap',
-        grokOverageShort: 'OD $',
         grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
         grokRetryAfter: 'Retry after {time}',
         grokProbe: 'Probe',
         grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
-        grokResetUnsupported: 'Reset unsupported',
-        grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
         grokNoHeaders: 'No quota headers observed',
-        grokLastStatus: 'Status {status}',
-        grokLastProbe: 'Probe {time}',
-        grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },
@@ -1483,11 +1356,6 @@ export default {
         free: 'Free',
         pro: 'Pro',
         ultra: 'Ultra',
-        aiPremium: 'AI Premium',
-        standard: 'Standard',
-        basic: 'Basic',
-        personal: 'Personal',
-        unlimited: 'Unlimited'
       },
       ineligibleWarning:
         'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.',

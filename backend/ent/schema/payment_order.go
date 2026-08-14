@@ -104,33 +104,6 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(30).
 			Default("PENDING"),
 
-		// 退款信息
-		field.Float("refund_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
-			Default(0),
-		field.String("refund_reason").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.Time("refund_at").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-		field.Bool("force_refund").
-			Default(false),
-		field.Time("refund_requested_at").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-		field.String("refund_request_reason").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
-		field.String("refund_requested_by").
-			Optional().
-			Nillable().
-			MaxLen(20),
-
 		// 时间节点
 		field.Time("expires_at").
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),

@@ -58,20 +58,6 @@ const (
 	FieldProviderSnapshot = "provider_snapshot"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldRefundAmount holds the string denoting the refund_amount field in the database.
-	FieldRefundAmount = "refund_amount"
-	// FieldRefundReason holds the string denoting the refund_reason field in the database.
-	FieldRefundReason = "refund_reason"
-	// FieldRefundAt holds the string denoting the refund_at field in the database.
-	FieldRefundAt = "refund_at"
-	// FieldForceRefund holds the string denoting the force_refund field in the database.
-	FieldForceRefund = "force_refund"
-	// FieldRefundRequestedAt holds the string denoting the refund_requested_at field in the database.
-	FieldRefundRequestedAt = "refund_requested_at"
-	// FieldRefundRequestReason holds the string denoting the refund_request_reason field in the database.
-	FieldRefundRequestReason = "refund_request_reason"
-	// FieldRefundRequestedBy holds the string denoting the refund_requested_by field in the database.
-	FieldRefundRequestedBy = "refund_requested_by"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
 	FieldExpiresAt = "expires_at"
 	// FieldPaidAt holds the string denoting the paid_at field in the database.
@@ -130,13 +116,6 @@ var Columns = []string{
 	FieldProviderKey,
 	FieldProviderSnapshot,
 	FieldStatus,
-	FieldRefundAmount,
-	FieldRefundReason,
-	FieldRefundAt,
-	FieldForceRefund,
-	FieldRefundRequestedAt,
-	FieldRefundRequestReason,
-	FieldRefundRequestedBy,
 	FieldExpiresAt,
 	FieldPaidAt,
 	FieldCompletedAt,
@@ -188,12 +167,6 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// DefaultRefundAmount holds the default value on creation for the "refund_amount" field.
-	DefaultRefundAmount float64
-	// DefaultForceRefund holds the default value on creation for the "force_refund" field.
-	DefaultForceRefund bool
-	// RefundRequestedByValidator is a validator for the "refund_requested_by" field. It is called by the builders before save.
-	RefundRequestedByValidator func(string) error
 	// ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	ClientIPValidator func(string) error
 	// SrcHostValidator is a validator for the "src_host" field. It is called by the builders before save.
@@ -317,41 +290,6 @@ func ByProviderKey(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
-}
-
-// ByRefundAmount orders the results by the refund_amount field.
-func ByRefundAmount(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundAmount, opts...).ToFunc()
-}
-
-// ByRefundReason orders the results by the refund_reason field.
-func ByRefundReason(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundReason, opts...).ToFunc()
-}
-
-// ByRefundAt orders the results by the refund_at field.
-func ByRefundAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundAt, opts...).ToFunc()
-}
-
-// ByForceRefund orders the results by the force_refund field.
-func ByForceRefund(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldForceRefund, opts...).ToFunc()
-}
-
-// ByRefundRequestedAt orders the results by the refund_requested_at field.
-func ByRefundRequestedAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundRequestedAt, opts...).ToFunc()
-}
-
-// ByRefundRequestReason orders the results by the refund_request_reason field.
-func ByRefundRequestReason(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundRequestReason, opts...).ToFunc()
-}
-
-// ByRefundRequestedBy orders the results by the refund_requested_by field.
-func ByRefundRequestedBy(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldRefundRequestedBy, opts...).ToFunc()
 }
 
 // ByExpiresAt orders the results by the expires_at field.

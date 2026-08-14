@@ -27,8 +27,9 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 }
 
 // GetWebhookProviders returns provider candidates that can verify the webhook.
-// Official WeChat Pay may require multiple candidates because the callback body
-// cannot be bound to a merchant before decryption.
+// A SePay callback carries the order code in its transfer description, so the
+// order's own instance is normally resolvable before verification; the registry
+// fallback only covers single-instance deployments.
 func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
@@ -51,9 +52,6 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 				}
 				return []payment.Provider{prov}, nil
 			}
-			if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-				return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
-			}
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
 			}
@@ -64,10 +62,6 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 			}
 			return []payment.Provider{prov}, nil
 		}
-	}
-
-	if strings.TrimSpace(providerKey) == payment.TypeWxpay {
-		return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
 	}
 
 	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
@@ -114,35 +108,4 @@ func (s *PaymentService) webhookRegistryFallbackAllowed(ctx context.Context, pro
 
 func psHasPinnedProviderInstance(order *dbent.PaymentOrder) bool {
 	return order != nil && (psOrderProviderSnapshot(order) != nil || (order.ProviderInstanceID != nil && strings.TrimSpace(*order.ProviderInstanceID) != ""))
-}
-
-func (s *PaymentService) getEnabledWebhookProvidersByKey(ctx context.Context, providerKey string) ([]payment.Provider, error) {
-	providerKey = strings.TrimSpace(providerKey)
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.ProviderKeyEQ(providerKey),
-			paymentproviderinstance.EnabledEQ(true),
-		).
-		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).
-		All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("query webhook provider instances: %w", err)
-	}
-	if len(instances) == 0 {
-		return nil, payment.ErrProviderNotFound
-	}
-
-	providers := make([]payment.Provider, 0, len(instances))
-	for _, inst := range instances {
-		prov, provErr := s.createProviderFromInstance(ctx, inst)
-		if provErr != nil {
-			slog.Warn("skip webhook provider instance", "provider", providerKey, "instanceID", inst.ID, "error", provErr)
-			continue
-		}
-		providers = append(providers, prov)
-	}
-	if len(providers) == 0 {
-		return nil, payment.ErrProviderNotFound
-	}
-	return providers, nil
 }

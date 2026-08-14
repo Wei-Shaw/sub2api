@@ -1,15 +1,11 @@
 <template>
   <AuthLayout>
-    <div class="space-y-6">
-      <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-          {{ t('auth.linuxdo.callbackTitle') }}
-        </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          {{ isProcessing ? t('auth.linuxdo.callbackProcessing') : t('auth.linuxdo.callbackHint') }}
-        </p>
-      </div>
-
+    <CallbackStatusPanel
+      :status="isProcessing ? 'working' : 'waiting'"
+      :status-label="isProcessing ? t('common.processing') : ''"
+      :title="t('auth.linuxdo.callbackTitle')"
+      :description="isProcessing ? t('auth.linuxdo.callbackProcessing') : t('auth.linuxdo.callbackHint')"
+    >
       <transition name="fade">
         <div
           v-if="
@@ -20,129 +16,156 @@
             needsBindLogin ||
             needsTotpChallenge
           "
-          class="space-y-4"
+          class="space-y-5 border-t border-line pt-5"
         >
+          <!--
+            Was a `rounded-xl` gray card holding two `rounded-lg` white cards —
+            three nested grounds to show two checkboxes. One hairline block, and
+            the rows are separated by rules instead of by their own boxes.
+          -->
           <div
             v-if="adoptionRequired && (suggestedDisplayName || suggestedAvatarUrl)"
-            class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
+            class="space-y-3"
           >
-            <div class="space-y-3">
-              <div class="space-y-1">
-                <p class="text-sm font-medium text-gray-900 dark:text-white">
-                  {{ t('auth.oauthFlow.profileDetailsTitle', { providerName }) }}
-                </p>
-                <p class="text-xs text-gray-500 dark:text-dark-400">
-                  {{ t('auth.oauthFlow.profileDetailsDescription', { providerName }) }}
-                </p>
-              </div>
-
-              <label
-                v-if="suggestedDisplayName"
-                class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-dark-600 dark:bg-dark-900/50"
-              >
-                <input v-model="adoptDisplayName" type="checkbox" class="mt-1 h-4 w-4" />
-                <span class="space-y-1">
-                  <span class="block font-medium text-gray-900 dark:text-white">
-                    {{ t('auth.oauthFlow.useDisplayName') }}
-                  </span>
-                  <span class="block text-gray-500 dark:text-dark-400">
-                    {{ suggestedDisplayName }}
-                  </span>
-                </span>
-              </label>
-
-              <label
-                v-if="suggestedAvatarUrl"
-                class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-dark-600 dark:bg-dark-900/50"
-              >
-                <input v-model="adoptAvatar" type="checkbox" class="mt-1 h-4 w-4" />
-                <img
-                  :src="suggestedAvatarUrl"
-                  :alt="t('auth.oauthFlow.avatarAlt', { providerName })"
-                  class="h-10 w-10 rounded-full border border-gray-200 object-cover dark:border-dark-600"
-                />
-                <span class="space-y-1">
-                  <span class="block font-medium text-gray-900 dark:text-white">
-                    {{ t('auth.oauthFlow.useAvatar') }}
-                  </span>
-                  <span class="block break-all text-gray-500 dark:text-dark-400">
-                    {{ suggestedAvatarUrl }}
-                  </span>
-                </span>
-              </label>
+            <div>
+              <p class="text-2xs uppercase tracking-[0.08em] text-ink-tertiary">
+                {{ t('auth.oauthFlow.profileDetailsTitle', { providerName }) }}
+              </p>
+              <p class="mt-1 text-sm text-ink-tertiary">
+                {{ t('auth.oauthFlow.profileDetailsDescription', { providerName }) }}
+              </p>
             </div>
+
+            <label
+              v-if="suggestedDisplayName"
+              class="flex items-start gap-3 border border-line p-3 text-sm"
+            >
+              <input v-model="adoptDisplayName" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0" />
+              <span class="min-w-0">
+                <span class="block font-medium text-ink">
+                  {{ t('auth.oauthFlow.useDisplayName') }}
+                </span>
+                <span class="mt-0.5 block break-words text-ink-tertiary">
+                  {{ suggestedDisplayName }}
+                </span>
+              </span>
+            </label>
+
+            <label
+              v-if="suggestedAvatarUrl"
+              class="flex items-start gap-3 border border-line p-3 text-sm"
+            >
+              <input v-model="adoptAvatar" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0" />
+              <img
+                :src="suggestedAvatarUrl"
+                :alt="t('auth.oauthFlow.avatarAlt', { providerName })"
+                class="h-8 w-8 shrink-0 rounded-full border border-line object-cover"
+              />
+              <span class="min-w-0">
+                <span class="block font-medium text-ink">
+                  {{ t('auth.oauthFlow.useAvatar') }}
+                </span>
+                <span class="mt-0.5 block break-all text-ink-tertiary">
+                  {{ suggestedAvatarUrl }}
+                </span>
+              </span>
+            </label>
           </div>
 
           <template v-if="needsInvitation">
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-ink">
               {{ t('auth.linuxdo.invitationRequired') }}
             </p>
-            <div>
+            <div class="space-y-3">
               <input
                 v-model="invitationCode"
                 type="text"
-                class="input w-full"
+                class="input"
                 :placeholder="t('auth.invitationCodePlaceholder')"
                 :disabled="isSubmitting"
                 @keyup.enter="handleSubmitInvitation"
               />
+              <!--
+                The label used to swap to "Completing…" mid-press, which changed
+                the button's width under the cursor. `Button` keeps the label's
+                box, overlays the spinner and sets `aria-busy` instead.
+              -->
+              <Button
+                tone="accent"
+                variant="solid"
+                size="md"
+                block
+                :loading="isSubmitting"
+                :disabled="isSubmitting || !invitationCode.trim()"
+                @click="handleSubmitInvitation"
+              >
+                {{ t('auth.linuxdo.completeRegistration') }}
+              </Button>
             </div>
-            <button
-              class="btn btn-primary w-full"
-              :disabled="isSubmitting || !invitationCode.trim()"
-              @click="handleSubmitInvitation"
-            >
-              {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') }}
-            </button>
           </template>
 
           <template v-else-if="needsAdoptionConfirmation">
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-ink">
               {{ t('auth.oauthFlow.reviewProfileBeforeContinue', { providerName }) }}
             </p>
-            <button class="btn btn-primary w-full" :disabled="isSubmitting" @click="handleContinueLogin">
-              {{ isSubmitting ? t('common.processing') : t('auth.continue') }}
-            </button>
+            <Button
+              tone="accent"
+              variant="solid"
+              size="md"
+              block
+              :loading="isSubmitting"
+              :disabled="isSubmitting"
+              @click="handleContinueLogin"
+            >
+              {{ t('auth.continue') }}
+            </Button>
           </template>
 
           <template v-else-if="needsChooser">
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60">
-              <div class="space-y-4">
-                <div class="space-y-1">
-                  <p class="text-sm font-medium text-gray-900 dark:text-white">
-                    {{ t('auth.oauthFlow.chooseHowToContinue') }}
-                  </p>
-                  <p class="text-xs text-gray-500 dark:text-dark-400">
-                    {{
-                      pendingAccountEmail
-                        ? t('auth.oauthFlow.suggestedEmail', { email: pendingAccountEmail })
-                        : t('auth.oauthFlow.chooseAccountActionHint')
-                    }}
-                  </p>
-                </div>
+            <div class="space-y-4">
+              <div>
+                <p class="text-sm text-ink">
+                  {{ t('auth.oauthFlow.chooseHowToContinue') }}
+                </p>
+                <p class="mt-1 text-sm text-ink-tertiary">
+                  {{
+                    pendingAccountEmail
+                      ? t('auth.oauthFlow.suggestedEmail', { email: pendingAccountEmail })
+                      : t('auth.oauthFlow.chooseAccountActionHint')
+                  }}
+                </p>
+              </div>
 
-                <div class="grid gap-3 sm:grid-cols-2">
-                  <button
-                    class="btn btn-secondary w-full"
-                    :disabled="isSubmitting"
-                    @click="switchToBindLoginMode()"
-                  >
-                    {{ t('auth.oauthFlow.bindExistingAccount') }}
-                  </button>
-                  <button
-                    class="btn btn-primary w-full"
-                    :disabled="isSubmitting"
-                    @click="switchToCreateAccountMode"
-                  >
-                    {{ t('auth.oauthFlow.createNewAccount') }}
-                  </button>
-                </div>
+              <!--
+                Stacked, not a 2-up grid. Only one of these is the primary
+                action, and side-by-side equal-width buttons said otherwise.
+              -->
+              <div class="space-y-2">
+                <Button
+                  variant="outline"
+                  size="md"
+                  block
+                  :disabled="isSubmitting"
+                  @click="switchToBindLoginMode()"
+                >
+                  {{ t('auth.oauthFlow.bindExistingAccount') }}
+                </Button>
+                <Button
+                  tone="accent"
+                  variant="solid"
+                  size="md"
+                  block
+                  :disabled="isSubmitting"
+                  @click="switchToCreateAccountMode"
+                >
+                  {{ t('auth.oauthFlow.createNewAccount') }}
+                </Button>
               </div>
             </div>
           </template>
 
           <template v-else-if="needsCreateAccount">
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-ink">
               {{ t('auth.oauthFlow.createAccountHint') }}
             </p>
             <PendingOAuthCreateAccountForm
@@ -156,49 +179,74 @@
           </template>
 
           <template v-else-if="needsBindLogin">
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-ink">
               {{ t('auth.oauthFlow.bindLoginHint', { providerName }) }}
             </p>
+            <!--
+              These were bare inputs carrying only a placeholder — no label, no
+              `for`/`id` pair. A placeholder vanishes the moment you type, and a
+              screen reader announces an unlabelled edit box.
+            -->
             <div class="space-y-3">
-              <input
-                v-model="bindLoginEmail"
-                data-testid="linuxdo-bind-login-email"
-                type="email"
-                class="input w-full"
-                :placeholder="t('auth.emailPlaceholder')"
-                :disabled="isSubmitting"
-                @keyup.enter="handleBindLogin"
-              />
-              <input
-                v-model="bindLoginPassword"
-                data-testid="linuxdo-bind-login-password"
-                type="password"
-                class="input w-full"
-                :placeholder="t('auth.passwordPlaceholder')"
-                :disabled="isSubmitting"
-                @keyup.enter="handleBindLogin"
-              />
-              <button
+              <FormField id="linuxdo-bind-login-email" :label="t('auth.emailLabel')">
+                <template #default="{ describedBy }">
+                  <input
+                    id="linuxdo-bind-login-email"
+                    v-model="bindLoginEmail"
+                    data-testid="linuxdo-bind-login-email"
+                    type="email"
+                    autocomplete="email"
+                    :aria-describedby="describedBy"
+                    class="input"
+                    :placeholder="t('auth.emailPlaceholder')"
+                    :disabled="isSubmitting"
+                    @keyup.enter="handleBindLogin"
+                  />
+                </template>
+              </FormField>
+              <FormField id="linuxdo-bind-login-password" :label="t('auth.passwordLabel')">
+                <template #default="{ describedBy }">
+                  <input
+                    id="linuxdo-bind-login-password"
+                    v-model="bindLoginPassword"
+                    data-testid="linuxdo-bind-login-password"
+                    type="password"
+                    autocomplete="current-password"
+                    :aria-describedby="describedBy"
+                    class="input"
+                    :placeholder="t('auth.passwordPlaceholder')"
+                    :disabled="isSubmitting"
+                    @keyup.enter="handleBindLogin"
+                  />
+                </template>
+              </FormField>
+              <Button
                 data-testid="linuxdo-bind-login-submit"
-                class="btn btn-primary w-full"
+                tone="accent"
+                variant="solid"
+                size="md"
+                block
+                :loading="isSubmitting"
                 :disabled="isSubmitting || !bindLoginEmail.trim() || !bindLoginPassword"
                 @click="handleBindLogin"
               >
-                {{ isSubmitting ? t('common.processing') : t('auth.oauthFlow.logInAndBind') }}
-              </button>
-              <button
+                {{ t('auth.oauthFlow.logInAndBind') }}
+              </Button>
+              <Button
                 v-if="canReturnToCreateAccount"
-                class="btn btn-secondary w-full"
+                variant="outline"
+                size="md"
+                block
                 :disabled="isSubmitting"
                 @click="switchToCreateAccountMode"
               >
                 {{ t('auth.oauthFlow.useDifferentEmail') }}
-              </button>
+              </Button>
             </div>
           </template>
 
           <template v-else-if="needsTotpChallenge">
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-ink">
               {{
                 t('auth.oauthFlow.totpHint', {
                   providerName,
@@ -207,30 +255,41 @@
               }}
             </p>
             <div class="space-y-3">
-              <input
-                v-model="totpCode"
-                data-testid="linuxdo-bind-login-totp"
-                type="text"
-                inputmode="numeric"
-                maxlength="6"
-                class="input w-full"
-                placeholder="123456"
-                :disabled="isSubmitting"
-                @keyup.enter="handleSubmitTotpChallenge"
-              />
-              <button
+              <FormField id="linuxdo-bind-login-totp" :label="t('auth.verificationCode')">
+                <template #default="{ describedBy }">
+                  <input
+                    id="linuxdo-bind-login-totp"
+                    v-model="totpCode"
+                    data-testid="linuxdo-bind-login-totp"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    maxlength="6"
+                    :aria-describedby="describedBy"
+                    class="input font-mono tabular-nums tracking-[0.18em]"
+                    placeholder="123456"
+                    :disabled="isSubmitting"
+                    @keyup.enter="handleSubmitTotpChallenge"
+                  />
+                </template>
+              </FormField>
+              <Button
                 data-testid="linuxdo-bind-login-totp-submit"
-                class="btn btn-primary w-full"
+                tone="accent"
+                variant="solid"
+                size="md"
+                block
+                :loading="isSubmitting"
                 :disabled="isSubmitting || totpCode.trim().length !== 6"
                 @click="handleSubmitTotpChallenge"
               >
-                {{ isSubmitting ? t('common.processing') : t('auth.oauthFlow.verifyAndContinue') }}
-              </button>
+                {{ t('auth.oauthFlow.verifyAndContinue') }}
+              </Button>
             </div>
           </template>
         </div>
       </transition>
-    </div>
+    </CallbackStatusPanel>
   </AuthLayout>
 </template>
 
@@ -239,6 +298,12 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+// By path, not through `components/common/index.ts`: the barrel re-exports
+// LocaleSwitcher, which pulls `createI18n` into the graph and breaks the specs
+// that mock `vue-i18n` with a partial factory.
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import CallbackStatusPanel from '@/components/auth/CallbackStatusPanel.vue'
 import PendingOAuthCreateAccountForm, {
   type PendingOAuthCreateAccountPayload
 } from '@/components/auth/PendingOAuthCreateAccountForm.vue'
@@ -824,14 +889,21 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/*
+ * Was `transition: all 0.3s ease` — a blanket `all` animates layout and colour
+ * along with the intended fade, and 300ms is off the duration scale. Named
+ * properties, token duration and easing, translate under the 8px ceiling.
+ */
 .fade-enter-active,
 .fade-leave-active {
-  transition: all 0.3s ease;
+  transition:
+    opacity var(--ds-dur-base) var(--ds-ease-out),
+    transform var(--ds-dur-base) var(--ds-ease-out);
 }
 
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-4px);
 }
 </style>

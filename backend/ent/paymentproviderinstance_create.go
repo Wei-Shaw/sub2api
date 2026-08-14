@@ -118,34 +118,6 @@ func (_c *PaymentProviderInstanceCreate) SetNillableLimits(v *string) *PaymentPr
 	return _c
 }
 
-// SetRefundEnabled sets the "refund_enabled" field.
-func (_c *PaymentProviderInstanceCreate) SetRefundEnabled(v bool) *PaymentProviderInstanceCreate {
-	_c.mutation.SetRefundEnabled(v)
-	return _c
-}
-
-// SetNillableRefundEnabled sets the "refund_enabled" field if the given value is not nil.
-func (_c *PaymentProviderInstanceCreate) SetNillableRefundEnabled(v *bool) *PaymentProviderInstanceCreate {
-	if v != nil {
-		_c.SetRefundEnabled(*v)
-	}
-	return _c
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (_c *PaymentProviderInstanceCreate) SetAllowUserRefund(v bool) *PaymentProviderInstanceCreate {
-	_c.mutation.SetAllowUserRefund(v)
-	return _c
-}
-
-// SetNillableAllowUserRefund sets the "allow_user_refund" field if the given value is not nil.
-func (_c *PaymentProviderInstanceCreate) SetNillableAllowUserRefund(v *bool) *PaymentProviderInstanceCreate {
-	if v != nil {
-		_c.SetAllowUserRefund(*v)
-	}
-	return _c
-}
-
 // SetCreatedAt sets the "created_at" field.
 func (_c *PaymentProviderInstanceCreate) SetCreatedAt(v time.Time) *PaymentProviderInstanceCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -233,14 +205,6 @@ func (_c *PaymentProviderInstanceCreate) defaults() {
 		v := paymentproviderinstance.DefaultLimits
 		_c.mutation.SetLimits(v)
 	}
-	if _, ok := _c.mutation.RefundEnabled(); !ok {
-		v := paymentproviderinstance.DefaultRefundEnabled
-		_c.mutation.SetRefundEnabled(v)
-	}
-	if _, ok := _c.mutation.AllowUserRefund(); !ok {
-		v := paymentproviderinstance.DefaultAllowUserRefund
-		_c.mutation.SetAllowUserRefund(v)
-	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := paymentproviderinstance.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -296,12 +260,6 @@ func (_c *PaymentProviderInstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.Limits(); !ok {
 		return &ValidationError{Name: "limits", err: errors.New(`ent: missing required field "PaymentProviderInstance.limits"`)}
-	}
-	if _, ok := _c.mutation.RefundEnabled(); !ok {
-		return &ValidationError{Name: "refund_enabled", err: errors.New(`ent: missing required field "PaymentProviderInstance.refund_enabled"`)}
-	}
-	if _, ok := _c.mutation.AllowUserRefund(); !ok {
-		return &ValidationError{Name: "allow_user_refund", err: errors.New(`ent: missing required field "PaymentProviderInstance.allow_user_refund"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "PaymentProviderInstance.created_at"`)}
@@ -367,14 +325,6 @@ func (_c *PaymentProviderInstanceCreate) createSpec() (*PaymentProviderInstance,
 	if value, ok := _c.mutation.Limits(); ok {
 		_spec.SetField(paymentproviderinstance.FieldLimits, field.TypeString, value)
 		_node.Limits = value
-	}
-	if value, ok := _c.mutation.RefundEnabled(); ok {
-		_spec.SetField(paymentproviderinstance.FieldRefundEnabled, field.TypeBool, value)
-		_node.RefundEnabled = value
-	}
-	if value, ok := _c.mutation.AllowUserRefund(); ok {
-		_spec.SetField(paymentproviderinstance.FieldAllowUserRefund, field.TypeBool, value)
-		_node.AllowUserRefund = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(paymentproviderinstance.FieldCreatedAt, field.TypeTime, value)
@@ -535,30 +485,6 @@ func (u *PaymentProviderInstanceUpsert) SetLimits(v string) *PaymentProviderInst
 // UpdateLimits sets the "limits" field to the value that was provided on create.
 func (u *PaymentProviderInstanceUpsert) UpdateLimits() *PaymentProviderInstanceUpsert {
 	u.SetExcluded(paymentproviderinstance.FieldLimits)
-	return u
-}
-
-// SetRefundEnabled sets the "refund_enabled" field.
-func (u *PaymentProviderInstanceUpsert) SetRefundEnabled(v bool) *PaymentProviderInstanceUpsert {
-	u.Set(paymentproviderinstance.FieldRefundEnabled, v)
-	return u
-}
-
-// UpdateRefundEnabled sets the "refund_enabled" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsert) UpdateRefundEnabled() *PaymentProviderInstanceUpsert {
-	u.SetExcluded(paymentproviderinstance.FieldRefundEnabled)
-	return u
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (u *PaymentProviderInstanceUpsert) SetAllowUserRefund(v bool) *PaymentProviderInstanceUpsert {
-	u.Set(paymentproviderinstance.FieldAllowUserRefund, v)
-	return u
-}
-
-// UpdateAllowUserRefund sets the "allow_user_refund" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsert) UpdateAllowUserRefund() *PaymentProviderInstanceUpsert {
-	u.SetExcluded(paymentproviderinstance.FieldAllowUserRefund)
 	return u
 }
 
@@ -735,34 +661,6 @@ func (u *PaymentProviderInstanceUpsertOne) SetLimits(v string) *PaymentProviderI
 func (u *PaymentProviderInstanceUpsertOne) UpdateLimits() *PaymentProviderInstanceUpsertOne {
 	return u.Update(func(s *PaymentProviderInstanceUpsert) {
 		s.UpdateLimits()
-	})
-}
-
-// SetRefundEnabled sets the "refund_enabled" field.
-func (u *PaymentProviderInstanceUpsertOne) SetRefundEnabled(v bool) *PaymentProviderInstanceUpsertOne {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.SetRefundEnabled(v)
-	})
-}
-
-// UpdateRefundEnabled sets the "refund_enabled" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsertOne) UpdateRefundEnabled() *PaymentProviderInstanceUpsertOne {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.UpdateRefundEnabled()
-	})
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (u *PaymentProviderInstanceUpsertOne) SetAllowUserRefund(v bool) *PaymentProviderInstanceUpsertOne {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.SetAllowUserRefund(v)
-	})
-}
-
-// UpdateAllowUserRefund sets the "allow_user_refund" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsertOne) UpdateAllowUserRefund() *PaymentProviderInstanceUpsertOne {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.UpdateAllowUserRefund()
 	})
 }
 
@@ -1107,34 +1005,6 @@ func (u *PaymentProviderInstanceUpsertBulk) SetLimits(v string) *PaymentProvider
 func (u *PaymentProviderInstanceUpsertBulk) UpdateLimits() *PaymentProviderInstanceUpsertBulk {
 	return u.Update(func(s *PaymentProviderInstanceUpsert) {
 		s.UpdateLimits()
-	})
-}
-
-// SetRefundEnabled sets the "refund_enabled" field.
-func (u *PaymentProviderInstanceUpsertBulk) SetRefundEnabled(v bool) *PaymentProviderInstanceUpsertBulk {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.SetRefundEnabled(v)
-	})
-}
-
-// UpdateRefundEnabled sets the "refund_enabled" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsertBulk) UpdateRefundEnabled() *PaymentProviderInstanceUpsertBulk {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.UpdateRefundEnabled()
-	})
-}
-
-// SetAllowUserRefund sets the "allow_user_refund" field.
-func (u *PaymentProviderInstanceUpsertBulk) SetAllowUserRefund(v bool) *PaymentProviderInstanceUpsertBulk {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.SetAllowUserRefund(v)
-	})
-}
-
-// UpdateAllowUserRefund sets the "allow_user_refund" field to the value that was provided on create.
-func (u *PaymentProviderInstanceUpsertBulk) UpdateAllowUserRefund() *PaymentProviderInstanceUpsertBulk {
-	return u.Update(func(s *PaymentProviderInstanceUpsert) {
-		s.UpdateAllowUserRefund()
 	})
 }
 

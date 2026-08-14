@@ -168,19 +168,16 @@ export function hslForPct(pct: number | null | undefined): string | undefined {
 }
 
 /**
- * Tailwind gradient class for the provider icon tile background.
+ * Ground class for the provider icon tile.
+ *
+ * This used to return a per-provider two-stop gradient. Four gradients for
+ * four providers is colour spent on a distinction the provider logo already
+ * makes — and a ramp behind a logo fights the logo's own colours as well.
+ * One flat sunken ground now.
+ *
+ * The exported name is kept: it has several call sites, and renaming it would
+ * make this a rename change rather than a design one.
  */
-export function providerGradient(provider: string): string {
-  switch (provider) {
-    case PROVIDER_OPENAI:
-      return 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20'
-    case PROVIDER_ANTHROPIC:
-      return 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-500/10 dark:to-amber-500/20'
-    case PROVIDER_GEMINI:
-      return 'bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20'
-    case PROVIDER_GROK:
-      return 'bg-gradient-to-br from-zinc-50 to-neutral-200 dark:from-zinc-500/10 dark:to-neutral-500/20'
-    default:
-      return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
-  }
+export function providerGradient(_provider: string): string {
+  return 'bg-surface-sunken'
 }

@@ -63,20 +63,6 @@ type PaymentOrder struct {
 	ProviderSnapshot map[string]interface{} `json:"provider_snapshot,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
-	// RefundAmount holds the value of the "refund_amount" field.
-	RefundAmount float64 `json:"refund_amount,omitempty"`
-	// RefundReason holds the value of the "refund_reason" field.
-	RefundReason *string `json:"refund_reason,omitempty"`
-	// RefundAt holds the value of the "refund_at" field.
-	RefundAt *time.Time `json:"refund_at,omitempty"`
-	// ForceRefund holds the value of the "force_refund" field.
-	ForceRefund bool `json:"force_refund,omitempty"`
-	// RefundRequestedAt holds the value of the "refund_requested_at" field.
-	RefundRequestedAt *time.Time `json:"refund_requested_at,omitempty"`
-	// RefundRequestReason holds the value of the "refund_request_reason" field.
-	RefundRequestReason *string `json:"refund_request_reason,omitempty"`
-	// RefundRequestedBy holds the value of the "refund_requested_by" field.
-	RefundRequestedBy *string `json:"refund_requested_by,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 	// PaidAt holds the value of the "paid_at" field.
@@ -130,15 +116,13 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case paymentorder.FieldProviderSnapshot:
 			values[i] = new([]byte)
-		case paymentorder.FieldForceRefund:
-			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate:
 			values[i] = new(sql.NullFloat64)
 		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
 			values[i] = new(sql.NullInt64)
-		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
+		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
 			values[i] = new(sql.NullString)
-		case paymentorder.FieldRefundAt, paymentorder.FieldRefundRequestedAt, paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
+		case paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -303,53 +287,6 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
-			}
-		case paymentorder.FieldRefundAmount:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_amount", values[i])
-			} else if value.Valid {
-				_m.RefundAmount = value.Float64
-			}
-		case paymentorder.FieldRefundReason:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_reason", values[i])
-			} else if value.Valid {
-				_m.RefundReason = new(string)
-				*_m.RefundReason = value.String
-			}
-		case paymentorder.FieldRefundAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_at", values[i])
-			} else if value.Valid {
-				_m.RefundAt = new(time.Time)
-				*_m.RefundAt = value.Time
-			}
-		case paymentorder.FieldForceRefund:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field force_refund", values[i])
-			} else if value.Valid {
-				_m.ForceRefund = value.Bool
-			}
-		case paymentorder.FieldRefundRequestedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_requested_at", values[i])
-			} else if value.Valid {
-				_m.RefundRequestedAt = new(time.Time)
-				*_m.RefundRequestedAt = value.Time
-			}
-		case paymentorder.FieldRefundRequestReason:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_request_reason", values[i])
-			} else if value.Valid {
-				_m.RefundRequestReason = new(string)
-				*_m.RefundRequestReason = value.String
-			}
-		case paymentorder.FieldRefundRequestedBy:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field refund_requested_by", values[i])
-			} else if value.Valid {
-				_m.RefundRequestedBy = new(string)
-				*_m.RefundRequestedBy = value.String
 			}
 		case paymentorder.FieldExpiresAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -540,37 +477,6 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
-	builder.WriteString(", ")
-	builder.WriteString("refund_amount=")
-	builder.WriteString(fmt.Sprintf("%v", _m.RefundAmount))
-	builder.WriteString(", ")
-	if v := _m.RefundReason; v != nil {
-		builder.WriteString("refund_reason=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.RefundAt; v != nil {
-		builder.WriteString("refund_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
-	builder.WriteString(", ")
-	builder.WriteString("force_refund=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ForceRefund))
-	builder.WriteString(", ")
-	if v := _m.RefundRequestedAt; v != nil {
-		builder.WriteString("refund_requested_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
-	builder.WriteString(", ")
-	if v := _m.RefundRequestReason; v != nil {
-		builder.WriteString("refund_request_reason=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
-	if v := _m.RefundRequestedBy; v != nil {
-		builder.WriteString("refund_requested_by=")
-		builder.WriteString(*v)
-	}
 	builder.WriteString(", ")
 	builder.WriteString("expires_at=")
 	builder.WriteString(_m.ExpiresAt.Format(time.ANSIC))

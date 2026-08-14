@@ -1,23 +1,23 @@
 <template>
   <div class="table-page-layout" :class="{ 'mobile-mode': isMobile }">
-    <!-- 固定区域：操作按钮 -->
+    <!-- Fixed: actions -->
     <div v-if="$slots.actions" class="layout-section-fixed">
       <slot name="actions" />
     </div>
 
-    <!-- 固定区域：搜索和过滤器 -->
+    <!-- Fixed: search and filters -->
     <div v-if="$slots.filters" class="layout-section-fixed">
       <slot name="filters" />
     </div>
 
-    <!-- 滚动区域：表格 -->
+    <!-- Scrolling: the table itself -->
     <div class="layout-section-scrollable">
       <div class="card table-scroll-container">
         <slot name="table" />
       </div>
     </div>
 
-    <!-- 固定区域：分页器 -->
+    <!-- Fixed: pagination -->
     <div v-if="$slots.pagination" class="layout-section-fixed">
       <slot name="pagination" />
     </div>
@@ -25,29 +25,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 
-const isMobile = ref(false)
-
-const checkMobile = () => {
-  isMobile.value = window.innerWidth < 1024
-}
-
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
-})
+/**
+ * `lg`, matching the sidebar breakpoint. This replaced a `resize` listener that
+ * re-read `window.innerWidth` on every event and was only sampled from
+ * `onMounted`, so any viewport change before mount was simply missed.
+ */
+const isMobile = useMediaQuery('(max-width: 1023.98px)')
 </script>
 
 <style scoped>
-/* 桌面端：Flexbox 布局 */
+/*
+ * Desktop is a fixed-height flex column so the table body scrolls while the
+ * toolbar and pagination stay put. The height used to be
+ * `calc(100vh - 64px - 4rem)`, with the header height and page padding written
+ * out as magic numbers — so any change to either silently mis-sized sixteen
+ * pages by exactly the difference.
+ */
 .table-page-layout {
   @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  height: calc(100vh - var(--ds-app-header-h) - (2 * var(--ds-page-pad)));
 }
 
 .layout-section-fixed {
@@ -55,54 +53,87 @@ onUnmounted(() => {
 }
 
 .layout-section-scrollable {
-  @apply flex-1 min-h-0 flex flex-col;
+  @apply flex min-h-0 flex-1 flex-col;
 }
 
-/* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex h-full flex-col overflow-hidden rounded border border-line bg-surface;
 }
 
 .table-scroll-container :deep(.table-wrapper) {
   @apply flex-1 overflow-x-auto overflow-y-auto;
-  /* 确保横向滚动条显示在最底部 */
+  /* Keeps the horizontal scrollbar pinned to the bottom edge. */
   scrollbar-gutter: stable;
 }
 
 .table-scroll-container :deep(table) {
   @apply w-full;
-  min-width: max-content; /* 关键：确保表格宽度根据内容撑开，从而触发横向滚动 */
-  display: table; /* 使用标准 table 布局以支持 sticky 列 */
+  /* Content-driven width is what makes horizontal scrolling trigger at all. */
+  min-width: max-content;
+  /* Standard table layout, required for sticky columns. */
+  display: table;
 }
 
+/*
+ * Table chrome. The rule under the header is the only heavy line on the page;
+ * rows get a hairline each and there is no zebra striping — alternating
+ * backgrounds are a second signal competing with the one that matters, which
+ * is status colour on individual cells.
+ */
 .table-scroll-container :deep(thead) {
-  @apply bg-gray-50/80 dark:bg-dark-800/80 backdrop-blur-sm;
+  @apply bg-surface-sunken;
 }
 
-.table-scroll-container :deep(tbody) {
-  /* 保持默认 table-row-group 显示，不使用 block */
+/*
+ * These rules dress a hand-written `<table>` handed in through the `table`
+ * slot. They must NOT reach DataTable, which owns its own cell geometry and
+ * marks its cells `ds-header-cell` / `ds-row-cell`.
+ *
+ * Without the exclusion they did reach it, at (0,2,1) — enough to beat the
+ * utility classes DataTable emits — so `px-3` here silently overrode
+ * `getAdaptivePaddingClass()`, and this cell colour overrode its own. Adaptive
+ * padding was therefore inert on every page wrapped in this layout, which is
+ * most of the tables in the app.
+ */
+.table-scroll-container :deep(th:not(.ds-header-cell)) {
+  @apply border-b border-line-strong px-3 text-left text-2xs font-medium uppercase text-ink-tertiary;
+  height: var(--ds-header-h);
+  letter-spacing: var(--ds-tr-2xs);
 }
 
-.table-scroll-container :deep(th) {
-  @apply px-5 py-4 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
+.table-scroll-container :deep(td:not(.ds-row-cell)) {
+  @apply border-b border-line-subtle px-3 text-sm text-ink-secondary;
+  height: var(--ds-row-h);
 }
 
-.table-scroll-container :deep(td) {
-  @apply px-5 py-4 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-dark-800;
+.table-scroll-container :deep(th:not(.ds-header-cell):first-child),
+.table-scroll-container :deep(td:not(.ds-row-cell):first-child) {
+  @apply pl-4;
 }
 
-/* 移动端：恢复正常滚动 */
+.table-scroll-container :deep(th:not(.ds-header-cell):last-child),
+.table-scroll-container :deep(td:not(.ds-row-cell):last-child) {
+  @apply pr-4;
+}
+
+/* Mobile: the page scrolls normally and the card chrome gets out of the way. */
 .table-page-layout.mobile-mode .table-scroll-container {
-  @apply h-auto overflow-visible border-none shadow-none bg-transparent;
+  @apply h-auto border-none bg-transparent shadow-none;
 }
 
 .table-page-layout.mobile-mode .layout-section-scrollable {
-  @apply flex-none min-h-fit;
+  @apply min-h-fit flex-none;
 }
 
 .table-page-layout.mobile-mode .table-scroll-container :deep(table) {
   @apply flex-none;
   display: table;
   min-width: 100%;
+}
+
+/* Touch target floor for row hit areas. DataTable declares its own at the same
+ * breakpoint, so this covers only hand-written tables. */
+.table-page-layout.mobile-mode .table-scroll-container :deep(td:not(.ds-row-cell)) {
+  height: var(--ds-row-h-touch);
 }
 </style>

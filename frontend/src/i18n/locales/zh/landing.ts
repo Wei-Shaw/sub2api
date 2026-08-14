@@ -120,7 +120,6 @@ export default {
     subtitle: '输入您的 API Key 以查看实时消费金额与使用状态',
     placeholder: 'sk-ant-mirror-xxxxxxxxxxxx',
     query: '查询',
-    querying: '查询中...',
     privacyNote: '您的 Key 仅在浏览器本地处理，不会被存储',
     dateRange: '统计范围:',
     dateRangeToday: '今日',
@@ -129,7 +128,6 @@ export default {
     dateRange90d: '90 天',
     dateRangeCustom: '自定义',
     apply: '应用',
-    used: '已使用',
     detailInfo: '详细信息',
     tokenStats: 'Token 统计',
     dailyDetail: '按日明细',
@@ -148,6 +146,15 @@ export default {
     // Status
     quotaMode: 'Key 限额模式',
     walletBalance: '钱包余额',
+    // The key's own state. Was a hardcoded English map inside KeyUsageView, so
+    // the zh build printed English here — on the one surface that needs no
+    // login, which is exactly where a stranger meets this product.
+    status: {
+      active: '正常',
+      quotaExhausted: '额度已用尽',
+      expired: '已过期',
+      unknown: '未知',
+    },
     // Ring card titles
     totalQuota: '总额度',
     limit5h: '5 小时限额',
@@ -241,10 +248,8 @@ export default {
       adminEmail: '管理员邮箱'
     },
     status: {
-      testing: '测试中...',
       success: '连接成功',
       testConnection: '测试连接',
-      installing: '安装中...',
       completeInstallation: '完成安装',
       completed: '安装完成！',
       redirecting: '正在跳转到登录页面...',

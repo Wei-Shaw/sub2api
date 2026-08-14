@@ -14,7 +14,7 @@ vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 
 import UsageTable from '../UsageTable.vue'
 
@@ -72,8 +72,11 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
+    // `locale` is required now that numeric cells format through `Intl`: a
+    // `t`-only mock makes NumCell throw on `locale.value` during render.
     useI18n: () => ({
       t: (key: string) => messages[key] ?? key,
+      locale: ref('en'),
     }),
   }
 })
@@ -550,6 +553,119 @@ describe('admin UsageTable IP geolocation batch toolbar', () => {
     })
     expect(wrapper.text()).toContain('121.35.47.43')
     expect(wrapper.text()).toContain('CN · Guangdong · Shenzhen')
+  })
+})
+
+describe('admin UsageTable optional-column props stay reactive', () => {
+  // Snapshotting a prop into a `const` inside <script setup> shadows the prop in
+  // the template and freezes it at the mount-time value, so later parent updates
+  // are silently ignored. These cases pin the props as live.
+  const DataTableStubWithEndpoint = {
+    props: ['data'],
+    template: `
+      <div>
+        <div v-for="row in data" :key="row.request_id">
+          <slot name="cell-cost" :row="row" />
+          <slot name="cell-endpoint" :row="row" />
+        </div>
+      </div>
+    `,
+  }
+
+  const row = {
+    request_id: 'req-optional-columns',
+    model: 'claude-3',
+    actual_cost: 0.5,
+    total_cost: 0.5,
+    account_stats_cost: 0.5,
+    account_rate_multiplier: 2,
+    rate_multiplier: 1,
+    input_cost: 0,
+    output_cost: 0,
+    cache_creation_cost: 0,
+    cache_read_cost: 0,
+    input_tokens: 1,
+    output_tokens: 1,
+    inbound_endpoint: '/v1/messages',
+    upstream_endpoint: 'https://api.upstream.test/v1/messages',
+  }
+
+  const mountTable = (props: Record<string, unknown>) =>
+    mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [], ...props },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithEndpoint,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+  it('hides and re-shows the account-billed line when show-account-billing is toggled after mount', async () => {
+    const wrapper = mountTable({ showAccountBilling: true })
+    expect(wrapper.text()).toContain('A $1.000000')
+
+    await wrapper.setProps({ showAccountBilling: false })
+    expect(wrapper.text()).not.toContain('A $1.000000')
+
+    await wrapper.setProps({ showAccountBilling: true })
+    expect(wrapper.text()).toContain('A $1.000000')
+  })
+
+  it('hides and re-shows the upstream endpoint when show-upstream-endpoint is toggled after mount', async () => {
+    const wrapper = mountTable({ showUpstreamEndpoint: true })
+    expect(wrapper.text()).toContain('https://api.upstream.test/v1/messages')
+
+    await wrapper.setProps({ showUpstreamEndpoint: false })
+    expect(wrapper.text()).not.toContain('https://api.upstream.test/v1/messages')
+    // The inbound endpoint is unconditional and must survive the toggle.
+    expect(wrapper.text()).toContain('/v1/messages')
+
+    await wrapper.setProps({ showUpstreamEndpoint: true })
+    expect(wrapper.text()).toContain('https://api.upstream.test/v1/messages')
+  })
+})
+
+describe('admin UsageTable copy-state timer cleanup', () => {
+  it('does not reset copied state after the component is unmounted', async () => {
+    vi.useFakeTimers()
+    try {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      vi.stubGlobal('navigator', { clipboard: { writeText } })
+
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
+
+      const wrapper = mount(UsageTable, {
+        props: {
+          data: [{ ...baseImageRow, request_id: 'req-timer-cleanup' }],
+          loading: false,
+          columns: [{ key: 'request_id', label: 'Request ID' }],
+        },
+        global: {
+          stubs: {
+            DataTable: DataTableStub,
+            EmptyState: true,
+            Icon: true,
+            Teleport: true,
+          },
+        },
+      })
+
+      await wrapper.get('button[title="Copy to clipboard"]').trigger('click')
+      await vi.waitFor(() => expect(writeText).toHaveBeenCalled())
+
+      const clearCallsBefore = clearSpy.mock.calls.length
+      wrapper.unmount()
+      expect(clearSpy.mock.calls.length).toBeGreaterThan(clearCallsBefore)
+
+      // Nothing pending is left to fire against the destroyed component.
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
   })
 })
 

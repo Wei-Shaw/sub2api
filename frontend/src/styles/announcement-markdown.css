@@ -1,23 +1,30 @@
-/* Shared rich-text styles for announcement popup and bell detail content. */
+/*
+ * Shared rich-text styles for announcement popup and bell detail content.
+ *
+ * Everything here is Family B (`ink` / `line` / `surface` / `accent`), which
+ * flips at `.dark` in tokens.css — so no rule below writes a `dark:` variant.
+ * `src/components/common/__tests__/AnnouncementPopup.spec.ts` asserts these
+ * selectors exist by name; they are stable and must not be renamed or merged.
+ */
 .markdown-body {
   @apply text-[15px] leading-[1.75];
-  @apply text-gray-700 dark:text-gray-300;
+  @apply text-ink-secondary;
 }
 
 .markdown-body h1 {
-  @apply mb-6 mt-8 border-b border-gray-200 pb-3 text-3xl font-bold text-gray-900 dark:border-dark-600 dark:text-white;
+  @apply mb-6 mt-8 border-b border-line pb-3 text-3xl font-bold text-ink;
 }
 
 .markdown-body h2 {
-  @apply mb-4 mt-7 border-b border-gray-100 pb-2 text-2xl font-bold text-gray-900 dark:border-dark-700 dark:text-white;
+  @apply mb-4 mt-7 border-b border-line-subtle pb-2 text-2xl font-bold text-ink;
 }
 
 .markdown-body h3 {
-  @apply mb-3 mt-6 text-xl font-semibold text-gray-900 dark:text-white;
+  @apply mb-3 mt-6 text-xl font-semibold text-ink;
 }
 
 .markdown-body h4 {
-  @apply mb-2 mt-5 text-lg font-semibold text-gray-900 dark:text-white;
+  @apply mb-2 mt-5 text-lg font-semibold text-ink;
 }
 
 .markdown-body p {
@@ -25,7 +32,8 @@
 }
 
 .markdown-body a {
-  @apply font-medium text-blue-600 underline decoration-blue-600/30 decoration-2 underline-offset-2 transition-all hover:decoration-blue-600 dark:text-blue-400 dark:decoration-blue-400/30 dark:hover:decoration-blue-400;
+  @apply font-medium text-accent underline decoration-accent/30 underline-offset-2;
+  @apply transition-colors duration-fast hover:text-accent-hover hover:decoration-accent-hover;
 }
 
 .markdown-body ul,
@@ -46,41 +54,43 @@
 }
 
 .markdown-body li::marker {
-  @apply text-blue-600 dark:text-blue-400;
+  @apply text-ink-tertiary;
 }
 
 .markdown-body blockquote {
-  @apply relative my-5 border-l-4 border-blue-500 bg-blue-50/50 py-3 pl-5 pr-4 italic text-gray-700 dark:border-blue-400 dark:bg-blue-900/10 dark:text-gray-300;
+  @apply relative my-5 border-l-2 border-accent bg-surface-sunken py-3 pl-5 pr-4 italic text-ink-secondary;
 }
 
+/* Decorative only, so it stays off the accent: the accent marks interaction
+   and selection, never ornament. */
 .markdown-body blockquote::before {
   content: '"';
-  @apply absolute -left-1 top-0 font-serif text-5xl text-blue-500/20 dark:text-blue-400/20;
+  @apply absolute -left-1 top-0 font-serif text-5xl text-line-strong;
 }
 
 .markdown-body code {
-  @apply rounded-lg bg-gray-100 px-2 py-1 font-mono text-[13px] text-pink-600 dark:bg-dark-700 dark:text-pink-400;
+  @apply rounded-sm border border-line bg-surface-sunken px-1.5 py-0.5 font-mono text-[13px] text-ink;
 }
 
 .markdown-body pre {
-  @apply my-5 overflow-x-auto rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-dark-600 dark:bg-dark-900/50;
+  @apply my-5 overflow-x-auto rounded border border-line bg-surface-sunken p-5;
 }
 
 .markdown-body pre code {
-  @apply bg-transparent p-0 text-[13px] text-gray-800 dark:text-gray-200;
+  @apply border-0 bg-transparent p-0 text-[13px] text-ink;
 }
 
 .markdown-body hr {
-  @apply my-8 border-0 border-t-2 border-gray-200 dark:border-dark-700;
+  @apply my-8 border-0 border-t border-line;
 }
 
 .markdown-body table {
-  @apply mb-5 w-full overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600;
+  @apply mb-5 w-full overflow-hidden rounded border border-line;
 }
 
 .markdown-body th,
 .markdown-body td {
-  @apply border-b border-r border-gray-200 px-4 py-3 text-left dark:border-dark-600;
+  @apply border-b border-r border-line px-4 py-3 text-left;
 }
 
 .markdown-body th:last-child,
@@ -93,21 +103,21 @@
 }
 
 .markdown-body th {
-  @apply bg-gradient-to-br from-blue-50 to-indigo-50 font-semibold text-gray-900 dark:from-blue-900/20 dark:to-indigo-900/10 dark:text-white;
+  @apply bg-surface-sunken font-semibold text-ink;
 }
 
 .markdown-body tbody tr {
-  @apply transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/30;
+  @apply transition-colors duration-fast hover:bg-surface-hover;
 }
 
 .markdown-body img {
-  @apply my-5 max-w-full rounded-xl border border-gray-200 shadow-md dark:border-dark-600;
+  @apply my-5 max-w-full rounded border border-line;
 }
 
 .markdown-body strong {
-  @apply font-semibold text-gray-900 dark:text-white;
+  @apply font-semibold text-ink;
 }
 
 .markdown-body em {
-  @apply italic text-gray-600 dark:text-gray-400;
+  @apply italic text-ink-secondary;
 }

@@ -3,7 +3,7 @@
     <TablePageLayout>
       <template #filters>
         <div class="flex flex-col gap-3">
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2">
             <SearchInput
               v-model="filterSearch"
               :placeholder="t('keys.searchPlaceholder')"
@@ -14,12 +14,14 @@
               :model-value="filterGroupId"
               class="w-40"
               :options="groupFilterOptions"
+              :aria-label="t('keys.group')"
               @update:model-value="onGroupFilterChange"
             />
             <Select
               :model-value="filterStatus"
               class="w-40"
               :options="statusFilterOptions"
+              :aria-label="t('common.status')"
               @update:model-value="onStatusFilterChange"
             />
           </div>
@@ -32,51 +34,96 @@
       </template>
 
       <template #actions>
-        <div class="flex justify-end gap-3">
-          <button
-            @click="loadApiKeys"
-            :disabled="loading"
-            class="btn btn-secondary"
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <!--
+            Icon-only, so the name lives in `aria-label`/`title`. `loading` keeps
+            the box and overlays a spinner instead of spinning the glyph, and it
+            already implies `disabled` + `aria-busy`.
+          -->
+          <Button
+            variant="outline"
+            size="md"
+            :loading="loading"
             :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            data-testid="keys-refresh"
+            @click="loadApiKeys"
           >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-          </button>
-          <div class="relative" ref="columnDropdownRef">
-            <button
-              @click="showColumnDropdown = !showColumnDropdown"
-              class="btn btn-secondary px-2 md:px-3"
+            <template #icon>
+              <Icon name="refresh" size="sm" />
+            </template>
+          </Button>
+
+          <div ref="columnDropdownRef" class="relative">
+            <Button
+              variant="outline"
+              size="md"
               :title="t('keys.columnSettings')"
+              :aria-label="t('keys.columnSettings')"
+              :aria-expanded="showColumnDropdown"
+              aria-haspopup="true"
+              data-testid="keys-column-settings"
+              @click="showColumnDropdown = !showColumnDropdown"
             >
-              <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
+              <template #icon>
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z"
+                  />
+                </svg>
+              </template>
               <span class="hidden md:inline">{{ t('keys.columnSettings') }}</span>
-            </button>
+            </Button>
+
             <div
               v-if="showColumnDropdown"
-              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-52 overflow-y-auto rounded border border-line bg-surface-raised py-1 shadow-popover"
+              data-testid="keys-column-menu"
             >
               <button
                 v-for="col in toggleableColumns"
                 :key="col.key"
+                type="button"
+                role="menuitemcheckbox"
+                :aria-checked="isColumnVisible(col.key)"
+                class="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs text-ink-secondary transition-colors duration-fast hover:bg-surface-hover hover:text-ink"
                 @click="toggleColumn(col.key)"
-                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
               >
-                <span>{{ col.label }}</span>
+                <span class="min-w-0 truncate">{{ col.label }}</span>
+                <!-- Accent = selection. It never signals status anywhere in this view. -->
                 <Icon
                   v-if="isColumnVisible(col.key)"
                   name="check"
-                  size="sm"
-                  class="text-primary-500"
+                  size="xs"
+                  class="shrink-0 text-accent"
                   :stroke-width="2"
                 />
               </button>
             </div>
           </div>
-          <button @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
-            <Icon name="plus" size="md" class="mr-2" />
+
+          <Button
+            tone="accent"
+            variant="solid"
+            size="md"
+            data-tour="keys-create-btn"
+            data-testid="keys-create"
+            @click="showCreateModal = true"
+          >
+            <template #icon>
+              <Icon name="plus" size="xs" :stroke-width="2" />
+            </template>
             {{ t('keys.createKey') }}
-          </button>
+          </Button>
         </div>
       </template>
 
@@ -90,334 +137,269 @@
           default-sort-order="desc"
           @sort="handleSort"
         >
+          <!-- An id is an identifier, not a measurement: mono, but never grouped. -->
           <template #cell-id="{ value }">
-            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
+            <span class="font-mono text-xs tabular-nums text-ink-tertiary">#{{ value }}</span>
           </template>
 
           <template #cell-key="{ value, row }">
-            <div class="flex items-center gap-2">
-              <code class="code text-xs">
-                {{ maskApiKey(value) }}
-              </code>
+            <div class="flex items-center gap-1.5">
+              <code class="code">{{ maskApiKey(value) }}</code>
               <button
-                @click="copyToClipboard(value, row.id)"
-                class="rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
-                :class="
-                  copiedKeyId === row.id
-                    ? 'text-green-500'
-                    : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
-                "
+                type="button"
+                class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors duration-fast hover:bg-surface-hover"
+                :class="copiedKeyId === row.id ? 'text-success' : 'text-ink-tertiary hover:text-ink'"
                 :title="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
+                :aria-label="copiedKeyId === row.id ? t('keys.copied') : t('keys.copyToClipboard')"
+                @click="copyToClipboard(value, row.id)"
               >
-                <Icon
-                  v-if="copiedKeyId === row.id"
-                  name="check"
-                  size="sm"
-                  :stroke-width="2"
-                />
-                <Icon v-else name="clipboard" size="sm" />
+                <Icon v-if="copiedKeyId === row.id" name="check" size="xs" :stroke-width="2" />
+                <Icon v-else name="clipboard" size="xs" />
               </button>
             </div>
           </template>
 
           <template #cell-name="{ value, row }">
-            <div class="flex items-center gap-1.5">
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
-              <Icon
+            <div class="flex min-w-0 items-center gap-1.5">
+              <span class="truncate font-medium text-ink">{{ value }}</span>
+              <!--
+                Was a blue shield. Blue is the accent here, and the accent may
+                not carry state — this is a configuration marker, so it is ink.
+                The icon itself is not a labelling surface, hence the wrapper.
+              -->
+              <span
                 v-if="row.ip_whitelist?.length > 0 || row.ip_blacklist?.length > 0"
-                name="shield"
-                size="sm"
-                class="text-blue-500"
+                role="img"
+                class="inline-flex shrink-0 text-ink-tertiary"
                 :title="t('keys.ipRestrictionEnabled')"
-              />
+                :aria-label="t('keys.ipRestrictionEnabled')"
+              >
+                <Icon name="shield" size="xs" />
+              </span>
             </div>
           </template>
 
           <template #cell-group="{ row }">
-            <div class="group/dropdown relative">
-              <button
-                :ref="(el) => setGroupButtonRef(row.id, el)"
-                @click="openGroupSelector(row)"
-                class="-mx-2 -my-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
-                :title="t('keys.clickToChangeGroup')"
-              >
-                <GroupBadge
-                  v-if="row.group"
-                  :name="row.group.name"
-                  :platform="row.group.platform"
-                  :subscription-type="row.group.subscription_type"
-                  :rate-multiplier="row.group.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[row.group.id]"
-                  :peak-rate-enabled="row.group.peak_rate_enabled"
-                  :peak-start="row.group.peak_start"
-                  :peak-end="row.group.peak_end"
-                  :peak-rate-multiplier="row.group.peak_rate_multiplier"
-                />
-                <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
-                  t('keys.noGroup')
-                }}</span>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
-                <svg
-                  class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
-                  />
-                </svg>
-              </button>
-            </div>
+            <button
+              :ref="(el) => setGroupButtonRef(row.id, el)"
+              type="button"
+              data-group-cell
+              class="-mx-1.5 -my-0.5 flex max-w-full items-center gap-2 rounded px-1.5 py-0.5 text-left transition-colors duration-fast hover:bg-surface-hover"
+              :title="t('keys.clickToChangeGroup')"
+              :aria-label="t('keys.clickToChangeGroup')"
+              aria-haspopup="listbox"
+              :aria-expanded="groupSelectorKeyId === row.id"
+              @click="openGroupSelector(row)"
+            >
+              <GroupBadge
+                v-if="row.group"
+                :name="row.group.name"
+                :platform="row.group.platform"
+                :subscription-type="row.group.subscription_type"
+                :rate-multiplier="row.group.rate_multiplier"
+                :user-rate-multiplier="userGroupRates[row.group.id]"
+                :peak-rate-enabled="row.group.peak_rate_enabled"
+                :peak-start="row.group.peak_start"
+                :peak-end="row.group.peak_end"
+                :peak-rate-multiplier="row.group.peak_rate_multiplier"
+              />
+              <span v-else class="text-xs text-ink-tertiary">{{ t('keys.noGroup') }}</span>
+              <Icon name="chevronDown" size="xs" class="shrink-0 text-ink-tertiary" />
+            </button>
           </template>
 
+          <!--
+            Was an emerald chip whenever concurrency > 0. Live traffic is the
+            healthy case; painting it green spends the signal budget on nothing.
+          -->
           <template #cell-current_concurrency="{ value }">
-            <span
-              :class="[
-                'inline-flex min-w-8 items-center justify-center rounded px-2 py-1 text-sm font-semibold tabular-nums',
-                (value ?? 0) > 0
-                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/25 dark:text-emerald-300 dark:ring-emerald-800'
-                  : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
-              ]"
-            >
-              {{ value ?? 0 }}
-            </span>
+            <NumCell :value="value" />
           </template>
 
           <template #cell-usage="{ row }">
-            <div class="text-sm">
-              <div class="flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('keys.today') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
+            <div class="min-w-[10rem] space-y-1">
+              <div class="flex items-baseline justify-between gap-3">
+                <span class="text-2xs uppercase tracking-[0.04em] text-ink-tertiary">
+                  {{ t('keys.today') }}
                 </span>
+                <NumCell
+                  :value="usageStats[row.id]?.today_actual_cost"
+                  :precision="4"
+                  :unit="CURRENCY"
+                />
               </div>
-              <div class="mt-0.5 flex items-center gap-1.5">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('keys.total') }}:</span>
-                <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
+              <div class="flex items-baseline justify-between gap-3">
+                <span class="text-2xs uppercase tracking-[0.04em] text-ink-tertiary">
+                  {{ t('keys.total') }}
                 </span>
+                <NumCell
+                  :value="usageStats[row.id]?.total_actual_cost"
+                  :precision="4"
+                  :unit="CURRENCY"
+                />
               </div>
-              <!-- Quota progress (if quota is set) -->
-              <div v-if="row.quota > 0" class="mt-1.5">
-                <div class="flex items-center gap-1.5">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('keys.quota') }}:</span>
-                  <span :class="[
-                    'font-medium',
-                    row.quota_used >= row.quota ? 'text-red-500' :
-                    row.quota_used >= row.quota * 0.8 ? 'text-yellow-500' :
-                    'text-gray-900 dark:text-white'
-                  ]">
-                    ${{ row.quota_used?.toFixed(2) || '0.00' }} / ${{ row.quota?.toFixed(2) }}
-                  </span>
-                </div>
-                <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      row.quota_used >= row.quota ? 'bg-red-500' :
-                      row.quota_used >= row.quota * 0.8 ? 'bg-yellow-500' :
-                      'bg-primary-500'
-                    ]"
-                    :style="{ width: Math.min((row.quota_used / row.quota) * 100, 100) + '%' }"
+              <div v-if="row.quota > 0" class="space-y-1 pt-1">
+                <Meter
+                  :label="t('keys.quota')"
+                  :value="row.quota_used ?? 0"
+                  :max="row.quota"
+                  :danger-at="1"
+                  :show-value="false"
+                />
+                <div class="flex items-baseline justify-end gap-1">
+                  <NumCell
+                    :value="row.quota_used"
+                    :precision="2"
+                    :tone="ratioTone(row.quota_used, row.quota)"
                   />
+                  <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+                  <NumCell :value="row.quota" :precision="2" :unit="CURRENCY" />
                 </div>
               </div>
             </div>
           </template>
 
           <template #cell-rate_limit="{ row }">
-            <div v-if="row.rate_limit_5h > 0 || row.rate_limit_1d > 0 || row.rate_limit_7d > 0" class="space-y-1.5 min-w-[140px]">
-              <!-- 5h window -->
-              <div v-if="row.rate_limit_5h > 0">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-500 dark:text-gray-400">5h</span>
-                  <span :class="[
-                    'font-medium tabular-nums',
-                    row.usage_5h >= row.rate_limit_5h ? 'text-red-500' :
-                    row.usage_5h >= row.rate_limit_5h * 0.8 ? 'text-yellow-500' :
-                    'text-gray-700 dark:text-gray-300'
-                  ]">
-                    ${{ row.usage_5h?.toFixed(2) || '0.00' }}/${{ row.rate_limit_5h?.toFixed(2) }}
+            <div v-if="rateWindows(row).length > 0" class="min-w-[11rem] space-y-2">
+              <div v-for="win in rateWindows(row)" :key="win.key" class="space-y-1">
+                <Meter
+                  :label="win.label"
+                  :value="win.used ?? 0"
+                  :max="win.limit"
+                  :danger-at="1"
+                  :show-value="false"
+                />
+                <div class="flex flex-wrap items-baseline gap-x-2">
+                  <span
+                    v-if="formatResetTime(win.resetAt)"
+                    class="inline-flex items-center gap-1 text-2xs text-ink-tertiary"
+                  >
+                    <Icon name="refresh" size="xs" />
+                    <span class="font-mono tabular-nums">{{ formatResetTime(win.resetAt) }}</span>
+                  </span>
+                  <span class="ml-auto inline-flex items-baseline gap-1">
+                    <NumCell
+                      :value="win.used"
+                      :precision="2"
+                      :tone="ratioTone(win.used, win.limit)"
+                    />
+                    <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+                    <NumCell :value="win.limit" :precision="2" :unit="CURRENCY" />
                   </span>
                 </div>
-                <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      row.usage_5h >= row.rate_limit_5h ? 'bg-red-500' :
-                      row.usage_5h >= row.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
-                    ]"
-                    :style="{ width: Math.min((row.usage_5h / row.rate_limit_5h) * 100, 100) + '%' }"
-                  />
-                </div>
-                <div v-if="row.reset_5h_at && formatResetTime(row.reset_5h_at)" class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                  ⟳ {{ formatResetTime(row.reset_5h_at) }}
-                </div>
               </div>
-              <!-- 1d window -->
-              <div v-if="row.rate_limit_1d > 0">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-500 dark:text-gray-400">1d</span>
-                  <span :class="[
-                    'font-medium tabular-nums',
-                    row.usage_1d >= row.rate_limit_1d ? 'text-red-500' :
-                    row.usage_1d >= row.rate_limit_1d * 0.8 ? 'text-yellow-500' :
-                    'text-gray-700 dark:text-gray-300'
-                  ]">
-                    ${{ row.usage_1d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_1d?.toFixed(2) }}
-                  </span>
-                </div>
-                <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      row.usage_1d >= row.rate_limit_1d ? 'bg-red-500' :
-                      row.usage_1d >= row.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
-                    ]"
-                    :style="{ width: Math.min((row.usage_1d / row.rate_limit_1d) * 100, 100) + '%' }"
-                  />
-                </div>
-                <div v-if="row.reset_1d_at && formatResetTime(row.reset_1d_at)" class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                  ⟳ {{ formatResetTime(row.reset_1d_at) }}
-                </div>
-              </div>
-              <!-- 7d window -->
-              <div v-if="row.rate_limit_7d > 0">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="text-gray-500 dark:text-gray-400">7d</span>
-                  <span :class="[
-                    'font-medium tabular-nums',
-                    row.usage_7d >= row.rate_limit_7d ? 'text-red-500' :
-                    row.usage_7d >= row.rate_limit_7d * 0.8 ? 'text-yellow-500' :
-                    'text-gray-700 dark:text-gray-300'
-                  ]">
-                    ${{ row.usage_7d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_7d?.toFixed(2) }}
-                  </span>
-                </div>
-                <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      row.usage_7d >= row.rate_limit_7d ? 'bg-red-500' :
-                      row.usage_7d >= row.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-emerald-500'
-                    ]"
-                    :style="{ width: Math.min((row.usage_7d / row.rate_limit_7d) * 100, 100) + '%' }"
-                  />
-                </div>
-                <div v-if="row.reset_7d_at && formatResetTime(row.reset_7d_at)" class="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-                  ⟳ {{ formatResetTime(row.reset_7d_at) }}
-                </div>
-              </div>
-              <!-- Reset button -->
-              <button
-                v-if="row.usage_5h > 0 || row.usage_1d > 0 || row.usage_7d > 0"
-                @click.stop="confirmResetRateLimitFromTable(row)"
-                class="mt-0.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+              <Button
+                v-if="hasRateLimitUsage(row)"
+                variant="quiet"
+                size="xs"
                 :title="t('keys.resetRateLimitUsage')"
+                @click.stop="confirmResetRateLimitFromTable(row)"
               >
-                <Icon name="refresh" size="xs" />
+                <template #icon>
+                  <Icon name="refresh" size="xs" />
+                </template>
                 {{ t('keys.resetUsage') }}
-              </button>
+              </Button>
             </div>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-expires_at="{ value }">
-            <span v-if="value" :class="[
-              'text-sm',
-              new Date(value) < new Date() ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-dark-400'
-            ]">
+            <span
+              v-if="value"
+              class="font-mono text-xs tabular-nums"
+              :class="isExpired(value) ? 'text-danger' : 'text-ink-secondary'"
+            >
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{ t('keys.noExpiration') }}</span>
+            <span v-else class="text-xs text-ink-tertiary">{{ t('keys.noExpiration') }}</span>
           </template>
 
+          <!--
+            Dot + word, never a tinted row. `active` is the unremarkable case and
+            gets no hue at all; only exhausted/expired spend colour, which is the
+            whole point of a signal budget on a list this long.
+          -->
           <template #cell-status="{ value }">
-            <span :class="[
-              'badge',
-              value === 'active' ? 'badge-success' :
-              value === 'quota_exhausted' ? 'badge-warning' :
-              value === 'expired' ? 'badge-danger' :
-              'badge-gray'
-            ]">
-              {{ t('keys.status.' + value) }}
-            </span>
+            <StatusDot
+              :tone="statusTone(value)"
+              :label="t('keys.status.' + value)"
+              :muted="value === 'active'"
+            />
           </template>
 
           <template #cell-last_used_at="{ value }">
-            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-400">
+            <span v-if="value" class="font-mono text-xs tabular-nums text-ink-secondary">
               {{ formatDateTime(value) }}
             </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-last_used_ip="{ value }">
-            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-400">
-              {{ value }}
-            </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+            <span v-if="value" class="font-mono text-xs text-ink-secondary">{{ value }}</span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-created_at="{ value }">
-            <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
+            <span v-if="value" class="font-mono text-xs tabular-nums text-ink-secondary">
+              {{ formatDateTime(value) }}
+            </span>
+            <span v-else class="text-ink-disabled" :aria-label="t('common.noValue')">–</span>
           </template>
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
-              <!-- Use Key Button -->
-              <button
+              <Button
+                variant="ghost"
+                size="xs"
+                :title="t('keys.useKey')"
                 @click="openUseKeyModal(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
               >
-                <Icon name="terminal" size="sm" />
-                <span class="text-xs">{{ t('keys.useKey') }}</span>
-              </button>
-              <!-- Import to CC Switch Button -->
-              <button
+                <template #icon>
+                  <Icon name="terminal" size="xs" />
+                </template>
+                {{ t('keys.useKey') }}
+              </Button>
+              <Button
                 v-if="!publicSettings?.hide_ccs_import_button"
+                variant="ghost"
+                size="xs"
+                :title="t('keys.importToCcSwitch')"
                 @click="importToCcswitch(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
-                <Icon name="upload" size="sm" />
-                <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
-              </button>
-              <!-- Toggle Status Button -->
-              <button
+                <template #icon>
+                  <Icon name="upload" size="xs" />
+                </template>
+                {{ t('keys.importToCcSwitch') }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                :title="row.status === 'active' ? t('keys.disable') : t('keys.enable')"
                 @click="toggleKeyStatus(row)"
-                :class="[
-                  'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
-                  row.status === 'active'
-                    ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
-                    : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
-                ]"
               >
-                <Icon v-if="row.status === 'active'" name="ban" size="sm" />
-                <Icon v-else name="checkCircle" size="sm" />
-                <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
-              </button>
-              <!-- Edit Button -->
-              <button
-                @click="editKey(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-              >
-                <Icon name="edit" size="sm" />
-                <span class="text-xs">{{ t('common.edit') }}</span>
-              </button>
-              <!-- Delete Button -->
-              <button
+                <template #icon>
+                  <Icon :name="row.status === 'active' ? 'ban' : 'checkCircle'" size="xs" />
+                </template>
+                {{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}
+              </Button>
+              <Button variant="ghost" size="xs" :title="t('common.edit')" @click="editKey(row)">
+                <template #icon>
+                  <Icon name="edit" size="xs" />
+                </template>
+                {{ t('common.edit') }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                :title="t('common.delete')"
                 @click="confirmDelete(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
-                <Icon name="trash" size="sm" />
-                <span class="text-xs">{{ t('common.delete') }}</span>
-              </button>
+                <template #icon>
+                  <Icon name="trash" size="xs" />
+                </template>
+                {{ t('common.delete') }}
+              </Button>
             </div>
           </template>
 
@@ -451,503 +433,401 @@
       width="normal"
       @close="closeModals"
     >
-      <form id="key-form" @submit.prevent="handleSubmit" class="space-y-5">
-        <div>
-          <label class="input-label">{{ t('keys.nameLabel') }}</label>
-          <input
-            v-model="formData.name"
-            type="text"
-            required
-            class="input"
-            :placeholder="t('keys.namePlaceholder')"
-            data-tour="key-form-name"
-          />
-        </div>
+      <form id="key-form" class="space-y-4" @submit.prevent="handleSubmit">
+        <FormField :label="t('keys.nameLabel')" required>
+          <template #default="{ id, describedBy }">
+            <input
+              :id="id"
+              v-model="formData.name"
+              type="text"
+              required
+              class="input"
+              :aria-describedby="describedBy"
+              :placeholder="t('keys.namePlaceholder')"
+              data-tour="key-form-name"
+            />
+          </template>
+        </FormField>
 
-        <div>
-          <label class="input-label">{{ t('keys.groupLabel') }}</label>
-          <Select
-            v-model="formData.group_id"
-            :options="groupOptions"
-            :placeholder="t('keys.selectGroup')"
-            :searchable="true"
-            :search-placeholder="t('keys.searchGroup')"
-            data-tour="key-form-group"
-          >
-            <template #selected="{ option }">
-              <GroupBadge
-                v-if="option"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-              />
-              <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
-            </template>
-            <template #option="{ option, selected }">
-              <GroupOptionItem
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                :description="(option as unknown as GroupOption).description"
-                :selected="selected"
-              />
-            </template>
-          </Select>
-        </div>
+        <!--
+          `keys.groupRequired` used to exist only as a toast: the field that
+          caused it never said anything. It now renders in the reserved message
+          row, which is also why submitting no longer shifts the dialog.
+        -->
+        <FormField :label="t('keys.groupLabel')" required :error="groupError">
+          <template #default="{ id, describedBy, invalid }">
+            <Select
+              v-model="formData.group_id"
+              :id="id"
+              :options="groupOptions"
+              :placeholder="t('keys.selectGroup')"
+              :searchable="true"
+              :search-placeholder="t('keys.searchGroup')"
+              :error="invalid"
+              :aria-describedby="describedBy"
+              data-tour="key-form-group"
+            >
+              <template #selected="{ option }">
+                <GroupBadge
+                  v-if="option"
+                  :name="(option as unknown as GroupOption).label"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                />
+                <span v-else class="text-ink-disabled">{{ t('keys.selectGroup') }}</span>
+              </template>
+              <template #option="{ option, selected }">
+                <GroupOptionItem
+                  :name="(option as unknown as GroupOption).label"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                  :description="(option as unknown as GroupOption).description"
+                  :selected="selected"
+                />
+              </template>
+            </Select>
+          </template>
+        </FormField>
 
         <!-- Custom Key Section (only for create) -->
-        <div v-if="!showEditModal" class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('keys.customKeyLabel') }}</label>
+        <div v-if="!showEditModal" class="space-y-2">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-medium text-ink-secondary">
+              {{ t('keys.customKeyLabel') }}
+            </span>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.use_custom_key"
+              :aria-label="t('keys.customKeyLabel')"
+              class="switch"
+              :class="formData.use_custom_key && 'switch-active'"
               @click="formData.use_custom_key = !formData.use_custom_key"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.use_custom_key ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
             >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.use_custom_key ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
+              <span class="switch-thumb" />
             </button>
           </div>
-          <div v-if="formData.use_custom_key">
-            <input
-              v-model="formData.custom_key"
-              type="text"
-              class="input font-mono"
-              :placeholder="t('keys.customKeyPlaceholder')"
-              :class="{ 'border-red-500 dark:border-red-500': customKeyError }"
-            />
-            <p v-if="customKeyError" class="mt-1 text-sm text-red-500">{{ customKeyError }}</p>
-            <p v-else class="input-hint">{{ t('keys.customKeyHint') }}</p>
-          </div>
-        </div>
-
-        <div v-if="showEditModal">
-          <label class="input-label">{{ t('keys.statusLabel') }}</label>
-          <Select
-            v-model="formData.status"
-            :options="statusOptions"
-            :placeholder="t('keys.selectStatus')"
-          />
-        </div>
-
-        <!-- IP Restriction Section -->
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('keys.ipRestriction') }}</label>
-            <button
-              type="button"
-              @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_ip_restriction ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.enable_ip_restriction ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-
-          <div v-if="formData.enable_ip_restriction" class="space-y-4 pt-2">
-            <div>
-              <label class="input-label">{{ t('keys.ipWhitelist') }}</label>
-              <textarea
-                v-model="formData.ip_whitelist"
-                rows="3"
-                class="input font-mono text-sm"
-                :placeholder="t('keys.ipWhitelistPlaceholder')"
-              />
-              <p class="input-hint">{{ t('keys.ipWhitelistHint') }}</p>
-            </div>
-
-            <div>
-              <label class="input-label">{{ t('keys.ipBlacklist') }}</label>
-              <textarea
-                v-model="formData.ip_blacklist"
-                rows="3"
-                class="input font-mono text-sm"
-                :placeholder="t('keys.ipBlacklistPlaceholder')"
-              />
-              <p class="input-hint">{{ t('keys.ipBlacklistHint') }}</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quota Limit Section -->
-        <div class="space-y-3">
-          <label class="input-label">{{ t('keys.quotaLimit') }}</label>
-          <!-- Switch commented out - always show input, 0 = unlimited
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('keys.quotaLimit') }}</label>
-            <button
-              type="button"
-              @click="formData.enable_quota = !formData.enable_quota"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_quota ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.enable_quota ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
+          <!--
+            `keys.customKeyRequired` was another toast-only string. Both custom
+            key errors now land on the field.
           -->
+          <FormField
+            v-if="formData.use_custom_key"
+            :hint="t('keys.customKeyHint')"
+            :error="customKeyFieldError"
+          >
+            <template #default="{ id, describedBy, invalid }">
+              <input
+                :id="id"
+                v-model="formData.custom_key"
+                type="text"
+                class="input font-mono"
+                :class="invalid && 'input-error'"
+                :aria-describedby="describedBy"
+                :aria-invalid="invalid || undefined"
+                :placeholder="t('keys.customKeyPlaceholder')"
+              />
+            </template>
+          </FormField>
+        </div>
 
-          <div class="space-y-4">
-            <div>
+        <FormField v-if="showEditModal" :label="t('keys.statusLabel')">
+          <template #default="{ id, describedBy }">
+            <Select
+              v-model="formData.status"
+              :id="id"
+              :options="statusOptions"
+              :placeholder="t('keys.selectStatus')"
+              :aria-describedby="describedBy"
+            />
+          </template>
+        </FormField>
+
+        <!-- IP Restriction -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-medium text-ink-secondary">
+              {{ t('keys.ipRestriction') }}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="formData.enable_ip_restriction"
+              :aria-label="t('keys.ipRestriction')"
+              class="switch"
+              :class="formData.enable_ip_restriction && 'switch-active'"
+              @click="formData.enable_ip_restriction = !formData.enable_ip_restriction"
+            >
+              <span class="switch-thumb" />
+            </button>
+          </div>
+
+          <div v-if="formData.enable_ip_restriction" class="space-y-2 pt-1">
+            <FormField :label="t('keys.ipWhitelist')" :hint="t('keys.ipWhitelistHint')">
+              <template #default="{ id, describedBy }">
+                <textarea
+                  :id="id"
+                  v-model="formData.ip_whitelist"
+                  rows="3"
+                  class="input font-mono"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('keys.ipWhitelistPlaceholder')"
+                />
+              </template>
+            </FormField>
+
+            <FormField :label="t('keys.ipBlacklist')" :hint="t('keys.ipBlacklistHint')">
+              <template #default="{ id, describedBy }">
+                <textarea
+                  :id="id"
+                  v-model="formData.ip_blacklist"
+                  rows="3"
+                  class="input font-mono"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('keys.ipBlacklistPlaceholder')"
+                />
+              </template>
+            </FormField>
+          </div>
+        </div>
+
+        <!-- Quota -->
+        <div class="space-y-2">
+          <FormField :label="t('keys.quotaLimit')" :hint="t('keys.quotaAmountHint')">
+            <template #default="{ id, describedBy }">
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <span
+                  class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-ink-tertiary"
+                  aria-hidden="true"
+                >
+                  $
+                </span>
                 <input
+                  :id="id"
                   v-model.number="formData.quota"
                   type="number"
                   step="0.01"
                   min="0"
                   class="input pl-7"
+                  :aria-describedby="describedBy"
                   :placeholder="t('keys.quotaAmountPlaceholder')"
                 />
               </div>
-              <p class="input-hint">{{ t('keys.quotaAmountHint') }}</p>
-            </div>
+            </template>
+          </FormField>
 
-            <!-- Quota used display (only in edit mode) -->
-            <div v-if="showEditModal && selectedKey && selectedKey.quota > 0">
-              <label class="input-label">{{ t('keys.quotaUsed') }}</label>
-              <div class="flex items-center gap-2">
-                <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700">
-                  <span class="font-medium text-gray-900 dark:text-white">
-                    ${{ selectedKey.quota_used?.toFixed(4) || '0.0000' }}
-                  </span>
-                  <span class="mx-2 text-gray-400">/</span>
-                  <span class="text-gray-500 dark:text-gray-400">
-                    ${{ selectedKey.quota?.toFixed(2) || '0.00' }}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  @click="confirmResetQuota"
-                  class="btn btn-secondary text-sm"
-                  :title="t('keys.resetQuotaUsed')"
-                >
-                  {{ t('keys.reset') }}
-                </button>
+          <div v-if="showEditModal && selectedKey && selectedKey.quota > 0" class="flex gap-2">
+            <div class="min-w-0 flex-1 space-y-1 rounded border border-line bg-surface-sunken px-3 py-2">
+              <Meter
+                :label="t('keys.quotaUsed')"
+                :value="selectedKey.quota_used ?? 0"
+                :max="selectedKey.quota"
+                :danger-at="1"
+                :show-value="false"
+              />
+              <div class="flex items-baseline justify-end gap-1">
+                <NumCell
+                  :value="selectedKey.quota_used"
+                  :precision="4"
+                  :tone="ratioTone(selectedKey.quota_used, selectedKey.quota)"
+                />
+                <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+                <NumCell :value="selectedKey.quota" :precision="2" :unit="CURRENCY" />
               </div>
             </div>
+            <Button
+              type="button"
+              size="md"
+              :title="t('keys.resetQuotaUsed')"
+              @click="confirmResetQuota"
+            >
+              {{ t('keys.reset') }}
+            </Button>
           </div>
         </div>
 
-        <!-- Rate Limit Section -->
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('keys.rateLimitSection') }}</label>
+        <!-- Rate Limit -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-medium text-ink-secondary">
+              {{ t('keys.rateLimitSection') }}
+            </span>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_rate_limit"
+              :aria-label="t('keys.rateLimitSection')"
+              class="switch"
+              :class="formData.enable_rate_limit && 'switch-active'"
               @click="formData.enable_rate_limit = !formData.enable_rate_limit"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_rate_limit ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
             >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.enable_rate_limit ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
+              <span class="switch-thumb" />
             </button>
           </div>
 
-          <div v-if="formData.enable_rate_limit" class="space-y-4 pt-2">
-            <p class="input-hint -mt-2">{{ t('keys.rateLimitHint') }}</p>
-            <!-- 5-Hour Limit -->
-            <div>
-              <label class="input-label">{{ t('keys.rateLimit5h') }}</label>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                <input
-                  v-model.number="formData.rate_limit_5h"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  class="input pl-7"
-                  :placeholder="'0'"
-                />
-              </div>
-              <!-- Usage info (edit mode only) -->
-              <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_5h > 0" class="mt-2">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
-                    <span :class="[
-                      'font-medium',
-                      selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'text-red-500' :
-                      selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'text-yellow-500' :
-                      'text-gray-900 dark:text-white'
-                    ]">
-                      ${{ selectedKey.usage_5h?.toFixed(4) || '0.0000' }}
-                    </span>
-                    <span class="mx-2 text-gray-400">/</span>
-                    <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_5h?.toFixed(2) || '0.00' }}
-                    </span>
-                  </div>
-                </div>
-                <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'bg-red-500' :
-                      selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    ]"
-                    :style="{ width: Math.min((selectedKey.usage_5h / selectedKey.rate_limit_5h) * 100, 100) + '%' }"
-                  />
-                </div>
-              </div>
-            </div>
+          <div v-if="formData.enable_rate_limit" class="space-y-2 pt-1">
+            <p class="text-2xs text-ink-tertiary">{{ t('keys.rateLimitHint') }}</p>
 
-            <!-- Daily Limit -->
-            <div>
-              <label class="input-label">{{ t('keys.rateLimit1d') }}</label>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                <input
-                  v-model.number="formData.rate_limit_1d"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  class="input pl-7"
-                  :placeholder="'0'"
-                />
-              </div>
-              <!-- Usage info (edit mode only) -->
-              <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_1d > 0" class="mt-2">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
-                    <span :class="[
-                      'font-medium',
-                      selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'text-red-500' :
-                      selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'text-yellow-500' :
-                      'text-gray-900 dark:text-white'
-                    ]">
-                      ${{ selectedKey.usage_1d?.toFixed(4) || '0.0000' }}
+            <div v-for="field in rateLimitFields" :key="field.key" class="space-y-1.5">
+              <FormField :label="field.label">
+                <template #default="{ id, describedBy }">
+                  <div class="relative">
+                    <span
+                      class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-ink-tertiary"
+                      aria-hidden="true"
+                    >
+                      $
                     </span>
-                    <span class="mx-2 text-gray-400">/</span>
-                    <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_1d?.toFixed(2) || '0.00' }}
-                    </span>
+                    <input
+                      :id="id"
+                      v-model.number="formData[field.model]"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input pl-7"
+                      :aria-describedby="describedBy"
+                      placeholder="0"
+                    />
                   </div>
-                </div>
-                <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'bg-red-500' :
-                      selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    ]"
-                    :style="{ width: Math.min((selectedKey.usage_1d / selectedKey.rate_limit_1d) * 100, 100) + '%' }"
-                  />
-                </div>
-              </div>
-            </div>
+                </template>
+              </FormField>
 
-            <!-- 7-Day Limit -->
-            <div>
-              <label class="input-label">{{ t('keys.rateLimit7d') }}</label>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                <input
-                  v-model.number="formData.rate_limit_7d"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  class="input pl-7"
-                  :placeholder="'0'"
-                />
-              </div>
-              <!-- Usage info (edit mode only) -->
-              <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_7d > 0" class="mt-2">
-                <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
-                    <span :class="[
-                      'font-medium',
-                      selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'text-red-500' :
-                      selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'text-yellow-500' :
-                      'text-gray-900 dark:text-white'
-                    ]">
-                      ${{ selectedKey.usage_7d?.toFixed(4) || '0.0000' }}
-                    </span>
-                    <span class="mx-2 text-gray-400">/</span>
-                    <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_7d?.toFixed(2) || '0.00' }}
-                    </span>
-                  </div>
-                </div>
-                <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                  <div
-                    :class="[
-                      'h-full rounded-full transition-all',
-                      selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'bg-red-500' :
-                      selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'bg-yellow-500' :
-                      'bg-green-500'
-                    ]"
-                    :style="{ width: Math.min((selectedKey.usage_7d / selectedKey.rate_limit_7d) * 100, 100) + '%' }"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- Reset Rate Limit button (edit mode only) -->
-            <div v-if="showEditModal && selectedKey && (selectedKey.rate_limit_5h > 0 || selectedKey.rate_limit_1d > 0 || selectedKey.rate_limit_7d > 0)">
-              <button
-                type="button"
-                @click="confirmResetRateLimit"
-                class="btn btn-secondary text-sm"
+              <div
+                v-if="showEditModal && selectedKey && selectedKey[field.model] > 0"
+                class="space-y-1 rounded border border-line bg-surface-sunken px-3 py-2"
               >
+                <Meter
+                  :label="field.label"
+                  :value="selectedKey[field.usage] ?? 0"
+                  :max="selectedKey[field.model]"
+                  :danger-at="1"
+                  :show-value="false"
+                />
+                <div class="flex items-baseline justify-end gap-1">
+                  <NumCell
+                    :value="selectedKey[field.usage]"
+                    :precision="4"
+                    :tone="ratioTone(selectedKey[field.usage], selectedKey[field.model])"
+                  />
+                  <span class="font-mono text-2xs text-ink-tertiary" aria-hidden="true">/</span>
+                  <NumCell :value="selectedKey[field.model]" :precision="2" :unit="CURRENCY" />
+                </div>
+              </div>
+            </div>
+
+            <div v-if="showEditModal && selectedKey && hasAnyRateLimit(selectedKey)">
+              <Button type="button" size="md" @click="confirmResetRateLimit">
                 {{ t('keys.resetRateLimitUsage') }}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
 
-        <!-- Expiration Section -->
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('keys.expiration') }}</label>
+        <!-- Expiration -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-xs font-medium text-ink-secondary">{{ t('keys.expiration') }}</span>
             <button
               type="button"
+              role="switch"
+              :aria-checked="formData.enable_expiration"
+              :aria-label="t('keys.expiration')"
+              class="switch"
+              :class="formData.enable_expiration && 'switch-active'"
               @click="formData.enable_expiration = !formData.enable_expiration"
-              :class="[
-                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-                formData.enable_expiration ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
             >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  formData.enable_expiration ? 'translate-x-4' : 'translate-x-0'
-                ]"
-              />
+              <span class="switch-thumb" />
             </button>
           </div>
 
-          <div v-if="formData.enable_expiration" class="space-y-4 pt-2">
-            <!-- Quick select buttons (for both create and edit mode) -->
-            <div class="flex flex-wrap gap-2">
+          <div v-if="formData.enable_expiration" class="space-y-3 pt-1">
+            <!-- Segmented: hairlines collapse so the group reads as one object. -->
+            <div class="inline-flex -space-x-px" role="group">
               <button
-                v-for="days in ['7', '30', '90']"
+                v-for="days in EXPIRATION_PRESETS"
                 :key="days"
                 type="button"
-                @click="setExpirationDays(parseInt(days))"
+                :aria-pressed="formData.expiration_preset === days"
                 :class="[
-                  'rounded-lg px-3 py-1.5 text-sm transition-colors',
-                  formData.expiration_preset === days
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
+                  SEGMENT,
+                  formData.expiration_preset === days ? SEGMENT_ON : SEGMENT_OFF,
                 ]"
+                @click="setExpirationDays(parseInt(days, 10))"
               >
                 {{ showEditModal ? t('keys.extendDays', { days }) : t('keys.expiresInDays', { days }) }}
               </button>
               <button
                 type="button"
-                @click="formData.expiration_preset = 'custom'"
+                :aria-pressed="formData.expiration_preset === 'custom'"
                 :class="[
-                  'rounded-lg px-3 py-1.5 text-sm transition-colors',
-                  formData.expiration_preset === 'custom'
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600'
+                  SEGMENT,
+                  formData.expiration_preset === 'custom' ? SEGMENT_ON : SEGMENT_OFF,
                 ]"
+                @click="formData.expiration_preset = 'custom'"
               >
                 {{ t('keys.customDate') }}
               </button>
             </div>
 
-            <!-- Date picker (always show for precise adjustment) -->
-            <div>
-              <label class="input-label">{{ t('keys.expirationDate') }}</label>
-              <input
-                v-model="formData.expiration_date"
-                type="datetime-local"
-                class="input"
-              />
-              <p class="input-hint">{{ t('keys.expirationDateHint') }}</p>
-            </div>
+            <FormField :label="t('keys.expirationDate')" :hint="t('keys.expirationDateHint')">
+              <template #default="{ id, describedBy }">
+                <input
+                  :id="id"
+                  v-model="formData.expiration_date"
+                  type="datetime-local"
+                  class="input"
+                  :aria-describedby="describedBy"
+                />
+              </template>
+            </FormField>
 
-            <!-- Current expiration display (only in edit mode) -->
-            <div v-if="showEditModal && selectedKey?.expires_at" class="text-sm">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('keys.currentExpiration') }}: </span>
-              <span class="font-medium text-gray-900 dark:text-white">
+            <div
+              v-if="showEditModal && selectedKey?.expires_at"
+              class="flex items-baseline justify-between gap-3 border-t border-line-subtle pt-2"
+            >
+              <span class="text-xs text-ink-secondary">{{ t('keys.currentExpiration') }}</span>
+              <span class="font-mono text-xs tabular-nums text-ink">
                 {{ formatDateTime(selectedKey.expires_at) }}
               </span>
             </div>
           </div>
         </div>
       </form>
+
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button @click="closeModals" type="button" class="btn btn-secondary">
+        <div class="flex justify-end gap-2">
+          <Button type="button" size="md" @click="closeModals">
             {{ t('common.cancel') }}
-          </button>
-          <button
+          </Button>
+          <!--
+            The label does not change while saving. `loading` keeps the label box
+            and overlays the spinner, so the button never resizes under the
+            cursor mid-click.
+          -->
+          <Button
             form="key-form"
             type="submit"
-            :disabled="submitting"
-            class="btn btn-primary"
+            tone="accent"
+            variant="solid"
+            size="md"
+            :loading="submitting"
             data-tour="key-form-submit"
+            data-testid="key-form-submit"
           >
-            <svg
-              v-if="submitting"
-              class="-ml-1 mr-2 h-4 w-4 animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            {{
-              submitting
-                ? t('keys.saving')
-                : showEditModal
-                  ? t('common.update')
-                  : t('common.create')
-            }}
-          </button>
+            {{ showEditModal ? t('common.update') : t('common.create') }}
+          </Button>
         </div>
       </template>
     </BaseDialog>
@@ -968,7 +848,12 @@
     <ConfirmDialog
       :show="showResetQuotaDialog"
       :title="t('keys.resetQuotaTitle')"
-      :message="t('keys.resetQuotaConfirmMessage', { name: selectedKey?.name, used: selectedKey?.quota_used?.toFixed(4) })"
+      :message="
+        t('keys.resetQuotaConfirmMessage', {
+          name: selectedKey?.name,
+          used: selectedKey?.quota_used?.toFixed(4),
+        })
+      "
       :confirm-text="t('keys.reset')"
       :cancel-text="t('common.cancel')"
       :danger="true"
@@ -1006,41 +891,26 @@
       @close="closeCcsClientSelect"
     >
       <div class="space-y-4">
-        <p class="text-sm text-gray-600 dark:text-gray-400">
-          {{ t('keys.ccsClientSelect.description') }}
-	        </p>
-	        <div class="grid grid-cols-2 gap-3">
-	          <button
-	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.claudeCode')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.claudeCodeDesc')
-	            }}</span>
-	          </button>
-	          <button
-	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.geminiCli')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.geminiCliDesc')
-	            }}</span>
-	          </button>
-	        </div>
-	      </div>
+        <p class="text-sm text-ink-secondary">{{ t('keys.ccsClientSelect.description') }}</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            v-for="client in CCS_CLIENTS"
+            :key="client.type"
+            type="button"
+            class="flex flex-col items-center gap-1.5 rounded border border-line bg-surface p-4 text-center transition-colors duration-fast hover:border-line-strong hover:bg-surface-hover"
+            @click="handleCcsClientSelect(client.type)"
+          >
+            <Icon :name="client.icon" size="lg" class="text-ink-tertiary" />
+            <span class="text-sm font-medium text-ink">{{ t(client.labelKey) }}</span>
+            <span class="text-2xs text-ink-tertiary">{{ t(client.descKey) }}</span>
+          </button>
+        </div>
+      </div>
       <template #footer>
         <div class="flex justify-end">
-          <button @click="closeCcsClientSelect" class="btn btn-secondary">
+          <Button type="button" size="md" @click="closeCcsClientSelect">
             {{ t('common.cancel') }}
-          </button>
+          </Button>
         </div>
       </template>
     </BaseDialog>
@@ -1050,44 +920,49 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-max max-w-[calc(100vw-16px)] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 sm:min-w-[380px] dark:bg-dark-800 dark:ring-white/10"
-        style="pointer-events: auto !important;"
+        class="fixed z-[100000020] w-max max-w-[calc(100vw-16px)] overflow-hidden rounded border border-line bg-surface-raised shadow-popover sm:min-w-[380px]"
+        style="pointer-events: auto !important"
         :style="{
           top: dropdownPosition.top !== undefined ? dropdownPosition.top + 'px' : undefined,
           bottom: dropdownPosition.bottom !== undefined ? dropdownPosition.bottom + 'px' : undefined,
-          left: dropdownPosition.left + 'px'
+          left: dropdownPosition.left + 'px',
         }"
+        role="listbox"
+        :aria-label="t('keys.selectGroup')"
       >
-        <!-- Search box -->
-        <div class="border-b border-gray-100 p-2 dark:border-dark-700">
+        <div class="border-b border-line-subtle p-2">
           <div class="relative">
-            <svg class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <Icon
+              name="search"
+              size="xs"
+              class="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-tertiary"
+            />
             <input
               v-model="groupSearchQuery"
               type="text"
-              class="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-primary-300 focus:ring-1 focus:ring-primary-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-primary-600 dark:focus:ring-primary-600"
+              class="input h-7 pl-8 text-xs"
               :placeholder="t('keys.searchGroup')"
+              :aria-label="t('keys.searchGroup')"
               @click.stop
             />
           </div>
         </div>
-        <!-- Group list -->
-        <div class="max-h-80 overflow-y-auto p-1.5">
+        <div class="max-h-80 overflow-y-auto">
           <button
             v-for="option in filteredGroupOptions"
             :key="option.value ?? 'null'"
-            @click="changeGroup(selectedKeyForGroup!, option.value)"
+            type="button"
+            role="option"
+            :aria-selected="isGroupSelected(option.value)"
             :class="[
-              'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
-              'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              selectedKeyForGroup?.group_id === option.value ||
-              (!selectedKeyForGroup?.group_id && option.value === null)
-                ? 'bg-primary-50 dark:bg-primary-900/20'
-                : 'hover:bg-gray-100 dark:hover:bg-dark-700'
+              'flex w-full items-center justify-between border-b border-line-subtle px-3 py-2 text-left text-sm last:border-0',
+              'transition-colors duration-fast',
+              isGroupSelected(option.value)
+                ? 'bg-accent-tint shadow-[inset_2px_0_0_0_rgb(var(--ds-accent))]'
+                : 'hover:bg-surface-hover',
             ]"
             :title="option.description || undefined"
+            @click="changeGroup(selectedKeyForGroup!, option.value)"
           >
             <GroupOptionItem
               :name="option.label"
@@ -1100,16 +975,15 @@
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
-              :selected="
-                selectedKeyForGroup?.group_id === option.value ||
-                (!selectedKeyForGroup?.group_id && option.value === null)
-              "
+              :selected="isGroupSelected(option.value)"
             />
           </button>
-          <!-- Empty state when search has no results -->
-          <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+          <p
+            v-if="filteredGroupOptions.length === 0"
+            class="px-3 py-6 text-center text-xs text-ink-tertiary"
+          >
             {{ t('keys.noGroupFound') }}
-          </div>
+          </p>
         </div>
       </div>
     </Teleport>
@@ -1117,38 +991,83 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
-	import { useI18n } from 'vue-i18n'
-	import { useAppStore } from '@/stores/app'
-	import { useOnboardingStore } from '@/stores/onboarding'
-	import { useClipboard } from '@/composables/useClipboard'
-import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import type { BatchApiKeyUsageStats } from '@/api/usage'
+/*
+ * Direct paths, never the `components/common/index.ts` barrel: that barrel
+ * re-exports LocaleSwitcher, which drags `createI18n` into the module graph and
+ * breaks every spec that mocks `vue-i18n`. This has already happened once here.
+ */
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import Button from '@/components/common/Button.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import FormField from '@/components/common/FormField.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
+import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
+import Meter from '@/components/common/Meter.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import SearchInput from '@/components/common/SearchInput.vue'
+import Select from '@/components/common/Select.vue'
+import StatusDot from '@/components/common/StatusDot.vue'
+import type { Tone } from '@/components/common/primitives'
+import type { Column } from '@/components/common/types'
+import Icon from '@/components/icons/Icon.vue'
+import EndpointPopover from '@/components/keys/EndpointPopover.vue'
+import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
-	import DataTable from '@/components/common/DataTable.vue'
-	import Pagination from '@/components/common/Pagination.vue'
-	import BaseDialog from '@/components/common/BaseDialog.vue'
-	import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-	import EmptyState from '@/components/common/EmptyState.vue'
-	import Select from '@/components/common/Select.vue'
-	import SearchInput from '@/components/common/SearchInput.vue'
-	import Icon from '@/components/icons/Icon.vue'
-	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
-	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
-	import GroupBadge from '@/components/common/GroupBadge.vue'
-	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
-import type { Column } from '@/components/common/types'
-import type { BatchApiKeyUsageStats } from '@/api/usage'
+import { useClipboard } from '@/composables/useClipboard'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useAppStore } from '@/stores/app'
+import { useOnboardingStore } from '@/stores/onboarding'
+import type {
+  ApiKey,
+  Group,
+  PublicSettings,
+  SubscriptionType,
+  GroupPlatform,
+  UpdateApiKeyRequest,
+} from '@/types'
+import { buildCcSwitchImportDeeplink, type CcSwitchClientType } from '@/utils/ccswitchImport'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
-import {
-  buildCcSwitchImportDeeplink,
-  type CcSwitchClientType
-} from '@/utils/ccswitchImport'
+
+const { t } = useI18n()
+
+/** Every money column in this view is settled in USD server-side. */
+const CURRENCY = 'USD'
+
+const EXPIRATION_PRESETS = ['7', '30', '90'] as const
+
+/**
+ * Segmented control. `-space-x-px` collapses the hairlines so the group reads as
+ * one object, and only ground + border change on press. No pill track.
+ */
+const SEGMENT =
+  'h-7 border px-2.5 text-xs font-medium transition-colors duration-fast first:rounded-l last:rounded-r'
+const SEGMENT_ON = 'relative z-10 border-accent-solid bg-accent-solid text-accent-on'
+const SEGMENT_OFF = 'border-line bg-surface text-ink-secondary hover:bg-surface-hover hover:text-ink'
+
+const CCS_CLIENTS = [
+  {
+    type: 'claude' as CcSwitchClientType,
+    icon: 'terminal' as const,
+    labelKey: 'keys.ccsClientSelect.claudeCode',
+    descKey: 'keys.ccsClientSelect.claudeCodeDesc',
+  },
+  {
+    type: 'gemini' as CcSwitchClientType,
+    icon: 'sparkles' as const,
+    labelKey: 'keys.ccsClientSelect.geminiCli',
+    descKey: 'keys.ccsClientSelect.geminiCliDesc',
+  },
+]
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1188,7 +1107,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'last_used_at', label: t('keys.lastUsedAt'), sortable: true },
   { key: 'last_used_ip', label: t('keys.lastUsedIP'), sortable: false },
   { key: 'created_at', label: t('keys.created'), sortable: true },
-  { key: 'actions', label: t('common.actions'), sortable: false }
+  { key: 'actions', label: t('common.actions'), sortable: false },
 ])
 
 const ALWAYS_VISIBLE_COLUMNS = new Set(['name', 'actions'])
@@ -1198,7 +1117,7 @@ const COLUMN_SETTINGS_VERSION_KEY = 'api-key-column-settings-version'
 const COLUMN_SETTINGS_VERSION = 3
 const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
   2: ['last_used_ip'],
-  3: ['id']
+  3: ['id'],
 }
 
 const toggleableColumns = computed(() =>
@@ -1224,10 +1143,9 @@ const loadSavedColumns = () => {
       const parsed = JSON.parse(saved) as string[]
       const validColumnKeys = new Set(allColumns.value.map((col) => col.key))
       parsed
-        .filter((key) =>
-          typeof key === 'string' &&
-          validColumnKeys.has(key) &&
-          !ALWAYS_VISIBLE_COLUMNS.has(key)
+        .filter(
+          (key) =>
+            typeof key === 'string' && validColumnKeys.has(key) && !ALWAYS_VISIBLE_COLUMNS.has(key)
         )
         .forEach((key) => hiddenColumns.add(key))
       const storedVersion = Number(localStorage.getItem(COLUMN_SETTINGS_VERSION_KEY) ?? '1')
@@ -1266,7 +1184,9 @@ const toggleColumn = (key: string) => {
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 
 const columns = computed<Column[]>(() =>
-  allColumns.value.filter((col) => ALWAYS_VISIBLE_COLUMNS.has(col.key) || !hiddenColumns.has(col.key))
+  allColumns.value.filter(
+    (col) => ALWAYS_VISIBLE_COLUMNS.has(col.key) || !hiddenColumns.has(col.key)
+  )
 )
 
 const apiKeys = ref<ApiKey[]>([])
@@ -1275,6 +1195,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
 const usageStats = ref<Record<string, BatchApiKeyUsageStats>>({})
 const userGroupRates = ref<Record<number, number>>({})
 
@@ -1282,11 +1203,11 @@ const pagination = ref({
   page: 1,
   page_size: getPersistedPageSize(),
   total: 0,
-  pages: 0
+  pages: 0,
 })
 const sortState = ref({
   sort_by: 'created_at',
-  sort_order: 'desc' as 'asc' | 'desc'
+  sort_order: 'desc' as 'asc' | 'desc',
 })
 
 // Filter state
@@ -1319,6 +1240,10 @@ const selectedKeyForGroup = computed(() => {
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
 
+const isGroupSelected = (value: number | null) =>
+  selectedKeyForGroup.value?.group_id === value ||
+  (!selectedKeyForGroup.value?.group_id && value === null)
+
 const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
     groupButtonRefs.value.set(keyId, el)
@@ -1346,8 +1271,15 @@ const formData = ref({
   rate_limit_7d: null as number | null,
   enable_expiration: false,
   expiration_preset: '30' as '7' | '30' | '90' | 'custom',
-  expiration_date: ''
+  expiration_date: '',
 })
+
+/**
+ * Set on the first submit attempt so "required" messages appear next to the
+ * field rather than only as a toast, without shouting at a form nobody has
+ * touched yet.
+ */
+const submitAttempted = ref(false)
 
 // 自定义Key验证
 const customKeyError = computed(() => {
@@ -1365,9 +1297,82 @@ const customKeyError = computed(() => {
   return ''
 })
 
+const customKeyFieldError = computed(() => {
+  if (showEditModal.value || !formData.value.use_custom_key) return ''
+  if (!formData.value.custom_key) {
+    return submitAttempted.value ? t('keys.customKeyRequired') : ''
+  }
+  return customKeyError.value
+})
+
+const groupError = computed(() =>
+  submitAttempted.value && formData.value.group_id === null ? t('keys.groupRequired') : ''
+)
+
+type RateLimitKey = 'rate_limit_5h' | 'rate_limit_1d' | 'rate_limit_7d'
+type RateUsageKey = 'usage_5h' | 'usage_1d' | 'usage_7d'
+
+interface RateLimitField {
+  key: string
+  label: string
+  model: RateLimitKey
+  usage: RateUsageKey
+}
+
+const rateLimitFields = computed<RateLimitField[]>(() => [
+  { key: '5h', label: t('keys.rateLimit5h'), model: 'rate_limit_5h', usage: 'usage_5h' },
+  { key: '1d', label: t('keys.rateLimit1d'), model: 'rate_limit_1d', usage: 'usage_1d' },
+  { key: '7d', label: t('keys.rateLimit7d'), model: 'rate_limit_7d', usage: 'usage_7d' },
+])
+
+interface RateWindow {
+  key: string
+  label: string
+  used: number | null
+  limit: number
+  resetAt: string | null
+}
+
+/** Only windows that actually cap something. A meter with max 0 measures nothing. */
+const rateWindows = (row: ApiKey): RateWindow[] =>
+  [
+    { key: '5h', label: '5H', used: row.usage_5h, limit: row.rate_limit_5h, resetAt: row.reset_5h_at },
+    { key: '1d', label: '1D', used: row.usage_1d, limit: row.rate_limit_1d, resetAt: row.reset_1d_at },
+    { key: '7d', label: '7D', used: row.usage_7d, limit: row.rate_limit_7d, resetAt: row.reset_7d_at },
+  ].filter((w) => w.limit > 0)
+
+const hasRateLimitUsage = (row: ApiKey) =>
+  row.usage_5h > 0 || row.usage_1d > 0 || row.usage_7d > 0
+
+const hasAnyRateLimit = (key: ApiKey) =>
+  key.rate_limit_5h > 0 || key.rate_limit_1d > 0 || key.rate_limit_7d > 0
+
+/**
+ * Signal budget: a quota that is fine gets NO colour. The previous version
+ * painted every healthy bar emerald, which is how a colour stops meaning
+ * anything — by the time something is wrong the table is already green.
+ */
+const ratioTone = (used: number | null | undefined, limit: number | null | undefined): Tone => {
+  if (used == null || !limit || limit <= 0) return 'neutral'
+  if (used >= limit) return 'danger'
+  if (used >= limit * 0.8) return 'warn'
+  return 'neutral'
+}
+
+const statusTone = (status: string): Tone => {
+  if (status === 'quota_exhausted') return 'warn'
+  if (status === 'expired') return 'danger'
+  return 'neutral'
+}
+
+const isExpired = (value: string) => {
+  const ts = new Date(value).getTime()
+  return Number.isFinite(ts) && ts < now.value.getTime()
+}
+
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
-  { value: 'inactive', label: t('common.inactive') }
+  { value: 'inactive', label: t('common.inactive') },
 ])
 
 const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
@@ -1381,7 +1386,7 @@ const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
 const groupFilterOptions = computed(() => [
   { value: '', label: t('keys.allGroups') },
   { value: 0, label: t('keys.noGroup') },
-  ...groups.value.map((g) => ({ value: g.id, label: g.name }))
+  ...groups.value.map((g) => ({ value: g.id, label: g.name })),
 ])
 
 const statusFilterOptions = computed(() => [
@@ -1389,7 +1394,7 @@ const statusFilterOptions = computed(() => [
   { value: 'active', label: t('keys.status.active') },
   { value: 'inactive', label: t('keys.status.inactive') },
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
-  { value: 'expired', label: t('keys.status.expired') }
+  { value: 'expired', label: t('keys.status.expired') },
 ])
 
 const onFilterChange = () => {
@@ -1420,7 +1425,7 @@ const groupOptions = computed(() =>
     peakEnd: group.peak_end,
     peakRateMultiplier: group.peak_rate_multiplier,
     subscriptionType: group.subscription_type,
-    platform: group.platform
+    platform: group.platform,
   }))
 )
 
@@ -1430,8 +1435,10 @@ const filteredGroupOptions = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
   if (!query) return groupOptions.value
   return groupOptions.value.filter((opt) => {
-    return opt.label.toLowerCase().includes(query) ||
+    return (
+      opt.label.toLowerCase().includes(query) ||
       (opt.description && opt.description.toLowerCase().includes(query))
+    )
   })
 })
 
@@ -1439,8 +1446,10 @@ const copyToClipboard = async (text: string, keyId: number) => {
   const success = await clipboardCopy(text, t('keys.copied'))
   if (success) {
     copiedKeyId.value = keyId
-    setTimeout(() => {
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
       copiedKeyId.value = null
+      copiedTimer = null
     }, 800)
   }
 }
@@ -1472,9 +1481,12 @@ const loadApiKeys = async () => {
     filters.sort_by = sortState.value.sort_by
     filters.sort_order = sortState.value.sort_order
 
-    const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, filters, {
-      signal
-    })
+    const response = await keysAPI.list(
+      pagination.value.page,
+      pagination.value.page_size,
+      filters,
+      { signal }
+    )
     if (signal.aborted) return
     apiKeys.value = response.items
     pagination.value.total = response.total
@@ -1559,7 +1571,8 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
-  const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
+  submitAttempted.value = false
+  const hasIPRestriction = key.ip_whitelist?.length > 0 || key.ip_blacklist?.length > 0
   const hasExpiration = !!key.expires_at
   formData.value = {
     name: key.name,
@@ -1572,13 +1585,13 @@ const editKey = (key: ApiKey) => {
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
     enable_quota: key.quota > 0,
     quota: key.quota > 0 ? key.quota : null,
-    enable_rate_limit: (key.rate_limit_5h > 0) || (key.rate_limit_1d > 0) || (key.rate_limit_7d > 0),
+    enable_rate_limit: hasAnyRateLimit(key),
     rate_limit_5h: key.rate_limit_5h || null,
     rate_limit_1d: key.rate_limit_1d || null,
     rate_limit_7d: key.rate_limit_7d || null,
     enable_expiration: hasExpiration,
     expiration_preset: 'custom',
-    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
+    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : '',
   }
   showEditModal.value = true
 }
@@ -1591,7 +1604,7 @@ const toggleKeyStatus = async (key: ApiKey) => {
       newStatus === 'active' ? t('keys.keyEnabledSuccess') : t('keys.keyDisabledSuccess')
     )
     loadApiKeys()
-  } catch (error) {
+  } catch {
     appStore.showError(t('keys.failedToUpdateStatus'))
   }
 }
@@ -1615,13 +1628,13 @@ const openGroupSelector = (key: ApiKey) => {
         // Not enough space below, pop upward
         dropdownPosition.value = {
           bottom: window.innerHeight - rect.top + 4,
-          left
+          left,
         }
       } else {
         // Default: pop downward
         dropdownPosition.value = {
           top: rect.bottom + 4,
-          left
+          left,
         }
       }
     }
@@ -1639,7 +1652,7 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
     await keysAPI.update(key.id, { group_id: newGroupId })
     appStore.showSuccess(t('keys.groupChangedSuccess'))
     loadApiKeys()
-  } catch (error) {
+  } catch {
     appStore.showError(t('keys.failedToChangeGroup'))
   }
 }
@@ -1647,7 +1660,7 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
 const closeGroupSelector = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   // Check if click is inside the dropdown or the trigger button
-  if (!target.closest('.group\\/dropdown') && !dropdownRef.value?.contains(target)) {
+  if (!target.closest('[data-group-cell]') && !dropdownRef.value?.contains(target)) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
   }
@@ -1662,6 +1675,8 @@ const confirmDelete = (key: ApiKey) => {
 }
 
 const handleSubmit = async () => {
+  submitAttempted.value = true
+
   // Validate group_id is required
   if (formData.value.group_id === null) {
     appStore.showError(t('keys.groupRequired'))
@@ -1682,9 +1697,16 @@ const handleSubmit = async () => {
 
   // Parse IP lists only if IP restriction is enabled
   const parseIPList = (text: string): string[] =>
-    text.split('\n').map(ip => ip.trim()).filter(ip => ip.length > 0)
-  const ipWhitelist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_whitelist) : []
-  const ipBlacklist = formData.value.enable_ip_restriction ? parseIPList(formData.value.ip_blacklist) : []
+    text
+      .split('\n')
+      .map((ip) => ip.trim())
+      .filter((ip) => ip.length > 0)
+  const ipWhitelist = formData.value.enable_ip_restriction
+    ? parseIPList(formData.value.ip_whitelist)
+    : []
+  const ipBlacklist = formData.value.enable_ip_restriction
+    ? parseIPList(formData.value.ip_blacklist)
+    : []
 
   // Calculate quota value (null/empty/0 = unlimited, stored as 0)
   const quota = formData.value.quota && formData.value.quota > 0 ? formData.value.quota : 0
@@ -1696,8 +1718,10 @@ const handleSubmit = async () => {
     if (!showEditModal.value) {
       // Create mode: calculate days from date
       const expDate = new Date(formData.value.expiration_date)
-      const now = new Date()
-      const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      const currentTime = new Date()
+      const diffDays = Math.ceil(
+        (expDate.getTime() - currentTime.getTime()) / (1000 * 60 * 60 * 24)
+      )
       expiresInDays = diffDays > 0 ? diffDays : 1
     } else {
       // Edit mode: use custom date directly
@@ -1709,11 +1733,22 @@ const handleSubmit = async () => {
   }
 
   // Calculate rate limit values (send 0 when toggle is off)
-  const rateLimitData = formData.value.enable_rate_limit ? {
-    rate_limit_5h: formData.value.rate_limit_5h && formData.value.rate_limit_5h > 0 ? formData.value.rate_limit_5h : 0,
-    rate_limit_1d: formData.value.rate_limit_1d && formData.value.rate_limit_1d > 0 ? formData.value.rate_limit_1d : 0,
-    rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
-  } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
+  const rateLimitData = formData.value.enable_rate_limit
+    ? {
+        rate_limit_5h:
+          formData.value.rate_limit_5h && formData.value.rate_limit_5h > 0
+            ? formData.value.rate_limit_5h
+            : 0,
+        rate_limit_1d:
+          formData.value.rate_limit_1d && formData.value.rate_limit_1d > 0
+            ? formData.value.rate_limit_1d
+            : 0,
+        rate_limit_7d:
+          formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0
+            ? formData.value.rate_limit_7d
+            : 0,
+      }
+    : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
   submitting.value = true
   try {
@@ -1754,6 +1789,7 @@ const handleSubmit = async () => {
     }
     closeModals()
     loadApiKeys()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToSave')
     appStore.showError(errorMsg)
@@ -1776,6 +1812,7 @@ const handleDelete = async () => {
     appStore.showSuccess(t('keys.keyDeletedSuccess'))
     showDeleteDialog.value = false
     loadApiKeys()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     // 优先使用后端返回的错误消息，提供更具体的错误信息给用户
     const errorMsg = error?.message || t('keys.failedToDelete')
@@ -1787,6 +1824,7 @@ const closeModals = () => {
   showCreateModal.value = false
   showEditModal.value = false
   selectedKey.value = null
+  submitAttempted.value = false
   formData.value = {
     name: '',
     group_id: null,
@@ -1804,7 +1842,7 @@ const closeModals = () => {
     rate_limit_7d: null,
     enable_expiration: false,
     expiration_preset: '30',
-    expiration_date: ''
+    expiration_date: '',
   }
 }
 
@@ -1832,6 +1870,7 @@ const resetQuotaUsed = async () => {
     if (selectedKey.value) {
       selectedKey.value.quota_used = 0
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
     appStore.showError(errorMsg)
@@ -1859,10 +1898,11 @@ const resetRateLimitUsage = async () => {
     // Refresh key data
     await loadApiKeys()
     // Update the editing key with fresh data
-    const refreshedKey = apiKeys.value.find(k => k.id === selectedKey.value!.id)
+    const refreshedKey = apiKeys.value.find((k) => k.id === selectedKey.value!.id)
     if (refreshedKey) {
       selectedKey.value = refreshedKey
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetRateLimit')
     appStore.showError(errorMsg)
@@ -1910,7 +1950,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
   })
 
   try {
@@ -1923,7 +1963,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
         appStore.showError(t('keys.ccSwitchNotInstalled'))
       }
     }, 100)
-  } catch (error) {
+  } catch {
     appStore.showError(t('keys.ccSwitchNotInstalled'))
   }
 }
@@ -1941,9 +1981,15 @@ const closeCcsClientSelect = () => {
   pendingCcsRow.value = null
 }
 
+/**
+ * Time until a rate-limit window rolls over. An unparseable timestamp used to
+ * fall through to `NaNm` in the cell; it now reads as "unknown" and renders
+ * nothing at all.
+ */
 function formatResetTime(resetAt: string | null): string {
   if (!resetAt) return ''
   const diff = new Date(resetAt).getTime() - now.value.getTime()
+  if (Number.isNaN(diff)) return ''
   if (diff <= 0) return t('keys.resetNow')
   const days = Math.floor(diff / 86400000)
   const hours = Math.floor((diff % 86400000) / 3600000)
@@ -1960,11 +2006,22 @@ onMounted(() => {
   loadUserGroupRates()
   loadPublicSettings()
   document.addEventListener('click', closeGroupSelector)
-  resetTimer = setInterval(() => { now.value = new Date() }, 60000)
+  resetTimer = setInterval(() => {
+    now.value = new Date()
+  }, 60000)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeGroupSelector)
   if (resetTimer) clearInterval(resetTimer)
+  if (copiedTimer) clearTimeout(copiedTimer)
 })
 </script>
+
+<!--
+  No `<style scoped>`.
+  Row geometry, header rule, hairline separators and the sticky column edges all
+  come from `TablePageLayout` and `style.css`, which own the data surface for
+  every table in the app. Nothing here needs a local override, and adding one
+  would put this view's density out of step with the other fifteen.
+-->

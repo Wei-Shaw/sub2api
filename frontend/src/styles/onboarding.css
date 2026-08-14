@@ -1,228 +1,381 @@
-/* Sub2API Interactive Tour Styles - DOM Restructured Version */
+/*
+ * driver.js tour chrome — Swiss/editorial retheme.
+ *
+ * SELECTORS. Everything here is either a class driver.js 1.4 emits itself
+ * (`driver-overlay`, `driver-active-element`, `driver-popover*`, see
+ * node_modules/driver.js/dist/driver.css) or one minted by
+ * `src/composables/useOnboardingTour.ts` in `onPopoverRender` (`footer-left`,
+ * `footer-right`, `footer-shortcuts`, `shortcut-item`,
+ * `driver-popover-description-hint`, `driver-popover-done-btn`) plus the
+ * `theme-tour-popover` value passed as `popoverClass`. Renaming any of them
+ * detaches the theme from the DOM.
+ *
+ * `!important` POLICY. driver.js styles the tour two ways, and only one of them
+ * needs the hammer:
+ *   1. its own stylesheet — entirely unprefixed and low-specificity. Any
+ *      two-class selector (`.driver-popover.theme-tour-popover`,
+ *      `.theme-tour-popover .driver-popover-footer`) already outranks it, and
+ *      specificity is order-independent, so bundle order does not matter.
+ *      Those declarations carry NO `!important`.
+ *   2. inline styles written from JS. Nothing but `!important` beats those, so
+ *      only those declarations keep it, each one annotated below.
+ *
+ * `display` is deliberately NEVER forced. driver.js drives visibility through
+ * inline `display` — a step declaring `showButtons: ['close']` hides prev/next
+ * that way, and an empty title/footer is hidden the same way — so an
+ * `!important` there would resurrect chrome the step asked to hide.
+ *
+ * Dark mode comes for free: every color below is a Family B token, which flips
+ * at `.dark` in tokens.css. There is not one `.dark` rule in this file.
+ */
 
-/* 1. Overlay & Highlight */
+/* ── 1. Overlay ───────────────────────────────────────────────────────────
+ * `.driver-overlay` IS the <svg>; the dark wash is the <path> inside it. Both
+ * are dressed with inline styles at creation time, hence the `!important`s.
+ */
 .driver-overlay {
-  position: fixed !important;
-  inset: 0 !important;
+  /* Inline `z-index: 10000` would sit above the app but below nothing useful;
+     the tour needs its own band under the highlight and the popover. */
   z-index: 99999998 !important;
-  background-color: transparent !important;
   /*
    * 关键修复：让 overlay 不拦截点击事件
    * 因为已设置 allowClose: false，用户不能通过点击遮罩关闭引导
    * 这样 Select 下拉菜单等脱离高亮区域的元素才能正常交互
    * 视觉遮罩效果保持不变（SVG 仍然渲染，pointer-events 只影响交互不影响渲染）
    */
-  pointer-events: none !important;
+  pointer-events: none;
 }
 
-.driver-overlay svg {
-  pointer-events: none !important;
+/*
+ * Opaque ink plus alpha — no blur, no gradient. driver.js writes `fill` from
+ * `overlayColor` and `opacity` from `overlayOpacity` directly onto the path, so
+ * both need `!important`. The `.driver-fade` fade-in animates the <svg>, not
+ * the path, so pinning the path's opacity leaves the entrance intact.
+ */
+.driver-overlay path {
+  fill: rgb(var(--ds-overlay)) !important;
+  opacity: 0.66 !important;
 }
 
+.driver-fade .driver-overlay.driver-overlay-animated {
+  animation-duration: var(--ds-dur-base);
+}
+
+/* ── 2. Highlight ─────────────────────────────────────────────────────────
+ * The one place in the app where a heavy line is correct: it has to survive on
+ * top of arbitrary content, and while the tour is pointing at something this is
+ * the only heavy line on the page. Two pixels of accent, squared — no halo, no
+ * spreading glow, no teal.
+ *
+ * `!important` throughout: the target is arbitrary app markup that usually
+ * already carries `relative`, `z-*` and `rounded-*` utilities of its own at the
+ * same specificity as this selector.
+ */
 .driver-active-element {
   position: relative !important;
   z-index: 99999999 !important;
-  outline: 4px solid rgba(20, 184, 166, 0.2) !important;
-  border-radius: 4px !important;
+  outline: 2px solid rgb(var(--ds-accent)) !important;
+  outline-offset: 2px !important;
+  border-radius: var(--ds-radius) !important;
 }
 
-/* 2. Popover Container */
+/* ── 3. Popover shell ─────────────────────────────────────────────────────
+ * Raised surface: it sits ON the content, not under it. Hairline border plus
+ * the sanctioned popover elevation — same recipe as `.dropdown` and `.toast`
+ * in style.css.
+ */
 .driver-popover.theme-tour-popover {
-  position: fixed !important;
-  z-index: 100000000 !important;
-  background-color: #ffffff !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
-  border-radius: 12px !important;
-  padding: 0 !important;
-  max-width: min(440px, 90vw) !important; /* Responsive on small screens */
-  color: #1f2937 !important;
-  font-family: ui-sans-serif, system-ui, sans-serif !important;
-  overflow: hidden !important;
+  z-index: 100000000;
+  max-width: min(440px, 90vw); /* Responsive on small screens */
+  padding: 0;
+  border: 1px solid rgb(var(--ds-line));
+  border-radius: var(--ds-radius-lg);
+  background-color: rgb(var(--ds-surface-raised));
+  box-shadow: var(--ds-shadow-popover);
+  color: rgb(var(--ds-ink));
+  /* Keeps the footer fill inside the 4px corners. Also clips the arrow — see
+     the arrow block at the bottom of this file. */
+  overflow: hidden;
 }
 
-.dark .driver-popover.theme-tour-popover {
-  background-color: #1e293b !important;
-  border-color: #334155 !important;
-  color: #f3f4f6 !important;
+/*
+ * driver.css sets `font-family` on `.driver-popover *`, which lands on every
+ * descendant DIRECTLY — inheriting from the wrapper is not enough to displace
+ * it. Matching its shape at two classes is.
+ */
+.driver-popover.theme-tour-popover,
+.driver-popover.theme-tour-popover * {
+  font-family: var(--ds-font-sans);
 }
 
-/* 3. Header Area */
+/* Opacity only. driver.js writes `transform: translateY(…)` inline on the
+   wrapper to nudge the arrow, so animating transform here would fight it. */
+.driver-fade .driver-popover.theme-tour-popover {
+  animation: ds-tour-popover-in var(--ds-dur-base) var(--ds-ease-out);
+}
+
+@keyframes ds-tour-popover-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 4. Title ─────────────────────────────────────────────────────────── */
 .theme-tour-popover .driver-popover-title {
-  display: flex !important;
-  align-items: center !important;
-  padding: 20px 24px 12px 24px !important; 
-  margin: 0 !important;
-  background-color: transparent !important;
-  position: relative !important;
+  margin: 0;
+  /* Right padding clears the close button. */
+  padding: 20px 56px 8px 24px;
+  background-color: transparent;
+  font-size: var(--ds-text-lg);
+  line-height: var(--ds-lh-lg);
+  letter-spacing: var(--ds-tr-lg);
+  font-weight: 600;
+  color: rgb(var(--ds-ink));
 }
 
-.driver-popover-title-text {
-  font-size: 18px !important;
-  font-weight: 700 !important;
-  color: #111827 !important;
-  line-height: 1.3 !important;
-  padding-right: 100px !important; /* Ensure title doesn't overlap Skip/Close */
-}
-.dark .driver-popover-title-text { color: #ffffff !important; }
-
-/* Close Button */
+/* Close button. A direct child of the popover, which is `position: fixed`, so
+   it anchors off the popover without help from the title. */
 .theme-tour-popover .driver-popover-close-btn {
-  position: absolute !important;
-  top: 18px !important;
-  right: 20px !important;
-  width: 28px !important;
-  height: 28px !important;
-  padding: 0 !important;
-  color: #9ca3af !important;
-  background-color: transparent !important;
-  border: none !important;
-  z-index: 20 !important;
-  border-radius: 4px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 20;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--ds-radius);
+  background-color: transparent;
+  color: rgb(var(--ds-ink-tertiary));
+  font-size: var(--ds-text-md);
+  /* Matches `height` — centres the `×` without `display: flex`, which would
+     override driver.js's inline show/hide. */
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color var(--ds-dur-fast) var(--ds-ease-out),
+    color var(--ds-dur-fast) var(--ds-ease-out);
 }
-.theme-tour-popover .driver-popover-close-btn:hover { background-color: #f3f4f6 !important; color: #4b5563 !important; }
-.dark .theme-tour-popover .driver-popover-close-btn:hover { background-color: #334155 !important; }
 
-/* 4. Body Content */
+.theme-tour-popover .driver-popover-close-btn:hover,
+.theme-tour-popover .driver-popover-close-btn:focus {
+  background-color: rgb(var(--ds-surface-hover));
+  color: rgb(var(--ds-ink));
+}
+
+/* ── 5. Description ───────────────────────────────────────────────────── */
 .theme-tour-popover .driver-popover-description {
-  display: block !important;
-  font-size: 14px !important;
-  font-weight: 400 !important;
-  color: #4b5563 !important;
-  padding: 0 24px 24px 24px !important;
-  margin: 0 !important;
-  line-height: 1.6 !important;
-  background-color: transparent !important;
+  margin: 0;
+  /*
+   * The only genuinely contested property in this block: driver.css slips a
+   * `margin-top: 5px` in through
+   * `.driver-popover-title[style*=block] + .driver-popover-description`, which
+   * outranks a two-class selector. Spacing lives in the title's padding.
+   */
+  margin-top: 0 !important;
+  padding: 0 24px 20px;
+  background-color: transparent;
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-lh-base);
+  font-weight: 400;
+  color: rgb(var(--ds-ink-secondary));
 }
-.dark .theme-tour-popover .driver-popover-description { color: #cbd5e1 !important; }
 
-/* 5. Footer Area - Flex Row with Left/Right Containers */
+/* The interactive-step hint the composable appends. It ships Tailwind utility
+   classes including a raw `text-gray-500`; two classes outrank one, so this
+   pulls it back onto a token without touching the composable. */
+.theme-tour-popover .driver-popover-description-hint {
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-lh-xs);
+  color: rgb(var(--ds-ink-tertiary));
+}
+
+/* ── 6. Footer ────────────────────────────────────────────────────────────
+ * driver.css already supplies `display: flex`, `align-items: center` and
+ * `justify-content: space-between`, and driver.js toggles `display` inline.
+ * Only the skin and the box are ours.
+ */
 .theme-tour-popover .driver-popover-footer {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important; /* Push Left and Right apart */
-  padding: 16px 24px !important;
-  background-color: #f9fafb !important;
-  border-top: 1px solid #f3f4f6 !important;
-  margin: 0 !important;
-}
-.dark .theme-tour-popover .driver-popover-footer {
-  background-color: #0f172a !important;
-  border-top-color: #1e293b !important;
+  margin: 0;
+  padding: 12px 24px;
+  gap: 16px;
+  border-top: 1px solid rgb(var(--ds-line-subtle));
+  background-color: rgb(var(--ds-surface-sunken));
+  text-align: left;
 }
 
-/* Left Container: Progress + Shortcuts */
-.footer-left {
-  display: flex !important;
-  align-items: center !important;
-  gap: 16px !important;
+/* Left container: progress + shortcuts. */
+.theme-tour-popover .footer-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
 }
 
-/* Right Container: Buttons */
-.footer-right {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
+/* Right container: buttons. */
+.theme-tour-popover .footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* Progress */
 .theme-tour-popover .driver-popover-progress-text {
-  font-size: 13px !important;
-  color: #6b7280 !important;
-  margin: 0 !important;
-  font-weight: 500 !important;
-  white-space: nowrap !important;
-}
-.dark .theme-tour-popover .driver-popover-progress-text { color: #9ca3af !important; }
-
-/* Shortcuts (Divider + Keys) */
-.footer-shortcuts {
-  display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
-  padding-left: 16px !important;
-  border-left: 1px solid #e5e7eb !important;
-  height: 20px !important;
-}
-.dark .footer-shortcuts { border-left-color: #334155 !important; }
-
-.shortcut-item {
-  display: flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  font-size: 12px !important;
-  color: #6b7280 !important;
-  white-space: nowrap !important;
-}
-.dark .shortcut-item { color: #94a3b8 !important; }
-
-.shortcut-item kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
-  background-color: #ffffff !important;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 4px !important;
-  padding: 1px 6px !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  color: #4b5563 !important;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.05) !important;
-  min-width: 20px !important;
-  text-align: center !important;
-  display: inline-block !important;
-}
-.dark .shortcut-item kbd {
-  background-color: #1e293b !important;
-  border-color: #475569 !important;
-  color: #cbd5e1 !important;
+  margin: 0;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-lh-xs);
+  letter-spacing: var(--ds-tr-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums slashed-zero;
+  color: rgb(var(--ds-ink-tertiary));
+  white-space: nowrap;
 }
 
-/* Nav Buttons */
-.theme-tour-popover button {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 8px 16px !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  border-radius: 6px !important;
-  cursor: pointer !important;
-  transition: all 0.2s !important;
-  border: 1px solid transparent !important;
-  line-height: 1.2 !important;
-  white-space: nowrap !important; /* Force no wrap */
+/* Shortcuts: hairline divider + keys. */
+.theme-tour-popover .footer-shortcuts {
+  display: flex;
+  height: 16px;
+  align-items: center;
+  gap: 12px;
+  padding-left: 16px;
+  border-left: 1px solid rgb(var(--ds-line));
 }
 
-.theme-tour-popover .driver-popover-next-btn {
-  background-color: #14b8a6 !important;
-  color: #ffffff !important;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
-}
-.theme-tour-popover .driver-popover-next-btn:hover { background-color: #0d9488 !important; }
-
-.theme-tour-popover .driver-popover-prev-btn {
-  background-color: white !important;
-  color: #6b7280 !important;
-  border: 1px solid #e5e7eb !important;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
-}
-.theme-tour-popover .driver-popover-prev-btn:hover { background-color: #f9fafb !important; color: #374151 !important; }
-.dark .theme-tour-popover .driver-popover-prev-btn { 
-  background-color: #1e293b !important; 
-  border-color: #475569 !important; 
-  color: #9ca3af !important; 
+.theme-tour-popover .shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ds-text-xs);
+  line-height: var(--ds-lh-xs);
+  color: rgb(var(--ds-ink-tertiary));
+  white-space: nowrap;
 }
 
-/* Arrows */
-.driver-popover-arrow { z-index: 100000001 !important; }
-.driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: #ffffff !important; }
-.driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #ffffff !important; }
-.driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #ffffff !important; }
-.driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #ffffff !important; }
+.theme-tour-popover .shortcut-item kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid rgb(var(--ds-line));
+  border-radius: var(--ds-radius);
+  background-color: rgb(var(--ds-surface));
+  color: rgb(var(--ds-ink-secondary));
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs);
+  line-height: var(--ds-lh-2xs);
+  letter-spacing: var(--ds-tr-2xs);
+  font-weight: 500;
+  text-align: center;
+}
 
-.dark .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: #1e293b !important; }
-.dark .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: #1e293b !important; }
-.dark .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: #1e293b !important; }
-.dark .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: #1e293b !important; }
+/* ── 7. Nav buttons ──────────────────────────────────────────────────────
+ * Scoped through `.driver-popover-footer` on purpose: it clears driver's own
+ * `.driver-popover-footer button` (`all: unset` + a grey chrome skin +
+ * `outline: 0`) on specificity alone, and it excludes the close button, which
+ * has its own geometry above.
+ */
+.theme-tour-popover .driver-popover-footer button {
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-lh-sm);
+  font-weight: 500;
+  text-align: center;
+  text-shadow: none;
+  white-space: nowrap; /* Force no wrap */
+  cursor: pointer;
+  transition:
+    background-color var(--ds-dur-fast) var(--ds-ease-out),
+    border-color var(--ds-dur-fast) var(--ds-ease-out),
+    color var(--ds-dur-fast) var(--ds-ease-out);
+}
+
+/*
+ * Primary. `accent-solid`, never `accent`: this button carries white text, and
+ * in dark mode the plain accent only reaches 3.75:1 against it.
+ * `.driver-popover-done-btn` is the same element on the last step.
+ */
+.theme-tour-popover .driver-popover-footer .driver-popover-next-btn {
+  border-color: rgb(var(--ds-accent-solid));
+  background-color: rgb(var(--ds-accent-solid));
+  color: rgb(var(--ds-accent-on));
+}
+
+.theme-tour-popover .driver-popover-footer .driver-popover-next-btn:hover {
+  border-color: rgb(var(--ds-accent-hover));
+  background-color: rgb(var(--ds-accent-hover));
+}
+
+.theme-tour-popover .driver-popover-footer .driver-popover-next-btn:active {
+  border-color: rgb(var(--ds-accent-active));
+  background-color: rgb(var(--ds-accent-active));
+}
+
+/* Secondary. Flat surface, hairline border — no fill, no shadow. */
+.theme-tour-popover .driver-popover-footer .driver-popover-prev-btn {
+  border-color: rgb(var(--ds-line));
+  background-color: rgb(var(--ds-surface));
+  color: rgb(var(--ds-ink-secondary));
+}
+
+.theme-tour-popover .driver-popover-footer .driver-popover-prev-btn:hover {
+  border-color: rgb(var(--ds-line-strong));
+  background-color: rgb(var(--ds-surface-hover));
+  color: rgb(var(--ds-ink));
+}
+
+.theme-tour-popover .driver-popover-footer .driver-popover-prev-btn:active {
+  background-color: rgb(var(--ds-surface-active));
+}
+
+.theme-tour-popover .driver-popover-footer .driver-popover-btn-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/*
+ * Focus is an outline, never a ring and never a bare `outline: none` — but
+ * driver.css hard-sets `outline: 0` on its footer buttons, which outranks the
+ * global `:focus-visible` rule in style.css, so it has to be restated here.
+ */
+.theme-tour-popover .driver-popover-footer button:focus-visible,
+.theme-tour-popover .driver-popover-close-btn:focus-visible {
+  outline: 2px solid rgb(var(--ds-focus));
+  outline-offset: 2px;
+}
+
+/* On an accent fill the focus outline must invert or it vanishes into its own
+   ground — same trade as `.btn-primary:focus-visible`. */
+.theme-tour-popover .driver-popover-footer .driver-popover-next-btn:focus-visible {
+  outline-color: rgb(var(--ds-focus-contrast));
+}
+
+/* ── 8. Arrow ─────────────────────────────────────────────────────────────
+ * driver.js builds the arrow out of a 5px border triangle, so it can only be
+ * the surface fill — a hairline is not expressible here. Note the popover's
+ * `overflow: hidden` currently clips it; these stay correct for the day that
+ * changes.
+ */
+.theme-tour-popover .driver-popover-arrow {
+  z-index: 100000001;
+}
+
+.theme-tour-popover .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: rgb(var(--ds-surface-raised));
+}
+
+.theme-tour-popover .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: rgb(var(--ds-surface-raised));
+}
+
+.theme-tour-popover .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: rgb(var(--ds-surface-raised));
+}
+
+.theme-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: rgb(var(--ds-surface-raised));
+}

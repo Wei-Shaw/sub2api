@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import ModelDistributionChart from '../ModelDistributionChart.vue'
+import { OTHERS_COLOR, seriesPalette } from '../chartTheme'
 
 const messages: Record<string, string> = {
   'admin.dashboard.modelDistribution': 'Model Distribution',
@@ -183,8 +184,13 @@ describe('ModelDistributionChart', () => {
       'Others',
     ])
     expect(chartData.datasets[0].data).toEqual([12, 8, 0, 10])
-    expect(chartData.datasets[0].backgroundColor[0]).toBe('#3b82f6')
-    expect(chartData.datasets[0].backgroundColor[3]).toBe('#94a3b8')
+    // Assert against the design system rather than pinning literal hexes, so
+    // a palette change does not break this spec. The behaviour under test is
+    // that ranked users get categorical series colors while "Others" gets the
+    // dedicated residual color.
+    expect(chartData.datasets[0].backgroundColor[0]).toBe(seriesPalette()[0])
+    expect(chartData.datasets[0].backgroundColor[3]).toBe(OTHERS_COLOR)
+    expect(seriesPalette()).not.toContain(OTHERS_COLOR)
     expect(chartData.datasets[0].backgroundColor[3]).not.toBe(chartData.datasets[0].backgroundColor[0])
 
     const rows = wrapper.findAll('tbody tr')

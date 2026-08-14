@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "//sideEffects": "Required so the components/common barrel stays tree-shakeable: without it, importing one primitive pulls the whole barrel into the entry chunk.",
+  "sideEffects": [
+    "*.css"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",

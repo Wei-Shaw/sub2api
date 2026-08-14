@@ -46,7 +46,10 @@ describe('NavigationProgress', () => {
 
     const progressBar = wrapper.find('.navigation-progress')
     expect(progressBar.attributes('role')).toBe('progressbar')
-    expect(progressBar.attributes('aria-label')).toBe('Loading')
+    // The translated `common.loading`, not a hardcoded literal: the bar used to
+    // carry `aria-label="Loading"` in the template, so a zh build announced the
+    // progress bar in English.
+    expect(progressBar.attributes('aria-label')).toBe('Loading...')
     expect(progressBar.attributes('aria-valuemin')).toBe('0')
     expect(progressBar.attributes('aria-valuemax')).toBe('100')
   })

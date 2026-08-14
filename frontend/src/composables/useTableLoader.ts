@@ -56,6 +56,14 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         { signal: currentController.signal }
       )
 
+      if (!response) {
+        // Reading `.items` off nothing threw a TypeError from inside the try,
+        // which the catch below then rethrew — so a fetchFn that resolved empty
+        // surfaced as `Cannot read properties of undefined`, several frames away
+        // from the call that caused it.
+        throw new Error('Table load returned no response')
+      }
+
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
@@ -78,18 +86,28 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
 
   const debouncedReload = useDebounceFn(reload, debounceMs)
 
+  /*
+   * `load` rethrows so that callers who await it can react. These two handlers
+   * are event handlers — nothing awaits them — so the rethrow became an
+   * unhandled rejection on every failed page change. The error is already
+   * logged inside `load`; this only stops it escaping as a floating rejection.
+   */
+  const loadDetached = () => {
+    void load().catch(() => {})
+  }
+
   const handlePageChange = (page: number) => {
     // 确保页码在有效范围内
     const validPage = Math.max(1, Math.min(page, pagination.pages || 1))
     pagination.page = validPage
-    load()
+    loadDetached()
   }
 
   const handlePageSizeChange = (size: number) => {
     pagination.page_size = size
     pagination.page = 1
     setPersistedPageSize(size)
-    load()
+    loadDetached()
   }
 
   onUnmounted(() => {

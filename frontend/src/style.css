@@ -1,23 +1,103 @@
+@import './styles/fonts.css';
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Global component layer — Swiss/editorial.
+ *
+ * Every class name here is UNCHANGED from the previous system. `.btn` is used
+ * in 135 of 297 components, `.input` in 125, `.card` in 65; renaming any of
+ * them would be a 200-file commit before the app renders again. The names are
+ * the compatibility contract; the values are all new.
+ *
+ * Three kinds of rule live below:
+ *   1. Rewritten — same name, new visual language. The bulk of the file.
+ *   2. Neutralized — `.glass`, `.card-hover`, `.text-gradient`. The selector
+ *      survives as a flat no-op so no consumer has to change, ever.
+ *   3. Brand-locked — `.btn-stripe` / `-alipay` / `-wxpay` / `-airwallex` keep
+ *      their payment-provider colors. They are the one sanctioned exception to
+ *      "one accent", and they still lose their gradients, glows and press-scale.
+ *
+ * Things that are deliberately absent and must not come back:
+ *   gradients · glass / backdrop-blur · glow shadows · hover-lift · press-scale
+ *   pill radii on anything but status dots and avatars · `transition: all`
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 @layer base {
+  /*
+   * Single hairline color for every element border. The old rule paired
+   * `border-gray-200` with `dark:border-dark-700`; `border-line` is a Family B
+   * token that flips on its own, so the `dark:` half must NOT be re-added —
+   * it would repaint light-mode borders in dark mode.
+   */
   * {
-    @apply border-gray-200 dark:border-dark-700;
+    @apply border-line;
   }
 
   html {
-    @apply scroll-smooth antialiased;
+    @apply antialiased;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Was unconditional. Smooth scrolling is motion. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      @apply scroll-smooth;
+    }
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-dark-950 dark:text-gray-100;
-    @apply min-h-screen;
+    @apply min-h-screen bg-canvas text-base text-ink;
+    font-family: var(--ds-font-sans);
   }
 
-  /* 自定义滚动条 - 仅针对 Firefox，避免 Chrome 取消 webkit 的全局定制 */
-  @supports (-moz-appearance:none) {
+  /*
+   * Numerals are the point of this app. Tabular figures and a slashed zero
+   * everywhere a quantity or an identifier is rendered — 1,700+ table cells
+   * are currently misaligned because only 10 files opt into `tabular-nums`.
+   */
+  .ds-num,
+  .tabular {
+    font-family: var(--ds-font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    text-align: end;
+  }
+
+  /*
+   * Focus is an `outline`, not a `ring`. An outline follows border-radius,
+   * needs no per-surface offset color (7 files currently hardcode
+   * `focus:ring-offset-dark-800`), and cannot be clipped by an
+   * `overflow: hidden` ancestor the way a box-shadow ring can.
+   */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--ds-focus));
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+
+  /* Dense contexts — table cells, toolbars — where a 2px halo would collide. */
+  .ds-focus-inset:focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* Never a bare `outline: none`; only ever suppressed for non-keyboard focus. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background-color: rgb(var(--ds-accent-tint-strong));
+    color: rgb(var(--ds-ink));
+  }
+
+  /* Firefox only — Chrome cancels the webkit rules below if this is global. */
+  @supports (-moz-appearance: none) {
     * {
       scrollbar-width: thin;
       scrollbar-color: transparent transparent;
@@ -25,12 +105,7 @@
 
     *:hover,
     *:focus-within {
-      scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
-    }
-
-    .dark *:hover,
-    .dark *:focus-within {
-      scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+      scrollbar-color: rgb(var(--ds-line-strong)) transparent;
     }
   }
 
@@ -43,131 +118,153 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-transparent;
-    transition: background-color 0.2s ease;
+    @apply rounded-none bg-transparent;
+    transition: background-color var(--ds-dur-fast) var(--ds-ease-std);
   }
 
   *:hover::-webkit-scrollbar-thumb {
-    @apply bg-gray-300/50 dark:bg-dark-600/50;
+    background-color: rgb(var(--ds-line-strong));
   }
 
   *:hover::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-dark-500;
+    background-color: rgb(var(--ds-line-emphasis));
   }
 
-  /* 选中文本样式 */
-  ::selection {
-    @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
+  /* Number inputs: the spinners are noise in a dense form. */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
   }
 
-
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
 }
 
 @layer components {
-  /* ============ 按钮样式 ============ */
+  /* ============ Buttons ============ */
+  /*
+   * NOTE ON HEIGHT: the previous `.btn` was `py-2.5` (~40px). The target for
+   * this system is `h-8` (32px). Landing 40 → 32 in one step reflows the
+   * toolbar in all 135 consuming files at once, so this ships at `h-9`
+   * (36px) first. Drop to `h-8` in a separate commit, after the toolbars and
+   * `TablePageLayout`'s height math have been audited.
+   */
   .btn {
-    @apply inline-flex items-center justify-center gap-2;
-    @apply rounded-xl px-4 py-2.5 text-sm font-medium;
-    @apply transition-all duration-200 ease-out;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
-    @apply disabled:transform-none disabled:cursor-not-allowed disabled:opacity-50;
-    @apply active:scale-[0.98];
+    @apply inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap;
+    @apply rounded px-3 text-sm font-medium;
+    @apply border border-transparent;
+    @apply transition-colors duration-fast ease-out;
+    @apply disabled:cursor-not-allowed disabled:opacity-40;
+    /* No shadow. No translate. No active:scale — that gesture is gone. */
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-primary-500 to-primary-600;
-    @apply text-white shadow-md shadow-primary-500/25;
-    @apply hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30;
-    @apply dark:shadow-primary-500/20;
+    @apply border-accent-solid bg-accent-solid text-accent-on;
+    @apply hover:border-accent-hover hover:bg-accent-hover;
+    @apply active:border-accent-active active:bg-accent-active;
+  }
+
+  /* On an accent fill the ring must invert or it vanishes into its own ground. */
+  .btn-primary:focus-visible {
+    outline-color: rgb(var(--ds-focus-contrast));
+    box-shadow: 0 0 0 4px rgb(var(--ds-focus) / 0.5);
   }
 
   .btn-secondary {
-    @apply bg-white dark:bg-dark-800;
-    @apply text-gray-700 dark:text-gray-200;
-    @apply border border-gray-200 dark:border-dark-600;
-    @apply shadow-sm hover:bg-gray-50 dark:hover:bg-dark-700;
-    @apply hover:border-gray-300 dark:hover:border-dark-500;
+    @apply border-line bg-surface text-ink;
+    @apply hover:border-line-strong hover:bg-surface-hover;
+    @apply active:bg-surface-active;
   }
 
   .btn-ghost {
-    @apply bg-transparent text-gray-600 dark:text-gray-300;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-800;
+    @apply border-transparent bg-transparent text-ink-secondary;
+    @apply hover:bg-surface-hover hover:text-ink;
+    @apply active:bg-surface-active;
   }
 
   .btn-danger {
-    @apply bg-gradient-to-r from-red-500 to-red-600;
-    @apply text-white shadow-md shadow-red-500/25;
-    @apply hover:from-red-600 hover:to-red-700 hover:shadow-lg hover:shadow-red-500/30;
+    @apply border-danger bg-danger text-white;
+    @apply hover:opacity-90 active:opacity-80;
   }
 
   .btn-success {
-    @apply bg-gradient-to-r from-emerald-500 to-emerald-600;
-    @apply text-white shadow-md shadow-emerald-500/25;
-    @apply hover:from-emerald-600 hover:to-emerald-700 hover:shadow-lg hover:shadow-emerald-500/30;
-    @apply dark:shadow-emerald-500/20;
+    @apply border-success bg-success text-white;
+    @apply hover:opacity-90 active:opacity-80;
   }
 
   .btn-warning {
-    @apply bg-gradient-to-r from-amber-500 to-amber-600;
-    @apply text-white shadow-md shadow-amber-500/25;
-    @apply hover:from-amber-600 hover:to-amber-700 hover:shadow-lg hover:shadow-amber-500/30;
-    @apply dark:shadow-amber-500/20;
+    @apply border-warn bg-warn text-white;
+    @apply hover:opacity-90 active:opacity-80;
   }
 
+  /*
+   * Brand-locked payment buttons. These colors are contractual with the
+   * provider and cannot become ultramarine. What they lose: gradient fills,
+   * colored glow shadows, and the press-scale.
+   */
   .btn-stripe {
-    @apply bg-[#635bff] text-white shadow-md shadow-[#635bff]/25;
-    @apply hover:bg-[#5851ea] hover:shadow-lg hover:shadow-[#635bff]/30;
-    @apply dark:bg-[#7a73ff] dark:shadow-[#7a73ff]/20;
-    @apply dark:hover:bg-[#635bff];
+    @apply border-[#635BFF] bg-[#635BFF] text-white hover:bg-[#5851EA];
+    @apply dark:border-[#7A73FF] dark:bg-[#7A73FF] dark:hover:bg-[#635BFF];
   }
 
   .btn-airwallex {
-    @apply bg-[#14171A] text-white shadow-md shadow-emerald-500/20;
-    @apply hover:bg-[#20252a] hover:shadow-lg hover:shadow-emerald-500/25;
-    @apply dark:bg-[#7AF0C4] dark:text-gray-950 dark:shadow-emerald-500/20;
-    @apply dark:hover:bg-[#62d9ad];
+    @apply border-[#14171A] bg-[#14171A] text-white hover:bg-[#20252A];
+    @apply dark:border-[#7AF0C4] dark:bg-[#7AF0C4] dark:text-[#08090A] dark:hover:bg-[#62D9AD];
   }
 
   .btn-alipay {
-    @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
-    @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;
-    @apply active:bg-[#008cbe];
-    @apply dark:shadow-[#00AEEF]/20;
+    @apply border-[#00AEEF] bg-[#00AEEF] text-white hover:bg-[#009DD6] active:bg-[#008CBE];
   }
 
   .btn-wxpay {
-    @apply bg-[#2BB741] text-white shadow-md shadow-[#2BB741]/25;
-    @apply hover:bg-[#24a038] hover:shadow-lg hover:shadow-[#2BB741]/30;
-    @apply active:bg-[#1d8a2f];
-    @apply dark:shadow-[#2BB741]/20;
+    @apply border-[#2BB741] bg-[#2BB741] text-white hover:bg-[#24A038] active:bg-[#1D8A2F];
   }
 
   .btn-sm {
-    @apply rounded-lg px-3 py-1.5 text-xs;
+    @apply h-7 px-2.5 text-xs;
   }
 
   .btn-md {
-    @apply rounded-xl px-4 py-2 text-sm;
+    @apply h-9 px-3 text-sm;
   }
 
+  /*
+   * `.btn-lg` has no equivalent in the new three-size scale. It is aliased to
+   * `md` so the auth pages that used it stay usable; those call sites should
+   * move to `md` + `w-full` when their view is migrated.
+   */
   .btn-lg {
-    @apply rounded-2xl px-6 py-3 text-base;
+    @apply h-9 px-4 text-sm;
   }
 
   .btn-icon {
-    @apply rounded-xl p-2.5;
+    @apply h-9 w-9 shrink-0 p-0;
   }
 
-  /* ============ 输入框样式 ============ */
+  /* ============ Inputs ============ */
   .input {
-    @apply w-full rounded-xl px-4 py-2.5 text-sm;
-    @apply bg-white dark:bg-dark-800;
-    @apply border border-gray-200 dark:border-dark-600;
-    @apply text-gray-900 dark:text-gray-100;
-    @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
-    @apply transition-all duration-200;
-    @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
-    @apply disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-dark-900;
+    @apply h-9 w-full rounded px-3 text-sm;
+    @apply border border-line bg-surface text-ink;
+    @apply placeholder:text-ink-disabled;
+    @apply transition-colors duration-fast ease-out;
+    @apply hover:border-line-strong;
+    @apply disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-ink-disabled;
+  }
+
+  .input:focus {
+    @apply border-accent outline-none;
+  }
+
+  .input:focus-visible {
+    outline: 2px solid rgb(var(--ds-focus));
+    outline-offset: -1px;
+  }
+
+  textarea.input,
+  select.input[multiple] {
+    @apply h-auto py-2;
   }
 
   .dark .input[type='date'],
@@ -179,260 +276,281 @@
   }
 
   .input-error {
-    @apply border-red-500 focus:border-red-500 focus:ring-red-500/30;
+    @apply border-danger;
+  }
+
+  .input-error:focus {
+    @apply border-danger;
   }
 
   .input-label {
-    @apply mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300;
+    @apply mb-1.5 block text-xs font-medium text-ink-secondary;
+  }
+
+  /*
+   * Hint and error reserve their line box so a validation message does not
+   * reflow the form. The old rules toggled `<p>` elements and the layout
+   * jumped on every blur.
+   */
+  .input-hint,
+  .input-error-text {
+    @apply mt-1 block text-2xs;
+    min-height: var(--ds-lh-2xs);
   }
 
   .input-hint {
-    @apply mt-1 text-xs text-gray-500 dark:text-dark-400;
+    @apply text-ink-tertiary;
   }
 
   .input-error-text {
-    @apply mt-1 text-xs text-red-500;
+    @apply text-danger;
   }
 
-  /* Hide number input spinner buttons for cleaner UI */
-  input[type='number']::-webkit-inner-spin-button,
-  input[type='number']::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-
-  input[type='number'] {
-    -moz-appearance: textfield;
-  }
-
-  /* ============ 玻璃效果 ============ */
-  .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
-  }
-
-  .glass-card {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
-    @apply rounded-2xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
-    @apply transition-all duration-300;
-  }
-
-  /* ============ 卡片样式 ============ */
-  .card {
-    @apply bg-white dark:bg-dark-800/50;
-    @apply rounded-2xl;
-    @apply border border-gray-100 dark:border-dark-700/50;
-    @apply shadow-card;
-    @apply transition-all duration-300;
-  }
-
-  .card-hover {
-    @apply hover:-translate-y-0.5 hover:shadow-card-hover;
-    @apply hover:border-gray-200 dark:hover:border-dark-600;
-  }
-
+  /* ============ Neutralized: glass ============ */
+  /*
+   * Kept as selectors so no consumer breaks, but there is no glass in this
+   * system. `.glass` was previously defined twice — once here and once as a
+   * utility; this is now the single definition.
+   */
+  .glass,
+  .glass-card,
   .card-glass {
-    @apply bg-white/70 dark:bg-dark-800/70;
-    @apply backdrop-blur-xl;
-    @apply border border-white/20 dark:border-dark-700/50;
-    @apply shadow-glass;
+    @apply border border-line bg-surface;
+    backdrop-filter: none;
+  }
+
+  /* ============ Cards / panels ============ */
+  .card {
+    @apply rounded border border-line bg-surface;
+  }
+
+  /* Intentionally no lift, no shadow, no border shift — the ground moves only. */
+  .card-hover {
+    @apply hover:bg-surface-hover;
   }
 
   .card-header {
-    @apply border-b border-gray-100 dark:border-dark-700;
-    @apply px-6 py-4;
+    @apply flex items-center justify-between gap-4 border-b border-line px-4 py-3;
   }
 
   .card-body {
-    @apply p-6;
+    @apply p-4;
   }
 
   .card-footer {
-    @apply border-t border-gray-100 dark:border-dark-700;
-    @apply px-6 py-4;
+    @apply border-t border-line bg-surface-sunken px-4 py-3;
   }
 
-  /* ============ 统计卡片 ============ */
+  /* ============ Stats ============ */
+  /*
+   * Type-led, not icon-led. The 48px pastel icon tile is gone — in a system
+   * with no color decoration, the type scale carries the hierarchy. The
+   * `.stat-icon*` selectors survive so unmigrated markup does not break; they
+   * render as a small monochrome glyph instead of a colored square.
+   */
   .stat-card {
-    @apply card p-5;
-    @apply flex items-start gap-4;
+    @apply flex flex-col gap-1 border border-line bg-surface p-4;
   }
 
   .stat-icon {
-    @apply h-12 w-12 rounded-xl;
-    @apply flex items-center justify-center;
-    @apply text-xl;
+    @apply flex h-4 w-4 shrink-0 items-center justify-center text-sm text-ink-tertiary;
   }
 
   .stat-icon-primary {
-    @apply bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400;
+    @apply text-accent;
   }
 
   .stat-icon-success {
-    @apply bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400;
+    @apply text-success;
   }
 
   .stat-icon-warning {
-    @apply bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400;
+    @apply text-warn;
   }
 
   .stat-icon-danger {
-    @apply bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400;
-  }
-
-  .stat-value {
-    @apply text-2xl font-bold text-gray-900 dark:text-white truncate;
+    @apply text-danger;
   }
 
   .stat-label {
-    @apply text-sm text-gray-500 dark:text-dark-400;
+    @apply text-2xs font-medium uppercase text-ink-tertiary;
+    letter-spacing: var(--ds-tr-2xs);
+  }
+
+  .stat-value {
+    @apply truncate text-2xl font-semibold text-ink;
+    font-family: var(--ds-font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
   }
 
   .stat-trend {
-    @apply mt-1 flex items-center gap-1 text-xs font-medium;
+    @apply mt-0.5 flex items-center gap-1 text-xs font-medium;
   }
 
   .stat-trend-up {
-    @apply text-emerald-600 dark:text-emerald-400;
+    @apply text-success;
   }
 
   .stat-trend-down {
-    @apply text-red-600 dark:text-red-400;
+    @apply text-danger;
   }
 
-  /* ============ 表格样式 ============ */
+  /* ============ Tables ============ */
   .table-container {
-    @apply overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700;
+    @apply overflow-x-auto border border-line;
   }
 
   .table {
     @apply w-full text-sm;
+    border-collapse: collapse;
   }
 
   .table th {
-    @apply px-4 py-3 text-left font-medium;
-    @apply text-gray-600 dark:text-dark-300;
-    @apply bg-gray-50 dark:bg-dark-800/50;
-    @apply border-b border-gray-200 dark:border-dark-700;
+    @apply border-b border-line-strong bg-surface-sunken px-3 text-left align-middle;
+    @apply text-2xs font-medium uppercase text-ink-tertiary;
+    height: var(--ds-header-h);
+    letter-spacing: var(--ds-tr-2xs);
   }
 
   .table td {
-    @apply px-4 py-3;
-    @apply text-gray-700 dark:text-gray-300;
-    @apply border-b border-gray-100 dark:border-dark-800;
+    @apply border-b border-line-subtle px-3 align-middle text-ink-secondary;
+    height: var(--ds-row-h);
+  }
+
+  /* Numeric columns align on the decimal, always. */
+  .table th.is-numeric,
+  .table td.is-numeric {
+    @apply text-right;
+    font-family: var(--ds-font-mono);
+    font-variant-numeric: tabular-nums slashed-zero;
   }
 
   .table tr:last-child td {
     @apply border-b-0;
   }
 
+  /* Hover changes the ground only — no border shift, no shadow, no transform. */
   .table tbody tr {
-    @apply transition-colors duration-150;
-    @apply hover:bg-gray-50 dark:hover:bg-dark-800/30;
+    @apply transition-colors duration-fast;
+    @apply hover:bg-surface-hover;
   }
 
-  /* ============ 徽章样式 ============ */
+  .table tbody tr[aria-selected='true'],
+  .table tbody tr.is-selected {
+    @apply bg-accent-tint;
+    box-shadow: inset 2px 0 0 0 rgb(var(--ds-accent));
+  }
+
+  /* Touch targets win over density below the desktop breakpoint. */
+  @media (max-width: 1023px) {
+    .table td {
+      height: var(--ds-row-h-touch);
+    }
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
+  /* A rule, not a blur. The old value was `0 1px 3px rgb(0 0 0 / .1)`. */
+  .table-wrapper thead.sticky {
+    box-shadow: var(--ds-shadow-sticky);
+  }
+
+  /* ============ Badges ============ */
+  /*
+   * Squared, bordered, tinted. The pill shape is reserved for status dots and
+   * avatars. Every badge carries a 1px border so it survives a grayscale
+   * printout and a colorblind reader — color alone is never the signal.
+   */
   .badge {
-    @apply inline-flex items-center gap-1;
-    @apply rounded-full px-2.5 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5;
+    @apply text-2xs font-medium;
+    letter-spacing: var(--ds-tr-2xs);
   }
 
   .badge-primary {
-    @apply bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400;
+    @apply border-accent-line bg-accent-tint text-accent;
   }
 
   .badge-success {
-    @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400;
+    @apply border-success/40 bg-success-tint text-success;
   }
 
   .badge-warning {
-    @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400;
+    @apply border-warn/40 bg-warn-tint text-warn;
   }
 
   .badge-danger {
-    @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+    @apply border-danger/40 bg-danger-tint text-danger;
   }
 
   .badge-gray {
-    @apply bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-dark-300;
+    @apply border-line bg-surface-sunken text-ink-secondary;
   }
 
   .badge-purple {
-    @apply bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400;
+    @apply border-purple-400/40 bg-purple-100 text-purple-700;
+    @apply dark:bg-purple-900/30 dark:text-purple-400;
   }
 
-  /* ============ 下拉菜单 ============ */
+  /* ============ Dropdown ============ */
   .dropdown {
-    @apply absolute z-50;
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-xl;
-    @apply border border-gray-200 dark:border-dark-700;
-    @apply shadow-lg;
-    @apply py-1;
-    @apply origin-top-right animate-scale-in;
+    @apply absolute z-50 rounded border border-line bg-surface-raised py-1;
+    box-shadow: var(--ds-shadow-popover);
   }
 
   .dropdown-item {
-    @apply px-4 py-2 text-sm;
-    @apply text-gray-700 dark:text-gray-300;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-700;
-    @apply cursor-pointer transition-colors;
-    @apply flex items-center gap-2;
+    @apply flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-ink-secondary;
+    @apply transition-colors duration-fast;
+    @apply hover:bg-surface-hover hover:text-ink;
   }
 
-  /* ============ 模态框 ============ */
+  /* ============ Modal ============ */
   .modal-overlay {
-    @apply fixed inset-0 z-50;
-    @apply bg-black/50 backdrop-blur-sm;
-    @apply flex items-center justify-center p-2 sm:p-4;
+    @apply fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4;
+    background-color: rgb(var(--ds-overlay) / 0.45);
   }
 
   .modal-content {
-    @apply w-full;
+    @apply flex w-full flex-col rounded-lg border border-line bg-surface-raised;
     @apply max-h-[95vh] sm:max-h-[90vh];
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-2xl shadow-2xl;
-    @apply border border-gray-200 dark:border-dark-700;
-    @apply flex flex-col;
+    box-shadow: var(--ds-shadow-modal);
   }
 
   .modal-header {
-    @apply border-b border-gray-200 px-4 py-3 dark:border-dark-700;
-    @apply sm:px-6 sm:py-4;
-    @apply flex items-center justify-between;
-    @apply flex-shrink-0;
+    @apply flex flex-shrink-0 items-center justify-between gap-4;
+    @apply border-b border-line px-4 py-3 sm:px-5 sm:py-4;
   }
 
   .modal-title {
-    @apply text-lg font-semibold text-gray-900 dark:text-white;
+    @apply text-md font-semibold text-ink;
   }
 
   .modal-body {
-    @apply px-4 py-3;
-    @apply sm:px-6 sm:py-4;
-    @apply flex-1 overflow-y-auto;
+    @apply flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4;
   }
 
   .modal-footer {
-    @apply border-t border-gray-200 px-4 py-3 dark:border-dark-700;
-    @apply sm:px-6 sm:py-4;
-    @apply flex items-center justify-end gap-3;
-    @apply flex-shrink-0;
+    @apply flex flex-shrink-0 items-center justify-end gap-2;
+    @apply border-t border-line bg-surface-sunken px-4 py-3 sm:px-5 sm:py-4;
   }
 
-  /* 防止body滚动的工具类 */
   body.modal-open {
     overflow: hidden;
   }
 
+  /*
+   * These are Vue <Transition> hook classes, not decoration. Renaming any of
+   * them silently kills the animation on every modal in the app.
+   * The gesture changed: the old `scale(0.95)` pop is replaced by a 4px rise.
+   */
   .modal-enter-active {
-    transition: opacity 250ms ease-out;
+    transition: opacity var(--ds-dur-slow) var(--ds-ease-out);
   }
 
   .modal-leave-active {
-    transition: opacity 200ms ease-in;
+    transition: opacity var(--ds-dur-base) var(--ds-ease-in);
   }
 
   .modal-enter-from,
@@ -441,261 +559,251 @@
   }
 
   .modal-enter-active .modal-content {
-    transition: transform 250ms ease-out, opacity 250ms ease-out;
+    transition:
+      transform var(--ds-dur-slow) var(--ds-ease-out),
+      opacity var(--ds-dur-slow) var(--ds-ease-out);
   }
 
   .modal-leave-active .modal-content {
-    transition: transform 200ms ease-in, opacity 200ms ease-in;
+    transition:
+      transform var(--ds-dur-base) var(--ds-ease-in),
+      opacity var(--ds-dur-base) var(--ds-ease-in);
   }
 
   .modal-enter-from .modal-content,
   .modal-leave-to .modal-content {
-    transform: scale(0.95);
+    transform: translateY(4px);
     opacity: 0;
   }
 
   .modal-enter-to .modal-content,
   .modal-leave-from .modal-content {
-    transform: scale(1);
+    transform: translateY(0);
     opacity: 1;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .modal-enter-active,
-    .modal-leave-active,
-    .modal-enter-active .modal-content,
-    .modal-leave-active .modal-content {
-      transition-duration: 1ms;
-      transition-delay: 0ms;
-    }
-
-    .modal-enter-from .modal-content,
-    .modal-leave-to .modal-content {
-      transform: none;
-    }
   }
 
   /* ============ Dialog ============ */
   .dialog-overlay {
-    @apply fixed inset-0 z-50;
-    @apply bg-black/40 dark:bg-black/60;
-    @apply flex items-center justify-center p-4;
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+    background-color: rgb(var(--ds-overlay) / 0.45);
   }
 
   .dialog-container {
-    @apply flex w-full flex-col;
-    @apply max-h-[90vh];
-    @apply rounded-2xl bg-white dark:bg-dark-800;
-    @apply shadow-xl;
+    @apply flex max-h-[90vh] w-full flex-col rounded-lg border border-line bg-surface-raised;
+    box-shadow: var(--ds-shadow-modal);
   }
 
   .dialog-header {
-    @apply border-b border-gray-100 px-6 py-4 dark:border-dark-700;
-    @apply flex items-center justify-between;
+    @apply flex items-center justify-between gap-4 border-b border-line px-5 py-4;
   }
 
   .dialog-body {
-    @apply overflow-y-auto px-6 py-4;
+    @apply overflow-y-auto px-5 py-4;
   }
 
   .dialog-footer {
-    @apply border-t border-gray-100 px-6 py-4 dark:border-dark-700;
-    @apply bg-gray-50/60 dark:bg-dark-900/40;
-    @apply flex items-center justify-end gap-3;
+    @apply flex items-center justify-end gap-2;
+    @apply border-t border-line bg-surface-sunken px-5 py-4;
   }
 
-  /* ============ Toast 通知 ============ */
+  /* ============ Toast ============ */
   .toast {
-    @apply fixed right-4 top-4 z-[100];
-    @apply min-w-[320px] max-w-md;
-    @apply bg-white dark:bg-dark-800;
-    @apply rounded-xl shadow-lg;
-    @apply border-l-4;
-    @apply p-4;
-    @apply animate-slide-in-right;
+    @apply fixed right-4 top-4 z-[100] min-w-[320px] max-w-md;
+    @apply rounded border border-line border-l-2 bg-surface-raised p-3;
+    box-shadow: var(--ds-shadow-popover);
   }
 
   .toast-success {
-    @apply border-l-emerald-500;
+    @apply border-l-success;
   }
 
   .toast-error {
-    @apply border-l-red-500;
+    @apply border-l-danger;
   }
 
   .toast-warning {
-    @apply border-l-amber-500;
+    @apply border-l-warn;
   }
 
   .toast-info {
-    @apply border-l-primary-500;
+    @apply border-l-accent;
   }
 
-  /* ============ 侧边栏 ============ */
+  /* ============ Sidebar ============ */
   .sidebar {
-    @apply fixed inset-y-0 left-0 z-40;
-    @apply w-64 bg-white dark:bg-dark-900;
-    @apply border-r border-gray-200 dark:border-dark-800;
-    @apply flex flex-col;
-    @apply transition-transform duration-300;
+    @apply fixed inset-y-0 left-0 z-40 flex flex-col;
+    @apply border-r border-line bg-surface;
+    width: var(--ds-sidebar-w);
     transition-property: width, transform;
+    transition-duration: var(--ds-dur-slow);
+    transition-timing-function: var(--ds-ease-out);
   }
 
+  /*
+   * Must NOT gain `@apply overflow-hidden` — it would clip the version-badge
+   * dropdown. Asserted by AppSidebar.spec.ts, which regexes this exact block
+   * out of this exact file. If you move this rule, update that spec.
+   */
   .sidebar-header {
-    @apply h-16 px-6;
-    @apply flex items-center gap-3;
-    @apply border-b border-gray-100 dark:border-dark-800;
+    @apply flex items-center gap-3 border-b border-line px-4;
+    height: var(--ds-app-header-h);
     transition:
-      padding 0.2s ease,
-      gap 0.2s ease;
+      padding var(--ds-dur-base) var(--ds-ease-std),
+      gap var(--ds-dur-base) var(--ds-ease-std);
   }
 
   .sidebar-nav {
-    @apply flex-1 overflow-y-auto px-3 py-4;
+    @apply flex-1 overflow-y-auto px-2 py-3;
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-xl py-2.5;
-    @apply overflow-hidden;
-    @apply text-sm font-medium;
-    @apply text-gray-600 dark:text-dark-300;
-    @apply transition-all duration-200;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-800;
-    @apply hover:text-gray-900 dark:hover:text-white;
-    padding-left: 1.0625rem;
-    padding-right: 0.875rem;
+    @apply flex items-center gap-3 overflow-hidden rounded px-3 py-2;
+    @apply text-sm font-medium text-ink-secondary;
+    @apply transition-colors duration-fast ease-out;
+    @apply hover:bg-surface-hover hover:text-ink;
   }
 
+  /* Selection is an accent bar plus a tint — not a filled pill. */
   .sidebar-link-active {
-    @apply bg-primary-50 dark:bg-primary-900/20;
-    @apply text-primary-600 dark:text-primary-400;
-    @apply hover:bg-primary-100 dark:hover:bg-primary-900/30;
+    @apply bg-accent-tint text-accent;
+    box-shadow: inset 2px 0 0 0 rgb(var(--ds-accent));
+  }
+
+  .sidebar-link-active:hover {
+    @apply bg-accent-tint-strong text-accent;
   }
 
   .sidebar-section {
-    @apply mb-6;
+    @apply mb-5;
   }
 
   .sidebar-section-title {
-    @apply mb-2 px-3;
-    @apply text-xs font-semibold uppercase tracking-wider;
-    @apply text-gray-400 dark:text-dark-500;
+    @apply mb-1.5 px-3 text-2xs font-medium uppercase text-ink-tertiary;
+    letter-spacing: var(--ds-tr-2xs);
   }
 
-  /* ============ 页面头部 ============ */
+  /* ============ Page header ============ */
   .page-header {
-    @apply mb-6;
+    @apply mb-6 border-b border-line pb-4;
   }
 
   .page-title {
-    @apply text-2xl font-bold text-gray-900 dark:text-white;
+    @apply text-xl font-semibold text-ink;
   }
 
   .page-description {
-    @apply mt-1 text-sm text-gray-500 dark:text-dark-400;
+    @apply mt-1 text-sm text-ink-tertiary;
   }
 
-  /* ============ 空状态 ============ */
+  /* ============ Empty state ============ */
   .empty-state {
-    @apply flex flex-col items-center justify-center px-4 py-12;
-    @apply text-center;
+    @apply flex flex-col items-center justify-center px-4 py-12 text-center;
   }
 
   .empty-state-icon {
-    @apply mb-4 h-16 w-16;
-    @apply text-gray-300 dark:text-dark-600;
+    @apply mb-4 h-8 w-8 text-ink-disabled;
   }
 
   .empty-state-title {
-    @apply mb-1 text-lg font-medium text-gray-900 dark:text-white;
+    @apply mb-1 text-sm font-medium text-ink;
   }
 
   .empty-state-description {
-    @apply max-w-sm text-sm text-gray-500 dark:text-dark-400;
+    @apply max-w-sm text-xs text-ink-tertiary;
   }
 
-  /* ============ 加载状态 ============ */
+  /* ============ Loading ============ */
   .spinner {
-    @apply h-5 w-5 rounded-full border-2 border-current border-t-transparent;
-    @apply animate-spin;
+    @apply h-4 w-4 animate-spin rounded-full border border-current border-t-transparent;
   }
 
   .skeleton {
-    @apply animate-pulse rounded bg-gray-200 dark:bg-dark-700;
+    @apply animate-pulse bg-surface-sunken;
   }
 
-  /* ============ 分隔线 ============ */
+  /* ============ Divider ============ */
   .divider {
-    @apply my-4 h-px bg-gray-200 dark:bg-dark-700;
+    @apply my-4 h-px border-0 bg-line;
   }
 
-  /* ============ 标签页 ============ */
+  /* ============ Tabs ============ */
+  /*
+   * An underline, not a segmented pill on a gray track. The active tab is the
+   * only one carrying accent, and the rule under the strip is what makes the
+   * grid read.
+   */
   .tabs {
-    @apply flex gap-1 p-1;
-    @apply rounded-xl bg-gray-100 dark:bg-dark-800;
+    @apply flex items-stretch gap-0 border-b border-line;
   }
 
   .tab {
-    @apply rounded-lg px-4 py-2 text-sm font-medium;
-    @apply text-gray-600 dark:text-dark-400;
-    @apply transition-all duration-200;
-    @apply hover:text-gray-900 dark:hover:text-white;
+    @apply relative px-3 py-2 text-sm font-medium text-ink-tertiary;
+    @apply transition-colors duration-fast ease-out;
+    @apply hover:text-ink;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
   }
 
   .tab-active {
-    @apply bg-white dark:bg-dark-700;
-    @apply text-gray-900 dark:text-white;
-    @apply shadow-sm;
+    @apply text-ink;
+    border-bottom-color: rgb(var(--ds-accent));
   }
 
-  /* ============ 进度条 ============ */
+  /* ============ Progress / meter ============ */
   .progress {
-    @apply h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700;
+    @apply h-1 w-full overflow-hidden rounded-none bg-surface-sunken;
   }
 
   .progress-bar {
-    @apply h-full bg-gradient-to-r from-primary-500 to-primary-400;
-    @apply transition-all duration-300;
+    @apply h-full bg-accent;
+    transition: width var(--ds-dur-slow) var(--ds-ease-out);
   }
 
-  /* ============ 开关 ============ */
+  /* ============ Switch ============ */
+  /* A 2px-radius track, not a pill. The thumb is square. */
   .switch {
-    @apply relative h-6 w-11 cursor-pointer rounded-full;
-    @apply bg-gray-300 dark:bg-dark-600;
-    @apply transition-colors duration-200;
+    @apply relative h-5 w-9 shrink-0 cursor-pointer rounded-sm border border-line bg-surface-sunken;
+    @apply transition-colors duration-fast ease-out;
   }
 
   .switch-active {
-    @apply bg-primary-500;
+    @apply border-accent-solid bg-accent-solid;
   }
 
   .switch-thumb {
-    @apply absolute left-0.5 top-0.5 h-5 w-5 rounded-full;
-    @apply bg-white shadow-sm;
-    @apply transition-transform duration-200;
+    @apply absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-sm bg-ink-tertiary;
+    transition: transform var(--ds-dur-fast) var(--ds-ease-out);
   }
 
   .switch-active .switch-thumb {
-    @apply translate-x-5;
+    @apply translate-x-4 bg-white;
   }
 
-  /* ============ 代码块 ============ */
+  /* ============ Code ============ */
   .code {
-    @apply font-mono text-sm;
-    @apply bg-gray-100 dark:bg-dark-800;
-    @apply rounded px-1.5 py-0.5;
-    @apply text-primary-600 dark:text-primary-400;
+    @apply rounded-sm border border-line bg-surface-sunken px-1 py-0.5 text-xs text-ink;
+    font-family: var(--ds-font-mono);
   }
 
   .code-block {
-    @apply font-mono text-sm;
-    @apply bg-gray-900 text-gray-100;
-    @apply overflow-x-auto rounded-xl p-4;
+    @apply overflow-x-auto rounded border border-line bg-surface-sunken p-3 text-xs text-ink;
+    font-family: var(--ds-font-mono);
   }
 
-  /* ============ Tour Description ============ */
+  /* ============ Onboarding tour content ============ */
+  /*
+   * driver.js popover CHROME is themed in src/styles/onboarding.css, now on
+   * Family B tokens like everything else. These rules cover the content we
+   * render INSIDE the popover.
+   *
+   * They are currently unused: the step descriptions in i18n/locales/{en,zh}/
+   * misc.ts ship as `<div style="…">` blobs carrying light-mode hex, so they
+   * ignore these classes and render light-green tint boxes on a dark surface.
+   * Rewriting those strings onto these classes is the fix; no CSS change can
+   * reach an inline style.
+   */
   .tour-step-description {
-    @apply space-y-3 text-sm leading-relaxed text-gray-700 dark:text-gray-200;
+    @apply space-y-3 text-sm leading-relaxed text-ink-secondary;
   }
 
   .tour-step-description ul {
@@ -711,63 +819,76 @@
   }
 
   .tour-info-box {
-    @apply rounded-md border-l-4 border-blue-500 bg-blue-50 px-3 py-2 text-xs text-blue-900;
-    @apply dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200;
+    @apply border-l-2 border-accent bg-accent-tint px-3 py-2 text-xs text-ink;
   }
 
   .tour-success-box {
-    @apply rounded-md border-l-4 border-emerald-500 bg-emerald-50 px-3 py-2 text-xs text-emerald-900;
-    @apply dark:border-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-200;
+    @apply border-l-2 border-success bg-success-tint px-3 py-2 text-xs text-ink;
   }
 
   .tour-warning-box {
-    @apply rounded-md border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs text-amber-900;
-    @apply dark:border-amber-400 dark:bg-amber-950/40 dark:text-amber-200;
+    @apply border-l-2 border-warn bg-warn-tint px-3 py-2 text-xs text-ink;
   }
 
   .tour-error-box {
-    @apply rounded-md border-l-4 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-900;
-    @apply dark:border-red-400 dark:bg-red-950/40 dark:text-red-200;
-  }
-
-  /* ============ 表格页面布局优化 ============ */
-  /* 表格容器 - 默认仅支持水平滚动 */
-  .table-wrapper {
-    overflow-x: auto;
-  }
-
-  /* 表头固定时添加底部阴影，增强视觉层次 */
-  .table-wrapper thead.sticky {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    @apply border-l-2 border-danger bg-danger-tint px-3 py-2 text-xs text-ink;
   }
 }
 
 @layer utilities {
-  /* 文字渐变 */
+  /* Neutralized: there are no gradient-filled words in this system. */
   .text-gradient {
-    @apply bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent;
+    @apply text-ink;
+    background: none;
+    -webkit-text-fill-color: currentColor;
   }
 
-  /* 玻璃效果 */
-  .glass {
-    @apply bg-white/80 backdrop-blur-xl dark:bg-dark-800/80;
-  }
-
-  /* 隐藏滚动条 */
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
 
-  /* 安全区域 */
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }
 
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/*
+ * Reduced motion. The duration tokens already collapse to 1ms (tokens.css),
+ * which covers every `duration-*` utility in the app. This block handles the
+ * two keyframe animations, which tokens cannot reach.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /*
+   * 197 sites are loading spinners. Freezing one at 1ms makes the app look
+   * hung, which is a worse accessibility outcome than the motion itself.
+   * Slow it down instead.
+   */
+  .animate-spin {
+    animation-duration: 1.2s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  /* 92 sites, all skeletons. A static dim says "loading" perfectly well. */
+  .animate-pulse {
+    animation: none !important;
+    opacity: 0.6 !important;
   }
 }

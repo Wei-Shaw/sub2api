@@ -46,8 +46,6 @@ describe('PlatformTypeBadge Grok plans', () => {
     expect(wrapper.text()).toContain('SuperGrok Heavy')
     expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="grok-free-plan-icon"]').exists()).toBe(false)
-    // Heavy uses purple plan chip
-    expect(wrapper.html()).toContain('bg-purple-100')
 
     await wrapper.setProps({ platform: 'openai', planType: 'free' })
     expect(wrapper.text()).toContain('Free')
@@ -55,33 +53,42 @@ describe('PlatformTypeBadge Grok plans', () => {
     expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(false)
   })
 
-  it('colors free gray, SuperGrok cyan, and Heavy purple', async () => {
-    const free = mount(PlatformTypeBadge, {
-      props: { platform: 'grok', type: 'oauth', planType: 'free' },
-    })
-    expect(free.html()).toContain('bg-gray-100')
-    expect(free.html()).not.toContain('bg-purple-100')
-    expect(free.html()).not.toContain('bg-cyan-100')
+  /*
+   * This replaces a test that pinned the plan chip to `bg-gray-100` /
+   * `bg-cyan-100` / `bg-purple-100`. That contract said a plan is told apart
+   * by its hue, which is exactly what the design system removed: a plan is a
+   * label, and the label is already on screen. What still has to hold is that
+   * plans are distinguishable without colour, and that the one plan value
+   * which IS a status still reads as one.
+   */
+  it('tells plans apart by label and mark, not by hue', async () => {
+    const tiers = [
+      { planType: 'free', label: 'Grok Free', paidMark: false },
+      { planType: 'supergrok', label: 'SuperGrok', paidMark: true },
+      { planType: 'Heavy', label: 'Heavy', paidMark: true },
+      { planType: 'supergrok_lite', label: 'SuperGrok Lite', paidMark: false },
+    ]
 
-    const superGrok = mount(PlatformTypeBadge, {
-      props: { platform: 'grok', type: 'oauth', planType: 'supergrok' },
-    })
-    expect(superGrok.text()).toContain('SuperGrok')
-    expect(superGrok.html()).toContain('bg-cyan-100')
-    expect(superGrok.find('[data-testid="grok-plan-icon"]').exists()).toBe(true)
+    for (const tier of tiers) {
+      const wrapper = mount(PlatformTypeBadge, {
+        props: { platform: 'grok', type: 'oauth', planType: tier.planType },
+      })
+      expect(wrapper.text()).toContain(tier.label)
+      expect(wrapper.find('[data-testid="grok-plan-icon"]').exists()).toBe(tier.paidMark)
+      // No plan is worth a tint. Only `abnormal` is, and it is not a plan tier.
+      expect(wrapper.html()).not.toContain('bg-danger-tint')
+    }
+  })
 
-    const heavy = mount(PlatformTypeBadge, {
-      props: { platform: 'grok', type: 'oauth', planType: 'Heavy' },
+  it('marks an abnormal subscription as a problem, not as another tier', () => {
+    const wrapper = mount(PlatformTypeBadge, {
+      props: { platform: 'openai', type: 'oauth', planType: 'abnormal' },
     })
-    expect(heavy.text()).toContain('Heavy')
-    expect(heavy.html()).toContain('bg-purple-100')
-    expect(heavy.find('[data-testid="grok-plan-icon"]').exists()).toBe(true)
 
-    const lite = mount(PlatformTypeBadge, {
-      props: { platform: 'grok', type: 'oauth', planType: 'supergrok_lite' },
-    })
-    expect(lite.text()).toContain('SuperGrok Lite')
-    expect(lite.html()).toContain('bg-cyan-100')
+    expect(wrapper.html()).toContain('bg-danger-tint')
+    expect(wrapper.html()).toContain('text-danger')
+    // Colour is never the only channel: the chip still carries its label.
+    expect(wrapper.text()).toContain('admin.accounts.subscriptionAbnormal')
   })
 
   it('uses a dedicated 12px currentColor Grok mark with a Free sparkle', () => {

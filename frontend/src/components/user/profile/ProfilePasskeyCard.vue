@@ -1,105 +1,115 @@
 <template>
-  <div class="card">
-    <div class="flex items-start justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-      <div>
-        <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div class="rounded border border-line bg-surface">
+    <div class="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
+      <div class="min-w-0">
+        <h2 class="text-sm font-semibold text-ink">
           {{ t('profile.passkey.title') }}
         </h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        <p class="mt-0.5 text-xs text-ink-tertiary">
           {{ t('profile.passkey.description') }}
         </p>
       </div>
-      <button
+      <Button
         v-if="enabled && supported && !showAddForm"
-        type="button"
-        class="btn btn-primary"
+        tone="accent"
+        variant="solid"
+        size="md"
+        class="shrink-0"
         :disabled="busy"
         @click="showAddForm = true"
       >
         {{ t('profile.passkey.add') }}
-      </button>
+      </Button>
     </div>
 
-    <div class="px-6 py-6">
-      <div v-if="!enabled" class="mb-5 text-sm text-gray-500 dark:text-gray-400">
+    <div class="px-4 py-4">
+      <p v-if="!enabled" class="mb-4 text-sm text-ink-tertiary">
         {{ t('profile.passkey.featureDisabled') }}
-      </div>
-      <div v-if="enabled && !supported" class="mb-5 text-sm text-amber-600 dark:text-amber-400">
+      </p>
+      <p v-if="enabled && !supported" class="mb-4 text-sm text-warn">
         {{ t('profile.passkey.unsupported') }}
-      </div>
+      </p>
       <div>
         <form
           v-if="enabled && supported && showAddForm"
-          class="mb-5 flex flex-col gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+          class="mb-4 rounded border border-line bg-surface-sunken p-3"
           @submit.prevent="addPasskey"
         >
           <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label for="passkey-name" class="input-label">{{ t('profile.passkey.name') }}</label>
-              <input
-                id="passkey-name"
-                v-model="newName"
-                class="input"
-                maxlength="100"
-                :placeholder="t('profile.passkey.namePlaceholder')"
-                autofocus
-              />
-            </div>
-            <div>
-              <label for="passkey-add-password" class="input-label">{{
-                t('profile.currentPassword')
-              }}</label>
-              <input
-                id="passkey-add-password"
-                v-model="newPassword"
-                type="password"
-                autocomplete="current-password"
-                class="input"
-                :placeholder="t('profile.passkey.passwordPlaceholder')"
-              />
-            </div>
+            <FormField id="passkey-name" :label="t('profile.passkey.name')">
+              <template #default="{ describedBy }">
+                <input
+                  id="passkey-name"
+                  v-model="newName"
+                  class="input"
+                  maxlength="100"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('profile.passkey.namePlaceholder')"
+                  autofocus
+                />
+              </template>
+            </FormField>
+            <FormField id="passkey-add-password" :label="t('profile.currentPassword')">
+              <template #default="{ describedBy }">
+                <input
+                  id="passkey-add-password"
+                  v-model="newPassword"
+                  type="password"
+                  autocomplete="current-password"
+                  class="input"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('profile.passkey.passwordPlaceholder')"
+                />
+              </template>
+            </FormField>
           </div>
           <div class="flex justify-end gap-2">
-            <button type="button" class="btn btn-secondary" :disabled="busy" @click="cancelAdd">
+            <Button size="md" :disabled="busy" @click="cancelAdd">
               {{ t('common.cancel') }}
-            </button>
-            <button type="submit" class="btn btn-primary" :disabled="busy || newPassword.length === 0">
-              {{ busy ? t('common.processing') : t('profile.passkey.continue') }}
-            </button>
+            </Button>
+            <Button
+              type="submit"
+              tone="accent"
+              variant="solid"
+              size="md"
+              :loading="busy"
+              :disabled="newPassword.length === 0"
+            >
+              {{ t('profile.passkey.continue') }}
+            </Button>
           </div>
         </form>
 
-        <div v-if="loading" class="flex justify-center py-6">
-          <div class="h-8 w-8 animate-spin rounded-full border-b-2 border-primary-500"></div>
+        <div v-if="loading" class="space-y-2 py-2">
+          <div class="skeleton h-3 w-40"></div>
+          <div class="skeleton h-3 w-64"></div>
         </div>
 
-        <div
+        <p
           v-else-if="credentials.length === 0"
-          class="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400"
+          class="border border-line bg-surface-sunken px-4 py-8 text-center text-xs text-ink-tertiary"
         >
           {{ t('profile.passkey.empty') }}
-        </div>
+        </p>
 
-        <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
+        <div v-else class="divide-y divide-line-subtle">
           <div
             v-for="credential in credentials"
             :key="credential.id"
-            class="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+            class="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
           >
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <Icon name="key" size="md" class="shrink-0 text-primary-500" />
-                <p class="truncate font-medium text-gray-900 dark:text-white">
+                <Icon name="key" size="xs" class="shrink-0 text-ink-tertiary" />
+                <p class="truncate text-sm font-medium text-ink">
                   {{ credential.name }}
                 </p>
-                <span
-                  v-if="credential.backup"
-                  class="rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                >
+                <!-- A squared, bordered badge — the pill is gone, and so is the tint-only signal. -->
+                <Badge v-if="credential.backup" caps>
                   {{ t('profile.passkey.synced') }}
-                </span>
+                </Badge>
               </div>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <p class="mt-1 text-xs text-ink-tertiary">
                 {{ t('profile.passkey.createdAt', { date: formatDate(credential.created_at) }) }}
                 <template v-if="credential.last_used_at">
                   · {{ t('profile.passkey.lastUsed', { date: formatDate(credential.last_used_at) }) }}
@@ -107,22 +117,17 @@
               </p>
             </div>
             <div class="flex shrink-0 gap-2">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                :disabled="busy"
-                @click="renamePasskey(credential)"
-              >
+              <Button :disabled="busy" @click="renamePasskey(credential)">
                 {{ t('common.edit') }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-ghost btn-sm text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/30"
+              </Button>
+              <Button
+                variant="ghost"
+                tone="danger"
                 :disabled="busy"
                 @click="deletePasskey(credential)"
               >
                 {{ t('common.delete') }}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -130,47 +135,47 @@
     </div>
 
     <!-- 删除确认：吊销凭据需验证当前密码，防止被窃会话静默移除 Passkey -->
-    <div v-if="deleteTarget" class="fixed inset-0 z-50 overflow-y-auto">
-      <div class="flex min-h-full items-center justify-center p-4">
-        <div class="fixed inset-0 bg-black/50 transition-opacity" @click="closeDeleteDialog"></div>
-        <div
-          class="relative w-full max-w-md transform rounded-xl bg-white p-6 shadow-xl transition-all dark:bg-dark-800"
-        >
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.passkey.deleteTitle') }}
-          </h3>
-          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.passkey.deleteConfirm', { name: deleteTarget.name }) }}
-          </p>
-          <form class="mt-4 space-y-4" @submit.prevent="confirmDelete">
-            <div>
-              <label for="passkey-delete-password" class="input-label">{{
-                t('profile.currentPassword')
-              }}</label>
-              <input
-                id="passkey-delete-password"
-                v-model="deletePassword"
-                type="password"
-                autocomplete="current-password"
-                class="input"
-                :placeholder="t('profile.passkey.passwordPlaceholder')"
-                autofocus
-              />
-            </div>
-            <div class="flex justify-end gap-3">
-              <button type="button" class="btn btn-secondary" :disabled="busy" @click="closeDeleteDialog">
-                {{ t('common.cancel') }}
-              </button>
-              <button
-                type="submit"
-                class="btn btn-danger"
-                :disabled="busy || deletePassword.length === 0"
-              >
-                {{ busy ? t('common.processing') : t('common.delete') }}
-              </button>
-            </div>
-          </form>
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="closeDeleteDialog">
+      <div class="modal-content max-w-md" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <h3 class="modal-title">{{ t('profile.passkey.deleteTitle') }}</h3>
         </div>
+        <form @submit.prevent="confirmDelete">
+          <div class="modal-body space-y-3">
+            <p class="text-sm text-ink-secondary">
+              {{ t('profile.passkey.deleteConfirm', { name: deleteTarget.name }) }}
+            </p>
+            <FormField id="passkey-delete-password" :label="t('profile.currentPassword')">
+              <template #default="{ describedBy }">
+                <input
+                  id="passkey-delete-password"
+                  v-model="deletePassword"
+                  type="password"
+                  autocomplete="current-password"
+                  class="input"
+                  :aria-describedby="describedBy"
+                  :placeholder="t('profile.passkey.passwordPlaceholder')"
+                  autofocus
+                />
+              </template>
+            </FormField>
+          </div>
+          <div class="modal-footer">
+            <Button size="md" :disabled="busy" @click="closeDeleteDialog">
+              {{ t('common.cancel') }}
+            </Button>
+            <Button
+              type="submit"
+              tone="danger"
+              variant="solid"
+              size="md"
+              :loading="busy"
+              :disabled="deletePassword.length === 0"
+            >
+              {{ t('common.delete') }}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -180,7 +185,10 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { passkeyAPI, type PasskeyCredentialSummary } from '@/api'
-import { Icon } from '@/components/icons'
+import Badge from '@/components/common/Badge.vue'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
 
 const props = defineProps<{ enabled: boolean }>()
@@ -292,8 +300,8 @@ async function confirmDelete(): Promise<void> {
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
-    month: 'short',
-    day: 'numeric'
+    month: '2-digit',
+    day: '2-digit'
   }).format(new Date(value))
 }
 

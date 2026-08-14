@@ -1,7 +1,16 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
+	src/__tests__/designSystem.legacy.spec.ts \
+	src/components/charts/__tests__/chartDefaultOverrides.spec.ts \
+	src/__tests__/tourAnchors.spec.ts \
+	src/styles/__tests__/tokens.parity.spec.ts \
+	src/i18n/__tests__/localeParity.spec.ts \
+	src/i18n/__tests__/localeKeyExistence.spec.ts \
+	src/i18n/__tests__/orphanKeys.spec.ts \
+	src/components/layout/__tests__/navTree.spec.ts \
 	src/api/__tests__/client.spec.ts \
+	src/api/__tests__/localeGraph.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \
 	src/api/__tests__/channelMonitorV2.spec.ts \
 	src/views/auth/__tests__/LinuxDoCallbackView.spec.ts \
@@ -11,7 +20,7 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/user/__tests__/ChannelStatusView.mode.spec.ts \
 	src/components/user/profile/__tests__/ProfileInfoCard.spec.ts \
 	src/views/admin/__tests__/SettingsView.spec.ts \
-	src/features/channel-monitor-v2/__tests__/designSystem.structure.spec.ts \
+	src/features/channel-monitor-v2/__tests__/designSystem.tokens.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorFormat.spec.ts \
 	src/features/channel-monitor-v2/__tests__/monitorZoom.spec.ts
 

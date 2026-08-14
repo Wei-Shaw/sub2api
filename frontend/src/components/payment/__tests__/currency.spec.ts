@@ -12,9 +12,10 @@ describe('formatPaymentAmount', () => {
 describe('currencySymbol', () => {
   it('maps common payment currencies and falls back safely', () => {
     expect(currencySymbol('USD')).toBe('$')
-    expect(currencySymbol('cny')).toBe('¥')
+    expect(currencySymbol('vnd')).toBe('₫')
     expect(currencySymbol('EUR')).toBe('€')
-    expect(currencySymbol('')).toBe('¥')
+    // Plans are priced in USD, so that is what a missing currency means.
+    expect(currencySymbol('')).toBe('$')
     expect(currencySymbol('XYZ')).toBe('XYZ')
   })
 })

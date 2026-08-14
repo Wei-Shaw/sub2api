@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 
 import type { ApiKey } from '@/types'
 import KeysView from '../KeysView.vue'
@@ -95,12 +95,19 @@ vi.mock('@/composables/useClipboard', () => ({
   }),
 }))
 
+/*
+ * `locale` is part of this mock because the view now renders real design-system
+ * primitives (NumCell, Meter) rather than hand-rolled markup, and those format
+ * numbers through `Intl` keyed on the active locale. A `{ t }`-only mock makes
+ * them throw on the first numeric cell.
+ */
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
     useI18n: () => ({
       t: (key: string) => messages[key] ?? key,
+      locale: ref('en'),
     }),
   }
 })
@@ -392,6 +399,44 @@ describe('user KeysView column settings', () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
+  })
+
+  /*
+   * A missing measurement and a measurement of zero are different facts. The
+   * cell used to coerce both to `0`, which is how a console lies about live
+   * traffic.
+   */
+  it('renders an en dash, not a zero, when concurrency is unknown', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), current_concurrency: undefined as unknown as number }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('–')
+  })
+
+  it('renders a real zero when concurrency is measured as zero', async () => {
+    listKeys.mockResolvedValueOnce({
+      items: [{ ...createApiKey(), current_concurrency: 0 }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('0')
+  })
+
+  /* The onboarding tour targets this button by attribute; see tourAnchors.spec. */
+  it('keeps the create-key tour anchor on the toolbar', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.find('[data-tour="keys-create-btn"]').exists()).toBe(true)
   })
 
   it('marks current concurrency as sortable', async () => {

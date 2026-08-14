@@ -42,6 +42,12 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string) => key,
+      // `NumCell` reads `locale` off `useI18n()`. Left undefined on purpose:
+      // `Intl` then falls back to the system default, which is exactly what the
+      // view's own `localeCode` computed resolves to for an empty locale — so the
+      // amount expectations below can keep comparing against
+      // `formatPaymentAmount(...)` called with no locale at all.
+      locale: { value: undefined as unknown as string },
     }),
   }
 })
@@ -88,7 +94,7 @@ vi.mock('@/utils/device', () => ({
 }))
 
 function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
-  const wxpayMethod: MethodLimit = {
+  const sepayMethod: MethodLimit = {
     daily_limit: 0,
     daily_used: 0,
     daily_remaining: 0,
@@ -99,18 +105,17 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
   }
   const data: CheckoutInfoResponse = {
     methods: {
-      wxpay: wxpayMethod,
+      sepay: sepayMethod,
     },
     global_min: 0,
     global_max: 0,
     plans: [],
     balance_disabled: false,
     balance_recharge_multiplier: 1,
-    subscription_usd_to_cny_rate: 0,
+    subscription_usd_to_vnd_rate: 0,
     recharge_fee_rate: 0,
     help_text: '',
     help_image_url: '',
-    stripe_publishable_key: '',
   }
 
   return {
@@ -150,8 +155,8 @@ function checkoutInfoWithPlansFixture(options: {
       ...base,
       methods: {
         ...base.methods,
-        wxpay: {
-          ...base.methods.wxpay,
+        sepay: {
+          ...base.methods.sepay,
           ...options.method,
         },
       },
@@ -160,45 +165,7 @@ function checkoutInfoWithPlansFixture(options: {
   }
 }
 
-function jsapiOrderFixture(resumeToken: string) {
-  return {
-    order_id: 123,
-    amount: 88,
-    pay_amount: 88,
-    fee_rate: 0,
-    expires_at: '2099-01-01T00:10:00.000Z',
-    payment_type: 'wxpay',
-    out_trade_no: 'sub2_jsapi_123',
-    result_type: 'jsapi_ready' as const,
-    resume_token: resumeToken,
-    jsapi: {
-      appId: 'wx123',
-      timeStamp: '1712345678',
-      nonceStr: 'nonce',
-      package: 'prepay_id=wx123',
-      signType: 'RSA',
-      paySign: 'signed',
-    },
-  }
-}
 
-function oauthOrderFixture() {
-  return {
-    order_id: 456,
-    amount: 128,
-    pay_amount: 128,
-    fee_rate: 0,
-    expires_at: '2099-01-01T00:10:00.000Z',
-    payment_type: 'wxpay',
-    result_type: 'oauth_required' as const,
-    oauth: {
-      authorize_url: '/api/v1/auth/oauth/wechat/payment/start?payment_type=wxpay&redirect=%2Fpurchase%3Ffrom%3Dwechat',
-      appid: 'wx123',
-      scope: 'snsapi_base',
-      redirect_url: '/auth/wechat/payment/callback',
-    },
-  }
-}
 
 async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoWithPlansFixture>[0] = {}) {
   vi.useRealTimers()
@@ -226,6 +193,22 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
       stubs: {
         AppLayout: {
           template: '<div><slot /></div>',
+        },
+        // Money is rendered as a currency-symbol `<span>` plus a `NumCell`, so
+        // `NumCell` has to render for the amounts to reach `wrapper.text()` at
+        // all. The rest of the tree stays shallow.
+        NumCell: false,
+        /*
+         * `Button` is stubbed to a real `<button>` that renders its slot rather
+         * than being un-stubbed with `Button: false`. The primitive's root is
+         * `<component :is="tag">`, and VTU's shallow mode intercepts dynamic
+         * components — it stubs the resolved `'button'` tag as a component named
+         * `Button`, which then has no render function at all. A one-line stub
+         * keeps `findAll('button')` and `.text()` working without asking
+         * `shallowMount` to special-case a dynamic root.
+         */
+        Button: {
+          template: '<button><slot /></button>',
         },
         Teleport: true,
         Transition: false,
@@ -293,14 +276,14 @@ describe('PaymentView subscription plan grid', () => {
 })
 
 describe('PaymentView subscription confirmation amounts', () => {
-  it('shows converted CNY pay amount using the subscription rate, not the balance multiplier', async () => {
+  it('shows converted VND pay amount using the subscription rate, not the balance multiplier', async () => {
     const wrapper = await mountSubscriptionConfirm({
       checkout: {
         balance_recharge_multiplier: 0.14,
-        subscription_usd_to_cny_rate: 7.15,
+        subscription_usd_to_vnd_rate: 26000,
       },
       method: {
-        currency: 'CNY',
+        currency: 'VND',
       },
       plan: {
         price: 9.99,
@@ -309,39 +292,39 @@ describe('PaymentView subscription confirmation amounts', () => {
     })
 
     const text = wrapper.text()
-    const convertedPrice = formatPaymentAmount(71.43, 'CNY')
-    const convertedOriginalPrice = formatPaymentAmount(92.88, 'CNY')
+    const convertedPrice = formatPaymentAmount(259740, 'VND')
+    const convertedOriginalPrice = formatPaymentAmount(337740, 'VND')
 
     expect(text).toContain(convertedPrice)
     expect(text).toContain(convertedOriginalPrice)
-    expect(text).not.toContain(formatPaymentAmount(9.99, 'CNY'))
-    // 换算必须使用订阅汇率（×7.15），而不是余额倍率（÷0.14 = 71.36）
-    expect(text).not.toContain(formatPaymentAmount(71.36, 'CNY'))
+    expect(text).not.toContain(formatPaymentAmount(9.99, 'VND'))
+    // The conversion must use the subscription rate, not the balance multiplier.
+    expect(text).not.toContain(formatPaymentAmount(71, 'VND'))
     expect(wrapper.findAll('button').some(button => button.text().includes(convertedPrice))).toBe(true)
   })
 
-  it('keeps plan price when the subscription rate is not configured or payment currency is not CNY', async () => {
-    // opt-in 回归锁：即使余额倍率已配置，未配置订阅汇率时 CNY 订阅仍按 price 直付
-    const cnyWrapper = await mountSubscriptionConfirm({
+  it('keeps plan price when the subscription rate is not configured or payment currency is not VND', async () => {
+    // Opt-in lock: with no subscription rate configured, a dong channel still
+    // charges the plan price as-is even though a balance multiplier exists.
+    const vndWrapper = await mountSubscriptionConfirm({
       checkout: {
         balance_recharge_multiplier: 0.14,
-        subscription_usd_to_cny_rate: 0,
+        subscription_usd_to_vnd_rate: 0,
       },
       method: {
-        currency: 'CNY',
+        currency: 'VND',
       },
       plan: {
         price: 7.99,
       },
     })
 
-    expect(cnyWrapper.text()).toContain(formatPaymentAmount(7.99, 'CNY'))
-    expect(cnyWrapper.text()).not.toContain(formatPaymentAmount(57.07, 'CNY'))
-    expect(cnyWrapper.text()).not.toContain(formatPaymentAmount(57.13, 'CNY'))
+    expect(vndWrapper.text()).toContain(formatPaymentAmount(7.99, 'VND'))
+    expect(vndWrapper.text()).not.toContain(formatPaymentAmount(207740, 'VND'))
 
     const usdWrapper = await mountSubscriptionConfirm({
       checkout: {
-        subscription_usd_to_cny_rate: 7.15,
+        subscription_usd_to_vnd_rate: 26000,
       },
       method: {
         currency: 'USD',
@@ -356,14 +339,14 @@ describe('PaymentView subscription confirmation amounts', () => {
     expect(usdWrapper.text()).toContain(formatPaymentAmount(9.99, 'USD'))
   })
 
-  it('adds fee rate after CNY rate conversion to match backend pay_amount', async () => {
+  it('adds fee rate after VND rate conversion to match backend pay_amount', async () => {
     const wrapper = await mountSubscriptionConfirm({
       checkout: {
-        subscription_usd_to_cny_rate: 7.15,
+        subscription_usd_to_vnd_rate: 26000,
         recharge_fee_rate: 2.5,
       },
       method: {
-        currency: 'CNY',
+        currency: 'VND',
       },
       plan: {
         price: 9.99,
@@ -371,9 +354,9 @@ describe('PaymentView subscription confirmation amounts', () => {
     })
 
     const text = wrapper.text()
-    const convertedPrice = formatPaymentAmount(71.43, 'CNY')
-    const fee = formatPaymentAmount(1.79, 'CNY')
-    const total = formatPaymentAmount(73.22, 'CNY')
+    const convertedPrice = formatPaymentAmount(259740, 'VND')
+    const fee = formatPaymentAmount(6494, 'VND')
+    const total = formatPaymentAmount(266234, 'VND')
 
     expect(text).toContain(convertedPrice)
     expect(text).toContain(fee)
@@ -401,302 +384,34 @@ describe('PaymentView payment recovery', () => {
     ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
   })
 
-  it('restores a custom EasyPay method as the selected payment method', async () => {
-    getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
-      methods: {
-        wxpay: checkoutInfoFixture().data.methods.wxpay,
-        ldc: {
-          daily_limit: 0,
-          daily_used: 0,
-          daily_remaining: 0,
-          single_min: 0,
-          single_max: 0,
-          fee_rate: 0,
-          available: true,
-          display_name: 'LDC Pay',
-        },
-      },
-    }))
-    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
-      orderId: 888,
-      amount: 66,
-      qrCode: 'ldc-qr',
-      expiresAt: '2099-01-01T00:10:00.000Z',
-      paymentType: 'ldc',
-      payUrl: 'https://pay.example.com/ldc',
-      outTradeNo: 'sub2_ldc_888',
-      clientSecret: '',
-      intentId: '',
-      currency: '',
-      countryCode: '',
-      paymentEnv: '',
-      payAmount: 66,
-      orderType: 'balance',
-      paymentMode: 'popup',
-      resumeToken: '',
-      createdAt: Date.now(),
-    }))
-
-    const wrapper = shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          AppLayout: {
-            template: '<div><slot /></div>',
-          },
-          PaymentStatusPanel: {
-            template: '<button data-test="payment-done" @click="$emit(\'done\')" />',
-          },
-          PaymentMethodSelector: {
-            props: ['selected'],
-            template: '<div data-test="method-selector">{{ selected }}</div>',
-          },
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-    await flushPromises()
-    await flushPromises()
-    await wrapper.find('[data-test="payment-done"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="method-selector"]').text()).toBe('ldc')
-  })
-})
-
-describe('PaymentView WeChat JSAPI flow', () => {
-  beforeEach(() => {
-    routeState.path = '/purchase'
-    routeState.query = {
-      wechat_resume: '1',
-      wechat_resume_token: 'resume-token-123',
-    }
-    routerReplace.mockReset().mockResolvedValue(undefined)
-    routerPush.mockReset().mockResolvedValue(undefined)
-    routerResolve.mockClear()
-    createOrder.mockReset()
-    refreshUser.mockReset()
-    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
-    showError.mockReset()
-    showInfo.mockReset()
-    showWarning.mockReset()
+  it('restores the stored payment method when a pending snapshot is found', async () => {
     getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
-    bridgeInvoke.mockReset()
-    window.localStorage.clear()
-    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = {
-      invoke: bridgeInvoke,
-    }
-  })
-
-  it('resets payment state and redirects to /payment/result after JSAPI reports success', async () => {
-    createOrder.mockResolvedValue(jsapiOrderFixture('resume-token-123'))
-    bridgeInvoke.mockImplementation((_action, _payload, callback) => {
-      callback({ err_msg: 'get_brand_wcpay_request:ok' })
-    })
-
-    shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-    await flushPromises()
-    await flushPromises()
-
-    expect(routerReplace).toHaveBeenCalledWith({ path: '/purchase', query: {} })
-    expect(routerPush).toHaveBeenCalledWith({
-      path: '/payment/result',
-      query: {
-        order_id: '123',
-        out_trade_no: 'sub2_jsapi_123',
-        resume_token: 'resume-token-123',
-      },
-    })
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
-  })
-
-  it('resets payment state when JSAPI reports cancellation', async () => {
-    createOrder.mockResolvedValue(jsapiOrderFixture('resume-token-cancel'))
-    bridgeInvoke.mockImplementation((_action, _payload, callback) => {
-      callback({ err_msg: 'get_brand_wcpay_request:cancel' })
-    })
-
-    shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-    await flushPromises()
-    await flushPromises()
-
-    expect(showInfo).toHaveBeenCalledWith('payment.qr.cancelled')
-    expect(routerPush).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
-  })
-
-  it('clears stale recovery state when JSAPI never becomes available', async () => {
-    vi.useFakeTimers()
-    createOrder.mockResolvedValue(jsapiOrderFixture('resume-token-missing-bridge'))
-    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 42,
+      amount: 100,
+      qrCode: '00020101021238...6304ABCD',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'sepay',
+      payUrl: '',
+      outTradeNo: 'SUB220260101ABCD1234',
+      intentId: '',
+      currency: 'VND',
+      payAmount: 100,
+      orderType: 'balance',
+      paymentMode: 'qrcode',
+      resumeToken: '',
+      createdAt: 1,
+    }))
 
     const wrapper = shallowMount(PaymentView, {
       global: {
         stubs: {
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-
-    await flushPromises()
-    await vi.advanceTimersByTimeAsync(4000)
-    await flushPromises()
-    await flushPromises()
-
-    expect(showError).toHaveBeenCalledWith(
-      'payment.errors.wechatJsapiUnavailable payment.errors.wechatOpenInWeChatHint',
-    )
-    expect(routerPush).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
-    expect(wrapper.html()).not.toContain('payment-status-panel-stub')
-  })
-
-  it('clears a stale recovery snapshot before handling wechat resume callback params', async () => {
-    createOrder.mockRejectedValueOnce(new Error('resume failed'))
-    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
-      orderId: 999,
-      amount: 66,
-      qrCode: 'stale-qr',
-      expiresAt: '2099-01-01T00:10:00.000Z',
-      paymentType: 'alipay',
-      payUrl: 'https://pay.example.com/stale',
-      outTradeNo: 'stale-out-trade-no',
-      clientSecret: '',
-      intentId: '',
-      currency: '',
-      countryCode: '',
-      paymentEnv: '',
-      payAmount: 66,
-      orderType: 'balance',
-      paymentMode: 'popup',
-      resumeToken: '',
-      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
-    }))
-
-    shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          Teleport: true,
-          Transition: false,
+          AppLayout: { template: '<div><slot /></div>' },
         },
       },
     })
     await flushPromises()
-    await flushPromises()
 
-    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
-      wechat_resume_token: 'resume-token-123',
-    }))
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
-  })
-
-  it('keeps subscription resume context for token-only WeChat callbacks', async () => {
-    routeState.query = {
-      wechat_resume: '1',
-      wechat_resume_token: 'resume-subscription-7',
-      payment_type: 'wxpay_direct',
-      order_type: 'subscription',
-      plan_id: '7',
-    }
-    getCheckoutInfo.mockResolvedValue(checkoutInfoWithPlansFixture())
-    createOrder.mockResolvedValue(oauthOrderFixture())
-
-    const originalLocation = window.location
-    const locationState = {
-      href: 'http://localhost/purchase',
-      origin: 'http://localhost',
-    }
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: locationState,
-    })
-
-    shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-    await flushPromises()
-    await flushPromises()
-
-    expect(routerReplace).toHaveBeenCalledWith({ path: '/purchase', query: {} })
-    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
-      payment_type: 'wxpay',
-      order_type: 'subscription',
-      plan_id: 7,
-      wechat_resume_token: 'resume-subscription-7',
-    }))
-    expect(locationState.href).toContain('/api/v1/auth/oauth/wechat/payment/start?')
-    expect(new URL(locationState.href, 'http://localhost').searchParams.get('redirect')).toBe(
-      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&plan_id=7',
-    )
-
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: originalLocation,
-    })
-  })
-
-  it('falls back to QR flow when mobile WeChat payment is unavailable', async () => {
-    routeState.query = {
-      wechat_resume: '1',
-      wechat_resume_token: 'resume-token-h5',
-      payment_type: 'wxpay_direct',
-    }
-    createOrder
-      .mockRejectedValueOnce({ reason: 'WECHAT_H5_NOT_AUTHORIZED' })
-      .mockResolvedValueOnce({
-        order_id: 778,
-        amount: 88,
-        pay_amount: 88,
-        fee_rate: 0,
-        expires_at: '2099-01-01T00:10:00.000Z',
-        payment_type: 'wxpay',
-        qr_code: 'weixin://wxpay/bizpayurl?pr=fallback-native',
-        out_trade_no: 'sub2_qr_778',
-      })
-
-    shallowMount(PaymentView, {
-      global: {
-        stubs: {
-          Teleport: true,
-          Transition: false,
-        },
-      },
-    })
-    await flushPromises()
-    await flushPromises()
-
-    expect(createOrder).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      payment_type: 'wxpay',
-      is_mobile: true,
-      wechat_resume_token: 'resume-token-h5',
-    }))
-    expect(createOrder).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      payment_type: 'wxpay',
-      is_mobile: false,
-      payment_source: 'hosted_redirect',
-    }))
-    expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
-    expect(showError).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
+    expect(wrapper.findComponent({ name: 'PaymentStatusPanel' }).props('paymentType')).toBe('sepay')
   })
 })

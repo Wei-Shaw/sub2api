@@ -13,7 +13,6 @@ export default {
     expiresToday: '今天到期',
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
-    noSubscriptions: '暂无有效订阅',
     unlimited: '无限制'
   },
 
@@ -23,13 +22,9 @@ export default {
     latestVersion: '最新版本',
     upToDate: '已是最新版本',
     updateAvailable: '有新版本可用！',
-    releaseNotes: '更新日志',
-    noReleaseNotes: '暂无更新日志',
-    viewUpdate: '查看更新',
     viewRelease: '查看发布',
     viewChangelog: '查看更新日志',
     refresh: '刷新',
-    sourceMode: '源码构建',
     sourceModeHint: '源码构建请使用 git pull 更新',
     updateNow: '立即更新',
     updating: '正在更新...',
@@ -60,13 +55,7 @@ export default {
 
   // Recharge / Subscription Page
   purchase: {
-    title: '充值/订阅',
     description: '通过内嵌页面完成充值/订阅',
-    openInNewTab: '新窗口打开',
-    notEnabledTitle: '该功能未开启',
-    notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',
-    notConfiguredTitle: '充值/订阅链接未配置',
-    notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
   },
 
   // Custom Page (iframe embed)
@@ -86,22 +75,13 @@ export default {
   // Announcements Page
   announcements: {
     title: '公告',
-    description: '查看系统公告',
-    unreadOnly: '仅显示未读',
     markRead: '标记已读',
     markAllRead: '全部已读',
-    viewAll: '查看全部公告',
     markedAsRead: '已标记为已读',
     allMarkedAsRead: '所有公告已标记为已读',
-    newCount: '有 {count} 条新公告',
-    readAt: '已读时间',
     read: '已读',
     unread: '未读',
-    startsAt: '开始时间',
-    endsAt: '结束时间',
     empty: '暂无公告',
-    emptyUnread: '暂无未读公告',
-    total: '条公告',
     emptyDescription: '暂时没有任何系统公告',
     readStatus: '您已阅读此公告',
     markReadHint: '点击"已读"标记此公告'
@@ -119,7 +99,6 @@ export default {
       expired: '已过期',
       revoked: '已撤销'
     },
-    usage: '用量',
     expires: '到期时间',
     noExpiration: '无到期时间',
     unlimited: '无限制',
@@ -128,20 +107,14 @@ export default {
     weekly: '每周',
     monthly: '每月',
     daysRemaining: '剩余 {days} 天',
-    expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
   },
 
   // Onboarding Tour
   onboarding: {
     restartTour: '重新查看新手引导',
-    dontShowAgain: '不再提示',
-    dontShowAgainTitle: '永久关闭新手引导',
-    confirmDontShow: '确定不再显示新手引导吗？\n\n您可以随时在右上角头像菜单中重新开启。',
-    confirmExit: '确定要退出新手引导吗？您可以随时在右上角菜单重新开始。',
     interactiveHint: '按 Enter 或点击继续',
     navigation: {
       flipPage: '翻页',
@@ -170,25 +143,21 @@ export default {
         title: '✏️ 1. 分组名称',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为您的分组起一个易于识别的名称。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>💡 命名建议：</b><ul style="margin: 8px 0 0 16px;"><li>"测试分组" - 用于测试</li><li>"VIP专线" - 高质量服务</li><li>"免费试用" - 体验版</li></ul></div><p style="font-size: 13px; color: #6b7280;">填写完成后点击"下一步"继续</p></div>',
-        nextBtn: '下一步'
       },
       groupPlatform: {
         title: '🤖 2. 选择平台',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
-        nextBtn: '下一步'
       },
       groupMultiplier: {
         title: '💰 3. 费率倍数',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
-        nextBtn: '下一步'
       },
       groupExclusive: {
         title: '🔒 4. 专属分组（可选）',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">控制分组的可见性和访问权限。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔐 权限说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>关闭</b> - 公开分组，所有用户可见</li><li><b>开启</b> - 专属分组，仅指定用户可见</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>VIP 用户专属、内部测试、特殊客户等</p></div>',
-        nextBtn: '下一步'
       },
       groupSubmit: {
         title: '✅ 保存分组',
@@ -209,31 +178,26 @@ export default {
         title: '✏️ 1. 账号名称',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为账号设置一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"Claude主账号"、"GPT备用1"、"测试账号" 等</p></div>',
-        nextBtn: '下一步'
       },
       accountPlatform: {
         title: '🤖 2. 选择平台',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该账号对应的服务商平台。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px;"><b>⚠️ 重要：</b>平台必须与刚才创建的分组平台一致</p></div>',
-        nextBtn: '下一步'
       },
       accountType: {
         title: '🔐 3. 授权方式',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
-        nextBtn: '下一步'
       },
       accountPriority: {
         title: '⚖️ 4. 优先级（可选）',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
-        nextBtn: '下一步'
       },
       accountGroups: {
         title: '🎯 5. 分配分组',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>关键步骤！</b>将账号分配到刚才创建的分组。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>必须勾选至少一个分组</li><li>未分配分组的账号无法使用</li><li>一个账号可以分配给多个分组</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>请勾选刚才创建的测试分组</p></div>',
-        nextBtn: '下一步'
       },
       accountSubmit: {
         title: '✅ 保存账号',
@@ -254,13 +218,11 @@ export default {
         title: '✏️ 1. 密钥名称',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥设置一个便于管理的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"测试密钥"、"生产环境"、"移动端" 等</p></div>',
-        nextBtn: '下一步'
       },
       keyGroup: {
         title: '🎯 2. 选择分组',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择刚才配置好的分组。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 分组决定：</b><ul style="margin: 8px 0 0 16px;"><li>该密钥可以使用哪些账号</li><li>计费倍率是多少</li><li>是否为专属密钥</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>选择刚才创建的测试分组</p></div>',
-        nextBtn: '下一步'
       },
       keySubmit: {
         title: '🎉 生成并复制',
@@ -291,13 +253,11 @@ export default {
         title: '✏️ 密钥名称',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
-        nextBtn: '下一步'
       },
       keyGroup: {
         title: '🎯 选择分组',
         description:
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
-        nextBtn: '下一步'
       },
       keySubmit: {
         title: '🎉 完成创建',
@@ -321,15 +281,8 @@ export default {
     actualPay: '实付金额',
     createOrder: '确认支付',
     methods: {
-      easypay: '易支付',
-      alipay: '支付宝',
-      wxpay: '微信支付',
-      stripe: 'Stripe',
-      airwallex: 'Airwallex',
-      card: '银行卡',
-      link: 'Link',
-      alipay_direct: '支付宝（直连）',
-      wxpay_direct: '微信支付（直连）',
+      sepay: '银行转账（SePay）',
+      nowpayments: '加密货币（NOWPayments）',
     },
     status: {
       pending: '待支付',
@@ -339,12 +292,6 @@ export default {
       expired: '已过期',
       cancelled: '已取消',
       failed: '失败',
-      refund_requested: '退款申请中',
-      refunding: '退款中',
-      refund_pending: '退款处理中',
-      refunded: '已退款',
-      partially_refunded: '部分退款',
-      refund_failed: '退款失败',
     },
     qr: {
       scanToPay: '请扫码支付',
@@ -362,17 +309,8 @@ export default {
       cancelledDesc: '您已取消本次支付',
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
-      alipayOpening: '正在打开支付宝',
-      alipayContinueInApp: '请在支付宝中完成支付',
-      alipayWaitingHint: '支付结果将由服务端确认，本页面会自动更新',
-      alipayFallbackTitle: '打开支付宝未成功',
-      alipayFallbackHint: '可重新打开支付宝，或保存下方二维码后从支付宝相册识别',
-      reopenAlipay: '重新打开支付宝',
-      saveQRCode: '保存二维码',
-      alipaySaveAndScanHint: '保存二维码后，打开支付宝扫一扫，从相册选择二维码',
     },
     orders: {
-      title: '我的订单',
       empty: '暂无订单',
       orderId: '订单 ID',
       orderNo: '订单编号',
@@ -381,7 +319,6 @@ export default {
       creditedAmount: '到账金额',
       fee: '手续费',
       baseAmount: '充值金额',
-      includedInPayAmount: '已含在实付金额中',
       status: '状态',
       paymentMethod: '支付方式',
       createdAt: '创建时间',
@@ -404,12 +341,10 @@ export default {
     groupFallback: '分组 #{id}',
     rechargeAccount: '充值账户',
     activeSubscription: '当前订阅',
-    noActiveSubscription: '暂无有效订阅',
     tabTopUp: '充值',
     tabSubscribe: '订阅',
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',
-    confirmSubscription: '确认订阅',
     confirmCancel: '确定要取消此订单吗？',
     amountTooLow: '最低金额为 {min}',
     amountTooHigh: '最高金额为 {max}',
@@ -417,12 +352,11 @@ export default {
     rechargeRatePreview: '当前倍率：1 CNY = {usd} USD',
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
-    stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
-    stripeMissingParams: '缺少订单ID或支付密钥',
-    stripeNotConfigured: 'Stripe 未配置',
-    airwallexLoadFailed: 'Airwallex 支付组件加载失败，请刷新页面重试',
-    airwallexMissingParams: '缺少 Airwallex 支付参数',
     errors: {
+      providerUnavailable: '该支付渠道暂时不可用。',
+      methodNotConfigured: '该支付方式尚未配置。',
+      tryOtherMethodHint: '请选择其他支付方式。',
+      trySepayLaterHint: '请稍后重试，或改用加密货币支付。',
       tooManyPending: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       cancelRateLimited: '取消订单过于频繁，请稍后再试',
       wechatH5NotAuthorized: '当前商户未开通微信 H5 支付，请在微信中打开当前页面继续支付。',
@@ -467,19 +401,11 @@ export default {
       REFUND_AMOUNT_EXCEEDED: '退款金额超过充值金额',
       REFUND_FAILED: '退款失败',
     },
-    airwallexPay: 'Airwallex 支付',
-    stripePay: '立即支付',
-    stripeSuccessProcessing: '支付成功，正在处理订单...',
     stripePopup: {
-      redirecting: '正在跳转到支付页面...',
-      loadingQr: '正在获取微信支付二维码...',
-      timeout: '等待支付凭证超时，请重试',
-      qrFailed: '未能获取微信支付二维码',
     },
     subscribeNow: '立即开通',
     renewNow: '续费',
     selectPlan: '选择套餐',
-    planFeatures: '功能特性',
     planCard: {
       rate: '倍率',
       peakRate: '高峰倍率',
@@ -493,11 +419,7 @@ export default {
     days: '天',
     weeks: '周',
     months: '个月',
-    years: '年',
-    oneMonth: '1 个月',
-    oneYear: '1 年',
     perMonth: '月',
-    perYear: '年',
     admin: {
       tabs: {
         overview: '概览',

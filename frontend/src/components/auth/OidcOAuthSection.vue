@@ -1,20 +1,28 @@
 <template>
   <div class="space-y-4">
-    <button type="button" :disabled="disabled" class="btn btn-secondary w-full" @click="startLogin">
-      <span
-        class="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
-      >
-        {{ providerInitial }}
-      </span>
+    <Button variant="outline" size="md" block :disabled="disabled" @click="startLogin">
+      <template #icon>
+        <!--
+          Squared and neutral. The accent is reserved for interaction and
+          selection in this system, so it cannot also brand an identity
+          provider whose real colours we do not know.
+        -->
+        <span
+          class="inline-flex h-4 w-4 items-center justify-center border border-line font-mono text-2xs text-ink-secondary"
+          aria-hidden="true"
+        >
+          {{ providerInitial }}
+        </span>
+      </template>
       {{ t('auth.oidc.signIn', { providerName: normalizedProviderName }) }}
-    </button>
+    </Button>
 
     <div v-if="showDivider" class="flex items-center gap-3">
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-      <span class="text-xs text-gray-500 dark:text-dark-400">
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
+      <span class="text-2xs uppercase tracking-[0.08em] text-ink-tertiary">
         {{ t('auth.oauthOrContinue') }}
       </span>
-      <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+      <span class="h-px flex-1 bg-line" aria-hidden="true"></span>
     </div>
   </div>
 </template>
@@ -23,6 +31,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
 import type { OAuthLoginStart } from '@/api/auth'
 import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/oauthAffiliate'
 

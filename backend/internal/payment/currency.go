@@ -7,7 +7,10 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-const DefaultPaymentCurrency = "CNY"
+// DefaultPaymentCurrency is the fallback currency for orders whose provider no
+// longer resolves — subscription plans are priced in USD, so that is the safest
+// interpretation of a bare amount.
+const DefaultPaymentCurrency = "USD"
 
 type paymentCurrencyAmountUnit struct {
 	apiMinorUnit      int
@@ -15,10 +18,10 @@ type paymentCurrencyAmountUnit struct {
 }
 
 var (
-	zeroDecimalAmountUnit  = paymentCurrencyAmountUnit{apiMinorUnit: 0, maxFractionDigits: 0}
-	twoDecimalAmountUnit   = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 2}
-	threeDecimalAmountUnit = paymentCurrencyAmountUnit{apiMinorUnit: 3, maxFractionDigits: 3}
-	stripeLegacyZeroAmount = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 0}
+	zeroDecimalAmountUnit   = paymentCurrencyAmountUnit{apiMinorUnit: 0, maxFractionDigits: 0}
+	twoDecimalAmountUnit    = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 2}
+	threeDecimalAmountUnit  = paymentCurrencyAmountUnit{apiMinorUnit: 3, maxFractionDigits: 3}
+	wholeUnitTwoMinorAmount = paymentCurrencyAmountUnit{apiMinorUnit: 2, maxFractionDigits: 0}
 )
 
 var paymentCurrencyAmountUnits = map[string]paymentCurrencyAmountUnit{
@@ -37,8 +40,8 @@ var paymentCurrencyAmountUnits = map[string]paymentCurrencyAmountUnit{
 	"XAF": zeroDecimalAmountUnit,
 	"XOF": zeroDecimalAmountUnit,
 	"XPF": zeroDecimalAmountUnit,
-	"ISK": stripeLegacyZeroAmount,
-	"UGX": stripeLegacyZeroAmount,
+	"ISK": wholeUnitTwoMinorAmount,
+	"UGX": wholeUnitTwoMinorAmount,
 	"BHD": threeDecimalAmountUnit,
 	"IQD": threeDecimalAmountUnit,
 	"JOD": threeDecimalAmountUnit,

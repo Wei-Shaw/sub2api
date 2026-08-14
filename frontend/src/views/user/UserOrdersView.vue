@@ -1,36 +1,64 @@
 <template>
   <AppLayout>
     <div class="space-y-4">
-      <!-- Filters -->
-      <div class="card p-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="fetchOrders" />
-          <div class="flex flex-1 items-center justify-end gap-2">
-            <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-            <button class="btn btn-primary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
-          </div>
+      <!--
+        A toolbar, not a card. The filter row used to sit in its own bordered
+        panel directly above another bordered panel, which is two boxes for one
+        idea; a single rule under the controls separates them.
+      -->
+      <div class="flex flex-wrap items-center gap-3 border-b border-line pb-4">
+        <Select
+          v-model="currentFilter"
+          :options="statusFilters"
+          class="w-36"
+          @change="fetchOrders"
+        />
+        <div class="flex flex-1 items-center justify-end gap-2">
+          <Button
+            :loading="loading"
+            :title="t('common.refresh')"
+            :aria-label="t('common.refresh')"
+            @click="fetchOrders"
+          >
+            <template #icon>
+              <Icon name="refresh" size="xs" />
+            </template>
+          </Button>
+          <Button tone="accent" variant="solid" @click="router.push('/purchase')">
+            {{ t('payment.result.backToRecharge') }}
+          </Button>
         </div>
       </div>
 
-      <!-- Table -->
       <OrderTable :orders="orders" :loading="loading">
         <template #actions="{ row }">
-          <div class="flex items-center gap-2">
-            <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20">
-              <Icon name="x" size="sm" />
-              <span>{{ t('payment.orders.cancel') }}</span>
-            </button>
-            <button v-if="canRequestRefund(row)" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
-              <Icon name="dollar" size="sm" />
-              <span>{{ t('payment.orders.requestRefund') }}</span>
-            </button>
+          <div class="flex items-center justify-end gap-3">
+            <!--
+              `quiet` inside a cell: a hover ground here would fight the row
+              hover, and an outlined control per row turns the column into a
+              wall of boxes.
+            -->
+            <Button
+              v-if="row.status === 'PENDING'"
+              variant="quiet"
+              size="xs"
+              tone="danger"
+              @click="handleCancel(row.id)"
+            >
+              {{ t('payment.orders.cancel') }}
+            </Button>
+            <Button
+              v-if="canRequestRefund(row)"
+              variant="quiet"
+              size="xs"
+              @click="openRefundDialog(row)"
+            >
+              {{ t('payment.orders.requestRefund') }}
+            </Button>
           </div>
         </template>
       </OrderTable>
 
-      <!-- Pagination -->
       <Pagination
         v-if="pagination.total > 0"
         :page="pagination.page"
@@ -42,38 +70,87 @@
     </div>
 
     <!-- Cancel Confirm Dialog -->
-    <BaseDialog :show="!!cancelTargetId" :title="t('payment.orders.cancel')" width="narrow" @close="cancelTargetId = null">
-      <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('payment.confirmCancel') }}</p>
+    <BaseDialog
+      :show="!!cancelTargetId"
+      :title="t('payment.orders.cancel')"
+      width="narrow"
+      @close="cancelTargetId = null"
+    >
+      <p class="text-sm text-ink-secondary">{{ t('payment.confirmCancel') }}</p>
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button class="btn btn-secondary" @click="cancelTargetId = null">{{ t('common.cancel') }}</button>
-          <button class="btn btn-danger" :disabled="actionLoading" @click="confirmCancel">{{ actionLoading ? t('common.processing') : t('payment.orders.cancel') }}</button>
+        <div class="flex justify-end gap-2">
+          <Button size="md" @click="cancelTargetId = null">{{ t('common.cancel') }}</Button>
+          <!--
+            `loading` keeps the label's box and overlays a spinner. Swapping the
+            text to "Processing…" resized the button under the pointer that had
+            just pressed it.
+          -->
+          <Button
+            size="md"
+            tone="danger"
+            variant="solid"
+            :loading="actionLoading"
+            @click="confirmCancel"
+          >
+            {{ t('payment.orders.cancel') }}
+          </Button>
         </div>
       </template>
     </BaseDialog>
 
     <!-- Refund Dialog -->
-    <BaseDialog :show="!!refundTarget" :title="t('payment.orders.requestRefund')" @close="refundTarget = null">
+    <BaseDialog
+      :show="!!refundTarget"
+      :title="t('payment.orders.requestRefund')"
+      @close="refundTarget = null"
+    >
       <div v-if="refundTarget" class="space-y-4">
-        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
-          <div class="flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
-            <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.id }}</span>
+        <dl class="divide-y divide-line-subtle rounded border border-line">
+          <div class="flex items-baseline justify-between gap-4 px-3 py-2">
+            <dt class="text-xs text-ink-secondary">{{ t('payment.orders.orderId') }}</dt>
+            <dd class="font-mono text-xs tabular-nums text-ink">#{{ refundTarget.id }}</dd>
           </div>
-          <div class="mt-2 flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="text-gray-900 dark:text-white">${{ refundTarget.amount.toFixed(2) }}</span>
+          <div class="flex items-baseline justify-between gap-4 px-3 py-2">
+            <dt class="text-xs text-ink-secondary">{{ t('payment.orders.amount') }}</dt>
+            <dd class="inline-flex items-baseline gap-0.5">
+              <span class="text-2xs text-ink-tertiary">{{ usdSymbol }}</span>
+              <NumCell :value="refundTarget.amount" :precision="2" />
+            </dd>
           </div>
-        </div>
-        <div>
-          <label class="input-label">{{ t('payment.refundReason') }}</label>
-          <textarea v-model="refundReason" rows="3" class="input mt-1 w-full" :placeholder="t('payment.refundReasonPlaceholder')" />
-        </div>
+        </dl>
+
+        <FormField
+          id="refund-reason"
+          :label="t('payment.refundReason')"
+          required
+          :error="refundReasonError"
+        >
+          <template #default="{ describedBy, invalid }">
+            <textarea
+              id="refund-reason"
+              v-model="refundReason"
+              rows="3"
+              class="input"
+              :class="invalid && 'input-error'"
+              :aria-describedby="describedBy"
+              :aria-invalid="invalid || undefined"
+              :placeholder="t('payment.refundReasonPlaceholder')"
+            />
+          </template>
+        </FormField>
       </div>
       <template #footer>
-        <div class="flex justify-end gap-3">
-          <button class="btn btn-secondary" @click="refundTarget = null">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" :disabled="actionLoading || !refundReason.trim()" @click="confirmRefund">{{ actionLoading ? t('common.processing') : t('payment.orders.requestRefund') }}</button>
+        <div class="flex justify-end gap-2">
+          <Button size="md" @click="refundTarget = null">{{ t('common.cancel') }}</Button>
+          <Button
+            size="md"
+            tone="accent"
+            variant="solid"
+            :loading="actionLoading"
+            @click="confirmRefund"
+          >
+            {{ t('payment.orders.requestRefund') }}
+          </Button>
         </div>
       </template>
     </BaseDialog>
@@ -84,16 +161,21 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useAppStore } from '@/stores'
+
 import { paymentAPI } from '@/api/payment'
-import { extractI18nErrorMessage } from '@/utils/apiError'
-import type { PaymentOrder } from '@/types/payment'
-import AppLayout from '@/components/layout/AppLayout.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import { currencySymbol } from '@/components/payment/currency'
 import OrderTable from '@/components/payment/OrderTable.vue'
+import { useAppStore } from '@/stores'
+import type { PaymentOrder } from '@/types/payment'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -107,14 +189,17 @@ const currentFilter = ref('')
 const cancelTargetId = ref<number | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
 const refundReason = ref('')
+const refundReasonError = ref('')
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
+
+/** Refunds are credited back to the balance, which is always USD. */
+const usdSymbol = currencySymbol('USD')
 
 const statusFilters = computed(() => [
   { value: '', label: t('common.all') },
   { value: 'PENDING', label: t('payment.status.pending') },
   { value: 'COMPLETED', label: t('payment.status.completed') },
   { value: 'FAILED', label: t('payment.status.failed') },
-  { value: 'REFUNDED', label: t('payment.status.refunded') },
 ])
 
 async function fetchOrders() {
@@ -154,10 +239,24 @@ async function confirmCancel() {
   }
 }
 
-function openRefundDialog(order: PaymentOrder) { refundTarget.value = order; refundReason.value = '' }
+function openRefundDialog(order: PaymentOrder) {
+  refundTarget.value = order
+  refundReason.value = ''
+  refundReasonError.value = ''
+}
 
 async function confirmRefund() {
-  if (!refundTarget.value || !refundReason.value.trim()) return
+  if (!refundTarget.value) return
+  /*
+   * The submit button used to be disabled until a reason was typed, which is a
+   * dead control that never says why. It stays live and answers in the field's
+   * own reserved message row instead.
+   */
+  if (!refundReason.value.trim()) {
+    refundReasonError.value = `${t('payment.refundReason')} ${t('common.required')}`
+    return
+  }
+  refundReasonError.value = ''
   actionLoading.value = true
   try {
     await paymentAPI.requestRefund(refundTarget.value.id, { reason: refundReason.value.trim() })

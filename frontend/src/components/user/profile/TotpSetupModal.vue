@@ -1,167 +1,188 @@
 <template>
-  <div class="fixed inset-0 z-50 overflow-y-auto" @click.self="$emit('close')">
-    <div class="flex min-h-full items-center justify-center p-4">
-      <div class="fixed inset-0 bg-black/50 transition-opacity" @click="$emit('close')"></div>
+  <div class="modal-overlay" @click.self="$emit('close')">
+    <div class="modal-content max-w-md" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div class="min-w-0">
+          <h3 class="modal-title">{{ t('profile.totp.setupTitle') }}</h3>
+          <p class="mt-0.5 text-xs text-ink-tertiary">{{ stepDescription }}</p>
+        </div>
+      </div>
 
-      <div class="relative w-full max-w-md transform rounded-xl bg-white p-6 shadow-xl transition-all dark:bg-dark-800">
-        <!-- Header -->
-        <div class="mb-6 text-center">
-          <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.totp.setupTitle') }}
-          </h3>
-          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {{ stepDescription }}
-          </p>
+      <!-- Step 0: Identity Verification -->
+      <template v-if="step === 0">
+        <div v-if="methodLoading" class="modal-body space-y-2">
+          <div class="skeleton h-3 w-32"></div>
+          <div class="skeleton h-9 w-full"></div>
         </div>
 
-        <!-- Step 0: Identity Verification -->
-        <div v-if="step === 0" class="space-y-6">
-          <!-- Loading verification method -->
-          <div v-if="methodLoading" class="flex items-center justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-          </div>
-
-          <template v-else>
+        <template v-else>
+          <div class="modal-body">
             <!-- Email verification -->
-            <div v-if="verificationMethod === 'email'" class="space-y-4">
-              <div>
-                <label class="input-label">{{ t('profile.totp.emailCode') }}</label>
-                <div class="flex gap-2">
+            <FormField v-if="verificationMethod === 'email'" :label="t('profile.totp.emailCode')">
+              <template #default="{ id, describedBy }">
+                <div class="flex items-start gap-2">
                   <input
+                    :id="id"
                     v-model="verifyForm.emailCode"
                     type="text"
                     maxlength="6"
                     inputmode="numeric"
-                    class="input flex-1"
+                    autocomplete="one-time-code"
+                    class="input min-w-0 flex-1 font-mono tabular-nums"
+                    :aria-describedby="describedBy"
                     :placeholder="t('profile.totp.enterEmailCode')"
                   />
-                  <button
-                    type="button"
-                    class="btn btn-secondary whitespace-nowrap"
-                    :disabled="sendingCode || codeCooldown > 0"
+                  <!--
+                    Constant label. It used to cycle through "send code" →
+                    "sending…" → "45s", resizing the control twice per press.
+                  -->
+                  <Button
+                    size="md"
+                    class="h-9 shrink-0"
+                    :loading="sendingCode"
+                    :disabled="codeCooldown > 0"
                     @click="handleSendCode"
                   >
-                    {{ codeCooldown > 0 ? `${codeCooldown}s` : (sendingCode ? t('common.sending') : t('profile.totp.sendCode')) }}
-                  </button>
+                    {{ t('profile.totp.sendCode') }}
+                    <template v-if="codeCooldown > 0" #trailing>
+                      <span class="font-mono tabular-nums text-ink-tertiary">{{ codeCooldown }}s</span>
+                    </template>
+                  </Button>
                 </div>
-              </div>
-            </div>
+              </template>
+            </FormField>
 
             <!-- Password verification -->
-            <div v-else class="space-y-4">
-              <div>
-                <label class="input-label">{{ t('profile.currentPassword') }}</label>
+            <FormField v-else :label="t('profile.currentPassword')">
+              <template #default="{ id, describedBy }">
                 <input
+                  :id="id"
                   v-model="verifyForm.password"
                   type="password"
                   autocomplete="current-password"
                   class="input"
+                  :aria-describedby="describedBy"
                   :placeholder="t('profile.totp.enterPassword')"
                 />
-              </div>
-            </div>
+              </template>
+            </FormField>
+          </div>
 
-            <div class="flex justify-end gap-3 pt-4">
-              <button type="button" class="btn btn-secondary" @click="$emit('close')">
-                {{ t('common.cancel') }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-primary"
-                :disabled="!canProceedFromVerify || setupLoading"
-                @click="handleVerifyAndSetup"
-              >
-                {{ setupLoading ? t('common.loading') : t('common.next') }}
-              </button>
-            </div>
-          </template>
-        </div>
-
-        <!-- Step 1: Show QR Code -->
-        <div v-if="step === 1" class="space-y-6">
-          <!-- QR Code and Secret -->
-          <template v-if="setupData">
-            <div class="flex justify-center">
-              <div class="rounded-lg border border-gray-200 p-4 bg-white dark:border-dark-600 dark:bg-white">
-                <img :src="qrCodeDataUrl" alt="QR Code" class="h-48 w-48" />
-              </div>
-            </div>
-
-            <div class="text-center">
-              <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                {{ t('profile.totp.manualEntry') }}
-              </p>
-              <div class="flex items-center justify-center gap-2">
-                <code class="rounded bg-gray-100 px-3 py-2 font-mono text-sm dark:bg-dark-700">
-                  {{ setupData.secret }}
-                </code>
-                <button
-                  type="button"
-                  class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700"
-                  @click="copySecret"
-                >
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </template>
-
-          <div class="flex justify-end gap-3 pt-4">
-            <button type="button" class="btn btn-secondary" @click="$emit('close')">
+          <div class="modal-footer">
+            <Button size="md" @click="$emit('close')">
               {{ t('common.cancel') }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              :disabled="!setupData"
-              @click="step = 2"
+            </Button>
+            <Button
+              tone="accent"
+              variant="solid"
+              size="md"
+              data-testid="totp-setup-next"
+              :loading="setupLoading"
+              :disabled="!canProceedFromVerify"
+              @click="handleVerifyAndSetup"
             >
               {{ t('common.next') }}
-            </button>
+            </Button>
           </div>
-        </div>
+        </template>
+      </template>
 
-        <!-- Step 2: Verify Code -->
-        <div v-if="step === 2" class="space-y-6">
-          <form @submit.prevent="handleVerify">
-            <div class="mb-6">
-              <label class="input-label text-center block mb-3">
-                {{ t('profile.totp.enterCode') }}
-              </label>
-              <div class="flex justify-center gap-2">
-                <input
-                  v-for="(_, index) in 6"
-                  :key="index"
-                  :ref="(el) => setInputRef(el, index)"
-                  type="text"
-                  maxlength="1"
-                  inputmode="numeric"
-                  pattern="[0-9]"
-                  class="h-12 w-10 rounded-lg border border-gray-300 text-center text-lg font-semibold focus:border-primary-500 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
-                  @input="handleCodeInput($event, index)"
-                  @keydown="handleKeydown($event, index)"
-                  @paste="handlePaste"
-                />
+      <!-- Step 1: Show QR Code -->
+      <template v-if="step === 1">
+        <div class="modal-body space-y-4">
+          <template v-if="setupData">
+            <!--
+              The QR ground stays white in both themes — it is a scan target,
+              not a surface, and inverting it breaks readers.
+            -->
+            <div class="flex justify-center">
+              <div class="border border-line bg-white p-3">
+                <img :src="qrCodeDataUrl" alt="" class="h-48 w-48" />
               </div>
             </div>
 
-            <div class="flex justify-end gap-3">
-              <button type="button" class="btn btn-secondary" @click="step = 1">
-                {{ t('common.back') }}
-              </button>
-              <button
-                type="submit"
-                class="btn btn-primary"
-                :disabled="verifying || code.join('').length !== 6"
-              >
-                {{ verifying ? t('common.verifying') : t('profile.totp.verify') }}
-              </button>
+            <div class="space-y-1.5">
+              <p class="text-xs text-ink-tertiary">{{ t('profile.totp.manualEntry') }}</p>
+              <div class="flex items-center gap-2">
+                <code class="code min-w-0 flex-1 break-all py-1.5 text-sm tabular-nums">
+                  {{ setupData.secret }}
+                </code>
+                <Button
+                  size="md"
+                  class="h-9 shrink-0"
+                  :aria-label="t('common.copy')"
+                  :title="t('common.copy')"
+                  @click="copySecret"
+                >
+                  <template #icon>
+                    <Icon :name="secretCopied ? 'check' : 'copy'" size="xs" />
+                  </template>
+                  {{ t('common.copy') }}
+                </Button>
+              </div>
             </div>
-          </form>
+          </template>
         </div>
-      </div>
+
+        <div class="modal-footer">
+          <Button size="md" @click="$emit('close')">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button
+            tone="accent"
+            variant="solid"
+            size="md"
+            :disabled="!setupData"
+            @click="step = 2"
+          >
+            {{ t('common.next') }}
+          </Button>
+        </div>
+      </template>
+
+      <!-- Step 2: Verify Code -->
+      <form v-if="step === 2" @submit.prevent="handleVerify">
+        <div class="modal-body">
+          <fieldset>
+            <legend class="mb-2 block text-xs font-medium text-ink-secondary">
+              {{ t('profile.totp.enterCode') }}
+            </legend>
+            <div class="flex gap-1.5">
+              <input
+                v-for="(_, index) in 6"
+                :key="index"
+                :ref="(el) => setInputRef(el, index)"
+                type="text"
+                maxlength="1"
+                inputmode="numeric"
+                pattern="[0-9]"
+                :autocomplete="index === 0 ? 'one-time-code' : 'off'"
+                :aria-label="`${t('profile.totp.enterCode')} ${index + 1}`"
+                class="input h-10 w-10 shrink-0 px-0 text-center font-mono text-md tabular-nums"
+                @input="handleCodeInput($event, index)"
+                @keydown="handleKeydown($event, index)"
+                @paste="handlePaste"
+              />
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="modal-footer">
+          <Button size="md" @click="step = 1">
+            {{ t('common.back') }}
+          </Button>
+          <Button
+            type="submit"
+            tone="accent"
+            variant="solid"
+            size="md"
+            :loading="verifying"
+            :disabled="code.join('').length !== 6"
+          >
+            {{ t('profile.totp.verify') }}
+          </Button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
@@ -169,6 +190,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import Button from '@/components/common/Button.vue'
+import FormField from '@/components/common/FormField.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
 import { totpAPI } from '@/api'
 import type { TotpSetupResponse } from '@/types'
@@ -298,11 +322,24 @@ const handlePaste = (event: ClipboardEvent) => {
   })
 }
 
+/**
+ * Copy confirmation is an icon swap on a fixed-size box, not a label change —
+ * the button keeps its width, so nothing under the cursor moves.
+ */
+const secretCopied = ref(false)
+let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
+
 const copySecret = async () => {
   if (setupData.value) {
     try {
       await navigator.clipboard.writeText(setupData.value.secret)
       appStore.showSuccess(t('common.copied'))
+      secretCopied.value = true
+      if (copiedResetTimer) clearTimeout(copiedResetTimer)
+      copiedResetTimer = setTimeout(() => {
+        secretCopied.value = false
+        copiedResetTimer = null
+      }, 2000)
     } catch {
       appStore.showError(t('common.copyFailed'))
     }
@@ -398,6 +435,10 @@ onUnmounted(() => {
   if (cooldownTimer.value) {
     clearInterval(cooldownTimer.value)
     cooldownTimer.value = null
+  }
+  if (copiedResetTimer) {
+    clearTimeout(copiedResetTimer)
+    copiedResetTimer = null
   }
 })
 </script>

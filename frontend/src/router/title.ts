@@ -23,9 +23,15 @@ export function resolveDocumentTitle(routeTitle: unknown, siteName?: string, tit
   return normalizedSiteName
 }
 
-export function resolveRouteDocumentTitle(
+/**
+ * The human label for a route, with no site name attached.
+ *
+ * Split out so the tab title and the header `<h1>` cannot disagree: AppHeader
+ * used to re-derive this from `route.meta` itself, including the custom-page
+ * special case, which left two copies of the same precedence rules.
+ */
+export function resolveRouteLabel(
   route: Pick<RouteLocationNormalizedLoaded, 'name' | 'params' | 'meta'>,
-  siteName: string | undefined,
   customMenuItems: CustomMenuItem[] = [],
 ): string {
   const id = typeof route.params.id === 'string' ? route.params.id : ''
@@ -33,6 +39,21 @@ export function resolveRouteDocumentTitle(
     ? customMenuItems.find((item) => item.id === id)
     : undefined
   const menuTitle = menuItem?.label.trim()
+  if (menuTitle) return menuTitle
 
-  return resolveDocumentTitle(menuTitle || route.meta.title, siteName, menuTitle ? undefined : route.meta.titleKey as string)
+  const titleKey = route.meta.titleKey as string | undefined
+  if (typeof titleKey === 'string' && titleKey.trim()) {
+    const translated = i18n.global.t(titleKey)
+    if (translated && translated !== titleKey) return translated
+  }
+
+  return typeof route.meta.title === 'string' ? route.meta.title.trim() : ''
+}
+
+export function resolveRouteDocumentTitle(
+  route: Pick<RouteLocationNormalizedLoaded, 'name' | 'params' | 'meta'>,
+  siteName: string | undefined,
+  customMenuItems: CustomMenuItem[] = [],
+): string {
+  return resolveDocumentTitle(resolveRouteLabel(route, customMenuItems), siteName)
 }

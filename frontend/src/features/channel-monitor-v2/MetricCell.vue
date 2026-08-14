@@ -1,47 +1,64 @@
 <template>
-  <div
-    class="stat-card !min-h-[6.5rem] !rounded-3xl !border-0 !p-4 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700"
-    :title="title || undefined"
-  >
-    <div
-      v-if="state"
-      class="mt-1 h-2 w-2 shrink-0 rounded-full"
-      :class="dotClass"
-      aria-hidden="true"
-    ></div>
-    <div class="min-w-0 flex-1">
-      <span class="stat-label text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ label }}</span>
-      <strong
-        class="stat-value mt-1 block overflow-visible text-xl tabular-nums leading-tight !text-clip !whitespace-normal"
-        :class="stateClass"
-      >{{ value }}</strong>
-      <div
-        v-if="detailParts.length > 1"
-        class="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] leading-snug text-gray-400 dark:text-dark-400"
-      >
-        <span
-          v-for="(part, index) in detailParts"
-          :key="`${index}:${part}`"
-          class="whitespace-nowrap tabular-nums"
-        >{{ part }}</span>
-      </div>
-      <small
-        v-else-if="detail"
-        class="mt-1.5 block text-[11px] leading-snug text-gray-400 dark:text-dark-400"
-      >{{ detail }}</small>
+  <div class="flex min-w-0 flex-col gap-1 px-4 py-3" :title="title || undefined">
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <span class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+        {{ label }}
+      </span>
+      <!--
+        State carries a dot AND a word. A bare coloured dot encodes the state in
+        hue alone, which is unreadable for a colour-vision-deficient reader, in
+        a grayscale printout, and in a screenshot pasted into a ticket —
+        `StatusDot` makes the label impossible to forget by requiring it. The
+        healthy state resolves to `neutral`: a KPI strip where every tile is
+        green has spent its whole colour budget before anything is wrong.
+      -->
+      <StatusDot v-if="state && stateLabel" :tone="tone" :label="stateLabel" muted />
     </div>
+
+    <strong class="truncate font-mono text-2xl font-semibold tabular-nums" :class="valueClass">
+      {{ value }}
+    </strong>
+
+    <div
+      v-if="detailParts.length > 1"
+      class="flex flex-wrap gap-x-2 gap-y-0.5 text-2xs text-ink-tertiary"
+    >
+      <span
+        v-for="(part, index) in detailParts"
+        :key="`${index}:${part}`"
+        class="whitespace-nowrap font-mono tabular-nums"
+      >{{ part }}</span>
+    </div>
+    <small v-else-if="detail" class="block text-2xs text-ink-tertiary">{{ detail }}</small>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+
+import StatusDot from '@/components/common/StatusDot.vue'
+import type { Tone } from '@/components/common/primitives'
 import type { HealthState } from '@/api/channelMonitorV2'
 
+/**
+ * One headline number in the KPI strip.
+ *
+ * Deliberately not a card: no border, no shadow, no ground of its own. A row of
+ * these lives inside ONE bordered panel, separated by hairlines — boxing each
+ * number individually is the nested-card look this rewrite removes.
+ *
+ * `value` arrives pre-formatted because the monitor formatters own units that
+ * `Intl.NumberFormat` cannot express on its own (`1.2s` vs `840ms`, `%`, `K/M`
+ * compaction). It is still rendered in mono tabular figures so a row of tiles
+ * aligns.
+ */
 const props = defineProps<{
   label: string
   value: string
   detail: string
   state?: HealthState
+  /** Required alongside `state` — the text half of the status channel. */
+  stateLabel?: string
   /** Exact numeric tooltip (e.g. uncompacted RPM/TPM). */
   title?: string
 }>()
@@ -56,18 +73,20 @@ const detailParts = computed(() => {
     .filter(Boolean)
 })
 
-const stateClass = computed(() => {
-  if (!props.state) return 'text-gray-900 dark:text-white'
-  if (props.state === 'healthy') return 'text-emerald-600 dark:text-emerald-400'
-  if (props.state === 'warning') return 'text-amber-600 dark:text-amber-400'
-  if (props.state === 'critical') return 'text-red-600 dark:text-red-400'
-  return 'text-gray-500 dark:text-dark-400'
+const tone = computed<Tone>(() => {
+  if (props.state === 'warning') return 'warn'
+  if (props.state === 'critical') return 'danger'
+  // `healthy` and `unknown` are both unremarkable — neither earns colour.
+  return 'neutral'
 })
 
-const dotClass = computed(() => {
-  if (props.state === 'healthy') return 'bg-emerald-500'
-  if (props.state === 'warning') return 'bg-amber-500'
-  if (props.state === 'critical') return 'bg-red-500'
-  return 'bg-gray-300 dark:bg-dark-600'
+/**
+ * Only a crossed threshold tints the number itself. Healthy stays ink, so on a
+ * five-tile strip the one that is failing is the only coloured thing on screen.
+ */
+const valueClass = computed(() => {
+  if (props.state === 'warning') return 'text-warn'
+  if (props.state === 'critical') return 'text-danger'
+  return 'text-ink'
 })
 </script>

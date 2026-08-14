@@ -1,76 +1,86 @@
 <template>
-  <section
-    class="overflow-hidden rounded-2xl border bg-white shadow-card dark:bg-dark-800/50"
-    :class="[platformBorderStrongClass(group.platform)]"
-  >
-    <!-- 分组头部:名称/平台/倍率徽章/专属/订阅徽章 + 描述 -->
-    <header class="border-b border-gray-100 px-5 py-4 dark:border-dark-700/60">
-      <div class="flex flex-wrap items-center gap-2">
-        <GroupBadge
-          :name="group.name"
-          :platform="group.platform as GroupPlatform"
-          :subscription-type="(group.subscription_type || 'standard') as SubscriptionType"
-          :rate-multiplier="group.rate_multiplier"
-          :user-rate-multiplier="group.user_rate_multiplier ?? null"
-          :peak-rate-enabled="group.peak_rate_enabled"
-          :peak-start="group.peak_start"
-          :peak-end="group.peak_end"
-          :peak-rate-multiplier="group.peak_rate_multiplier"
-          always-show-rate
-        />
-        <span
-          v-if="group.is_exclusive"
-          class="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-600 dark:bg-purple-900/20 dark:text-purple-400"
-        >
-          <Icon name="shield" size="xs" class="h-3 w-3" />
-          {{ t('modelPlaza.badges.exclusive') }}
-        </span>
-        <span
-          v-if="group.subscription_type === 'subscription'"
-          class="inline-flex items-center rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-600 dark:bg-violet-900/20 dark:text-violet-400"
-        >
-          {{ t('modelPlaza.badges.subscription') }}
-        </span>
+  <!--
+    One group, one panel: a hairline box with a header rule and the price table
+    flush against the edges. The border used to be tinted with the platform hue
+    (`platformBorderStrongClass`), which made a page of six groups read as six
+    differently-colored objects rather than one list.
+  -->
+  <Surface flush data-testid="plaza-group">
+    <template #header>
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <PlatformIcon
+            v-if="group.platform"
+            :platform="group.platform as GroupPlatform"
+            size="sm"
+            class="shrink-0 text-ink-secondary"
+          />
+          <h2 class="min-w-0 truncate text-sm font-semibold text-ink">{{ group.name }}</h2>
+          <!-- Exclusive / subscription are categories, not states: neutral tint. -->
+          <Badge v-if="group.is_exclusive" caps>
+            <Icon name="shield" size="xs" class="h-3 w-3" />
+            {{ t('modelPlaza.badges.exclusive') }}
+          </Badge>
+          <Badge v-if="group.subscription_type === 'subscription'" caps>
+            {{ t('modelPlaza.badges.subscription') }}
+          </Badge>
+        </div>
+        <p v-if="group.description" class="mt-1.5 text-xs text-ink-secondary">
+          {{ group.description }}
+        </p>
+        <!-- Peak-hour surcharge is a real caution, and one of the very few -->
+        <!-- places on this page allowed to spend a semantic colour. -->
+        <p v-if="peakNote" class="mt-1.5 inline-flex items-center gap-1 text-2xs text-warn">
+          <Icon name="clock" size="xs" class="h-3 w-3 shrink-0" />
+          {{ peakNote }}
+        </p>
       </div>
-      <p v-if="group.description" class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-        {{ group.description }}
-      </p>
-      <p
-        v-if="peakNote"
-        class="mt-1.5 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
-      >
-        <Icon name="clock" size="xs" class="h-3 w-3" />
-        {{ peakNote }}
-      </p>
-    </header>
+    </template>
 
-    <!-- 模型价格表:整行(含 hover 底色/分区底色)顶到卡片边缘,左右留白由表格首列/末列的 padding 提供 -->
-    <div>
-      <PlazaModelPricingTable
-        v-if="group.models.length > 0"
-        :models="group.models"
-        :platform="group.platform"
-        :rate-multiplier="group.rate_multiplier"
-        :user-rate-multiplier="group.user_rate_multiplier ?? null"
-        :image-rate-independent="group.image_rate_independent"
-        :image-rate-multiplier="group.image_rate_multiplier"
+    <template #actions>
+      <span class="text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+        {{ t('modelPlaza.filters.rateLabel') }}
+      </span>
+      <span
+        v-if="hasCustomRate"
+        class="font-mono text-2xs text-ink-tertiary line-through"
+        data-testid="plaza-group-rate-original"
+        >{{ group.rate_multiplier }}x</span
+      >
+      <NumCell
+        :value="effectiveRate"
+        unit="x"
+        class="text-sm font-medium"
+        data-testid="plaza-group-rate"
       />
-      <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
-        {{ t('modelPlaza.detail.noModels') }}
-      </p>
-    </div>
-  </section>
+    </template>
+
+    <PlazaModelPricingTable
+      v-if="group.models.length > 0"
+      :models="group.models"
+      :platform="group.platform"
+      :rate-multiplier="group.rate_multiplier"
+      :user-rate-multiplier="group.user_rate_multiplier ?? null"
+      :image-rate-independent="group.image_rate_independent"
+      :image-rate-multiplier="group.image_rate_multiplier"
+    />
+    <p v-else class="px-4 py-8 text-center text-xs text-ink-tertiary">
+      {{ t('modelPlaza.detail.noModels') }}
+    </p>
+  </Surface>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import GroupBadge from '@/components/common/GroupBadge.vue'
+import Badge from '@/components/common/Badge.vue'
+import NumCell from '@/components/common/NumCell.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import Surface from '@/components/common/Surface.vue'
 import PlazaModelPricingTable from './PlazaModelPricingTable.vue'
 import type { ModelPlazaGroup } from '@/api/modelPlaza'
-import type { GroupPlatform, SubscriptionType } from '@/types'
-import { platformBorderStrongClass } from '@/utils/platformColors'
+import type { GroupPlatform } from '@/types'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { useAppStore } from '@/stores/app'
 
@@ -80,6 +90,17 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+/** 生效倍率 = 用户专属倍率 ?? 分组默认倍率。 */
+const effectiveRate = computed(
+  () => props.group.user_rate_multiplier ?? props.group.rate_multiplier
+)
+
+const hasCustomRate = computed(
+  () =>
+    props.group.user_rate_multiplier != null &&
+    props.group.user_rate_multiplier !== props.group.rate_multiplier
+)
 
 const peakNote = computed(() => {
   if (!hasPeakRate(props.group)) return ''

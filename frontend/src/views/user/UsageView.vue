@@ -4,10 +4,12 @@
       <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
 
       <div class="space-y-4">
-        <div class="card p-4">
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.timeRange') }}:</span>
+        <Surface>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <div class="flex min-w-0 items-center gap-2">
+              <span class="shrink-0 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ t('admin.dashboard.timeRange') }}
+              </span>
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
@@ -15,13 +17,15 @@
               />
             </div>
             <div class="ml-auto flex items-center gap-2">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
+              <span class="shrink-0 text-2xs font-medium uppercase tracking-[0.04em] text-ink-tertiary">
+                {{ t('admin.dashboard.granularity') }}
+              </span>
               <div class="w-28">
                 <Select v-model="granularity" :options="granularityOptions" @change="loadChartData" />
               </div>
             </div>
           </div>
-        </div>
+        </Surface>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <ModelDistributionChart
@@ -66,7 +70,7 @@
         </div>
       </div>
 
-      <div class="card p-6">
+      <Surface>
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div v-if="activeTab === 'errors'" class="flex flex-1 flex-wrap items-end gap-4">
             <div class="w-full sm:w-auto sm:min-w-[220px]">
@@ -121,51 +125,90 @@
             </div>
           </div>
 
-          <div class="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
-            <button type="button" @click="refreshData" :disabled="activeTab === 'errors' ? errorLoading : loading" class="btn btn-secondary">
+          <div class="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+            <Button
+              size="md"
+              :disabled="activeTab === 'errors' ? errorLoading : loading"
+              @click="refreshData"
+            >
               {{ t('common.refresh') }}
-            </button>
-            <button type="button" @click="resetFilters" class="btn btn-secondary">
+            </Button>
+            <Button size="md" @click="resetFilters">
               {{ t('common.reset') }}
-            </button>
+            </Button>
             <div class="relative" ref="columnDropdownRef">
-              <button
-                type="button"
-                @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary px-2 md:px-3"
+              <Button
+                size="md"
                 :title="t('admin.users.columnSettings')"
+                :aria-label="t('admin.users.columnSettings')"
+                :aria-expanded="showColumnDropdown"
+                @click="showColumnDropdown = !showColumnDropdown"
               >
-                <Icon name="grid" size="sm" />
+                <template #icon>
+                  <Icon name="grid" size="xs" />
+                </template>
                 <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
-              </button>
+              </Button>
+              <!--
+                Popover elevation is the one place a shadow is allowed; the
+                ground is `surface-raised` so it separates from the panel under
+                it without a border colour change.
+              -->
               <div
                 v-if="showColumnDropdown"
-                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                class="dropdown right-0 top-full mt-1 max-h-80 w-52 overflow-y-auto"
               >
                 <button
                   v-for="col in currentToggleableColumns"
                   :key="col.key"
                   type="button"
+                  class="dropdown-item w-full justify-between"
+                  :aria-pressed="isCurrentColumnVisible(col.key)"
                   @click="toggleCurrentColumn(col.key)"
-                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                 >
-                  <span>{{ col.label }}</span>
-                  <Icon v-if="isCurrentColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                  <span class="min-w-0 truncate">{{ col.label }}</span>
+                  <Icon
+                    v-if="isCurrentColumnVisible(col.key)"
+                    name="check"
+                    size="xs"
+                    class="shrink-0 text-accent"
+                  />
                 </button>
               </div>
             </div>
-            <button v-if="activeTab !== 'errors'" type="button" @click="exportToCSV" :disabled="exporting" class="btn btn-primary">
+            <Button
+              v-if="activeTab !== 'errors'"
+              size="md"
+              tone="accent"
+              variant="solid"
+              :loading="exporting"
+              @click="exportToCSV"
+            >
               {{ exporting ? t('usage.exporting') : t('usage.exportCsv') }}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Surface>
 
-      <div v-if="errorViewEnabled" class="flex gap-2 border-b border-gray-200 dark:border-dark-700">
-        <button class="tab" :class="{ 'tab-active': activeTab === 'usage' }" @click="activeTab = 'usage'">
+      <div v-if="errorViewEnabled" class="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'usage' }"
+          :aria-selected="activeTab === 'usage'"
+          @click="activeTab = 'usage'"
+        >
           {{ t('usage.tabs.usage') }}
         </button>
-        <button class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrors">
+        <button
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ 'tab-active': activeTab === 'errors' }"
+          :aria-selected="activeTab === 'errors'"
+          @click="switchToErrors"
+        >
           {{ t('usage.tabs.errors') }}
         </button>
       </div>
@@ -218,8 +261,10 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { keysAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Button from '@/components/common/Button.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
+import Surface from '@/components/common/Surface.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
