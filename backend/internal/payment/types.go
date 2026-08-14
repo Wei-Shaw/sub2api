@@ -18,6 +18,7 @@ const (
 	TypeLink         PaymentType = "link"
 	TypeEasyPay      PaymentType = "easypay"
 	TypeAirwallex    PaymentType = "airwallex"
+	TypeSePay        PaymentType = "sepay"
 )
 
 // Order status constants shared across payment and service layers.
@@ -82,6 +83,8 @@ const ConfigKeyPublishableKey = "publishableKey"
 // For example, "alipay_direct" -> "alipay".
 func GetBasePaymentType(t string) string {
 	switch {
+	case t == TypeSePay:
+		return TypeSePay
 	case t == TypeEasyPay:
 		return TypeEasyPay
 	case t == TypeAirwallex:

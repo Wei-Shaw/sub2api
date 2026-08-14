@@ -9,6 +9,9 @@ import (
 
 const DefaultPaymentCurrency = "CNY"
 
+// CurrencyVND is the only currency SePay bank transfers support.
+const CurrencyVND = "VND"
+
 type paymentCurrencyAmountUnit struct {
 	apiMinorUnit      int
 	maxFractionDigits int
