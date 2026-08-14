@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -218,4 +220,82 @@ func (s *SePay) verifyWebhookAuth(rawBody string, headers map[string]string) err
 		return fmt.Errorf("sepay webhook api key mismatch")
 	}
 	return nil
+}
+
+// sepayTransaction mirrors one element of GET /v2/transactions data.
+type sepayTransaction struct {
+	ID                 string `json:"id"`
+	TransactionDate    string `json:"transaction_date"`
+	TransferType       string `json:"transfer_type"`
+	AmountIn           int64  `json:"amount_in"`
+	TransactionContent string `json:"transaction_content"`
+	ReferenceNumber    string `json:"reference_number"`
+	Code               string `json:"code"`
+}
+
+// QueryOrder looks up the order's transfer in SePay API v2. tradeNo carries
+// the order's out_trade_no; the q= search covers the extracted payment code.
+func (s *SePay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
+	outTradeNo := strings.TrimSpace(tradeNo)
+	if outTradeNo == "" {
+		return nil, fmt.Errorf("sepay query: empty order reference")
+	}
+	endpoint := s.config["apiBase"] + "/v2/transactions?q=" + url.QueryEscape(outTradeNo) + "&transfer_type=in"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.config["apiToken"])
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sepay query: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSepayResponseSize))
+	if err != nil {
+		return nil, fmt.Errorf("sepay query read: %w", err)
+	}
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, fmt.Errorf("sepay query unauthorized: check apiToken")
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, fmt.Errorf("sepay query rate limited (retry after %ss)", resp.Header.Get("Retry-After"))
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, fmt.Errorf("sepay query HTTP %d: %s", resp.StatusCode, summarizeSepayBody(body))
+	}
+	var parsed struct {
+		Status string             `json:"status"`
+		Data   []sepayTransaction `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("sepay query parse: %w", err)
+	}
+	for _, tx := range parsed.Data {
+		if !sepayCodeMatchesOrder(tx.Code, outTradeNo) {
+			continue
+		}
+		return &payment.QueryOrderResponse{
+			TradeNo:  strings.TrimSpace(tx.ReferenceNumber),
+			Status:   payment.ProviderStatusPaid,
+			Amount:   float64(tx.AmountIn),
+			PaidAt:   strings.TrimSpace(tx.TransactionDate),
+			Metadata: s.MerchantIdentityMetadata(),
+		}, nil
+	}
+	return &payment.QueryOrderResponse{
+		TradeNo:  outTradeNo,
+		Status:   payment.ProviderStatusPending,
+		Metadata: s.MerchantIdentityMetadata(),
+	}, nil
+}
+
+func summarizeSepayBody(body []byte) string {
+	summary := strings.Join(strings.Fields(string(body)), " ")
+	if summary == "" {
+		return "<empty>"
+	}
+	if len(summary) > maxSepayErrorSummary {
+		return summary[:maxSepayErrorSummary] + "..."
+	}
+	return summary
 }

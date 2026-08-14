@@ -5,6 +5,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -206,5 +209,85 @@ func TestSePayVerifyNotificationOutAndNullCode(t *testing.T) {
 	nullCode := sepayNotifyBody("", 50000)
 	if _, err := p.VerifyNotification(context.Background(), nullCode, sepaySignedHeaders(nullCode, "secret", now)); err == nil {
 		t.Fatal("expected missing payment code error")
+	}
+}
+
+func sepayQueryServer(t *testing.T, queries *[]url.Values, respond func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*queries = append(*queries, r.URL.Query())
+		respond(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSePayQueryOrderPaid(t *testing.T) {
+	var queries []url.Values
+	srv := sepayQueryServer(t, &queries, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+sepayTestConfig()["apiToken"] {
+			t.Errorf("auth header = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"a1b2","transaction_date":"2026-08-14 09:30:00","transfer_type":"in","amount_in":50000,"transaction_content":"sub2_20260814aB3kX9mQ chuyen tien","reference_number":"FT26069ABC","code":"SUB2_20260814AB3KX9MQ"}]}`))
+	})
+	cfg := sepayTestConfig()
+	cfg["apiBase"] = srv.URL
+	p, _ := NewSePay("1", cfg)
+
+	resp, err := p.QueryOrder(context.Background(), "sub2_20260814aB3kX9mQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != payment.ProviderStatusPaid || resp.Amount != 50000 || resp.TradeNo != "FT26069ABC" {
+		t.Fatalf("resp = %+v", resp)
+	}
+	if resp.PaidAt != "2026-08-14 09:30:00" {
+		t.Fatalf("paidAt = %q", resp.PaidAt)
+	}
+	if len(queries) != 1 || queries[0].Get("q") != "sub2_20260814aB3kX9mQ" || queries[0].Get("transfer_type") != "in" {
+		t.Fatalf("queries = %v", queries)
+	}
+}
+
+func TestSePayQueryOrderPending(t *testing.T) {
+	var queries []url.Values
+	srv := sepayQueryServer(t, &queries, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"c3","transaction_date":"2026-08-14 09:30:00","transfer_type":"in","amount_in":1,"code":"SUB2_19990101ZZZZZZZZ"}]}`))
+	})
+	cfg := sepayTestConfig()
+	cfg["apiBase"] = srv.URL
+	p, _ := NewSePay("1", cfg)
+
+	resp, err := p.QueryOrder(context.Background(), "sub2_20260814aB3kX9mQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != payment.ProviderStatusPending {
+		t.Fatalf("status = %q, want pending (code does not match order)", resp.Status)
+	}
+}
+
+func TestSePayQueryOrderHTTPErrors(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		body    string
+		wantErr string
+	}{
+		{http.StatusUnauthorized, `{"error":{"code":"unauthorized"}}`, "unauthorized"},
+		{http.StatusTooManyRequests, `{"error":{"code":"rate_limited"}}`, "rate"},
+		{http.StatusInternalServerError, `boom`, "HTTP 500"},
+	} {
+		var queries []url.Values
+		srv := sepayQueryServer(t, &queries, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		})
+		cfg := sepayTestConfig()
+		cfg["apiBase"] = srv.URL
+		p, _ := NewSePay("1", cfg)
+		_, err := p.QueryOrder(context.Background(), "sub2_20260814aB3kX9mQ")
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("status %d: err = %v, want containing %q", tc.status, err, tc.wantErr)
+		}
 	}
 }
