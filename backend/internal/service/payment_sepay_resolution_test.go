@@ -78,9 +78,16 @@ func TestResolveSepayOutTradeNo(t *testing.T) {
 		"SUB2_20260814AB3KX9MQ",
 		"20260814aB3kX9mQ",
 		"20260814AB3KX9MQ",
+		// Banks and SePay's code extraction drop separators: the sub2_
+		// underscore disappears from the extracted code.
+		"sub220260814aB3kX9mQ",
+		"SUB220260814AB3KX9MQ",
 	} {
 		require.Equal(t, canonical, svc.resolveSepayOutTradeNo(ctx, code), "code %q", code)
 	}
+	oid2, ok2 := svc.resolveSepayNotificationOrderID(ctx, payment.TypeSePay, "sub220260814ab3kx9mq")
+	require.True(t, ok2, "separator-stripped code must resolve via normalized pending-order scan")
+	require.Equal(t, order.ID, oid2)
 	require.Equal(t, "sub2_19990101zzzzzzzz",
 		svc.resolveSepayOutTradeNo(ctx, "sub2_19990101zzzzzzzz"), "unknown code round-trips unchanged")
 	require.Equal(t, "", svc.resolveSepayOutTradeNo(ctx, "  "))

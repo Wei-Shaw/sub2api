@@ -85,13 +85,7 @@ func (s *SePay) MerchantIdentityMetadata() map[string]string {
 // keep only letters and digits (drops the sub2_ underscore, tolerates bank
 // content mutations such as accents or extra separators).
 func sepayNormalizeCode(code string) string {
-	var b strings.Builder
-	for _, r := range strings.ToUpper(strings.TrimSpace(code)) {
-		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
+	return payment.NormalizeTransferCode(code)
 }
 
 // sepayCodeMatchesOrder reports whether a webhook/query code refers to the
@@ -239,12 +233,52 @@ type sepayTransaction struct {
 
 // QueryOrder looks up the order's transfer in SePay API v2. tradeNo carries
 // the order's out_trade_no; the q= search covers the extracted payment code.
+// Banks and SePay's code extraction drop separators (the sub2_ underscore), so
+// when the raw out_trade_no yields no match the query retries with its
+// separator-stripped normalized form.
 func (s *SePay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	outTradeNo := strings.TrimSpace(tradeNo)
 	if outTradeNo == "" {
 		return nil, fmt.Errorf("sepay query: empty order reference")
 	}
-	endpoint := s.config["apiBase"] + "/v2/transactions?q=" + url.QueryEscape(outTradeNo) + "&transfer_type=in&per_page=100"
+	for _, q := range sepayQueryVariants(outTradeNo) {
+		resp, err := s.queryTransactions(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, tx := range resp {
+			if !sepayCodeMatchesOrder(tx.Code, outTradeNo) {
+				continue
+			}
+			return &payment.QueryOrderResponse{
+				TradeNo:  strings.TrimSpace(tx.ReferenceNumber),
+				Status:   payment.ProviderStatusPaid,
+				Amount:   float64(tx.AmountIn),
+				PaidAt:   strings.TrimSpace(tx.TransactionDate),
+				Metadata: s.MerchantIdentityMetadata(),
+			}, nil
+		}
+	}
+	return &payment.QueryOrderResponse{
+		TradeNo:  outTradeNo,
+		Status:   payment.ProviderStatusPending,
+		Metadata: s.MerchantIdentityMetadata(),
+	}, nil
+}
+
+// sepayQueryVariants returns the q= search terms for an out_trade_no: the raw
+// value first, then the normalized (letters+digits only) form which matches
+// content the bank or SePay extracted without separators.
+func sepayQueryVariants(outTradeNo string) []string {
+	normalized := sepayNormalizeCode(outTradeNo)
+	if normalized == "" || strings.EqualFold(normalized, outTradeNo) {
+		return []string{outTradeNo}
+	}
+	return []string{outTradeNo, normalized}
+}
+
+func (s *SePay) queryTransactions(ctx context.Context, q string) ([]sepayTransaction, error) {
+	endpoint := s.config["apiBase"] + "/v2/transactions?q=" + url.QueryEscape(q) + "&transfer_type=in&per_page=100"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -274,23 +308,7 @@ func (s *SePay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("sepay query parse: %w", err)
 	}
-	for _, tx := range parsed.Data {
-		if !sepayCodeMatchesOrder(tx.Code, outTradeNo) {
-			continue
-		}
-		return &payment.QueryOrderResponse{
-			TradeNo:  strings.TrimSpace(tx.ReferenceNumber),
-			Status:   payment.ProviderStatusPaid,
-			Amount:   float64(tx.AmountIn),
-			PaidAt:   strings.TrimSpace(tx.TransactionDate),
-			Metadata: s.MerchantIdentityMetadata(),
-		}, nil
-	}
-	return &payment.QueryOrderResponse{
-		TradeNo:  outTradeNo,
-		Status:   payment.ProviderStatusPending,
-		Metadata: s.MerchantIdentityMetadata(),
-	}, nil
+	return parsed.Data, nil
 }
 
 func summarizeSepayBody(body []byte) string {

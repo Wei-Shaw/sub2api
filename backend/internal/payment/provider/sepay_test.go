@@ -316,3 +316,37 @@ func TestSePayQueryOrderHTTPErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestSePayQueryOrderRetriesNormalizedQuery(t *testing.T) {
+	// Real-sandbox behavior: SePay's q= search does not match the raw
+	// out_trade_no when the extracted code/content dropped the sub2_
+	// underscore; the normalized (letters+digits) query does.
+	var queries []url.Values
+	srv := sepayQueryServer(t, &queries, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("q") == "sub2_20260815YujbZRZd" {
+			_, _ = w.Write([]byte(`{"status":"success","data":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":[{"id":"t1","transaction_date":"2026-08-15 02:48:51","transfer_type":"in","amount_in":250000,"transaction_content":"sub220260815YujbZRZd chuyen tien","reference_number":"SB991D714D42E5","code":"sub220260815YujbZRZd"}]}`))
+	})
+	cfg := sepayTestConfig()
+	cfg["apiBase"] = srv.URL
+	p, _ := NewSePay("1", cfg)
+
+	resp, err := p.QueryOrder(context.Background(), "sub2_20260815YujbZRZd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != payment.ProviderStatusPaid || resp.Amount != 250000 || resp.TradeNo != "SB991D714D42E5" {
+		t.Fatalf("resp = %+v, want paid 250000", resp)
+	}
+	if len(queries) != 2 {
+		t.Fatalf("expected 2 queries (raw then normalized), got %d: %v", len(queries), queries)
+	}
+	if got := queries[0].Get("q"); got != "sub2_20260815YujbZRZd" {
+		t.Fatalf("first q = %q", got)
+	}
+	if got := queries[1].Get("q"); got != "SUB220260815YUJBZRZD" {
+		t.Fatalf("second (normalized) q = %q", got)
+	}
+}

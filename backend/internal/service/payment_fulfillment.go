@@ -78,8 +78,8 @@ func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
 	return oid, true
 }
 
-// resolveSepayNotificationOrderID resolves lenient SePay codes (uppercased or
-// prefix-stripped by banks) to the internal order ID.
+// resolveSepayNotificationOrderID resolves lenient SePay codes (uppercased,
+// prefix-stripped, or separator-stripped by banks) to the internal order ID.
 func (s *PaymentService) resolveSepayNotificationOrderID(ctx context.Context, providerKey, code string) (int64, bool) {
 	if strings.TrimSpace(providerKey) != payment.TypeSePay {
 		return 0, false
@@ -88,12 +88,8 @@ func (s *PaymentService) resolveSepayNotificationOrderID(ctx context.Context, pr
 	if code == "" {
 		return 0, false
 	}
-	for _, cand := range []string{code, orderIDPrefix + code} {
-		order, err := s.entClient.PaymentOrder.Query().
-			Where(paymentorder.OutTradeNoEqualFold(cand)).Only(ctx)
-		if err == nil && order != nil {
-			return order.ID, true
-		}
+	if order := s.findSepayOrderByCode(ctx, code); order != nil {
+		return order.ID, true
 	}
 	return 0, false
 }

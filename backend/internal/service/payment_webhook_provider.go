@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
@@ -86,22 +87,54 @@ func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, o
 }
 
 // resolveSepayOutTradeNo maps a SePay webhook code back to the canonical
-// out_trade_no. Banks may uppercase the transfer content and SePay's payment
-// code extraction may drop the configured prefix, so resolution falls back to
-// case-insensitive lookups (raw code, then code with the sub2_ prefix).
+// out_trade_no, tolerating bank-side mutations of the transfer content.
 func (s *PaymentService) resolveSepayOutTradeNo(ctx context.Context, code string) string {
 	code = strings.TrimSpace(code)
 	if code == "" {
 		return ""
 	}
+	if order := s.findSepayOrderByCode(ctx, code); order != nil {
+		return order.OutTradeNo
+	}
+	return code
+}
+
+// findSepayOrderByCode resolves a SePay transfer code to an order, tolerating
+// bank mutations: case changes, a dropped sub2_ prefix, and stripped
+// separators (banks and SePay's code extraction drop the underscore inside
+// sub2_YYYYMMDD...). Exact and case-insensitive lookups run first; the
+// fallback scans recent pending sepay orders comparing separator-insensitive
+// normalized codes.
+func (s *PaymentService) findSepayOrderByCode(ctx context.Context, code string) *dbent.PaymentOrder {
 	for _, cand := range []string{code, orderIDPrefix + code} {
 		order, err := s.entClient.PaymentOrder.Query().
 			Where(paymentorder.OutTradeNoEqualFold(cand)).Only(ctx)
 		if err == nil && order != nil {
-			return order.OutTradeNo
+			return order
 		}
 	}
-	return code
+	normalized := payment.NormalizeTransferCode(code)
+	if normalized == "" {
+		return nil
+	}
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.PaymentTypeEQ(payment.TypeSePay),
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.CreatedAtGTE(time.Now().Add(-24*time.Hour)),
+		).
+		Order(dbent.Desc(paymentorder.FieldCreatedAt)).
+		Limit(100).
+		All(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, o := range orders {
+		if payment.NormalizeTransferCode(o.OutTradeNo) == normalized {
+			return o
+		}
+	}
+	return nil
 }
 
 func (s *PaymentService) getPinnedOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
