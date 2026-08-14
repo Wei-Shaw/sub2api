@@ -94,7 +94,7 @@ func TestResolveSepayOutTradeNo(t *testing.T) {
 }
 
 func TestPaymentOrderQueryReferenceSePay(t *testing.T) {
-	order := &dbent.PaymentOrder{OutTradeNo: "sub2_20260814aB3kX9mQ", PaymentType: payment.TypeSePay}
+	order := &dbent.PaymentOrder{OutTradeNo: "sub2_20260814aB3kX9mQ", PaymentType: payment.TypeSePay, PaymentTradeNo: "sepay-upstream-trade-no"}
 	require.Equal(t, "sub2_20260814aB3kX9mQ", paymentOrderQueryReference(order, nil),
 		"sepay must query by out_trade_no (no upstream tradeNo exists while pending)")
 }
