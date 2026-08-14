@@ -375,6 +375,13 @@ func channelLookupPlatform(ctx context.Context, groupPlatform string) string {
 	}
 	return groupPlatform
 }
+
+// InvalidateCache 失效并重建渠道缓存。
+// 供渠道以外、但会影响渠道缓存内容的变更调用（如分组平台变更）。
+func (s *ChannelService) InvalidateCache() {
+	s.invalidateCache()
+}
+
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
