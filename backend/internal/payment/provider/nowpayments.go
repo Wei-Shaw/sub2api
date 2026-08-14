@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/shopspring/decimal"
 )
 
 // NOWPayments constants.
@@ -24,6 +27,9 @@ const (
 	nowPaymentsDefaultAPIBase  = "https://api.nowpayments.io/v1"
 	nowPaymentsSignatureHeader = "x-nowpayments-sig"
 	maxNowPaymentsErrorSummary = 512
+	// An invoice fans out into one payment per deposit, so a page this size
+	// covers the original plus any repeated deposits behind it.
+	nowPaymentsInvoiceLookupLimit = 100
 )
 
 // NOWPayments payment_status values.
@@ -52,7 +58,7 @@ type NOWPayments struct {
 
 // NewNOWPayments creates a new NOWPayments provider.
 // config keys: apiKey, ipnSecret, currency, apiBase, notifyUrl, successUrl,
-// cancelUrl, isFixedRate, isFeePaidByUser.
+// cancelUrl, partiallyPaidUrl, isFixedRate, isFeePaidByUser.
 func NewNOWPayments(instanceID string, config map[string]string) (*NOWPayments, error) {
 	cfg := cloneStringMap(config)
 	for _, k := range []string{"apiKey", "ipnSecret"} {
@@ -105,15 +111,16 @@ func (n *NOWPayments) currency() string {
 }
 
 type nowPaymentsInvoiceRequest struct {
-	PriceAmount      string `json:"price_amount"`
-	PriceCurrency    string `json:"price_currency"`
-	OrderID          string `json:"order_id"`
-	OrderDescription string `json:"order_description,omitempty"`
-	IPNCallbackURL   string `json:"ipn_callback_url,omitempty"`
-	SuccessURL       string `json:"success_url,omitempty"`
-	CancelURL        string `json:"cancel_url,omitempty"`
-	IsFixedRate      bool   `json:"is_fixed_rate,omitempty"`
-	IsFeePaidByUser  bool   `json:"is_fee_paid_by_user,omitempty"`
+	PriceAmount      json.RawMessage `json:"price_amount"`
+	PriceCurrency    string          `json:"price_currency"`
+	OrderID          string          `json:"order_id"`
+	OrderDescription string          `json:"order_description,omitempty"`
+	IPNCallbackURL   string          `json:"ipn_callback_url,omitempty"`
+	SuccessURL       string          `json:"success_url,omitempty"`
+	CancelURL        string          `json:"cancel_url,omitempty"`
+	PartiallyPaidURL string          `json:"partially_paid_url,omitempty"`
+	IsFixedRate      bool            `json:"is_fixed_rate,omitempty"`
+	IsFeePaidByUser  bool            `json:"is_fee_paid_by_user,omitempty"`
 }
 
 type nowPaymentsInvoiceResponse struct {
@@ -126,18 +133,20 @@ type nowPaymentsInvoiceResponse struct {
 // CreatePayment opens a hosted NOWPayments invoice and returns its checkout URL.
 func (n *NOWPayments) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	currency := n.currency()
-	if _, err := payment.AmountToMinorUnit(req.Amount, currency); err != nil {
-		return nil, fmt.Errorf("nowpayments create payment: %w", err)
+	priceAmount, err := nowPaymentsPriceLiteral(req.Amount, currency)
+	if err != nil {
+		return nil, err
 	}
 
 	body := nowPaymentsInvoiceRequest{
-		PriceAmount:      req.Amount,
+		PriceAmount:      priceAmount,
 		PriceCurrency:    strings.ToLower(currency),
 		OrderID:          req.OrderID,
 		OrderDescription: req.Subject,
 		IPNCallbackURL:   strings.TrimSpace(n.config["notifyUrl"]),
 		SuccessURL:       n.resolveRedirectURL("successUrl", req.ReturnURL),
 		CancelURL:        n.resolveRedirectURL("cancelUrl", req.ReturnURL),
+		PartiallyPaidURL: strings.TrimSpace(n.config["partiallyPaidUrl"]),
 		IsFixedRate:      nowPaymentsBoolConfig(n.config["isFixedRate"]),
 		IsFeePaidByUser:  nowPaymentsBoolConfig(n.config["isFeePaidByUser"]),
 	}
@@ -170,37 +179,55 @@ func (n *NOWPayments) resolveRedirectURL(configKey, fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
+// nowPaymentsPriceLiteral renders the order amount as a bare JSON number.
+// NOWPayments types price_amount as a number and rejects a quoted string, so
+// the value goes over the wire as a literal rather than through a Go string.
+func nowPaymentsPriceLiteral(amount, currency string) (json.RawMessage, error) {
+	if _, err := payment.AmountToMinorUnit(amount, currency); err != nil {
+		return nil, fmt.Errorf("nowpayments create payment: %w", err)
+	}
+	// AmountToMinorUnit also accepts forms JSON does not (leading +, exponents),
+	// so round-trip through decimal to get a plain literal.
+	parsed, err := decimal.NewFromString(strings.TrimSpace(amount))
+	if err != nil {
+		return nil, fmt.Errorf("nowpayments create payment: invalid amount: %s", amount)
+	}
+	return json.RawMessage(parsed.String()), nil
+}
+
 type nowPaymentsPaymentResponse struct {
-	PaymentID     json.Number `json:"payment_id"`
-	InvoiceID     json.Number `json:"invoice_id"`
-	PaymentStatus string      `json:"payment_status"`
-	OrderID       string      `json:"order_id"`
-	PriceAmount   json.Number `json:"price_amount"`
-	PriceCurrency string      `json:"price_currency"`
-	ActuallyPaid  json.Number `json:"actually_paid"`
-	UpdatedAt     string      `json:"updated_at"`
+	PaymentID       json.Number `json:"payment_id"`
+	ParentPaymentID json.Number `json:"parent_payment_id"`
+	InvoiceID       json.Number `json:"invoice_id"`
+	PaymentStatus   string      `json:"payment_status"`
+	OrderID         string      `json:"order_id"`
+	PriceAmount     json.Number `json:"price_amount"`
+	PriceCurrency   string      `json:"price_currency"`
+	ActuallyPaid    json.Number `json:"actually_paid"`
+	UpdatedAt       string      `json:"updated_at"`
+}
+
+type nowPaymentsPaymentListResponse struct {
+	Data []nowPaymentsPaymentResponse `json:"data"`
 }
 
 // QueryOrder resolves a payment by its NOWPayments payment ID.
 //
-// Until the buyer picks a coin, the only identifier we hold is the invoice ID,
-// which this endpoint does not accept — that lookup legitimately 404s and is
-// reported as pending rather than as an error.
+// Until the buyer picks a coin an invoice has no payment behind it, so the
+// identifier we stored at checkout is an invoice ID that this endpoint rejects.
+// That miss falls through to the invoice-scoped listing instead of being
+// reported as an error, and once a payment exists the caller persists its ID.
 func (n *NOWPayments) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	tradeNo = strings.TrimSpace(tradeNo)
 	if tradeNo == "" {
 		return nil, fmt.Errorf("nowpayments query order: trade number is empty")
 	}
-	raw, status, err := n.get(ctx, "/payment/"+tradeNo)
+	raw, status, err := n.get(ctx, "/payment/"+url.PathEscape(tradeNo))
 	if err != nil {
 		return nil, err
 	}
 	if status == http.StatusNotFound || status == http.StatusBadRequest {
-		return &payment.QueryOrderResponse{
-			TradeNo:  tradeNo,
-			Status:   payment.ProviderStatusPending,
-			Metadata: n.MerchantIdentityMetadata(),
-		}, nil
+		return n.queryOrderByInvoice(ctx, tradeNo)
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("nowpayments query order: HTTP %d: %s", status, nowPaymentsErrorSummary(raw))
@@ -210,18 +237,61 @@ func (n *NOWPayments) QueryOrder(ctx context.Context, tradeNo string) (*payment.
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, fmt.Errorf("nowpayments query order: parse response: %w", err)
 	}
+	return n.queryOrderResponse(&parsed, tradeNo), nil
+}
+
+// queryOrderByInvoice finds the payment a hosted invoice produced.
+//
+// Repeated and wrong-asset deposits land on the same invoice as extra payments
+// carrying a parent_payment_id, and NOWPayments warns they can be underpaid, so
+// only the original payment is allowed to settle the order.
+func (n *NOWPayments) queryOrderByInvoice(ctx context.Context, invoiceID string) (*payment.QueryOrderResponse, error) {
+	query := url.Values{}
+	query.Set("invoiceId", invoiceID)
+	query.Set("limit", strconv.Itoa(nowPaymentsInvoiceLookupLimit))
+	query.Set("page", "0")
+	raw, status, err := n.get(ctx, "/payment/?"+query.Encode())
+	if err != nil {
+		return nil, err
+	}
+	pending := &payment.QueryOrderResponse{
+		TradeNo:  invoiceID,
+		Status:   payment.ProviderStatusPending,
+		Metadata: n.MerchantIdentityMetadata(),
+	}
+	if status == http.StatusNotFound || status == http.StatusBadRequest {
+		return pending, nil
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("nowpayments query order: invoice %s: HTTP %d: %s", invoiceID, status, nowPaymentsErrorSummary(raw))
+	}
+	var list nowPaymentsPaymentListResponse
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("nowpayments query order: parse invoice payments: %w", err)
+	}
+	for i := range list.Data {
+		if nowPaymentsIdentifier(list.Data[i].ParentPaymentID, "") != "" {
+			continue
+		}
+		return n.queryOrderResponse(&list.Data[i], invoiceID), nil
+	}
+	return pending, nil
+}
+
+// queryOrderResponse projects an upstream payment onto our status contract.
+func (n *NOWPayments) queryOrderResponse(parsed *nowPaymentsPaymentResponse, fallbackTradeNo string) *payment.QueryOrderResponse {
 	amount, _ := parsed.PriceAmount.Float64()
 	metadata := n.MerchantIdentityMetadata()
 	if currency, currencyErr := payment.NormalizePaymentCurrency(parsed.PriceCurrency); currencyErr == nil {
 		metadata["currency"] = currency
 	}
 	return &payment.QueryOrderResponse{
-		TradeNo:  nowPaymentsIdentifier(parsed.PaymentID, tradeNo),
+		TradeNo:  nowPaymentsIdentifier(parsed.PaymentID, fallbackTradeNo),
 		Status:   nowPaymentsQueryStatus(parsed.PaymentStatus),
 		Amount:   amount,
 		PaidAt:   nowPaymentsPaidAt(parsed.PaymentStatus, parsed.UpdatedAt),
 		Metadata: metadata,
-	}, nil
+	}
 }
 
 // VerifyNotification authenticates and parses a NOWPayments IPN callback.
@@ -236,6 +306,12 @@ func (n *NOWPayments) VerifyNotification(_ context.Context, rawBody string, head
 	var parsed nowPaymentsPaymentResponse
 	if err := json.Unmarshal([]byte(rawBody), &parsed); err != nil {
 		return nil, fmt.Errorf("nowpayments verify notification: parse body: %w", err)
+	}
+	// Repeated and wrong-asset deposits arrive as child payments against the
+	// original one. NOWPayments settles them at the rate of the day, so their
+	// amount need not cover the order — they are acked and left for a human.
+	if nowPaymentsIdentifier(parsed.ParentPaymentID, "") != "" {
+		return nil, nil
 	}
 	status, decided := nowPaymentsNotificationStatus(parsed.PaymentStatus)
 	if !decided {
@@ -287,9 +363,13 @@ func (n *NOWPayments) verifySignature(rawBody string, headers map[string]string)
 	return nil
 }
 
-// nowPaymentsCanonicalJSON re-serialises a JSON body with every object's keys
-// in ascending order and no insignificant whitespace, preserving the original
-// numeric literals so 1.0 does not become 1.
+// nowPaymentsCanonicalJSON re-serialises a JSON body the way NOWPayments signs
+// it: every object's keys in ascending order, no insignificant whitespace, and
+// the original numeric literals preserved so 1.0 does not become 1.
+//
+// The upstream signature is produced by JSON.stringify, which leaves <, > and &
+// alone, so HTML escaping stays off — otherwise any order description
+// containing one of them would fail to verify.
 func nowPaymentsCanonicalJSON(rawBody string) ([]byte, error) {
 	decoder := json.NewDecoder(strings.NewReader(rawBody))
 	decoder.UseNumber()
@@ -317,11 +397,9 @@ func writeCanonicalJSON(buf *bytes.Buffer, value any) error {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
-			encoded, err := json.Marshal(key)
-			if err != nil {
+			if err := writeCanonicalScalar(buf, key); err != nil {
 				return err
 			}
-			buf.Write(encoded)
 			buf.WriteByte(':')
 			if err := writeCanonicalJSON(buf, typed[key]); err != nil {
 				return err
@@ -342,13 +420,20 @@ func writeCanonicalJSON(buf *bytes.Buffer, value any) error {
 		buf.WriteByte(']')
 		return nil
 	default:
-		encoded, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		buf.Write(encoded)
-		return nil
+		return writeCanonicalScalar(buf, value)
 	}
+}
+
+// writeCanonicalScalar encodes one JSON scalar without HTML escaping.
+func writeCanonicalScalar(buf *bytes.Buffer, value any) error {
+	encoder := json.NewEncoder(buf)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		return err
+	}
+	// Encode terminates every value with a newline that has no place here.
+	buf.Truncate(buf.Len() - 1)
+	return nil
 }
 
 // nowPaymentsNotificationStatus maps an IPN status onto a payment decision.

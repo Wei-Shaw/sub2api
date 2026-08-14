@@ -5,6 +5,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -133,6 +137,132 @@ func TestNOWPaymentsVerifyNotification(t *testing.T) {
 			if notification == nil || notification.Status != payment.ProviderStatusFailed {
 				t.Fatalf("status %s should fail the order, got %+v", status, notification)
 			}
+		}
+	})
+}
+
+// A re-deposit is settled at the rate of the day and can fall short of the
+// order total, so it must never be the thing that marks an order paid.
+func TestNOWPaymentsVerifyNotificationIgnoresRepeatedDeposits(t *testing.T) {
+	t.Parallel()
+
+	body := `{"payment_status":"finished","payment_id":2,"parent_payment_id":1,` +
+		`"order_id":"SUB220260101ABCD1234","price_amount":10.5,"price_currency":"usd"}`
+	notification, err := newTestNOWPayments(t).VerifyNotification(context.Background(), body,
+		map[string]string{nowPaymentsSignatureHeader: signIPN(t, body)})
+	if err != nil {
+		t.Fatalf("VerifyNotification() error: %v", err)
+	}
+	if notification != nil {
+		t.Fatalf("a child payment must not settle the order, got %+v", notification)
+	}
+}
+
+// NOWPayments signs with JSON.stringify, which does not escape HTML-significant
+// characters the way Go's default encoder does.
+func TestNOWPaymentsCanonicalJSONDoesNotEscapeHTML(t *testing.T) {
+	t.Parallel()
+
+	canonical, err := nowPaymentsCanonicalJSON(`{"order_description":"Tom & Jerry <b>"}`)
+	if err != nil {
+		t.Fatalf("nowPaymentsCanonicalJSON() error: %v", err)
+	}
+	want := `{"order_description":"Tom & Jerry <b>"}`
+	if string(canonical) != want {
+		t.Fatalf("canonical = %s, want %s", canonical, want)
+	}
+}
+
+// newNOWPaymentsServer points a provider at a stub upstream.
+func newNOWPaymentsServer(t *testing.T, handler http.HandlerFunc) *NOWPayments {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	p, err := NewNOWPayments("1", map[string]string{
+		"apiKey":    "api-key",
+		"ipnSecret": testIPNSecret,
+		"apiBase":   server.URL,
+	})
+	if err != nil {
+		t.Fatalf("NewNOWPayments() error: %v", err)
+	}
+	return p
+}
+
+// price_amount is typed as a number upstream, so a quoted string is rejected.
+func TestNOWPaymentsCreatePaymentSendsNumericPrice(t *testing.T) {
+	t.Parallel()
+
+	var body map[string]any
+	p := newNOWPaymentsServer(t, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Errorf("request body is not JSON: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"id":"4942419698","invoice_url":"https://nowpayments.io/payment/?iid=4942419698"}`))
+	})
+
+	if _, err := p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID: "SUB220260101ABCD1234",
+		Amount:  "10.50",
+	}); err != nil {
+		t.Fatalf("CreatePayment() error: %v", err)
+	}
+	if _, ok := body["price_amount"].(float64); !ok {
+		t.Fatalf("price_amount = %#v, want a JSON number", body["price_amount"])
+	}
+}
+
+// The identifier held after checkout is an invoice ID, which the per-payment
+// endpoint rejects; without the listing fallback an order never reconciles.
+func TestNOWPaymentsQueryOrderFallsBackToInvoiceLookup(t *testing.T) {
+	t.Parallel()
+
+	listing := `{"data":[` +
+		`{"payment_id":2,"parent_payment_id":1,"payment_status":"finished","price_amount":3,"price_currency":"usd"},` +
+		`{"payment_id":1,"payment_status":"finished","price_amount":10.5,"price_currency":"usd",` +
+		`"updated_at":"2026-01-01T00:00:00Z"}],"total":2}`
+
+	t.Run("resolves the original payment", func(t *testing.T) {
+		t.Parallel()
+		p := newNOWPaymentsServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("invoiceId") != "4942419698" {
+				http.Error(w, `{"message":"payment not found"}`, http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(listing))
+		})
+		resp, err := p.QueryOrder(context.Background(), "4942419698")
+		if err != nil {
+			t.Fatalf("QueryOrder() error: %v", err)
+		}
+		if resp.Status != payment.ProviderStatusPaid {
+			t.Fatalf("Status = %q, want paid", resp.Status)
+		}
+		// The re-deposit is listed first; settling on it would credit 3 USD.
+		if resp.Amount != 10.5 {
+			t.Fatalf("Amount = %v, want the original payment's 10.5", resp.Amount)
+		}
+		if resp.TradeNo != "1" {
+			t.Fatalf("TradeNo = %q, want the original payment id", resp.TradeNo)
+		}
+	})
+
+	t.Run("stays pending while the invoice has no payment", func(t *testing.T) {
+		t.Parallel()
+		p := newNOWPaymentsServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("invoiceId") != "" {
+				_, _ = w.Write([]byte(`{"data":[],"total":0}`))
+				return
+			}
+			http.Error(w, `{"message":"payment not found"}`, http.StatusNotFound)
+		})
+		resp, err := p.QueryOrder(context.Background(), "4942419698")
+		if err != nil {
+			t.Fatalf("QueryOrder() error: %v", err)
+		}
+		if resp.Status != payment.ProviderStatusPending {
+			t.Fatalf("Status = %q, want pending", resp.Status)
 		}
 	})
 }
