@@ -21,6 +21,8 @@ import (
 func TestWriteSuccessResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// writeSuccessResponse special-cases SePay only; every other key, known or
+	// not, gets the empty 200 that tells a provider to stop retrying.
 	tests := []struct {
 		name            string
 		providerKey     string
@@ -28,52 +30,29 @@ func TestWriteSuccessResponse(t *testing.T) {
 		wantContentType string
 		wantBody        string
 		checkJSON       bool
-		wantJSONCode    string
-		wantJSONMessage string
+		wantJSONSuccess bool
 	}{
 		{
-			name:            "wxpay returns JSON with code SUCCESS",
-			providerKey:     "wxpay",
+			name:            "sepay returns JSON with success true",
+			providerKey:     payment.TypeSePay,
 			wantCode:        http.StatusOK,
 			wantContentType: "application/json",
 			checkJSON:       true,
-			wantJSONCode:    "SUCCESS",
-			wantJSONMessage: "成功",
+			wantJSONSuccess: true,
 		},
 		{
-			name:            "stripe returns empty 200",
-			providerKey:     "stripe",
+			name:            "nowpayments returns empty 200",
+			providerKey:     payment.TypeNowPayments,
 			wantCode:        http.StatusOK,
 			wantContentType: "text/plain",
 			wantBody:        "",
 		},
 		{
-			name:            "airwallex returns empty 200",
-			providerKey:     payment.TypeAirwallex,
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "",
-		},
-		{
-			name:            "easypay returns plain text success",
-			providerKey:     "easypay",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "success",
-		},
-		{
-			name:            "alipay returns plain text success",
-			providerKey:     "alipay",
-			wantCode:        http.StatusOK,
-			wantContentType: "text/plain",
-			wantBody:        "success",
-		},
-		{
-			name:            "unknown provider returns plain text success",
+			name:            "unknown provider returns empty 200",
 			providerKey:     "unknown_provider",
 			wantCode:        http.StatusOK,
 			wantContentType: "text/plain",
-			wantBody:        "success",
+			wantBody:        "",
 		},
 	}
 
@@ -88,11 +67,10 @@ func TestWriteSuccessResponse(t *testing.T) {
 			assert.Contains(t, w.Header().Get("Content-Type"), tt.wantContentType)
 
 			if tt.checkJSON {
-				var resp wxpaySuccessResponse
+				var resp sepaySuccessResponse
 				err := json.Unmarshal(w.Body.Bytes(), &resp)
 				require.NoError(t, err, "response body should be valid JSON")
-				assert.Equal(t, tt.wantJSONCode, resp.Code)
-				assert.Equal(t, tt.wantJSONMessage, resp.Message)
+				assert.Equal(t, tt.wantJSONSuccess, resp.Success)
 			} else {
 				assert.Equal(t, tt.wantBody, w.Body.String())
 			}
@@ -127,14 +105,14 @@ func TestUnknownOrderWebhookAcksWithSuccess(t *testing.T) {
 	require.False(t, errors.Is(other, service.ErrOrderNotFound))
 
 	// 2) Provider-specific success body is what handleNotify emits on the
-	// ack path. Asserted again here because this is the shape Stripe expects
-	// to consider the webhook acknowledged.
+	// ack path. Asserted again here because a provider only stops retrying
+	// once it sees this shape.
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	writeSuccessResponse(c, payment.TypeStripe)
+	writeSuccessResponse(c, payment.TypeNowPayments)
 	require.Equal(t, http.StatusOK, w.Code,
-		"Stripe requires 2xx to stop retrying; anything else restarts the retry loop")
-	require.Empty(t, w.Body.String(), "Stripe expects an empty body on the ack path")
+		"providers require 2xx to stop retrying; anything else restarts the retry loop")
+	require.Empty(t, w.Body.String(), "the default ack path emits an empty body")
 }
 
 func TestWebhookConstants(t *testing.T) {
@@ -155,15 +133,17 @@ func TestExtractOutTradeNo(t *testing.T) {
 		want        string
 	}{
 		{
-			name:        "easypay query payload",
-			providerKey: "easypay",
-			rawBody:     "out_trade_no=sub2_123&trade_status=TRADE_SUCCESS",
-			want:        "sub2_123",
+			// Banks uppercase and strip punctuation from the description, so the
+			// code has to survive that round trip.
+			name:        "sepay transfer content carries the order code",
+			providerKey: payment.TypeSePay,
+			rawBody:     `{"content":"ck sub2 2026 0814 abcd1234 thanh toan"}`,
+			want:        "SUB220260814ABCD1234",
 		},
 		{
-			name:        "alipay query payload",
-			providerKey: "alipay",
-			rawBody:     "notify_time=2026-04-20+12%3A00%3A00&out_trade_no=sub2_456",
+			name:        "nowpayments payload",
+			providerKey: payment.TypeNowPayments,
+			rawBody:     `{"order_id":"sub2_456"}`,
 			want:        "sub2_456",
 		},
 		{
@@ -171,12 +151,6 @@ func TestExtractOutTradeNo(t *testing.T) {
 			providerKey: "wxpay",
 			rawBody:     "{}",
 			want:        "",
-		},
-		{
-			name:        "airwallex payment intent payload",
-			providerKey: payment.TypeAirwallex,
-			rawBody:     `{"name":"payment_intent.succeeded","data":{"object":{"merchant_order_id":"sub2_awx_123"}}}`,
-			want:        "sub2_awx_123",
 		},
 	}
 
@@ -191,11 +165,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 	firstErr := errors.New("wrong provider")
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePay,
 			verifyErr: firstErr,
 		},
 		webhookHandlerProviderStub{
-			key: payment.TypeWxpay,
+			key: payment.TypeSePay,
 			notification: &payment.PaymentNotification{
 				OrderID: "sub2_42",
 				TradeNo: "trade-42",
@@ -206,7 +180,7 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 
 	providerKey, notification, err := verifyNotificationWithProviders(context.Background(), providers, "{}", map[string]string{"wechatpay-signature": "sig"})
 	require.NoError(t, err)
-	require.Equal(t, payment.TypeWxpay, providerKey)
+	require.Equal(t, payment.TypeSePay, providerKey)
 	require.NotNil(t, notification)
 	require.Equal(t, "sub2_42", notification.OrderID)
 }
@@ -214,11 +188,11 @@ func TestVerifyNotificationWithProvidersReturnsMatchedProvider(t *testing.T) {
 func TestVerifyNotificationWithProvidersFailsWhenAllProvidersReject(t *testing.T) {
 	providers := []payment.Provider{
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePay,
 			verifyErr: errors.New("verify failed a"),
 		},
 		webhookHandlerProviderStub{
-			key:       payment.TypeWxpay,
+			key:       payment.TypeSePay,
 			verifyErr: errors.New("verify failed b"),
 		},
 	}
@@ -249,7 +223,4 @@ func (p webhookHandlerProviderStub) VerifyNotification(context.Context, string, 
 		return nil, p.verifyErr
 	}
 	return p.notification, nil
-}
-func (p webhookHandlerProviderStub) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
-	panic("unexpected call")
 }

@@ -4,18 +4,12 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"strconv"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,7 +33,7 @@ func createPendingProviderConfigOrder(t *testing.T, ctx context.Context, client 
 		SetFeeRate(0).
 		SetRechargeCode("PENDING-PROVIDER-CONFIG-" + instanceID).
 		SetOutTradeNo("sub2_pending_provider_config_" + instanceID).
-		SetPaymentType(providerPendingOrderPaymentType(instance.ProviderKey)).
+		SetPaymentType(instance.ProviderKey).
 		SetPaymentTradeNo("").
 		SetOrderType(payment.OrderTypeBalance).
 		SetStatus(OrderStatusPending).

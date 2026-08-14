@@ -41,6 +41,10 @@ func (p *paymentOrderLifecycleQueryProvider) Name() string {
 	return "payment-order-lifecycle-query-provider"
 }
 
+func (p *paymentOrderLifecycleQueryProvider) ProviderKey() string {
+	return p.key
+}
+
 func (p *paymentOrderLifecycleQueryProvider) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{p.ProviderKey()}
 }
@@ -63,10 +67,6 @@ func (p *paymentOrderLifecycleQueryProvider) QueryOrder(_ context.Context, trade
 }
 
 func (p *paymentOrderLifecycleQueryProvider) VerifyNotification(context.Context, string, map[string]string) (*payment.PaymentNotification, error) {
-	panic("unexpected call")
-}
-
-func (p *paymentOrderLifecycleQueryProvider) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
 	panic("unexpected call")
 }
 

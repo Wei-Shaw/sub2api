@@ -87,11 +87,8 @@ import type { TypeOption } from './providerConfig'
 import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_REDIRECT } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
-  easypay: 'admin.settings.payment.providerEasypay',
-  alipay: 'admin.settings.payment.providerAlipay',
-  wxpay: 'admin.settings.payment.providerWxpay',
-  stripe: 'admin.settings.payment.providerStripe',
-  airwallex: 'admin.settings.payment.providerAirwallex',
+  sepay: 'admin.settings.payment.providerSepay',
+  nowpayments: 'admin.settings.payment.providerNowpayments',
 }
 
 const props = defineProps<{

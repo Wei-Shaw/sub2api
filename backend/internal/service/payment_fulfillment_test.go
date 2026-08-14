@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,9 +36,6 @@ func (p paymentFulfillmentTestProvider) QueryOrder(ctx context.Context, tradeNo 
 	panic("unexpected call")
 }
 func (p paymentFulfillmentTestProvider) VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
-	panic("unexpected call")
-}
-func (p paymentFulfillmentTestProvider) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
 	panic("unexpected call")
 }
 
@@ -360,14 +358,22 @@ func TestResolveRedeemAction_IsUsedCanUseConsistency(t *testing.T) {
 func TestParseLegacyPaymentOrderID(t *testing.T) {
 	t.Parallel()
 
-	oid, ok := parseLegacyPaymentOrderID("sub2_42", &dbent.NotFoundError{})
+	// Built from the constant so the case tracks orderIDPrefix, which the SePay
+	// and NOWPayments migration repointed at payment.OrderCodePrefix.
+	oid, ok := parseLegacyPaymentOrderID(orderIDPrefix+"42", &dbent.NotFoundError{})
 	assert.True(t, ok)
 	assert.EqualValues(t, 42, oid)
 
 	_, ok = parseLegacyPaymentOrderID("42", &dbent.NotFoundError{})
 	assert.False(t, ok)
 
-	_, ok = parseLegacyPaymentOrderID("sub2_42", errors.New("db down"))
+	// The pre-migration "sub2_42" spelling no longer carries the prefix.
+	_, ok = parseLegacyPaymentOrderID("sub2_42", &dbent.NotFoundError{})
+	assert.False(t, ok)
+
+	// A lookup failure that is not "not found" must never be treated as a
+	// legacy id, or a database outage would silently retarget the order.
+	_, ok = parseLegacyPaymentOrderID(orderIDPrefix+"42", errors.New("db down"))
 	assert.False(t, ok)
 }
 
@@ -574,3 +580,71 @@ func assertPaymentSubscriptionExpiry(t *testing.T, repo *subscriptionUserSubRepo
 
 var _ AffiliateRepository = (*paymentFulfillmentAffiliateRepoStub)(nil)
 var _ SettingRepository = (*paymentFulfillmentSettingRepoStub)(nil)
+
+// paymentFulfillmentOrderSeq keeps the unique columns (email, recharge code,
+// out_trade_no) distinct across calls, since several tests seed orders into the
+// same client.
+var paymentFulfillmentOrderSeq atomic.Int64
+
+// createPaymentFulfillmentSubscriptionOrder seeds a subscription order for the
+// fulfillment lease tests.
+//
+// updatedAt is the lease timestamp: acquirePaymentFulfillmentLease treats a
+// RECHARGING order as stale by comparing updated_at against
+// now-paymentFulfillmentLeaseDuration, so passing a time older than that window
+// is what makes a lease recoverable.
+func createPaymentFulfillmentSubscriptionOrder(
+	t *testing.T,
+	ctx context.Context,
+	client *dbent.Client,
+	status string,
+	updatedAt time.Time,
+) *dbent.PaymentOrder {
+	t.Helper()
+
+	seq := strconv.FormatInt(paymentFulfillmentOrderSeq.Add(1), 10)
+
+	user, err := client.User.Create().
+		SetEmail("payment-fulfillment-" + seq + "@example.com").
+		SetPasswordHash("hash").
+		SetUsername("payment-fulfillment-user-" + seq).
+		Save(ctx)
+	require.NoError(t, err)
+
+	group, err := client.Group.Create().
+		SetName("payment-fulfillment-group-" + seq).
+		SetPlatform("openai").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("FULFILLMENT-" + seq).
+		SetOutTradeNo("sub2_fulfillment_" + seq).
+		SetPaymentType("sepay").
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeSubscription).
+		// ExecuteSubscriptionFulfillment rejects a subscription order that
+		// carries neither a group nor a duration before it ever looks at the
+		// lease, so both have to be present for the lease tests to reach it.
+		SetSubscriptionGroupID(group.ID).
+		SetSubscriptionDays(30).
+		// RetryFulfillment refuses an unpaid order outright, and every caller
+		// here seeds a RECHARGING order, which by definition was already paid.
+		SetPaidAt(updatedAt).
+		SetStatus(status).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderKey("sepay").
+		SetUpdatedAt(updatedAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	return order
+}

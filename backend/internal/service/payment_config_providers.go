@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -17,15 +18,26 @@ import (
 )
 
 // validateProviderConfig runs the provider's constructor to surface config-level
-// errors at save time (e.g. wxpay missing certSerial), instead of only failing
-// when an order is created. Returns the structured ApplicationError from the
-// constructor so the frontend i18n layer can localize it.
+// errors at save time (e.g. sepay missing accountNumber), instead of only
+// failing when an order is created.
+//
+// Provider constructors report plain errors naming the offending key, so a bare
+// return would reach the admin as a generic 500 with no hint about what to fix.
+// Anything that is not already an ApplicationError is wrapped as a 400 carrying
+// the constructor's message.
 //
 // Only validates enabled instances — a disabled instance may be a half-filled
 // draft the admin will complete later.
 func (s *PaymentConfigService) validateProviderConfig(providerKey string, config map[string]string) error {
 	_, err := provider.CreateProvider(providerKey, "_validate_", config)
-	return err
+	if err == nil {
+		return nil
+	}
+	if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
+		return appErr
+	}
+	return infraerrors.BadRequest("PROVIDER_CONFIG_INVALID", err.Error()).
+		WithMetadata(map[string]string{"provider": providerKey})
 }
 
 // --- Provider Instance CRUD ---

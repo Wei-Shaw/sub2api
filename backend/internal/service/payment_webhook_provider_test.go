@@ -4,14 +4,8 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
-	"strconv"
 	"testing"
-	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -35,9 +29,6 @@ func (p webhookProviderTestDouble) QueryOrder(context.Context, string) (*payment
 	panic("unexpected call")
 }
 func (p webhookProviderTestDouble) VerifyNotification(context.Context, string, map[string]string) (*payment.PaymentNotification, error) {
-	panic("unexpected call")
-}
-func (p webhookProviderTestDouble) Refund(context.Context, payment.RefundRequest) (*payment.RefundResponse, error) {
 	panic("unexpected call")
 }
 
