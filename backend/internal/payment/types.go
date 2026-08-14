@@ -164,3 +164,15 @@ type Provider interface {
 type MerchantIdentityProvider interface {
 	MerchantIdentityMetadata() map[string]string
 }
+
+// PaymentReferenceVerifier resolves a payment identifier a hosted checkout put
+// on its browser redirect into a trade number later polls can use.
+//
+// The reference arrives from the browser, so it is attacker-chosen: an
+// implementation must prove upstream that the payment belongs to outTradeNo
+// and reject it otherwise. QueryOrder is deliberately not that proof — it is
+// free to fall back to broader lookups, which is the opposite of what
+// verifying an untrusted identifier needs.
+type PaymentReferenceVerifier interface {
+	VerifyPaymentReference(ctx context.Context, reference string, outTradeNo string) (*QueryOrderResponse, error)
+}

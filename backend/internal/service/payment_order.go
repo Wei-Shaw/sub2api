@@ -148,11 +148,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
-	tm := cfg.OrderTimeoutMin
-	if tm <= 0 {
-		tm = defaultOrderTimeoutMin
-	}
-	exp := time.Now().Add(time.Duration(tm) * time.Minute)
+	exp := time.Now().Add(time.Duration(orderTimeoutMinutes(cfg, req.PaymentType)) * time.Minute)
 	outTradeNo, err := s.allocateOutTradeNo(ctx, tx)
 	if err != nil {
 		return nil, err

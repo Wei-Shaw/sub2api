@@ -310,11 +310,55 @@ func (n *NOWPayments) QueryOrder(ctx context.Context, tradeNo string) (*payment.
 	return n.queryOrderResponse(&parsed, tradeNo), nil
 }
 
+// VerifyPaymentReference resolves a payment ID taken off a checkout redirect.
+//
+// NOWPayments appends NP_id to success_url, which is the payment ID the buyer
+// actually paid — the one identifier that makes the payment-scoped endpoint
+// reachable before any IPN has landed. It arrives through the browser, so it is
+// only accepted once upstream agrees the payment carries our own order_id and
+// is not a child of another payment.
+//
+// This deliberately does not reuse QueryOrder: that one answers an unknown
+// identifier by widening its search, which for an untrusted value is exactly
+// backwards.
+func (n *NOWPayments) VerifyPaymentReference(ctx context.Context, reference string, outTradeNo string) (*payment.QueryOrderResponse, error) {
+	reference = strings.TrimSpace(reference)
+	outTradeNo = strings.TrimSpace(outTradeNo)
+	if reference == "" {
+		return nil, fmt.Errorf("nowpayments verify payment reference: reference is empty")
+	}
+	if outTradeNo == "" {
+		return nil, fmt.Errorf("nowpayments verify payment reference: order number is empty")
+	}
+	raw, status, err := n.get(ctx, "/payment/"+url.PathEscape(reference))
+	if err != nil {
+		return nil, err
+	}
+	if status < http.StatusOK || status >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("nowpayments verify payment reference %s: HTTP %d: %s", reference, status, nowPaymentsErrorSummary(raw))
+	}
+	var parsed nowPaymentsPaymentResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, fmt.Errorf("nowpayments verify payment reference: parse response: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(parsed.OrderID), outTradeNo) {
+		return nil, fmt.Errorf("nowpayments verify payment reference %s: belongs to order %q, not %q", reference, strings.TrimSpace(parsed.OrderID), outTradeNo)
+	}
+	if parentID := nowPaymentsIdentifier(parsed.ParentPaymentID, ""); parentID != "" {
+		return nil, fmt.Errorf("nowpayments verify payment reference %s: is a child of payment %s", reference, parentID)
+	}
+	return n.queryOrderResponse(&parsed, reference), nil
+}
+
 // queryOrderByInvoice finds the payment a hosted invoice produced.
 //
 // Repeated and wrong-asset deposits land on the same invoice as extra payments
 // carrying a parent_payment_id, and NOWPayments warns they can be underpaid, so
 // only the original payment is allowed to settle the order.
+//
+// This listing is the fallback rather than the main path because NOWPayments
+// gates it behind a bearer token minted from dashboard credentials, which an
+// API key alone does not buy — see the 401 note below.
 func (n *NOWPayments) queryOrderByInvoice(ctx context.Context, invoiceID string) (*payment.QueryOrderResponse, error) {
 	query := url.Values{}
 	query.Set("invoiceId", invoiceID)
@@ -332,6 +376,14 @@ func (n *NOWPayments) queryOrderByInvoice(ctx context.Context, invoiceID string)
 	if status == http.StatusNotFound || status == http.StatusBadRequest {
 		return pending, nil
 	}
+	// The payment listing needs an Authorization bearer token from /v1/auth on
+	// top of the API key, and we hold no dashboard credentials to mint one. Say
+	// so rather than reporting an opaque 401, because the sentence a reader
+	// needs is that this order settles through its IPN or its NP_id redirect,
+	// not that the gateway is down.
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return nil, fmt.Errorf("nowpayments query order: invoice %s: HTTP %d: the payment listing requires a bearer token this integration does not hold; the order settles from its IPN or its redirect payment id instead", invoiceID, status)
+	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("nowpayments query order: invoice %s: HTTP %d: %s", invoiceID, status, nowPaymentsErrorSummary(raw))
 	}
@@ -340,6 +392,13 @@ func (n *NOWPayments) queryOrderByInvoice(ctx context.Context, invoiceID string)
 		return nil, fmt.Errorf("nowpayments query order: parse invoice payments: %w", err)
 	}
 	for i := range list.Data {
+		// invoiceId is not a documented filter on this endpoint. If upstream
+		// ignores it the response is every payment on the account, and taking
+		// the first one would settle this order against a stranger's payment,
+		// so the invoice has to match on the record itself.
+		if nowPaymentsIdentifier(list.Data[i].InvoiceID, "") != invoiceID {
+			continue
+		}
 		if nowPaymentsIdentifier(list.Data[i].ParentPaymentID, "") != "" {
 			continue
 		}
@@ -629,4 +688,5 @@ func nowPaymentsErrorSummary(raw []byte) string {
 var (
 	_ payment.Provider                 = (*NOWPayments)(nil)
 	_ payment.MerchantIdentityProvider = (*NOWPayments)(nil)
+	_ payment.PaymentReferenceVerifier = (*NOWPayments)(nil)
 )

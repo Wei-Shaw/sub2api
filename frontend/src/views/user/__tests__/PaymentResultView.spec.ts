@@ -143,7 +143,7 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-42')
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-42', '')
     expect(pollOrderStatus).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.processing')
     expect(wrapper.text()).not.toContain('payment.result.success')
@@ -195,7 +195,7 @@ describe('PaymentResultView', () => {
     await flushPromises()
 
     expect(pollOrderStatus).not.toHaveBeenCalled()
-    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-authoritative')
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-authoritative', '')
     expect(wrapper.text()).toContain('payment.result.success')
     expect(wrapper.text()).toContain('103.00')
     expect(wrapper.text()).toContain('100.00')
@@ -270,7 +270,7 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail')
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail', '')
     expect(pollOrderStatus).toHaveBeenCalledWith(77)
     expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.success')
@@ -301,7 +301,7 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail')
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail', '')
     expect(verifyOrderPublic).toHaveBeenCalledWith('legacy-should-not-run')
     expect(pollOrderStatus).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.success')
@@ -450,8 +450,35 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-77')
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-77', '')
     expect(wrapper.text()).toContain('payment.result.success')
+  })
+
+  // NOWPayments creates the payment only once the buyer picks a coin, so the
+  // id we stored at checkout is the invoice's and cannot be polled. NP_id on
+  // the redirect is the payment's own id and has to reach the backend.
+  it('forwards the gateway payment id from the return URL', async () => {
+    routeState.query = {
+      resume_token: 'resume-np',
+      order_id: '27',
+      status: 'success',
+      NP_id: '5106102174',
+    }
+    resolveOrderPublicByResumeToken.mockResolvedValue({
+      data: orderFactory('PAID'),
+    })
+
+    mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-np', '5106102174')
   })
 
   it('uses the currency returned by the order API when rendering amounts', async () => {
