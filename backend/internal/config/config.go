@@ -83,6 +83,7 @@ type Config struct {
 	Default                 DefaultConfig                 `mapstructure:"default"`
 	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
 	Pricing                 PricingConfig                 `mapstructure:"pricing"`
+	VNDRate                 VNDRateConfig                 `mapstructure:"vnd_rate"`
 	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
 	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
 	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
@@ -657,6 +658,24 @@ type PricingConfig struct {
 	HashCheckIntervalMinutes int `mapstructure:"hash_check_interval_minutes"`
 }
 
+// VNDRateConfig drives automatic USD→VND rate sync from a bank's published board.
+//
+// When Enabled, the sync owns SUBSCRIPTION_USD_TO_VND_RATE: console edits to
+// that field are overwritten on the next tick.
+type VNDRateConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	// 汇率数据源 URL（默认 Vietcombank 公开 XML）
+	URL string `mapstructure:"url"`
+	// 源货币代码（默认 USD）
+	Currency string `mapstructure:"currency"`
+	// 取哪一列：buy / transfer / sell（默认 sell）
+	Column string `mapstructure:"column"`
+	// 在银行牌价基础上加价的百分比，0 表示照搬牌价
+	MarginPercent float64 `mapstructure:"margin_percent"`
+	// 轮询间隔（分钟），低于源站要求的 5 分钟会被抬高
+	IntervalMinutes int `mapstructure:"interval_minutes"`
+}
+
 type ServerConfig struct {
 	Host                     string    `mapstructure:"host"`
 	Port                     int       `mapstructure:"port"`
@@ -800,6 +819,7 @@ type URLAllowlistConfig struct {
 	Enabled           bool     `mapstructure:"enabled"`
 	UpstreamHosts     []string `mapstructure:"upstream_hosts"`
 	PricingHosts      []string `mapstructure:"pricing_hosts"`
+	FxHosts           []string `mapstructure:"fx_hosts"`
 	CRSHosts          []string `mapstructure:"crs_hosts"`
 	AllowPrivateHosts bool     `mapstructure:"allow_private_hosts"`
 	// 关闭 URL 白名单校验时，是否允许 http URL（默认只允许 https）
@@ -1964,6 +1984,9 @@ func setDefaults() {
 	viper.SetDefault("security.url_allowlist.pricing_hosts", []string{
 		"raw.githubusercontent.com",
 	})
+	viper.SetDefault("security.url_allowlist.fx_hosts", []string{
+		"portal.vietcombank.com.vn",
+	})
 	viper.SetDefault("security.url_allowlist.crs_hosts", []string{})
 	viper.SetDefault("security.url_allowlist.allow_private_hosts", true)
 	viper.SetDefault("security.url_allowlist.allow_insecure_http", true)
@@ -2198,6 +2221,14 @@ func setDefaults() {
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
+
+	// VND rate - 从银行公开牌价同步 USD→VND 汇率（默认关闭，开启后接管该设置项）
+	viper.SetDefault("vnd_rate.enabled", false)
+	viper.SetDefault("vnd_rate.url", "https://portal.vietcombank.com.vn/Usercontrols/TVPortal.TyGia/pXML.aspx")
+	viper.SetDefault("vnd_rate.currency", "USD")
+	viper.SetDefault("vnd_rate.column", "sell")
+	viper.SetDefault("vnd_rate.margin_percent", 0)
+	viper.SetDefault("vnd_rate.interval_minutes", 360)
 
 	// Timezone (default to Asia/Shanghai for Chinese users)
 	viper.SetDefault("timezone", "Asia/Shanghai")
