@@ -11,11 +11,16 @@
 *.md
 !deploy/DOCKER.md
 docs/
-# admin-compliance gate (LegalDocumentView.vue) build-time imports
-# docs/legal/*.md?raw into the frontend bundle; keep that subtree in the
-# Docker build context even though docs/ is otherwise excluded.
+# Two view components import markdown out of docs/ at build time — the
+# admin-compliance gate (LegalDocumentView.vue) reads docs/legal/*.md?raw and
+# the public documentation site (docsPages.ts) reads docs/public/*.md?raw — so
+# both subtrees stay in the Docker build context even though docs/ is otherwise
+# excluded. Rollup resolves these imports statically: a missing file is not a
+# blank page at runtime, it is a failed build.
 !docs/legal/
 !docs/legal/*.md
+!docs/public/
+!docs/public/*.md
 
 # IDE
 .idea/
