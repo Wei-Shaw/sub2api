@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -27,15 +28,33 @@ const (
 	paymentResumeTokenTTL = 24 * time.Hour
 )
 
+// Resume tokens ride in the return URL we hand to a hosted checkout, and a
+// provider will not necessarily store a long one: NOWPayments refuses an
+// invoice whose success_url passes ~255 characters with an opaque HTTP 500.
+// The token is therefore packed rather than written as signed JSON — the
+// compact form is around 40 characters where the JSON one ran past 260.
+const (
+	paymentResumeTokenVersion = 1
+	// A 96-bit tag is beyond forgery for a value that lives 24 hours and only
+	// ever resolves one order.
+	paymentResumeTokenMACLen = 12
+	// The provider binding is stored as a digest because the token has no room
+	// for three strings; 32 bits is enough to catch an accidental mismatch,
+	// which is all the binding was ever a defence against.
+	paymentResumeBindHashLen = 4
+)
+
 type ResumeTokenClaims struct {
-	OrderID            int64  `json:"oid"`
-	UserID             int64  `json:"uid,omitempty"`
+	OrderID int64 `json:"oid"`
+	UserID  int64 `json:"uid,omitempty"`
+	// ProviderInstanceID, ProviderKey and PaymentType are only populated when a
+	// legacy JSON token is parsed. Tokens minted now carry BindHash instead.
 	ProviderInstanceID string `json:"pi,omitempty"`
 	ProviderKey        string `json:"pk,omitempty"`
 	PaymentType        string `json:"pt,omitempty"`
-	CanonicalReturnURL string `json:"ru,omitempty"`
 	IssuedAt           int64  `json:"iat"`
 	ExpiresAt          int64  `json:"exp,omitempty"`
+	BindHash           []byte `json:"-"`
 }
 
 type PaymentResumeService struct {
@@ -199,16 +218,16 @@ func (s *PaymentResumeService) CreateToken(claims ResumeTokenClaims) (string, er
 	if claims.ExpiresAt == 0 {
 		claims.ExpiresAt = time.Now().Add(paymentResumeTokenTTL).Unix()
 	}
-	return s.createSignedToken(claims)
+	return s.createCompactToken(claims)
 }
 
 func (s *PaymentResumeService) ParseToken(token string) (*ResumeTokenClaims, error) {
 	if err := s.ensureSigningKey(); err != nil {
 		return nil, err
 	}
-	var claims ResumeTokenClaims
-	if err := s.parseSignedToken(token, &claims); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token payload is invalid")
+	claims, err := s.parseAnyToken(token)
+	if err != nil {
+		return nil, err
 	}
 	if claims.OrderID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token missing order id")
@@ -216,7 +235,98 @@ func (s *PaymentResumeService) ParseToken(token string) (*ResumeTokenClaims, err
 	if err := validatePaymentResumeExpiry(claims.ExpiresAt, "INVALID_RESUME_TOKEN", "resume token has expired"); err != nil {
 		return nil, err
 	}
-	return &claims, nil
+	return claims, nil
+}
+
+// parseAnyToken accepts both token formats. The signed-JSON form always carries
+// a "." between payload and signature and the packed form never does, so the
+// separator alone tells them apart — old tokens keep resolving until the last
+// one issued before the change ages out.
+func (s *PaymentResumeService) parseAnyToken(token string) (*ResumeTokenClaims, error) {
+	if strings.Contains(token, ".") {
+		var claims ResumeTokenClaims
+		if err := s.parseSignedToken(token, &claims); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token payload is invalid")
+		}
+		return &claims, nil
+	}
+	return s.parseCompactToken(token)
+}
+
+// createCompactToken packs the claims into a version byte, three varints and a
+// provider-binding digest, then appends a truncated HMAC over all of it.
+func (s *PaymentResumeService) createCompactToken(claims ResumeTokenClaims) (string, error) {
+	payload := make([]byte, 0, 32)
+	payload = append(payload, paymentResumeTokenVersion)
+	payload = binary.AppendUvarint(payload, uint64(claims.OrderID))
+	payload = binary.AppendUvarint(payload, uint64(claims.UserID))
+	payload = binary.AppendUvarint(payload, uint64(claims.ExpiresAt))
+	payload = append(payload, paymentResumeBindHash(claims.ProviderKey, claims.ProviderInstanceID, claims.PaymentType)...)
+
+	mac := hmac.New(sha256.New, s.signingKey)
+	_, _ = mac.Write(payload)
+	return base64.RawURLEncoding.EncodeToString(append(payload, mac.Sum(nil)[:paymentResumeTokenMACLen]...)), nil
+}
+
+func (s *PaymentResumeService) parseCompactToken(token string) (*ResumeTokenClaims, error) {
+	malformed := infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token is malformed")
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimSpace(token))
+	// One version byte, three varints of at least one byte each, the binding
+	// digest and the tag.
+	if err != nil || len(raw) < 4+paymentResumeBindHashLen+paymentResumeTokenMACLen {
+		return nil, malformed
+	}
+	payload := raw[:len(raw)-paymentResumeTokenMACLen]
+	if !s.verifyCompactSignature(payload, raw[len(raw)-paymentResumeTokenMACLen:]) {
+		return nil, infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token signature mismatch")
+	}
+	if payload[0] != paymentResumeTokenVersion {
+		return nil, malformed
+	}
+	reader := bytes.NewReader(payload[1 : len(payload)-paymentResumeBindHashLen])
+	orderID, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, malformed
+	}
+	userID, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, malformed
+	}
+	expiresAt, err := binary.ReadUvarint(reader)
+	if err != nil || reader.Len() != 0 {
+		return nil, malformed
+	}
+	return &ResumeTokenClaims{
+		OrderID:   int64(orderID),
+		UserID:    int64(userID),
+		ExpiresAt: int64(expiresAt),
+		BindHash:  payload[len(payload)-paymentResumeBindHashLen:],
+	}, nil
+}
+
+func (s *PaymentResumeService) verifyCompactSignature(payload, presented []byte) bool {
+	if s == nil {
+		return false
+	}
+	for _, key := range s.verifyKeys {
+		mac := hmac.New(sha256.New, key)
+		_, _ = mac.Write(payload)
+		if hmac.Equal(presented, mac.Sum(nil)[:paymentResumeTokenMACLen]) {
+			return true
+		}
+	}
+	return false
+}
+
+// paymentResumeBindHash digests the provider identity a token was issued
+// against, matching the case-insensitive comparison the string claims used.
+func paymentResumeBindHash(providerKey, providerInstanceID, paymentType string) []byte {
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(providerKey)),
+		strings.TrimSpace(providerInstanceID),
+		strings.ToLower(strings.TrimSpace(paymentType)),
+	}, "\x00")))
+	return sum[:paymentResumeBindHashLen]
 }
 
 func (s *PaymentResumeService) createSignedToken(claims any) (string, error) {

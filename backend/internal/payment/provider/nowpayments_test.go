@@ -9,12 +9,41 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
 const testIPNSecret = "ipn-secret"
+
+// NOWPayments refuses an invoice whose redirect URL runs past 255 characters
+// with a bare HTTP 500 that names no field, so the limit is caught locally and
+// the offending field named before the request goes out.
+func TestCreatePaymentRejectsAnOverLongRedirectURL(t *testing.T) {
+	p := newTestNOWPayments(t)
+	p.httpClient = &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Error("CreatePayment called upstream with a redirect URL it should have rejected")
+		return nil, io.EOF
+	})}
+
+	_, err := p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:   "sub2_20260814ABCD1234",
+		Amount:    "10.00",
+		Subject:   "Sub2API 10.00 USD",
+		ReturnURL: "https://panel.example.com/payment/result?resume_token=" + strings.Repeat("a", 256),
+	})
+	if err == nil {
+		t.Fatal("CreatePayment accepted an over-long success_url")
+	}
+	if !strings.Contains(err.Error(), "success_url") {
+		t.Fatalf("error = %v, want it to name success_url", err)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func newTestNOWPayments(t *testing.T) *NOWPayments {
 	t.Helper()
