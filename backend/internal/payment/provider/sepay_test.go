@@ -2,8 +2,13 @@ package provider
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
@@ -111,5 +116,95 @@ func TestSepayCodeMatchesOrder(t *testing.T) {
 		if got := sepayCodeMatchesOrder(tc.code, out); got != tc.want {
 			t.Errorf("sepayCodeMatchesOrder(%q) = %v, want %v", tc.code, got, tc.want)
 		}
+	}
+}
+
+func sepayNotifyBody(code string, amount int64) string {
+	if code == "" {
+		return `{"id":92704,"gateway":"Vietcombank","transactionDate":"2024-07-02 11:08:33","accountNumber":"1017588888","subAccount":"","code":null,"content":"chuyen tien","transferType":"in","transferAmount":` + strconv.FormatInt(amount, 10) + `,"accumulated":0,"referenceCode":"FT24012345678"}`
+	}
+	return `{"id":92704,"gateway":"Vietcombank","transactionDate":"2024-07-02 11:08:33","accountNumber":"1017588888","subAccount":"","code":"` + code + `","content":"` + code + ` chuyen tien","transferType":"in","transferAmount":` + strconv.FormatInt(amount, 10) + `,"accumulated":0,"referenceCode":"FT24012345678"}`
+}
+
+func sepaySignedHeaders(body string, secret string, ts int64) map[string]string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(strconv.FormatInt(ts, 10) + "." + body))
+	return map[string]string{
+		"x-sepay-signature": "sha256=" + hex.EncodeToString(mac.Sum(nil)),
+		"x-sepay-timestamp": strconv.FormatInt(ts, 10),
+	}
+}
+
+func TestSePayVerifyNotificationHMAC(t *testing.T) {
+	p, _ := NewSePay("1", sepayTestConfig())
+	body := sepayNotifyBody("sub2_20260814aB3kX9mQ", 50000)
+	now := time.Now().Unix()
+
+	n, err := p.VerifyNotification(context.Background(), body, sepaySignedHeaders(body, "secret", now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n.OrderID != "sub2_20260814aB3kX9mQ" || n.Amount != 50000 || n.TradeNo != "FT24012345678" {
+		t.Fatalf("notification = %+v", n)
+	}
+	if n.Status != payment.NotificationStatusSuccess {
+		t.Fatalf("status = %q", n.Status)
+	}
+	if n.Metadata["accountNumber"] != "1017588888" || n.Metadata["gateway"] != "Vietcombank" {
+		t.Fatalf("metadata = %v", n.Metadata)
+	}
+}
+
+func TestSePayVerifyNotificationHMACFailures(t *testing.T) {
+	p, _ := NewSePay("1", sepayTestConfig())
+	body := sepayNotifyBody("sub2_20260814aB3kX9mQ", 50000)
+	now := time.Now().Unix()
+
+	if _, err := p.VerifyNotification(context.Background(), body, sepaySignedHeaders(body, "wrong", now)); err == nil {
+		t.Fatal("expected signature mismatch error")
+	}
+	if _, err := p.VerifyNotification(context.Background(), body, map[string]string{"x-sepay-timestamp": strconv.FormatInt(now, 10)}); err == nil {
+		t.Fatal("expected missing signature error")
+	}
+	if _, err := p.VerifyNotification(context.Background(), body, sepaySignedHeaders(body, "secret", now-3600)); err == nil {
+		t.Fatal("expected timestamp skew error")
+	}
+	// Signed over different body.
+	if _, err := p.VerifyNotification(context.Background(), sepayNotifyBody("other", 1), sepaySignedHeaders(body, "secret", now)); err == nil {
+		t.Fatal("expected signature mismatch for altered body")
+	}
+}
+
+func TestSePayVerifyNotificationApiKey(t *testing.T) {
+	cfg := sepayTestConfig()
+	delete(cfg, "webhookSecret")
+	cfg["webhookApiKey"] = "key123"
+	p, _ := NewSePay("1", cfg)
+	body := sepayNotifyBody("sub2_20260814aB3kX9mQ", 50000)
+
+	if _, err := p.VerifyNotification(context.Background(), body, map[string]string{"authorization": "Apikey key123"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.VerifyNotification(context.Background(), body, map[string]string{"authorization": "Apikey nope"}); err == nil {
+		t.Fatal("expected api key mismatch")
+	}
+	if _, err := p.VerifyNotification(context.Background(), body, nil); err == nil {
+		t.Fatal("expected missing header error")
+	}
+}
+
+func TestSePayVerifyNotificationOutAndNullCode(t *testing.T) {
+	p, _ := NewSePay("1", sepayTestConfig())
+	now := time.Now().Unix()
+
+	outBody := `{"id":1,"gateway":"VCB","transactionDate":"2024-07-02 11:08:33","accountNumber":"1","subAccount":"","code":"sub2_20260814aB3kX9mQ","content":"x","transferType":"out","transferAmount":100,"referenceCode":"FT1"}`
+	n, err := p.VerifyNotification(context.Background(), outBody, sepaySignedHeaders(outBody, "secret", now))
+	if err != nil || n != nil {
+		t.Fatalf("out transaction: n=%v err=%v, want nil/nil", n, err)
+	}
+
+	nullCode := sepayNotifyBody("", 50000)
+	if _, err := p.VerifyNotification(context.Background(), nullCode, sepaySignedHeaders(nullCode, "secret", now)); err == nil {
+		t.Fatal("expected missing payment code error")
 	}
 }

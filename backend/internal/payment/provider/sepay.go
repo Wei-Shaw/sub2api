@@ -3,6 +3,10 @@ package provider
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -118,4 +122,100 @@ func (s *SePay) CreatePayment(_ context.Context, req payment.CreatePaymentReques
 // manually via bank transfer and the order adjusted in the admin panel.
 func (s *SePay) Refund(_ context.Context, _ payment.RefundRequest) (*payment.RefundResponse, error) {
 	return nil, fmt.Errorf("sepay refund is not supported: issue refunds manually via bank transfer")
+}
+
+// sepayWebhookPayload mirrors the SePay transaction webhook JSON body.
+type sepayWebhookPayload struct {
+	ID              int64   `json:"id"`
+	Gateway         string  `json:"gateway"`
+	TransactionDate string  `json:"transactionDate"`
+	AccountNumber   string  `json:"accountNumber"`
+	SubAccount      string  `json:"subAccount"`
+	Code            *string `json:"code"`
+	Content         string  `json:"content"`
+	TransferType    string  `json:"transferType"`
+	Description     string  `json:"description"`
+	TransferAmount  int64   `json:"transferAmount"`
+	Accumulated     int64   `json:"accumulated"`
+	ReferenceCode   string  `json:"referenceCode"`
+}
+
+// VerifyNotification authenticates and parses a SePay webhook. Outgoing
+// transactions return (nil, nil) so the caller acks with 200. OrderID carries
+// the raw extracted code; the service layer resolves it to the canonical
+// out_trade_no (banks may uppercase content, SePay may drop the prefix).
+func (s *SePay) VerifyNotification(_ context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
+	if err := s.verifyWebhookAuth(rawBody, headers); err != nil {
+		return nil, err
+	}
+	var payload sepayWebhookPayload
+	if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
+		return nil, fmt.Errorf("sepay parse notify: %w", err)
+	}
+	if strings.TrimSpace(payload.TransferType) != "in" {
+		return nil, nil
+	}
+	code := ""
+	if payload.Code != nil {
+		code = strings.TrimSpace(*payload.Code)
+	}
+	if code == "" {
+		return nil, fmt.Errorf("sepay notify missing payment code")
+	}
+	tradeNo := strings.TrimSpace(payload.ReferenceCode)
+	if tradeNo == "" {
+		tradeNo = strconv.FormatInt(payload.ID, 10)
+	}
+	metadata := map[string]string{"accountNumber": payload.AccountNumber}
+	if payload.Gateway != "" {
+		metadata["gateway"] = payload.Gateway
+	}
+	return &payment.PaymentNotification{
+		TradeNo:  tradeNo,
+		OrderID:  code,
+		Amount:   float64(payload.TransferAmount),
+		Status:   payment.NotificationStatusSuccess,
+		RawData:  rawBody,
+		Metadata: metadata,
+	}, nil
+}
+
+// verifyWebhookAuth checks HMAC-SHA256 (preferred) or the Apikey header.
+// Signature: sha256={hex(hmac_sha256(timestamp + "." + rawBody, secret))}.
+func (s *SePay) verifyWebhookAuth(rawBody string, headers map[string]string) error {
+	if secret := strings.TrimSpace(s.config["webhookSecret"]); secret != "" {
+		signature := strings.TrimSpace(headers["x-sepay-signature"])
+		if !strings.HasPrefix(signature, "sha256=") {
+			return fmt.Errorf("missing X-SePay-Signature")
+		}
+		timestamp := strings.TrimSpace(headers["x-sepay-timestamp"])
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid X-SePay-Timestamp")
+		}
+		skew := time.Now().Unix() - ts
+		if skew < 0 {
+			skew = -skew
+		}
+		if skew > sepayWebhookMaxSkewSecs {
+			return fmt.Errorf("sepay webhook timestamp outside ±%d second window", sepayWebhookMaxSkewSecs)
+		}
+		mac := hmac.New(sha256.New, []byte(secret))
+		_, _ = mac.Write([]byte(timestamp + "." + rawBody))
+		expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+		if !hmac.Equal([]byte(expected), []byte(signature)) {
+			return fmt.Errorf("sepay webhook signature mismatch")
+		}
+		return nil
+	}
+	apiKey := strings.TrimSpace(s.config["webhookApiKey"])
+	auth := strings.TrimSpace(headers["authorization"])
+	const apikeyPrefix = "Apikey "
+	if !strings.HasPrefix(auth, apikeyPrefix) {
+		return fmt.Errorf("missing Authorization Apikey header")
+	}
+	if !hmac.Equal([]byte(strings.TrimSpace(strings.TrimPrefix(auth, apikeyPrefix))), []byte(apiKey)) {
+		return fmt.Errorf("sepay webhook api key mismatch")
+	}
+	return nil
 }
