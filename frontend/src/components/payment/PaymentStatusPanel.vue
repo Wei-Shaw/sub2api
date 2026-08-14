@@ -112,6 +112,8 @@
         </div>
       </section>
 
+      <BankTransferDetails :transfer="transfer" :currency="paymentCurrency" />
+
       <CountdownPanel
         :label="t('payment.qr.expiresIn')"
         :value="countdownDisplay"
@@ -166,7 +168,7 @@ import {
   normalizePaymentCurrency,
   paymentCurrencyFractionDigits,
 } from '@/components/payment/currency'
-import type { PaymentOrder } from '@/types/payment'
+import type { BankTransferInfo, PaymentOrder } from '@/types/payment'
 // Imported by direct path, never through `components/common/index.ts`: the
 // barrel pulls `createI18n` into the module graph and breaks every spec that
 // mocks `vue-i18n` with a partial factory.
@@ -174,6 +176,7 @@ import Button from '@/components/common/Button.vue'
 import NumCell from '@/components/common/NumCell.vue'
 import CountdownPanel from '@/components/payment/CountdownPanel.vue'
 import QrFrame from '@/components/payment/QrFrame.vue'
+import BankTransferDetails from '@/components/payment/BankTransferDetails.vue'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
@@ -189,6 +192,8 @@ const props = defineProps<{
   orderType?: string
   currency?: string
   outTradeNo?: string
+  /** Bank-transfer instructions for payers who type rather than scan. */
+  transfer?: BankTransferInfo | null
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
