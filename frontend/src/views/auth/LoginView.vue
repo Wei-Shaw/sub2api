@@ -5,7 +5,7 @@
         <span class="rounded bg-white px-3 py-2 text-center text-sm font-medium text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white">
           {{ t('organization.login.personal') }}
         </span>
-        <router-link to="/iam-login" class="rounded px-3 py-2 text-center text-sm text-gray-600 dark:text-dark-300">
+        <router-link :to="iamLoginTo" class="rounded px-3 py-2 text-center text-sm text-gray-600 dark:text-dark-300">
           {{ t('organization.login.iam') }}
         </router-link>
       </div>
@@ -231,7 +231,7 @@
 
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
@@ -266,6 +266,7 @@ const LOGIN_AGREEMENT_STORAGE_KEY = 'sub2api_login_agreement_consent'
 // ==================== Router & Stores ====================
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const appStore = useAppStore()
 
@@ -370,6 +371,14 @@ const showOAuthLogin = computed(
       githubOAuthEnabled.value ||
       googleOAuthEnabled.value)
 )
+
+// 切到“IAM 登录”tab 时保留当前 URL 上的 redirect query（如
+// /login?redirect=/oidc/authorize?...），避免切 tab 时丢失 OIDC 回跳目标。
+// 无 redirect 时仍用字符串，保持与现有行为一致。
+const iamLoginTo = computed(() => {
+  const redirect = route.query.redirect
+  return redirect ? { path: '/iam-login', query: { redirect } } : '/iam-login'
+})
 
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {

@@ -14,8 +14,10 @@ const locationState = { href: 'http://localhost/login' }
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     currentRoute: { value: { query: {} } },
-    push: vi.fn()
-  })
+    push: vi.fn(),
+    resolve: () => ({ name: 'Route' })
+  }),
+  useRoute: () => ({ query: {} })
 }))
 
 vi.mock('vue-i18n', async () => {
