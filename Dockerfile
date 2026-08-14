@@ -35,12 +35,15 @@ RUN --mount=type=cache,id=sub2api-pnpm-store,target=/root/.local/share/pnpm/stor
     pnpm install --frozen-lockfile --prefer-offline
 
 # Copy frontend source and build.
-# LegalDocumentView.vue (admin-compliance gate) build-time imports
-# ../../../../docs/legal/*.md?raw, so docs/legal/ must sit beside frontend/
-# in the image (WORKDIR /app/frontend -> resolves to /app/docs/legal/*.md).
-# Copy only that subtree to keep the build dependency minimal.
+# Two views build-time import markdown from ../../../../docs/: the
+# admin-compliance gate (LegalDocumentView.vue) reads docs/legal/*.md?raw and
+# the public documentation site (docsPages.ts) reads docs/public/*.md?raw. Both
+# subtrees must sit beside frontend/ in the image (WORKDIR /app/frontend ->
+# resolves to /app/docs/...). Copy only those to keep the build dependency
+# minimal; anything else under docs/ stays out of the context entirely.
 COPY frontend/ ./
 COPY docs/legal/ /app/docs/legal/
+COPY docs/public/ /app/docs/public/
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
