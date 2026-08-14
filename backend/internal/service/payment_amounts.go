@@ -25,6 +25,11 @@ func normalizeSubscriptionUSDToCNYRate(rate float64) float64 {
 	return rate
 }
 
+// normalizeSubscriptionUSDToVNDRate 将非法值归一为 0（换算关闭）。
+func normalizeSubscriptionUSDToVNDRate(rate float64) float64 {
+	return normalizeSubscriptionUSDToCNYRate(rate)
+}
+
 func calculateCreditedBalance(paymentAmount, multiplier float64) float64 {
 	return decimal.NewFromFloat(paymentAmount).
 		Mul(decimal.NewFromFloat(normalizeBalanceRechargeMultiplier(multiplier))).
