@@ -363,14 +363,21 @@ func (s *OrgSubscriptionRuntime) effectiveUsage(now time.Time) (daily, weekly, m
 	return
 }
 
+// hasLimit 与上游 Group.HasDailyLimit 语义保持一致：nil 或 <=0 视为无限制。
+// 注意历史脏数据可能把"无限制"误存为数字 0，这里统一按无限制处理，避免误拒。
+func hasOrgSpendLimit(limit *float64) bool {
+	return limit != nil && *limit > 0
+}
+
 // CheckAllLimits reports whether adding additionalCost keeps each configured
-// limit satisfied (window-aware). A nil limit means unlimited.
+// limit satisfied (window-aware). A nil limit, or a limit <= 0, means unlimited
+// (consistent with upstream Group.HasDailyLimit).
 func (s *OrgSubscriptionRuntime) CheckAllLimits(additionalCost float64) (daily, weekly, monthly bool) {
 	now := time.Now()
 	du, wu, mu := s.effectiveUsage(now)
-	daily = s.DailyLimitUSD == nil || du+additionalCost <= *s.DailyLimitUSD
-	weekly = s.WeeklyLimitUSD == nil || wu+additionalCost <= *s.WeeklyLimitUSD
-	monthly = s.MonthlyLimitUSD == nil || mu+additionalCost <= *s.MonthlyLimitUSD
+	daily = !hasOrgSpendLimit(s.DailyLimitUSD) || du+additionalCost <= *s.DailyLimitUSD
+	weekly = !hasOrgSpendLimit(s.WeeklyLimitUSD) || wu+additionalCost <= *s.WeeklyLimitUSD
+	monthly = !hasOrgSpendLimit(s.MonthlyLimitUSD) || mu+additionalCost <= *s.MonthlyLimitUSD
 	return
 }
 
