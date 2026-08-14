@@ -147,10 +147,14 @@
                   Credited balance is USD credit; everything above it is in the
                   gateway's settlement currency. The two symbols are the only
                   thing standing between the user and believing they topped up
-                  100 dollars with a ¥100 payment.
+                  100 dollars with a ¥100 payment — which is why the row also
+                  shows on a 1× multiplier whenever the gateway settles in
+                  something other than dollars: every other figure in the
+                  summary is then a six-digit ₫ amount, and this is the only
+                  place the credit itself appears.
                 -->
                 <div
-                  v-if="balanceRechargeMultiplier !== 1"
+                  v-if="showCreditedAmount"
                   class="flex items-baseline justify-between gap-4 py-2"
                 >
                   <dt class="shrink-0 text-ink-tertiary">{{ t('payment.creditedBalance') }}</dt>
@@ -759,7 +763,16 @@ const gatewayCurrencySymbol = computed(() => currencySymbol(selectedCurrency.val
 const gatewayPrecision = computed(() => paymentCurrencyFractionDigits(selectedCurrency.value))
 
 /** Balance credit is always USD, whatever the gateway charged in. */
-const creditedCurrencySymbol = currencySymbol('USD')
+const creditedCurrencySymbol = currencySymbol(DEFAULT_PAYMENT_CURRENCY)
+
+/**
+ * A 1× multiplier used to hide the credited row, which was fine while the
+ * summary was denominated in dollars either way. Once a dong channel converts,
+ * the row is the only line still stating what the payment buys.
+ */
+const showCreditedAmount = computed(() =>
+  balanceRechargeMultiplier.value !== 1 || selectedCurrency.value !== DEFAULT_PAYMENT_CURRENCY
+)
 
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
