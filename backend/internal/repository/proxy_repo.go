@@ -226,7 +226,8 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 		UPDATE accounts
 		SET extra = COALESCE(extra, '{}'::jsonb)
 				- 'upstream_billing_probe'
-				- 'ollama_cloud_usage_snapshot',
+				- 'ollama_cloud_usage_snapshot'
+				- 'opencode_go_usage_snapshot',
 			updated_at = NOW()
 		WHERE proxy_id = $1
 			AND type = 'apikey'
@@ -236,6 +237,9 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 				OR (platform IN (`+ollamaCloudUsagePlatformsSQL+`)
 					AND extra ? 'ollama_cloud_usage_snapshot'
 					AND extra -> 'ollama_cloud_usage_snapshot' <> 'null'::jsonb)
+				OR (platform = 'openai'
+					AND extra ? 'opencode_go_usage_snapshot'
+					AND extra -> 'opencode_go_usage_snapshot' <> 'null'::jsonb)
 			)
 			AND deleted_at IS NULL
 		RETURNING id
