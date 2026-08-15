@@ -1064,10 +1064,16 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 }
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
-	if account == nil || account.Type == AccountTypeOAuth {
-		return normalizeCodexModel(model)
+	trimmedModel := strings.TrimSpace(model)
+	if account != nil && account.IsOpenAIOAuth() && canonicalizeOpenAIModelAliasSpelling(trimmedModel) == "gpt-5.6-sol-wm" {
+		// gpt-5.6-sol-wm is a distinct ChatGPT OAuth upstream slug. Keep it out
+		// of the broad gpt-5.6-sol alias normalization used by billing and lookup.
+		return "gpt-5.6-sol-wm"
 	}
-	return strings.TrimSpace(model)
+	if account == nil || account.Type == AccountTypeOAuth {
+		return normalizeCodexModel(trimmedModel)
+	}
+	return trimmedModel
 }
 
 func SupportsVerbosity(model string) bool {

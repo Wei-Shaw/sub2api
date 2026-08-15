@@ -262,6 +262,24 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 			want:    "gpt-5.6-sol",
 		},
 		{
+			name:    "oauth preserves GPT-5.6 Sol WM upstream slug",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			model:   "gpt-5.6-sol-wm",
+			want:    "gpt-5.6-sol-wm",
+		},
+		{
+			name:    "oauth still normalizes other GPT-5.6 Sol suffix aliases",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+			model:   "gpt-5.6-sol-high",
+			want:    "gpt-5.6-sol",
+		},
+		{
+			name:    "non OpenAI OAuth keeps generic GPT-5.6 alias normalization",
+			account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth},
+			model:   "gpt-5.6-sol-wm",
+			want:    "gpt-5.6-sol",
+		},
+		{
 			name:    "oauth preserves unknown non codex model",
 			account: &Account{Type: AccountTypeOAuth},
 			model:   "gemini-3-flash-preview",
@@ -296,6 +314,12 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 			account: &Account{Type: AccountTypeAPIKey},
 			model:   "gpt-5.6",
 			want:    "gpt-5.6",
+		},
+		{
+			name:    "apikey preserves GPT-5.6 Sol WM model",
+			account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			model:   "gpt-5.6-sol-wm",
+			want:    "gpt-5.6-sol-wm",
 		},
 		{
 			name:    "apikey preserves custom compatible model",

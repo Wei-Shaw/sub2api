@@ -44,6 +44,7 @@ func TestValidateOpenAIUltraReasoningFinalModel(t *testing.T) {
 	}{
 		{name: "Sol", account: &Account{Platform: PlatformOpenAI}, model: "gpt-5.6-sol", wantAllowed: true},
 		{name: "Terra", account: &Account{Platform: PlatformOpenAI}, model: "gpt-5.6-terra", wantAllowed: true},
+		{name: "Sol WM", account: &Account{Platform: PlatformOpenAI}, model: "gpt-5.6-sol-wm", wantAllowed: true},
 		{name: "Luna", account: &Account{Platform: PlatformOpenAI}, model: "gpt-5.6-luna"},
 		{name: "older OpenAI model", account: &Account{Platform: PlatformOpenAI}, model: "gpt-5.5"},
 		{name: "non OpenAI platform", account: &Account{Platform: PlatformGrok}, model: "gpt-5.6-sol"},

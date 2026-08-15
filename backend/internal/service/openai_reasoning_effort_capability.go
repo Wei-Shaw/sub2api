@@ -19,10 +19,11 @@ type UnsupportedOpenAIReasoningEffortError struct {
 
 func (e *UnsupportedOpenAIReasoningEffortError) Error() string {
 	return fmt.Sprintf(
-		"reasoning effort %q is only supported when the final upstream model is %q or %q; resolved model was %q",
+		"reasoning effort %q is only supported when the final upstream model is %q, %q, or %q; resolved model was %q",
 		e.Effort,
 		"gpt-5.6-sol",
 		"gpt-5.6-terra",
+		"gpt-5.6-sol-wm",
 		e.UpstreamModel,
 	)
 }
@@ -43,7 +44,7 @@ func openAIRequestHasUltraReasoning(body []byte) bool {
 
 func isOpenAIUltraReasoningModel(upstreamModel string) bool {
 	switch strings.TrimSpace(upstreamModel) {
-	case "gpt-5.6-sol", "gpt-5.6-terra":
+	case "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-sol-wm":
 		return true
 	default:
 		return false

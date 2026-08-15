@@ -35,6 +35,13 @@ func TestUsageBillingModelCandidates_BareGPT56IncludesSol(t *testing.T) {
 	)
 }
 
+func TestUsageBillingModelCandidates_GPT56SolWMIncludesSolFallback(t *testing.T) {
+	require.Equal(t,
+		[]string{"gpt-5.6-sol-wm", "gpt-5.6-sol"},
+		usageBillingModelCandidates("gpt-5.6-sol-wm"),
+	)
+}
+
 func TestNormalizeKnownOpenAICodexModelRejectsGPT56UltraSuffix(t *testing.T) {
 	for _, model := range []string{
 		"gpt-5.6-sol-ultra",
