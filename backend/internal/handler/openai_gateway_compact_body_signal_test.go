@@ -77,6 +77,95 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2PathAliasesStayOnRespons
 	}
 }
 
+func TestRequiresOpenAICompactAccount_RemoteV2UsesNativeRequestSignal(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	tests := []struct {
+		name       string
+		body       []byte
+		betaHeader string
+		wantBefore bool
+		wantAfter  bool
+		path       string
+	}{
+		{
+			name:       "native_v2_with_trigger",
+			body:       []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			betaHeader: "remote_compaction_v2",
+			wantBefore: true,
+			wantAfter:  true,
+			path:       "/v1/responses",
+		},
+		{
+			name:       "native_v2_without_trigger",
+			body:       []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"message","role":"user","content":"hello"}]}`),
+			betaHeader: "remote_compaction_v2",
+			wantBefore: false,
+			wantAfter:  false,
+			path:       "/v1/responses",
+		},
+		{
+			name:       "ordinary_stream_with_trigger",
+			body:       []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			wantBefore: false,
+			wantAfter:  true,
+			path:       "/v1/responses",
+		},
+		{
+			name:       "responses_subpath_with_native_signal",
+			body:       []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			betaHeader: "remote_compaction_v2",
+			wantBefore: false,
+			wantAfter:  false,
+			path:       "/v1/responses/resp_123/cancel",
+		},
+		{
+			name:       "responses_suffix_collision",
+			body:       []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			betaHeader: "remote_compaction_v2",
+			wantBefore: false,
+			wantAfter:  false,
+			path:       "/v1/responses/resp_123/responses",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := newCompactBodySignalTestContext(t, tt.path, tt.body)
+			if tt.betaHeader != "" {
+				c.Request.Header.Set("x-codex-beta-features", tt.betaHeader)
+			}
+
+			require.Equal(t, tt.wantBefore, requiresOpenAICompactAccount(c, tt.body))
+			normalized, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), tt.body)
+			require.True(t, ok)
+			require.Equal(t, tt.wantAfter, requiresOpenAICompactAccount(c, normalized))
+		})
+	}
+}
+
+func TestRequiresOpenAICompactAccount_RemoteV2SupportsResponsesRootAliases(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`)
+
+	for _, path := range []string{
+		"/v1/responses",
+		"/v1/responses/",
+		"/openai/v1/responses",
+		"/responses",
+		"/backend-api/codex/responses",
+	} {
+		t.Run(path, func(t *testing.T) {
+			c := newCompactBodySignalTestContext(t, path, body)
+			c.Request.Header.Set("x-codex-beta-features", "remote_compaction_v2")
+
+			normalized, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), body)
+			require.True(t, ok)
+			require.Equal(t, path, c.Request.URL.Path)
+			require.True(t, requiresOpenAICompactAccount(c, normalized))
+		})
+	}
+}
+
 func TestNormalizeOpenAIResponsesCompactRequest_BodySignalTrailingSlashPromoted(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 	body := []byte(`{"model":"gpt-5.5","input":[{"type":"compaction_trigger"}]}`)
