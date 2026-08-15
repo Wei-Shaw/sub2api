@@ -106,9 +106,9 @@ func (r *accountRepository) UpdateOpenCodeGoUsageSnapshot(ctx context.Context, a
 	if r == nil || r.client == nil || !service.IsOpenCodeGoUsageAccount(account) {
 		return service.ErrOpenCodeGoUsageUnavailable
 	}
-	payload := openCodeGoUsageManagedPayload(account)
-	payload[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
-	return r.updateOpenCodeGoUsageGroup(ctx, account, payload, nil, true)
+	return r.updateOpenCodeGoUsageGroup(ctx, account, map[string]any{
+		service.OpenCodeGoUsageSnapshotExtraKey: snapshot,
+	}, nil, true)
 }
 
 // DisableOpenCodeGoUsageAutoRefresh is group-scoped and retains the loaded
