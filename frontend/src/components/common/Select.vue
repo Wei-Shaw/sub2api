@@ -55,6 +55,7 @@
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
+          :aria-multiselectable="multiple || undefined"
           @click.stop
           @mousedown.stop
           @keydown="onDropdownKeyDown"
@@ -92,15 +93,25 @@
               ]"
             >
               <slot name="option" :option="option" :selected="isSelected(option)">
+                <span
+                  v-if="multiple && !isGroupHeaderOption(option)"
+                  :class="[
+                    'select-checkbox',
+                    isSelected(option) && 'select-checkbox-selected'
+                  ]"
+                  aria-hidden="true"
+                >
+                  <Icon v-if="isSelected(option)" name="check" size="xs" />
+                </span>
                 <Icon
-                  v-if="option._creatable"
+                  v-else-if="option._creatable"
                   name="search"
                   size="sm"
                   class="flex-shrink-0 text-gray-400"
                 />
                 <span class="select-option-label" :class="option._creatable && 'italic text-gray-500 dark:text-dark-300'">{{ getOptionLabel(option) }}</span>
                 <Icon
-                  v-if="isSelected(option)"
+                  v-if="!multiple && isSelected(option)"
                   name="check"
                   size="sm"
                   class="text-primary-500"
@@ -120,7 +131,19 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script lang="ts">
+export type SelectValue = string | number | boolean | null
+export type SelectModelValue = SelectValue | SelectValue[]
+
+export interface SelectOption {
+  value: SelectValue
+  label: string
+  disabled?: boolean
+  [key: string]: unknown
+}
+</script>
+
+<script setup lang="ts" generic="TModel extends SelectModelValue = SelectValue">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
@@ -130,15 +153,10 @@ const { t } = useI18n()
 // Instance ID for unique click-outside detection
 const instanceId = `select-${Math.random().toString(36).substring(2, 9)}`
 
-export interface SelectOption {
-  value: string | number | boolean | null
-  label: string
-  disabled?: boolean
-  [key: string]: unknown
-}
+type SelectEmittedValue = TModel
 
 interface Props {
-  modelValue: string | number | boolean | null | undefined
+  modelValue: TModel | undefined
   options: SelectOption[] | Array<Record<string, unknown>>
   placeholder?: string
   disabled?: boolean
@@ -151,14 +169,15 @@ interface Props {
   creatable?: boolean
   creatablePrefix?: string
   clearable?: boolean
+  multiple?: boolean
   id?: string
   ariaLabel?: string
   ariaDescribedby?: string
 }
 
 interface Emits {
-  (e: 'update:modelValue', value: string | number | boolean | null): void
-  (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
+  (e: 'update:modelValue', value: SelectEmittedValue): void
+  (e: 'change', value: SelectEmittedValue, option: SelectOption | null): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -168,6 +187,7 @@ const props = withDefaults(defineProps<Props>(), {
   creatable: false,
   creatablePrefix: '',
   clearable: false,
+  multiple: false,
   valueKey: 'value',
   labelKey: 'label'
 })
@@ -255,11 +275,33 @@ const isGroupHeaderOption = (option: any): boolean => {
   return false
 }
 
+const selectedValues = computed<SelectValue[]>(() => {
+  if (!props.multiple || !Array.isArray(props.modelValue)) return []
+  return props.modelValue
+})
+
+const selectedOptions = computed(() => {
+  if (!props.multiple) return []
+  return props.options.filter((opt) => selectedValues.value.includes(getOptionValue(opt)))
+})
+
 const selectedOption = computed(() => {
+  if (props.multiple) return selectedOptions.value[0] || null
   return props.options.find((opt) => getOptionValue(opt) === props.modelValue) || null
 })
 
 const selectedLabel = computed(() => {
+  if (props.multiple) {
+    if (selectedValues.value.length === 1) {
+      return selectedOptions.value[0]
+        ? getOptionLabel(selectedOptions.value[0])
+        : String(selectedValues.value[0])
+    }
+    if (selectedValues.value.length > 1) {
+      return t('common.selectedCount', { count: selectedValues.value.length })
+    }
+    return placeholderText.value
+  }
   if (selectedOption.value) {
     return getOptionLabel(selectedOption.value)
   }
@@ -271,7 +313,9 @@ const selectedLabel = computed(() => {
 })
 
 const hasValue = computed(
-  () => props.modelValue !== null && props.modelValue !== undefined && props.modelValue !== ''
+  () => props.multiple
+    ? selectedValues.value.length > 0
+    : props.modelValue !== null && props.modelValue !== undefined && props.modelValue !== ''
 )
 
 const filteredOptions = computed(() => {
@@ -296,7 +340,10 @@ const filteredOptions = computed(() => {
 })
 
 const isSelected = (option: any): boolean => {
-  return getOptionValue(option) === props.modelValue
+  const value = getOptionValue(option)
+  return props.multiple
+    ? selectedValues.value.includes(value)
+    : value === props.modelValue
 }
 
 const findNextEnabledIndex = (startIndex: number): number => {
@@ -383,17 +430,26 @@ watch(isOpen, (open) => {
 })
 
 const selectOption = (option: any) => {
-  const value = getOptionValue(option) ?? null
-  emit('update:modelValue', value)
-  emit('change', value, option)
+  const value = (getOptionValue(option) ?? null) as SelectValue
+  if (props.multiple) {
+    const values = isSelected(option)
+      ? selectedValues.value.filter((selectedValue) => selectedValue !== value)
+      : [...selectedValues.value, value]
+    emit('update:modelValue', values as SelectEmittedValue)
+    emit('change', values as SelectEmittedValue, option)
+    return
+  }
+  emit('update:modelValue', value as SelectEmittedValue)
+  emit('change', value as SelectEmittedValue, option)
   isOpen.value = false
   triggerRef.value?.focus()
 }
 
 const clearSelection = () => {
   if (props.disabled) return
-  emit('update:modelValue', null)
-  emit('change', null, null)
+  const value = props.multiple ? [] : null
+  emit('update:modelValue', value as SelectEmittedValue)
+  emit('change', value as SelectEmittedValue, null)
 }
 
 // Keyboards
@@ -572,6 +628,16 @@ onUnmounted(() => {
 
 .select-dropdown-portal .select-option-label {
   @apply flex-1 min-w-0 truncate text-left;
+}
+
+.select-dropdown-portal .select-checkbox {
+  @apply flex h-4 w-4 flex-shrink-0 items-center justify-center rounded;
+  @apply border border-gray-300 bg-white text-primary-500;
+  @apply dark:border-dark-600 dark:bg-dark-900;
+}
+
+.select-dropdown-portal .select-checkbox-selected {
+  @apply border-primary-500 bg-primary-50 dark:bg-primary-900/30;
 }
 
 .select-dropdown-portal .select-empty {
