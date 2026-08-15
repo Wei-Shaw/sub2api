@@ -763,7 +763,7 @@ func buildPaymentTransferInfo(sel *payment.InstanceSelection, pr *payment.Create
 		AccountName:   strings.TrimSpace(sel.Config["accountName"]),
 		BankBin:       strings.TrimSpace(sel.Config["bankBin"]),
 		Amount:        payment.FormatAmountForCurrency(payAmount, pr.Currency),
-		Content:       order.OutTradeNo,
+		Content:       payment.NormalizeTransferCode(order.OutTradeNo),
 	}
 }
 

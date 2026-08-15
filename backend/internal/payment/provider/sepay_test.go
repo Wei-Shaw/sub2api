@@ -79,8 +79,8 @@ func TestSePayCreatePayment(t *testing.T) {
 	if !strings.Contains(resp.QRCode, tlv("54", "50000")) {
 		t.Fatalf("QR payload missing amount TLV: %s", resp.QRCode)
 	}
-	if !strings.Contains(resp.QRCode, "sub2_20260814aB3kX9mQ") {
-		t.Fatalf("QR payload missing transfer content: %s", resp.QRCode)
+	if want := "SUB220260814AB3KX9MQ"; !strings.Contains(resp.QRCode, want) {
+		t.Fatalf("QR payload missing normalized transfer content %q: %s", want, resp.QRCode)
 	}
 }
 
