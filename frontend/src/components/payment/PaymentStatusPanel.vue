@@ -171,13 +171,22 @@
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
           <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
-            <canvas ref="qrCanvas" class="mx-auto"></canvas>
-            <!-- Brand logo overlay -->
-            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
-                <img :src="qrLogoIcon" alt="" class="h-5 w-5 brightness-0 invert" />
-              </span>
-            </div>
+            <img
+              v-if="qrImageUrl"
+              data-test="sepay-qr-image"
+              :src="qrImageUrl"
+              alt="VietQR"
+              class="mx-auto h-auto max-w-full rounded-md"
+            />
+            <template v-else>
+              <canvas ref="qrCanvas" class="mx-auto"></canvas>
+              <!-- Brand logo overlay -->
+              <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
+                  <img :src="qrLogoIcon" alt="" class="h-5 w-5 brightness-0 invert" />
+                </span>
+              </div>
+            </template>
           </div>
           <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
           <div v-if="transferInfo" data-test="sepay-transfer-info" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
@@ -274,6 +283,7 @@ const props = defineProps<{
   amount?: number
   payAmount?: number
   qrCode: string
+  qrImageUrl?: string
   expiresAt: string
   paymentType: string
   payUrl?: string

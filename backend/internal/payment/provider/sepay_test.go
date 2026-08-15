@@ -82,6 +82,10 @@ func TestSePayCreatePayment(t *testing.T) {
 	if want := "sub220260814aB3kX9mQ"; !strings.Contains(resp.QRCode, want) {
 		t.Fatalf("QR payload missing stripped transfer content %q: %s", want, resp.QRCode)
 	}
+	wantImg := "https://vietqr.app/img?acc=0123456789&bank=970422&amount=50000&des=" + url.QueryEscape("sub220260814aB3kX9mQ")
+	if resp.QRImageURL != wantImg {
+		t.Fatalf("QR image URL = %q, want %q", resp.QRImageURL, wantImg)
+	}
 }
 
 func TestSePayCreatePaymentRejectsNonIntegerAmount(t *testing.T) {

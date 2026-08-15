@@ -116,13 +116,18 @@ func (s *SePay) CreatePayment(_ context.Context, req payment.CreatePaymentReques
 	if err != nil || amountVND <= 0 {
 		return nil, fmt.Errorf("sepay amount must be a positive integer VND value, got %q", req.Amount)
 	}
-	payload := buildVietQRPayload(
-		strings.TrimSpace(s.config["bankBin"]),
-		strings.TrimSpace(s.config["bankAccountNumber"]),
-		amountVND,
-		payment.StripTransferSeparators(req.OrderID),
-	)
-	return &payment.CreatePaymentResponse{QRCode: payload, Currency: payment.CurrencyVND}, nil
+	bin := strings.TrimSpace(s.config["bankBin"])
+	account := strings.TrimSpace(s.config["bankAccountNumber"])
+	content := payment.StripTransferSeparators(req.OrderID)
+	payload := buildVietQRPayload(bin, account, amountVND, content)
+	// Battle-tested image generator (the one SePay's own docs recommend) —
+	// banking apps scan its output reliably. The EMV payload above stays as
+	// the machine-readable fallback.
+	qrImageURL := "https://vietqr.app/img?acc=" + url.QueryEscape(account) +
+		"&bank=" + url.QueryEscape(bin) +
+		"&amount=" + strconv.FormatInt(amountVND, 10) +
+		"&des=" + url.QueryEscape(content)
+	return &payment.CreatePaymentResponse{QRCode: payload, QRImageURL: qrImageURL, Currency: payment.CurrencyVND}, nil
 }
 
 // Refund is not supported: SePay has no refund API — refunds must be issued

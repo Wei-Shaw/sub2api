@@ -44,6 +44,7 @@ export interface PaymentRecoverySnapshot {
   orderId: number
   amount: number
   qrCode: string
+  qrImageUrl?: string
   expiresAt: string
   paymentType: string
   payUrl: string
@@ -165,6 +166,7 @@ export function decidePaymentLaunch(
     orderId: result.order_id,
     amount: result.amount,
     qrCode: result.qr_code || '',
+    qrImageUrl: result.qr_image_url || '',
     expiresAt: result.expires_at || '',
     paymentType: visibleMethod,
     payUrl: result.pay_url || '',
@@ -317,6 +319,7 @@ export function readPaymentRecoverySnapshot(
       || (parsed.alipayMobilePrecreateDeepLink != null && typeof parsed.alipayMobilePrecreateDeepLink !== 'boolean')
       || typeof parsed.createdAt !== 'number'
       || (parsed.transferInfo != null && typeof parsed.transferInfo !== 'object')
+      || (parsed.qrImageUrl != null && typeof parsed.qrImageUrl !== 'string')
     ) {
       return null
     }
@@ -334,6 +337,7 @@ export function readPaymentRecoverySnapshot(
       orderId: parsed.orderId,
       amount: parsed.amount,
       qrCode: parsed.qrCode,
+      qrImageUrl: parsed.qrImageUrl || '',
       expiresAt: parsed.expiresAt,
       paymentType: parsed.paymentType,
       payUrl: parsed.payUrl,

@@ -19,6 +19,7 @@
             :amount="paymentState.amount"
             :pay-amount="paymentState.payAmount"
             :qr-code="paymentState.qrCode"
+            :qr-image-url="paymentState.qrImageUrl"
             :expires-at="paymentState.expiresAt"
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
@@ -352,6 +353,7 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     orderId: 0,
     amount: 0,
     qrCode: '',
+    qrImageUrl: '',
     transferInfo: undefined,
     expiresAt: '',
     paymentType: '',
