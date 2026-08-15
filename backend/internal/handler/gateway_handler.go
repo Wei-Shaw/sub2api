@@ -120,6 +120,7 @@ func NewGatewayHandler(
 // Messages handles Claude API compatible messages endpoint
 // POST /v1/messages
 func (h *GatewayHandler) Messages(c *gin.Context) {
+	requestStart := time.Now()
 	// 从context获取apiKey和user（ApiKeyAuth中间件已设置）
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -169,6 +170,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	// 阶段耗时归因：Anthropic 路径此前一个阶段都没采集（只有 openai/grok 路径有），
+	// 导致 ops 面板能看到 tail 却无法定位到具体阶段。
+	// 落库位置是 ops_error_logs（见 handler/ops_error_logger.go:1259-1262），
+	// 因此只有进入错误日志的请求才有分解数据；慢但成功的请求不会被覆盖。
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -854,11 +860,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			// routing = handler 入口到本次上游派发之间的全部开销：选号、等并发槽、
+			// UMQ 锁等待、body 改写，以及此前失败尝试的累计时间。
+			// failover 时会被后续尝试覆盖，最终值即"到最后一次派发为止"的累计耗时。
+			service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(requestStart).Milliseconds())
+			upstreamStart := time.Now()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}
+
+			// upstream = 本次 Forward 的耗时。流式请求下 Forward 到流结束才返回，
+			// 因此这里是整段流的时长而非 TTFT——与 openai/grok 路径的口径一致。
+			service.SetOpsLatencyMs(c, service.OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
 			if queueRelease != nil {
