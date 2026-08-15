@@ -19,22 +19,22 @@
             </div>
             <div class="w-full sm:w-auto sm:min-w-[220px]">
               <label class="input-label">{{ t('admin.costCenter.model') }}</label>
-              <Select v-model="filters.model" :options="modelOptions" searchable @change="load" />
+              <Select v-model="filters.model" :options="modelOptions" searchable @change="reload" />
             </div>
             <div class="w-full sm:w-auto sm:min-w-[200px]">
               <label class="input-label">{{ t('admin.costCenter.source') }}</label>
-              <Select v-model="filters.source_type" :options="sourceOptions" searchable @change="load" />
+              <Select v-model="filters.source_type" :options="sourceOptions" searchable @change="reload" />
             </div>
             <div class="w-full sm:w-auto sm:min-w-[200px]">
               <label class="input-label">{{ t('admin.costCenter.category') }}</label>
-              <Select v-model="filters.category" :options="categoryOptions" searchable @change="load" />
+              <Select v-model="filters.category" :options="categoryOptions" searchable @change="reload" />
             </div>
           </div>
           <div class="flex w-full items-center justify-end gap-3 sm:w-auto">
             <button type="button" class="btn btn-primary" @click="openAppendCost">
               <Icon name="dollar" size="sm" class="mr-1.5" />{{ t('admin.costCenter.appendCost') }}
             </button>
-            <button type="button" class="btn btn-secondary" :disabled="loading" @click="load">
+            <button type="button" class="btn btn-secondary" :disabled="loading" @click="reload">
               <Icon name="refresh" size="sm" class="mr-1.5" />{{ t('common.refresh') }}
             </button>
           </div>
@@ -60,6 +60,14 @@
             </div>
           </template>
         </DataTable>
+        <Pagination
+          v-if="pagination.total > 0"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
+        />
       </div>
       <BaseDialog :show="showAppendCost" :title="t('admin.costCenter.appendCost')" @close="closeAppendCost">
         <form class="space-y-4" @submit.prevent="submitAppendCost">
@@ -114,12 +122,14 @@ import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import type { Column } from '@/components/common/types'
 import { adminAPI } from '@/api/admin'
 import type { CostCenterSummary, CostCenterEvent } from '@/api/admin/costCenter'
 import type { Account } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n(); const appStore = useAppStore(); const now = new Date()
 const dateOnly = (d: Date) => {
@@ -129,6 +139,7 @@ const dateOnly = (d: Date) => {
   return `${y}-${m}-${day}`
 }
 const filters = reactive({ start: dateOnly(now), end: dateOnly(now), model: '', source_type: '', category: '' }); const summary = ref<CostCenterSummary | null>(null); const events = ref<CostCenterEvent[]>([]); const loading = ref(false)
+const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const knownModels = ref<string[]>([])
 const knownCategories = ref<string[]>([])
 const showAppendCost = ref(false)
@@ -142,7 +153,8 @@ const localDateTime = (value = new Date()) => {
 const appendCostForm = reactive({ account_id: null as number | null, amount_usd: 0, category: 'account_expense', occurred_at: localDateTime(), note: '' })
 const rangeStart = (value: string) => new Date(`${value}T00:00:00`).toISOString()
 const rangeEnd = (value: string) => new Date(new Date(`${value}T00:00:00`).getTime() + 24 * 60 * 60 * 1000).toISOString()
-const params = () => ({ ...filters, start: rangeStart(filters.start), end: rangeEnd(filters.end), page: 1, page_size: 100 })
+const baseParams = () => ({ ...filters, start: rangeStart(filters.start), end: rangeEnd(filters.end) })
+const params = () => ({ ...baseParams(), page: pagination.page, page_size: pagination.page_size })
 const cards = computed(() => summary.value ? [
   { key: 'cash', label: t('admin.costCenter.cashIncome'), description: t('admin.costCenter.cashIncomeHelp'), value: summary.value.cash_income, class: 'text-emerald-600' },
   { key: 'realized', label: t('admin.costCenter.realizedIncome'), description: t('admin.costCenter.realizedIncomeHelp'), value: summary.value.realized_income, class: 'text-emerald-600' },
@@ -246,8 +258,26 @@ const sourcePersonTitle = (event: CostCenterEvent) => {
   return id && name ? `${name} (#${id})` : sourcePerson(event)
 }
 const eventHelp = (event: CostCenterEvent) => t(`admin.costCenter.eventHelp.${event.event_type}`, { source: event.source_type })
-async function load() { loading.value = true; try { const p = params(); const [s, e] = await Promise.all([adminAPI.costCenter.getSummary(p), adminAPI.costCenter.getEvents(p)]); summary.value = s.data; events.value = e.data.items || []; knownModels.value = [...new Set([...knownModels.value, ...events.value.map(event => event.model || '')].filter(Boolean))]; knownCategories.value = [...new Set([...knownCategories.value, ...events.value.map(event => event.category || '')].filter(Boolean))] } finally { loading.value = false } }
-function onDateRangeChange(range: { startDate: string; endDate: string }) { filters.start = range.startDate; filters.end = range.endDate; load() }
+async function load() {
+  loading.value = true
+  try {
+    const [s, e] = await Promise.all([
+      adminAPI.costCenter.getSummary(baseParams()),
+      adminAPI.costCenter.getEvents(params())
+    ])
+    summary.value = s.data
+    events.value = e.data.items || []
+    pagination.total = e.data.total || 0
+    knownModels.value = [...new Set([...knownModels.value, ...events.value.map(event => event.model || '')].filter(Boolean))]
+    knownCategories.value = [...new Set([...knownCategories.value, ...events.value.map(event => event.category || '')].filter(Boolean))]
+  } finally {
+    loading.value = false
+  }
+}
+function reload() { pagination.page = 1; return load() }
+function onDateRangeChange(range: { startDate: string; endDate: string }) { filters.start = range.startDate; filters.end = range.endDate; reload() }
+function handlePageChange(page: number) { pagination.page = page; void load() }
+function handlePageSizeChange(size: number) { pagination.page_size = size; pagination.page = 1; void load() }
 async function review(event: CostCenterEvent) { const reason = window.prompt(t('admin.costCenter.reasonPrompt')); if (!reason) return; await adminAPI.costCenter.updateEventStatus(event.id, 'settled', reason); await load() }
 async function reverse(event: CostCenterEvent) { const reason = window.prompt(t('admin.costCenter.reasonPrompt')); if (!reason) return; await adminAPI.costCenter.reverseEvent(event.id, reason); await load() }
 async function loadAuditAccounts() {

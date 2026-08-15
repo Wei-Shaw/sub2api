@@ -151,17 +151,56 @@
             </span>
           </div>
 
-          <component
-            v-for="item in personalNavItems"
-            :key="item.path"
-            :is="navLinkComponent(item)"
-            v-bind="navLinkAttrs(item)"
-            class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleNavItemClick(item)"
-          >
+          <template v-for="item in personalNavItems" :key="item.path">
+            <!-- 折叠父菜单（含 children，如"企业管理"）：点击展开/收起子项 -->
+            <template v-if="item.children?.length">
+              <button
+                type="button"
+                class="sidebar-link mb-1 w-full"
+                :class="{
+                  'sidebar-link-active': isGroupActive(item) && !isGroupExpanded(item),
+                  'sidebar-link-collapsed': sidebarCollapsed
+                }"
+                :title="sidebarCollapsed ? item.label : undefined"
+                @click="handleGroupClick(item)"
+              >
+                <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                <span
+                  class="sidebar-label sidebar-label-flex"
+                  :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
+                  :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+                >
+                  <span class="min-w-0 truncate">{{ item.label }}</span>
+                  <ChevronDownIcon
+                    class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
+                    :class="isGroupExpanded(item) ? 'rotate-180' : ''"
+                  />
+                </span>
+              </button>
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+                <router-link
+                  v-for="child in item.children"
+                  :key="child.path"
+                  :to="child.path"
+                  class="sidebar-link mb-0.5 py-1.5 text-sm"
+                  :class="{ 'sidebar-link-active': route.path === child.path }"
+                  @click="handleMenuItemClick(child.path)"
+                >
+                  <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
+                  <span>{{ child.label }}</span>
+                </router-link>
+              </div>
+            </template>
+            <component
+              v-else
+              :is="navLinkComponent(item)"
+              v-bind="navLinkAttrs(item)"
+              class="sidebar-link mb-1 relative"
+              :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :title="sidebarCollapsed ? item.label : undefined"
+              :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+              @click="handleNavItemClick(item)"
+            >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
 <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
@@ -191,23 +230,63 @@
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
           </component>
+          </template>
         </div>
       </template>
 
       <!-- Regular User View -->
       <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
-          <component
-            v-for="item in userNavItems"
-            :key="item.path"
-            :is="navLinkComponent(item)"
-            v-bind="navLinkAttrs(item)"
-            class="sidebar-link mb-1 relative"
-            :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
-            :title="sidebarCollapsed ? item.label : undefined"
-            :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
-            @click="handleNavItemClick(item)"
-          >
+          <template v-for="item in userNavItems" :key="item.path">
+            <!-- 折叠父菜单（含 children，如"企业管理"）：点击展开/收起子项 -->
+            <template v-if="item.children?.length">
+              <button
+                type="button"
+                class="sidebar-link mb-1 w-full"
+                :class="{
+                  'sidebar-link-active': isGroupActive(item) && !isGroupExpanded(item),
+                  'sidebar-link-collapsed': sidebarCollapsed
+                }"
+                :title="sidebarCollapsed ? item.label : undefined"
+                @click="handleGroupClick(item)"
+              >
+                <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                <span
+                  class="sidebar-label sidebar-label-flex"
+                  :class="{ 'sidebar-label-collapsed': sidebarCollapsed }"
+                  :aria-hidden="sidebarCollapsed ? 'true' : 'false'"
+                >
+                  <span class="min-w-0 truncate">{{ item.label }}</span>
+                  <ChevronDownIcon
+                    class="h-4 w-4 flex-shrink-0 transition-transform duration-200"
+                    :class="isGroupExpanded(item) ? 'rotate-180' : ''"
+                  />
+                </span>
+              </button>
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+                <router-link
+                  v-for="child in item.children"
+                  :key="child.path"
+                  :to="child.path"
+                  class="sidebar-link mb-0.5 py-1.5 text-sm"
+                  :class="{ 'sidebar-link-active': route.path === child.path }"
+                  @click="handleMenuItemClick(child.path)"
+                >
+                  <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
+                  <span>{{ child.label }}</span>
+                </router-link>
+              </div>
+            </template>
+            <component
+              v-else
+              :is="navLinkComponent(item)"
+              v-bind="navLinkAttrs(item)"
+              class="sidebar-link mb-1 relative"
+              :class="{ 'sidebar-link-active': isNavItemActive(item), 'sidebar-link-collapsed': sidebarCollapsed }"
+              :title="sidebarCollapsed ? item.label : undefined"
+              :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
+              @click="handleNavItemClick(item)"
+            >
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
 <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
@@ -237,6 +316,7 @@
               :aria-label="t('payment.promo.redDotAria')"
             ></span>
           </component>
+          </template>
         </div>
       </template>
     </nav>
@@ -374,8 +454,12 @@ const isAdmin = computed(() => authStore.isAdmin)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
-// Track which parent nav groups are expanded
-const expandedGroups = ref<Set<string>>(new Set())
+// Track which parent nav groups are expanded.
+// 显式状态优先于 isGroupActive 派生：
+//   'open'   → 用户显式展开（或首次自动展开后未再关闭）
+//   'closed' → 用户显式关闭（即使当前在其子路径下，也不再自动展开）
+// 未在 map 中的项：由 isGroupActive 派生。
+const expandedGroups = ref<Map<string, 'open' | 'closed'>>(new Map())
 
 // Site settings from appStore (cached, no flicker)
 const siteName = computed(() => appStore.siteName)
@@ -932,11 +1016,46 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   )
   if (canAccessOrganizationRoute(authStore.user)) {
     const organizationIndex = authStore.user?.identity_type === 'iam' ? 0 : (withDashboard ? 1 : 0)
+    const orgUser = authStore.user?.organization
+    const isOwner = orgUser?.role === 'owner'
+    const orgActions = orgUser?.actions || []
+    const hasAction = (action: string) => isOwner || orgActions.includes(action)
+    // 企业管理拆成折叠父菜单，children 由角色/action 决定。
+    // 各子菜单对应 route.path，OrganizationConsoleView.vue 内部通过 route.path 派发内容。
+    const orgChildren: NavItem[] = []
+    // 顺序：企业财务 → 仪表盘 → 使用记录 → 限额配置 → 订阅套餐 → 操作记录，
+    // 让仪表盘/使用记录在视觉上归属于「企业财务」下方（同为财务相关视图）。
+    if (canAccessOrganizationRoute(authStore.user)) {
+      orgChildren.push({ path: '/organization/finance', label: t('organization.tabs.finance'), icon: CreditCardIcon })
+    }
+    if (hasAction('organization.finance.balance.read')) {
+      orgChildren.push({ path: '/organization/dashboard', label: t('organization.tabs.dashboard'), icon: ChartIcon })
+    }
+    if (hasAction('organization.finance.balance.read')) {
+      orgChildren.push({ path: '/organization/usage', label: t('organization.tabs.usage'), icon: ChartIcon })
+    }
+    if (isOwner || hasAction('organization.spend_limit.manage') || !hasAction('organization.finance.balance.read')) {
+      orgChildren.push({ path: '/organization/limits', label: t('organization.tabs.limits'), icon: ChartIcon })
+    }
+    if (isOwner || hasAction('organization.subscription.manage') || hasAction('organization.finance.balance.read')) {
+      orgChildren.push({ path: '/organization/subscriptions', label: t('organization.tabs.subscriptions'), icon: RechargeSubscriptionIcon })
+    }
+    // 操作记录仅 owner 可见（充值/授权/划拨/限额配置聚合，属敏感操作历史）。
+    if (isOwner) {
+      orgChildren.push({ path: '/organization/audit', label: t('organization.tabs.audit'), icon: ShieldIcon })
+    }
+    // 企业功能设置：owner 或 CompanyFinanceManage（挂 subscription.manage）可见/操作。
+    // 放在"操作记录"之后作为整个企业管理子菜单的最后一项。
+    if (isOwner || hasAction('organization.subscription.manage')) {
+      orgChildren.push({ path: '/organization/settings', label: t('organization.tabs.settings'), icon: CogIcon })
+    }
     items.splice(organizationIndex, 0, {
       path: '/organization',
       label: t('organization.console'),
       icon: UsersIcon,
       docUrl: sanitizeUrl(appStore.cachedPublicSettings?.company_documentation_url || ''),
+      expandOnly: true,
+      children: orgChildren,
     })
   }
   if (authStore.user?.identity_type === 'iam') {
@@ -1202,15 +1321,17 @@ function isGroupActive(item: NavItem): boolean {
 }
 
 function isGroupExpanded(item: NavItem): boolean {
-  return expandedGroups.value.has(item.path) || isGroupActive(item)
+  const state = expandedGroups.value.get(item.path)
+  if (state === 'open') return true
+  if (state === 'closed') return false
+  return isGroupActive(item)
 }
 
 function toggleGroup(item: NavItem) {
-  if (expandedGroups.value.has(item.path)) {
-    expandedGroups.value.delete(item.path)
-  } else {
-    expandedGroups.value.add(item.path)
-  }
+  // 当前是展开态（无论来自显式 'open' 还是 isActive 派生）→ 点一下变 closed；
+  // 当前是收起态 → 点一下变 open。
+  const nextOpen = !isGroupExpanded(item)
+  expandedGroups.value.set(item.path, nextOpen ? 'open' : 'closed')
 }
 
 /**
@@ -1230,9 +1351,7 @@ function handleGroupClick(item: NavItem) {
   if (route.path !== item.path) {
     router.push(item.path)
   }
-  if (!expandedGroups.value.has(item.path)) {
-    expandedGroups.value.add(item.path)
-  }
+  expandedGroups.value.set(item.path, 'open')
 }
 
 // Initialize theme

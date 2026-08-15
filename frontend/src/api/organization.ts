@@ -48,6 +48,45 @@ export interface IAMLoginResponse extends AuthResponse {
   organization: OrganizationContext
 }
 
+// OrganizationAuditEntry mirrors the backend service.OrganizationAuditLogEntry
+// returned by /organization/audit-events. Used by the enterprise "Audit log"
+// page to render human-readable operation records.
+export interface OrganizationAuditEntry {
+  id: number
+  organization_id?: number
+  actor_user_id?: number
+  actor_login_name?: string
+  actor_username?: string
+  actor_email?: string
+  subject_user_id?: number
+  subject_login_name?: string
+  subject_username?: string
+  subject_email?: string
+  action: string
+  category: 'recharge' | 'authorize' | 'allocate' | 'spend_limit' | 'other'
+  result: string
+  metadata?: Record<string, unknown>
+  created_at: string
+}
+
+// OrganizationSettings mirrors service.OrganizationSettings. Currently only
+// carries the auto-switch-subscription toggle but is designed to grow as more
+// enterprise feature switches are introduced.
+export interface OrganizationSettings {
+  organization_id: number
+  auto_switch_subscription: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+// SubscriptionFallbackView bundles the ordered same-platform candidate chain
+// with the org-level auto-switch toggle so the API Key list UI can render
+// both in a single roundtrip.
+export interface SubscriptionFallbackView {
+  auto_switch_enabled: boolean
+  candidates: OrganizationSubscription[]
+}
+
 export const organizationAPI = {
   async loginIAM(payload: IAMLoginRequest): Promise<IAMLoginResponse> {
     const { data } = await apiClient.post<IAMLoginResponse>('/auth/iam/login', payload)
@@ -257,6 +296,24 @@ export const organizationAPI = {
 	},
 	async getUsageErrorDetail(id: number): Promise<UserErrorRequestDetail> {
 		const { data } = await apiClient.get<UserErrorRequestDetail>(`/organization/usage/errors/${id}`)
+		return data
+	},
+	async listAuditEvents(params: { category?: string; start?: string; end?: string; page?: number; page_size?: number } = {}): Promise<{ items: OrganizationAuditEntry[]; total: number; page: number; page_size: number; pages: number }> {
+		const { data } = await apiClient.get('/organization/audit-events', { params })
+		return data
+	},
+	async getSettings(): Promise<OrganizationSettings> {
+		const { data } = await apiClient.get<OrganizationSettings>('/organization/settings')
+		return data
+	},
+	async updateSettings(payload: { auto_switch_subscription: boolean }): Promise<OrganizationSettings> {
+		const { data } = await apiClient.put<OrganizationSettings>('/organization/settings', payload)
+		return data
+	},
+	async getSubscriptionFallback(subscriptionID: number): Promise<SubscriptionFallbackView> {
+		const { data } = await apiClient.get<SubscriptionFallbackView>('/organization/subscriptions/fallback', {
+			params: { subscription_id: subscriptionID },
+		})
 		return data
 	},
 	async getOrganization(id: number): Promise<AdminOrganizationDetail> {

@@ -261,7 +261,39 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 			// 企业 Key：校验所绑定公司订阅的活跃性与限额（不检查个人余额）
 			if isEnterpriseKey {
-				if validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); validateErr != nil {
+				validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey)
+				if validateErr != nil {
+					// 自动切换订阅套餐：命中限额或订阅失效时，若企业开启了
+					// auto_switch_subscription，则查找同平台下一个可用的企业订阅并
+					// 在本次请求内替换 apiKey.OrganizationSubscriptionID / Group
+					// （不写库）。命中后再次校验；成功则放行，失败或无候选则维持原错误。
+					if fallback, fbErr := apiKeyService.ResolveEnterpriseSubscriptionFallback(c.Request.Context(), apiKey); fbErr == nil && fallback != nil {
+						originalSubID := *apiKey.OrganizationSubscriptionID
+						originalGroup := apiKey.Group
+						originalGroupID := apiKey.GroupID
+						newSubID := fallback.SubscriptionID
+						apiKey.OrganizationSubscriptionID = &newSubID
+						apiKey.GroupID = &fallback.GroupID
+						if fallback.Group != nil {
+							apiKey.Group = fallback.Group
+						}
+						if reValidate := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); reValidate == nil {
+							logger.LegacyPrintf(
+								"middleware.api_key_auth",
+								"ENTERPRISE_AUTO_SWITCH user_id=%d api_key_id=%d from_org_sub_id=%d to_org_sub_id=%d target_group_id=%d",
+								apiKey.User.ID, apiKey.ID, originalSubID, newSubID, fallback.GroupID,
+							)
+							setGroupContext(c, apiKey.Group)
+							validateErr = nil
+						} else {
+							// 切换到的候选也不可用，回滚到原绑定并按原错误返回。
+							apiKey.OrganizationSubscriptionID = &originalSubID
+							apiKey.GroupID = originalGroupID
+							apiKey.Group = originalGroup
+						}
+					}
+				}
+				if validateErr != nil {
 					// DIAG_USAGE_LIMIT: 记录企业订阅命中日/周/月限额的原因，便于排查 IAM 侧误判
 					orgSubIDForLog := int64(0)
 					if apiKey.OrganizationSubscriptionID != nil {

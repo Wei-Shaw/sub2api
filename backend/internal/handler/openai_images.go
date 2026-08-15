@@ -62,6 +62,22 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 
+	// 将 /v1/images/generations、/v1/images/edits 的客户端原始请求写入 gateway_debug.log，
+	// 与 CLIENT_ORIGINAL_OPENAI / CLIENT_ORIGINAL_KIRO 等其它入口保持一致的排障能力。
+	// multipart 请求体是二进制表单，JSON 格式化会失败但原样输出，仍便于观察边界与字段。
+	service.LogGatewayImagesClientOriginal(
+		"CLIENT_ORIGINAL_IMAGES",
+		c.Request.Header,
+		c.Request.Context(),
+		body,
+		map[string]string{
+			"path":         c.Request.URL.Path,
+			"user_id":      strconv.FormatInt(subject.UserID, 10),
+			"api_key_id":   strconv.FormatInt(apiKey.ID, 10),
+			"content_type": c.GetHeader("Content-Type"),
+		},
+	)
+
 	if isMultipartImagesContentType(c.GetHeader("Content-Type")) {
 		setOpsRequestContext(c, "", false)
 	} else {
@@ -189,7 +205,16 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
 	for {
-		reqLog.Debug("openai.images.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
+		selectionMode := "openai_scheduler"
+		if h.falImageFallback != nil {
+			selectionMode = "mixed_openai_fal"
+		}
+		reqLog.Debug("openai.images.account_selecting",
+			zap.Int("excluded_account_count", len(failedAccountIDs)),
+			zap.String("selection_mode", selectionMode),
+			zap.String("prefer_platform", preferPlatform),
+			zap.String("fal_api", falAPIForOpenAIImages(parsed)),
+		)
 
 		var selection *service.AccountSelectionResult
 		var scheduleDecision service.OpenAIAccountScheduleDecision
@@ -243,7 +268,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			// 本 handler 不再重复记账）。失败的 openai 账号可经混合池重选切到 fal，反之亦然。
 			if account.Platform == service.PlatformFal {
 				setOpsSelectedAccount(c, account.ID, account.Platform)
-				reqLog.Debug("openai.images.fal_account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+				reqLog.Debug("openai.images.fal_account_selected",
+					zap.Int64("account_id", account.ID),
+					zap.String("account_name", account.Name),
+					zap.String("account_platform", account.Platform),
+					zap.Int("account_priority", account.Priority),
+				)
 				if imageStatusRequestID != "" {
 					h.gatewayService.MarkResponsesImageStatusRunning(c.Request.Context(), imageStatusRequestID)
 				}
@@ -325,18 +355,25 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			scheduleDecision = decision
 		}
 
-		reqLog.Debug("openai.images.account_schedule_decision",
-			zap.String("layer", scheduleDecision.Layer),
-			zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),
-			zap.Int("candidate_count", scheduleDecision.CandidateCount),
-			zap.Int("top_k", scheduleDecision.TopK),
-			zap.Int64("latency_ms", scheduleDecision.LatencyMs),
-			zap.Float64("load_skew", scheduleDecision.LoadSkew),
-		)
+		if h.falImageFallback == nil {
+			reqLog.Debug("openai.images.account_schedule_decision",
+				zap.String("layer", scheduleDecision.Layer),
+				zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),
+				zap.Int("candidate_count", scheduleDecision.CandidateCount),
+				zap.Int("top_k", scheduleDecision.TopK),
+				zap.Int64("latency_ms", scheduleDecision.LatencyMs),
+				zap.Float64("load_skew", scheduleDecision.LoadSkew),
+			)
+		}
 
 		account := selection.Account
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
-		reqLog.Debug("openai.images.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+		reqLog.Debug("openai.images.account_selected",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.String("account_platform", account.Platform),
+			zap.Int("account_priority", account.Priority),
+		)
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)

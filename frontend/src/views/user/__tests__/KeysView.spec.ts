@@ -410,6 +410,7 @@ describe('user KeysView column settings', () => {
 
   it('marks enterprise subscriptions in the API key group cell', async () => {
     const enterpriseGroup = createGroup({ id: 99, name: 'Enterprise Group' })
+    const personalGroup = createGroup({ id: 1, name: 'Personal Group' })
     listKeys.mockResolvedValueOnce({
       items: [
         {
@@ -420,7 +421,13 @@ describe('user KeysView column settings', () => {
           group: enterpriseGroup,
           organization_subscription_id: 90,
         },
-        { ...createApiKey(), id: 2, name: 'personal-key' },
+        {
+          ...createApiKey(),
+          id: 2,
+          name: 'personal-key',
+          group_id: personalGroup.id,
+          group: personalGroup,
+        },
       ],
       total: 2,
       page: 1,
@@ -430,13 +437,32 @@ describe('user KeysView column settings', () => {
 
     const wrapper = await mountView()
     const groupCells = wrapper.findAll('[data-test="group-cell"]')
-    const badges = groupCells.flatMap(groupCell =>
+    // 需求：企业订阅密钥不再单独显示"企业订阅"文字 badge，
+    // 而是把 GroupBadge 右侧的"订阅"两字替换为"企业订阅"。
+    const legacyBadges = groupCells.flatMap(groupCell =>
       groupCell.findAll('[data-test="enterprise-subscription-badge"]')
     )
+    expect(legacyBadges).toHaveLength(0)
 
-    expect(badges).toHaveLength(1)
-    expect(badges[0].text()).toBe('Enterprise Subscription')
-    expect(badges[0].attributes('title')).toBe('Enterprise subscription hint')
+    // 企业订阅密钥所在行的 GroupBadge 应该带 subscription-label-override="企业订阅"
+    // （测试用 en locale，即 "Enterprise Subscription"）。个人密钥行不带该 override。
+    const enterpriseGroupCell = groupCells[0]
+    const enterpriseGroupBadge = enterpriseGroupCell.find('group-badge-stub')
+    expect(enterpriseGroupBadge.exists()).toBe(true)
+    // Vue-test-utils stub 会把 camelCase prop 序列化成全小写 attribute
+    expect(enterpriseGroupBadge.attributes('subscriptionlabeloverride')).toBe('Enterprise Subscription')
+
+    const personalGroupCell = groupCells[1]
+    const personalGroupBadge = personalGroupCell.find('group-badge-stub')
+    expect(personalGroupBadge.exists()).toBe(true)
+    // 非企业订阅行应传空/未定义，不显示"企业订阅"
+    expect(personalGroupBadge.attributes('subscriptionlabeloverride')).toBeUndefined()
+
+    // 自动切换 badge（以及其右侧的问号帮助）只在企业订阅行出现
+    expect(enterpriseGroupCell.find('[data-test="auto-switch-badge"]').exists()).toBe(true)
+    expect(enterpriseGroupCell.find('[data-test="auto-switch-help"]').exists()).toBe(true)
+    expect(personalGroupCell.find('[data-test="auto-switch-badge"]').exists()).toBe(false)
+    expect(personalGroupCell.find('[data-test="auto-switch-help"]').exists()).toBe(false)
   })
 
   it('shows enterprise subscriptions first with a marker in the group selector', async () => {

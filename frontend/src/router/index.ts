@@ -429,6 +429,54 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.console' }
   },
   {
+    // 拆分企业管理各子菜单为独立子路由，SPA 可深链、可分别控权。
+    // 复用同一份 OrganizationConsoleView.vue 作为“分发容器”，内部根据 route.path
+    // 选择渲染哪个 tab 内容。相比重构成 6 个独立组件，这样风险最低、行为一致。
+    path: '/organization/finance',
+    name: 'OrganizationFinance',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.finance' }
+  },
+  {
+    path: '/organization/limits',
+    name: 'OrganizationLimits',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.limits' }
+  },
+  {
+    path: '/organization/dashboard',
+    name: 'OrganizationDashboard',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.dashboard' }
+  },
+  {
+    path: '/organization/subscriptions',
+    name: 'OrganizationSubscriptions',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.subscriptions' }
+  },
+  {
+    path: '/organization/usage',
+    name: 'OrganizationUsage',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.usage' }
+  },
+  {
+    // 操作记录（充值/授权/划拨/限额配置）。owner-only，非 owner 由服务端返回 403。
+    path: '/organization/audit',
+    name: 'OrganizationAudit',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, requiresOrganizationOwner: true, titleKey: 'organization.tabs.audit' }
+  },
+  {
+    // 企业功能设置：企业级功能开关（首个是自动切换订阅套餐）。
+    // owner 或 CompanyFinanceManage 持有者可访问，非授权用户由后端返回 403。
+    path: '/organization/settings',
+    name: 'OrganizationSettings',
+    component: () => import('@/views/user/OrganizationConsoleView.vue'),
+    meta: { requiresAuth: true, requiresOrganization: true, titleKey: 'organization.tabs.settings' }
+  },
+  {
     path: '/organization/change-password',
     name: 'IAMPasswordChange',
     component: () => import('@/views/user/IAMPasswordChangeView.vue'),

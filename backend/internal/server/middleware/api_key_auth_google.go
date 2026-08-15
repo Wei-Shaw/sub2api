@@ -182,14 +182,37 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 		isEnterpriseKey := apiKey.OrganizationSubscriptionID != nil
 		if isEnterpriseKey {
-			if err := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); err != nil {
+			validateErr := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey)
+			if validateErr != nil {
+				// 自动切换订阅套餐（参考 api_key_auth.go 的同名逻辑）。
+				if fallback, fbErr := apiKeyService.ResolveEnterpriseSubscriptionFallback(c.Request.Context(), apiKey); fbErr == nil && fallback != nil {
+					originalSubID := *apiKey.OrganizationSubscriptionID
+					originalGroup := apiKey.Group
+					originalGroupID := apiKey.GroupID
+					newSubID := fallback.SubscriptionID
+					apiKey.OrganizationSubscriptionID = &newSubID
+					apiKey.GroupID = &fallback.GroupID
+					if fallback.Group != nil {
+						apiKey.Group = fallback.Group
+					}
+					if reValidate := apiKeyService.ValidateEnterpriseSubscription(c.Request.Context(), apiKey); reValidate == nil {
+						setGroupContext(c, apiKey.Group)
+						validateErr = nil
+					} else {
+						apiKey.OrganizationSubscriptionID = &originalSubID
+						apiKey.GroupID = originalGroupID
+						apiKey.Group = originalGroup
+					}
+				}
+			}
+			if validateErr != nil {
 				status := 403
-				if errors.Is(err, service.ErrDailyLimitExceeded) ||
-					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-					errors.Is(err, service.ErrMonthlyLimitExceeded) {
+				if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
 					status = 429
 				}
-				abortWithGoogleError(c, status, err.Error())
+				abortWithGoogleError(c, status, validateErr.Error())
 				return
 			}
 		} else if routingState == nil && isSubscriptionType && subscriptionService != nil {

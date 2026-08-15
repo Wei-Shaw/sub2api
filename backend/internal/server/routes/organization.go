@@ -52,6 +52,7 @@ func RegisterOrganizationRoutes(
 		organizationScoped.POST("/company-balance", h.Organization.CompanyBalanceTransfer)
 		organizationScoped.GET("/subscriptions", h.Organization.ListSubscriptions)
 		organizationScoped.GET("/subscription-groups", h.Organization.SubscriptionGroups)
+		organizationScoped.GET("/subscriptions/fallback", h.Organization.SubscriptionFallback)
 		organizationScoped.POST("/subscriptions", h.Organization.CreateSubscription)
 		organizationScoped.POST("/subscription-orders", h.Organization.CreateSubscriptionOrder)
 		organizationScoped.DELETE("/subscriptions/:subscription_id", h.Organization.CancelSubscription)
@@ -67,5 +68,8 @@ func RegisterOrganizationRoutes(
 		organizationScoped.GET("/usage/charts", h.Organization.UsageCharts)
 		organizationScoped.GET("/usage/errors", h.Organization.UsageErrors)
 		organizationScoped.GET("/usage/errors/:error_id", h.Organization.UsageErrorDetail)
+		organizationScoped.GET("/audit-events", h.Organization.AuditEvents)
+		organizationScoped.GET("/settings", h.Organization.Settings)
+		organizationScoped.PUT("/settings", h.Organization.UpdateSettings)
 	}
 }

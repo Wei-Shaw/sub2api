@@ -35,8 +35,14 @@ const (
 
 	PolicyCompanyFinanceReadOnly = "CompanyFinanceReadOnly"
 	PolicyCompanySharedBalance   = "CompanySharedBalanceUse"
+	PolicyCompanyFinanceManage   = "CompanyFinanceManage"
+	PolicyIAMUserManage          = "IAMUserManage"
 	ActionFinanceBalanceRead     = "organization.finance.balance.read"
 	ActionSharedBalanceUse       = "organization.balance.shared.use"
+	ActionBalanceAllocate        = "organization.balance.allocate"
+	ActionSpendLimitManage       = "organization.spend_limit.manage"
+	ActionSubscriptionManage     = "organization.subscription.manage"
+	ActionIAMMemberManage        = "organization.iam.member.manage"
 	IAMPrincipalDomain           = "opentk.ai"
 
 	BalanceSourceSelf         = "self"
@@ -441,6 +447,46 @@ type OrganizationSpendLimitRepository interface {
 	RecordSpendLimitAlert(ctx context.Context, consumerUserID int64, balanceSource string) error
 }
 
+// OrganizationSettings holds company-wide feature toggles. Extend with more
+// fields as future switches are introduced; new columns must be nullable /
+// have a default so hot-path callers stay backwards compatible.
+type OrganizationSettings struct {
+	OrganizationID         int64     `json:"organization_id"`
+	AutoSwitchSubscription bool      `json:"auto_switch_subscription"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+// OrganizationSettingsRepository exposes CRUD for organization-level feature
+// toggles. Implemented on top of the `organization_settings` table. Optional
+// so older repository stubs used in tests remain source-compatible while the
+// feature is rolled out.
+type OrganizationSettingsRepository interface {
+	// GetOrganizationSettings returns the settings row for the caller's
+	// organization. When no row exists yet the repository returns a zero-value
+	// struct with defaults so callers can render / consume it uniformly.
+	GetOrganizationSettings(ctx context.Context, actorID int64) (*OrganizationSettings, error)
+	// UpsertOrganizationSettings creates or updates the settings row. Access
+	// control is enforced inside the repository (owner or holder of
+	// CompanyFinanceManage).
+	UpsertOrganizationSettings(ctx context.Context, actorID int64, settings OrganizationSettings) (*OrganizationSettings, error)
+	// GetOrganizationSettingsByID is the internal, request-hot-path variant
+	// used by the auth middleware to decide whether to fall over to another
+	// subscription. It does not enforce user-level ACLs because the caller has
+	// already been authenticated via the API key.
+	GetOrganizationSettingsByID(ctx context.Context, organizationID int64) (*OrganizationSettings, error)
+	// ListFallbackCandidateSubscriptions returns other active organization
+	// subscriptions on the same platform as `currentSubscriptionID`, sorted by
+	// `starts_at` ascending. It excludes the current subscription itself. Used
+	// both by the auth middleware fallback and the API Key list UI so the
+	// candidate chain shown to users matches what would actually be selected.
+	ListFallbackCandidateSubscriptions(ctx context.Context, organizationID, currentSubscriptionID int64) ([]OrganizationSubscription, error)
+	// ResolveNextOrganizationSubscription picks the first fallback candidate
+	// that is currently under all its limits (i.e. the next-usable plan). It
+	// returns ErrOrgSubscriptionNotFound when no candidate qualifies.
+	ResolveNextOrganizationSubscription(ctx context.Context, organizationID, currentSubscriptionID int64) (*OrgSubscriptionRuntime, error)
+}
+
 type OrganizationUsageFilter struct {
 	Start       time.Time
 	End         time.Time
@@ -607,10 +653,20 @@ type OrganizationRepository interface {
 	// GetOrganizationSubscriptionForBilling loads a company subscription's usage
 	// windows, counters and group limits for request-time validation and billing.
 	GetOrganizationSubscriptionForBilling(ctx context.Context, subscriptionID int64) (*OrgSubscriptionRuntime, error)
+	// GetOrganizationSubscriptionOrganizationID returns the organization_id of
+	// the given subscription regardless of its lifecycle state (allows soft-
+	// deleted, expired, or cancelled rows). Used purely as an ACL helper for
+	// views that must remain visible after a subscription is revoked/cleaned.
+	// Returns ErrOrgSubscriptionNotFound only when the id does not exist at all.
+	GetOrganizationSubscriptionOrganizationID(ctx context.Context, subscriptionID int64) (int64, error)
 	// IncrementOrganizationSubscriptionUsage atomically adds costUSD to the
 	// subscription's daily/weekly/monthly usage counters (window-aware).
 	IncrementOrganizationSubscriptionUsage(ctx context.Context, subscriptionID int64, costUSD float64) error
 	FinanceSummary(ctx context.Context, userID int64) (*FinanceSummary, error)
+	// ListAuditEvents returns paginated audit records for an organization, optionally
+	// filtered by a coarse category (recharge / authorize / allocate / spend_limit).
+	// Owner-only access is enforced in the service layer.
+	ListAuditEvents(ctx context.Context, organizationID int64, filter OrganizationAuditFilter) ([]OrganizationAuditLogEntry, int64, error)
 	ListUsage(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageRow, int64, error)
 	UsageStats(ctx context.Context, userID int64, filter OrganizationUsageFilter) (*OrganizationUsageStats, error)
 	UsageTrend(ctx context.Context, userID int64, filter OrganizationUsageFilter) ([]OrganizationUsageTrendPoint, error)
@@ -1144,6 +1200,108 @@ func (s *OrganizationService) ResetIAMPassword(ctx context.Context, ownerID, mem
 	return password, nil
 }
 
+// GetOrganizationSettings returns the current feature-toggle configuration
+// for the caller's organization. Visible to owners and to members holding the
+// `CompanyFinanceManage` policy; other members receive ErrOrganizationPermission.
+// Repository returns default (zero) settings when no row exists so the UI can
+// render the switches with their default states.
+func (s *OrganizationService) GetOrganizationSettings(ctx context.Context, actorID int64) (*OrganizationSettings, error) {
+	repo, ok := s.repo.(OrganizationSettingsRepository)
+	if !ok {
+		// Repository not yet updated: fall back to defaults so old deployments
+		// keep working. The UI still shows the switches in their default states.
+		return &OrganizationSettings{AutoSwitchSubscription: true}, nil
+	}
+	return repo.GetOrganizationSettings(ctx, actorID)
+}
+
+// UpdateOrganizationSettings persists the toggle values. Access control is
+// enforced inside the repository (owner or CompanyFinanceManage holder).
+func (s *OrganizationService) UpdateOrganizationSettings(ctx context.Context, actorID int64, settings OrganizationSettings) (*OrganizationSettings, error) {
+	repo, ok := s.repo.(OrganizationSettingsRepository)
+	if !ok {
+		return nil, ErrOrganizationPermission
+	}
+	return repo.UpsertOrganizationSettings(ctx, actorID, settings)
+}
+
+// ListFallbackCandidatesForSubscription returns the ordered list of
+// same-platform organization subscriptions this member may fall over to when
+// `currentSubscriptionID` is exhausted. Used by the API Key list UI to render
+// the candidate chain so users can see exactly which plans will be tried next.
+// Empty result is a valid state (no other plans available); callers should
+// render an appropriate hint. Non-members / non-authorized users receive
+// ErrOrganizationPermission.
+//
+// ACL: 与 GetSubscriptionFallbackView 一致，只要求"调用者是订阅所在组织的
+// 活跃成员"；不要求订阅本身仍 active/未过期，因为 fallback 页面正是要在过
+// 期/失效时展示候选。
+func (s *OrganizationService) ListFallbackCandidatesForSubscription(ctx context.Context, userID, currentSubscriptionID int64) ([]OrganizationSubscription, error) {
+	organizationID, err := s.repo.GetOrganizationSubscriptionOrganizationID(ctx, currentSubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	orgCtx, err := s.repo.GetContextForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !orgCtx.Active() || orgCtx.OrganizationID != organizationID {
+		return nil, ErrOrganizationPermission
+	}
+	repo, ok := s.repo.(OrganizationSettingsRepository)
+	if !ok {
+		return []OrganizationSubscription{}, nil
+	}
+	return repo.ListFallbackCandidateSubscriptions(ctx, organizationID, currentSubscriptionID)
+}
+
+// SubscriptionFallbackView bundles the ordered candidate chain with the
+// organization-level auto-switch flag so the API Key UI can render both in a
+// single roundtrip.
+type SubscriptionFallbackView struct {
+	AutoSwitchEnabled bool                       `json:"auto_switch_enabled"`
+	Candidates        []OrganizationSubscription `json:"candidates"`
+}
+
+// GetSubscriptionFallbackView is the composite helper used by the API Key list
+// UI. Any active member of the organization that owns `currentSubscriptionID`
+// may call it; the returned auto-switch flag is read via the repository's
+// internal-by-id accessor so IAM members without CompanyFinanceManage still see
+// the correct state (they just can't toggle it).
+//
+// ACL: 仅校验"调用者属于当前订阅所在组织的活跃成员"；不要求当前订阅仍处于
+// active/未过期状态——这正是 fallback 存在的场景（过期/失效/被清理时用户依
+// 然应能看到候选链）。因此使用 GetOrganizationSubscriptionOrganizationID
+// 拿 organization_id（该方法允许软删/无关联 group），再用 GetContextForUser
+// 验证成员身份。
+func (s *OrganizationService) GetSubscriptionFallbackView(ctx context.Context, userID, currentSubscriptionID int64) (*SubscriptionFallbackView, error) {
+	organizationID, err := s.repo.GetOrganizationSubscriptionOrganizationID(ctx, currentSubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	orgCtx, err := s.repo.GetContextForUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !orgCtx.Active() || orgCtx.OrganizationID != organizationID {
+		return nil, ErrOrganizationPermission
+	}
+	repo, ok := s.repo.(OrganizationSettingsRepository)
+	if !ok {
+		return &SubscriptionFallbackView{AutoSwitchEnabled: true, Candidates: []OrganizationSubscription{}}, nil
+	}
+	settings, err := repo.GetOrganizationSettingsByID(ctx, organizationID)
+	autoSwitch := true
+	if err == nil && settings != nil {
+		autoSwitch = settings.AutoSwitchSubscription
+	}
+	candidates, err := repo.ListFallbackCandidateSubscriptions(ctx, organizationID, currentSubscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	return &SubscriptionFallbackView{AutoSwitchEnabled: autoSwitch, Candidates: candidates}, nil
+}
+
 func (s *OrganizationService) ChangeIAMPassword(ctx context.Context, userID int64, password string) (*User, error) {
 	if len(password) < 8 {
 		return nil, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "password must be at least 8 characters")
@@ -1183,7 +1341,9 @@ func (s *OrganizationService) ListMemberPolicyAttachments(ctx context.Context, o
 }
 
 func (s *OrganizationService) SetPolicyAttachment(ctx context.Context, ownerID, memberID int64, policyKey string, attach bool, correlationID string) error {
-	if policyKey != PolicyCompanyFinanceReadOnly && policyKey != PolicyCompanySharedBalance {
+	switch policyKey {
+	case PolicyCompanyFinanceReadOnly, PolicyCompanySharedBalance, PolicyCompanyFinanceManage, PolicyIAMUserManage:
+	default:
 		return infraerrors.BadRequest("POLICY_INVALID", "managed policy is invalid")
 	}
 	if err := s.repo.SetPolicyAttachment(ctx, ownerID, memberID, policyKey, attach, correlationID); err != nil {
@@ -1225,6 +1385,98 @@ func (s *OrganizationService) FinanceSummary(ctx context.Context, userID int64) 
 	return s.repo.FinanceSummary(ctx, userID)
 }
 
+// OrganizationAuditLogEntry is a single audit row returned by the operation log
+// API used by the enterprise "Audit log" page. It extends OrganizationAuditEvent
+// with UI-friendly fields (login names, coarse category) so the frontend can
+// render human-readable rows without extra lookups.
+type OrganizationAuditLogEntry struct {
+	ID               int64  `json:"id"`
+	OrganizationID   *int64 `json:"organization_id,omitempty"`
+	ActorUserID      *int64 `json:"actor_user_id,omitempty"`
+	ActorLoginName   string `json:"actor_login_name,omitempty"`
+	ActorUsername    string `json:"actor_username,omitempty"`
+	ActorEmail       string `json:"actor_email,omitempty"`
+	SubjectUserID    *int64 `json:"subject_user_id,omitempty"`
+	SubjectLoginName string `json:"subject_login_name,omitempty"`
+	SubjectUsername  string `json:"subject_username,omitempty"`
+	SubjectEmail     string `json:"subject_email,omitempty"`
+	Action           string `json:"action"`
+	// Category is the coarse bucket used for UI filtering. Derived from Action.
+	// One of: recharge, authorize, allocate, spend_limit, other.
+	Category  string                 `json:"category"`
+	Result    string                 `json:"result"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt time.Time              `json:"created_at"`
+}
+
+// OrganizationAuditFilter narrows down the audit event query used by the
+// enterprise "Audit log" page.
+type OrganizationAuditFilter struct {
+	Category string    // "" | "recharge" | "authorize" | "allocate" | "spend_limit"
+	Start    time.Time // zero value means no lower bound
+	End      time.Time // zero value means no upper bound
+	Page     int
+	PageSize int
+}
+
+// AuditActionsForCategory maps a coarse UI category to the underlying action
+// names stored in organization_audit_events. Exposed so the repository layer
+// can reuse the same mapping without duplicating the string list.
+func AuditActionsForCategory(category string) []string {
+	switch category {
+	case "recharge":
+		return []string{"organization.balance.company_deposit", "organization.balance.company_withdraw"}
+	case "authorize":
+		return []string{"iam.policy.change"}
+	case "allocate":
+		return []string{"organization.balance.allocate", "organization.balance.reclaim"}
+	case "spend_limit":
+		return []string{"spend_limit.upsert", "spend_limit.delete"}
+	}
+	return nil
+}
+
+// AuditCategoryForAction is the inverse of AuditActionsForCategory: given a
+// raw action string it returns the coarse category used by the UI, or "other".
+func AuditCategoryForAction(action string) string {
+	switch action {
+	case "organization.balance.company_deposit", "organization.balance.company_withdraw":
+		return "recharge"
+	case "iam.policy.change":
+		return "authorize"
+	case "organization.balance.allocate", "organization.balance.reclaim":
+		return "allocate"
+	case "spend_limit.upsert", "spend_limit.delete":
+		return "spend_limit"
+	}
+	return "other"
+}
+
+// ListAuditEvents returns paginated operation records for the organization
+// bound to the caller. Owner-only access — non-owners get ErrOrganizationPermission
+// so the endpoint cannot be used to snoop on peers' actions.
+func (s *OrganizationService) ListAuditEvents(ctx context.Context, userID int64, filter OrganizationAuditFilter) ([]OrganizationAuditLogEntry, int64, error) {
+	org, err := s.repo.GetContextForUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if org == nil || !org.Active() || !org.Owner() {
+		return nil, 0, ErrOrganizationPermission
+	}
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.PageSize <= 0 || filter.PageSize > 100 {
+		filter.PageSize = 20
+	}
+	// Normalize an unknown category to empty (all) so a stale UI cannot force
+	// the repository to filter by a bogus action set that matches nothing.
+	if filter.Category != "" && AuditActionsForCategory(filter.Category) == nil {
+		filter.Category = ""
+	}
+	return s.repo.ListAuditEvents(ctx, org.OrganizationID, filter)
+}
+
 // CreateOrganizationSubscription provisions a subscription plan (group) for the
 // caller's company. Only the organization owner may do this (enforced in the
 // repository). When validityDays is 0 the group's default validity is used.
@@ -1257,7 +1509,10 @@ func (s *OrganizationService) ListSubscriptionGroups(ctx context.Context, userID
 	if err != nil {
 		return nil, err
 	}
-	if !orgCtx.Active() || !orgCtx.Owner() {
+	if !orgCtx.Active() {
+		return nil, ErrOrganizationPermission
+	}
+	if !orgCtx.Owner() && !orgCtx.HasAction(ActionSubscriptionManage) {
 		return nil, ErrOrganizationPermission
 	}
 	if s.groupLister == nil {
@@ -1294,7 +1549,10 @@ func (s *OrganizationService) CreateSubscriptionOrder(ctx context.Context, userI
 	if err != nil {
 		return nil, err
 	}
-	if !orgCtx.Active() || !orgCtx.Owner() {
+	if !orgCtx.Active() {
+		return nil, ErrOrganizationPermission
+	}
+	if !orgCtx.Owner() && !orgCtx.HasAction(ActionSubscriptionManage) {
 		return nil, ErrOrganizationPermission
 	}
 	if s.orderCreator == nil {

@@ -631,6 +631,63 @@ func (s *APIKeyService) IncrementEnterpriseSubscriptionUsage(ctx context.Context
 	return s.organizationRepo.IncrementOrganizationSubscriptionUsage(ctx, subscriptionID, costUSD)
 }
 
+// EnterpriseFallbackTarget 描述"自动切换订阅套餐"命中后应改用的目标订阅信息。
+// 返回值供中间件在**本次请求内**替换 apiKey.OrganizationSubscriptionID 及
+// apiKey.Group 使用，不修改任何数据库记录（C1 语义）。
+type EnterpriseFallbackTarget struct {
+	SubscriptionID int64
+	GroupID        int64
+	Group          *Group
+}
+
+// ResolveEnterpriseSubscriptionFallback 尝试为已命中 daily/weekly/monthly
+// 限额、或订阅已失效/过期（validateErr = ErrOrgSubscriptionNotFound）的企业 API
+// Key 查找下一个可用的同平台企业订阅。当以下任一条件成立时返回 (nil,nil)：
+//   - 非企业 Key
+//   - 组织未开启 auto_switch_subscription
+//   - 组织仓库或 GroupRepository 不可用
+//   - 没有任何候选订阅可用（此时保留原错误由调用方返回）
+//
+// 命中候选时会加载目标 group 并回填，供中间件在请求上下文替换分组。
+func (s *APIKeyService) ResolveEnterpriseSubscriptionFallback(ctx context.Context, apiKey *APIKey) (*EnterpriseFallbackTarget, error) {
+	if apiKey == nil || apiKey.OrganizationSubscriptionID == nil {
+		return nil, nil
+	}
+	if s.organizationRepo == nil {
+		return nil, nil
+	}
+	settingsRepo, ok := s.organizationRepo.(OrganizationSettingsRepository)
+	if !ok {
+		return nil, nil
+	}
+	// 先加载当前订阅只是为了拿到 organizationID —— 即使当前订阅已过期/失效也允许
+	// 通过它反查所属企业，进而列出候选订阅。
+	current, err := s.organizationRepo.GetOrganizationSubscriptionForBilling(ctx, *apiKey.OrganizationSubscriptionID)
+	if err != nil {
+		return nil, nil
+	}
+	settings, err := settingsRepo.GetOrganizationSettingsByID(ctx, current.OrganizationID)
+	if err != nil || settings == nil || !settings.AutoSwitchSubscription {
+		return nil, nil
+	}
+	next, err := settingsRepo.ResolveNextOrganizationSubscription(ctx, current.OrganizationID, current.ID)
+	if err != nil || next == nil {
+		return nil, nil
+	}
+	// G1：切换到目标订阅对应的 group（本次请求内替换 apiKey.Group，不写库）。
+	var group *Group
+	if s.groupRepo != nil {
+		if g, gerr := s.groupRepo.GetByID(ctx, next.GroupID); gerr == nil {
+			group = g
+		}
+	}
+	return &EnterpriseFallbackTarget{
+		SubscriptionID: next.ID,
+		GroupID:        next.GroupID,
+		Group:          group,
+	}, nil
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	if err := validateCreateAPIKeyRequest(req); err != nil {

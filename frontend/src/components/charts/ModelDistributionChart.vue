@@ -93,6 +93,21 @@
             {{ t('admin.dashboard.viewSpendingRanking') }}
           </button>
         </div>
+        <button
+          v-if="enableExport && canExport"
+          type="button"
+          class="inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+          :disabled="exporting"
+          :title="t('common.export')"
+          @click="exportToExcel"
+        >
+          <Icon v-if="!exporting" name="download" size="xs" />
+          <svg v-else class="h-3 w-3 animate-spin text-gray-500 dark:text-gray-300" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span>{{ t('common.export') }}</span>
+        </button>
       </div>
     </div>
 
@@ -310,6 +325,8 @@ const props = withDefaults(defineProps<{
   filters?: Record<string, any>
   breakdownLoader?: (params: Record<string, any>) => Promise<{ users: UserBreakdownItem[] }>
   rankingBreakdownLoader?: (item: UserSpendingRankingItem) => Promise<ModelStat[]>
+  enableExport?: boolean
+  exportFilenamePrefix?: string
 }>(), {
   upstreamModelStats: () => [],
   mappingModelStats: () => [],
@@ -326,7 +343,9 @@ const props = withDefaults(defineProps<{
   enableBreakdown: true,
   showAccountCost: true,
   rankingLoading: false,
-  rankingError: false
+  rankingError: false,
+  enableExport: false,
+  exportFilenamePrefix: ''
 })
 
 const expandedKey = ref<string | null>(null)
@@ -595,5 +614,93 @@ const formatCost = (value: number | null | undefined): string => {
     return safeValue.toFixed(3)
   }
   return safeValue.toFixed(4)
+}
+
+const exporting = ref(false)
+
+const canExport = computed(() => {
+  if (activeView.value === 'model_distribution') return displayModelStats.value.length > 0
+  return rankingDisplayItems.value.length > 0
+})
+
+const buildExportFilename = (view: 'model_distribution' | 'spending_ranking'): string => {
+  const prefix = props.exportFilenamePrefix?.trim() || (view === 'model_distribution' ? 'model_distribution' : 'user_spending_ranking')
+  const suffix = view === 'model_distribution' ? 'models' : 'users'
+  const range = props.startDate && props.endDate ? `_${props.startDate}_to_${props.endDate}` : ''
+  return `${prefix}_${suffix}${range}.xlsx`
+}
+
+const exportToExcel = async () => {
+  if (exporting.value || !canExport.value) return
+  exporting.value = true
+  try {
+    const [XLSX, { saveAs }] = await Promise.all([
+      import('xlsx'),
+      import('file-saver')
+    ])
+
+    let sheetName = ''
+    let headers: string[] = []
+    let rows: (string | number)[][] = []
+
+    if (activeView.value === 'model_distribution') {
+      sheetName = t('admin.dashboard.modelDistribution')
+      headers = [
+        t('admin.dashboard.model'),
+        t('admin.dashboard.requests'),
+        t('admin.dashboard.tokens'),
+        t('admin.dashboard.actual'),
+        ...(showAccountCost.value ? [t('admin.dashboard.accountCost')] : []),
+        t('admin.dashboard.standard'),
+      ]
+      rows = displayModelStats.value.map((m) => {
+        const base: (string | number)[] = [
+          m.model,
+          toFiniteNumber(m.requests),
+          toFiniteNumber(m.total_tokens),
+          Number(toFiniteNumber(m.actual_cost).toFixed(6)),
+        ]
+        if (showAccountCost.value) base.push(Number(toFiniteNumber(m.account_cost).toFixed(6)))
+        base.push(Number(toFiniteNumber(m.cost).toFixed(6)))
+        return base
+      })
+    } else {
+      sheetName = t('admin.dashboard.spendingRankingTitle')
+      headers = [
+        '#',
+        t('admin.dashboard.spendingRankingUser'),
+        t('admin.dashboard.spendingRankingRequests'),
+        t('admin.dashboard.spendingRankingTokens'),
+        t('admin.dashboard.spendingRankingSpend'),
+      ]
+      let rank = 0
+      rows = rankingDisplayItems.value.map((item) => {
+        const label = item.isOther
+          ? t('admin.dashboard.spendingRankingOther')
+          : getRankingUserLabel(item)
+        const seq = item.isOther ? 'Σ' : String(++rank)
+        return [
+          seq,
+          label,
+          toFiniteNumber(item.requests),
+          toFiniteNumber(item.tokens),
+          Number(toFiniteNumber(item.actual_cost).toFixed(6)),
+        ]
+      })
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31) || 'Sheet1')
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    saveAs(
+      new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      buildExportFilename(activeView.value),
+    )
+  } catch (err) {
+    console.error('Failed to export chart data:', err)
+  } finally {
+    exporting.value = false
+  }
 }
 </script>

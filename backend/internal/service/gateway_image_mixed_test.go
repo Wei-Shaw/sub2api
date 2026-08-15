@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // newImageMixedRepo 构造 openai + fal 混合候选池测试用的账号仓储。
@@ -222,5 +225,47 @@ func TestGatewayService_SelectImageAccountMixed(t *testing.T) {
 		require.NotNil(t, acc)
 		require.Equal(t, int64(1), acc.ID)
 		require.Equal(t, PlatformOpenAI, acc.Platform)
+	})
+
+	t.Run("日志记录每个混合候选的选号结果", func(t *testing.T) {
+		repo := newImageMixedRepo([]Account{
+			openaiImageAccount(1, 1),
+			falImageAccount(2, 2, map[string]any{t2iModel: upstream}),
+		})
+		svc := newSvc(repo, nil)
+		core, observedLogs := observer.New(zap.DebugLevel)
+		logCtx := logger.IntoContext(ctx, zap.New(core))
+
+		acc, err := svc.SelectImageAccountMixed(logCtx, &groupID, "", t2iModel, nil, OpenAIImagesCapabilityBasic, "", "")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), acc.ID)
+
+		started := observedLogs.FilterMessage("image.account_selection_started").All()
+		require.Len(t, started, 1)
+		require.Equal(t, "priority_last_used", started[0].ContextMap()["selection_policy"])
+		require.Equal(t, int64(2), started[0].ContextMap()["eligible_candidate_count"])
+
+		candidateLogs := observedLogs.FilterMessage("image.account_selection_candidate").All()
+		require.Len(t, candidateLogs, 2)
+		byAccountID := make(map[int64]map[string]any, len(candidateLogs))
+		for _, entry := range candidateLogs {
+			fields := entry.ContextMap()
+			accountID, ok := fields["account_id"].(int64)
+			require.True(t, ok)
+			byAccountID[accountID] = fields
+		}
+		require.Equal(t, "selected", byAccountID[1]["outcome"])
+		require.Equal(t, "priority_last_used", byAccountID[1]["reason"])
+		require.Equal(t, "not_selected", byAccountID[2]["outcome"])
+		require.Equal(t, "lower_priority", byAccountID[2]["reason"])
+		require.Equal(t, int64(2), byAccountID[2]["priority"])
+		require.Equal(t, true, byAccountID[2]["model_supported"])
+		require.Equal(t, true, byAccountID[2]["pricing_configured"])
+		require.Equal(t, true, byAccountID[2]["eligible"])
+
+		selected := observedLogs.FilterMessage("image.account_selection_selected").All()
+		require.Len(t, selected, 1)
+		require.Equal(t, int64(1), selected[0].ContextMap()["account_id"])
+		require.Equal(t, PlatformOpenAI, selected[0].ContextMap()["platform"])
 	})
 }

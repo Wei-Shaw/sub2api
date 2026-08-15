@@ -11,7 +11,14 @@
       <p class="mt-1 font-mono text-xs text-gray-500">{{ organization?.company_id }}</p>
     </div>
 
-    <div v-if="visibleTabs.length" class="settings-tabs-shell">
+    <!--
+      企业管理各子 tab 已迁移到侧边栏折叠子菜单；页内 tab bar 不再显示，
+      但保留 DOM（隐藏 + sr-only）以便无障碍导航与既有单测按 id 触发 tab 切换。
+      加上 hidden 属性可避免 tailwind space-y-* 把它当作可见子项计入间距，
+      从而消除页面顶部标题下方多出的空白间隔。
+      activeTab 仍以派生形式控制下方内容区域。
+    -->
+    <div v-if="visibleTabs.length" hidden class="settings-tabs-shell sr-only" aria-hidden="true">
       <nav class="settings-tabs-scroll" role="tablist" :aria-label="t('organization.console')">
         <div class="settings-tabs">
           <button
@@ -68,7 +75,7 @@
       <section class="card space-y-4 p-5" data-testid="organization-members">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.tabs.members') }}</h3>
-          <div v-if="isOwner" class="flex flex-wrap items-center gap-3">
+          <div v-if="canManageIAM" class="flex flex-wrap items-center gap-3">
             <span class="text-sm text-gray-500">{{ t('organization.members.slots', { used: usedSlots, limit: memberLimit }) }}</span>
             <button data-testid="create-iam-member" class="btn btn-primary" :disabled="usedSlots >= memberLimit || operationKey !== ''" @click="showCreate = true">
               {{ t('organization.members.create') }}
@@ -85,7 +92,7 @@
                 <th class="p-3">{{ t('common.status') }}</th>
                 <th class="p-3">{{ t('organization.finance.available') }}</th>
                 <th class="p-3">{{ t('organization.policies') }}</th>
-                <th v-if="isOwner" class="p-3 text-right">{{ t('common.actions') }}</th>
+                <th v-if="canManageIAM || canAllocateBalance" class="p-3 text-right">{{ t('common.actions') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -123,14 +130,14 @@
                     </HelpTooltip>
                   </div>
                 </td>
-                <td v-if="isOwner" class="p-3 text-right">
+                <td v-if="canManageIAM || canAllocateBalance" class="p-3 text-right">
                   <div class="flex flex-wrap justify-end gap-1">
-                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAuthorization(member)">{{ t('organization.members.authorize') }}</button>
-                    <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAllocation(member)">{{ t('organization.members.allocateFunds') }}</button>
-                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="resetPassword(member)">{{ t('organization.members.resetPassword') }}</button>
-                    <button v-if="member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'disabled')">{{ t('organization.members.disable') }}</button>
-                    <button v-else-if="member.status === 'disabled'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'active')">{{ t('organization.members.enable') }}</button>
-                    <button v-if="member.status !== 'archived'" class="btn btn-ghost btn-sm text-red-600" :disabled="isBusy(member)" @click="archiveMember(member)">{{ t('organization.members.archive') }}</button>
+                    <button v-if="isOwner && member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAuthorization(member)">{{ t('organization.members.authorize') }}</button>
+                    <button v-if="canAllocateBalance && member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="openAllocation(member)">{{ t('organization.members.allocateFunds') }}</button>
+                    <button v-if="canManageIAM && member.status !== 'archived'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="resetPassword(member)">{{ t('organization.members.resetPassword') }}</button>
+                    <button v-if="isOwner && member.status === 'active'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'disabled')">{{ t('organization.members.disable') }}</button>
+                    <button v-else-if="isOwner && member.status === 'disabled'" class="btn btn-ghost btn-sm" :disabled="isBusy(member)" @click="setStatus(member, 'active')">{{ t('organization.members.enable') }}</button>
+                    <button v-if="isOwner && member.status !== 'archived'" class="btn btn-ghost btn-sm text-red-600" :disabled="isBusy(member)" @click="archiveMember(member)">{{ t('organization.members.archive') }}</button>
                   </div>
                 </td>
               </tr>
@@ -141,7 +148,7 @@
     </div>
 
     <div v-else-if="activeTab === 'limits'" class="space-y-6">
-      <section v-if="isOwner" class="card space-y-4 p-5" data-testid="spend-limit-form">
+      <section v-if="canManageSpendLimits" class="card space-y-4 p-5" data-testid="spend-limit-form">
         <div>
           <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.spendLimits.configure') }}</h3>
           <p class="mt-1 text-sm text-gray-500">{{ t('organization.spendLimits.description') }}</p>
@@ -233,7 +240,7 @@
         </div>
       </section>
 
-      <section v-if="isOwner && spendLimitRules.length" class="card space-y-3 p-5" data-testid="spend-limit-rules">
+      <section v-if="canManageSpendLimits && spendLimitRules.length" class="card space-y-3 p-5" data-testid="spend-limit-rules">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.spendLimits.rules') }}</h3>
         <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-dark-700">
           <table class="w-full min-w-[760px] text-sm">
@@ -340,7 +347,7 @@
         </div>
       </div>
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <ModelDistributionChart :model-stats="dashboardModelStats" :loading="dashboardChartsLoading" :show-metric-toggle="false" :show-source-toggle="false" :enable-breakdown="true" :enable-ranking-view="true" :show-account-cost="true" :ranking-items="dashboardRankingItems" :ranking-total-actual-cost="dashboardRankingTotalActualCost" :ranking-total-requests="dashboardRankingTotalRequests" :ranking-total-tokens="dashboardRankingTotalTokens" :ranking-loading="dashboardChartsLoading" :start-date="dashboardStartDate" :end-date="dashboardEndDate" :breakdown-loader="loadOrganizationBreakdown" :ranking-breakdown-loader="loadOrganizationRankingModels" />
+        <ModelDistributionChart :model-stats="dashboardModelStats" :loading="dashboardChartsLoading" :show-metric-toggle="false" :show-source-toggle="false" :enable-breakdown="true" :enable-ranking-view="true" :show-account-cost="true" :ranking-items="dashboardRankingItems" :ranking-total-actual-cost="dashboardRankingTotalActualCost" :ranking-total-requests="dashboardRankingTotalRequests" :ranking-total-tokens="dashboardRankingTotalTokens" :ranking-loading="dashboardChartsLoading" :start-date="dashboardStartDate" :end-date="dashboardEndDate" :breakdown-loader="loadOrganizationBreakdown" :ranking-breakdown-loader="loadOrganizationRankingModels" :enable-export="true" export-filename-prefix="organization_dashboard" />
         <TokenUsageTrend :trend-data="dashboardTrend" :loading="dashboardChartsLoading" />
       </div>
       <UserUsageTrendChart :items="userUsageTrend" :loading="dashboardChartsLoading" />
@@ -349,7 +356,7 @@
     <div v-else-if="activeTab === 'subscriptions'" class="space-y-6">
       <p class="card p-4 text-sm text-gray-500">{{ t('organization.subscriptions.description') }}</p>
 
-      <section v-if="isOwner" class="card space-y-3 p-5">
+      <section v-if="canManageSubscriptions" class="card space-y-3 p-5">
         <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.subscriptions.createTitle') }}</h3>
         <p class="text-xs text-gray-500">{{ t('organization.subscriptions.createHint') }}</p>
         <PlanPlazaCards :cards="planCards" :loading="plansLoading" emit-select @select="openPurchase" />
@@ -380,7 +387,7 @@
               <th class="p-3">{{ t('organization.subscriptions.status') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.usage') }}</th>
               <th class="p-3">{{ t('organization.subscriptions.expiresAt') }}</th>
-              <th v-if="isOwner" class="p-3">{{ t('common.actions') }}</th>
+              <th v-if="canManageSubscriptions" class="p-3">{{ t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -396,7 +403,7 @@
                 <div>{{ t('organization.subscriptions.monthly') }}: {{ formatMoney(item.monthly_usage_usd) }}<template v-if="item.monthly_limit_usd"> / {{ formatMoney(item.monthly_limit_usd) }}</template></div>
               </td>
               <td class="p-3 whitespace-nowrap">{{ formatSubscriptionDate(item.expires_at) }}</td>
-              <td v-if="isOwner" class="p-3">
+              <td v-if="canManageSubscriptions" class="p-3">
                 <button class="btn btn-ghost btn-sm text-red-600" :disabled="item.status !== 'active' || operationKey !== ''" @click="cancelSubscription(item)">{{ t('organization.subscriptions.cancel') }}</button>
               </td>
             </tr>
@@ -405,7 +412,7 @@
       </div>
     </div>
 
-    <section v-else class="space-y-4">
+    <section v-else-if="activeTab === 'usage'" class="space-y-4">
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div class="card p-4">
           <div class="text-xs text-gray-500">{{ t('organization.usage.statRequests') }}</div>
@@ -584,6 +591,118 @@
       </div>
     </section>
 
+    <section v-else-if="activeTab === 'audit'" class="space-y-4" data-testid="organization-audit-tab">
+      <div class="card p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.audit.title') }}</h3>
+            <p class="mt-1 text-xs text-gray-500">{{ t('organization.audit.description') }}</p>
+          </div>
+          <div class="flex flex-wrap items-end gap-3">
+            <div class="min-w-[160px]">
+              <label class="input-label">{{ t('organization.audit.categoryLabel') }}</label>
+              <Select v-model="auditCategory" :options="auditCategoryOptions" @change="loadAuditEvents(1)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-gray-50 text-left text-xs font-medium uppercase text-gray-500 dark:bg-dark-800/60">
+              <tr>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.time') }}</th>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.categoryLabel') }}</th>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.actor') }}</th>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.subject') }}</th>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.action') }}</th>
+                <th class="whitespace-nowrap p-3">{{ t('organization.audit.result') }}</th>
+                <th class="p-3">{{ t('organization.audit.detail') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="event in auditPage.items" :key="event.id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="whitespace-nowrap p-3 font-mono text-xs">{{ formatAuditTime(event.created_at) }}</td>
+                <td class="whitespace-nowrap p-3">{{ t('organization.audit.categories.' + event.category) }}</td>
+                <td class="p-3">
+                  <div class="font-medium text-gray-900 dark:text-white">{{ auditActorEmail(event) }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ auditActorUsername(event) }}</div>
+                </td>
+                <td class="p-3">
+                  <div class="font-medium text-gray-900 dark:text-white">{{ auditSubjectEmail(event) }}</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">{{ auditSubjectUsername(event) }}</div>
+                </td>
+                <td class="p-3">{{ auditActionLabel(event.action) }}</td>
+                <td class="whitespace-nowrap p-3">{{ auditResultLabel(event.result) }}</td>
+                <td class="p-3 text-xs text-gray-600 dark:text-gray-300">{{ auditDetailText(event) }}</td>
+              </tr>
+              <tr v-if="!auditPage.items.length && !auditLoading">
+                <td colspan="7" class="p-6 text-center text-sm text-gray-500">{{ t('organization.audit.empty') }}</td>
+              </tr>
+              <tr v-if="auditLoading">
+                <td colspan="7" class="p-6 text-center text-sm text-gray-500">{{ t('common.loading') }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <Pagination
+          v-if="auditPage.total > 0"
+          :page="auditPage.page"
+          :total="auditPage.total"
+          :page-size="auditPage.page_size"
+          @update:page="loadAuditEvents"
+          @update:pageSize="onAuditPageSize"
+        />
+      </div>
+    </section>
+
+    <section v-else-if="activeTab === 'settings'" class="space-y-4" data-testid="organization-settings-tab">
+      <div class="card p-5 space-y-4">
+        <div>
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('organization.settings.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500">{{ t('organization.settings.description') }}</p>
+        </div>
+
+        <div v-if="settingsLoading" class="text-sm text-gray-500">{{ t('common.loading') }}</div>
+        <div v-else class="space-y-4">
+          <div class="rounded-md border border-gray-200 p-4 dark:border-dark-700">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ t('organization.settings.autoSwitchSubscription.label') }}</div>
+                <p class="mt-1 text-xs text-gray-500 leading-relaxed">{{ t('organization.settings.autoSwitchSubscription.description') }}</p>
+              </div>
+              <label class="relative inline-flex shrink-0 cursor-pointer items-center">
+                <input
+                  v-model="settingsState.auto_switch_subscription"
+                  type="checkbox"
+                  class="peer sr-only"
+                  :disabled="!canManageSubscriptions"
+                >
+                <div class="peer h-6 w-11 rounded-full bg-gray-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-primary-600 peer-checked:after:translate-x-full peer-disabled:cursor-not-allowed peer-disabled:opacity-60 dark:bg-dark-600" />
+                <span class="ml-3 text-xs text-gray-600 dark:text-dark-300">
+                  {{ settingsState.auto_switch_subscription ? t('organization.settings.autoSwitchSubscription.on') : t('organization.settings.autoSwitchSubscription.off') }}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div v-if="settingsError" class="text-sm text-red-600">{{ settingsError }}</div>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="settingsSaving || !canManageSubscriptions"
+              @click="saveSettings"
+            >
+              {{ settingsSaving ? t('organization.settings.saving') : t('organization.settings.save') }}
+            </button>
+            <span v-if="settingsSaved" class="text-sm text-emerald-600">{{ t('organization.settings.saved') }}</span>
+            <span v-if="!canManageSubscriptions" class="text-xs text-gray-500">{{ t('organization.settings.noPermission') }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <div v-if="showCreate" class="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
       <form class="w-full max-w-lg space-y-4 rounded-md bg-white p-5 shadow-xl dark:bg-dark-800" @submit.prevent="createMember">
         <h3 class="font-semibold">{{ t('organization.members.create') }}</h3>
@@ -744,6 +863,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { organizationAPI } from '@/api'
+import type { OrganizationAuditEntry } from '@/api/organization'
 import { plazaAPI } from '@/api/plaza'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -761,6 +881,7 @@ import UserUsageTrendChart from '@/components/usage/UserUsageTrendChart.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Select from '@/components/common/Select.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UsageTokenSummaryCard from '@/components/usage/UsageTokenSummaryCard.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -776,7 +897,31 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const { copyToClipboard } = useClipboard()
-type Tab = 'finance' | 'limits' | 'dashboard' | 'subscriptions' | 'usage'
+type Tab = 'finance' | 'limits' | 'dashboard' | 'subscriptions' | 'usage' | 'audit' | 'settings'
+
+// Tab 与新增独立子路由的映射。旧的 /organization?tab=xxx 仍兼容，
+// 但新链接一律指向独立子路由。
+const tabToPath: Record<Tab, string> = {
+  finance: '/organization/finance',
+  limits: '/organization/limits',
+  dashboard: '/organization/dashboard',
+  subscriptions: '/organization/subscriptions',
+  usage: '/organization/usage',
+  audit: '/organization/audit',
+  settings: '/organization/settings',
+}
+function tabFromPath(path: string): Tab | null {
+  const map: Record<string, Tab> = {
+    '/organization/finance': 'finance',
+    '/organization/limits': 'limits',
+    '/organization/dashboard': 'dashboard',
+    '/organization/subscriptions': 'subscriptions',
+    '/organization/usage': 'usage',
+    '/organization/audit': 'audit',
+    '/organization/settings': 'settings',
+  }
+  return map[path] ?? null
+}
 
 const activeTab = ref<Tab>('finance')
 const organization = ref<OrganizationContext>()
@@ -970,13 +1115,30 @@ const selectedPlanId = ref<number | null>(null)
 
 const isOwner = computed(() => organization.value?.role === 'owner')
 const actions = computed(() => organization.value?.actions || [])
-const canViewCompanyFinance = computed(() => isOwner.value || actions.value.includes('organization.finance.balance.read'))
-const visibleMembers = computed(() => isOwner.value
+const canViewCompanyFinance = computed(() => isOwner.value || actions.value.includes('organization.finance.balance.read') || actions.value.includes('organization.balance.allocate') || actions.value.includes('organization.spend_limit.manage') || actions.value.includes('organization.subscription.manage'))
+const canAllocateBalance = computed(() => isOwner.value || actions.value.includes('organization.balance.allocate'))
+const canManageSpendLimits = computed(() => isOwner.value || actions.value.includes('organization.spend_limit.manage'))
+const canManageSubscriptions = computed(() => isOwner.value || actions.value.includes('organization.subscription.manage'))
+const canManageIAM = computed(() => isOwner.value || actions.value.includes('organization.iam.member.manage'))
+// 拥有仪表盘与使用记录访问能力：owner 或持有企业财务只读/管理相关的能力标志。
+// CompanyFinanceReadOnly / CompanyFinanceManage 均会附带 organization.finance.balance.read 动作，
+// 而 balance allocate / spend_limit manage / subscription manage 同样属于财务管理范畴，因此一并放行。
+const hasFinanceReadOnly = computed(() => canViewCompanyFinance.value)
+const visibleMembers = computed(() => (isOwner.value || canManageIAM.value)
   ? members.value
   : members.value.filter(member => member.user_id === auth.user?.id))
-const visibleTabs = computed<Tab[]>(() => isOwner.value
-  ? ['finance', 'limits', 'dashboard', 'subscriptions', 'usage']
-  : (canViewCompanyFinance.value ? ['finance', 'limits', 'subscriptions'] : ['finance', 'limits']))
+const visibleTabs = computed<Tab[]>(() => {
+  if (isOwner.value) return ['finance', 'limits', 'dashboard', 'subscriptions', 'usage', 'settings', 'audit']
+  const tabs: Tab[] = ['finance']
+  if (canManageSpendLimits.value) tabs.push('limits')
+  else if (!canViewCompanyFinance.value) tabs.push('limits') // personal spend visibility keeps limits page
+  if (hasFinanceReadOnly.value) tabs.push('dashboard')
+  if (canManageSubscriptions.value || canViewCompanyFinance.value) tabs.push('subscriptions')
+  if (hasFinanceReadOnly.value) tabs.push('usage')
+  // 企业功能设置：owner 或 CompanyFinanceManage（挂载了 subscription.manage）。
+  if (canManageSubscriptions.value) tabs.push('settings')
+  return tabs
+})
 
 const configurableMembers = computed(() => members.value.filter(member => member.status !== 'archived'))
 const parsedSpendLimitRecipients = computed(() => spendLimitForm.recipients
@@ -999,13 +1161,22 @@ const canSaveSpendLimit = computed(() => {
   return !spendLimitForm.alertEnabled || (spendLimitForm.threshold >= 1 && spendLimitForm.threshold <= 100)
 })
 
-const tabIcons: Record<Tab, 'creditCard' | 'chart' | 'sparkles'> = { finance: 'creditCard', limits: 'chart', dashboard: 'chart', subscriptions: 'sparkles', usage: 'chart' }
+const tabIcons: Record<Tab, 'creditCard' | 'chart' | 'sparkles'> = { finance: 'creditCard', limits: 'chart', dashboard: 'chart', subscriptions: 'sparkles', usage: 'chart', audit: 'chart', settings: 'sparkles' }
 const tabKeyboardActions: Record<string, number | 'first' | 'last'> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, Home: 'first', End: 'last' }
 
 function selectTab(tab: Tab) {
   if (!visibleTabs.value.includes(tab)) return
   activeTab.value = tab
-  void router.push({ query: { ...route.query, tab } })
+  // 迁移策略：只有当前 URL 已经是"独立子路由"（/organization/xxx）时才切换到目标子路由；
+  // 若当前是旧式 /organization?tab=xxx，则保留旧式 query 行为，避免向后不兼容。
+  // 侧边栏子菜单直接使用独立 path 打开，路径判断也走这条分支进入新式行为。
+  const targetPath = tabToPath[tab]
+  const inSubRoute = route.path.startsWith('/organization/') && route.path !== '/organization'
+  if (inSubRoute && targetPath && route.path !== targetPath) {
+    void router.push({ path: targetPath })
+  } else if (route.query.tab !== tab) {
+    void router.push({ query: { ...route.query, tab } })
+  }
 }
 
 function focusTab(tab: Tab) {
@@ -1032,8 +1203,11 @@ function handleTabKeydown(event: KeyboardEvent, tab: Tab) {
 }
 
 function routeTab(): Tab | null {
+  // 优先从子路由推导（新方式），回退到 ?tab=xxx（旧链接兼容）。
+  const fromPath = tabFromPath(route.path)
+  if (fromPath) return fromPath
   const value = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab
-  return value === 'finance' || value === 'limits' || value === 'dashboard' || value === 'subscriptions' || value === 'usage' ? value : null
+  return value === 'finance' || value === 'limits' || value === 'dashboard' || value === 'subscriptions' || value === 'usage' || value === 'audit' ? value : null
 }
 
 function restoreTabFromRoute() {
@@ -1043,10 +1217,16 @@ function restoreTabFromRoute() {
     : visibleTabs.value[0]
   if (!nextTab) return
   activeTab.value = nextTab
-  if (route.query.tab !== nextTab) {
+  // 只有当前处于 /organization 根路径时才回写旧式 query；
+  // 在子路由上不再保留 ?tab= 参数，保持 URL 整洁。
+  if (route.path === '/organization' && route.query.tab !== nextTab) {
     void router.replace({ query: { ...route.query, tab: nextTab } })
   }
 }
+
+watch(() => route.path, () => {
+  if (organization.value) restoreTabFromRoute()
+})
 
 watch(() => route.query.tab, () => {
   if (organization.value) restoreTabFromRoute()
@@ -1366,7 +1546,7 @@ function organizationUsageParams(page: number): OrganizationUsageParams {
 }
 
 async function loadUsage(page = 1) {
-  if (!isOwner.value) return
+  if (!hasFinanceReadOnly.value) return
   usageLoading.value = true
   error.value = ''
   try {
@@ -1378,8 +1558,151 @@ async function loadUsage(page = 1) {
   }
 }
 
-async function loadUsageAggregates() {
+// ============================================================================
+// Audit log tab
+// ----------------------------------------------------------------------------
+// 操作记录页仅 owner 可见，聚合展示 organization_audit_events 中的充值 / 授权 /
+// 划拨 / 限额配置 4 类操作。后端已通过 owner 校验 + 类别过滤实现；前端只负责
+// 展示和翻页/过滤。
+// ============================================================================
+const auditCategory = ref<'' | 'recharge' | 'authorize' | 'allocate' | 'spend_limit'>('')
+const auditPage = ref<{ items: OrganizationAuditEntry[]; total: number; page: number; page_size: number; pages: number }>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const auditLoading = ref(false)
+
+const auditCategoryOptions = computed(() => ([
+  { value: '', label: t('organization.audit.allCategories') },
+  { value: 'recharge', label: t('organization.audit.categories.recharge') },
+  { value: 'authorize', label: t('organization.audit.categories.authorize') },
+  { value: 'allocate', label: t('organization.audit.categories.allocate') },
+  { value: 'spend_limit', label: t('organization.audit.categories.spend_limit') },
+]))
+
+async function loadAuditEvents(page = 1) {
   if (!isOwner.value) return
+  auditLoading.value = true
+  error.value = ''
+  try {
+    auditPage.value = await organizationAPI.listAuditEvents({
+      category: auditCategory.value || undefined,
+      page,
+      page_size: auditPage.value.page_size || 20,
+    })
+  } catch (cause) {
+    error.value = errorMessage(cause)
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+function formatAuditTime(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat(getLocale(), {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(date)
+}
+
+function auditResultLabel(result: string): string {
+  const key = `organization.audit.resultValues.${result}`
+  const translated = t(key)
+  return translated === key ? result : translated
+}
+
+// 将后端 action 字符串翻译为用户可读的中文描述。因为 vue-i18n 会把 key
+// 中的英文点号当作嵌套路径分隔符，所以把 action 里的 `.` 统一替换为 `_`，
+// 与 i18n 里配置的 key 命名保持一致。未命中的 action 回退到原始字符串。
+function auditActionLabel(action: string): string {
+  if (!action) return '-'
+  const normalized = action.replace(/\./g, '_')
+  const key = `organization.audit.actions.${normalized}`
+  const translated = t(key)
+  return translated === key ? action : translated
+}
+
+// 操作人 / 操作对象列採用双行展示：上行邮箱（email），下行用户名
+// （username）。部分 IAM 成员可能未维护 email，需要按可用字段
+// 依次降级，确保至少能看到一行可识别信息。
+function auditActorEmail(event: OrganizationAuditEntry): string {
+  return event.actor_email || event.actor_login_name || (event.actor_user_id ? '#' + event.actor_user_id : '-')
+}
+function auditActorUsername(event: OrganizationAuditEntry): string {
+  return event.actor_username || event.actor_login_name || '-'
+}
+function auditSubjectEmail(event: OrganizationAuditEntry): string {
+  return event.subject_email || event.subject_login_name || (event.subject_user_id ? '#' + event.subject_user_id : '-')
+}
+function auditSubjectUsername(event: OrganizationAuditEntry): string {
+  return event.subject_username || event.subject_login_name || '-'
+}
+
+function onAuditPageSize(pageSize: number) {
+  auditPage.value.page_size = pageSize
+  void loadAuditEvents(1)
+}
+
+function auditDetailText(event: OrganizationAuditEntry): string {
+  if (!event.metadata) return ''
+  const parts: string[] = []
+  for (const [key, value] of Object.entries(event.metadata)) {
+    if (value === null || value === undefined || value === '') continue
+    parts.push(`${key}=${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+  }
+  return parts.join(', ')
+}
+
+// 切到 audit 子路由时按需拉取。使用 watch(route.path) 已在别处，这里追加一个
+// activeTab 侦听器只覆盖 audit 页；避免每次切换其他 tab 都触发一次审计请求。
+watch(activeTab, tab => {
+  if (tab === 'audit' && organization.value && isOwner.value) {
+    void loadAuditEvents(1)
+  }
+  if (tab === 'settings' && organization.value && canManageSubscriptions.value) {
+    void loadSettings()
+  }
+})
+
+// ── Company feature settings ────────────────────────────────────────────
+const settingsState = ref<{ auto_switch_subscription: boolean }>({ auto_switch_subscription: true })
+const settingsLoading = ref(false)
+const settingsSaving = ref(false)
+const settingsSaved = ref(false)
+const settingsError = ref('')
+
+async function loadSettings() {
+  settingsLoading.value = true
+  settingsError.value = ''
+  try {
+    const data = await organizationAPI.getSettings()
+    settingsState.value.auto_switch_subscription = !!data.auto_switch_subscription
+  } catch (cause) {
+    settingsError.value = errorMessage(cause)
+  } finally {
+    settingsLoading.value = false
+  }
+}
+
+async function saveSettings() {
+  if (!canManageSubscriptions.value) return
+  settingsSaving.value = true
+  settingsSaved.value = false
+  settingsError.value = ''
+  try {
+    const data = await organizationAPI.updateSettings({
+      auto_switch_subscription: settingsState.value.auto_switch_subscription,
+    })
+    settingsState.value.auto_switch_subscription = !!data.auto_switch_subscription
+    settingsSaved.value = true
+    setTimeout(() => { settingsSaved.value = false }, 2500)
+  } catch (cause) {
+    settingsError.value = errorMessage(cause)
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+async function loadUsageAggregates() {
+  if (!hasFinanceReadOnly.value) return
   usageChartsLoading.value = true
   try {
     const params = organizationUsageParams(1)
@@ -1405,7 +1728,7 @@ async function loadUsageAggregates() {
 }
 
 async function loadDashboardAggregates() {
-  if (!isOwner.value) return
+  if (!hasFinanceReadOnly.value) return
   dashboardChartsLoading.value = true
   try {
     const params = organizationDashboardParams()
@@ -1511,7 +1834,7 @@ function onUsageMemberChange() {
 }
 
 async function loadUsageErrors(page = 1) {
-	if (!isOwner.value) return
+	if (!hasFinanceReadOnly.value) return
 	usageErrorsLoading.value = true
 	try {
 		usageErrors.value = await organizationAPI.getUsageErrors({
@@ -1561,7 +1884,7 @@ async function load() {
     restoreTabFromRoute()
     if (visibleTabs.value.includes('subscriptions')) {
       await loadSubscriptions()
-      if (isOwner.value) void loadPlans()
+      if (canManageSubscriptions.value) void loadPlans()
     }
     if (isOwner.value) {
       const [memberData, policyData, rules, limitUsage] = await Promise.all([
@@ -1576,9 +1899,26 @@ async function load() {
       const [, , dashboard] = await Promise.all([loadUsage(usagePage.value.page || 1), loadUsageAggregates(), organizationAPI.getDashboard(), loadDashboardAggregates()])
       dashboardStats.value = dashboard
     } else {
-      const [memberData, limitUsage] = await Promise.all([organizationAPI.listMembers(), organizationAPI.getSpendLimitUsage()])
+      const memberData = await organizationAPI.listMembers()
       members.value = memberData.items
-      spendLimitUsage.value = limitUsage
+      memberLimit.value = memberData.member_limit
+      usedSlots.value = memberData.used_slots
+      spendLimitUsage.value = await organizationAPI.getSpendLimitUsage()
+      if (canManageSpendLimits.value) {
+        try { spendLimitRules.value = await organizationAPI.listSpendLimits() } catch { /* ignored */ }
+      }
+      if (hasFinanceReadOnly.value) {
+        // 财务只读 / 财务管理成员同样能看仪表盘与使用记录。
+        try {
+          const [, , dashboard] = await Promise.all([
+            loadUsage(usagePage.value.page || 1),
+            loadUsageAggregates(),
+            organizationAPI.getDashboard(),
+            loadDashboardAggregates(),
+          ])
+          dashboardStats.value = dashboard
+        } catch { /* ignored */ }
+      }
     }
   } catch (cause) {
     error.value = errorMessage(cause)
@@ -1686,7 +2026,7 @@ function policyDescription(policy: ManagedPolicy): string {
   return isKnownPolicyKey(policy.key) ? policyDescriptionForKey(policy.key) : policy.description
 }
 
-const knownPolicyKeys = new Set(['CompanyFinanceReadOnly', 'CompanySharedBalanceUse'])
+const knownPolicyKeys = new Set(['CompanyFinanceReadOnly', 'CompanySharedBalanceUse', 'CompanyFinanceManage', 'IAMUserManage'])
 
 function isKnownPolicyKey(key: string): boolean {
   return knownPolicyKeys.has(key)

@@ -801,6 +801,103 @@ func (h *OrganizationHandler) Finance(c *gin.Context) {
 	response.Success(c, summary)
 }
 
+// AuditEvents returns paginated operation records for the caller's organization.
+// Owner-only — used by the enterprise "Audit log" page. Supported filters:
+//
+//	category  ∈ {recharge, authorize, allocate, spend_limit} (optional)
+//	start/end RFC3339 timestamps (optional)
+//	page / page_size
+func (h *OrganizationHandler) AuditEvents(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	filter := service.OrganizationAuditFilter{
+		Category: c.Query("category"),
+		Page:     parsePositiveQuery(c.Query("page"), 1),
+		PageSize: parsePositiveQuery(c.Query("page_size"), 20),
+	}
+	if value := c.Query("start"); value != "" {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			filter.Start = parsed
+		}
+	}
+	if value := c.Query("end"); value != "" {
+		if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+			filter.End = parsed
+		}
+	}
+	items, total, err := h.organization.ListAuditEvents(c.Request.Context(), userID, filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, response.PaginatedData{Items: items, Total: total, Page: filter.Page, PageSize: filter.PageSize, Pages: int((total + int64(filter.PageSize) - 1) / int64(filter.PageSize))})
+}
+
+// Settings returns the caller organization's feature-toggle configuration
+// (currently: auto_switch_subscription). Visible to the owner and to holders
+// of CompanyFinanceManage.
+func (h *OrganizationHandler) Settings(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	settings, err := h.organization.GetOrganizationSettings(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+// UpdateSettings persists the feature-toggle configuration. Requires the owner
+// or CompanyFinanceManage (repository enforces this).
+func (h *OrganizationHandler) UpdateSettings(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	var payload struct {
+		AutoSwitchSubscription bool `json:"auto_switch_subscription"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+	settings, err := h.organization.UpdateOrganizationSettings(c.Request.Context(), userID, service.OrganizationSettings{
+		AutoSwitchSubscription: payload.AutoSwitchSubscription,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+// SubscriptionFallback returns the ordered list of same-platform enterprise
+// subscriptions the given one would fall over to when its quota is exhausted,
+// together with the organization-level auto-switch toggle. Used by the API
+// Key list UI to render the fallback chain. Requires the caller to be an
+// active member of the organization owning `subscription_id`.
+func (h *OrganizationHandler) SubscriptionFallback(c *gin.Context) {
+	userID, ok := organizationSubject(c)
+	if !ok {
+		return
+	}
+	subscriptionID, err := strconv.ParseInt(c.Query("subscription_id"), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		response.BadRequest(c, "invalid subscription_id")
+		return
+	}
+	view, err := h.organization.GetSubscriptionFallbackView(c.Request.Context(), userID, subscriptionID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, view)
+}
+
 func (h *OrganizationHandler) Usage(c *gin.Context) {
 	userID, ok := organizationSubject(c)
 	if !ok {
@@ -1001,7 +1098,7 @@ func (h *OrganizationHandler) UsageErrors(c *gin.Context) {
 		return
 	}
 	org, err := h.organization.Context(c.Request.Context(), userID)
-	if err != nil || org == nil || !org.Active() || !org.Owner() {
+	if err != nil || org == nil || !org.Active() || (!org.Owner() && !org.HasAction(service.ActionFinanceBalanceRead)) {
 		response.ErrorFrom(c, service.ErrOrganizationPermission)
 		return
 	}
@@ -1077,7 +1174,7 @@ func (h *OrganizationHandler) UsageErrorDetail(c *gin.Context) {
 		return
 	}
 	org, err := h.organization.Context(c.Request.Context(), userID)
-	if err != nil || org == nil || !org.Active() || !org.Owner() {
+	if err != nil || org == nil || !org.Active() || (!org.Owner() && !org.HasAction(service.ActionFinanceBalanceRead)) {
 		response.ErrorFrom(c, service.ErrOrganizationPermission)
 		return
 	}

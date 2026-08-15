@@ -52,6 +52,13 @@ interface Props {
    * 只关心费率、不关心有效期的场景）。
    */
   alwaysShowRate?: boolean
+  /**
+   * 订阅分组默认的 label 文本走 t('groups.subscription')（"订阅"）；
+   * 若上层希望在特定业务场景（例如企业订阅绑定的 API Key）替换成
+   * "企业订阅"等更精确的表述，可以通过此 prop 覆盖，仅影响无剩余天数
+   * 时的 label 显示，不改变剩余天数/过期等状态文案。
+   */
+  subscriptionLabelOverride?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -119,8 +126,8 @@ const labelText = computed(() => {
       }
       return t('admin.users.daysRemaining', { days: props.daysRemaining })
     }
-    // 否则显示"订阅"
-    return t('groups.subscription')
+    // 否则显示"订阅"（可被 subscriptionLabelOverride 覆盖为业务化文案）
+    return props.subscriptionLabelOverride ?? t('groups.subscription')
   }
   return rateLabel
 })

@@ -478,3 +478,25 @@ func debugLogGatewaySnapshot(tag string, headers http.Header, body []byte, extra
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
 }
+
+// LogGatewayImagesClientOriginal 对外导出的入口：把 /v1/images/generations、
+// /v1/images/edits 等图像生成端点的客户端原始请求快照写入 gateway_debug.log。
+//
+// 与其它 CLIENT_ORIGINAL_* 快照保持一致：仅在调试日志开启时才生效，未开启时零开销；
+// 自动附加 request_id / client_request_id 便于与 Ops 日志、request_logger 串联。
+//
+// 该函数不依赖 gin.Context，供 handler 层直接以 c.Request.Header 与 c.Request.Context()
+// 调用。tag 建议使用 "CLIENT_ORIGINAL_IMAGES"。
+func LogGatewayImagesClientOriginal(tag string, header http.Header, ctx context.Context, body []byte, extra map[string]string) {
+	if !debugGatewayLogEnabled() {
+		return
+	}
+	if strings.TrimSpace(tag) == "" {
+		tag = "CLIENT_ORIGINAL_IMAGES"
+	}
+	if extra == nil {
+		extra = make(map[string]string, 2)
+	}
+	debugAddRequestIDs(extra, ctx)
+	debugLogGatewaySnapshot(tag, header, body, extra)
+}
