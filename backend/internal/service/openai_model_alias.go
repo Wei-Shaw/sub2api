@@ -65,6 +65,9 @@ func normalizeKnownOpenAICodexModel(model string) string {
 	}
 
 	switch {
+	// gpt-5.6-sol-wm 是独立的模型 ID，不能被下面的 Contains("gpt-5.6-sol")宽匹配吞并成 gpt-5.6-sol
+	case strings.Contains(normalized, "gpt-5.6-sol-wm"):
+		return "gpt-5.6-sol-wm"
 	case strings.Contains(normalized, "gpt-5.6-sol"):
 		return "gpt-5.6-sol"
 	case strings.Contains(normalized, "gpt-5.6-terra"):
