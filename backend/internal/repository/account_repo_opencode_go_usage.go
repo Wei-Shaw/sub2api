@@ -12,7 +12,10 @@ import (
 )
 
 const (
-	opencodeGoBaseURLRegexSQL       = `^[hH][tT][tT][pP][sS]://[oO][pP][eE][nN][cC][oO][dD][eE]\.[aA][iI]/[zZ][eE][nN]/[gG][oO]/[vV]1/?$`
+	// 与 service.isOpenCodeGoBaseURL 对齐：Go 侧接受显式默认端口 :443（parsed.Host ==
+	// hostname+":443"），SQL 正则必须同样接受可选 :443，否则同一 base_url 在 Go 判定
+	// eligible 而 SQL 判定不 eligible，身份清理与组查询会漏行。只做 parity，不扩域名/路径。
+	opencodeGoBaseURLRegexSQL       = `^[hH][tT][tT][pP][sS]://[oO][pP][eE][nN][cC][oO][dD][eE]\.[aA][iI](:[4][4][3])?/[zZ][eE][nN]/[gG][oO]/[vV]1/?$`
 	opencodeGoBaseURLMatchSQLPrefix = "btrim("
 	opencodeGoBaseURLMatchSQLSuffix = ") ~ '" + opencodeGoBaseURLRegexSQL + "'"
 	opencodeGoUsageEligibleSQL      = `

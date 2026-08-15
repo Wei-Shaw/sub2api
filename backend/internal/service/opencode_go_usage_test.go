@@ -742,6 +742,16 @@ func TestIsOpenCodeGoUsageAccount(t *testing.T) {
 	account.Credentials["base_url"] = "https://opencode.ai/zen/go/v1/"
 	require.True(t, IsOpenCodeGoUsageAccount(account))
 
+	// explicit default port :443 is allowed (parsed.Host == hostname+":443")
+	account = base()
+	account.Credentials["base_url"] = "https://opencode.ai:443/zen/go/v1"
+	require.True(t, IsOpenCodeGoUsageAccount(account))
+
+	// non-default port is rejected
+	account = base()
+	account.Credentials["base_url"] = "https://opencode.ai:444/zen/go/v1"
+	require.False(t, IsOpenCodeGoUsageAccount(account))
+
 	// scheme/host/path are case-insensitive
 	account = base()
 	account.Credentials["base_url"] = "HTTPS://OPENCODE.AI/ZEN/GO/V1"
