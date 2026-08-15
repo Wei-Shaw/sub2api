@@ -341,6 +341,16 @@
             </div>
             <div class="text-ink-secondary">
               <span class="text-ink-tertiary">{{
+                t("admin.groups.usageYesterday")
+              }}</span>
+              <span class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
+                >${{
+                  formatCost(usageMap.get(row.id)?.yesterday_cost ?? 0)
+                }}</span
+              >
+            </div>
+            <div class="text-ink-secondary">
+              <span class="text-ink-tertiary">{{
                 t("admin.groups.usageTotal")
               }}</span>
               <span class="ml-1 font-mono font-medium tabular-nums text-ink-secondary"
