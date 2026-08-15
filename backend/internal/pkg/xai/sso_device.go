@@ -417,6 +417,36 @@ func JWTClaimString(claims map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
+func JWTClaimInt64(claims map[string]any, key string) (int64, bool) {
+	if claims == nil {
+		return 0, false
+	}
+	raw, ok := claims[key]
+	if !ok || raw == nil {
+		return 0, false
+	}
+	switch value := raw.(type) {
+	case float64:
+		return int64(value), true
+	case float32:
+		return int64(value), true
+	case int64:
+		return value, true
+	case int:
+		return int64(value), true
+	case int32:
+		return int64(value), true
+	case json.Number:
+		parsed, err := value.Int64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
 func sleepContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()

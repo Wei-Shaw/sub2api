@@ -4,6 +4,7 @@ package xai
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"strings"
@@ -132,6 +133,13 @@ func TestInspectSSOAccountStateEmptySSO(t *testing.T) {
 	state := InspectSSOAccountState(context.Background(), "   ", nil)
 	require.Equal(t, "sso is empty", state.Error)
 	require.Equal(t, GrokRiskError, ClassifyGrokAccountState(state))
+}
+
+func testJWTWithClaims(t *testing.T, payloadJSON string) string {
+	t.Helper()
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(payloadJSON))
+	return header + "." + payload + ".sig"
 }
 
 type accountStateRoundTripClient struct {

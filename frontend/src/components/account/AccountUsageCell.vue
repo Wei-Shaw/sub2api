@@ -630,7 +630,6 @@ import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
 const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-const GROK_USAGE_REFRESH_INTERVAL_MS = 5 * 60 * 1000
 const GROK_FREE_TOKEN_LIMIT_FALLBACK = 500_000
 // How long a quota-reset response may suppress the row-patch usage refetch.
 const SUPPRESS_USAGE_REFRESH_WINDOW_MS = 5 * 1000
