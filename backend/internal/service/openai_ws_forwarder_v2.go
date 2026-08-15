@@ -589,6 +589,18 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				})
 			}
 		}
+		terminalFailurePayload := message
+		if eventType == "response.failed" {
+			failedMessage := extractOpenAISSEErrorMessage(message)
+			updatedMessage, status, errType, errMsg, matched := applyOpenAIStreamFailedEventPassthroughRule(
+				c, account, message, failedMessage,
+			)
+			if matched {
+				message = updatedMessage
+				_, _, responseField = parseOpenAIWSEventEnvelope(message)
+			}
+			MarkOpsStreamError(c, errType, errMsg, status)
+		}
 
 		if eventType == "error" {
 			s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
@@ -690,7 +702,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 
 		if isTerminalEvent {
-			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), message)
+			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), terminalFailurePayload)
 			// A terminal event must be the final JSON document in its WS message.
 			// Ignore any tail for the completed client turn, but never reuse the
 			// ambiguous upstream connection for another request.

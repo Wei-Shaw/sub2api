@@ -152,6 +152,7 @@ func startPassthroughLifecycleServer(
 	controlCtx context.Context,
 	svc *OpenAIGatewayService,
 	account *Account,
+	ruleServices ...*ErrorPassthroughService,
 ) (*httptest.Server, <-chan error) {
 	t.Helper()
 	serverErr := make(chan error, 1)
@@ -184,6 +185,9 @@ func startPassthroughLifecycleServer(
 		req := r.Clone(controlCtx)
 		req.Header = req.Header.Clone()
 		ginCtx.Request = req
+		if len(ruleServices) > 0 {
+			BindErrorPassthroughService(ginCtx, ruleServices[0])
+		}
 		serverErr <- svc.ProxyResponsesWebSocketFromClient(controlCtx, ginCtx, conn, account, "sk-test", firstMessage, nil)
 	}))
 	return server, serverErr
