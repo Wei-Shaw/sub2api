@@ -446,18 +446,15 @@ export async function clearGroupRPMOverrides(id: number): Promise<{ message: str
 REDACTED
 
 /**
- * Get usage summary (today + cumulative cost) for all groups
- * @param timezone - IANA timezone string (e.g. "Asia/Shanghai")
+ * Get usage summary (today + yesterday + cumulative cost) for all groups
  * @returns Array of group usage summaries
  */
-export async function getUsageSummary(
-  timezone?: string
-): Promise<{ group_id: number; today_cost: number; total_cost: number REDACTED[]> {
+export async function getUsageSummary(): Promise<
+  { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number REDACTED[]
+> {
   const { data REDACTED = await apiClient.get<
-    { group_id: number; today_cost: number; total_cost: number REDACTED[]
-  >('/admin/groups/usage-summary', {
-    params: timezone ? { timezone REDACTED : undefined
-  REDACTED)
+    { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number REDACTED[]
+  >('/admin/groups/usage-summary')
   return data
 REDACTED
 

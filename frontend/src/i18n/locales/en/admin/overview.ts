@@ -821,6 +821,7 @@ export default {
         userStatus: 'Status'
       REDACTED,
       usageToday: 'Today',
+      usageYesterday: 'Yesterday',
       usageTotal: 'Total',
       accountsAvailable: 'Avail:',
       accountsRateLimited: 'Limited:',
