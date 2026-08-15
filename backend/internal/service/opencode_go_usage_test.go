@@ -279,6 +279,7 @@ func TestOpenCodeGoUsageParseJSONLenient(t *testing.T) {
 
 func TestOpenCodeGoUsageRefresh200Success(t *testing.T) {
 	account := openCodeGoUsageAccount(7)
+	account.Extra[OpenCodeGoUsageAutoRefreshExtraKey] = true
 	repo := &openCodeGoUsageTestRepo{accounts: map[int64]*Account{7: account}}
 	stub := &openCodeGoUsageHTTPStub{body: []byte(openCodeGoUsageFixture)}
 	svc := newOpenCodeGoUsageTestService(t, repo, stub, &upstreamBillingProbeSettingRepo{})
@@ -286,6 +287,8 @@ func TestOpenCodeGoUsageRefresh200Success(t *testing.T) {
 	state, err := svc.Refresh(context.Background(), 7)
 	require.NoError(t, err)
 	require.True(t, state.Eligible)
+	require.True(t, state.AutoRefreshEnabled)
+	require.True(t, openCodeGoUsageAutoRefreshEnabled(account))
 	require.Equal(t, OpenCodeGoUsageStatusOK, state.Snapshot.Status)
 	require.Equal(t, 6.0, state.Snapshot.Data.Rolling.Percent)
 	require.Equal(t, 2.0, state.Snapshot.Data.Weekly.Percent)
