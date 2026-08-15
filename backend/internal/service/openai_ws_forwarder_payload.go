@@ -42,7 +42,7 @@ REDACTED
 			if err != nil {
 				return "", err
 		REDACTED
-			targetURL = buildOpenAIResponsesURL(validatedURL)
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
 	REDACTED
 	default:
 		targetURL = openaiPlatformAPIURL
