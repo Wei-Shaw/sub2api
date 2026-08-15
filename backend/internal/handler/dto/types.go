@@ -171,8 +171,9 @@ type AdminGroup struct {
 	ModelPricing         []service.ChannelModelPricing `json:"model_pricing"`
 
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting        map[string][]int64 `json:"model_routing"`
-	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+	ModelRouting                  map[string][]int64 `json:"model_routing"`
+	ModelRoutingEnabled           bool               `json:"model_routing_enabled"`
+	EndpointDefaultRoutingEnabled bool               `json:"endpoint_default_routing_enabled"`
 
 	// MCP XML 协议注入（仅 antigravity 平台使用）
 	MCPXMLInject bool `json:"mcp_xml_inject"`

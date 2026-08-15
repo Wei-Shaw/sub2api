@@ -166,6 +166,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		SortOrder:                       9,
 		AllowMessagesDispatch:           true,
 		AllowLive:                       true,
+		EndpointDefaultRoutingEnabled:   true,
 		RequireOAuthOnly:                true,
 		RequirePrivacySet:               true,
 		DefaultMappedModel:              "gpt-5.4",

@@ -1690,3 +1690,117 @@ func TestAdminService_PreviewCompositeRouteUsesExplicitRoutes(t *testing.T) {
 	require.NotNil(t, decision.Route)
 	require.Equal(t, int64(11), decision.Route.ID)
 }
+
+// The admin preview must reflect the same precedence the gateway applies:
+// explicit rules first, then the detector, then the endpoint default. An
+// operator inspecting a route here should never be told the endpoint default
+// wins over a rule they configured.
+func TestAdminService_PreviewCompositeRouteUsesEndpointDefaultRoutingSetting(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite, EndpointDefaultRoutingEnabled: true},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{routes: []CompositeModelRoute{
+		{
+			ID:             11,
+			GroupID:        7,
+			PublicModel:    "shared-model",
+			MatchType:      CompositeRouteMatchExact,
+			TargetPlatform: PlatformOpenAI,
+			Endpoint:       CompositeRouteEndpointAny,
+			Enabled:        true,
+		},
+	}}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	// An explicit `any` rule outranks the messages endpoint default.
+	explicit, err := svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{
+		Model:    "shared-model",
+		Endpoint: CompositeRouteEndpointMessages,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, explicit)
+	require.True(t, explicit.Matched)
+	require.Equal(t, CompositeRouteSourceExplicit, explicit.Source)
+	require.Equal(t, PlatformOpenAI, explicit.TargetPlatform)
+
+	// A model that matches no rule and no detector prefix is the only case the
+	// endpoint default resolves, and the preview must report it as such.
+	fallback, err := svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{
+		Model:    "house-blend-1",
+		Endpoint: CompositeRouteEndpointMessages,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, fallback)
+	require.True(t, fallback.Matched)
+	require.Equal(t, CompositeRouteSourceEndpointDefault, fallback.Source)
+	require.Equal(t, PlatformAnthropic, fallback.TargetPlatform)
+}
+
+// With the group flag off the preview must stay identical to the previous
+// resolver, so enabling it can never be blamed for a routing change an operator
+// did not make.
+func TestAdminService_PreviewCompositeRouteWithoutEndpointDefaultRoutingSetting(t *testing.T) {
+	groupRepo := &groupRepoStubForAdmin{
+		getByID: &Group{ID: 7, Platform: PlatformComposite},
+	}
+	routeRepo := &compositeRouteRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: groupRepo, compositeRouteRepo: routeRepo}
+
+	decision, err := svc.PreviewCompositeRoute(context.Background(), 7, CompositeRoutePreviewRequest{
+		Model:    "house-blend-1",
+		Endpoint: CompositeRouteEndpointMessages,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, decision)
+	require.False(t, decision.Matched)
+}
+
+func TestAdminService_CreateGroupScopesEndpointDefaultRoutingToComposite(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		want     bool
+	}{
+		{name: "composite", platform: PlatformComposite, want: true},
+		{name: "openai", platform: PlatformOpenAI, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:                          "endpoint-routing",
+				Platform:                      tt.platform,
+				RateMultiplier:                1,
+				EndpointDefaultRoutingEnabled: true,
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, group)
+			require.Equal(t, tt.want, group.EndpointDefaultRoutingEnabled)
+			require.Equal(t, tt.want, repo.created.EndpointDefaultRoutingEnabled)
+		})
+	}
+}
+
+func TestAdminService_UpdateGroupClearsEndpointDefaultRoutingOutsideComposite(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{
+		ID:                            7,
+		Name:                          "composite",
+		Platform:                      PlatformComposite,
+		RateMultiplier:                1,
+		Status:                        StatusActive,
+		SubscriptionType:              SubscriptionTypeStandard,
+		EndpointDefaultRoutingEnabled: true,
+	}}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 7, &UpdateGroupInput{Platform: PlatformOpenAI})
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.False(t, group.EndpointDefaultRoutingEnabled)
+	require.False(t, repo.updated.EndpointDefaultRoutingEnabled)
+}

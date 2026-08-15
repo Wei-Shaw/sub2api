@@ -166,14 +166,17 @@ func (s *adminServiceImpl) DeleteCompositeRoute(ctx context.Context, groupID, ro
 }
 
 func (s *adminServiceImpl) PreviewCompositeRoute(ctx context.Context, groupID int64, input CompositeRoutePreviewRequest) (*CompositeRouteDecision, error) {
-	if err := s.requireCompositeGroup(ctx, groupID); err != nil {
+	group, err := s.getCompositeGroup(ctx, groupID)
+	if err != nil {
 		return nil, err
 	}
 	resolver := s.compositeResolver
 	if resolver == nil {
 		resolver = NewCompositeRouteResolver(s.compositeRouteRepo)
 	}
-	decision, err := resolver.Resolve(ctx, groupID, input.Model, input.Endpoint)
+	decision, err := resolver.ResolveWithOptions(ctx, groupID, input.Model, input.Endpoint, CompositeRouteResolveOptions{
+		EndpointDefaultRoutingEnabled: group.EndpointDefaultRoutingEnabled,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -181,14 +184,19 @@ func (s *adminServiceImpl) PreviewCompositeRoute(ctx context.Context, groupID in
 }
 
 func (s *adminServiceImpl) requireCompositeGroup(ctx context.Context, groupID int64) error {
+	_, err := s.getCompositeGroup(ctx, groupID)
+	return err
+}
+
+func (s *adminServiceImpl) getCompositeGroup(ctx context.Context, groupID int64) (*Group, error) {
 	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if group.Platform != PlatformComposite {
-		return fmt.Errorf("group %d is not a composite group", groupID)
+		return nil, fmt.Errorf("group %d is not a composite group", groupID)
 	}
-	return nil
+	return group, nil
 }
 
 func (s *adminServiceImpl) compositeRouteBelongsToGroup(ctx context.Context, groupID, routeID int64) (bool, error) {
@@ -500,6 +508,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		SupportedModelScopes:            input.SupportedModelScopes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
 		AllowLive:                       input.AllowLive,
+		EndpointDefaultRoutingEnabled:   input.EndpointDefaultRoutingEnabled && platform == PlatformComposite,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
@@ -857,6 +866,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowLive != nil {
 		group.AllowLive = *input.AllowLive
 	}
+	if input.EndpointDefaultRoutingEnabled != nil {
+		group.EndpointDefaultRoutingEnabled = *input.EndpointDefaultRoutingEnabled
+	}
 	if input.RequireOAuthOnly != nil {
 		group.RequireOAuthOnly = *input.RequireOAuthOnly
 	}
@@ -892,6 +904,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	sanitizeGroupMessagesDispatchFields(group)
 	if group.Platform != PlatformOpenAI {
 		group.AllowLive = false
+	}
+	if group.Platform != PlatformComposite {
+		group.EndpointDefaultRoutingEnabled = false
 	}
 	sanitizeGroupReasoningEffortPolicy(group)
 

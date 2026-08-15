@@ -59,3 +59,23 @@ func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *tes
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
 	}
 }
+
+// v18 carried the group profit-control fields; v19 additionally carries the
+// composite endpoint-default routing gate, so v18 snapshots must be refused.
+func TestAPIKeyService_RejectsV18AuthSnapshotWithoutEndpointDefaultRouting(t *testing.T) {
+	svc := &APIKeyService{}
+
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-endpoint-routing", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 18},
+	})
+
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok {
+		t.Fatal("expected v18 auth snapshot to be rejected after endpoint default routing was added")
+	}
+	if apiKey != nil {
+		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
+	}
+}

@@ -615,6 +615,8 @@ export interface AdminGroup extends Group {
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean
+  // Composite 端点默认路由开关
+  endpoint_default_routing_enabled: boolean
 
   // MCP XML 协议注入（仅 antigravity 平台使用）
   mcp_xml_inject: boolean
@@ -653,7 +655,7 @@ export type CompositeRouteEndpoint =
   | 'images'
   | 'gemini'
 
-export type CompositeRouteSource = 'route' | 'detector' | string
+export type CompositeRouteSource = 'route' | 'endpoint_default' | 'detector' | string
 
 export interface CompositeModelRoute {
   id: number
@@ -806,6 +808,7 @@ export interface CreateGroupRequest {
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
+  endpoint_default_routing_enabled?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null
@@ -868,6 +871,7 @@ export interface UpdateGroupRequest {
   models_list_config?: ModelsListConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
+  endpoint_default_routing_enabled?: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_routing?: Record<string, number[]> | null

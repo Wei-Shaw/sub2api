@@ -520,6 +520,10 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 			return
 		}
 		if c.Request == nil || c.Request.Method == http.MethodGet {
+			// A GET has no body to read the model from. The Responses WebSocket
+			// learns its model only from the first frame, so it keeps resolving
+			// with the built-in detector alone — unchanged by endpoint-default
+			// routing, which applies to the HTTP endpoints only.
 			c.Next()
 			return
 		}
@@ -540,7 +544,9 @@ func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver)
 
 		model := compositeRequestModelFromBody(c.GetHeader("Content-Type"), body)
 		if model != "" {
-			decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path))
+			decision, err := resolver.ResolveWithOptions(c.Request.Context(), apiKey.Group.ID, model, compositeRouteEndpointForPath(c.Request.URL.Path), service.CompositeRouteResolveOptions{
+				EndpointDefaultRoutingEnabled: apiKey.Group.EndpointDefaultRoutingEnabled,
+			})
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 				c.Abort()
@@ -605,7 +611,9 @@ func compositeGeminiTargetPlatformMiddleware(resolver *service.CompositeRouteRes
 		if ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 			model := compositeGeminiModelFromParams(c)
 			if model != "" {
-				decision, err := resolver.Resolve(c.Request.Context(), apiKey.Group.ID, model, service.CompositeRouteEndpointGemini)
+				decision, err := resolver.ResolveWithOptions(c.Request.Context(), apiKey.Group.ID, model, service.CompositeRouteEndpointGemini, service.CompositeRouteResolveOptions{
+					EndpointDefaultRoutingEnabled: apiKey.Group.EndpointDefaultRoutingEnabled,
+				})
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"type": "server_error", "message": "Failed to resolve composite model route"}})
 					c.Abort()
