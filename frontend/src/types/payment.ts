@@ -200,7 +200,17 @@ export interface WechatJSAPIPayload {
   paySign?: string
 }
 
+/** Manual bank-transfer details for gateways whose QR encodes a transfer (SePay VietQR). */
+export interface PaymentTransferInfo {
+  account_number?: string
+  account_name?: string
+  bank_bin?: string
+  amount?: string
+  content?: string
+}
+
 export interface CreateOrderResult {
+  transfer_info?: PaymentTransferInfo
   order_id: number
   amount: number
   pay_url?: string

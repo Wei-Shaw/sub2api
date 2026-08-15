@@ -25,6 +25,7 @@
             :order-type="paymentState.orderType"
             :currency="paymentState.currency || selectedCurrency"
             :out-trade-no="paymentState.outTradeNo"
+            :transfer-info="paymentState.transferInfo"
             :mobile-alipay-deep-link="paymentState.alipayMobilePrecreateDeepLink"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
@@ -351,6 +352,7 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     orderId: 0,
     amount: 0,
     qrCode: '',
+    transferInfo: undefined,
     expiresAt: '',
     paymentType: '',
     payUrl: '',

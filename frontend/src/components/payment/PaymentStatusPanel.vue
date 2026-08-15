@@ -180,6 +180,36 @@
             </div>
           </div>
           <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
+          <div v-if="transferInfo" data-test="sepay-transfer-info" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
+            <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.transferTitle') }}</p>
+            <div class="mt-3 space-y-2 text-sm">
+              <div v-if="transferInfo.accountNumber" class="flex items-start justify-between gap-4">
+                <span class="shrink-0 text-gray-500 dark:text-gray-400">{{ t('payment.qr.transferAccount') }}</span>
+                <span class="break-all text-right font-mono text-gray-900 dark:text-white">
+                  {{ transferInfo.accountNumber }}<span v-if="transferInfo.bankBin" class="text-gray-400"> ({{ transferInfo.bankBin }})</span>
+                </span>
+              </div>
+              <div v-if="transferInfo.accountName" class="flex items-start justify-between gap-4">
+                <span class="shrink-0 text-gray-500 dark:text-gray-400">{{ t('payment.qr.transferAccountName') }}</span>
+                <span class="break-all text-right text-gray-900 dark:text-white">{{ transferInfo.accountName }}</span>
+              </div>
+              <div v-if="transferInfo.amount" class="flex items-start justify-between gap-4">
+                <span class="shrink-0 text-gray-500 dark:text-gray-400">{{ t('payment.qr.transferAmount') }}</span>
+                <span class="text-right font-semibold text-gray-900 dark:text-white">{{ transferInfo.amount }} ₫</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="shrink-0 text-gray-500 dark:text-gray-400">{{ t('payment.qr.transferContent') }}</span>
+                <button
+                  type="button"
+                  data-test="copy-transfer-content"
+                  class="max-w-[70%] break-all text-right font-mono text-xs text-primary-600 hover:underline dark:text-primary-400"
+                  :title="t('payment.qr.transferCopy')"
+                  @click="copyTransferContent"
+                >{{ transferInfo.content }}{{ contentCopied ? ' ✓' : '' }}</button>
+              </div>
+            </div>
+            <p class="mt-3 text-xs leading-5 text-gray-400 dark:text-gray-500">{{ t('payment.qr.transferHint') }}</p>
+          </div>
           <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
             {{ t('payment.qr.openPayWindow') }}
           </button>
@@ -225,6 +255,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
+import type { PaymentTransferDisplayInfo } from '@/components/payment/paymentFlow'
 import { currencySymbol, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
@@ -250,6 +281,7 @@ const props = defineProps<{
   currency?: string
   outTradeNo?: string
   mobileAlipayDeepLink?: boolean
+  transferInfo?: PaymentTransferDisplayInfo
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
@@ -325,6 +357,21 @@ const scanHint = computed(() => {
   if (isWxpay.value) return t('payment.qr.scanWxpayHint')
   return ''
 })
+
+const contentCopied = ref(false)
+let contentCopiedTimer: ReturnType<typeof setTimeout> | undefined
+
+async function copyTransferContent() {
+  if (!props.transferInfo?.content) return
+  try {
+    await navigator.clipboard.writeText(props.transferInfo.content)
+    contentCopied.value = true
+    if (contentCopiedTimer) clearTimeout(contentCopiedTimer)
+    contentCopiedTimer = setTimeout(() => { contentCopied.value = false }, 2000)
+  } catch {
+    // clipboard unavailable (insecure context) — the code stays selectable for manual copy
+  }
+}
 
 const countdownDisplay = computed(() => {
   const m = Math.floor(remainingSeconds.value / 60)

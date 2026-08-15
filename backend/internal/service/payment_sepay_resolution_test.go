@@ -105,3 +105,27 @@ func TestPaymentOrderQueryReferenceSePay(t *testing.T) {
 	require.Equal(t, "sub2_20260814aB3kX9mQ", paymentOrderQueryReference(order, nil),
 		"sepay must query by out_trade_no (no upstream tradeNo exists while pending)")
 }
+
+func TestBuildPaymentTransferInfoSePay(t *testing.T) {
+	order := &dbent.PaymentOrder{OutTradeNo: "sub2_20260815YujbZRZd"}
+	sepaySel := &payment.InstanceSelection{
+		ProviderKey: payment.TypeSePay,
+		Config: map[string]string{
+			"bankAccountNumber": "0000000001",
+			"bankBin":           "970422",
+			"accountName":       "SEPAY TEST",
+		},
+	}
+	pr := &payment.CreatePaymentResponse{QRCode: "payload", Currency: payment.CurrencyVND}
+
+	info := buildPaymentTransferInfo(sepaySel, pr, 250000, order)
+	require.NotNil(t, info)
+	require.Equal(t, "0000000001", info.AccountNumber)
+	require.Equal(t, "SEPAY TEST", info.AccountName)
+	require.Equal(t, "970422", info.BankBin)
+	require.Equal(t, "250000", info.Amount)
+	require.Equal(t, "sub2_20260815YujbZRZd", info.Content)
+
+	require.Nil(t, buildPaymentTransferInfo(nil, pr, 250000, order))
+	require.Nil(t, buildPaymentTransferInfo(&payment.InstanceSelection{ProviderKey: payment.TypeAlipay}, pr, 250000, order))
+}

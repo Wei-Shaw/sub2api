@@ -752,9 +752,25 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 	return infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
 }
 
+// buildPaymentTransferInfo exposes manual bank-transfer details for providers
+// whose QR encodes a bank transfer (SePay VietQR).
+func buildPaymentTransferInfo(sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, payAmount float64, order *dbent.PaymentOrder) *PaymentTransferInfo {
+	if sel == nil || pr == nil || strings.TrimSpace(sel.ProviderKey) != payment.TypeSePay {
+		return nil
+	}
+	return &PaymentTransferInfo{
+		AccountNumber: strings.TrimSpace(sel.Config["bankAccountNumber"]),
+		AccountName:   strings.TrimSpace(sel.Config["accountName"]),
+		BankBin:       strings.TrimSpace(sel.Config["bankBin"]),
+		Amount:        payment.FormatAmountForCurrency(payAmount, pr.Currency),
+		Content:       order.OutTradeNo,
+	}
+}
+
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
 		OrderID:      order.ID,
+		TransferInfo: buildPaymentTransferInfo(sel, pr, payAmount, order),
 		Amount:       order.Amount,
 		PayAmount:    payAmount,
 		FeeRate:      order.FeeRate,
