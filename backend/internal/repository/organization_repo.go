@@ -1852,7 +1852,7 @@ func (r *organizationRepository) ListAuditEvents(ctx context.Context, organizati
 		pageSize = 20
 	}
 	where := []string{"e.organization_id = $1"}
-	args := []interface{}{organizationID}
+	args := []any{organizationID}
 	if actions := service.AuditActionsForCategory(filter.Category); len(actions) > 0 {
 		where = append(where, fmt.Sprintf("e.action = ANY($%d)", len(args)+1))
 		args = append(args, pq.Array(actions))
@@ -1876,7 +1876,7 @@ func (r *organizationRepository) ListAuditEvents(ctx context.Context, organizati
 		return []service.OrganizationAuditLogEntry{}, 0, nil
 	}
 
-	listArgs := append([]interface{}{}, args...)
+	listArgs := append([]any{}, args...)
 	listArgs = append(listArgs, pageSize, (page-1)*pageSize)
 	listQuery := fmt.Sprintf(`
 		SELECT e.id, e.organization_id, e.actor_user_id, e.subject_user_id, e.action, e.result,
@@ -1898,7 +1898,7 @@ func (r *organizationRepository) ListAuditEvents(ctx context.Context, organizati
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	events := make([]service.OrganizationAuditLogEntry, 0, pageSize)
 	for rows.Next() {
 		var (
@@ -1936,7 +1936,7 @@ func (r *organizationRepository) ListAuditEvents(ctx context.Context, organizati
 		ev.SubjectUsername = subjectName
 		ev.SubjectEmail = subjectEmail
 		if metadataRaw != "" && metadataRaw != "{}" {
-			var meta map[string]interface{}
+			var meta map[string]any
 			if err := json.Unmarshal([]byte(metadataRaw), &meta); err == nil {
 				ev.Metadata = meta
 			}

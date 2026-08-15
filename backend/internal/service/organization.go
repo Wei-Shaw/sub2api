@@ -1403,10 +1403,10 @@ type OrganizationAuditLogEntry struct {
 	Action           string `json:"action"`
 	// Category is the coarse bucket used for UI filtering. Derived from Action.
 	// One of: recharge, authorize, allocate, spend_limit, other.
-	Category  string                 `json:"category"`
-	Result    string                 `json:"result"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt time.Time              `json:"created_at"`
+	Category  string         `json:"category"`
+	Result    string         `json:"result"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 // OrganizationAuditFilter narrows down the audit event query used by the
