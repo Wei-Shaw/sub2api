@@ -1209,8 +1209,82 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
 	require.Nil(t, result)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "upstream request failed")
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	// Transport failure must surface as a failover error so the handler can retry
+	// the request on another account (mirrors the OpenAI channel).
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.JSONEq(t, string(anthropicTransportFailoverBody), string(failoverErr.ResponseBody))
+	// The service must NOT write the response itself: the handler owns it
+	// (failover, or a protocol-correct error once failover is exhausted).
+	require.Zero(t, rec.Body.Len())
+}
+
+// anthropicTransportRepoStub records SetTempUnschedulable calls; every other
+// AccountRepository method is inherited from the embedded nil interface and
+// must not be reached in these tests.
+type anthropicTransportRepoStub struct {
+	AccountRepository
+	tempCalls int
+}
+
+func (r *anthropicTransportRepoStub) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, _ string) error {
+	r.tempCalls++
+	return nil
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_PersistentTransportErrorTempUnschedules(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	repo := &anthropicTransportRepoStub{}
+	upstream := &anthropicHTTPUpstreamRecorder{
+		err: errors.New("dial tcp 203.0.113.7:443: connect: connection refused"),
+	}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream: upstream,
+		accountRepo:  repo,
+	}
+	account := newAnthropicAPIKeyAccountForTest()
+
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	// Durable transport fault (connection refused) → account temporarily unscheduled.
+	require.Equal(t, 1, repo.tempCalls)
+}
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_TransientTransportErrorKeepsAccountSchedulable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	repo := &anthropicTransportRepoStub{}
+	upstream := &anthropicHTTPUpstreamRecorder{err: errors.New("dial tcp timeout")}
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Security: config.SecurityConfig{
+				URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+			},
+		},
+		httpUpstream: upstream,
+		accountRepo:  repo,
+	}
+	account := newAnthropicAPIKeyAccountForTest()
+
+	_, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	// Transient blip (timeout) → fail over but keep the account schedulable.
+	require.Zero(t, repo.tempCalls)
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_EmptyResponseBody(t *testing.T) {
