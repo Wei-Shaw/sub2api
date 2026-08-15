@@ -137,6 +137,11 @@ func TestResolveCodexFingerprintIDsFromRequest_ExplicitOptInHonored(t *testing.T
 			require.NotNil(t, ids, "显式配置必须生效")
 			assert.Equal(t, codexFingerprintMode(mode), ids.mode)
 			assert.NotEmpty(t, ids.installationID)
+			if mode == "device" {
+				assert.Zero(t, ids.turnStartedAtUnixMs)
+			} else {
+				assert.NotZero(t, ids.turnStartedAtUnixMs)
+			}
 		})
 	}
 }
