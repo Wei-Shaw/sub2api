@@ -1,6 +1,6 @@
 # Payment System Configuration Guide
 
-Sub2API has a built-in payment system that enables user self-service top-up without deploying a separate payment service.
+Sub2API has a built-in payment system that enables user self-service top-up and subscription purchase without deploying a separate payment service.
 
 ---
 
@@ -9,150 +9,153 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 - [Supported Payment Methods](#supported-payment-methods)
 - [Quick Start](#quick-start)
 - [System Settings](#system-settings)
+- [Currency and Amounts](#currency-and-amounts)
 - [Provider Configuration](#provider-configuration)
 - [Provider Instance Management](#provider-instance-management)
 - [Webhook Configuration](#webhook-configuration)
 - [Payment Flow](#payment-flow)
-- [Migrating from Sub2ApiPay](#migrating-from-sub2apipay)
+- [Upgrading from an Older Release](#upgrading-from-an-older-release)
 
 ---
 
 ## Supported Payment Methods
 
-| Provider | Payment Methods | Description |
-|----------|----------------|-------------|
-| **EasyPay** | Alipay, WeChat Pay | Third-party aggregation via EasyPay protocol |
-| **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
-| **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
-| **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
+| Provider | User-facing method | Settlement currency | How the payer pays |
+|----------|--------------------|---------------------|--------------------|
+| **SePay** | Vietnamese bank transfer | VND (fixed) | Scans a VietQR code, or copies the bank details and transfers manually. SePay watches the merchant bank account and pushes a webhook when a matching credit lands. |
+| **NOWPayments** | Cryptocurrency | Fiat price (USD by default), buyer pays any coin | Opens a hosted NOWPayments invoice; NOWPayments owns coin selection and the exchange-rate countdown. |
 
-> Alipay/WeChat Pay direct and EasyPay can both exist as backend provider instances, but the frontend always exposes only two visible buttons: `Alipay` and `WeChat Pay`. Admins choose exactly one source for each visible method: direct or EasyPay. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
+> Each provider backs exactly one user-facing method, so **a payment type and a provider key are the same string** (`sepay`, `nowpayments`). There is no alias or routing layer to configure.
 
-> **EasyPay Provider Recommendations**: Both options below are third-party aggregators compatible with the EasyPay protocol. Pick based on the funding channel and settlement currency you need:
->
-> - **Domestic channel / CNY settlement** — [ZPay](https://z-pay.cn/?uid=23808) (`https://z-pay.cn/?uid=23808`): direct integration with official Alipay / WeChat Pay APIs, fee **1.6%**; funds go straight to the merchant account with **T+1 automatic settlement**. Supports **individual users** (no business license required) with up to 10,000 CNY daily transactions; business-licensed accounts have no limit. Link contains the referral code of [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) original author [@touwaeriol](https://github.com/touwaeriol) — feel free to remove it.
-> - **International channel / USDT or USD settlement** — [Kyren Topup](https://kyrenpay.com/?code=SUB2API) (`https://kyrenpay.com/?code=SUB2API`): a ready-to-launch global payment stack for AI startups with WeChat Pay and Alipay support, local-currency checkout, and USD settlement. Fees: WeChat 2.5%, Alipay 2.5%; Multiple withdrawal methods are available. Withdrawals to overseas company accounts incur a $20 fee, while USDT withdrawals incur a $30 fee plus a 0.4% transaction fee, settled in **USDT or USD**. No qualification review required — sign up and use immediately, making it the lowest barrier to entry. Withdrawal threshold is relatively high, recommended for users **who do not use domestic Chinese payment channels, cannot tolerate Stripe's 6%+ fees, have high transaction volume, and have USD or USDT channels to receive withdrawn funds**. Kyren Topup charges a $200 account opening fee; signing up via this link (which contains Sub2Api author [@Wei-Shaw](https://github.com/Wei-Shaw)'s referral code) **waives the opening fee**. Feel free to remove it if you prefer.
->
-> Please evaluate the security, reliability, and compliance of any third-party payment provider on your own — this project does not endorse or guarantee any of them.
+> Evaluate the security, reliability, and compliance of any third-party payment provider yourself — this project does not endorse or guarantee any of them.
 
 ---
 
 ## Quick Start
 
-1. Go to Admin Dashboard → **Settings** → **Payment Settings** tab
+1. Go to Admin Dashboard → **Settings** → **Payment Settings**
 2. Enable **Payment**
-3. Configure basic parameters (amount range, timeout, etc.)
-4. Add at least one provider instance in **Provider Management**
-5. Users can now top up from the frontend
+3. Configure the basics (amount range, order timeout, fee rate)
+4. Add at least one provider instance in **Provider Management** and enable it
+5. If you sell USD-priced plans through SePay, set the **USD → VND rate** (see [Currency and Amounts](#currency-and-amounts))
+6. Register the webhook URL in the provider's own dashboard (see [Webhook Configuration](#webhook-configuration))
 
 ---
 
 ## System Settings
 
-Configure the following in Admin Dashboard **Settings → Payment Settings**:
+Configure the following in Admin Dashboard **Settings → Payment Settings**.
 
 ### Basic Settings
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| **Enable Payment** | Enable or disable the payment system | Off |
-| **Product Name Prefix** | Prefix shown on payment page | - |
-| **Product Name Suffix** | Suffix (e.g., "Credits") | - |
+| **Enable Payment** | Master switch for the payment system | Off |
+| **Product Name Prefix / Suffix** | Wraps the product description sent to the provider | - |
 | **Minimum Amount** | Minimum single top-up amount | 1 |
 | **Maximum Amount** | Maximum single top-up amount (empty = unlimited) | - |
 | **Daily Limit** | Per-user daily cumulative limit (empty = unlimited) | - |
 | **Order Timeout** | Order timeout in minutes (minimum 1) | 30 |
-| **Max Pending Orders** | Maximum concurrent pending orders per user | 3 |
+| **Max Pending Orders** | Maximum concurrent in-progress orders per user | 3 |
+| **Recharge Fee Rate** | Percentage added on top of the order amount, 0–100, at most 2 decimals | 0 |
+| **Balance Recharge Multiplier** | Credit granted per unit paid; must be greater than 0 (e.g. `1.1` = 10% bonus credit) | 1 |
+| **USD → VND Rate** | Converts a USD price into dong on SePay channels; `0` disables conversion | 0 |
 | **Load Balance Strategy** | Strategy for selecting provider instances | Round Robin |
+| **Disable Balance Payment** | Blocks paying for plans out of the account balance | Off |
 
-### Frontend Visible Method Routing
+### Enabled Payment Methods
 
-The current payment UX keeps the frontend method list unified and does not expose provider brands directly:
+The checkout page shows a method only when **both** are true:
 
-- **Alipay**: when enabled, this button must be routed to either `Alipay (Direct)` or `EasyPay Alipay`
-- **WeChat Pay**: when enabled, this button must be routed to either `WeChat Pay (Direct)` or `EasyPay WeChat`
-- Each visible method can route to only one source at a time
-- If a visible method is enabled without a selected source, the frontend will not expose that method
+- the method (`sepay` / `nowpayments`) is in the enabled payment types list, and
+- at least one **enabled** provider instance of that key exists and accepts the order amount
+
+Leaving the enabled-types list empty falls back to whatever provider instances are enabled.
 
 ### Load Balance Strategies
 
 | Strategy | Description |
 |----------|-------------|
-| **Round Robin** | Distribute orders to instances in rotation |
+| **Round Robin** (default) | Distribute orders to instances in rotation |
 | **Least Amount** | Prefer instances with the lowest daily cumulative amount |
 
 ### Cancel Rate Limiting
 
-Prevents users from repeatedly creating and canceling orders:
+Prevents users from repeatedly creating and cancelling orders:
 
 | Setting | Description |
 |---------|-------------|
 | **Enable Limit** | Toggle |
 | **Window Mode** | Sliding / Fixed window |
-| **Time Window** | Window duration |
-| **Window Unit** | Minutes / Hours |
+| **Time Window** + **Unit** | Window duration, in minutes or hours |
 | **Max Cancels** | Maximum cancellations allowed within the window |
 
 ### Help Information
 
 | Setting | Description |
 |---------|-------------|
-| **Help Image** | Customer service QR code or help image (supports upload) |
+| **Help Image** | Customer-service QR code or help image (supports upload) |
 | **Help Text** | Instructions displayed on the payment page |
+
+---
+
+## Currency and Amounts
+
+Every price in the panel — plan prices and balance top-ups alike — is expressed in **USD**. What the gateway charges depends on the instance:
+
+- **NOWPayments** quotes the invoice in the instance's configured currency (USD by default) and the buyer pays any coin.
+- **SePay** always collects **VND**. A USD figure sent to a dong channel unchanged would undercharge by roughly four orders of magnitude, so the **USD → VND rate** is what converts it.
+
+> **If the rate is `0` (unset), no conversion happens and the USD figure is charged as a dong figure.** Set the rate before enabling a SePay instance.
+
+Other amount rules:
+
+- The fee rate is applied on top of the order amount to produce the payable amount.
+- Credited balance is `paid amount × balance recharge multiplier`, rounded to 2 decimals.
+- VND is a zero-decimal currency: dong amounts are rounded to whole dong before being sent to the bank.
 
 ---
 
 ## Provider Configuration
 
-Each provider type requires different credentials. Select the type when adding a new provider instance in **Provider Management → Add Provider**.
+Select the provider type when adding an instance in **Provider Management → Add Provider**. The config is validated when you save an **enabled** instance, so a missing or unusable field is reported in the dialog rather than at order time.
 
-> **Callback URLs are auto-generated**: When adding a provider, the Notify URL and Return URL are automatically constructed from your site domain. You only need to confirm the domain is correct.
+### SePay
 
-### EasyPay
-
-Compatible with any payment service that implements the EasyPay protocol.
+SePay is a reconciliation service for Vietnamese bank accounts. It has **no "create payment" API**: Sub2API renders a VietQR payload that prefills a transfer to your bank account with the order code as the transfer content, and SePay pushes a webhook once a matching credit lands in the account.
 
 | Parameter | Description | Required |
 |-----------|-------------|----------|
-| **Merchant ID (PID)** | EasyPay merchant ID | Yes |
-| **Merchant Key (PKey)** | EasyPay merchant secret key | Yes |
-| **API Base URL** | EasyPay API base address | Yes |
-| **Alipay Channel ID** | Specify Alipay channel (optional) | No |
-| **WeChat Channel ID** | Specify WeChat channel (optional) | No |
+| **Bank account number** (`accountNumber`) | The merchant account SePay watches | Yes |
+| **Bank code** (`bankCode`) | Short code of the bank, e.g. `MB`, `VCB`, `TCB`, `ACB` | Yes (unless a BIN is set) |
+| **Napas BIN** (`bankBin`) | Six-digit VietQR bank identifier. Only needed when the bank code is not recognised; it overrides the code when both are set | No |
+| **Account holder name** (`accountName`) | Shown to the payer in the manual transfer details | No |
+| **API key** (`apiKey`) | Shared secret configured on the SePay webhook. Callbacks whose `Authorization` header does not match are rejected | Yes |
+| **User API token** (`apiToken`) | Enables polling SePay's transaction list. Without it, an order is only ever confirmed by the webhook | No |
 
-### Alipay (Direct)
+Setup in the SePay dashboard:
 
-Direct integration with Alipay Open Platform. Mobile flows return an Alipay WAP/app redirect URL. Desktop flows prefer Face-to-Face Precreate QR payloads; if the merchant has not enabled that product, the provider falls back to Computer Website Pay and also returns the cashier URL so the frontend can render a QR code or open the hosted checkout page directly.
+1. Connect the bank account you want to collect into
+2. Create a webhook pointing at `https://your-domain.com/api/v1/payment/webhook/sepay`
+3. Set the webhook API key and copy the same value into the instance's **API key** field
+4. (Optional) Create a user API token and paste it into **User API token** so pending orders can also be reconciled by polling
 
-| Parameter | Description | Required |
-|-----------|-------------|----------|
-| **AppID** | Alipay application AppID | Yes |
-| **Private Key** | RSA2 application private key | Yes |
-| **Alipay Public Key** | Alipay public key | Yes |
+### NOWPayments
 
-### WeChat Pay (Direct)
-
-Direct integration with WeChat Pay APIv3. Supports Native QR code payment, H5 payment, and MP/JSAPI payment inside the WeChat environment.
+NOWPayments is a crypto gateway. Sub2API opens a **hosted invoice** and sends the payer to it.
 
 | Parameter | Description | Required |
 |-----------|-------------|----------|
-| **AppID** | WeChat Pay AppID | Yes |
-| **Merchant ID (MchID)** | WeChat Pay merchant ID | Yes |
-| **Merchant API Private Key** | Merchant API private key (PEM format) | Yes |
-| **APIv3 Key** | 32-byte APIv3 key | Yes |
-| **WeChat Pay Public Key** | WeChat Pay public key (PEM format) | Yes |
-| **WeChat Pay Public Key ID** | WeChat Pay public key ID | Yes |
-| **Certificate Serial Number** | Merchant certificate serial number | Yes |
+| **API Key** (`apiKey`) | NOWPayments API key | Yes |
+| **IPN secret** (`ipnSecret`) | Verifies the HMAC-SHA512 signature on every IPN callback | Yes |
+| **Payment currency** (`currency`) | Fiat currency the invoice is priced in: USD, EUR, VND, SGD, AUD, GBP | No (default USD) |
+| **API Base URL** (`apiBase`) | Override the API endpoint | No (default `https://api.nowpayments.io/v1`) |
 
-### Stripe
+Setup in the NOWPayments dashboard:
 
-International payment platform supporting multiple payment methods and currencies.
-
-| Parameter | Description | Required |
-|-----------|-------------|----------|
-| **Secret Key** | Stripe secret key (`sk_live_...` or `sk_test_...`) | Yes |
-| **Publishable Key** | Stripe publishable key (`pk_live_...` or `pk_test_...`) | Yes |
-| **Webhook Secret** | Stripe Webhook signing secret (`whsec_...`) | Yes |
+1. Generate an API key under **Settings → Payments**
+2. Set the IPN callback URL to `https://your-domain.com/api/v1/payment/webhook/nowpayments`
+3. Generate the IPN secret and copy it into the instance's **IPN secret** field
 
 ---
 
@@ -160,128 +163,104 @@ International payment platform supporting multiple payment methods and currencie
 
 You can create **multiple instances** of the same provider type for load balancing and risk control:
 
-- **Multi-instance load balancing** — Distribute orders via round-robin or least-amount strategy
-- **Independent limits** — Each instance can have its own min/max amount and daily limit
-- **Independent toggle** — Enable/disable individual instances without affecting others
-- **Refund control** — Enable or disable refunds per instance
-- **Payment methods** — Each instance can support a subset of payment methods
-- **Ordering** — Drag to reorder instances
+- **Multi-instance load balancing** — orders are distributed by round-robin or least-amount
+- **Independent limits** — each instance has its own min/max amount and daily limit; instances over their limit are skipped during selection
+- **Independent toggle** — enable or disable an instance without affecting the others
+- **Payment mode** — `qrcode` renders the payload in-page, `redirect` sends the payer to the provider's hosted page. SePay is a QR flow; NOWPayments is a redirect flow
+- **Ordering** — drag to reorder instances
 
-### Instance Limit Configuration
+### Safety Guards
 
-Each instance supports these limits:
+Some changes are blocked while an instance still has in-progress orders (`PENDING`, `PAID`, `RECHARGING`), because those orders were created against the old merchant identity:
 
-| Limit | Description |
-|-------|-------------|
-| **Minimum Amount** | Minimum order amount accepted by this instance |
-| **Maximum Amount** | Maximum order amount accepted by this instance |
-| **Daily Limit** | Daily cumulative transaction limit for this instance |
+| Action | Blocked when in-progress orders exist |
+|--------|----------------------------------------|
+| Deleting the instance | Yes |
+| Disabling the instance | Yes |
+| Removing a supported payment type | Yes |
+| Changing SePay `apiKey`, `apiToken`, `accountNumber`, `bankCode`, `bankBin` | Yes |
+| Changing NOWPayments `apiKey`, `ipnSecret`, `apiBase`, `currency` | Yes |
 
-> During load balancing, instances that exceed their limits are automatically skipped.
+Secrets (`apiKey`, `apiToken`, `ipnSecret`) are never returned by the admin API. The edit dialog shows them blank; leaving a secret blank on save keeps the stored value.
 
 ---
 
 ## Webhook Configuration
 
-Payment callbacks are essential for the payment system to work correctly.
+Payment callbacks are what confirm an order. Both endpoints are public (no session auth) and authenticate the request themselves.
 
-### Callback URL Format
+### Callback URLs
 
-When adding a provider, the system auto-generates callback URLs from your site domain:
+| Provider | Callback path | Authentication |
+|----------|---------------|----------------|
+| **SePay** | `https://your-domain.com/api/v1/payment/webhook/sepay` | `Authorization: Apikey <apiKey>` (a `Bearer` prefix is also accepted) |
+| **NOWPayments** | `https://your-domain.com/api/v1/payment/webhook/nowpayments` | `x-nowpayments-sig` — HMAC-SHA512 of the sorted JSON body, keyed by the IPN secret |
 
-| Provider | Callback Path |
-|----------|-------------|
-| **EasyPay** | `https://your-domain.com/api/v1/payment/webhook/easypay` |
-| **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
-| **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
-| **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+Callback URLs are auto-generated from your site domain when adding an instance — confirm the domain is correct and register the URL in the provider's dashboard.
 
-> Replace `your-domain.com` with your actual domain. For EasyPay / Alipay / WeChat Pay, the callback URL is auto-filled when adding the provider — no manual configuration needed.
+### Notes
 
-### Stripe Webhook Setup
-
-1. Log in to [Stripe Dashboard](https://dashboard.stripe.com/)
-2. Go to **Developers → Webhooks**
-3. Add an endpoint with the callback URL
-4. Subscribe to events: `payment_intent.succeeded`, `payment_intent.payment_failed`
-5. Copy the generated Webhook Secret (`whsec_...`) to your provider configuration
-
-### Important Notes
-
-- Callback URLs must use **HTTPS** (required by Stripe, strongly recommended for others)
-- Ensure your firewall allows callback requests from payment platforms
-- The system automatically verifies callback signatures to prevent forgery
-- Balance top-up is processed automatically upon successful payment — no manual intervention needed
+- Use **HTTPS**. Ensure your firewall allows callbacks from the payment platform.
+- Events that carry no decision for us are acknowledged and ignored: outgoing transfers and credits with no recognisable order code (SePay), and non-terminal statuses such as `waiting` or `confirming` (NOWPayments).
+- SePay matches an order **by the transfer content only**. A payer who edits the transfer description creates an unmatched credit that has to be reconciled by hand.
+- Balance credit and subscription activation happen automatically once the callback verifies — no manual step.
 
 ---
 
 ## Payment Flow
 
 ```
-User selects amount and payment method
+User selects an amount or plan and a payment method
        │
        ▼
   Create Order (PENDING)
-  ├─ Validate amount range, pending order count, daily limit
-  ├─ Load balance to select provider instance
-  └─ Call provider to get payment info
+  ├─ Validate amount range, in-progress order count, daily limit
+  ├─ Convert to the gateway currency (USD → VND for SePay)
+  ├─ Load balance to select a provider instance
+  └─ Call the provider for payment details
        │
        ▼
   User completes payment
-  ├─ EasyPay     → QR code / H5 redirect
-  ├─ Alipay      → Desktop QR payload (Face-to-Face preferred, Website Pay fallback) / mobile Alipay redirect
-  ├─ WeChat Pay  → Desktop Native QR / non-WeChat H5 / in-WeChat JSAPI
-  └─ Stripe      → Payment Element (card/Alipay/WeChat/etc.)
+  ├─ SePay        → VietQR code + copyable bank transfer details (bank, account,
+  │                 holder, amount, transfer content), page polls order status
+  └─ NOWPayments  → hosted invoice page in a new window / mobile redirect
        │
        ▼
-  Webhook callback verified → Order PAID
+  Webhook verified → Order PAID → RECHARGING
        │
        ▼
-  Auto top-up to user balance → Order COMPLETED
+  Balance credited or subscription activated → Order COMPLETED
 ```
 
 ### Order Status Reference
 
 | Status | Description |
 |--------|-------------|
-| `PENDING` | Waiting for user to complete payment |
-| `PAID` | Payment confirmed, awaiting balance credit |
-| `COMPLETED` | Balance credited successfully |
+| `PENDING` | Waiting for the user to pay |
+| `PAID` | Payment confirmed, awaiting fulfilment |
+| `RECHARGING` | Fulfilment in progress |
+| `COMPLETED` | Balance credited / subscription activated |
 | `EXPIRED` | Timed out without payment |
-| `CANCELLED` | Cancelled by user |
-| `FAILED` | Balance credit failed, admin can retry |
-| `REFUND_REQUESTED` | Refund requested |
-| `REFUNDING` | Refund in progress |
-| `REFUNDED` | Refund completed |
+| `CANCELLED` | Cancelled by the user or an admin |
+| `FAILED` | Fulfilment failed; an admin can retry it from the order list |
 
-### Timeout and Fallback
+> Refunds are not part of this system: neither a bank transfer nor a crypto payment exposes an automated refund API. Money returned out of band should be handled in your own books.
 
-- Before marking an order as expired, the background job queries the upstream payment status first
-- If the user has actually paid but the callback was delayed, the system will reconcile automatically
-- The background job runs every 60 seconds to check for timed-out orders
+### Timeout and Reconciliation
+
+- A background job runs every **60 seconds**; in a multi-instance deployment a leader lock ensures only one node performs the sweep.
+- Before expiring an order the job queries upstream payment status first, so a user who paid just before the timeout is not expired out from under a delayed webhook.
+- The checkout page also asks the server to re-verify a still-pending order while the payer waits — for SePay this only reaches the bank when a **user API token** is configured.
 
 ---
 
-## Migrating from Sub2ApiPay
+## Upgrading from an Older Release
 
-If you previously used [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) as an external payment system, you can migrate to the built-in payment system:
+Releases before the SePay/NOWPayments migration shipped EasyPay, Alipay, WeChat Pay, Stripe, and Airwallex. The migration:
 
-### Key Differences
+- **Disables** instances of the retired providers instead of deleting them — historical orders reference them, and their merchant identity stays visible. They cannot be re-enabled: the admin UI no longer offers those keys and the provider factory rejects them.
+- **Removes the refund subsystem.** Refund columns are dropped and orders parked in a refund status become `CANCELLED`.
+- **Clears the enabled payment types list**, so the checkout page stops offering methods that no longer resolve to a provider. Re-select the methods you want.
+- **Drops the old USD → CNY subscription rate.** The replacement rate converts to **VND** and must be set again — carrying the old number over would undercharge by roughly four orders of magnitude.
 
-| Aspect | Sub2ApiPay | Built-in Payment |
-|--------|-----------|-----------------|
-| Deployment | Separate service (Next.js + PostgreSQL) | Built into Sub2API, no extra deployment |
-| Payment Methods | EasyPay, Alipay, WeChat, Stripe | Same |
-| Configuration | Environment variables + separate admin UI | Unified in Sub2API admin dashboard |
-| Top-up Integration | Via Admin API callback | Internal processing, more reliable |
-| Subscription Plans | Supported | Not yet (planned) |
-| Order Management | Separate admin interface | Integrated in Sub2API admin dashboard |
-
-### Migration Steps
-
-1. Enable payment in Sub2API admin dashboard and configure providers (use the same payment credentials)
-2. Update webhook callback URLs to Sub2API's callback endpoints
-3. Verify that new orders are processed correctly via built-in payment
-4. Decommission the Sub2ApiPay service
-
-> **Note**: Historical order data from Sub2ApiPay will not be automatically migrated. Keep Sub2ApiPay running for a while to access historical records.
+After upgrading: add a SePay and/or NOWPayments instance, set the USD → VND rate if you use SePay, re-enable the payment methods, and register the new webhook URLs.
