@@ -1889,8 +1889,17 @@ const handleBulkRefreshToken = async () => {
   }
 }
 const handleBulkCheckGrokRisk = async () => {
-  const accountIds = [...selIds.value]
-  if (accountIds.length === 0) return
+  const selected = [...selIds.value]
+  if (selected.length === 0) return
+  const known = new Map(accounts.value.map(account => [account.id, account]))
+  const accountIds = selected.filter(id => {
+    const row = known.get(id)
+    return row == null || row.platform === 'grok'
+  })
+  if (accountIds.length === 0) {
+    appStore.showError(t('admin.accounts.bulkActions.checkGrokRiskNoAccounts'))
+    return
+  }
   try {
     const result = await adminAPI.grok.checkAccountsRisk(accountIds)
     appStore.showSuccess(t('admin.accounts.bulkActions.checkGrokRiskSuccess', {

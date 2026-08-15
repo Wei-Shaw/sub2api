@@ -8,7 +8,15 @@ vi.mock('@/api/client', () => ({
   apiClient: { post },
 }))
 
-import { authorizePassword, checkSSOState, createFromSSO, getGrokSSOImportTimeout } from '@/api/admin/grok'
+import {
+  authorizePassword,
+  checkAccountsRisk,
+  checkSSOState,
+  createFromSSO,
+  getGrokRiskCheckTimeout,
+  getGrokSSOImportTimeout,
+  GROK_RISK_MAX_BATCH_IDS,
+} from '@/api/admin/grok'
 
 describe('admin Grok SSO import API', () => {
   beforeEach(() => {
@@ -47,6 +55,35 @@ describe('admin Grok SSO import API', () => {
       { sso_tokens: ['sso-1', 'sso-2'], proxy_id: 3 },
       { timeout: getGrokSSOImportTimeout(2) },
     )
+  })
+
+  it('chunks risk checks and sizes the timeout per batch', async () => {
+    const firstChunk = Array.from({ length: GROK_RISK_MAX_BATCH_IDS }, (_, index) => index + 1)
+    const ids = [...firstChunk, GROK_RISK_MAX_BATCH_IDS + 1]
+    post
+      .mockResolvedValueOnce({
+        data: { total: GROK_RISK_MAX_BATCH_IDS, flagged: 1, clean: GROK_RISK_MAX_BATCH_IDS - 1, error: 0, skipped: 0, items: [] },
+      })
+      .mockResolvedValueOnce({
+        data: { total: 1, flagged: 0, clean: 1, error: 0, skipped: 0, items: [] },
+      })
+
+    const result = await checkAccountsRisk(ids)
+
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      '/admin/grok/accounts/check-risk',
+      { account_ids: firstChunk },
+      { timeout: getGrokRiskCheckTimeout(GROK_RISK_MAX_BATCH_IDS) },
+    )
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      '/admin/grok/accounts/check-risk',
+      { account_ids: [GROK_RISK_MAX_BATCH_IDS + 1] },
+      { timeout: getGrokRiskCheckTimeout(1) },
+    )
+    expect(result.flagged).toBe(1)
+    expect(result.clean).toBe(GROK_RISK_MAX_BATCH_IDS)
   })
 
   it('preserves password whitespace and applies the authorization timeout', async () => {

@@ -40,6 +40,21 @@ func TestInspectAccountTokenRiskCleanToken(t *testing.T) {
 	require.False(t, report.HasBFS)
 }
 
+func TestInspectAccountTokenRiskIgnoresIDTokenBFS(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  grokRiskTestJWT(`{"sub":"clean"}`),
+			"id_token":      grokRiskTestJWT(`{"bfs":2,"sub":"flagged"}`),
+			"refresh_token": grokRiskTestJWT(`{"bot_flag_source":1,"sub":"refresh"}`),
+		},
+	}
+	report := InspectAccountTokenRisk(account)
+	require.Equal(t, xai.GrokRiskClean, report.Verdict)
+	require.False(t, report.HasBFS)
+}
+
 func TestInspectAccountTokenRiskPersistedBFS(t *testing.T) {
 	account := &Account{
 		Platform: PlatformGrok,
@@ -69,6 +84,25 @@ func TestMergeGrokRiskReportsPrefersLiveFlag(t *testing.T) {
 	require.Equal(t, xai.GrokRiskFlagged, merged.Verdict)
 	require.Equal(t, xai.GrokRiskKindIP, merged.Kind)
 	require.Contains(t, merged.Source, "grok.com")
+}
+
+func TestMergeGrokRiskReportsKeepsJWTOnLiveProbeFailure(t *testing.T) {
+	live := xai.GrokAccountState{
+		Error:      "grok.com HTTP 403 (cloudflare or egress restriction)",
+		StatusCode: http.StatusForbidden,
+	}
+	jwt := GrokRiskReport{Verdict: xai.GrokRiskClean, Source: "jwt"}
+	merged := MergeGrokRiskReports(live, jwt)
+	require.Equal(t, xai.GrokRiskClean, merged.Verdict)
+	require.Equal(t, "jwt", merged.Source)
+	require.Empty(t, merged.Error)
+
+	jwt.Verdict = xai.GrokRiskFlagged
+	jwt.HasBFS = true
+	jwt.Kind = xai.GrokRiskKindJWT
+	merged = MergeGrokRiskReports(live, jwt)
+	require.Equal(t, xai.GrokRiskFlagged, merged.Verdict)
+	require.Equal(t, xai.GrokRiskKindJWT, merged.Kind)
 }
 
 func TestGrokOAuthServiceInspectSSOAccountStateUsesInspector(t *testing.T) {

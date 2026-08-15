@@ -194,6 +194,108 @@ func TestGrokOAuthServiceBuildAccountCredentialsDefaultsToSubscriptionProxy(t *t
 	require.Equal(t, xai.DefaultCLIBaseURL, credentials["base_url"])
 }
 
+func TestGrokOAuthServiceBuildAccountCredentialsStoresBotFlagSource(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	flag := int64(1)
+	credentials := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken:   "access-token",
+		ExpiresAt:     time.Now().Add(time.Hour).Unix(),
+		BotFlagSource: &flag,
+	})
+	require.EqualValues(t, int64(1), credentials["bot_flag_source"])
+}
+
+func TestBuildAccountCredentialsClearsStaleBFSFromDecodedAccessToken(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	creds := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken:         "access-token",
+		ExpiresAt:           time.Now().Add(time.Hour).Unix(),
+		riskFromAccessToken: true,
+	})
+	merged := MergeCredentials(map[string]any{
+		"bfs":             true,
+		"bfs_value":       float64(2),
+		"bot_flag_source": int64(1),
+		"email":           "keep@x.ai",
+	}, creds)
+	require.Equal(t, false, merged["bfs"])
+	require.Nil(t, merged["bfs_value"])
+	require.Nil(t, merged["bot_flag_source"])
+	require.Equal(t, "keep@x.ai", merged["email"])
+}
+
+func TestBuildAccountCredentialsKeepsPersistedBFSWhenAccessTokenOpaque(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	creds := svc.BuildAccountCredentials(&GrokTokenInfo{
+		AccessToken: "opaque-access-token",
+		ExpiresAt:   time.Now().Add(time.Hour).Unix(),
+	})
+	merged := MergeCredentials(map[string]any{
+		"bfs":       true,
+		"bfs_value": float64(2),
+	}, creds)
+	require.Equal(t, true, merged["bfs"])
+	require.EqualValues(t, 2, merged["bfs_value"])
+}
+
+func TestTokenInfoFromResponseIgnoresIDTokenBFS(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	info := svc.tokenInfoFromResponse(&xai.TokenResponse{
+		AccessToken: makeGrokOAuthJWT(map[string]any{"sub": "user-clean"}),
+		IDToken:     makeGrokOAuthJWT(map[string]any{"bfs": float64(2), "email": "a@x.ai"}),
+		ExpiresIn:   3600,
+	}, "client-id", nil)
+	require.True(t, info.riskFromAccessToken)
+	require.False(t, info.HasBFS)
+	require.Nil(t, info.BFS)
+	require.Nil(t, info.BotFlagSource)
+	require.Equal(t, "a@x.ai", info.Email)
+
+	creds := MergeCredentials(map[string]any{"bfs": true, "bfs_value": float64(2)}, svc.BuildAccountCredentials(info))
+	require.Equal(t, false, creds["bfs"])
+	require.Nil(t, creds["bfs_value"])
+}
+
+func TestTokenInfoFromResponseUsesAccessTokenBFS(t *testing.T) {
+	t.Parallel()
+	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{})
+	defer svc.Stop()
+
+	info := svc.tokenInfoFromResponse(&xai.TokenResponse{
+		AccessToken: makeGrokOAuthJWT(map[string]any{"bfs": float64(2), "sub": "user-flagged"}),
+		IDToken:     makeGrokOAuthJWT(map[string]any{"sub": "id"}),
+		ExpiresIn:   3600,
+	}, "client-id", nil)
+	require.True(t, info.HasBFS)
+	require.EqualValues(t, 2, info.BFS)
+}
+
+func TestApplyGrokTokenClaimsReadsBotFlagSource(t *testing.T) {
+	t.Parallel()
+	info := &GrokTokenInfo{}
+	applyGrokTokenClaims(info, makeGrokOAuthJWT(map[string]any{
+		"bot_flag_source": float64(1),
+		"email":           "a@x.ai",
+		"sub":             "user-1",
+	}), true)
+	require.NotNil(t, info.BotFlagSource)
+	require.EqualValues(t, 1, *info.BotFlagSource)
+	require.Equal(t, "a@x.ai", info.Email)
+	require.Equal(t, "user-1", info.Subject)
+}
+
 func TestGrokOAuthServiceConvertFromSSOExtractsBuildClaims(t *testing.T) {
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
 		ssoResponse: &xai.TokenResponse{
@@ -252,7 +354,7 @@ func TestGrokOAuthServiceRefreshAccountTokenIgnoresIDTokenTierWhenAccessTokenHas
 	svc := NewGrokOAuthService(nil, &grokOAuthClientStub{
 		refreshResponse: &xai.TokenResponse{
 			AccessToken: "opaque-access-token",
-			IDToken:      makeGrokOAuthJWT(map[string]any{"tier": 5}),
+			IDToken:     makeGrokOAuthJWT(map[string]any{"tier": 5}),
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
 		},

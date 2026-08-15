@@ -142,6 +142,9 @@ type GrokTokenInfo struct {
 	// HasBFS is true when the JWT carries a bfs claim (presence is the signal).
 	HasBFS bool `json:"has_bfs,omitempty"`
 	BFS    any  `json:"bfs,omitempty"`
+	// riskFromAccessToken means bfs / bot_flag_source came from a decoded access token
+	// and must overwrite persisted credential keys on merge.
+	riskFromAccessToken bool
 }
 
 // GrokPasswordLoginResult is an ephemeral password-login outcome.
@@ -387,6 +390,34 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 	if tokenInfo.EntitlementStatus != "" {
 		creds["entitlement_status"] = tokenInfo.EntitlementStatus
 	}
+	writeGrokRiskCredentials(creds, tokenInfo)
+	creds["base_url"] = xai.DefaultCLIBaseURL
+	return creds
+}
+
+func writeGrokRiskCredentials(creds map[string]any, tokenInfo *GrokTokenInfo) {
+	if creds == nil || tokenInfo == nil {
+		return
+	}
+	if tokenInfo.riskFromAccessToken {
+		if tokenInfo.HasBFS {
+			creds["bfs"] = true
+			if tokenInfo.BFS != nil {
+				creds["bfs_value"] = tokenInfo.BFS
+			} else {
+				creds["bfs_value"] = nil
+			}
+		} else {
+			creds["bfs"] = false
+			creds["bfs_value"] = nil
+		}
+		if tokenInfo.BotFlagSource != nil {
+			creds["bot_flag_source"] = *tokenInfo.BotFlagSource
+		} else {
+			creds["bot_flag_source"] = nil
+		}
+		return
+	}
 	if tokenInfo.BotFlagSource != nil {
 		creds["bot_flag_source"] = *tokenInfo.BotFlagSource
 	}
@@ -396,8 +427,6 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 			creds["bfs_value"] = tokenInfo.BFS
 		}
 	}
-	creds["base_url"] = xai.DefaultCLIBaseURL
-	return creds
 }
 
 func (s *GrokOAuthService) Stop() {
@@ -485,11 +514,16 @@ func applyGrokTokenClaims(info *GrokTokenInfo, token string, includeTier bool) {
 	if info.TeamID == "" {
 		info.TeamID = xai.JWTClaimString(claims, "team_id")
 	}
-	if includeTier {
-		if tier := xai.SubscriptionTierFromJWT(token); tier != "" {
-			info.SubscriptionTier = tier
-		}
+	if !includeTier {
+		return
 	}
+	if tier := xai.SubscriptionTierFromJWT(token); tier != "" {
+		info.SubscriptionTier = tier
+	}
+	info.riskFromAccessToken = true
+	info.HasBFS = false
+	info.BFS = nil
+	info.BotFlagSource = nil
 	if flag, ok := xai.JWTClaimInt64(claims, "bot_flag_source"); ok {
 		value := flag
 		info.BotFlagSource = &value

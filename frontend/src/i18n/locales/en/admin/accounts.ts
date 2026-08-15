@@ -420,6 +420,7 @@ export default {
         probeUpstreamBilling: 'Probe Upstream Rate',
         checkGrokRisk: 'Check Grok Risk',
         checkGrokRiskSuccess: 'Grok risk check finished: flagged {flagged}, clean {clean}, error {error}',
+        checkGrokRiskNoAccounts: 'No Grok accounts in the current selection',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
