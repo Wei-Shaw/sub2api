@@ -505,6 +505,7 @@ export default {
         probeUpstreamBilling: '探测上游倍率',
         checkGrokRisk: '检查 Grok 风控',
         checkGrokRiskSuccess: 'Grok 风控检查完成：标记 {flagged}，干净 {clean}，失败 {error}',
+        checkGrokRiskNoAccounts: '当前选择中没有 Grok 账号',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'

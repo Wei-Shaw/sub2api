@@ -93,10 +93,17 @@ export interface GrokSSOToOAuthResponse {
 const GROK_SSO_IMPORT_CONCURRENCY = 3
 const GROK_SSO_IMPORT_TIMEOUT_PER_BATCH_MS = 90_000
 const GROK_SSO_IMPORT_TIMEOUT_BUFFER_MS = 90_000
+export const GROK_RISK_MAX_BATCH_IDS = 200
+const GROK_RISK_CHECK_TIMEOUT_PER_ID_MS = 500
+const GROK_RISK_CHECK_TIMEOUT_BUFFER_MS = 30_000
 
 export function getGrokSSOImportTimeout(keyCount: number): number {
   const batches = Math.ceil(Math.max(1, keyCount) / GROK_SSO_IMPORT_CONCURRENCY)
   return batches * GROK_SSO_IMPORT_TIMEOUT_PER_BATCH_MS + GROK_SSO_IMPORT_TIMEOUT_BUFFER_MS
+}
+
+export function getGrokRiskCheckTimeout(idCount: number): number {
+  return Math.max(1, idCount) * GROK_RISK_CHECK_TIMEOUT_PER_ID_MS + GROK_RISK_CHECK_TIMEOUT_BUFFER_MS
 }
 
 export interface GrokQuotaSnapshot {
@@ -296,11 +303,39 @@ export async function checkSSOState(payload: {
   return data
 }
 
+function emptyGrokCheckRiskResponse(): GrokCheckRiskResponse {
+  return { total: 0, flagged: 0, clean: 0, error: 0, skipped: 0, items: [] }
+}
+
+function mergeGrokCheckRiskResponses(parts: GrokCheckRiskResponse[]): GrokCheckRiskResponse {
+  const out = emptyGrokCheckRiskResponse()
+  for (const part of parts) {
+    out.flagged += part.flagged
+    out.clean += part.clean
+    out.error += part.error
+    out.skipped += part.skipped
+    out.items.push(...(part.items ?? []))
+  }
+  out.total = out.items.length
+  return out
+}
+
 export async function checkAccountsRisk(accountIds: number[]): Promise<GrokCheckRiskResponse> {
-  const { data } = await apiClient.post<GrokCheckRiskResponse>('/admin/grok/accounts/check-risk', {
-    account_ids: accountIds
-  })
-  return data
+  const ids = [...new Set(accountIds.filter((id) => Number.isFinite(id) && id > 0))]
+  if (ids.length === 0) {
+    return emptyGrokCheckRiskResponse()
+  }
+  const parts: GrokCheckRiskResponse[] = []
+  for (let offset = 0; offset < ids.length; offset += GROK_RISK_MAX_BATCH_IDS) {
+    const chunk = ids.slice(offset, offset + GROK_RISK_MAX_BATCH_IDS)
+    const { data } = await apiClient.post<GrokCheckRiskResponse>(
+      '/admin/grok/accounts/check-risk',
+      { account_ids: chunk },
+      { timeout: getGrokRiskCheckTimeout(chunk.length) }
+    )
+    parts.push(data)
+  }
+  return mergeGrokCheckRiskResponses(parts)
 }
 
 export async function checkAccountRisk(id: number): Promise<GrokCheckRiskItem> {

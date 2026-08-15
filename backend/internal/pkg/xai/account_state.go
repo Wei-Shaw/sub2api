@@ -202,9 +202,7 @@ func HasBFSClaim(token string) bool {
 	return InspectJWTRisk(token).HasBFS
 }
 
-// IsRiskFlaggedToken reports media/account risk from JWT: bfs present or
-// bot_flag_source == 1. bot_flag_source == 2 is the grok.com IP soft mark and
-// is not treated as a media-degradation token flag here.
+// IsRiskFlaggedToken is true when bfs is present or bot_flag_source == 1.
 func IsRiskFlaggedToken(token string) bool {
 	info := InspectJWTRisk(token)
 	if info.HasBFS {
