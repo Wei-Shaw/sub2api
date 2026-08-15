@@ -805,13 +805,12 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		return nil, err
 	}
 
-	contentURL, err := grokMediaSignedVideoContentURL(statusBody, requestID)
+	contentURL, signedContent, err := grokMediaVideoContentURL(statusBody, requestID, statusURL)
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
 	}
-	signedContent := contentURL != ""
-	if !signedContent {
+	if contentURL == "" {
 		contentURL, err = buildGrokMediaURL(account, s.cfg, GrokMediaEndpointVideoContent, requestID)
 		if err != nil {
 			SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
@@ -819,8 +818,14 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		}
 	}
 
+	contentRequestCtx := upstreamCtx
+	if signedContent {
+		contentRequestCtx = WithHTTPUpstreamRedirectChecker(contentRequestCtx, validateGrokMediaSignedVideoRedirect)
+	} else {
+		contentRequestCtx = WithHTTPUpstreamRedirectsDisabled(contentRequestCtx)
+	}
 	contentReq, err := http.NewRequestWithContext(
-		WithHTTPUpstreamRedirectsDisabled(upstreamCtx),
+		contentRequestCtx,
 		http.MethodGet,
 		contentURL,
 		nil,
@@ -881,25 +886,49 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	return result, nil
 }
 
-func grokMediaSignedVideoContentURL(body []byte, requestID string) (string, error) {
+func grokMediaVideoContentURL(body []byte, requestID, upstreamURL string) (string, bool, error) {
 	rawURL := strings.TrimSpace(gjson.GetBytes(body, "video.url").String())
 	if rawURL == "" {
-		return "", nil
+		return "", false, nil
 	}
 	// An upstream Sub2API rewrites protected content URLs to its own proxy
 	// endpoint. Treat that as an authenticated relay path, not as a signed URL;
 	// the caller will rebuild it against the configured account base URL and
 	// attach the upstream API key.
 	if isGrokMediaVideoContentURL(rawURL, requestID) {
-		return "", nil
+		return "", false, nil
 	}
 	parsed, err := url.Parse(rawURL)
-	if err != nil || !strings.EqualFold(parsed.Scheme, "https") ||
-		!strings.EqualFold(parsed.Hostname(), "vidgen.x.ai") ||
-		(parsed.Port() != "" && parsed.Port() != "443") || parsed.User != nil {
-		return "", fmt.Errorf("grok media status returned an unsupported video content URL")
+	if err != nil || parsed.User != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Hostname() == "" {
+		return "", false, fmt.Errorf("grok media status returned an unsupported video content URL")
 	}
-	return parsed.String(), nil
+	if strings.EqualFold(parsed.Hostname(), "vidgen.x.ai") && effectiveHTTPSPort(parsed) == "443" {
+		return parsed.String(), true, nil
+	}
+	upstream, err := url.Parse(upstreamURL)
+	if err == nil && upstream.User == nil && strings.EqualFold(upstream.Scheme, "https") && upstream.Hostname() != "" &&
+		strings.EqualFold(parsed.Hostname(), upstream.Hostname()) &&
+		effectiveHTTPSPort(parsed) == effectiveHTTPSPort(upstream) {
+		return parsed.String(), false, nil
+	}
+	return "", false, fmt.Errorf("grok media status returned an unsupported video content URL")
+}
+
+func effectiveHTTPSPort(parsed *url.URL) string {
+	if parsed.Port() != "" {
+		return parsed.Port()
+	}
+	return "443"
+}
+
+func validateGrokMediaSignedVideoRedirect(req *http.Request) error {
+	if req == nil || req.URL == nil || req.URL.User != nil ||
+		!strings.EqualFold(req.URL.Scheme, "https") ||
+		!strings.EqualFold(req.URL.Hostname(), "vidgen.x.ai") ||
+		effectiveHTTPSPort(req.URL) != "443" {
+		return fmt.Errorf("grok media signed video redirect target is unsupported")
+	}
+	return nil
 }
 
 func isGrokCLIProxyTarget(rawURL string) bool {
@@ -1455,13 +1484,16 @@ func isGrokMediaVideoContentURL(rawURL, requestID string) bool {
 		return false
 	}
 	requestID = strings.Trim(requestID, "/")
-	decodedID, err := url.PathUnescape(segments[len(segments)-2])
-	if err != nil {
-		return false
+	decodedSegments := make([]string, len(segments))
+	for i, segment := range segments {
+		decodedSegments[i], err = url.PathUnescape(segment)
+		if err != nil {
+			return false
+		}
 	}
-	return segments[len(segments)-3] == "videos" &&
-		decodedID == requestID &&
-		segments[len(segments)-1] == "content"
+	return decodedSegments[len(decodedSegments)-3] == "videos" &&
+		decodedSegments[len(decodedSegments)-2] == requestID &&
+		decodedSegments[len(decodedSegments)-1] == "content"
 }
 
 func grokMediaContentProxyURL(c *gin.Context, requestID string) string {

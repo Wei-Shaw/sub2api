@@ -50,6 +50,53 @@ func TestHTTPUpstreamDoCanDisableRedirectsPerRequest(t *testing.T) {
 	require.Zero(t, redirectedCalls.Load())
 }
 
+func TestHTTPUpstreamRequestRedirectPolicyPreservesBaseChecker(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	baseErr := errors.New("base redirect policy rejected target")
+	var baseCalls atomic.Int64
+	baseClient := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		baseCalls.Add(1)
+		return baseErr
+	}}
+	ctx := service.WithHTTPUpstreamRedirectChecker(t.Context(), func(*http.Request) error { return nil })
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, redirector.URL, nil)
+	require.NoError(t, err)
+
+	_, err = httpClientForUpstreamRequest(baseClient, req).Do(req)
+	require.ErrorIs(t, err, baseErr)
+	require.Equal(t, int64(1), baseCalls.Load())
+}
+
+func TestHTTPUpstreamRequestRedirectCheckerRejectsBeforeTargetExecution(t *testing.T) {
+	var targetCalls atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		targetCalls.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(target.Close)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	rejected := errors.New("redirect target rejected")
+	ctx := service.WithHTTPUpstreamRedirectChecker(t.Context(), func(*http.Request) error { return rejected })
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, redirector.URL, nil)
+	require.NoError(t, err)
+
+	_, err = httpClientForUpstreamRequest(&http.Client{}, req).Do(req)
+	require.ErrorIs(t, err, rejected)
+	require.Zero(t, targetCalls.Load())
+}
+
 func TestHTTPUpstreamDoWithTLSPlainHTTPUsesConfiguredHTTPProxy(t *testing.T) {
 	var upstreamCalls atomic.Int64
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -297,12 +297,32 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 }
 
 func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
-	if client == nil || req == nil || !service.HTTPUpstreamRedirectsDisabled(req.Context()) {
+	if client == nil || req == nil {
+		return client
+	}
+	redirectsDisabled := service.HTTPUpstreamRedirectsDisabled(req.Context())
+	requestChecker := service.HTTPUpstreamRedirectChecker(req.Context())
+	if !redirectsDisabled && requestChecker == nil {
 		return client
 	}
 	clone := *client
-	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
+	baseChecker := client.CheckRedirect
+	clone.CheckRedirect = func(redirectReq *http.Request, via []*http.Request) error {
+		if redirectsDisabled {
+			return http.ErrUseLastResponse
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if requestChecker != nil {
+			if err := requestChecker(redirectReq); err != nil {
+				return err
+			}
+		}
+		if baseChecker != nil {
+			return baseChecker(redirectReq, via)
+		}
+		return nil
 	}
 	return &clone
 }
@@ -590,6 +610,10 @@ func (s *httpUpstreamService) validateRequestHost(req *http.Request) error {
 	if !s.shouldValidateResolvedIP() {
 		return nil
 	}
+	return validateRequestResolvedIP(req)
+}
+
+func validateRequestResolvedIP(req *http.Request) error {
 	if req == nil || req.URL == nil {
 		return errors.New("request url is nil")
 	}
