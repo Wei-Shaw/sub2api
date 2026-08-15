@@ -61,6 +61,19 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2StaysOnResponses(t *test
 	require.False(t, streamMarkerExists)
 }
 
+func TestNormalizeOpenAIResponsesCompactRequest_HeaderlessDesktopV2StaysOnResponses(t *testing.T) {
+	h := &OpenAIGatewayHandler{}
+	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`)
+	c := newCompactBodySignalTestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "Codex Desktop/0.147.0-alpha.6.5 (Mac OS X 15.6; arm64)")
+
+	normalized, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), body)
+	require.True(t, ok)
+	require.Equal(t, "/v1/responses", c.Request.URL.Path)
+	require.Equal(t, body, normalized)
+	require.False(t, isOpenAIRemoteCompactPath(c))
+}
+
 func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2PathAliasesStayOnResponses(t *testing.T) {
 	h := &OpenAIGatewayHandler{}
 	body := []byte(`{"model":"gpt-5.6-sol","stream":true,"input":[{"type":"compaction_trigger"}]}`)
@@ -103,6 +116,7 @@ func TestNormalizeOpenAIResponsesCompactRequest_NonRemoteV2BodySignalPromoted(t 
 		name       string
 		body       []byte
 		betaHeader string
+		userAgent  string
 		wantMarked bool
 	}{
 		{
@@ -114,12 +128,25 @@ func TestNormalizeOpenAIResponsesCompactRequest_NonRemoteV2BodySignalPromoted(t 
 			name:       "unrelated_header",
 			body:       []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}`),
 			betaHeader: "responses_websockets_v2",
+			userAgent:  "Codex Desktop/0.147.0-alpha.6.5",
 			wantMarked: true,
 		},
 		{
 			name:       "wrong_case_header",
 			body:       []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}`),
 			betaHeader: "REMOTE_COMPACTION_V2",
+			wantMarked: true,
+		},
+		{
+			name:       "desktop_before_remote_v2",
+			body:       []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			userAgent:  "Codex Desktop/0.144.0",
+			wantMarked: true,
+		},
+		{
+			name:       "current_cli_without_header",
+			body:       []byte(`{"model":"gpt-5.5","stream":true,"input":[{"type":"compaction_trigger"}]}`),
+			userAgent:  "codex_cli_rs/0.147.0",
 			wantMarked: true,
 		},
 		{
@@ -139,6 +166,9 @@ func TestNormalizeOpenAIResponsesCompactRequest_NonRemoteV2BodySignalPromoted(t 
 			c := newCompactBodySignalTestContext(t, "/v1/responses", tt.body)
 			if tt.betaHeader != "" {
 				c.Request.Header.Set("x-codex-beta-features", tt.betaHeader)
+			}
+			if tt.userAgent != "" {
+				c.Request.Header.Set("User-Agent", tt.userAgent)
 			}
 
 			normalized, ok := h.normalizeOpenAIResponsesCompactRequest(c, zap.NewNop(), tt.body)
