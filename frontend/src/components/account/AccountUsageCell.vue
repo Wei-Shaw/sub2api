@@ -1161,7 +1161,6 @@ const isGrokFreeUsage = (usage: AccountUsageInfo | null) => {
   const plan = (billing?.plan || '').trim().toLowerCase()
   const tier = (usage.subscription_tier || '').trim().toLowerCase()
   const entitlement = (usage.grok_entitlement_status || '').toLowerCase()
-  // Live credential tier wins leftover Heavy billing.metrics (JWT / snapshot).
   if (grokPlanLabelIsFree(tier)) return true
   if (grokPlanLabelIsPaid(tier)) return false
   if (

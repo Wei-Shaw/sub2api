@@ -332,9 +332,7 @@ type GrokSSOToOAuthRequest struct {
 	RateMultiplier     *float64       `json:"rate_multiplier"`
 	ExpiresAt          *int64         `json:"expires_at"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
-	// SkipRiskFlagged checks grok.com botFlagSource before converting SSO.
-	// Flagged accounts are not imported. Check failures (network/Cloudflare)
-	// do not block import.
+	// SkipRiskFlagged skips flagged grok.com accounts; probe errors still import.
 	SkipRiskFlagged bool `json:"skip_risk_flagged"`
 }
 

@@ -84,7 +84,7 @@ func grokHomeHTTPClient(proxyURL string) (*http.Client, error) {
 	})
 }
 
-// InspectAccountTokenRisk decodes stored Grok OAuth JWTs (no network).
+// InspectAccountTokenRisk decodes the stored access token (no network).
 func InspectAccountTokenRisk(account *Account) GrokRiskReport {
 	report := GrokRiskReport{
 		Verdict:   xai.GrokRiskUnknown,
@@ -97,9 +97,7 @@ func InspectAccountTokenRisk(account *Account) GrokRiskReport {
 		return report
 	}
 	access := strings.TrimSpace(account.GetCredential("access_token"))
-	idToken := strings.TrimSpace(account.GetCredential("id_token"))
-	refresh := strings.TrimSpace(account.GetCredential("refresh_token"))
-	info := xai.InspectJWTRisk(access, idToken, refresh)
+	info := xai.InspectJWTRisk(access)
 	applyJWTRiskToReport(&report, info)
 	if !info.OK {
 		if persisted := persistedGrokTokenRisk(account); persisted != nil {
@@ -173,7 +171,7 @@ func MergeGrokRiskReports(live xai.GrokAccountState, jwt GrokRiskReport) GrokRis
 		Email:     jwt.Email,
 	}
 	liveVerdict := xai.ClassifyGrokAccountState(live)
-	if live.Found || live.Error != "" || live.StatusCode != 0 {
+	if live.Found || liveVerdict == xai.GrokRiskFlagged {
 		report.BotFlagSource = live.BotFlagSource
 		report.Details = live.BotFlagDetails
 		report.Policy = live.Policy
