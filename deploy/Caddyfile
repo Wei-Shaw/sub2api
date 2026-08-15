@@ -40,6 +40,10 @@ api.sub2api.com {
 		lb_try_interval 250ms
 
 		# 仅从实际 TCP 对端生成转发头，避免透传客户端伪造值。
+		# CF-Connecting-IP 在后端的转发头解析中优先级最高，但这里不是 Cloudflare
+		# 变体（见 Caddyfile.cloudflare），没有边缘节点会写入它，因此必须删除，
+		# 否则客户端可自带该头覆盖下面两行、伪造 API Key IP ACL 与会话绑定所用 IP。
+		header_up -CF-Connecting-IP
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
