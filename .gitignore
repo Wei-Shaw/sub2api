@@ -175,3 +175,6 @@ output/
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/live/*.png
 # impeccable-ignore-end
+
+# Vitest / Vite cache at repo root
+.vite/

@@ -55,9 +55,25 @@ type Group struct {
 	VideoPrice480P               *float64
 	VideoPrice720P               *float64
 	VideoPrice1080P              *float64
+	// VideoModelPrices is optional per-model-family per-second pricing
+	// (groups.video_model_prices JSONB). Shape: family → resolution → USD/s.
+	// When set for a model, overrides VideoPrice* for that model only.
+	VideoModelPrices map[string]map[string]float64
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
 	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
 	WebSearchPricePerCall *float64
+
+	// 搜索工具显式定价（per 1k calls）。
+	SearchPricePer1k *float64
+	// Grok Voice 显式定价（分组级，不按文本 RateMultiplier）。
+	AudioRealtimePricePerMin     *float64
+	AudioTTSPricePerMillionChars *float64
+	AudioSTTPricePerHour         *float64
+
+	// ModelPricing overrides channel and built-in prices for matching models.
+	// Token intervals are selected only when LongContextPricingEnabled is true.
+	LongContextPricingEnabled bool
+	ModelPricing              []ChannelModelPricing
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool
@@ -165,6 +181,30 @@ func (g *Group) GetVideoPrice(resolution string) *float64 {
 		return g.VideoPrice1080P
 	default:
 		return g.VideoPrice480P
+	}
+}
+
+// GetVideoPriceForModel prefers VideoModelPrices for the model family, then flat columns.
+func (g *Group) GetVideoPriceForModel(model, resolution string) *float64 {
+	if g == nil {
+		return nil
+	}
+	if price := LookupVideoModelPrice(g.VideoModelPrices, model, resolution); price != nil {
+		return price
+	}
+	return g.GetVideoPrice(resolution)
+}
+
+// VideoPriceConfig builds billing config including optional per-model map.
+func (g *Group) VideoPriceConfig() *VideoPriceConfig {
+	if g == nil {
+		return nil
+	}
+	return &VideoPriceConfig{
+		Price480P:   g.VideoPrice480P,
+		Price720P:   g.VideoPrice720P,
+		Price1080P:  g.VideoPrice1080P,
+		ModelPrices: NormalizeVideoModelPrices(g.VideoModelPrices),
 	}
 }
 
@@ -413,4 +453,12 @@ func profitControlPlatformSupported(platform string) bool {
 	default:
 		return false
 	}
+}
+
+// GetSearchPricePer1k returns explicit search/tool price per 1k calls if configured.
+func (g *Group) GetSearchPricePer1k() *float64 {
+	if g == nil {
+		return nil
+	}
+	return g.SearchPricePer1k
 }
