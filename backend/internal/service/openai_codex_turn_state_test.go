@@ -54,7 +54,8 @@ func TestRelayOpenAICodexTurnState_SetsHeaderAndRecordsProvenance(t *testing.T) 
 
 	raw, ok := svc.openaiCodexTurnStateOrigins.Load("7\x00sess-relay")
 	require.True(t, ok)
-	origin := raw.(openAICodexTurnStateOrigin)
+	origin, ok := raw.(openAICodexTurnStateOrigin)
+	require.True(t, ok)
 	require.Equal(t, int64(42), origin.accountID)
 	require.True(t, origin.expiresAt.After(time.Now()))
 REDACTED
@@ -90,7 +91,9 @@ func TestStageOpenAICodexTurnState_StagedHeaders(t *testing.T) {
 	svc.noteStagedOpenAICodexTurnStateCommitted(c, &Account{ID: 44REDACTED, staged)
 	raw, ok := svc.openaiCodexTurnStateOrigins.Load("9\x00sess-staged")
 	require.True(t, ok)
-	require.Equal(t, int64(44), raw.(openAICodexTurnStateOrigin).accountID)
+	origin, ok := raw.(openAICodexTurnStateOrigin)
+	require.True(t, ok)
+	require.Equal(t, int64(44), origin.accountID)
 
 	// 上游无值 → 清除已暂存的值；nil 集合保持 nil
 	stageOpenAICodexTurnState(&staged, http.Header{REDACTED)
@@ -123,7 +126,9 @@ func TestStagedTurnState_AbandonedAttemptDoesNotPoisonProvenance(t *testing.T) {
 
 	raw, ok := svc.openaiCodexTurnStateOrigins.Load("11\x00sess-abandoned")
 	require.True(t, ok)
-	require.Equal(t, int64(52), raw.(openAICodexTurnStateOrigin).accountID)
+	origin, ok := raw.(openAICodexTurnStateOrigin)
+	require.True(t, ok)
+	require.Equal(t, int64(52), origin.accountID)
 REDACTED
 
 func TestNoteStagedOpenAICodexTurnStateCommitted_NoopWithoutState(t *testing.T) {
