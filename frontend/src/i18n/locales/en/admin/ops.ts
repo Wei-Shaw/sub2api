@@ -179,7 +179,7 @@ export default {
         memoryHighAction: 'Monitor memory trends, check for memory leaks',
         ttftHigh: 'Time to first token elevated ({ttft}ms)',
         ttftHighImpact: 'User perceived latency increased',
-        ttftHighAction: 'Optimize request processing flow, reduce pre-processing time',
+        ttftHighAction: 'Check upstream account latency and reasoning effort levels — this metric is measured to the first visible output token, so it includes upstream thinking time',
         // Error rate diagnostics
         upstreamCritical: 'Upstream error rate critically high ({rate}%)',
         upstreamCriticalImpact: 'May affect many user requests',

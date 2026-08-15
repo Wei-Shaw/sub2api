@@ -179,7 +179,7 @@ export default {
         memoryHighAction: '监控内存趋势，检查是否有内存泄漏',
         ttftHigh: '首 Token 时间偏高 ({ttft}ms)',
         ttftHighImpact: '用户感知时长增加',
-        ttftHighAction: '优化请求处理流程，减少前置逻辑耗时',
+        ttftHighAction: '检查上游账号延迟与推理强度（reasoning effort）——该指标统计到首个可见输出 token，包含上游思考耗时',
         // Error rate diagnostics
         upstreamCritical: '上游错误率严重偏高 ({rate}%)',
         upstreamCriticalImpact: '可能影响大量用户请求',

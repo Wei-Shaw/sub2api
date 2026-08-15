@@ -48,14 +48,25 @@ func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
 		}
 	}
 
-	// TTFT score: 1s → 100, 3s → 0 (linear)
-	// Time to first token is critical for user experience
+	// TTFT score: 3s → 100, 30s → 0 (linear)
+	//
+	// The band is wide on purpose. first_token_ms is stamped at the first
+	// *visible* output event, so for reasoning models it includes the whole
+	// thinking phase whenever the upstream emits no reasoning-summary deltas.
+	// Real traffic at reasoning_effort=max sits around 7-8s at the median, so
+	// the old 1s-3s band scored every reasoning deployment at a flat 0 and
+	// pinned the overall health score to its 65-point ceiling regardless of
+	// how the relay was actually behaving.
+	//
+	// p95 rather than p99: the dashboard buckets hourly, and a quiet hour with
+	// a dozen samples makes p99 indistinguishable from max, so a single slow
+	// request would swing the score on its own.
 	ttftScore := 100.0
-	if overview.TTFT.P99 != nil {
-		p99 := float64(*overview.TTFT.P99)
-		if p99 > 1000 {
-			if p99 <= 3000 {
-				ttftScore = (3000 - p99) / 2000 * 100
+	if ttft := ttftScoringLatencyMs(overview.TTFT); ttft != nil {
+		latency := float64(*ttft)
+		if latency > 3000 {
+			if latency <= 30000 {
+				ttftScore = (30000 - latency) / 27000 * 100
 			} else {
 				ttftScore = 0
 			}
@@ -64,6 +75,18 @@ func computeBusinessHealth(overview *OpsDashboardOverview) float64 {
 
 	// Weighted combination: 50% error rate + 50% TTFT
 	return errorScore*0.5 + ttftScore*0.5
+}
+
+// ttftScoringLatencyMs picks the TTFT percentile the health score is graded on.
+//
+// p95 is the intended signal; p99 is only a fallback for callers that filled in
+// the coarser percentile but not p95, so a partially populated summary still
+// scores instead of silently reading as a perfect 100.
+func ttftScoringLatencyMs(ttft OpsPercentiles) *int {
+	if ttft.P95 != nil {
+		return ttft.P95
+	}
+	return ttft.P99
 }
 
 // computeInfraHealth calculates infrastructure health score (0-100)

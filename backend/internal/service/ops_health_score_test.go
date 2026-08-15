@@ -303,15 +303,64 @@ func TestComputeBusinessHealth(t *testing.T) {
 			wantMax: 78,
 		},
 		{
-			name: "TTFT boundary 2s",
+			// Reasoning traffic routinely sits here. Under the old 1s-3s band
+			// this scored 75; it must now be a clean pass so a reasoning
+			// deployment is not permanently penalised for thinking time.
+			name: "TTFT 2s is inside the healthy band",
 			overview: &OpsDashboardOverview{
 				SLA:               0.99,
 				ErrorRate:         0,
 				UpstreamErrorRate: 0,
-				TTFT:              OpsPercentiles{P99: intPtr(2000)},
+				TTFT:              OpsPercentiles{P95: intPtr(2000)},
+			},
+			wantMin: 100,
+			wantMax: 100,
+		},
+		{
+			name: "TTFT at the midpoint of the band halves the TTFT component",
+			overview: &OpsDashboardOverview{
+				SLA:               0.99,
+				ErrorRate:         0,
+				UpstreamErrorRate: 0,
+				TTFT:              OpsPercentiles{P95: intPtr(16_500)},
 			},
 			wantMin: 75,
 			wantMax: 75,
+		},
+		{
+			name: "TTFT past 30s zeroes the TTFT component",
+			overview: &OpsDashboardOverview{
+				SLA:               0.99,
+				ErrorRate:         0,
+				UpstreamErrorRate: 0,
+				TTFT:              OpsPercentiles{P95: intPtr(45_000)},
+			},
+			wantMin: 50,
+			wantMax: 50,
+		},
+		{
+			// p95 is the signal; a healthy p95 must not be dragged down by the
+			// p99 of a sparse bucket, where p99 is indistinguishable from max.
+			name: "p95 wins over p99 when both are present",
+			overview: &OpsDashboardOverview{
+				SLA:               0.99,
+				ErrorRate:         0,
+				UpstreamErrorRate: 0,
+				TTFT:              OpsPercentiles{P95: intPtr(2000), P99: intPtr(90_000)},
+			},
+			wantMin: 100,
+			wantMax: 100,
+		},
+		{
+			name: "p99 is the fallback when p95 is absent",
+			overview: &OpsDashboardOverview{
+				SLA:               0.99,
+				ErrorRate:         0,
+				UpstreamErrorRate: 0,
+				TTFT:              OpsPercentiles{P99: intPtr(45_000)},
+			},
+			wantMin: 50,
+			wantMax: 50,
 		},
 		{
 			name: "upstream error dominates",

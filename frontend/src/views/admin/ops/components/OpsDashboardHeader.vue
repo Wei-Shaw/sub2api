@@ -544,11 +544,16 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
     }
   }
 
-  const ttftP99 = ov.ttft?.p99_ms ?? 0
-  if (ttftP99 > 500) {
+  // Mirrors the backend health score: p95 over p99, warn once past 3s.
+  // A 500ms trigger on p99 fired permanently — relayed reasoning models spend
+  // seconds thinking before the first visible token, so the old threshold
+  // reported normal traffic as a fault and spent the panel's attention budget
+  // on a line that was never actionable.
+  const ttftLatency = ov.ttft?.p95_ms ?? ov.ttft?.p99_ms ?? 0
+  if (ttftLatency > 3000) {
     report.push({
       type: 'warning',
-      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) }),
+      message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftLatency.toFixed(0) }),
       impact: t('admin.ops.diagnosis.ttftHighImpact'),
       action: t('admin.ops.diagnosis.ttftHighAction')
     })
