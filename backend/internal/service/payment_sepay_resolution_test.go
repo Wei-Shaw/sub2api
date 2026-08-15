@@ -124,7 +124,7 @@ func TestBuildPaymentTransferInfoSePay(t *testing.T) {
 	require.Equal(t, "SEPAY TEST", info.AccountName)
 	require.Equal(t, "970422", info.BankBin)
 	require.Equal(t, "250000", info.Amount)
-	require.Equal(t, "SUB220260815YUJBZRZD", info.Content)
+	require.Equal(t, "sub220260815YujbZRZd", info.Content)
 
 	require.Nil(t, buildPaymentTransferInfo(nil, pr, 250000, order))
 	require.Nil(t, buildPaymentTransferInfo(&payment.InstanceSelection{ProviderKey: payment.TypeAlipay}, pr, 250000, order))

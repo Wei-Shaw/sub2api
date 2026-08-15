@@ -17,3 +17,18 @@ func TestNormalizeTransferCode(t *testing.T) {
 		}
 	}
 }
+
+func TestStripTransferSeparators(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"sub2_20260815ZPbOX0Kl", "sub220260815ZPbOX0Kl"},
+		{"sub2_20260815YujbZRZd", "sub220260815YujbZRZd"},
+		{"SUB2_20260815", "SUB220260815"},
+		{"", ""},
+		{"___", ""},
+	}
+	for _, tc := range cases {
+		if got := StripTransferSeparators(tc.in); got != tc.want {
+			t.Errorf("StripTransferSeparators(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

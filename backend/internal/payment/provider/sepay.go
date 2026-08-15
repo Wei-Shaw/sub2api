@@ -105,13 +105,12 @@ func sepayCodeMatchesOrder(code, outTradeNo string) bool {
 // CreatePayment builds the VietQR payload offline. No upstream call: the
 // transfer only exists once the customer pays, confirmed via webhook.
 //
-// The transfer content is the separator-free normalized form of the order ID:
-// SePay extracts payment codes as contiguous alphanumeric strings (its pattern
-// classes have no separator), so shipping "sub2_2026..." in the QR would make
-// real bank transfers — which keep the content verbatim — fail code
-// extraction. The normalized form ("SUB22026...") is what banks type, what
-// SePay extracts, and what webhook/query matching already resolves back to
-// the canonical out_trade_no.
+// The transfer content is the order ID with separators stripped, case
+// preserved ("sub22026..."): SePay extracts payment codes as contiguous
+// alphanumeric strings (its pattern classes have no separator), so shipping
+// "sub2_2026..." verbatim would make real bank transfers fail code
+// extraction. Webhook/query matching resolves the stripped form back to the
+// canonical out_trade_no case-insensitively.
 func (s *SePay) CreatePayment(_ context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	amountVND, err := strconv.ParseInt(strings.TrimSpace(req.Amount), 10, 64)
 	if err != nil || amountVND <= 0 {
@@ -121,7 +120,7 @@ func (s *SePay) CreatePayment(_ context.Context, req payment.CreatePaymentReques
 		strings.TrimSpace(s.config["bankBin"]),
 		strings.TrimSpace(s.config["bankAccountNumber"]),
 		amountVND,
-		payment.NormalizeTransferCode(req.OrderID),
+		payment.StripTransferSeparators(req.OrderID),
 	)
 	return &payment.CreatePaymentResponse{QRCode: payload, Currency: payment.CurrencyVND}, nil
 }
