@@ -418,9 +418,19 @@ func (p *ParsedRequest) CloneForBody(body []byte) (*ParsedRequest, error) {
 }
 
 // ReplaceBody 统一刷新当前 body 和 raw range，保证后续 helper 读取的是最新请求体。
+//
+// 改写 helper 在无事可做时会原样返回入参切片，而这是常态：Anthropic 转发路径串了
+// 约十个 helper，绝大多数请求一个都不命中。此时刷新派生状态等于对一段字节完全没变、
+// 派生状态本就由它算出的 body 再跑一遍 gjson.ValidBytes 和若干次顶层字段查找——每次
+// 都要线性走完整个 body（要跳过巨大的 messages 数组），长会话下这些空转全部落在 TTFT
+// 窗口内。用切片身份（同一底层数组 + 同长度）识别"helper 原样返回"的情形并保留现有
+// 派生状态；调用方从不原地修改 body，真正的改写一定产出新切片。
 func (p *ParsedRequest) ReplaceBody(data []byte) error {
 	if p == nil {
 		return fmt.Errorf("parse request: empty request")
+	}
+	if p.Body != nil && sameBodyRef(p.Body.Bytes(), data) {
+		return nil
 	}
 	if p.Body == nil {
 		p.Body = NewRequestBodyRef(data)
@@ -432,6 +442,18 @@ func (p *ParsedRequest) ReplaceBody(data []byte) error {
 		return err
 	}
 	return nil
+}
+
+// sameBodyRef 判断两个切片是否指向同一段字节：长度相同且底层数组起点相同。
+// 内容相同但底层数组不同的切片返回 false——这是保守方向，最坏结果只是多刷新一次。
+func sameBodyRef(current, next []byte) bool {
+	if len(current) != len(next) {
+		return false
+	}
+	if len(current) == 0 {
+		return true
+	}
+	return &current[0] == &next[0]
 }
 
 // sliceRawFromBody 返回 Result.Raw 对应的原始字节切片。
