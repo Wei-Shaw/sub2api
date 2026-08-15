@@ -127,6 +127,9 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		if requestIsHTTPS(c) {
+			c.Header("Strict-Transport-Security", hstsHeaderValue)
+		}
 		if isAPIRoutePath(c) {
 			c.Next()
 			return
@@ -146,6 +149,27 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 		c.Next()
 	}
+}
+
+// hstsHeaderValue pins HTTPS for one year for this host only. includeSubDomains
+// and preload are deliberately omitted: Sub2API does not own the parent domain
+// of every deployment, and either directive would let one install lock sibling
+// hosts (or the apex) out of plain HTTP with no way to undo it from here.
+const hstsHeaderValue = "max-age=31536000"
+
+// requestIsHTTPS reports whether the browser reached us over TLS, either
+// directly or through the bundled reverse proxy. RFC 6797 §7.2 requires user
+// agents to ignore an HSTS header delivered over plain HTTP, so emitting it
+// only on secure requests keeps HTTP-only deployments (LAN, local dev) working
+// instead of pinning them to a scheme they do not serve.
+func requestIsHTTPS(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	if c.Request.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")), "https")
 }
 
 func isAPIRoutePath(c *gin.Context) bool {
