@@ -3,10 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"os"
 	"strings"
 	"sync"
@@ -61,12 +61,33 @@ func generateOutTradeNo() string {
 	return orderIDPrefix + date + rnd
 }
 
+// generateRandomString draws n characters uniformly from
+// payment.OrderCodeAlphabet using crypto/rand.
+//
+// The order code is the only identifier tying a bank transfer — and the
+// unauthenticated public order lookup — back to one order, so it must not come
+// from a predictable generator. Bytes at or above limit are rejected instead of
+// folded, which would otherwise bias the first 256%len(alphabet) letters.
 func generateRandomString(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = payment.OrderCodeAlphabet[rand.IntN(len(payment.OrderCodeAlphabet))]
+	size := len(payment.OrderCodeAlphabet)
+	limit := 256 - (256 % size)
+
+	out := make([]byte, 0, n)
+	buf := make([]byte, n)
+	for len(out) < n {
+		// crypto/rand.Read never returns an error and always fills buf.
+		_, _ = rand.Read(buf)
+		for _, v := range buf {
+			if int(v) >= limit {
+				continue
+			}
+			out = append(out, payment.OrderCodeAlphabet[int(v)%size])
+			if len(out) == n {
+				break
+			}
+		}
 	}
-	return string(b)
+	return string(out)
 }
 
 type CreateOrderRequest struct {
