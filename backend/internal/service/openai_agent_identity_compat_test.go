@@ -40,7 +40,7 @@ REDACTED
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
-		Body:       io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"REDACTED`)),
+		Body:       io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent_fresh","encrypted_content":"blob"REDACTED]REDACTED`)),
 REDACTEDREDACTED
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstreamREDACTED
 
@@ -87,7 +87,7 @@ REDACTED))
 
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{
 		{StatusCode: http.StatusUnauthorized, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"error":{"code":"invalid_task_id"REDACTEDREDACTED`))REDACTED,
-		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed"REDACTED`))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(`{"id":"compact-agent","status":"completed","output":[{"type":"compaction","id":"cmp_agent","encrypted_content":"blob"REDACTED]REDACTED`))REDACTED,
 REDACTEDREDACTED
 	invalidator := &agentIdentityWSInvalidationRecorder{REDACTED
 	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, agentIdentityWS: invalidatorREDACTED
