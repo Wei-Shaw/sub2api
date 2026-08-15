@@ -292,6 +292,12 @@ func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 			want:    "codex-auto-review",
 		},
 		{
+			name:    "oauth preserves unknown GPT-5.6 Sol suffix",
+			account: &Account{Type: AccountTypeOAuth},
+			model:   "gpt-5.6-sol-wm",
+			want:    "gpt-5.6-sol-wm",
+		},
+		{
 			name:    "apikey preserves official bare GPT-5.6 alias",
 			account: &Account{Type: AccountTypeAPIKey},
 			model:   "gpt-5.6",
