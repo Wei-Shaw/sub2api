@@ -381,7 +381,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingBalancePayDisabled] = formatBoolOrEmpty(req.BalanceDisabled)
 	}
 	if req.BalanceRechargeMultiplier != nil {
-		m[SettingBalanceRechargeMult] = formatPositiveFloat(req.BalanceRechargeMultiplier)
+		// Exact precision: VND-scale multipliers (e.g. 0.00004) round to
+		// "0.00" under the 2-decimal formatter and silently reset to 1.
+		m[SettingBalanceRechargeMult] = formatPositiveFloatExact(req.BalanceRechargeMultiplier)
 	}
 	if req.SubscriptionUSDToCNYRate != nil {
 		m[SettingSubscriptionUSDToCNYRate] = formatPositiveFloatExact(req.SubscriptionUSDToCNYRate)

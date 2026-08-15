@@ -531,7 +531,15 @@ const subscriptionUsdToVndRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_vnd_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+// VND 充值按 USD→VND 汇率折算为美元余额（与后端 calculateRechargeCreditedBalance 严格镜像）；
+// 其他币种维持倍率行为。
+const creditedAmount = computed(() => {
+  const rate = subscriptionUsdToVndRate.value
+  const amount = rate > 0 && selectedCurrency.value === 'VND'
+    ? validAmount.value / rate
+    : validAmount.value * balanceRechargeMultiplier.value
+  return Math.round(amount * 100) / 100
+})
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
