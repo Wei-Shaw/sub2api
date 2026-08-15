@@ -89,7 +89,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		model = "grok-voice-latest"
 	}
 	started := time.Now()
-	proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
+	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
 	elapsed := time.Since(started)
 	if proxyErr != nil {
 		reqLog.Info("grok_realtime.proxy_failed", zap.Error(proxyErr))
@@ -98,17 +98,20 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 			return
 		}
 	}
-	// A relay normally returns a close error when either side closes normally.
-	// Those sessions still consumed upstream audio time and must be billed.
-	if elapsed > 0 {
-		result := &service.OpenAIForwardResult{
-			// One durable id per WS session so retries cannot collapse or double under client ids.
-			RequestID:  service.StableGrokRealtimeBillingRequestID(""),
-			Model:      model,
-			Duration:   elapsed,
-			AudioUsage: &service.AudioUsage{Mode: "realtime", DurationOrUnits: elapsed.Minutes()},
-		}
+	if result := grokRealtimeBillingResult(model, elapsed, audioObserved); result != nil {
 		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result)
+	}
+}
+
+func grokRealtimeBillingResult(model string, elapsed time.Duration, audioObserved bool) *service.OpenAIForwardResult {
+	if !audioObserved || elapsed <= 0 {
+		return nil
+	}
+	return &service.OpenAIForwardResult{
+		RequestID:  service.StableGrokRealtimeBillingRequestID(""),
+		Model:      model,
+		Duration:   elapsed,
+		AudioUsage: &service.AudioUsage{Mode: "realtime", DurationOrUnits: elapsed.Minutes()},
 	}
 }
 

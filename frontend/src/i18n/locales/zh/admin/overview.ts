@@ -814,6 +814,7 @@ export default {
         userStatus: '状态'
       },
       usageToday: '今日',
+      usageYesterday: '昨日',
       usageTotal: '累计',
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',
@@ -1001,6 +1002,13 @@ export default {
         description: '分组级 web_search（每千次）与 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
         searchPricePer1k: '搜索每千次价格（USD）',
         pricePlaceholder: '可选'
+      },
+      modelPricing: {
+        title: '分组逐模型定价',
+        description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
+        longContext: '启用长上下文阶梯定价',
+        longContextHint: '勾选后按官方/预设阶梯计费；关闭则始终按第一档基础价。',
+        add: '添加模型价格'
       },
       voicePricing: {
         title: 'Grok Voice 定价',

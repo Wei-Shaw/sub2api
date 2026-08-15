@@ -24,8 +24,10 @@ import (
 // ─── Mocks ───
 
 type mockSettingRepo struct {
-	mu   sync.Mutex
-	data map[string]string
+	mu            sync.Mutex
+	data          map[string]string
+	getValueErr   error
+	getValueCalls int
 }
 
 func newMockSettingRepo() *mockSettingRepo {
@@ -45,6 +47,10 @@ func (m *mockSettingRepo) Get(_ context.Context, key string) (*Setting, error) {
 func (m *mockSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.getValueCalls++
+	if m.getValueErr != nil {
+		return "", m.getValueErr
+	}
 	v, ok := m.data[key]
 	if !ok {
 		return "", nil
@@ -621,6 +627,56 @@ func TestBackupService_CreateBackup_ConcurrentBlocked(t *testing.T) {
 
 	_, err := svc.CreateBackup(context.Background(), "manual", 14)
 	require.ErrorIs(t, err, ErrBackupInProgress)
+}
+
+// TestBackupService_RunScheduledBackup_LeaderElection verifies the scheduled
+// backup is gated by a cross-instance leader lock: a non-leader instance skips
+// the dump entirely so a clustered deployment does not run N identical backups
+// against the same database, while the leader runs it and releases the lock
+// afterward. Manual backups (CreateBackup/StartBackup) are intentionally left
+// ungated and are covered by the other tests.
+func TestBackupService_RunScheduledBackup_LeaderElection(t *testing.T) {
+	t.Run("non-leader skips", func(t *testing.T) {
+		repo := newMockSettingRepo()
+		seedS3Config(t, repo)
+		store := newMockObjectStore()
+		svc := newTestBackupService(repo, &mockDumper{dumpData: []byte("data")}, store)
+
+		// A peer already owns the lock, so this instance is not the leader.
+		cache := &fakeLeaderLockCache{}
+		peerRelease, ok := tryAcquireSingletonLeaderLock(context.Background(), cache, nil, backupScheduledLeaderLockKey, "peer", time.Minute)
+		require.True(t, ok)
+		defer peerRelease()
+
+		svc.SetLeaderLock(cache, nil)
+		svc.runScheduledBackup()
+
+		store.mu.Lock()
+		require.Empty(t, store.objects, "non-leader must not upload a backup")
+		store.mu.Unlock()
+
+		records, err := svc.ListBackups(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, records, "non-leader must not create a backup record")
+		require.Equal(t, "peer", cache.heldBy(backupScheduledLeaderLockKey), "peer keeps the lock")
+	})
+
+	t.Run("leader runs and releases", func(t *testing.T) {
+		repo := newMockSettingRepo()
+		seedS3Config(t, repo)
+		store := newMockObjectStore()
+		svc := newTestBackupService(repo, &mockDumper{dumpData: []byte("-- dump\n")}, store)
+
+		cache := &fakeLeaderLockCache{}
+		svc.SetLeaderLock(cache, nil)
+		svc.runScheduledBackup()
+
+		records, err := svc.ListBackups(context.Background())
+		require.NoError(t, err)
+		require.Len(t, records, 1, "leader creates exactly one backup record")
+		require.Equal(t, "completed", records[0].Status)
+		require.Empty(t, cache.heldBy(backupScheduledLeaderLockKey), "leader releases the lock when done")
+	})
 }
 
 func TestBackupService_RestoreBackup_Streaming(t *testing.T) {
