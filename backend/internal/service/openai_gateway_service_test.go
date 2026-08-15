@@ -115,7 +115,7 @@ func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Co
 	return r.ListSchedulableByPlatform(ctx, platform)
 REDACTED
 
-func TestOpenAIGatewayService_ForwardAsAnthropic_TempUnschedulableReturnsFailoverWithoutCommit(t *testing.T) {
+func TestOpenAIGatewayService_ForwardAsAnthropic_CapacityShedReturnsRequestScopedFailoverWithoutCommit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	body := []byte(`{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"REDACTED],"stream":falseREDACTED`)
@@ -173,8 +173,10 @@ REDACTED
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
 	require.True(t, failoverErr.ShouldRetryNextAccount())
-	require.Equal(t, account.ID, repo.modelRateLimitAccountID, "temporary unschedulability should exclude this account from reselection")
-	require.Equal(t, "gpt-5.4", repo.modelRateLimitKey)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Zero(t, repo.modelRateLimitAccountID, "request-scoped capacity shedding must not change account health")
+	require.Empty(t, repo.modelRateLimitKey)
 	require.False(t, IsResponseCommitted(c))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Empty(t, rec.Body.String())

@@ -1028,6 +1028,27 @@ REDACTED
 	return false
 REDACTED
 
+func logOpenAICapacityFailoverSuppressed(
+	ctx context.Context,
+	account *Account,
+	path string,
+	upstreamRequestID string,
+	eventType string,
+) {
+	fields := []zap.Field{
+		zap.String("path", path),
+		zap.String("event_type", strings.TrimSpace(eventType)),
+		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+REDACTED
+	if account != nil {
+		fields = append(fields,
+			zap.Int64("account_id", account.ID),
+			zap.String("platform", account.Platform),
+		)
+REDACTED
+	logger.FromContext(ctx).Warn("gateway.failover_suppressed_after_semantic_output", fields...)
+REDACTED
+
 // openAICapacityShedRetryableClientCode 是把上游容量降载错误转发给客户端时改写
 // 使用的错误码。Codex CLI 按闭集对错误码分类：server_is_overloaded / slow_down
 // 被判为致命错误（客户端提示 "Selected model is at capacity. Please try a
@@ -1372,6 +1393,7 @@ REDACTED
 	sawTerminalEvent := false
 	sawFailedEvent := false
 	semanticOutputSeen := false
+	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
@@ -1458,6 +1480,13 @@ REDACTED
 			REDACTED
 		REDACTED
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
+			if !capacityFailoverSuppressedLogged && account != nil && account.Platform == PlatformOpenAI &&
+				(eventType == "error" || eventType == "response.failed") &&
+				openAIStreamClientOutputStarted(c, clientOutputStarted) &&
+				isOpenAIUpstreamCapacityShedEvent(dataBytes) {
+				logOpenAICapacityFailoverSuppressed(ctx, account, "passthrough_sse", upstreamRequestID, eventType)
+				capacityFailoverSuppressedLogged = true
+		REDACTED
 			if eventType == "error" && !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 				errorMessage := extractOpenAISSEErrorMessage(dataBytes)
 				if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, errorMessage); matched {
