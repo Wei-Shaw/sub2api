@@ -175,6 +175,25 @@ func NamespaceToolNames(tools []ResponsesTool) map[string]NamespacedToolName {
 	return out
 }
 
+// NamespaceToolByBareName 兜底还原：上游模型偶尔会把超长摊平名输出为子工具裸名
+// （如 mcp__sequential_thinking__sequentialthinking -> sequentialthinking）。
+// 裸名跨 namespace 唯一时补 namespace，不唯一（不同 namespace 下同名子工具）则
+// 放弃还原，保持原样交给客户端处理，避免错误路由。
+func NamespaceToolByBareName(namespaceTools map[string]NamespacedToolName, bareName string) (NamespacedToolName, bool) {
+	var found NamespacedToolName
+	matched := false
+	for _, ns := range namespaceTools {
+		if ns.Name == bareName {
+			if matched {
+				return NamespacedToolName{}, false
+			}
+			found = ns
+			matched = true
+		}
+	}
+	return found, matched
+}
+
 // HasToolSearchTool 判断 Responses 请求是否声明了 tool_search 服务端工具。chat 桥
 // 回程时需据此把模型对代理工具的调用还原为 tool_search_call 项：codex 只在该项类型
 // 且 execution=client 时执行 tool search，同名 function_call 会因 payload 不匹配
@@ -1142,6 +1161,20 @@ func chatMessageToResponsesOutput(message ChatMessage, customTools map[string]bo
 			})
 			continue
 		}
+		if ns, ok := NamespaceToolByBareName(namespaceTools, toolCall.Function.Name); ok {
+			// 兜底：模型输出裸子工具名（未带 namespace 前缀）且跨 namespace 唯一时，
+			// 按映射补还原 namespace，避免 codex 客户端判 unsupported call。
+			outputs = append(outputs, ResponsesOutput{
+				Type:      "function_call",
+				ID:        generateItemID(),
+				CallID:    toolCall.ID,
+				Name:      ns.Name,
+				Namespace: ns.Namespace,
+				Arguments: arguments,
+				Status:    "completed",
+			})
+			continue
+		}
 		outputs = append(outputs, ResponsesOutput{
 			Type:      "function_call",
 			ID:        generateItemID(),
@@ -1666,6 +1699,10 @@ func announceChatToolItem(
 	// 还原为裸子工具名 + namespace 字段（codex 按 namespace+name 路由）。
 	itemName, itemNamespace := stored.Function.Name, ""
 	if ns, ok := state.NamespaceTools[stored.Function.Name]; ok && !isCustom && !isToolSearch {
+		state.toolNamespace[idx] = ns
+		itemName, itemNamespace = ns.Name, ns.Namespace
+	} else if ns, ok := NamespaceToolByBareName(state.NamespaceTools, stored.Function.Name); ok && !isCustom && !isToolSearch {
+		// 兜底：模型输出裸子工具名且跨 namespace 唯一时补还原 namespace。
 		state.toolNamespace[idx] = ns
 		itemName, itemNamespace = ns.Name, ns.Namespace
 	}

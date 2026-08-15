@@ -131,6 +131,13 @@ type GitHubAsset struct {
 
 // CheckUpdate checks for available updates
 func (s *UpdateService) CheckUpdate(ctx context.Context, force bool) (*UpdateInfo, error) {
+	// 自建补丁版（sub2api-shenle）：禁用更新检查，不访问 GitHub，永不提示更新。
+	return &UpdateInfo{
+		CurrentVersion: s.currentVersion,
+		LatestVersion:  s.currentVersion,
+		HasUpdate:      false,
+		BuildType:      "source",
+	}, nil
 	// Try cache first
 	if !force {
 		if cached, err := s.getFromCache(ctx); err == nil && cached != nil {
