@@ -204,17 +204,17 @@ REDACTED
 			"temp_unschedulable_enabled": true,
 			"temp_unschedulable_rules": []any{map[string]any{
 				"error_code":       float64(http.StatusBadRequest),
-				"keywords":         []any{"servers are currently overloaded"REDACTED,
+				"keywords":         []any{"custom temporary outage"REDACTED,
 				"duration_minutes": float64(1),
 	REDACTED
 	REDACTED,
 REDACTED
-	body := []byte(`{"error":{"message":"Our servers are currently overloaded."REDACTEDREDACTED`)
+	body := []byte(`{"error":{"message":"Custom temporary outage."REDACTEDREDACTED`)
 	resp := &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{REDACTEDREDACTED
 
 	got := svc.failoverOpenAIUpstreamHTTPError(
 		context.Background(), nil, account, resp, body,
-		"Our servers are currently overloaded.", "gpt-5.4",
+		"Custom temporary outage.", "gpt-5.4",
 	)
 
 	require.Nil(t, got)
@@ -2288,7 +2288,7 @@ REDACTED
 
 	go func() {
 		defer func() { _ = pw.Close() REDACTED()
-		_, _ = pw.Write([]byte("data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\"REDACTED,\"output_index\":0REDACTED\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"output_index\":0REDACTED\n\n"))
 REDACTED()
 
 	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
@@ -2320,7 +2320,7 @@ REDACTED
 
 	go func() {
 		defer func() { _ = pw.Close() REDACTED()
-		_, _ = pw.Write([]byte("data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\"REDACTED,\"output_index\":0REDACTED\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\",\"output_index\":0REDACTED\n\n"))
 REDACTED()
 
 	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "", "")

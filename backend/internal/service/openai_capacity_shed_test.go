@@ -94,11 +94,79 @@ REDACTED{
 		{`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded"REDACTEDREDACTEDREDACTED`, "response.failed", falseREDACTED,
 		{`{"type":"response.created","response":{"id":"resp_1"REDACTEDREDACTED`, "response.created", falseREDACTED,
 		{`{"type":"response.in_progress","response":{"id":"resp_1"REDACTEDREDACTED`, "response.in_progress", falseREDACTED,
+		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]REDACTEDREDACTED`, "response.output_item.added", falseREDACTED,
+		{`{"type":"response.output_item.added","item":{"type":"reasoning","encrypted_content":"ciphertext"REDACTEDREDACTED`, "response.output_item.added", trueREDACTED,
+		{`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":""REDACTEDREDACTED`, "response.reasoning_summary_part.added", falseREDACTED,
+		{`{"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":"thinking"REDACTEDREDACTED`, "response.reasoning_summary_part.added", trueREDACTED,
+		{`{"type":"response.content_part.added","part":{"type":"output_text","text":""REDACTEDREDACTED`, "response.content_part.added", falseREDACTED,
 		{`{"type":"response.output_text.delta","delta":"hi"REDACTED`, "response.output_text.delta", trueREDACTED,
 		{`[DONE]`, "", trueREDACTED,
 REDACTED
 	for _, tc := range cases {
 		require.Equal(t, tc.want, openAIStreamDataStartsClientOutput(tc.data, tc.eventType), "data=%s type=%s", tc.data, tc.eventType)
+REDACTED
+REDACTED
+
+func TestOpenAIStreamMetadataPreambleAndMessageOnlyOverloadFailOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	largeMetadata := strings.Repeat("x", 16*1024)
+	stream := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_1","metadata":{"padding":"` + largeMetadata + `"REDACTEDREDACTEDREDACTED`,
+		"",
+		"event: response.output_item.added",
+		`data: {"type":"response.output_item.added","item":{"type":"reasoning","summary":[]REDACTEDREDACTED`,
+		"",
+		"event: response.reasoning_summary_part.added",
+		`data: {"type":"response.reasoning_summary_part.added","part":{"type":"summary_text","text":""REDACTEDREDACTED`,
+		"",
+		"event: error",
+		`data: {"type":"error","error":{"type":"service_unavailable_error","message":"Our servers are currently overloaded. Please try again later."REDACTEDREDACTED`,
+		"",
+REDACTED, "\n")
+
+	tests := []struct {
+		name string
+		run  func(*OpenAIGatewayService, *gin.Context, *http.Response, *Account) error
+REDACTED{
+		{
+			name: "native",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+				return err
+		REDACTED,
+	REDACTED,
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, c *gin.Context, resp *http.Response, account *Account) error {
+				_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+				return err
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTEDREDACTED
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(stream)),
+				Header:     http.Header{"X-Request-Id": []string{"rid-message-only-overload"REDACTEDREDACTED,
+		REDACTED
+			account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc"REDACTED
+
+			err := tt.run(svc, c, resp, account)
+		REDACTED
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.True(t, failoverErr.RetryableOnSameAccount)
+			require.True(t, failoverErr.RequestScopedTransient)
+			require.False(t, c.Writer.Written())
+			require.Empty(t, rec.Body.String())
+	REDACTED)
 REDACTED
 REDACTED
 
@@ -208,6 +276,18 @@ REDACTED{
 		{
 			name:        "error帧裸code改写",
 			payload:     `{"type":"error","error":{"code":"slow_down","message":"slow down"REDACTEDREDACTED`,
+			wantChanged: true,
+			wantContain: `"code":"server_error"`,
+	REDACTED,
+		{
+			name:        "failed事件只有过载文案时补充code",
+			payload:     `{"type":"response.failed","response":{"error":{"message":"Our servers are currently overloaded. Please try again later."REDACTEDREDACTEDREDACTED`,
+			wantChanged: true,
+			wantContain: `"code":"server_error"`,
+	REDACTED,
+		{
+			name:        "error帧只有过载文案时补充code",
+			payload:     `{"type":"error","error":{"message":"Server is overloaded. Please try again later."REDACTEDREDACTED`,
 			wantChanged: true,
 			wantContain: `"code":"server_error"`,
 	REDACTED,
