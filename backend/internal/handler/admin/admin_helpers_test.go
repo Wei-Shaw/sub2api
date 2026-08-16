@@ -275,6 +275,7 @@ func TestOpenAIFastPolicySettingsFromDTO_NormalizesServiceTier(t *testing.T) {
 
 	t.Run("non-empty values pass through (lowercased)", func(t *testing.T) {
 		in := &dto.OpenAIFastPolicySettings{
+			InjectDefaultServiceTier: true,
 			Rules: []dto.OpenAIFastPolicyRule{
 				{ServiceTier: "priority", Action: "filter", Scope: "all"},
 				{ServiceTier: "flex", Action: "block", Scope: "oauth"},
@@ -282,9 +283,19 @@ func TestOpenAIFastPolicySettingsFromDTO_NormalizesServiceTier(t *testing.T) {
 			},
 		}
 		out := openaiFastPolicySettingsFromDTO(in)
+		require.True(t, out.InjectDefaultServiceTier)
 		require.Len(t, out.Rules, 3)
 		require.Equal(t, service.OpenAIFastTierPriority, out.Rules[0].ServiceTier)
 		require.Equal(t, service.OpenAIFastTierFlex, out.Rules[1].ServiceTier)
 		require.Equal(t, service.OpenAIFastTierAny, out.Rules[2].ServiceTier)
 	})
+}
+
+func TestOpenAIFastPolicySettingsToDTO_PreservesInjectionSwitch(t *testing.T) {
+	out := openaiFastPolicySettingsToDTO(&service.OpenAIFastPolicySettings{
+		InjectDefaultServiceTier: true,
+	})
+
+	require.NotNil(t, out)
+	require.True(t, out.InjectDefaultServiceTier)
 }

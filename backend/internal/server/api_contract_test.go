@@ -951,6 +951,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_codex_client_version_synced": "",
 					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
+						"inject_default_service_tier": false,
 						"rules": []
 					},
 					"custom_menu_items": [],
@@ -1263,6 +1264,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_codex_client_version_synced": "",
 					"openai_codex_version_auto_sync_enabled": true,
 					"openai_fast_policy_settings": {
+						"inject_default_service_tier": false,
 						"rules": []
 					},
 					"payment_enabled": false,

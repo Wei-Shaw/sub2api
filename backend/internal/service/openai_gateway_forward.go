@@ -501,9 +501,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	if rawTier := requestView.ServiceTier; rawTier != "" {
+	fastPolicySettings := s.loadOpenAIFastPolicySettings(ctx)
+	rawTier, injectedTier := resolveOpenAIFastPolicyTier(fastPolicySettings, requestView.ServiceTier)
+	if rawTier != "" {
 		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
-			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
+			action, errMsg := evaluateOpenAIFastPolicyWithSettings(fastPolicySettings, openAIFastPolicyUserID(ctx), account, upstreamModel, normTier)
 			switch action {
 			case BetaPolicyActionBlock:
 				msg := errMsg
@@ -520,7 +522,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					markPatchSet("service_tier", OpenAIFastTierPriority)
 				}
 			default:
-				if normTier != rawTier {
+				if injectedTier || normTier != rawTier {
 					markPatchSet("service_tier", normTier)
 				}
 			}
