@@ -262,7 +262,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			entry.Warn("openai_usage.service_tier_mismatch")
 		}
 	}
-	longContextBillingEnabled := billingAccount.IsOpenAILongContextBillingEnabled()
+	longContextBillingGate := openAILongContextBillingGate(billingAccount)
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
 		result,
@@ -275,7 +275,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		tokens,
 		serviceTier,
 		serviceTierDecision.Snapshot,
-		longContextBillingEnabled,
+		longContextBillingGate,
 	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
@@ -311,7 +311,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
 				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
 				videoMultiplier, baseMultiplier, tokens, serviceTier, serviceTierDecision.Snapshot,
-				longContextBillingEnabled,
+				longContextBillingGate,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
 			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
@@ -542,6 +542,19 @@ func (s *OpenAIGatewayService) hasIdentifiedOpenAIResponsePricing(
 	return s.billingService.HasIdentifiedTokenPricing(model), false
 }
 
+// openAILongContextBillingGate returns the per-account long-context opt-in.
+// The flag is an OpenAI-only account setting, so other platforms (Grok) return
+// nil — "no per-account gate" — and are governed by the group toggle alone.
+// Returning a hardcoded false for them would veto the official model ladders
+// (e.g. the Grok >=200k 2x card) that no account setting can ever re-enable.
+func openAILongContextBillingGate(account *Account) *bool {
+	if account == nil || !account.IsOpenAI() {
+		return nil
+	}
+	enabled := account.IsOpenAILongContextBillingEnabled()
+	return &enabled
+}
+
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	ctx context.Context,
 	result *OpenAIForwardResult,
@@ -554,7 +567,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokens UsageTokens,
 	serviceTier string,
 	serviceTierSnapshot *ChannelServiceTierSnapshot,
-	longContextBillingEnabled bool,
+	longContextBillingGate *bool,
 ) (*CostBreakdown, error) {
 	tierAdjustedWebSearchMultiplier, _ := applyChannelServiceTierRateMultiplier(webSearchMultiplier, serviceTier, serviceTierSnapshot)
 	billingModel := firstUsageBillingModel(billingModels)
@@ -609,7 +622,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 				tokens,
 				serviceTier,
 				serviceTierSnapshot,
-				longContextBillingEnabled,
+				longContextBillingGate,
 			)
 			if err == nil {
 				tokenCost = cost
@@ -699,7 +712,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	tokens UsageTokens,
 	serviceTier string,
 	serviceTierSnapshot *ChannelServiceTierSnapshot,
-	longContextBillingEnabled bool,
+	longContextBillingGate *bool,
 ) (*CostBreakdown, error) {
 	if s.resolver != nil && apiKey.Group != nil {
 		gid := apiKey.Group.ID
@@ -714,7 +727,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 			ServiceTier:               serviceTier,
 			ServiceTierSnapshot:       serviceTierSnapshot,
 			Resolver:                  s.resolver,
-			LongContextBillingEnabled: &longContextBillingEnabled,
+			LongContextBillingEnabled: longContextBillingGate,
 		})
 	}
 	tierAdjustedMultiplier, legacyServiceTier := applyChannelServiceTierRateMultiplier(multiplier, serviceTier, serviceTierSnapshot)
@@ -723,7 +736,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 		tokens,
 		tierAdjustedMultiplier,
 		legacyServiceTier,
-		longContextBillingEnabled,
+		longContextBillingGate == nil || *longContextBillingGate,
 	)
 }
 
