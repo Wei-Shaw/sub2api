@@ -164,6 +164,7 @@ type CostBreakdown struct {
 	TotalCost                 float64
 	ActualCost                float64 // 应用倍率后的实际费用
 	BillingMode               string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	BillingTier               *string // 实际命中的显式定价档位；nil 表示未命中区间
 	LongContextBillingApplied bool
 }
 
@@ -1091,7 +1092,7 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
 	totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
 
-	pricing := input.Resolver.GetIntervalPricing(resolved, totalContext)
+	pricing, billingTier := input.Resolver.GetIntervalPricingWithTier(resolved, totalContext)
 	if pricing == nil {
 		return nil, fmt.Errorf("no pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
 	}
@@ -1104,7 +1105,9 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 		applyLongCtx = applyLongCtx && *input.LongContextBillingEnabled
 	}
 
-	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
+	breakdown := s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx)
+	breakdown.BillingTier = billingTier
+	return breakdown, nil
 }
 
 // computeTokenBreakdown 是 token 计费的核心逻辑，由 calculateTokenCost 和 calculateCostInternal 共用。

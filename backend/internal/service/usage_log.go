@@ -124,7 +124,7 @@ type UsageLog struct {
 	ChannelID *int64
 	// ModelMappingChain 模型映射链，如 "a→b→c"
 	ModelMappingChain *string
-	// BillingTier 计费层级标签（per_request/image 模式）
+	// BillingTier 实际命中的显式定价档位（token 区间 / per_request / image）。
 	BillingTier *string
 	// BillingMode 计费模式：token/image
 	BillingMode *string

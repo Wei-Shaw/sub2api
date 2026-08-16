@@ -1646,6 +1646,7 @@ export interface UsageLog {
   actual_cost: number
   rate_multiplier: number
   long_context_billing_applied: boolean
+  billing_tier?: string | null
   billing_type: number
 
   request_type?: UsageRequestType
@@ -1700,9 +1701,8 @@ export interface AdminUsageLog extends UsageLog {
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null
 
-  // 渠道 ID 和计费等级（仅管理员可见）
+  // 渠道 ID（仅管理员可见）
   channel_id?: number | null
-  billing_tier?: string | null
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary

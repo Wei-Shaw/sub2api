@@ -168,6 +168,33 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
   })
 
+	it('shows the persisted token billing tier independently from the long-context multiplier marker', () => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					...baseImageRow,
+					request_id: 'req-token-interval',
+					billing_mode: 'token',
+					billing_tier: '(272000,+inf)',
+					long_context_billing_applied: false,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: {
+					DataTable: DataTableStub,
+					EmptyState: true,
+					Icon: true,
+					Teleport: true,
+				},
+			},
+		})
+
+		expect(wrapper.find('[data-testid="long-context-billing-marker"]').exists()).toBe(false)
+		expect(wrapper.get('[data-testid="billing-tier-marker"]').text()).toBe('(272000,+inf)')
+	})
+
   it('shows service tier and billing breakdown in cost tooltip', async () => {
     const row = {
       request_id: 'req-admin-1',
