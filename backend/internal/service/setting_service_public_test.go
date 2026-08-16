@@ -149,6 +149,21 @@ func TestSettingService_ChannelMonitorHideThroughputDefaultsToPrivate(t *testing
 	}
 }
 
+func TestSettingService_ChannelMonitorHideUserRankingDefaultsToVisible(t *testing.T) {
+	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+	require.False(t, missing.HideUserRanking)
+	public, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, public.ChannelMonitorHideUserRanking)
+
+	for _, value := range []string{"true", "1", "on", "enabled"} {
+		runtime := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyChannelMonitorHideUserRanking: value,
+		}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+		require.True(t, runtime.HideUserRanking, "value=%q", value)
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
