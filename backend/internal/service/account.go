@@ -197,6 +197,11 @@ func (a *Account) IsSchedulable() bool {
 	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
 		return false
 	}
+	// Recurring availability windows (daily/weekly). First matching rule wins;
+	// no match keeps the manual schedulable result (already true here).
+	if forced, ok := a.appliesAvailabilitySchedule(now); ok {
+		return forced
+	}
 	return true
 }
 

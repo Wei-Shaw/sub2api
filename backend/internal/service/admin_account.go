@@ -431,6 +431,14 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateAvailabilityScheduleExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		normalizedExtra, err := NormalizeAvailabilityScheduleExtra(account.Extra)
+		if err != nil {
+			return nil, err
+		}
+		account.Extra = normalizedExtra
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
@@ -667,6 +675,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateAvailabilityScheduleExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		normalizedExtra, err := NormalizeAvailabilityScheduleExtra(account.Extra)
+		if err != nil {
+			return nil, err
+		}
+		account.Extra = normalizedExtra
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}

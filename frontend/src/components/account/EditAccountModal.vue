@@ -1375,6 +1375,10 @@
         </div>
       </div>
 
+      <AvailabilityScheduleEditor
+        v-model:enabled="availabilityScheduleEnabled"
+        v-model:rules="availabilityScheduleRules"
+      />
 
       <div
         v-if="supportsAccountSchedulingThresholdOverride"
@@ -2739,6 +2743,13 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AvailabilityScheduleEditor from '@/components/account/AvailabilityScheduleEditor.vue'
+import {
+  applyAvailabilityScheduleToExtra,
+  parseAvailabilityScheduleFromExtra,
+  validateAvailabilityScheduleRules,
+  type AvailabilityScheduleRuleForm
+} from '@/utils/availabilitySchedule'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -2919,6 +2930,8 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
 const tempUnschedEnabled = ref(false)
+const availabilityScheduleEnabled = ref(false)
+const availabilityScheduleRules = ref<AvailabilityScheduleRuleForm[]>([])
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
 const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
@@ -3587,6 +3600,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+  loadAvailabilitySchedule(newAccount.extra as Record<string, unknown> | undefined)
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state (anthropic/openai apikey + grok apikey/oauth)
@@ -4032,6 +4046,28 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
   })
 }
 
+function loadAvailabilitySchedule(extra?: Record<string, unknown>) {
+  const parsed = parseAvailabilityScheduleFromExtra(extra)
+  availabilityScheduleEnabled.value = parsed.enabled
+  availabilityScheduleRules.value = parsed.rules
+}
+
+function availabilityScheduleValidationMessage(code: string | null): string | null {
+  if (!code) return null
+  switch (code) {
+    case 'empty':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+    case 'time':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTime')
+    case 'weekdays':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidWeekdays')
+    case 'tooMany':
+      return t('admin.accounts.availabilitySchedule.rulesInvalidTooMany')
+    default:
+      return t('admin.accounts.availabilitySchedule.rulesInvalidEmpty')
+  }
+}
+
 // Load quota control settings from account (Anthropic OAuth/SetupToken only)
 function loadQuotaControlSettings(account: Account) {
   // Reset all quota control state first
@@ -4260,6 +4296,14 @@ const handleSubmit = async () => {
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
+    return
+  }
+
+  const scheduleError = availabilityScheduleValidationMessage(
+    validateAvailabilityScheduleRules(availabilityScheduleEnabled.value, availabilityScheduleRules.value)
+  )
+  if (scheduleError) {
+    appStore.showError(scheduleError)
     return
   }
 
@@ -4914,6 +4958,20 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    {
+      const currentExtra =
+        (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) ||
+        {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      applyAvailabilityScheduleToExtra(
+        newExtra,
+        availabilityScheduleEnabled.value,
+        availabilityScheduleRules.value
+      )
       updatePayload.extra = newExtra
     }
 
