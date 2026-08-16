@@ -23,6 +23,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -30,9 +31,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"golang.org/x/mod/semver"
 )
 
 // 默认配置常量
@@ -54,6 +55,18 @@ const (
 	// defaultResponseHeaderTimeout: 默认等待响应头超时时间（5分钟）
 	// LLM 请求可能排队较久，需要较长超时
 	defaultResponseHeaderTimeout = 300 * time.Second
+	// defaultUpstreamDialTimeout: 默认 TCP/DNS 建连超时（10秒）
+	// Transport 不设置 DialContext 时会退化为零值 net.Dialer（无超时），建连阶段
+	// 只能依赖内核默认 TCP 重传（Linux 约 130 秒）。ResponseHeaderTimeout 只约束
+	// 连接建立之后等待响应头的阶段，覆盖不到 DNS 解析与 TCP 握手。
+	// 上游域名被解析到 443 不可达的 IP 时（DNS 污染/路由异常），单个账号就要卡满
+	// 内核超时；而多账号故障转移是串行的，一次请求会阻塞数分钟且不写中间错误。
+	defaultUpstreamDialTimeout = 10 * time.Second
+	// defaultUpstreamDialKeepAlive: TCP keepalive 探测间隔，与 Go 默认值保持一致
+	defaultUpstreamDialKeepAlive = 30 * time.Second
+	// defaultUpstreamTLSHandshakeTimeout: TLS 握手超时（10秒）
+	// 与建连超时同量级，避免 TCP 已连通但对端不推进握手时无限等待
+	defaultUpstreamTLSHandshakeTimeout = 10 * time.Second
 	// defaultMaxUpstreamClients: 默认最大客户端缓存数量
 	// 超出后会淘汰最久未使用的客户端
 	defaultMaxUpstreamClients = 5000
@@ -72,12 +85,12 @@ const (
 	openAIHTTP2PingTimeout     = 15 * time.Second
 
 	// The Grok CLI proxy rejects requests that do not identify a supported
-	// client version. Keep a known-good stable version in the binary while
-	// allowing operators to bump it without waiting for a Sub2API release.
-	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
+	// client version. Host/env/version pins live in package xai so service,
+	// billing, and transport layers advertise the same identity.
+	grokCLIProxyHost       = xai.CLIProxyHost
 	grokOfficialAPIHost    = "api.x.ai"
-	grokCLIStableVersion   = "0.2.93"
-	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
+	grokCLIStableVersion   = xai.CLIClientVersion // preferred pin (not the minimum floor)
+	grokCLIVersionOverride = xai.CLIVersionEnv
 	grokFallbackBodyLimit  = 64 << 10
 )
 
@@ -437,6 +450,11 @@ type prefixedReadCloser struct {
 // the final shared transport boundary. Keying this behavior to the exact CLI
 // proxy host keeps direct api.x.ai traffic unchanged and automatically covers
 // Responses, Chat Completions, media, quota probes, and account tests.
+//
+// Operator overrides must be >= CLIClientVersion (the preferred pin). Package
+// xai.IsSupportedCLIVersion uses a lower floor (CLIStableVersion) for general
+// validation; transport is stricter so we never silently advertise an older pin
+// than the binary default.
 func applyGrokCLIProxyHeaders(req *http.Request) {
 	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
 		return
@@ -448,14 +466,15 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	if !isSupportedGrokCLIVersion(version) {
 		version = grokCLIStableVersion
 	}
-	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
+	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
-	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
 }
 
 func isSupportedGrokCLIVersion(version string) bool {
 	canonical := "v" + version
-	minimum := "v" + grokCLIStableVersion
+	minimum := "v" + xai.CLIClientVersion
 	return semver.IsValid(canonical) &&
 		semver.Canonical(canonical) == canonical &&
 		semver.Compare(canonical, minimum) >= 0
@@ -1245,6 +1264,17 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 	}
 }
 
+// newUpstreamDialer 构建上游 Transport 的 TCP dialer。
+//
+// 必须显式提供：http.Transport 的 DialContext 为 nil 时使用零值 net.Dialer，
+// 建连没有任何超时上限，只能等内核 TCP 重传耗尽（Linux 约 130 秒）。
+func newUpstreamDialer() *net.Dialer {
+	return &net.Dialer{
+		Timeout:   defaultUpstreamDialTimeout,
+		KeepAlive: defaultUpstreamDialKeepAlive,
+	}
+}
+
 // buildUpstreamTransport 构建上游请求的 Transport
 // 使用配置文件中的连接池参数，支持生产环境调优
 //
@@ -1257,6 +1287,8 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 //   - error: 代理配置错误
 //
 // Transport 参数说明:
+//   - DialContext: DNS 解析 + TCP 建连超时（不设置则无上限，退化为内核默认重传）
+//   - TLSHandshakeTimeout: TLS 握手超时
 //   - MaxIdleConns: 所有主机的最大空闲连接总数
 //   - MaxIdleConnsPerHost: 每主机最大空闲连接数（影响连接复用率）
 //   - MaxConnsPerHost: 每主机最大连接数（达到后新请求等待）
@@ -1264,6 +1296,8 @@ func defaultPoolSettings(cfg *config.Config) poolSettings {
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
+		DialContext:           newUpstreamDialer().DialContext,
+		TLSHandshakeTimeout:   defaultUpstreamTLSHandshakeTimeout,
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,

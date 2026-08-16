@@ -93,7 +93,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: 'Per Request',
-        image: 'Image (Per Request)'
+        image: 'Image (Per Request)',
+        video: 'Video (Per Second)'
       },
       form: {
         name: 'Name',
@@ -127,6 +128,7 @@ export default {
         addInterval: 'Add Interval',
         requestTiers: 'Request Tiers',
         imageTiers: 'Image Tiers (Per Request)',
+        videoTiers: 'Video Resolution Tiers (Per Second)',
         addTier: 'Add Tier',
         noTiersYet: 'No tiers yet. Click add to configure per-request pricing.',
         noPricingRules: 'No pricing rules yet. Click "Add" to create one.',
@@ -143,6 +145,7 @@ export default {
         billingModelSourceChannelMapped: 'Bill by channel-mapped model',
         billingModelSourceRequested: 'Bill by requested model',
         billingModelSourceUpstream: 'Bill by final upstream model',
+        billingModelSourceResponse: 'Bill by upstream response model',
         billingModelSourceHint: 'Controls which model name is used for pricing lookup',
         selectedCount: '{count} selected',
         searchGroups: 'Search groups...',
@@ -151,6 +154,7 @@ export default {
         restrictModelsHint: 'When enabled, only models in the pricing list are allowed. Others will be rejected.',
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
+        defaultVideoPrice: 'Default video price per second (fallback when no tier matches)',
         platformConfig: 'Platform Configuration',
         webSearchEmulation: 'Web Search Emulation',
         webSearchEmulationHint: '⚠️ When enabled, all accounts in this channel\'s Anthropic groups will intercept web_search requests. Use with caution.',
@@ -286,6 +290,8 @@ export default {
       timeoutMs: 'HTTP Timeout (ms)',
       retryCount: 'Retry Count',
       sampleRate: 'Sample Rate',
+      proxy: 'Proxy Server',
+      proxyHint: 'Send moderation requests through the selected proxy (IP Management - Proxy Servers), useful when the egress IP is not supported by OpenAI. Defaults to direct connection.',
       recordNonHits: 'Record Non-Hits',
       recordNonHitsHint: 'When enabled, sampled non-hit request summaries are redacted before storage.',
       preHashCheck: 'Enable Pre-Hash Check',
@@ -623,7 +629,9 @@ export default {
       quotaEndsInMinutes: 'Quota ends in {minutes}m',
       quotaEndsInHoursMinutes: 'Quota ends in {hours}h {minutes}m',
       quotaEndsInDaysHours: 'Quota ends in {days}d {hours}h',
-      daysRemaining: 'days remaining',
+      daysRemaining: '{days} days remaining',
+      hoursMinutesRemaining: '{hours}h {minutes}m remaining',
+      minutesRemaining: '{minutes}m remaining',
       remainingDays: 'Remaining days',
       noExpiration: 'No expiration',
       status: {

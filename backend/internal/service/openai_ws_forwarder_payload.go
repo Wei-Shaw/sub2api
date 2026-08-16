@@ -75,6 +75,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	turnState string,
 	turnMetadata string,
 	promptCacheKey string,
+	routingModel string,
+	routingServiceTier string,
 ) (http.Header, openAIWSSessionHeaderResolution, error) {
 	headers := make(http.Header)
 	if account == nil || !account.IsOpenAIAgentIdentity() {
@@ -97,6 +99,12 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 			}
 		}
 	}
+	// 真实 Codex 的 WS 握手同样携带会话级 x-codex-beta-features
+	// （client.rs build_websocket_headers 复用 build_responses_headers），
+	// 客户端未声明时补成默认形态，与 HTTP 出站保持一致。放在客户端头拷贝
+	// 之外：该头是账号/会话级属性，不依赖入站请求是否存在，也避免预热与
+	// 实际请求因头差异落进不同的连接池兼容分桶。
+	applyOpenAICodexBetaFeatures(c, account, headers)
 	// OAuth 账号：将 apiKeyID 混入 session 标识符，防止跨用户会话碰撞。
 	if account != nil && account.Type == AccountTypeOAuth {
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -148,16 +156,25 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 	if s != nil && s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		headers.Set("user-agent", codexCLIUserAgent)
 	}
-	// 终态收口：originator 必须与最终 user-agent 首段配套且为官方身份，非官方 UA 整体回退为
-	// 默认 Codex CLI 身份（承接原「非 Codex UA 兜底」，并修复其把 codex-tui 等官方 UA 改写为
-	// codex_cli_rs 造成的 originator 错配 404），详见 issue #3901。
+	// 终态收口：WS 握手与 HTTP 出站共用同一套身份语义，账号级自定义 UA 同样作为
+	// 管理员显式配置传入（上面写进 headers 的值只在强制统一被关闭时才参与配对）。
 	if account != nil && account.Type == AccountTypeOAuth {
-		enforceCodexIdentityHeaders(headers)
+		enforceCodexIdentityHeadersWithUA(headers, s.codexIdentityOverrideUA(account))
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 覆盖所有 WS 模式（ctx_pool/dedicated/passthrough）的握手头。
 	account.ApplyHeaderOverrides(headers)
+	setOpenAICodexRoutingHint(headers, account, routingModel, routingServiceTier)
+	logOpenAIRoutingDiagnostics(
+		ctx,
+		account,
+		string(decision.Transport),
+		routingModel,
+		routingServiceTier,
+		strings.TrimSpace(headers.Get(openAICodexRoutingHintHeader)) != "",
+		"soft_routing_hint",
+	)
 
 	return headers, sessionResolution, nil
 }
@@ -450,6 +467,17 @@ func normalizeOpenAIWSPayloadWithoutInputAndPreviousResponseID(payload []byte) (
 	}
 	delete(decoded, "input")
 	delete(decoded, "previous_response_id")
+	// Codex changes transport-only metadata for every response.create. These fields
+	// do not alter the context referenced by previous_response_id and are excluded
+	// from Codex's own websocket reuse comparison.
+	delete(decoded, "client_metadata")
+	delete(decoded, "stream_options")
+	// Official Codex prewarms a connection with generate=false, then omits the
+	// field on the business request that continues from the prewarm response.
+	// Only normalize false so a meaningful generate=true change remains visible.
+	if generate, ok := decoded["generate"].(bool); ok && !generate {
+		delete(decoded, "generate")
+	}
 	return json.Marshal(decoded)
 }
 
