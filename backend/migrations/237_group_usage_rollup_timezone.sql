@@ -1,14 +1,18 @@
 -- 让 /admin/groups 分组日汇总跟随服务端配置时区。
 -- 236 迁移生成的存量日桶均为北京时间，因此新增状态默认标记为 Asia/Shanghai；
 -- 服务启动后若当前 TZ 不同，后台同步会检测到不一致并重建日桶。
+-- Keep timezone_name nullable so mixed-version rollbacks do not require a
+-- table-rewriting NOT NULL default. The reviewed backfill only fills NULLs.
 
 ALTER TABLE usage_group_rollup_state
-    ADD COLUMN IF NOT EXISTS timezone_name TEXT NOT NULL DEFAULT 'Asia/Shanghai';
+    ADD COLUMN IF NOT EXISTS timezone_name TEXT;
 
-COMMENT ON COLUMN usage_group_rollup_state.timezone_name IS '当前分组日桶采用的 IANA 时区名称。';
-COMMENT ON COLUMN usage_group_rollup_state.closed_before IS '已完整发布日桶的配置时区日期排他上界。';
-COMMENT ON COLUMN usage_group_daily_rollups.bucket_date IS 'timezone_name 对应时区的自然日。';
+-- sub2api-managed-update: reviewed-compatible
+UPDATE usage_group_rollup_state
+SET timezone_name = 'Asia/Shanghai'
+WHERE timezone_name IS NULL;
 
+-- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -53,6 +57,7 @@ BEGIN
 END;
 $$;
 
+-- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert()
 RETURNS TRIGGER
 LANGUAGE plpgsql

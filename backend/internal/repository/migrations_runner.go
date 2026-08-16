@@ -128,6 +128,12 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 	"230_channel_monitor_v2_default_ignore_and_cache.sql":       newMigrationChecksumCompatibilityRule("a4628398e6e7c91968276c8f5a0e89633a8036c0b7448f6eb4360b54d841bea4", "ae54ca5d660438136f559cf2b65dae15399281de195a19159d03ec596de4bb98"),
 	"232_channel_monitor_v2_reset_factory_cache_thresholds.sql": newMigrationChecksumCompatibilityRule("054c8893439eec8105c97ba455ae9f8ee6ca6969cb63db821244ab6119d28ed1", "9cc91f869c03ba5cc46696575959cbd1b74ba0e9ad380bcbc3a422259eddff80"),
 	"233_channel_monitor_v2_privacy_defaults.sql":               newMigrationChecksumCompatibilityRule("e298db503aa75dd2782e994723489c4489b63a5655e0f98af1f848e373630068", "e2bdbcafac7f07aa9eebc804dde013e3eef506a6b3a323d8548b01b8796905cd"),
+	// 236-238 were merged to main before a fork tag. Staging DBs that already
+	// applied the original files keep those checksums; the reviewed-compatible
+	// replacements stay bootable.
+	"236_group_usage_daily_rollups.sql":   newMigrationChecksumCompatibilityRule("7766596be5bc4d04855b3e122401819fc3f717e3c1da0e569466754101130584", "d1dea80dd961e8f4016ce95dc413ee28344adf6fce9964427452a95cb7dfc16f"),
+	"237_group_usage_rollup_timezone.sql": newMigrationChecksumCompatibilityRule("814bda0a4d83c5248ae4ffeca5ebd6dc01d6ea00912c4c2f8c822d61a4540234", "3e3e2abd2b54e0de020d1a1d4491cca8fe44f64564442107f99bc6405afc5676"),
+	"238_prompt_audit_keywords.sql":       newMigrationChecksumCompatibilityRule("159cb142981e56e9384ff4abbcd5aa70c9595ec47dab9fbe55ebfd0f0830b6d6", "34c743e8c9b38a79113675c7e8b109797e118808988e5894e8b87a2f04dd9fec"),
 }
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。

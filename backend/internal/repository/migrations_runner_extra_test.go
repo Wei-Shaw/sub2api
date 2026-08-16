@@ -128,6 +128,9 @@ func TestEditedPreReleaseMigrationCompatibilityRulesMatchCurrentFiles(t *testing
 		"230_channel_monitor_v2_default_ignore_and_cache.sql",
 		"232_channel_monitor_v2_reset_factory_cache_thresholds.sql",
 		"233_channel_monitor_v2_privacy_defaults.sql",
+		"236_group_usage_daily_rollups.sql",
+		"237_group_usage_rollup_timezone.sql",
+		"238_prompt_audit_keywords.sql",
 	} {
 		t.Run(name, func(t *testing.T) {
 			content, err := migrations.FS.ReadFile(name)

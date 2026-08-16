@@ -9,9 +9,6 @@ CREATE TABLE IF NOT EXISTS usage_group_daily_rollups (
     PRIMARY KEY (bucket_date, group_id)
 );
 
-COMMENT ON TABLE usage_group_daily_rollups IS '按北京时间自然日聚合的分组实际费用。';
-COMMENT ON COLUMN usage_group_daily_rollups.bucket_date IS '北京时间自然日。';
-
 CREATE TABLE IF NOT EXISTS usage_group_rollup_state (
     id SMALLINT PRIMARY KEY CHECK (id = 1),
     closed_before DATE NOT NULL DEFAULT DATE '1970-01-01',
@@ -19,15 +16,13 @@ CREATE TABLE IF NOT EXISTS usage_group_rollup_state (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE usage_group_rollup_state IS '分组日汇总的单行发布水位。';
-COMMENT ON COLUMN usage_group_rollup_state.closed_before IS '已完整发布日桶的北京时间日期排他上界。';
-
 INSERT INTO usage_group_rollup_state (id, closed_before, retained_from)
-VALUES (1, DATE '1970-01-01', TIMESTAMPTZ '1970-01-01 00:00:00+00')
+VALUES (1, '1970-01-01', '1970-01-01 00:00:00+00')
 ON CONFLICT (id) DO NOTHING;
 
 -- 已发布范围的源记录发生变化时，必须在同一事务内后退发布水位。
 -- DELETE/UPDATE 使用行级触发器，以覆盖外键级联、分区表和直接分区写入。
+-- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -75,6 +70,7 @@ $$;
 
 -- INSERT 是网关高频路径。transition table 让每个批量 INSERT 只锁一次状态行；
 -- KEY SHARE 在普通写入之间兼容，但会与关闭作业的 FOR UPDATE 串行化。
+-- sub2api-managed-update: reviewed-compatible
 CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -109,22 +105,22 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS usage_logs_group_rollup_invalidate_insert ON usage_logs;
-CREATE TRIGGER usage_logs_group_rollup_invalidate_insert
+-- sub2api-managed-update: reviewed-compatible
+CREATE OR REPLACE TRIGGER usage_logs_group_rollup_invalidate_insert
 AFTER INSERT ON usage_logs
 REFERENCING NEW TABLE AS inserted_usage_logs
 FOR EACH STATEMENT
 EXECUTE FUNCTION invalidate_group_usage_rollup_state_after_insert();
 
-DROP TRIGGER IF EXISTS usage_logs_group_rollup_invalidate_delete ON usage_logs;
-CREATE TRIGGER usage_logs_group_rollup_invalidate_delete
+-- sub2api-managed-update: reviewed-compatible
+CREATE OR REPLACE TRIGGER usage_logs_group_rollup_invalidate_delete
 AFTER DELETE ON usage_logs
 FOR EACH ROW
 WHEN (OLD.group_id IS NOT NULL)
 EXECUTE FUNCTION invalidate_group_usage_rollup_state();
 
-DROP TRIGGER IF EXISTS usage_logs_group_rollup_invalidate_update ON usage_logs;
-CREATE TRIGGER usage_logs_group_rollup_invalidate_update
+-- sub2api-managed-update: reviewed-compatible
+CREATE OR REPLACE TRIGGER usage_logs_group_rollup_invalidate_update
 AFTER UPDATE OF created_at, group_id, actual_cost ON usage_logs
 FOR EACH ROW
 WHEN (
