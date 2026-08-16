@@ -3,6 +3,7 @@ package service
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -58,6 +59,8 @@ func TestOpenAICompactSSEKeepalive_CommitsHeadersAndComments(t *testing.T) {
 	require.True(t, StopOpenAICompactSSEKeepaliveCommitted(c))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Equal(t, "no-cache", rec.Header().Get("Cache-Control"))
+	require.Equal(t, "keep-alive", rec.Header().Get("Connection"))
 	require.Equal(t, "no", rec.Header().Get("X-Accel-Buffering"))
 	require.Contains(t, rec.Body.String(), ": keepalive\n\n")
 }
@@ -69,6 +72,66 @@ func TestOpenAICompactSSEKeepalive_StopBeforeFirstBeatKeepsWriterUntouched(t *te
 	waitForKeepaliveBeats()
 	require.Zero(t, rec.Body.Len())
 	require.False(t, StopOpenAICompactSSEKeepaliveCommitted(c))
+}
+
+func TestOpenAICompactSSEKeepalive_ConcurrentStopIsIdempotent(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	stop := StartOpenAICompactSSEKeepalive(c, time.Millisecond)
+	require.Eventually(t, c.Writer.Written, time.Second, time.Millisecond)
+
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	require.True(t, ok)
+	k, ok := value.(*openAICompactSSEKeepalive)
+	require.True(t, ok)
+
+	var wg sync.WaitGroup
+	committedResults := make(chan bool, 32)
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if i%2 == 0 {
+				k.Stop()
+				return
+			}
+			committedResults <- StopOpenAICompactSSEKeepaliveCommitted(c)
+		}()
+	}
+	wg.Wait()
+	close(committedResults)
+	for committed := range committedResults {
+		require.True(t, committed)
+	}
+	stop()
+
+	select {
+	case <-k.stop:
+	default:
+		t.Fatal("stop channel must be closed")
+	}
+	lengthAfterStop := rec.Body.Len()
+	time.Sleep(5 * time.Millisecond)
+	require.Equal(t, lengthAfterStop, rec.Body.Len(), "no beat may be written after concurrent stop completes")
+}
+
+func TestOpenAICompactSSEKeepalive_WriteFailureClosesStopChannel(t *testing.T) {
+	c, _ := newCompactBridgeTestContext(t, true)
+	k := &openAICompactSSEKeepalive{
+		writer: &failWriteResponseWriter{ResponseWriter: c.Writer},
+		stop:   make(chan struct{}),
+	}
+
+	require.False(t, k.beat())
+	require.True(t, k.started)
+	require.True(t, k.stopped)
+	select {
+	case <-k.stop:
+	default:
+		t.Fatal("write failure must close stop channel")
+	}
+
+	// Repeated cleanup after a failed beat must remain safe.
+	require.NotPanics(t, k.Stop)
 }
 
 // 心跳已提交后，2xx 桥接续写事件而不重复提交响应头。

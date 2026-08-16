@@ -1,6 +1,10 @@
 package service
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,9 +14,19 @@ import (
 const (
 	// AccountTestModeDefault drives the standard /responses connection test.
 	AccountTestModeDefault = "default"
-	// AccountTestModeCompact drives the remote-compaction probe test
-	// (native v2: streaming /responses with a compaction_trigger input item).
+	// AccountTestModeCompact drives the native /responses remote-compaction probe.
 	AccountTestModeCompact = "compact"
+
+	openAICompactProbeProtocolVersion = 2
+	openAICompactProbeMaxAge          = 30 * 24 * time.Hour
+	openAICompactProbeMaxBodyBytes    = 2 << 20
+
+	openAICompactProbeSupportedExtraKey          = "openai_compact_supported"
+	openAICompactProbeVersionExtraKey            = "openai_compact_probe_version"
+	openAICompactProbeCheckedAtExtraKey          = "openai_compact_checked_at"
+	openAICompactProbeLastStatusExtraKey         = "openai_compact_last_status"
+	openAICompactProbeLastErrorExtraKey          = "openai_compact_last_error"
+	OpenAICompactProbeObservedAtUnixNanoExtraKey = "openai_compact_probe_observed_at_unix_nano"
 )
 
 func normalizeAccountTestMode(mode string) string {
@@ -24,14 +38,14 @@ func normalizeAccountTestMode(mode string) string {
 	}
 }
 
-// createOpenAICompactProbePayload 构造原生 remote compaction v2 探测载荷：
-// 流式 /responses + input 末尾 {"type":"compaction_trigger"}。上游已下线
-// legacy unary /responses/compact（v1 形态恒 404，#5598/#5624），现行 codex
-// 默认协议即 v2（RemoteCompactionV2 Stable + default_enabled）。
+// createOpenAICompactProbePayload mirrors Codex remote compaction v2: a
+// streaming /responses request whose final input item is compaction_trigger.
 func createOpenAICompactProbePayload(model string, isOAuth bool) map[string]any {
 	payload := map[string]any{
-		"model":        strings.TrimSpace(model),
-		"instructions": "You are a helpful coding assistant.",
+		"model":               strings.TrimSpace(model),
+		"instructions":        "You are a helpful coding assistant.",
+		"tools":               []any{},
+		"parallel_tool_calls": true,
 		"input": []any{
 			map[string]any{
 				"type":    "message",
@@ -42,31 +56,169 @@ func createOpenAICompactProbePayload(model string, isOAuth bool) map[string]any 
 		},
 		"stream": true,
 	}
-	// ChatGPT internal API 要求 store: false，与真实转发一致。
 	if isOAuth {
 		payload["store"] = false
+		metadata, _ := json.Marshal(map[string]any{
+			"request_kind": "compaction",
+			"compaction": map[string]any{
+				"trigger":        "manual",
+				"reason":         "user_requested",
+				"implementation": "responses_compaction_v2",
+				"phase":          "standalone_turn",
+				"strategy":       "memento",
+			},
+		})
+		payload["client_metadata"] = map[string]any{
+			"x-codex-turn-metadata": string(metadata),
+		}
 	}
 	return payload
 }
 
-// openAICompactProbeFoundCompactionItem 判定探测响应是否产出了 compaction
-// 输出 item——v2 契约的核心（codex 缺它即 fatal "got 0 items"）。三种形态都
-// 认：① SSE 的 output_item.done/added（原生 v2 主形态，codex 只从这里收集
-// item）；② SSE 终态 response.completed 的 response.output[]（部分上游只在
-// 终态给出 item）；③ 整体 JSON 的 output[]（老网关链把请求降级成 unary）。
-func openAICompactProbeFoundCompactionItem(body []byte) bool {
-	if len(body) == 0 {
-		return false
+type openAICompactProbeEvent struct {
+	Type string `json:"type"`
+	Item struct {
+		Type string `json:"type"`
+	} `json:"item"`
+}
+
+// evaluateOpenAICompactProbeSSE mirrors Codex collect_compaction_output:
+// success requires exactly one compaction output_item.done and one completed
+// terminal. Other completed output items are permitted and diagnostic only.
+func evaluateOpenAICompactProbeSSE(body []byte) (openAIProbeVerdict, string) {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return openAIProbeVerdictUnknown, "empty compact probe response"
 	}
-	bodyText := string(body)
-	if _, found := findRawCompactionItemFromSSE(bodyText); found {
-		return true
+
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Split(splitOpenAISSELines)
+	scanner.Buffer(make([]byte, 64*1024), len(body)+1)
+	dataLines := make([]string, 0, 1)
+	totalDone := 0
+	compactionDone := 0
+	completed := 0
+	terminalFailure := ""
+	terminalSeen := false
+	streamDone := false
+	seenSSEField := false
+	protocolErr := ""
+	firstLine := true
+
+	consumeEvent := func() {
+		if protocolErr != "" || len(dataLines) == 0 {
+			dataLines = dataLines[:0]
+			return
+		}
+		payload := strings.TrimSpace(strings.Join(dataLines, "\n"))
+		dataLines = dataLines[:0]
+		if payload == "" {
+			return
+		}
+		// The official Codex collector stops at the first response.completed (or
+		// stream error). Bytes after that point are not part of the attempt.
+		if terminalSeen || streamDone {
+			return
+		}
+		if payload == "[DONE]" {
+			streamDone = true
+			return
+		}
+		var event openAICompactProbeEvent
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			protocolErr = "invalid compact probe SSE JSON"
+			return
+		}
+		switch strings.TrimSpace(event.Type) {
+		case "response.output_item.done":
+			totalDone++
+			if isResponsesCompactionItemType(event.Item.Type) {
+				compactionDone++
+			}
+		case "response.completed":
+			terminalSeen = true
+			completed++
+		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
+			terminalSeen = true
+			terminalFailure = strings.TrimSpace(event.Type)
+		}
 	}
-	if finalResponse, ok := extractCodexFinalResponse(bodyText); ok &&
-		responsesOutputHasCompactionItem(finalResponse) {
-		return true
+
+	for scanner.Scan() {
+		if terminalSeen || streamDone {
+			continue
+		}
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if firstLine {
+			line = strings.TrimPrefix(line, "\ufeff")
+			firstLine = false
+		}
+		if line == "" {
+			consumeEvent()
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			seenSSEField = true
+			continue
+		}
+		field, value, found := strings.Cut(line, ":")
+		if !found {
+			// The SSE grammar permits a field without a colon; its value is
+			// the empty string. This matters for legal `data`/`event` lines.
+			field = line
+			value = ""
+		}
+		seenSSEField = true
+		if field == "data" {
+			dataLines = append(dataLines, strings.TrimPrefix(value, " "))
+		}
 	}
-	return responsesOutputHasCompactionItem(body)
+	if err := scanner.Err(); err != nil {
+		return openAIProbeVerdictUnknown, "failed to parse compact probe SSE"
+	}
+	consumeEvent()
+	if !seenSSEField {
+		return openAIProbeVerdictUnknown, "compact probe response is not SSE"
+	}
+	if protocolErr != "" {
+		return openAIProbeVerdictUnknown, protocolErr
+	}
+	if terminalFailure != "" {
+		return openAIProbeVerdictUnknown, "compact probe terminated with " + terminalFailure
+	}
+	if completed != 1 {
+		return openAIProbeVerdictUnknown, "compact probe must contain exactly one response.completed event"
+	}
+	if compactionDone > 1 {
+		return openAIProbeVerdictUnknown, "compact probe produced multiple compaction output items"
+	}
+	if compactionDone == 0 {
+		return openAIProbeVerdictUnsupported, "completed response did not produce a compaction output item (output items=" + strconv.Itoa(totalDone) + ")"
+	}
+	return openAIProbeVerdictSupported, ""
+}
+
+// splitOpenAISSELines accepts all line endings allowed by the SSE grammar:
+// LF, CRLF, and a lone CR. bufio.ScanLines does not split lone CR records.
+func splitOpenAISSELines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	for i, b := range data {
+		switch b {
+		case '\n':
+			return i + 1, data[:i], nil
+		case '\r':
+			if i+1 == len(data) && !atEOF {
+				return 0, nil, nil
+			}
+			advance := i + 1
+			if i+1 < len(data) && data[i+1] == '\n' {
+				advance++
+			}
+			return advance, data[:i], nil
+		}
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
@@ -92,26 +244,37 @@ func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
 	return false
 }
 
-// buildOpenAICompactProbeExtraUpdates 计算探测结果的账号 extra 更新。
-// compactionFound 是 v2 契约判据：HTTP 2xx 但响应无 compaction item 时同样
-// 记为不支持（链路把 compaction_trigger 吞掉的形态，等价 codex 的 "got 0
-// items" fatal，#5478/#5648）。极端场景（上游链只支持 legacy unary compact）
-// 可用账号级 openai_compact_mode=force_on 人工覆盖。
-func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probeErr error, compactionFound bool, now time.Time) map[string]any {
-	updates := map[string]any{
-		"openai_compact_checked_at":  now.Format(time.RFC3339),
-		"openai_compact_last_status": nil,
+func evaluateOpenAICompactProbeHTTP(resp *http.Response, body []byte) (openAIProbeVerdict, string) {
+	if resp == nil {
+		return openAIProbeVerdictUnknown, "compact probe failed"
 	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return evaluateOpenAICompactProbeSSE(body)
+	}
+	if shouldMarkOpenAICompactUnsupported(resp.StatusCode, body) {
+		return openAIProbeVerdictUnsupported, strings.TrimSpace(extractUpstreamErrorMessage(body))
+	}
+	return openAIProbeVerdictUnknown, strings.TrimSpace(extractUpstreamErrorMessage(body))
+}
 
+func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probeErr error, verdict openAIProbeVerdict, verdictReason string, startedAt, now time.Time) map[string]any {
+	updates := map[string]any{
+		openAICompactProbeLastStatusExtraKey:         nil,
+		OpenAICompactProbeObservedAtUnixNanoExtraKey: startedAt.UTC().UnixNano(),
+	}
 	if resp != nil {
-		updates["openai_compact_last_status"] = resp.StatusCode
+		updates[openAICompactProbeLastStatusExtraKey] = resp.StatusCode
 	}
 
 	switch {
 	case probeErr != nil:
-		updates["openai_compact_last_error"] = truncateString(sanitizeUpstreamErrorMessage(probeErr.Error()), 2048)
+		errMsg := verdictReason
+		if errMsg == "" {
+			errMsg = probeErr.Error()
+		}
+		updates[openAICompactProbeLastErrorExtraKey] = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
 	case resp == nil:
-		updates["openai_compact_last_error"] = "compact probe failed"
+		updates[openAICompactProbeLastErrorExtraKey] = "compact probe failed"
 	default:
 		errMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 		if errMsg == "" && len(body) > 0 {
@@ -121,46 +284,73 @@ func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probe
 			errMsg = "HTTP " + strconv.Itoa(resp.StatusCode)
 		}
 		errMsg = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
-		switch {
-		case resp.StatusCode >= 200 && resp.StatusCode < 300 && compactionFound:
-			updates["openai_compact_supported"] = true
-			updates["openai_compact_last_error"] = ""
-		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			updates["openai_compact_supported"] = false
-			updates["openai_compact_last_error"] = "upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported)"
+		if verdictReason != "" {
+			errMsg = verdictReason
+		}
+		switch verdict {
+		case openAIProbeVerdictSupported:
+			updates[openAICompactProbeSupportedExtraKey] = true
+			updates[openAICompactProbeVersionExtraKey] = openAICompactProbeProtocolVersion
+			updates[openAICompactProbeCheckedAtExtraKey] = now.UTC().Format(time.RFC3339Nano)
+			updates[openAICompactProbeLastErrorExtraKey] = ""
+		case openAIProbeVerdictUnsupported:
+			updates[openAICompactProbeSupportedExtraKey] = false
+			updates[openAICompactProbeVersionExtraKey] = openAICompactProbeProtocolVersion
+			updates[openAICompactProbeCheckedAtExtraKey] = now.UTC().Format(time.RFC3339Nano)
+			updates[openAICompactProbeLastErrorExtraKey] = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
 		default:
-			if shouldMarkOpenAICompactUnsupported(resp.StatusCode, body) {
-				updates["openai_compact_supported"] = false
-			}
-			updates["openai_compact_last_error"] = errMsg
+			updates[openAICompactProbeLastErrorExtraKey] = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
 		}
 	}
-
 	return updates
 }
 
-func mergeExtraUpdates(base map[string]any, more map[string]any) map[string]any {
-	if len(base) == 0 && len(more) == 0 {
-		return nil
+func openAICompactProbeSnapshotFresh(extra map[string]any, now time.Time) bool {
+	version, versionExists := extra[openAICompactProbeVersionExtraKey]
+	if !versionExists || !numericExtraEquals(version, openAICompactProbeProtocolVersion) {
+		return false
 	}
-	out := make(map[string]any, len(base)+len(more))
-	for key, value := range base {
-		out[key] = value
+	checkedAt, ok := extra[openAICompactProbeCheckedAtExtraKey].(string)
+	if !ok {
+		return false
 	}
-	for key, value := range more {
-		out[key] = value
+	parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(checkedAt))
+	if err != nil || parsed.After(now.Add(5*time.Minute)) {
+		return false
 	}
-	return out
+	return now.Sub(parsed) <= openAICompactProbeMaxAge
 }
 
-// compactProbeSessionID 返回探测请求使用的会话标识。真实 Codex 的
-// session-id / thread-id 恒为 UUID（codex-protocol ThreadId 是 UUIDv7），
-// 探测既然与真实流量走同一个 /responses 端点，标识形态就必须同构——
-// 否则上游能凭 "probe_compact_5" 这类字面量一眼区分出探测流量。
-// 账号级稳定派生：重复探测复用同一会话，而不是每次新开一个。
-func compactProbeSessionID(accountID int64) string {
-	if accountID <= 0 {
-		return deriveStableUUIDv4("sub2api:codex-compact-probe:v1:anonymous")
+func numericExtraEquals(value any, expected int) bool {
+	switch typed := value.(type) {
+	case int:
+		return typed == expected
+	case int64:
+		return typed == int64(expected)
+	case float64:
+		return typed == float64(expected)
+	case json.Number:
+		actual, err := typed.Int64()
+		return err == nil && actual == int64(expected)
+	default:
+		return false
 	}
-	return deriveStableUUIDv4("sub2api:codex-compact-probe:v1:" + strconv.FormatInt(accountID, 10))
+}
+
+func openAICompactProbeReadError(err error) string {
+	if errors.Is(err, errOpenAIProbeBodyTooLarge) {
+		return "compact probe response exceeded 2 MiB limit"
+	}
+	if err == nil {
+		return ""
+	}
+	return "failed to read compact probe response: " + err.Error()
+}
+
+func compactProbeSessionID(accountID int64) string {
+	seed := "anonymous"
+	if accountID > 0 {
+		seed = strconv.FormatInt(accountID, 10)
+	}
+	return deriveStableUUIDv4("sub2api:codex-compact-probe:v1:" + seed)
 }

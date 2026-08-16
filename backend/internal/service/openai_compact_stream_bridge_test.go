@@ -318,7 +318,7 @@ func TestHandlePassthroughSSEToJSON_CompactRawOutputItemDoneRepairsEmptyTerminal
 		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
 	}
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -377,23 +377,19 @@ func TestReconstructResponseOutputFromSSE_PrefersRawDoneItems(t *testing.T) {
 	require.Equal(t, "hello", items[0].Get("content.0.text").String())
 }
 
-// 无任何 done 事件时，退回收集 output_item.added 中的 compaction 类 item。
-func TestReconstructResponseOutputFromSSE_CompactionAddedFallback(t *testing.T) {
+// Official Codex only accepts output_item.done as final compaction output.
+func TestReconstructResponseOutputFromSSE_IgnoresCompactionAddedWithoutDone(t *testing.T) {
 	bodyText := strings.Join([]string{
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"cmp_add","type":"compaction","encrypted_content":"added-only"}}`,
 		`data: {"type":"response.completed","response":{"id":"resp_1","output":[]}}`,
 	}, "\n")
 
 	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
-	require.True(t, ok)
-	items := gjson.ParseBytes(outputJSON).Array()
-	require.Len(t, items, 1)
-	require.Equal(t, "compaction", items[0].Get("type").String())
-	require.Equal(t, "added-only", items[0].Get("encrypted_content").String())
+	require.False(t, ok)
+	require.Nil(t, outputJSON)
 }
 
-// 混合形态：其他 item 有 done、compaction 只在 added 中——compaction 必须
-// 被补入；done 已含 compaction 时 added 不得重复计入。
+// Mixed streams still only collect authoritative done items.
 func TestReconstructResponseOutputFromSSE_MixedDoneAndCompactionAdded(t *testing.T) {
 	bodyText := strings.Join([]string{
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"id":"cmp_mixed","type":"compaction","encrypted_content":"mixed"}}`,
@@ -404,9 +400,8 @@ func TestReconstructResponseOutputFromSSE_MixedDoneAndCompactionAdded(t *testing
 	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
 	require.True(t, ok)
 	items := gjson.ParseBytes(outputJSON).Array()
-	require.Len(t, items, 2)
+	require.Len(t, items, 1)
 	require.Equal(t, "msg_1", items[0].Get("id").String())
-	require.Equal(t, "cmp_mixed", items[1].Get("id").String())
 
 	// done 已含 compaction：added 中的同一 item（无 id 可去重的最坏情况用
 	// 不同 raw 表达）不得再收集，Codex 要求恰好一个 compaction item。
@@ -420,6 +415,72 @@ func TestReconstructResponseOutputFromSSE_MixedDoneAndCompactionAdded(t *testing
 	items = gjson.ParseBytes(outputJSON).Array()
 	require.Len(t, items, 1)
 	require.Equal(t, "final", items[0].Get("encrypted_content").String())
+}
+
+func TestReconstructResponseOutputFromSSE_PreservesDuplicateCompactionDone(t *testing.T) {
+	bodyText := strings.Join([]string{
+		`data: {"type":"response.output_item.done","item":{"id":"cmp_dup","type":"compaction","encrypted_content":"first"}}`,
+		`data: {"type":"response.output_item.done","item":{"id":"cmp_dup","type":"compaction","encrypted_content":"second"}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_dup","output":[]}}`,
+	}, "\n")
+
+	outputJSON, ok := reconstructResponseOutputFromSSE(bodyText)
+	require.True(t, ok)
+	items := gjson.ParseBytes(outputJSON).Array()
+	require.Len(t, items, 2, "duplicate compaction done events must remain visible to Codex")
+	require.Equal(t, "first", items[0].Get("encrypted_content").String())
+	require.Equal(t, "second", items[1].Get("encrypted_content").String())
+}
+
+func TestHandleSSEToJSON_CompactPreservesOfficialProtocolFailures(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		outputEvents  []string
+		wantDoneItems int
+	}{
+		{
+			name: "added-only compaction remains absent",
+			outputEvents: []string{
+				`data: {"type":"response.output_item.added","item":{"id":"cmp_added","type":"compaction","encrypted_content":"not-final"}}`,
+			},
+			wantDoneItems: 0,
+		},
+		{
+			name: "duplicate done compactions remain duplicated",
+			outputEvents: []string{
+				`data: {"type":"response.output_item.done","item":{"id":"cmp_dup","type":"compaction","encrypted_content":"first"}}`,
+				`data: {"type":"response.output_item.done","item":{"id":"cmp_dup","type":"compaction","encrypted_content":"second"}}`,
+			},
+			wantDoneItems: 2,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newCompactBridgeTestService()
+			c, rec := newCompactBridgeTestContext(t, true)
+			lines := append([]string{}, tt.outputEvents...)
+			lines = append(lines,
+				`data: {"type":"response.completed","response":{"id":"resp_protocol_error","object":"response","status":"completed","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`,
+				``,
+			)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(strings.Join(lines, "\n\n"))),
+			}
+
+			result, err := svc.handleNonStreamingResponse(context.Background(), resp, c, &Account{ID: 1, Type: AccountTypeOAuth}, "gpt-5.5", "gpt-5.5")
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			events := parseCompactBridgeSSE(t, rec.Body.String())
+			require.Len(t, events, tt.wantDoneItems+1)
+			for i := 0; i < tt.wantDoneItems; i++ {
+				require.Equal(t, "response.output_item.done", events[i][0])
+			}
+			require.Equal(t, "response.completed", events[len(events)-1][0])
+			require.Len(t, gjson.Get(events[len(events)-1][1], "response.output").Array(), tt.wantDoneItems)
+		})
+	}
 }
 
 // 上游不一致形态：终态 output 非空（含 message）但 compaction 只在 raw
@@ -480,6 +541,11 @@ func TestSupplementCompactionItemFromSSE_Gating(t *testing.T) {
 	require.Len(t, items, 2)
 	require.Equal(t, "compaction", items[1].Get("type").String())
 	require.Equal(t, "g", items[1].Get("encrypted_content").String())
+
+	// Two done compaction items are a protocol error in Codex. The bridge must
+	// not select one and make the terminal response look valid.
+	duplicateBody := bodyText + `data: {"type":"response.output_item.done","item":{"id":"cmp_g2","type":"compaction","encrypted_content":"g2"}}` + "\n"
+	require.Equal(t, string(missing), string(supplementCompactionItemFromSSE(c2, missing, duplicateBody)))
 }
 
 // 非 compaction 的 output_item.added 不参与回退收集（added 阶段的 message
@@ -512,7 +578,7 @@ func TestHandleNonStreamingResponsePassthrough_CompactClientStreamBridgesToSSE(t
 		}`)),
 	}
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

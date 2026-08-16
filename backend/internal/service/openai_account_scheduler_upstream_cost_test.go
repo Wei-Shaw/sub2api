@@ -169,7 +169,7 @@ func TestAdvancedSchedulerCapsRejectedCostOverflowAcquires(t *testing.T) {
 
 func TestOpenAICostOverflowExpandedOnlyWhenCostAddsCandidates(t *testing.T) {
 	candidates := []openAIAccountCandidateScore{
-		{account: &Account{ID: 1, Extra: map[string]any{"openai_compact_supported": true}}},
+		{account: &Account{ID: 1, Extra: currentCompactProbeTestExtra(true)}},
 		{account: &Account{ID: 2}},
 	}
 	plan := openAIAccountLoadPlan{candidates: candidates, topK: 1, includeOverflowFallback: true}
@@ -261,8 +261,8 @@ func TestAdvancedCostSchedulerKeepsCompactSupportedOverflowAheadOfUnknown(t *tes
 	preferred := upstreamCostTestAccount(11, UpstreamBillingProbeStatusOK, 0.01, now.Add(-time.Minute), 30*time.Minute)
 	overflow := upstreamCostTestAccount(12, UpstreamBillingProbeStatusOK, 0.1, now.Add(-time.Minute), 30*time.Minute)
 	unknown := upstreamCostTestAccount(13, UpstreamBillingProbeStatusOK, 0.001, now.Add(-time.Minute), 30*time.Minute)
-	preferred.Extra["openai_compact_supported"] = true
-	overflow.Extra["openai_compact_supported"] = true
+	preferred.Extra = addCurrentCompactProbeTestExtra(preferred.Extra, true)
+	overflow.Extra = addCurrentCompactProbeTestExtra(overflow.Extra, true)
 	for _, account := range []*Account{preferred, overflow, unknown} {
 		account.Status = StatusActive
 		account.Schedulable = true

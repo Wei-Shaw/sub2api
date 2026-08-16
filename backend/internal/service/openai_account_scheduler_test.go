@@ -3638,7 +3638,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 			Priority:    0,
 			GroupIDs:    []int64{groupID},
 			Credentials: map[string]any{"plan_type": "team"},
-			Extra:       map[string]any{"openai_compact_supported": true},
+			Extra:       currentCompactProbeTestExtra(true),
 		},
 		{
 			// 常规账号：明确不支持 compact，无法服务本次请求。
@@ -3650,7 +3650,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SubscriptionPriorityWai
 			Concurrency: 1,
 			Priority:    9,
 			GroupIDs:    []int64{groupID},
-			Extra:       map[string]any{"openai_compact_supported": false},
+			Extra:       currentCompactProbeTestExtra(false),
 		},
 	}
 	concurrencyCache := schedulerTestConcurrencyCache{

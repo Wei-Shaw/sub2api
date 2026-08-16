@@ -2,7 +2,9 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +39,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 			"chatgpt_account_id":         "chatgpt-acc",
 			"chatgpt_account_is_fedramp": true,
 		},
+		Extra: map[string]any{"openai_device_id": "11111111-2222-4333-8444-555555555555"},
 	}
 	repo := &snapshotUpdateAccountRepo{
 		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
@@ -64,7 +67,8 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
 	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
 	require.Contains(t, upstream.lastReq.Header.Get("x-codex-beta-features"), "remote_compaction_v2")
-	require.NotEmpty(t, upstream.lastReq.Header.Get("Session_Id"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("session-id"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("thread-id"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.lastReq.Context()))
 	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
 	require.Equal(t, "chatgpt-acc", upstream.lastReq.Header.Get("chatgpt-account-id"))
@@ -72,12 +76,25 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "parallel_tool_calls").Bool())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "tools").IsArray())
+	require.Empty(t, gjson.GetBytes(upstream.lastBody, "tools").Array())
 	inputItems := gjson.GetBytes(upstream.lastBody, "input").Array()
 	require.NotEmpty(t, inputItems)
 	require.Equal(t, "compaction_trigger", inputItems[len(inputItems)-1].Get("type").String())
+	require.Equal(t, "11111111-2222-4333-8444-555555555555", gjson.GetBytes(upstream.lastBody, "client_metadata.x-codex-installation-id").String())
+	require.Equal(t, upstream.lastReq.Header.Get("session-id"), gjson.GetBytes(upstream.lastBody, "client_metadata.session_id").String())
+	require.Equal(t, upstream.lastReq.Header.Get("thread-id"), gjson.GetBytes(upstream.lastBody, "client_metadata.thread_id").String())
+	require.Equal(t, upstream.lastReq.Header.Get("x-codex-window-id"), gjson.GetBytes(upstream.lastBody, "client_metadata.x-codex-window-id").String())
+	require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "client_metadata.turn_id").String())
+	metadata := gjson.GetBytes(upstream.lastBody, "client_metadata.x-codex-turn-metadata").String()
+	require.Equal(t, "compaction", gjson.Get(metadata, "request_kind").String())
+	require.Equal(t, "11111111-2222-4333-8444-555555555555", gjson.Get(metadata, "installation_id").String())
+	require.Equal(t, gjson.GetBytes(upstream.lastBody, "client_metadata.turn_id").String(), gjson.Get(metadata, "turn_id").String())
 
 	updates := <-updateCalls
 	require.Equal(t, true, updates["openai_compact_supported"])
+	require.Equal(t, openAICompactProbeProtocolVersion, updates[openAICompactProbeVersionExtraKey])
 	require.Equal(t, http.StatusOK, updates["openai_compact_last_status"])
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }
@@ -139,8 +156,12 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 		Schedulable: true,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_key":  "sk-test",
-			"base_url": "https://example.com/v1",
+			"api_key":                    "sk-test",
+			"base_url":                   "https://example.com/v1",
+			credKeyHeaderOverrideEnabled: true,
+			credKeyHeaderOverrides: map[string]any{
+				"x-codex-beta-features": "custom_beta",
+			},
 			// post-#5641：compact_model_mapping 仅作用于 legacy /responses/compact，
 			// 原生 v2 探测不应用它。
 			"compact_model_mapping": map[string]any{"gpt-5.4": "gpt-5.4-openai-compact"},
@@ -171,10 +192,58 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 	require.Equal(t, "https://example.com/v1/responses", upstream.lastReq.URL.String())
 	requireOpenAICodexProbeHeaders(t, upstream.lastReq.Header)
 	require.Contains(t, upstream.lastReq.Header.Get("x-codex-beta-features"), "remote_compaction_v2")
+	require.Contains(t, upstream.lastReq.Header.Get("x-codex-beta-features"), "custom_beta")
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String(),
 		"原生 v2 探测不应用 compact_model_mapping")
+	require.Empty(t, upstream.lastReq.Header.Get("x-codex-installation-id"))
+	require.False(t, gjson.GetBytes(upstream.lastBody, "client_metadata").Exists())
 	updates := <-updateCalls
 	require.Equal(t, true, updates["openai_compact_supported"])
+}
+
+type ignoredCompactSnapshotRepo struct {
+	stubOpenAIAccountRepo
+	updates map[string]any
+}
+
+func (r *ignoredCompactSnapshotRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updates = maps.Clone(updates)
+	return nil
+}
+
+func TestAccountTestService_OpenAICompactIgnoredCASDoesNotMutateRequestAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := Account{
+		ID:          33,
+		Name:        "openai-compact-existing-snapshot",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+		Extra: map[string]any{
+			openAICompactProbeSupportedExtraKey:          true,
+			OpenAICompactProbeObservedAtUnixNanoExtraKey: int64(1<<62 - 1),
+		},
+	}
+	repo := &ignoredCompactSnapshotRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+	svc := &AccountTestService{
+		accountRepo: repo,
+		httpUpstream: &httpUpstreamRecorder{resp: &http.Response{
+			StatusCode: http.StatusNotFound,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"not found"}}`)),
+		}},
+		cfg: &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/33/test", nil)
+
+	require.Error(t, svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact))
+	require.Equal(t, false, repo.updates[openAICompactProbeSupportedExtraKey], "the stale candidate is still sent to the repository CAS")
+	require.Equal(t, true, repo.accounts[0].Extra[openAICompactProbeSupportedExtraKey], "a CAS loser must not overwrite the request-local account copy")
+	require.Equal(t, int64(1<<62-1), repo.accounts[0].Extra[OpenAICompactProbeObservedAtUnixNanoExtraKey])
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBaseURLUsesResponsesPath(t *testing.T) {
@@ -322,4 +391,113 @@ func TestCompactProbeSessionID_IsUUIDShaped(t *testing.T) {
 	}
 	require.Equal(t, compactProbeSessionID(7), compactProbeSessionID(7), "同账号应稳定复用同一会话")
 	require.NotEqual(t, compactProbeSessionID(7), compactProbeSessionID(8))
+}
+
+func runOpenAICompactProbeFailureCase(t *testing.T, body io.Reader, upstreamErr error) (map[string]any, error) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	account := Account{
+		ID: 5100, Name: "openai-apikey", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	}
+	updateCalls := make(chan map[string]any, 1)
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{err: upstreamErr}
+	if upstreamErr == nil {
+		upstream.resp = &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(body),
+		}
+	}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/5100/test", nil)
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
+	return <-updateCalls, err
+}
+
+func TestAccountTestService_OpenAICompactProbeReadFailuresRemainUnknown(t *testing.T) {
+	oversized := compactProbeSSESuccessBody + strings.Repeat("x", openAICompactProbeMaxBodyBytes)
+	updates, err := runOpenAICompactProbeFailureCase(t, strings.NewReader(oversized), nil)
+	require.Error(t, err)
+	require.NotContains(t, updates, openAICompactProbeSupportedExtraKey)
+	require.Contains(t, updates[openAICompactProbeLastErrorExtraKey], "2 MiB")
+
+	readErr := io.ErrUnexpectedEOF
+	updates, err = runOpenAICompactProbeFailureCase(t, &failingProbeReader{
+		data: []byte(compactProbeSSESuccessBody),
+		err:  readErr,
+	}, nil)
+	require.Error(t, err)
+	require.NotContains(t, updates, openAICompactProbeSupportedExtraKey)
+	require.Contains(t, updates[openAICompactProbeLastErrorExtraKey], "read")
+}
+
+func TestAccountTestService_OpenAICompactTransportFailurePersistsUnknown(t *testing.T) {
+	updates, err := runOpenAICompactProbeFailureCase(t, nil, io.ErrClosedPipe)
+	require.Error(t, err)
+	require.NotContains(t, updates, openAICompactProbeSupportedExtraKey)
+	require.Contains(t, updates[openAICompactProbeLastErrorExtraKey], "closed pipe")
+	require.NotContains(t, updates, openAICompactProbeVersionExtraKey)
+}
+
+type canceledCallerProbeRepo struct {
+	stubOpenAIAccountRepo
+	contextErrors []error
+	deadlines     []bool
+	updates       []map[string]any
+}
+
+func (r *canceledCallerProbeRepo) UpdateExtra(ctx context.Context, _ int64, updates map[string]any) error {
+	r.contextErrors = append(r.contextErrors, ctx.Err())
+	_, hasDeadline := ctx.Deadline()
+	r.deadlines = append(r.deadlines, hasDeadline)
+	r.updates = append(r.updates, updates)
+	return nil
+}
+
+func TestAccountTestService_OpenAICompactPersistsAfterCallerCancellation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	account := Account{
+		ID: 5200, Name: "openai-apikey", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test"},
+	}
+	repo := &canceledCallerProbeRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			"data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"message\"}}\n\n" +
+				"data: {\"type\":\"response.completed\"}\n\n",
+		)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/5200/test", nil).WithContext(requestCtx)
+
+	err := svc.TestAccountConnection(c, account.ID, "gpt-5.4", "", AccountTestModeCompact)
+	require.Error(t, err)
+	require.Len(t, repo.updates, 1)
+	require.NoError(t, repo.contextErrors[0])
+	require.True(t, repo.deadlines[0])
+	require.Equal(t, false, repo.updates[0][openAICompactProbeSupportedExtraKey])
 }
