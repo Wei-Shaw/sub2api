@@ -25,24 +25,22 @@ describe('channel-monitor-v2 design system structure', () => {
     expect(src).toContain('badge badge-warning')
     // Compact single-row toolbar
     expect(src).toContain('monitor-toolbar')
-    expect(src).toContain('clearFilters')
-    expect(src).toContain('healthModeOptions')
-    expect(src).toContain("'cache'")
     // Ops elevation: rounded-3xl + ring surfaces
     expect(src).toContain('rounded-3xl')
     expect(src).toContain('ring-1 ring-gray-900/5')
     // Overview-first KPI strip before primary viz
-    expect(src.indexOf('summaryAria')).toBeLessThan(src.indexOf('MonitorTrendChart'))
+    expect(src.indexOf('summaryAria')).toBeLessThan(src.indexOf('RelayPulseMatrix'))
+    expect(src).not.toContain('MonitorTrendChart')
+    expect(src).not.toContain('FilterMultiSelect')
+    expect(src).not.toContain('healthModeOptions')
+    expect(src).not.toContain('trendView')
     // No page-level fixed min-width that forces viewport horizontal scroll
     expect(src).not.toMatch(/min-width:\s*980px/)
     expect(src).not.toMatch(/min-w-\[980px\]/)
     // Dense tables scroll internally
     expect(src).toMatch(/max-h-\[min\(52vh/)
     expect(src).toContain('overflow-auto')
-    // Trend view toggle (pulse matrix / line chart) + default platform/group dimension
-    expect(src).toContain("trendView")
     expect(src).toContain("'platform_group'")
-    expect(src).toContain('MonitorTrendChart')
   })
 
   it('RelayPulseMatrix uses card chrome, matrix scroll, and hover tooltips (no click modal)', () => {
@@ -66,22 +64,6 @@ describe('channel-monitor-v2 design system structure', () => {
     expect(src).toContain('stat-label')
     expect(src).toContain('stat-value')
     expect(src).toContain('rounded-3xl')
-  })
-
-  it('MonitorTrendChart uses Ops chart shell tokens', () => {
-    const src = read('features/channel-monitor-v2/MonitorTrendChart.vue')
-    expect(src).toContain('class="card')
-    expect(src).toContain('rounded-3xl')
-    expect(src).toContain('ring-1 ring-gray-900/5')
-    expect(src).toContain('EmptyState')
-    expect(src).toContain('min-h-[360px]')
-  })
-
-  it('FilterMultiSelect uses rounded-xl input chrome and dropdown utility', () => {
-    const src = read('features/channel-monitor-v2/FilterMultiSelect.vue')
-    expect(src).toContain('rounded-xl')
-    expect(src).toContain('dropdown')
-    expect(src).toContain('dropdown-item')
   })
 
   it('MonitorSettingsPanel uses page-header, card, btn-primary, tabs', () => {
