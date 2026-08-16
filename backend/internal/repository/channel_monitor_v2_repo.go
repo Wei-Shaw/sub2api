@@ -1075,10 +1075,24 @@ func channelMonitorV2HistoryCoverageComplete(coverageStart, filterStart time.Tim
 	return !coverageStart.After(filterStart)
 }
 
+func channelMonitorV2SourceBucketSeconds(filter service.ChannelMonitorV2Filter) int {
+	seconds := int(filter.Bucket.Seconds())
+	switch seconds {
+	case 300, 3600:
+		return seconds
+	case 43200, 86400:
+		// 12h/1d rollups are only rebuilt when a refresh window crosses a
+		// bucket boundary. 1h rows stay current and already cover 7d/30d.
+		return 3600
+	default:
+		return 0
+	}
+}
+
 func channelMonitorV2FixedBucketSeconds(filter service.ChannelMonitorV2Filter) int {
 	seconds := int(filter.Bucket.Seconds())
 	switch seconds {
-	case 300, 3600, 43200, 86400:
+	case 300, 3600:
 		return seconds
 	default:
 		return 0
@@ -1086,28 +1100,28 @@ func channelMonitorV2FixedBucketSeconds(filter service.ChannelMonitorV2Filter) i
 }
 
 func channelMonitorV2MetricsTable(filter service.ChannelMonitorV2Filter) string {
-	if channelMonitorV2FixedBucketSeconds(filter) > 0 {
+	if channelMonitorV2SourceBucketSeconds(filter) > 0 {
 		return "channel_monitor_v2_metrics_rollup"
 	}
 	return "channel_monitor_v2_metrics_1m"
 }
 
 func channelMonitorV2UserMetricsTable(filter service.ChannelMonitorV2Filter) string {
-	if channelMonitorV2FixedBucketSeconds(filter) > 0 {
+	if channelMonitorV2SourceBucketSeconds(filter) > 0 {
 		return "channel_monitor_v2_user_metrics_rollup"
 	}
 	return "channel_monitor_v2_user_metrics_1m"
 }
 
 func channelMonitorV2ErrorMetricsTable(filter service.ChannelMonitorV2Filter) string {
-	if channelMonitorV2FixedBucketSeconds(filter) > 0 {
+	if channelMonitorV2SourceBucketSeconds(filter) > 0 {
 		return "channel_monitor_v2_error_metrics_rollup"
 	}
 	return "channel_monitor_v2_error_metrics_1m"
 }
 
 func channelMonitorV2HistogramTable(filter service.ChannelMonitorV2Filter) string {
-	if channelMonitorV2FixedBucketSeconds(filter) > 0 {
+	if channelMonitorV2SourceBucketSeconds(filter) > 0 {
 		return "channel_monitor_v2_latency_histograms_rollup"
 	}
 	return "channel_monitor_v2_latency_histograms_1m"
@@ -1115,12 +1129,12 @@ func channelMonitorV2HistogramTable(filter service.ChannelMonitorV2Filter) strin
 
 func channelMonitorV2WhereWithRollup(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, alias string) (string, []any, int) {
 	where, args := channelMonitorV2Where(filter, cfg, alias)
-	bucketSeconds := channelMonitorV2FixedBucketSeconds(filter)
-	if bucketSeconds > 0 {
-		args = append(args, bucketSeconds)
+	sourceSeconds := channelMonitorV2SourceBucketSeconds(filter)
+	if sourceSeconds > 0 {
+		args = append(args, sourceSeconds)
 		where += fmt.Sprintf(" AND %s.bucket_seconds = $%d", alias, len(args))
 	}
-	return where, args, bucketSeconds
+	return where, args, channelMonitorV2FixedBucketSeconds(filter)
 }
 
 func channelMonitorV2Where(filter service.ChannelMonitorV2Filter, cfg service.ChannelMonitorV2Config, alias string) (string, []any) {

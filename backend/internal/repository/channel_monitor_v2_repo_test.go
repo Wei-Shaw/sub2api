@@ -185,6 +185,34 @@ func TestSameFixedRollupBucket(t *testing.T) {
 	require.False(t, sameFixedRollupBucket(start, start.Add(24*time.Hour), 86400))
 }
 
+func TestChannelMonitorV2CoarseWindowsReadFreshHourlyRollups(t *testing.T) {
+	ninetyMin := service.ChannelMonitorV2Filter{Bucket: 5 * time.Minute}
+	hourly := service.ChannelMonitorV2Filter{Bucket: time.Hour}
+	sevenDay := service.ChannelMonitorV2Filter{Bucket: 12 * time.Hour}
+	thirtyDay := service.ChannelMonitorV2Filter{Bucket: 24 * time.Hour}
+
+	require.Equal(t, 300, channelMonitorV2SourceBucketSeconds(ninetyMin))
+	require.Equal(t, 300, channelMonitorV2FixedBucketSeconds(ninetyMin))
+	require.Equal(t, 3600, channelMonitorV2SourceBucketSeconds(hourly))
+	require.Equal(t, 3600, channelMonitorV2FixedBucketSeconds(hourly))
+	require.Equal(t, 3600, channelMonitorV2SourceBucketSeconds(sevenDay))
+	require.Equal(t, 0, channelMonitorV2FixedBucketSeconds(sevenDay))
+	require.Equal(t, 3600, channelMonitorV2SourceBucketSeconds(thirtyDay))
+	require.Equal(t, 0, channelMonitorV2FixedBucketSeconds(thirtyDay))
+
+	require.Equal(t, "channel_monitor_v2_metrics_rollup", channelMonitorV2MetricsTable(sevenDay))
+	require.Equal(t, "channel_monitor_v2_user_metrics_rollup", channelMonitorV2UserMetricsTable(thirtyDay))
+	require.Equal(t, "channel_monitor_v2_error_metrics_rollup", channelMonitorV2ErrorMetricsTable(sevenDay))
+	require.Equal(t, "channel_monitor_v2_latency_histograms_rollup", channelMonitorV2HistogramTable(thirtyDay))
+
+	_, args, aligned := channelMonitorV2WhereWithRollup(sevenDay, service.ChannelMonitorV2Config{}, "m")
+	require.Equal(t, 0, aligned)
+	require.Equal(t, 3600, args[len(args)-1])
+	_, args, aligned = channelMonitorV2WhereWithRollup(hourly, service.ChannelMonitorV2Config{}, "m")
+	require.Equal(t, 3600, aligned)
+	require.Equal(t, 3600, args[len(args)-1])
+}
+
 // Needles present in service.ClassifyChannelMonitorV2Error must appear in the
 // aggregation SQL CASE so rollup categories match drilldown classification.
 func TestChannelMonitorV2SQLTaxonomyContainsGoNeedles(t *testing.T) {
