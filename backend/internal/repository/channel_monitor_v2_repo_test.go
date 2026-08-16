@@ -213,6 +213,21 @@ func TestChannelMonitorV2CoarseWindowsReadFreshHourlyRollups(t *testing.T) {
 	require.Equal(t, 3600, args[len(args)-1])
 }
 
+func TestChannelMonitorV2DateBinOriginMatchesUnixEpochUTC(t *testing.T) {
+	require.Equal(t, "date_bin($1::interval,m.bucket_start,TIMESTAMPTZ '1970-01-01 00:00:00+00')", channelMonitorV2DateBinExpr("m"))
+	require.Equal(t, "date_bin($1::interval,h.bucket_start,TIMESTAMPTZ '1970-01-01 00:00:00+00')", channelMonitorV2DateBinExpr("h"))
+	require.Equal(t, "date_bin($1::interval,e.bucket_start,TIMESTAMPTZ '1970-01-01 00:00:00+00')", channelMonitorV2DateBinExpr("e"))
+	require.NotRegexp(t, `TIMESTAMPTZ '1970-01-01'`, channelMonitorV2DateBinExpr("m"))
+
+	origin, err := time.Parse(time.RFC3339, "1970-01-01T00:00:00Z")
+	require.NoError(t, err)
+	require.True(t, origin.Equal(time.Unix(0, 0).UTC()))
+
+	shanghai := time.FixedZone("CST", 8*3600)
+	localOrigin := time.Date(1970, 1, 1, 0, 0, 0, 0, shanghai)
+	require.Equal(t, 8*time.Hour, origin.Sub(localOrigin))
+}
+
 // Needles present in service.ClassifyChannelMonitorV2Error must appear in the
 // aggregation SQL CASE so rollup categories match drilldown classification.
 func TestChannelMonitorV2SQLTaxonomyContainsGoNeedles(t *testing.T) {
