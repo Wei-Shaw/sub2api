@@ -176,6 +176,29 @@ type trackingConcurrencyCache struct {
 	cleanupPrefix string
 }
 
+type apiKeyProcessLeaseCacheForTest struct {
+	stubConcurrencyCacheForTest
+	refreshOwned bool
+	refreshErr   error
+	registerErr  error
+	refreshCalls atomic.Int64
+	registers    atomic.Int64
+}
+
+func (c *apiKeyProcessLeaseCacheForTest) RegisterProcessLease(context.Context, string, time.Duration) error {
+	c.registers.Add(1)
+	return c.registerErr
+}
+
+func (c *apiKeyProcessLeaseCacheForTest) RefreshProcessLease(context.Context, string, time.Duration) (bool, error) {
+	c.refreshCalls.Add(1)
+	return c.refreshOwned, c.refreshErr
+}
+
+func (c *apiKeyProcessLeaseCacheForTest) CleanupDeadAPIKeySlots(context.Context) error {
+	return nil
+}
+
 func (c *trackingConcurrencyCache) CleanupStaleProcessSlots(_ context.Context, prefix string) error {
 	c.cleanupPrefix = prefix
 	return c.cleanupErr
@@ -295,6 +318,29 @@ func TestTrackAPIKeySlot_FailOpen(t *testing.T) {
 
 	require.NotPanics(t, release)
 	require.Empty(t, cache.releasedAPIKeyIDs)
+}
+
+func TestTrackAPIKeySlot_ReestablishesExpiredProcessLeaseBeforeTracking(t *testing.T) {
+	cache := &apiKeyProcessLeaseCacheForTest{}
+	svc := NewConcurrencyService(cache)
+
+	release := svc.TrackAPIKeySlot(context.Background(), 88)
+	require.NotNil(t, release)
+	require.Equal(t, int64(1), cache.refreshCalls.Load())
+	require.Equal(t, int64(1), cache.registers.Load())
+	require.Equal(t, []int64{88}, cache.trackedAPIKeyIDs)
+
+	release()
+}
+
+func TestTrackAPIKeySlot_ProcessLeaseFailureDoesNotPublishUnownedSlot(t *testing.T) {
+	cache := &apiKeyProcessLeaseCacheForTest{refreshErr: errors.New("redis down")}
+	svc := NewConcurrencyService(cache)
+
+	release := svc.TrackAPIKeySlot(context.Background(), 88)
+	require.NotNil(t, release)
+	require.Empty(t, cache.trackedAPIKeyIDs)
+	require.NotPanics(t, release)
 }
 
 func TestGetAPIKeyConcurrencyBatch_Fallbacks(t *testing.T) {

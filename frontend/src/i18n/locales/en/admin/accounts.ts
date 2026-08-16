@@ -1394,7 +1394,51 @@ export default {
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
       last30DaysUsage: 'Last 30 days usage statistics (based on actual usage days)',
+      quotaWindows: {
+        title: 'Standard Quota Windows',
+        localScope: 'Requests, tokens, cost, and success rate use locally recorded request outcomes.',
+        loadFailed: 'Quota-window usage could not be loaded.',
+        noSupportedWindows: 'No reliable fixed quota window is available for this account.',
+        used: 'Used',
+        resetsAt: 'Resets {time}',
+        resetUnknown: 'Reset time unavailable',
+        window: {
+          five_hour: '5-Hour Quota',
+          seven_day: '7-Day Quota',
+          thirty_day: '30-Day / Monthly Quota'
+        },
+        column: {
+          previous: 'Previous Window Usage',
+          current: 'Current Window Used',
+          forecast: 'Current Window Forecast'
+        },
+        metric: {
+          requests: 'Requests',
+          tokens: 'Tokens',
+          cost: 'Account Cost',
+          successRate: 'Success Rate'
+        },
+        boundaryStatus: {
+          ready: 'Window is ready',
+          missing_boundary: 'The provider did not return enough information to reconstruct this window.',
+          expired_boundary: 'The recorded reset boundary has expired. Refresh provider usage to continue.',
+          stale_snapshot: 'The provider quota snapshot is stale. Refresh usage before calculating this window.',
+          inconsistent_boundary: 'The provider and local window boundaries do not agree, so this window is not estimated.'
+        },
+        successRateStatus: {
+          available: 'Available',
+          no_data: 'No data',
+          monitoring_disabled: 'Monitoring off',
+          retention_limited: 'Outside retention'
+        },
+        forecastByQuota: 'Projected from the provider usage percentage.',
+        forecastByPrevious: 'Uses the previous window because quota projection is unavailable.',
+        forecastUnavailable: 'Not enough reliable data to forecast this window.'
+      },
       stats: {
+        accountOverview: 'Quota windows and recent usage',
+        historyTitle: 'Last 30 Days',
+        loadFailed: 'Historical usage could not be loaded.',
         totalCost: '30-Day Total Cost',
         accumulatedCost: 'Accumulated cost',
         standardCost: 'Standard',

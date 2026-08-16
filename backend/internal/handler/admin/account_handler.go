@@ -64,6 +64,7 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	opsService              *service.OpsService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -73,6 +74,12 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetOpsService attaches monitoring coverage metadata without expanding the
+// constructor used by focused handler tests.
+func (h *AccountHandler) SetOpsService(opsService *service.OpsService) {
+	h.opsService = opsService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -1517,6 +1524,44 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 		return
 	}
 
+	response.Success(c, stats)
+}
+
+// GetWindowUsage returns local usage facts for fixed account quota windows.
+// POST /api/v1/admin/accounts/:id/window-usage
+func (h *AccountHandler) GetWindowUsage(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	var req service.AccountWindowUsageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	now := time.Now().UTC()
+	coverage := service.AccountWindowUsageCoverage{}
+	if h.opsService != nil {
+		coverage.MonitoringEnabled = h.opsService.IsMonitoringEnabled(c.Request.Context())
+		settings := h.opsService.OpsAdvancedSettingsSnapshot()
+		if settings.DataRetention.CleanupEnabled {
+			// A zero retention period means each scheduled cleanup removes all error logs.
+			cutoff := now
+			if settings.DataRetention.ErrorLogRetentionDays > 0 {
+				cutoff = now.AddDate(0, 0, -settings.DataRetention.ErrorLogRetentionDays)
+			}
+			coverage.ErrorLogRetentionCutoff = &cutoff
+		}
+	}
+
+	stats, err := h.accountUsageService.GetWindowUsage(c.Request.Context(), accountID, req.Windows, coverage)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	response.Success(c, stats)
 }
 

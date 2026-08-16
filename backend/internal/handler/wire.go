@@ -45,11 +45,19 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	opsService *service.OpsService,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
-	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
-	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	if accountHandler != nil && opsService != nil {
+		accountHandler.SetOpsService(opsService)
+	}
+	if accountHandler != nil && upstreamBillingProbe != nil {
+		accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
+	}
+	if accountHandler != nil && ollamaCloudUsage != nil {
+		accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	}
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,

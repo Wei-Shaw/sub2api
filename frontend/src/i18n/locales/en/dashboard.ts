@@ -89,6 +89,7 @@ export default {
     apiKey: 'API Key',
     group: 'Group',
     currentConcurrency: 'Current Concurrency',
+    concurrencyUpdatedAt: 'Concurrency updated {time}',
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',

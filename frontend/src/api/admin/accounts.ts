@@ -13,6 +13,8 @@ import type {
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
+  AccountWindowUsageRequest,
+  AccountWindowUsageResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
@@ -289,6 +291,18 @@ export async function getStats(id: number, days: number = 30): Promise<AccountUs
   const { data } = await apiClient.get<AccountUsageStatsResponse>(`/admin/accounts/${id}/stats`, {
     params: { days }
   })
+  return data
+}
+
+/** Aggregate the current and previous fixed quota-window ranges in one request. */
+export async function getWindowUsage(
+  id: number,
+  payload: AccountWindowUsageRequest
+): Promise<AccountWindowUsageResponse> {
+  const { data } = await apiClient.post<AccountWindowUsageResponse>(
+    `/admin/accounts/${id}/window-usage`,
+    payload
+  )
   return data
 }
 
@@ -997,6 +1011,7 @@ export const accountsAPI = {
   refreshCredentials,
   applyOAuthCredentials,
   getStats,
+  getWindowUsage,
   clearError,
   getUsage,
   getBatchUsage,

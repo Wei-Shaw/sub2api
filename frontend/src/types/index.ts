@@ -1258,6 +1258,7 @@ export interface UsageProgress {
   utilization: number // Percentage (0-100+, 100 = 100%)
   resets_at: string | null
   remaining_seconds: number
+  window_minutes?: number // Actual upstream quota-window duration; long Codex windows may be 7d or 30d
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
   used_requests?: number
   limit_requests?: number
@@ -1363,6 +1364,61 @@ export interface AccountUsageInfo {
   error_code?: string
 
   error?: string            // usage 获取失败时的错误信息
+}
+
+export type AccountQuotaWindowKey = 'five_hour' | 'seven_day' | 'thirty_day'
+export type AccountWindowUsagePeriod = 'current' | 'previous'
+export type AccountWindowSuccessRateStatus =
+  | 'available'
+  | 'no_data'
+  | 'monitoring_disabled'
+  | 'retention_limited'
+
+export interface AccountWindowUsageTarget {
+  window_key: AccountQuotaWindowKey
+  period: AccountWindowUsagePeriod
+  start_time: string
+  end_time: string
+}
+
+export interface AccountWindowUsageRequest {
+  windows: AccountWindowUsageTarget[]
+}
+
+export interface AccountWindowUsageItem {
+  window_key: AccountQuotaWindowKey
+  period: AccountWindowUsagePeriod
+  start_time: string
+  end_time: string
+  matched: boolean
+  total_requests: number
+  success_calls: number
+  failure_calls: number
+  total_tokens: number
+  account_cost: number
+  standard_cost: number
+  user_cost: number
+  success_rate: number | null
+  success_rate_status: AccountWindowSuccessRateStatus
+}
+
+export interface AccountWindowUsageResponse {
+  generated_at: string
+  items: AccountWindowUsageItem[]
+}
+
+export type AccountWindowBoundaryStatus =
+  | 'ready'
+  | 'missing_boundary'
+  | 'expired_boundary'
+  | 'stale_snapshot'
+  | 'inconsistent_boundary'
+
+export interface AccountWindowUsageForecast {
+  total_requests: number
+  total_tokens: number
+  account_cost: number
+  basis: 'quota' | 'previous'
 }
 
 // OpenAI Codex usage snapshot (from response headers)

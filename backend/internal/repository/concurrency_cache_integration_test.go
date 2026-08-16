@@ -324,6 +324,8 @@ func (s *ConcurrencyCacheSuite) TestAPIKeySlot_TrackReleaseAndBatchCount() {
 
 	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "req1"))
 	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "req2"))
+	_, err := s.rdb.ZScore(s.ctx, apiKeyActiveIndexKey, strconv.FormatInt(apiKeyID, 10)).Result()
+	require.NoError(s.T(), err, "tracking should index the API key for background reconciliation")
 
 	counts, err := cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID, emptyAPIKeyID})
 	require.NoError(s.T(), err)
@@ -342,6 +344,80 @@ func (s *ConcurrencyCacheSuite) TestAPIKeySlot_TrackReleaseAndBatchCount() {
 	counts, err = cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), 0, counts[apiKeyID])
+	_, err = s.rdb.ZScore(s.ctx, apiKeyActiveIndexKey, strconv.FormatInt(apiKeyID, 10)).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "last release should remove the API key index member")
+}
+
+func (s *ConcurrencyCacheSuite) TestAPIKeyProcessLease_CleansOnlyConfirmedDeadOwners() {
+	apiKeyID := int64(4903)
+	cache := s.apiKeyConcurrencyCache()
+	require.NoError(s.T(), s.rawCache.RegisterProcessLease(s.ctx, "rdeadapi", time.Minute))
+	require.NoError(s.T(), s.rawCache.RegisterProcessLease(s.ctx, "rliveapi", time.Minute))
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "rdeadapi-1"))
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "rliveapi-1"))
+	require.NoError(s.T(), cache.TrackAPIKeySlot(s.ctx, apiKeyID, "rlegacyapi-1"))
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, processLeaseIndexKey, redis.Z{
+		Score:  float64(now - 1),
+		Member: "rdeadapi",
+	}).Err())
+
+	counts, err := cache.GetAPIKeyConcurrencyBatch(s.ctx, []int64{apiKeyID})
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 2, counts[apiKeyID])
+
+	members, err := s.rdb.ZRange(s.ctx, apiKeySlotKey(apiKeyID), 0, -1).Result()
+	require.NoError(s.T(), err)
+	require.ElementsMatch(s.T(), []string{"rliveapi-1", "rlegacyapi-1"}, members)
+}
+
+func (s *ConcurrencyCacheSuite) TestAPIKeyProcessLease_PrunesExpiredUnknownOwnerByScore() {
+	apiKeyID := int64(4904)
+	member := strconv.FormatInt(apiKeyID, 10)
+	slotKey := apiKeySlotKey(apiKeyID)
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, slotKey, redis.Z{
+		Score:  float64(now - int64(s.rawCache.slotTTLSeconds) - 1),
+		Member: "rlegacyexpired-1",
+	}).Err())
+	require.NoError(s.T(), s.rdb.Expire(s.ctx, slotKey, testSlotTTL).Err())
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, apiKeyActiveIndexKey, redis.Z{
+		Score:  float64(now + int64(s.rawCache.slotTTLSeconds)),
+		Member: member,
+	}).Err())
+
+	require.NoError(s.T(), s.rawCache.CleanupDeadAPIKeySlots(s.ctx))
+	require.Equal(s.T(), int64(0), s.rdb.ZCard(s.ctx, slotKey).Val())
+	_, err = s.rdb.ZScore(s.ctx, apiKeyActiveIndexKey, member).Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "expired legacy owner must not keep the active index alive")
+}
+
+func (s *ConcurrencyCacheSuite) TestAPIKeyProcessLease_LifecycleAndBoundedRetention() {
+	const prefix = "rleasedproc"
+	require.NoError(s.T(), s.rawCache.RegisterProcessLease(s.ctx, prefix, time.Minute))
+	owned, err := s.rawCache.RefreshProcessLease(s.ctx, prefix, time.Minute)
+	require.NoError(s.T(), err)
+	require.True(s.T(), owned)
+
+	now, err := s.rawCache.redisUnixSeconds(s.ctx)
+	require.NoError(s.T(), err)
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, processLeaseIndexKey, redis.Z{
+		Score:  float64(now - 1),
+		Member: prefix,
+	}).Err())
+	owned, err = s.rawCache.RefreshProcessLease(s.ctx, prefix, time.Minute)
+	require.NoError(s.T(), err)
+	require.False(s.T(), owned, "an expired owner must explicitly re-register")
+
+	require.NoError(s.T(), s.rdb.ZAdd(s.ctx, processLeaseIndexKey, redis.Z{
+		Score:  float64(now - int64(s.rawCache.slotTTLSeconds) - 1),
+		Member: "rolddeadproc",
+	}).Err())
+	require.NoError(s.T(), s.rawCache.CleanupDeadAPIKeySlots(s.ctx))
+	_, err = s.rdb.ZScore(s.ctx, processLeaseIndexKey, "rolddeadproc").Result()
+	require.ErrorIs(s.T(), err, redis.Nil, "old lease proof should be pruned after a full slot TTL")
 }
 
 func (s *ConcurrencyCacheSuite) TestWaitQueue_IncrementAndDecrement() {

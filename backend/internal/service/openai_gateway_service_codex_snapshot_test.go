@@ -3,6 +3,8 @@ package service
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCodexSnapshotBaseTime(t *testing.T) {
@@ -135,6 +137,19 @@ func TestBuildCodexUsageExtraUpdates_FreshAccountUsedPercentNotInverted_Issue299
 	if got := updates["codex_7d_used_percent"]; got != 2.0 {
 		t.Fatalf("codex_7d_used_percent = %v, want 2.0 (direct used%%, NOT inverted to 98)", got)
 	}
+}
+
+func TestBuildCodexUsageExtraUpdates_PreservesProviderPercentagePrecision(t *testing.T) {
+	primaryUsed := 15.121
+	primaryWindow := 10080
+	snapshot := &OpenAICodexUsageSnapshot{
+		PrimaryUsedPercent:   &primaryUsed,
+		PrimaryWindowMinutes: &primaryWindow,
+		UpdatedAt:            "2026-08-12T03:00:00Z",
+	}
+
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Date(2026, 8, 12, 3, 1, 0, 0, time.UTC))
+	require.Equal(t, 15.121, updates["codex_7d_used_percent"])
 }
 
 func TestBuildCodexUsageExtraUpdates_FallbackToNowWhenUpdatedAtInvalid(t *testing.T) {
