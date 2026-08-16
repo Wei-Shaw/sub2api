@@ -2345,6 +2345,23 @@
     "supports_reasoning": true,
     "supports_service_tier": true
   },
+  "gemini-3.7-flash": {
+    "cache_read_input_token_cost": 7.5e-08,
+    "cache_read_input_token_cost_priority": 1.35e-07,
+    "input_cost_per_token": 7.5e-07,
+    "input_cost_per_token_priority": 1.35e-06,
+    "litellm_provider": "vertex_ai-language-models",
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 65536,
+    "max_tokens": 65536,
+    "mode": "chat",
+    "output_cost_per_token": 3.75e-06,
+    "output_cost_per_token_priority": 6.75e-06,
+    "source": "https://ai.google.dev/gemini-api/docs/pricing",
+    "supports_prompt_caching": true,
+    "supports_reasoning": true,
+    "supports_service_tier": true
+  },
   "gemini-embedding-001": {
     "input_cost_per_token": 1.5e-07,
     "litellm_provider": "vertex_ai-embedding-models",
