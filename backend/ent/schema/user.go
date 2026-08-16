@@ -115,6 +115,12 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+
+		// token_version is a persistent security stamp for JWT and refresh-token
+		// revocation. It is advanced atomically whenever all sessions must be
+		// invalidated or a password credential changes.
+		field.Int64("token_version").
+			Default(0),
 	}
 }
 

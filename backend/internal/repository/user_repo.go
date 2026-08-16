@@ -33,6 +33,7 @@ type userRepository struct {
 }
 
 var _ service.RedeemUserAdjustmentRepository = (*userRepository)(nil)
+var _ service.UserTokenVersionRepository = (*userRepository)(nil)
 
 func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserRepository {
 	return newUserRepositoryWithSQL(client, sqlDB)
@@ -40,6 +41,91 @@ func NewUserRepository(client *dbent.Client, sqlDB *sql.DB) service.UserReposito
 
 func newUserRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *userRepository {
 	return &userRepository{client: client, sql: sqlq}
+}
+
+// GetTokenVersion returns the authoritative, persistent security stamp for an
+// active user. JWT middleware and token minting consume the value hydrated by
+// the repository instead of relying on mutable in-memory state.
+func (r *userRepository) GetTokenVersion(ctx context.Context, userID int64) (int64, error) {
+	return r.getTokenVersion(ctx, userID, false)
+}
+
+func (r *userRepository) getTokenVersion(ctx context.Context, userID int64, includeDeleted bool) (int64, error) {
+	if userID <= 0 {
+		return 0, service.ErrUserNotFound
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return 0, errors.New("token version SQL executor is not configured")
+	}
+
+	query := `SELECT token_version FROM users WHERE id = $1 AND deleted_at IS NULL`
+	if includeDeleted {
+		query = `SELECT token_version FROM users WHERE id = $1`
+	}
+	rows, err := exec.QueryContext(ctx, query, userID)
+	if err != nil {
+		return 0, fmt.Errorf("query user token version: %w", err)
+	}
+	return scanUserTokenVersion(rows)
+}
+
+// IncrementTokenVersion atomically advances the persistent security stamp.
+// There is deliberately no read-modify-write window: concurrent revoke-all
+// operations each produce a distinct version and none can be lost.
+func (r *userRepository) IncrementTokenVersion(ctx context.Context, userID int64) (int64, error) {
+	if userID <= 0 {
+		return 0, service.ErrUserNotFound
+	}
+	exec := txAwareSQLExecutor(ctx, r.sql, r.client)
+	if exec == nil {
+		return 0, errors.New("token version SQL executor is not configured")
+	}
+
+	rows, err := exec.QueryContext(ctx, `
+UPDATE users
+SET token_version = token_version + 1
+WHERE id = $1 AND deleted_at IS NULL
+RETURNING token_version
+`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("increment user token version: %w", err)
+	}
+	return scanUserTokenVersion(rows)
+}
+
+func scanUserTokenVersion(rows *sql.Rows) (int64, error) {
+	if rows == nil {
+		return 0, errors.New("nil token version rows")
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+		}
+		return 0, service.ErrUserNotFound
+	}
+	var version int64
+	if err := rows.Scan(&version); err != nil {
+		return 0, fmt.Errorf("scan user token version: %w", err)
+	}
+	if version < 0 {
+		return 0, fmt.Errorf("invalid negative token version for user")
+	}
+	return version, nil
+}
+
+func (r *userRepository) hydrateUserTokenVersion(ctx context.Context, user *service.User, includeDeleted bool) error {
+	if user == nil {
+		return service.ErrUserNotFound
+	}
+	version, err := r.getTokenVersion(ctx, user.ID, includeDeleted)
+	if err != nil {
+		return err
+	}
+	user.TokenVersion = version
+	user.TokenVersionResolved = true
+	return nil
 }
 
 func (r *userRepository) Create(ctx context.Context, userIn *service.User) error {
@@ -165,6 +251,10 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	}
 
 	applyUserEntityToService(userIn, created)
+	// token_version is database-defaulted for new users; make that durable value
+	// explicit so the first JWT is minted without the legacy fingerprint fallback.
+	userIn.TokenVersion = 0
+	userIn.TokenVersionResolved = true
 	return nil
 }
 
@@ -175,6 +265,9 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*service.User, 
 	}
 
 	out := userEntityToService(m)
+	if err := r.hydrateUserTokenVersion(ctx, out, false); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -192,6 +285,9 @@ func (r *userRepository) GetByIDIncludeDeleted(ctx context.Context, id int64) (*
 		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	out := userEntityToService(m)
+	if err := r.hydrateUserTokenVersion(ctx, out, true); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{id})
 	if err != nil {
 		return nil, err
@@ -219,6 +315,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service
 	m := matches[0]
 
 	out := userEntityToService(m)
+	if err := r.hydrateUserTokenVersion(ctx, out, false); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err
@@ -283,6 +382,9 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	oldEmail := existing.Email
+	securityBoundaryChanged := fields.PasswordHash ||
+		(fields.Role && existing.Role != userIn.Role) ||
+		(fields.Status && existing.Status != userIn.Status)
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID)
 	if fields.Email {
@@ -333,6 +435,14 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	updated, err := updateOp.Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
+	}
+	if securityBoundaryChanged {
+		version, err := r.IncrementTokenVersion(txCtx, userIn.ID)
+		if err != nil {
+			return err
+		}
+		userIn.TokenVersion = version
+		userIn.TokenVersionResolved = true
 	}
 
 	if fields.AllowedGroups {
@@ -1355,6 +1465,9 @@ func (r *userRepository) GetFirstAdmin(ctx context.Context) (*service.User, erro
 	}
 
 	out := userEntityToService(m)
+	if err := r.hydrateUserTokenVersion(ctx, out, false); err != nil {
+		return nil, err
+	}
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.ID})
 	if err != nil {
 		return nil, err

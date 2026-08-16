@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -60,6 +61,8 @@ for index = 1, #ARGV do
 end
 return updated
 `)
+
+var errLegacySchedulerCredentialCache = errors.New("legacy plaintext scheduler credential cache rejected")
 
 var (
 	// epoch 标识 bucket writer 的代际，retired key 是持久退休标记。
@@ -220,16 +223,17 @@ return 1
 )
 
 type schedulerCache struct {
-	rdb            *redis.Client
-	mgetChunkSize  int
-	writeChunkSize int
+	rdb              *redis.Client
+	mgetChunkSize    int
+	writeChunkSize   int
+	credentialCipher *CredentialCipher
 }
 
-func NewSchedulerCache(rdb *redis.Client) service.SchedulerCache {
-	return newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize)
+func NewSchedulerCache(rdb *redis.Client, credentialCipher *CredentialCipher) service.SchedulerCache {
+	return newSchedulerCacheWithChunkSizes(rdb, defaultSchedulerSnapshotMGetChunkSize, defaultSchedulerSnapshotWriteChunkSize, credentialCipher)
 }
 
-func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChunkSize int) service.SchedulerCache {
+func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChunkSize int, credentialCipher *CredentialCipher) service.SchedulerCache {
 	if mgetChunkSize <= 0 {
 		mgetChunkSize = defaultSchedulerSnapshotMGetChunkSize
 	}
@@ -237,10 +241,51 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 		writeChunkSize = defaultSchedulerSnapshotWriteChunkSize
 	}
 	return &schedulerCache{
-		rdb:            rdb,
-		mgetChunkSize:  mgetChunkSize,
-		writeChunkSize: writeChunkSize,
+		rdb:              rdb,
+		mgetChunkSize:    mgetChunkSize,
+		writeChunkSize:   writeChunkSize,
+		credentialCipher: credentialCipher,
 	}
+}
+
+// purgeLegacySchedulerAccountPayloads removes only the full-account and
+// metadata payloads that may have been written before cache encryption. Bucket
+// epochs, retirement markers, lifecycle/refresh locks, active versions,
+// snapshots, last-used side keys, and the outbox watermark are persistent
+// fencing state and must survive a process restart.
+func purgeLegacySchedulerAccountPayloads(ctx context.Context, rdb *redis.Client) error {
+	if rdb == nil {
+		return errors.New("redis client is required to purge scheduler cache")
+	}
+	for _, prefix := range []string{schedulerAccountPrefix, schedulerAccountMetaPrefix} {
+		var cursor uint64
+		for {
+			keys, next, err := rdb.Scan(ctx, cursor, prefix+"*", 512).Result()
+			if err != nil {
+				return fmt.Errorf("scan scheduler account payloads for credential migration: %w", err)
+			}
+			payloadKeys := make([]string, 0, len(keys))
+			for _, key := range keys {
+				if len(key) <= len(prefix) || key[:len(prefix)] != prefix {
+					continue
+				}
+				accountID, parseErr := strconv.ParseInt(key[len(prefix):], 10, 64)
+				if parseErr == nil && accountID > 0 {
+					payloadKeys = append(payloadKeys, key)
+				}
+			}
+			if len(payloadKeys) > 0 {
+				if err := rdb.Del(ctx, payloadKeys...).Err(); err != nil {
+					return fmt.Errorf("purge scheduler account payloads for credential migration: %w", err)
+				}
+			}
+			cursor = next
+			if cursor == 0 {
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
@@ -296,8 +341,18 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 		if val == nil {
 			return nil, false, nil
 		}
-		account, err := decodeCachedAccount(val)
+		account, err := c.decodeCachedAccount(val)
 		if err != nil {
+			if errors.Is(err, errLegacySchedulerCredentialCache) {
+				deleteKeys := make([]string, 0, len(ids)*2)
+				for _, id := range ids {
+					deleteKeys = append(deleteKeys, schedulerAccountKey(id), schedulerAccountMetaKey(id))
+				}
+				if deleteErr := c.rdb.Del(ctx, deleteKeys...).Err(); deleteErr != nil {
+					return nil, false, deleteErr
+				}
+				return nil, false, nil
+			}
 			return nil, false, err
 		}
 		if err := applySchedulerLastUsed(account, lastUsedValues[i]); err != nil {
@@ -575,8 +630,14 @@ func (c *schedulerCache) GetAccount(ctx context.Context, accountID int64) (*serv
 	if len(values) != 2 || values[0] == nil {
 		return nil, nil
 	}
-	account, err := decodeCachedAccount(values[0])
+	account, err := c.decodeCachedAccount(values[0])
 	if err != nil {
+		if errors.Is(err, errLegacySchedulerCredentialCache) {
+			if deleteErr := c.DeleteAccount(ctx, accountID); deleteErr != nil {
+				return nil, deleteErr
+			}
+			return nil, nil
+		}
 		return nil, err
 	}
 	if err := applySchedulerLastUsed(account, values[1]); err != nil {
@@ -760,6 +821,14 @@ func applySchedulerLastUsed(account *service.Account, value any) error {
 }
 
 func decodeCachedAccount(val any) (*service.Account, error) {
+	return decodeCachedAccountWithCipher(val, nil)
+}
+
+func (c *schedulerCache) decodeCachedAccount(val any) (*service.Account, error) {
+	return decodeCachedAccountWithCipher(val, c.credentialCipher)
+}
+
+func decodeCachedAccountWithCipher(val any, credentialCipher *CredentialCipher) (*service.Account, error) {
 	var payload []byte
 	switch raw := val.(type) {
 	case string:
@@ -772,6 +841,26 @@ func decodeCachedAccount(val any) (*service.Account, error) {
 	var account service.Account
 	if err := json.Unmarshal(payload, &account); err != nil {
 		return nil, err
+	}
+	if credentialCipher != nil {
+		credentials, legacy, err := credentialCipher.Decrypt(account.ID, account.Platform, account.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt scheduler credentials for account %d: %w", account.ID, err)
+		}
+		if legacy {
+			return nil, errLegacySchedulerCredentialCache
+		}
+		account.Credentials = credentials
+		if account.Proxy != nil && account.Proxy.Password != "" {
+			password, proxyLegacy, err := credentialCipher.DecryptSchedulerProxyPassword(account.ID, account.Platform, account.Proxy.ID, account.Proxy.Password)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt scheduler proxy password for account %d: %w", account.ID, err)
+			}
+			if proxyLegacy {
+				return nil, errLegacySchedulerCredentialCache
+			}
+			account.Proxy.Password = password
+		}
 	}
 	return &account, nil
 }
@@ -797,7 +886,7 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 	}
 
 	for _, account := range accounts {
-		fullPayload, metaPayload, err := marshalSchedulerCacheAccount(account)
+		fullPayload, metaPayload, err := c.marshalSchedulerCacheAccount(account)
 		if err != nil {
 			slog.Warn("scheduler cache skips account with unencodable payload",
 				"account_id", account.ID,
@@ -827,11 +916,44 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 }
 
 func marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, error) {
-	fullPayload, err := json.Marshal(account)
+	return marshalSchedulerCacheAccountWithCipher(account, nil)
+}
+
+func (c *schedulerCache) marshalSchedulerCacheAccount(account service.Account) ([]byte, []byte, error) {
+	return marshalSchedulerCacheAccountWithCipher(account, c.credentialCipher)
+}
+
+func marshalSchedulerCacheAccountWithCipher(account service.Account, credentialCipher *CredentialCipher) ([]byte, []byte, error) {
+	fullAccount := account
+	metadataAccount := buildSchedulerMetadataAccount(account)
+	if credentialCipher != nil {
+		storage, err := credentialCipher.Encrypt(account.ID, account.Platform, account.Credentials)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encrypt scheduler account credentials: %w", err)
+		}
+		fullAccount.Credentials = storage
+		metaStorage, err := credentialCipher.Encrypt(metadataAccount.ID, metadataAccount.Platform, metadataAccount.Credentials)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encrypt scheduler metadata credentials: %w", err)
+		}
+		metadataAccount.Credentials = metaStorage
+		if fullAccount.Proxy != nil {
+			proxyCopy := *fullAccount.Proxy
+			fullAccount.Proxy = &proxyCopy
+			if proxyCopy.Password != "" {
+				passwordStorage, err := credentialCipher.EncryptSchedulerProxyPassword(account.ID, account.Platform, proxyCopy.ID, proxyCopy.Password)
+				if err != nil {
+					return nil, nil, fmt.Errorf("encrypt scheduler proxy password: %w", err)
+				}
+				proxyCopy.Password = passwordStorage
+			}
+		}
+	}
+	fullPayload, err := json.Marshal(fullAccount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal account: %w", err)
 	}
-	metaPayload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+	metaPayload, err := json.Marshal(metadataAccount)
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal account metadata: %w", err)
 	}

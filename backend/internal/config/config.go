@@ -32,7 +32,7 @@ const (
 
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
-const DefaultCSPPolicy = "default-src 'self'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+const DefaultCSPPolicy = "default-src 'self'; object-src 'none'; worker-src 'self' blob:; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://*.alicdn.com https://static.cloudflareinsights.com https://turing.captcha.qcloud.com https://turing.captcha.gtimg.com https://ca.turing.captcha.qcloud.com https://global.turing.captcha.gtimg.com https://www.tycaptcha.com https://cloudcache.tencentcs.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://*.captcha.gtimg.com https://fonts.googleapis.com https://*.alicdn.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://turing.captcha.qcloud.com https://www.tycaptcha.com https://rce.tencentrio.com https:; frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://ca.turing.captcha.qcloud.com https://www.tycaptcha.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // UMQ（用户消息队列）模式常量
 const (
@@ -73,6 +73,7 @@ type Config struct {
 	Ops                     OpsConfig                     `mapstructure:"ops"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
+	CredentialEncryption    CredentialEncryptionConfig    `mapstructure:"credential_encryption"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
 	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
@@ -1567,6 +1568,15 @@ type TotpConfig struct {
 	EncryptionKeyConfigured bool `mapstructure:"-"`
 }
 
+// CredentialEncryptionConfig controls authenticated encryption for
+// accounts.credentials and scheduler-cache credential payloads. Unlike the
+// development-only TOTP fallback, this key is never generated automatically:
+// losing it would make provider credentials unrecoverable.
+type CredentialEncryptionConfig struct {
+	Key   string `mapstructure:"key"`
+	KeyID string `mapstructure:"key_id"`
+}
+
 type TurnstileConfig struct {
 	Required bool `mapstructure:"required"`
 }
@@ -1754,6 +1764,8 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
 	}
+	cfg.CredentialEncryption.Key = strings.TrimSpace(cfg.CredentialEncryption.Key)
+	cfg.CredentialEncryption.KeyID = strings.TrimSpace(cfg.CredentialEncryption.KeyID)
 	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
@@ -2181,6 +2193,10 @@ func setDefaults() {
 	// TOTP
 	viper.SetDefault("totp.encryption_key", "")
 
+	// Account provider credential encryption (fixed deployment key; no fallback).
+	viper.SetDefault("credential_encryption.key", "")
+	viper.SetDefault("credential_encryption.key_id", "primary")
+
 	// Default
 	// Admin credentials are created via the setup flow (web wizard / CLI / AUTO_SETUP).
 	// Do not ship fixed defaults here to avoid insecure "known credentials" in production.
@@ -2600,6 +2616,25 @@ func (c *Config) Validate() error {
 	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
 	if len([]byte(jwtSecret)) < 32 {
 		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+	}
+	credentialKey := strings.TrimSpace(c.CredentialEncryption.Key)
+	if credentialKey == "" {
+		if strings.EqualFold(strings.TrimSpace(c.Server.Mode), "release") {
+			return fmt.Errorf("credential_encryption.key is required in release mode (set CREDENTIAL_ENCRYPTION_KEY to 64 hexadecimal characters)")
+		}
+	} else {
+		decoded, err := hex.DecodeString(credentialKey)
+		if err != nil || len(decoded) != 32 {
+			return fmt.Errorf("credential_encryption.key must be 64 hexadecimal characters (32 bytes)")
+		}
+	}
+	keyID := strings.TrimSpace(c.CredentialEncryption.KeyID)
+	if keyID == "" {
+		keyID = "primary"
+		c.CredentialEncryption.KeyID = keyID
+	}
+	if !validCredentialEncryptionKeyID(keyID) {
+		return fmt.Errorf("credential_encryption.key_id must be 1-64 characters using only letters, digits, dot, underscore, or hyphen")
 	}
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
@@ -3597,6 +3632,19 @@ func normalizeStringSlice(values []string) []string {
 		normalized = append(normalized, trimmed)
 	}
 	return normalized
+}
+
+func validCredentialEncryptionKeyID(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func isWeakJWTSecret(secret string) bool {

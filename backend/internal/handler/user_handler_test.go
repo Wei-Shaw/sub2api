@@ -33,6 +33,14 @@ func (s *userHandlerRepoStub) GetByID(context.Context, int64) (*service.User, er
 	cloned := *s.user
 	return &cloned, nil
 }
+func (s *userHandlerRepoStub) GetTokenVersion(context.Context, int64) (int64, error) {
+	return s.user.TokenVersion, nil
+}
+func (s *userHandlerRepoStub) IncrementTokenVersion(context.Context, int64) (int64, error) {
+	s.user.TokenVersion++
+	s.user.TokenVersionResolved = true
+	return s.user.TokenVersion, nil
+}
 func (s *userHandlerRepoStub) GetByEmail(context.Context, string) (*service.User, error) {
 	cloned := *s.user
 	return &cloned, nil
@@ -426,6 +434,10 @@ func (s *userHandlerRefreshTokenCacheStub) GetRefreshToken(context.Context, stri
 	return nil, service.ErrRefreshTokenNotFound
 }
 
+func (s *userHandlerRefreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*service.RefreshTokenData, error) {
+	return nil, service.ErrRefreshTokenNotFound
+}
+
 func (s *userHandlerRefreshTokenCacheStub) DeleteRefreshToken(context.Context, string) error {
 	return nil
 }
@@ -664,11 +676,7 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []int64{23}, refreshTokenCache.revokedUserIDs)
-	// 撤销依赖的是 refresh session 清理，而不是 token_version：users 表没有这一列
-	// （见 resolvedTokenVersion，实际值由 email+password_hash 指纹推导），
-	// 所以此前"自增 TokenVersion 再整行写回"不持久化任何东西，
-	// 却会用旧快照覆盖并发写入的列。这里断言用户行未被改写。
-	require.Equal(t, int64(4), repo.user.TokenVersion)
+	require.Equal(t, int64(5), repo.user.TokenVersion)
 }
 
 func TestUserHandlerUnbindIdentityDoesNotRevokeSessionsWhenNothingWasUnbound(t *testing.T) {

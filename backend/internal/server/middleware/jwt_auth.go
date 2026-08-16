@@ -64,6 +64,10 @@ func jwtAuth(
 				AbortWithError(c, 401, "TOKEN_EXPIRED", "Token has expired")
 				return
 			}
+			if errors.Is(err, service.ErrTokenRevoked) {
+				AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked")
+				return
+			}
 			AbortWithError(c, 401, "INVALID_TOKEN", "Invalid token")
 			return
 		}
@@ -81,10 +85,10 @@ func jwtAuth(
 			return
 		}
 
-		// Security: Validate TokenVersion to ensure token hasn't been invalidated
-		// This check ensures tokens issued before a password change are rejected
+		// Compare the JWT stamp with the persistent value hydrated by userRepository.
+		// Revoke-all and password credential changes atomically advance that value.
 		if claims.TokenVersion != user.TokenVersion {
-			AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
+			AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked")
 			return
 		}
 

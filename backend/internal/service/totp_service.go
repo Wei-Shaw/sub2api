@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
@@ -15,14 +16,15 @@ import (
 )
 
 var (
-	ErrTotpNotEnabled      = infraerrors.BadRequest("TOTP_NOT_ENABLED", "totp feature is not enabled")
-	ErrTotpAlreadyEnabled  = infraerrors.BadRequest("TOTP_ALREADY_ENABLED", "totp is already enabled for this account")
-	ErrTotpNotSetup        = infraerrors.BadRequest("TOTP_NOT_SETUP", "totp is not set up for this account")
-	ErrTotpInvalidCode     = infraerrors.BadRequest("TOTP_INVALID_CODE", "invalid totp code")
-	ErrTotpSetupExpired    = infraerrors.BadRequest("TOTP_SETUP_EXPIRED", "totp setup session expired")
-	ErrTotpTooManyAttempts = infraerrors.TooManyRequests("TOTP_TOO_MANY_ATTEMPTS", "too many verification attempts, please try again later")
-	ErrVerifyCodeRequired  = infraerrors.BadRequest("VERIFY_CODE_REQUIRED", "email verification code is required")
-	ErrPasswordRequired    = infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
+	ErrTotpNotEnabled        = infraerrors.BadRequest("TOTP_NOT_ENABLED", "totp feature is not enabled")
+	ErrTotpAlreadyEnabled    = infraerrors.BadRequest("TOTP_ALREADY_ENABLED", "totp is already enabled for this account")
+	ErrTotpNotSetup          = infraerrors.BadRequest("TOTP_NOT_SETUP", "totp is not set up for this account")
+	ErrTotpInvalidCode       = infraerrors.BadRequest("TOTP_INVALID_CODE", "invalid totp code")
+	ErrTotpSetupExpired      = infraerrors.BadRequest("TOTP_SETUP_EXPIRED", "totp setup session expired")
+	ErrTotpTooManyAttempts   = infraerrors.TooManyRequests("TOTP_TOO_MANY_ATTEMPTS", "too many verification attempts, please try again later")
+	ErrTotpCredentialChanged = infraerrors.BadRequest("TOTP_CREDENTIAL_CHANGED", "totp credential changed; verify again")
+	ErrVerifyCodeRequired    = infraerrors.BadRequest("VERIFY_CODE_REQUIRED", "email verification code is required")
+	ErrPasswordRequired      = infraerrors.BadRequest("PASSWORD_REQUIRED", "password is required")
 )
 
 // TotpCache defines cache operations for TOTP service
@@ -35,6 +37,7 @@ type TotpCache interface {
 	// Login session methods (for 2FA login flow)
 	GetLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error)
 	SetLoginSession(ctx context.Context, tempToken string, session *TotpLoginSession, ttl time.Duration) error
+	ConsumeLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error)
 	DeleteLoginSession(ctx context.Context, tempToken string) error
 
 	// Rate limiting
@@ -43,8 +46,8 @@ type TotpCache interface {
 	ClearVerifyAttempts(ctx context.Context, userID int64) error
 
 	// Step-up grant methods (敏感操作 sudo 窗口)
-	SetStepUpGrant(ctx context.Context, userID int64, sessionKey string, ttl time.Duration) error
-	HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error)
+	SetStepUpGrant(ctx context.Context, userID int64, sessionKey, credentialGeneration string, ttl time.Duration) error
+	HasStepUpGrant(ctx context.Context, userID int64, sessionKey, credentialGeneration string) (bool, error)
 }
 
 // SecretEncryptor defines encryption operations for TOTP secrets
@@ -249,14 +252,9 @@ func (s *TotpService) CompleteSetup(ctx context.Context, userID int64, totpCode,
 		return ErrTotpInvalidCode
 	}
 
-	setupSecretPrefix := "N/A"
-	if len(session.Secret) >= 4 {
-		setupSecretPrefix = session.Secret[:4]
-	}
 	slog.Debug("totp_complete_setup_before_encrypt",
 		"user_id", userID,
-		"secret_len", len(session.Secret),
-		"secret_prefix", setupSecretPrefix)
+		"secret_len", len(session.Secret))
 
 	// Encrypt the secret
 	encryptedSecret, err := s.encryptor.Encrypt(session.Secret)
@@ -268,24 +266,24 @@ func (s *TotpService) CompleteSetup(ctx context.Context, userID int64, totpCode,
 		"user_id", userID,
 		"encrypted_len", len(encryptedSecret))
 
-	// Verify encryption by decrypting
+	// Verify encryption before persisting it. A broken encryptor must fail closed.
 	decrypted, decErr := s.encryptor.Decrypt(encryptedSecret)
 	if decErr != nil {
 		slog.Debug("totp_complete_setup_verify_failed",
 			"user_id", userID,
 			"error", decErr)
-	} else {
-		decryptedPrefix := "N/A"
-		if len(decrypted) >= 4 {
-			decryptedPrefix = decrypted[:4]
-		}
-		slog.Debug("totp_complete_setup_verified",
-			"user_id", userID,
-			"original_len", len(session.Secret),
-			"decrypted_len", len(decrypted),
-			"match", session.Secret == decrypted,
-			"decrypted_prefix", decryptedPrefix)
+		return fmt.Errorf("verify encrypted totp secret: %w", decErr)
 	}
+	if subtle.ConstantTimeCompare([]byte(session.Secret), []byte(decrypted)) != 1 {
+		slog.Debug("totp_complete_setup_verify_failed",
+			"user_id", userID,
+			"error", "plaintext mismatch")
+		return fmt.Errorf("verify encrypted totp secret: plaintext mismatch")
+	}
+	slog.Debug("totp_complete_setup_verified",
+		"user_id", userID,
+		"original_len", len(session.Secret),
+		"decrypted_len", len(decrypted))
 
 	// Update user with encrypted TOTP secret
 	if err := s.userRepo.UpdateTotpSecret(ctx, userID, &encryptedSecret); err != nil {
@@ -336,7 +334,13 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 
 	// Check rate limiting
 	attempts, err := s.cache.GetVerifyAttempts(ctx, userID)
-	if err == nil && attempts >= maxTotpAttempts {
+	if err != nil {
+		slog.Debug("totp_verify_attempts_read_failed",
+			"user_id", userID,
+			"error", err)
+		return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
+	}
+	if attempts >= maxTotpAttempts {
 		return ErrTotpTooManyAttempts
 	}
 
@@ -370,14 +374,9 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 		return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
 	}
 
-	secretPrefix := "N/A"
-	if len(secret) >= 4 {
-		secretPrefix = secret[:4]
-	}
 	slog.Debug("totp_verify_decrypted",
 		"user_id", userID,
-		"secret_len", len(secret),
-		"secret_prefix", secretPrefix)
+		"secret_len", len(secret))
 
 	// Verify the code
 	valid := totp.Validate(code, secret)
@@ -385,17 +384,26 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 		"user_id", userID,
 		"valid", valid,
 		"secret_len", len(secret),
-		"secret_prefix", secretPrefix,
 		"server_time", time.Now().UTC().Format(time.RFC3339))
 
 	if !valid {
 		// Increment failed attempts
-		_, _ = s.cache.IncrementVerifyAttempts(ctx, userID)
+		if _, err := s.cache.IncrementVerifyAttempts(ctx, userID); err != nil {
+			slog.Debug("totp_verify_attempts_increment_failed",
+				"user_id", userID,
+				"error", err)
+			return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
+		}
 		return ErrTotpInvalidCode
 	}
 
 	// Clear attempt counter on success
-	_ = s.cache.ClearVerifyAttempts(ctx, userID)
+	if err := s.cache.ClearVerifyAttempts(ctx, userID); err != nil {
+		slog.Debug("totp_verify_attempts_clear_failed",
+			"user_id", userID,
+			"error", err)
+		return infraerrors.InternalServer("TOTP_VERIFY_ERROR", "failed to verify totp code")
+	}
 
 	return nil
 }
@@ -406,10 +414,21 @@ const StepUpGrantTTL = 15 * time.Minute
 // VerifyStepUp 校验 TOTP 码并授予当前会话一段时间的 step-up 权限。
 // 返回授权有效期，供前端展示/设置提醒。
 func (s *TotpService) VerifyStepUp(ctx context.Context, userID int64, sessionKey, code string) (time.Duration, error) {
+	credentialGeneration, err := s.currentTotpCredentialGeneration(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
 	if err := s.VerifyCode(ctx, userID, code); err != nil {
 		return 0, err
 	}
-	if err := s.cache.SetStepUpGrant(ctx, userID, sessionKey, StepUpGrantTTL); err != nil {
+	currentGeneration, err := s.currentTotpCredentialGeneration(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	if subtle.ConstantTimeCompare([]byte(credentialGeneration), []byte(currentGeneration)) != 1 {
+		return 0, ErrTotpCredentialChanged
+	}
+	if err := s.cache.SetStepUpGrant(ctx, userID, sessionKey, credentialGeneration, StepUpGrantTTL); err != nil {
 		return 0, fmt.Errorf("store step-up grant: %w", err)
 	}
 	return StepUpGrantTTL, nil
@@ -417,7 +436,29 @@ func (s *TotpService) VerifyStepUp(ctx context.Context, userID int64, sessionKey
 
 // HasStepUpGrant 检查当前会话是否在 step-up 有效期内。
 func (s *TotpService) HasStepUpGrant(ctx context.Context, userID int64, sessionKey string) (bool, error) {
-	return s.cache.HasStepUpGrant(ctx, userID, sessionKey)
+	credentialGeneration, err := s.currentTotpCredentialGeneration(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return s.cache.HasStepUpGrant(ctx, userID, sessionKey, credentialGeneration)
+}
+
+// currentTotpCredentialGeneration binds step-up grants to the exact encrypted
+// credential currently stored for the user. Rotating or disabling TOTP changes
+// this generation, so an otherwise-live Redis grant cannot be replayed.
+func (s *TotpService) currentTotpCredentialGeneration(ctx context.Context, userID int64) (string, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("get user: %w", err)
+	}
+	if !user.TotpEnabled || user.TotpSecretEncrypted == nil || *user.TotpSecretEncrypted == "" {
+		return "", ErrTotpNotSetup
+	}
+
+	h := sha256.New()
+	_, _ = h.Write([]byte("sub2api/totp-step-up-generation/v1\x00"))
+	_, _ = h.Write([]byte(*user.TotpSecretEncrypted))
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // CreateLoginSession creates a temporary login session for 2FA
@@ -469,6 +510,12 @@ func (s *TotpService) createLoginSession(
 // GetLoginSession retrieves a login session
 func (s *TotpService) GetLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error) {
 	return s.cache.GetLoginSession(ctx, tempToken)
+}
+
+// ConsumeLoginSession atomically retrieves and deletes a pending 2FA login
+// session. Only the caller receiving a non-nil session may issue tokens.
+func (s *TotpService) ConsumeLoginSession(ctx context.Context, tempToken string) (*TotpLoginSession, error) {
+	return s.cache.ConsumeLoginSession(ctx, tempToken)
 }
 
 // DeleteLoginSession deletes a login session

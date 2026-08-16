@@ -181,6 +181,14 @@ type UserRepository interface {
 	DisableTotp(ctx context.Context, userID int64) error
 }
 
+// UserTokenVersionRepository is the durable security-stamp capability required
+// by revoke-all flows. IncrementTokenVersion must be a single atomic database
+// operation so concurrent logins cannot lose a revocation event.
+type UserTokenVersionRepository interface {
+	GetTokenVersion(ctx context.Context, userID int64) (int64, error)
+	IncrementTokenVersion(ctx context.Context, userID int64) (int64, error)
+}
+
 // RegistrationEmailDomainRepository 是生产用户仓储为非白名单域名单账户兜底策略提供的可选能力。
 // 它独立于 UserRepository，避免无关测试桩和服务消费者实现注册专用方法。
 type RegistrationEmailDomainRepository interface {
@@ -1036,8 +1044,8 @@ func (s *UserService) ChangePassword(ctx context.Context, userID int64, req Chan
 	// This ensures that any tokens issued before the password change become invalid
 	user.TokenVersion++
 
-	// TokenVersion 没有对应的数据库列（见 resolvedTokenVersion：它由 email+password_hash
-	// 指纹推导），改密写回 password_hash 即可让旧 token 失效。
+	// Production repositories update password_hash and atomically advance the
+	// persistent token_version in the same transaction.
 	if err := s.userRepo.Update(ctx, user, UserUpdateFields{PasswordHash: true}); err != nil {
 		return fmt.Errorf("update user: %w", err)
 	}

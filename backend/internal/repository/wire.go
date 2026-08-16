@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -49,7 +50,7 @@ func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.Ses
 }
 
 // ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
-func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
+func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config, credentialCipher *CredentialCipher) (service.SchedulerCache, error) {
 	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
 	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
 	if cfg != nil {
@@ -60,11 +61,19 @@ func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.Schedu
 			writeChunkSize = cfg.Gateway.Scheduling.SnapshotWriteChunkSize
 		}
 	}
-	return newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize)
+	if credentialCipher != nil {
+		purgeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := purgeLegacySchedulerAccountPayloads(purgeCtx, rdb); err != nil {
+			return nil, err
+		}
+	}
+	return newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize, credentialCipher), nil
 }
 
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
+	NewCredentialCipher,
 	NewUserRepository,
 	NewAPIKeyRepository,
 	NewGroupRepository,
@@ -123,7 +132,7 @@ var ProviderSet = wire.NewSet(
 	NewIdentityCache,
 	NewRedeemCache,
 	NewUpdateCache,
-	NewGeminiTokenCache,
+	ProvideGeminiTokenCache,
 	NewImageTaskStore,
 	NewBatchImageQueue,
 	NewBatchImageDownloadLimiter,

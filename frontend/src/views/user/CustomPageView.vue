@@ -107,6 +107,8 @@
           <iframe
             :src="embeddedUrl"
             class="custom-embed-frame"
+            sandbox="allow-scripts allow-forms allow-popups"
+            referrerpolicy="no-referrer"
             allowfullscreen
           ></iframe>
         </div>
@@ -177,8 +179,6 @@ const embeddedUrl = computed(() => {
   if (!menuItem.value || isMarkdownMode.value) return ''
   return buildEmbeddedUrl(
     menuItem.value.url,
-    authStore.user?.id,
-    authStore.token,
     pageTheme.value,
     locale.value,
   )
@@ -187,7 +187,7 @@ const embeddedUrl = computed(() => {
 const isValidUrl = computed(() => {
   if (isMarkdownMode.value) return false
   const url = embeddedUrl.value
-  return url.startsWith('http://') || url.startsWith('https://')
+  return url.startsWith('https://')
 })
 
 function generateHeadingId(text: string, index: number): string {

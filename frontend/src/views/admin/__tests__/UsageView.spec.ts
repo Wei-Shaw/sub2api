@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
+const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, saveAs } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -20,10 +20,7 @@ const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listE
     getModelStats: vi.fn(),
     listErrorLogs: vi.fn(),
     routeQuery: {} as Record<string, string>,
-		aoaToSheet: vi.fn(() => ({})),
-		sheetAddAoa: vi.fn(),
 		saveAs: vi.fn(),
-		xlsxWrite: vi.fn(() => new Uint8Array([1, 2, 3])),
   }
 })
 
@@ -48,6 +45,13 @@ const formatLocalDate = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
+const readBlobAsText = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+	const reader = new FileReader()
+	reader.onload = () => resolve(String(reader.result ?? ''))
+	reader.onerror = () => reject(reader.error)
+	reader.readAsText(blob)
+})
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     usage: {
@@ -71,16 +75,6 @@ vi.mock('@/api/admin/usage', () => ({
 }))
 
 vi.mock('file-saver', () => ({ saveAs }))
-
-vi.mock('xlsx', () => ({
-	utils: {
-		aoa_to_sheet: aoaToSheet,
-		sheet_add_aoa: sheetAddAoa,
-		book_new: vi.fn(() => ({})),
-		book_append_sheet: vi.fn(),
-	},
-	write: xlsxWrite,
-}))
 
 vi.mock('@/api/admin/ops', () => ({
   listErrorLogs,
@@ -657,10 +651,7 @@ describe('admin UsageView model audit export', () => {
 		})
 		getSnapshotV2.mockReset().mockResolvedValue({ trend: [], models: [], groups: [] })
 		getModelStats.mockReset().mockResolvedValue({ models: [] })
-		aoaToSheet.mockClear()
-		sheetAddAoa.mockClear()
 		saveAs.mockClear()
-		xlsxWrite.mockClear()
 	})
 
 	afterEach(() => {
@@ -675,15 +666,46 @@ describe('admin UsageView model audit export', () => {
 		await (wrapper.vm as any).exportToExcel()
 		await flushPromises()
 
-		const headers = aoaToSheet.mock.calls[0][0][0]
-		expect(headers.slice(4, 8)).toEqual([
-			'Requested model',
-			'Sent upstream model',
-			'Upstream response model',
-			'Upstream model mismatch',
-		])
-		const row = sheetAddAoa.mock.calls[0][1][0]
-		expect(row.slice(4, 8)).toEqual(['gpt-5.6-sol', 'gpt-5.5', 'gpt-5.4', 'Yes'])
 		expect(saveAs).toHaveBeenCalledTimes(1)
+		const [blob, filename] = saveAs.mock.calls[0]
+		vi.useRealTimers()
+		const csv = await readBlobAsText(blob)
+		expect(csv).toContain('"Requested model","Sent upstream model","Upstream response model","Upstream model mismatch"')
+		expect(csv).toContain('"gpt-5.6-sol","gpt-5.5","gpt-5.4","Yes"')
+		expect(filename).toMatch(/\.csv$/)
+	})
+
+	it('neutralizes spreadsheet formulas in exported CSV cells', async () => {
+		exportList.mockResolvedValueOnce({
+			items: [{
+				id: 2,
+				created_at: '2026-08-04T00:00:00Z',
+				model: '=2+2',
+				upstream_model: '+SUM(1,1)',
+				upstream_response_model: '@cmd',
+				request_type: 'sync',
+				input_tokens: 1,
+				output_tokens: 1,
+				cache_read_tokens: 0,
+				cache_creation_tokens: 0,
+				duration_ms: 10,
+			}],
+			total: 1,
+			pages: 1,
+		})
+
+		const wrapper = mountRouteFilteredUsageView()
+		vi.advanceTimersByTime(120)
+		await flushPromises()
+
+		await (wrapper.vm as any).exportToExcel()
+		await flushPromises()
+
+		const [blob] = saveAs.mock.calls[0]
+		vi.useRealTimers()
+		const csv = await readBlobAsText(blob)
+		expect(csv).toContain('"\'=2+2"')
+		expect(csv).toContain('"\'+SUM(1,1)"')
+		expect(csv).toContain('"\'@cmd"')
 	})
 })

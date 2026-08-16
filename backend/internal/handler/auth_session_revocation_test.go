@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -37,6 +38,8 @@ func TestAuthHandlerRevokeAllSessionsInvalidatesAccessTokens(t *testing.T) {
 	}
 	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	handler := &AuthHandler{authService: authService}
+	oldAccessToken, err := authService.GenerateToken(context.Background(), repo.user)
+	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -47,11 +50,33 @@ func TestAuthHandlerRevokeAllSessionsInvalidatesAccessTokens(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []int64{29}, refreshTokenCache.revokedUserIDs)
-	// users 表没有 token_version 列（见 resolvedTokenVersion：JWT 里的值由
-	// email+password_hash 指纹推导），所以自增 TokenVersion 只停留在内存里。
-	// 此前紧跟其后的整行 Update 不写任何有效数据，却会用旧快照覆盖并发写入的列，
-	// 已移除。会话撤销由上面的 refresh session 清理承担。
-	require.Equal(t, int64(7), repo.user.TokenVersion)
+	require.Equal(t, int64(8), repo.user.TokenVersion)
+
+	// Exercise the real middleware surface: the stateless token still has a
+	// valid signature, but its durable security stamp is now stale.
+	userService := service.NewUserService(repo, nil, nil, nil)
+	router := gin.New()
+	router.GET(
+		"/protected",
+		gin.HandlerFunc(middleware2.NewJWTAuthMiddleware(authService, userService, nil, nil)),
+		func(c *gin.Context) { c.Status(http.StatusNoContent) },
+	)
+	oldRecorder := httptest.NewRecorder()
+	oldRequest := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	oldRequest.Header.Set("Authorization", "Bearer "+oldAccessToken)
+	router.ServeHTTP(oldRecorder, oldRequest)
+	require.Equal(t, http.StatusUnauthorized, oldRecorder.Code)
+
+	// A fresh login issued after the increment carries the new stamp and works.
+	freshUser, err := repo.GetByID(context.Background(), 29)
+	require.NoError(t, err)
+	freshAccessToken, err := authService.GenerateToken(context.Background(), freshUser)
+	require.NoError(t, err)
+	freshRecorder := httptest.NewRecorder()
+	freshRequest := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	freshRequest.Header.Set("Authorization", "Bearer "+freshAccessToken)
+	router.ServeHTTP(freshRecorder, freshRequest)
+	require.Equal(t, http.StatusNoContent, freshRecorder.Code)
 
 	var resp struct {
 		Code int `json:"code"`

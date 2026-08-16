@@ -202,6 +202,16 @@ func (s *AuthService) updateBoundEmailIdentityWithClient(
 		}
 		return ErrServiceUnavailable
 	}
+	versionRepo, ok := s.userRepo.(UserTokenVersionRepository)
+	if !ok {
+		return ErrServiceUnavailable
+	}
+	tokenVersion, err := versionRepo.IncrementTokenVersion(ctx, currentUser.ID)
+	if err != nil {
+		return ErrServiceUnavailable
+	}
+	currentUser.TokenVersion = tokenVersion
+	currentUser.TokenVersionResolved = true
 
 	if err := replaceBoundEmailAuthIdentityWithClient(ctx, client, currentUser.ID, oldEmail, email, "auth_service_email_bind"); err != nil {
 		if errors.Is(err, ErrEmailExists) {

@@ -12,12 +12,13 @@ var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
 // RefreshTokenData 存储在Redis中的Refresh Token数据
 type RefreshTokenData struct {
-	UserID       int64     `json:"user_id"`
-	TokenVersion int64     `json:"token_version"`          // 用于检测密码更改后的Token失效
-	FamilyID     string    `json:"family_id"`              // Token家族ID，用于防重放攻击
-	BindingHash  string    `json:"binding_hash,omitempty"` // 会话指纹哈希（IP+UA），会话绑定开启时校验
-	CreatedAt    time.Time `json:"created_at"`
-	ExpiresAt    time.Time `json:"expires_at"`
+	UserID            int64     `json:"user_id"`
+	TokenVersion      int64     `json:"token_version"`       // 持久化会话撤销版本
+	TokenVersionEpoch int       `json:"token_version_epoch"` // 0 is legacy; only the current epoch is accepted
+	FamilyID          string    `json:"family_id"`           // Token家族ID，用于防重放攻击
+	BindingHash       string    `json:"binding_hash,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	ExpiresAt         time.Time `json:"expires_at"`
 }
 
 // RefreshTokenCache 管理Refresh Token的Redis缓存
@@ -39,6 +40,12 @@ type RefreshTokenCache interface {
 	// 返回 (nil, ErrRefreshTokenNotFound) 如果Token不存在
 	// 返回 (nil, err) 如果发生其他错误
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshTokenData, error)
+
+	// ConsumeRefreshToken atomically removes and returns a refresh token.
+	// Exactly one concurrent caller may receive (data, nil). Replays return the
+	// original data together with ErrRefreshTokenReused so the caller can revoke
+	// its user/family; cache failures must return an error without minting.
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (*RefreshTokenData, error)
 
 	// DeleteRefreshToken 删除单个Refresh Token
 	// 用于Token轮转时使旧Token失效
@@ -71,4 +78,13 @@ type RefreshTokenCache interface {
 	// IsTokenInFamily 检查Token是否属于指定家族
 	// 用于验证Token家族关系
 	IsTokenInFamily(ctx context.Context, familyID string, tokenHash string) (bool, error)
+}
+
+// RefreshTokenReplayAcknowledger removes a consumed-token tombstone only after
+// its authoritative user/family revocation has succeeded. Keeping this
+// separate from ordinary token deletion prevents logout calls from suppressing
+// replay detection, while avoiding repeated replays becoming a persistent
+// account-wide token_version denial of service.
+type RefreshTokenReplayAcknowledger interface {
+	AcknowledgeRefreshTokenReplay(ctx context.Context, tokenHash string) error
 }
