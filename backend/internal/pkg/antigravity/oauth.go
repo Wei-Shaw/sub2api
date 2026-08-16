@@ -283,18 +283,23 @@ type OAuthSession struct {
 
 // SessionStore OAuth session 存储
 type SessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]*OAuthSession
-	stopCh   chan struct{}
+	mu        sync.RWMutex
+	sessions  map[string]*OAuthSession
+	startOnce sync.Once
+	stopOnce  sync.Once
+	stopCh    chan struct{}
 }
 
 func NewSessionStore() *SessionStore {
-	store := &SessionStore{
+	return &SessionStore{
 		sessions: make(map[string]*OAuthSession),
 		stopCh:   make(chan struct{}),
 	}
-	go store.cleanup()
-	return store
+}
+
+// Start starts periodic expired-session cleanup.
+func (s *SessionStore) Start() {
+	s.startOnce.Do(func() { go s.cleanup() })
 }
 
 func (s *SessionStore) Set(sessionID string, session *OAuthSession) {
@@ -323,12 +328,7 @@ func (s *SessionStore) Delete(sessionID string) {
 }
 
 func (s *SessionStore) Stop() {
-	select {
-	case <-s.stopCh:
-		return
-	default:
-		close(s.stopCh)
-	}
+	s.stopOnce.Do(func() { close(s.stopCh) })
 }
 
 func (s *SessionStore) cleanup() {

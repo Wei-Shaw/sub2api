@@ -86,6 +86,7 @@ type SessionStore struct {
 	mu        sync.RWMutex
 	sessions  map[string]*OAuthSession
 	localOnly map[string]struct{}
+	startOnce sync.Once
 	stopOnce  sync.Once
 	stopCh    chan struct{}
 	remote    *redissession.Store
@@ -103,13 +104,16 @@ type oauthSessionDTO struct {
 }
 
 func NewSessionStore() *SessionStore {
-	store := &SessionStore{
+	return &SessionStore{
 		sessions:  make(map[string]*OAuthSession),
 		localOnly: make(map[string]struct{}),
 		stopCh:    make(chan struct{}),
 	}
-	go store.cleanup()
-	return store
+}
+
+// Start starts periodic expired-session cleanup.
+func (s *SessionStore) Start() {
+	s.startOnce.Do(func() { go s.cleanup() })
 }
 
 func NewRedisSessionStore(rdb *redis.Client) *SessionStore {

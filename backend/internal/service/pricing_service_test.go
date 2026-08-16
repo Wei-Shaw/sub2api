@@ -11,6 +11,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProvidePricingServiceIsPassive(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "pricing")
+	svc := ProvidePricingService(&config.Config{Pricing: config.PricingConfig{DataDir: dataDir}}, nil)
+
+	require.NotNil(t, svc)
+	_, err := os.Stat(dataDir)
+	require.True(t, os.IsNotExist(err))
+}
+
 func TestPricingSchedulerBlankRemoteURLDoesNotStart(t *testing.T) {
 	svc := NewPricingService(&config.Config{Pricing: config.PricingConfig{RemoteURL: "  \t  "}}, nil)
 	defer svc.Stop()

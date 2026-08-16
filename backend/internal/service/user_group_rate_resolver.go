@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -15,6 +16,7 @@ type userGroupRateResolver struct {
 	cache        *gocache.Cache
 	cacheTTL     time.Duration
 	sf           *singleflight.Group
+	cacheWrites  atomic.Uint64
 	logComponent string
 }
 
@@ -23,7 +25,7 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 		cacheTTL = defaultUserGroupRateCacheTTL
 	}
 	if cache == nil {
-		cache = gocache.New(cacheTTL, time.Minute)
+		cache = gocache.NewFrom(cacheTTL, 0, map[string]gocache.Item{})
 	}
 	if logComponent == "" {
 		logComponent = "service.gateway"
@@ -81,7 +83,7 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 			multiplier = *userRate
 		}
 		if r.cache != nil {
-			r.cache.Set(key, multiplier, r.cacheTTL)
+			setPassiveCache(r.cache, key, multiplier, r.cacheTTL, &r.cacheWrites)
 		}
 		return multiplier, nil
 	})

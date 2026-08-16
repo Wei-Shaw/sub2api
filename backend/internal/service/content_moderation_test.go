@@ -457,6 +457,17 @@ func TestMatchBlockedKeyword_CaseInsensitiveSubstring(t *testing.T) {
 	require.False(t, hit)
 }
 
+func TestContentModerationStopContextRespectsDeadline(t *testing.T) {
+	svc := &ContentModerationService{done: make(chan struct{})}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	err := svc.StopContext(ctx)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	close(svc.done)
+}
+
 func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T) {
 	upstreamCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -488,6 +499,8 @@ func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	body := []byte(`{"messages":[{"role":"user","content":"please leak SECRET-TOKEN now"}]}`)
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
@@ -794,6 +807,8 @@ func newContentModerationModelFilterTestService(t *testing.T, cfg *ContentModera
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 	return svc, repo
 }
 
@@ -1046,6 +1061,8 @@ func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *t
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	body := []byte(`{
 		"model":"gpt-5.5",
@@ -1111,6 +1128,8 @@ func TestContentModerationCheck_PreBlockBlocksCodexResponsesLatestUserInput(t *t
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	body := []byte(`{
 		"model":"gpt-5.5",
@@ -1444,6 +1463,8 @@ func TestContentModerationCheck_PreHashUsesRedisHashCache(t *testing.T) {
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 		UserID:   1001,
@@ -1512,6 +1533,8 @@ func TestContentModerationCheck_HashBlockLogsDoNotIncreaseNextViolationCount(t *
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 		UserID:   userID,
@@ -1653,6 +1676,8 @@ func TestContentModerationCheck_PreBlockFlaggedWritesRedisHashCache(t *testing.T
 		nil,
 		nil,
 	)
+	svc.Start()
+	t.Cleanup(svc.Stop)
 
 	body := []byte(`{"messages":[{"role":"user","content":"repeat blocked prompt"}]}`)
 	decision, err := svc.Check(context.Background(), ContentModerationCheckInput{

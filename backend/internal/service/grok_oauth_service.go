@@ -384,6 +384,10 @@ func (s *GrokOAuthService) BuildAccountCredentials(tokenInfo *GrokTokenInfo) map
 	return creds
 }
 
+func (s *GrokOAuthService) Start() {
+	s.sessionStore.Start()
+}
+
 func (s *GrokOAuthService) Stop() {
 	s.sessionStore.Stop()
 }

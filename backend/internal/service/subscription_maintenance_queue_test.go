@@ -13,6 +13,7 @@ import (
 
 func TestSubscriptionMaintenanceQueue_TryEnqueue_QueueFull(t *testing.T) {
 	q := NewSubscriptionMaintenanceQueue(1, 1)
+	q.Start()
 	t.Cleanup(q.Stop)
 
 	block := make(chan struct{})
@@ -39,6 +40,7 @@ func TestSubscriptionMaintenanceQueue_TryEnqueue_QueueFull(t *testing.T) {
 
 func TestSubscriptionMaintenanceQueue_TryEnqueue_PanicDoesNotKillWorker(t *testing.T) {
 	q := NewSubscriptionMaintenanceQueue(1, 8)
+	q.Start()
 	t.Cleanup(q.Stop)
 
 	require.NoError(t, q.TryEnqueue(func() { panic("boom") }))
@@ -72,6 +74,7 @@ func TestSubscriptionMaintenanceQueue_TryEnqueue_NilReceiver(t *testing.T) {
 
 func TestSubscriptionMaintenanceQueue_TryEnqueue_NilTask(t *testing.T) {
 	q := NewSubscriptionMaintenanceQueue(1, 8)
+	q.Start()
 	t.Cleanup(q.Stop)
 
 	err := q.TryEnqueue(nil)

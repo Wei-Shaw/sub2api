@@ -35,7 +35,22 @@ import (
 //   - *ent.Client: Ent ORM 客户端，用于执行数据库操作
 //   - *sql.DB: 底层的 SQL 数据库连接，可用于直接执行原生 SQL
 //   - error: 初始化过程中的错误
+type EntInitOptions struct {
+	RunMigrations bool
+	Bootstrap     bool
+}
+
+// InitEnt initializes the full standalone Ent runtime.
 func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
+	return InitEntWithOptions(cfg, EntInitOptions{RunMigrations: true, Bootstrap: true})
+}
+
+// OpenEnt opens an Ent connection without schema or bootstrap side effects.
+func OpenEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
+	return InitEntWithOptions(cfg, EntInitOptions{})
+}
+
+func InitEntWithOptions(cfg *config.Config, options EntInitOptions) (*ent.Client, *sql.DB, error) {
 	// 优先初始化时区设置，确保所有时间操作使用统一的时区。
 	// 这对于跨时区部署和日志时间戳的一致性至关重要。
 	if err := timezone.Init(cfg.Timezone); err != nil {
@@ -64,46 +79,50 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}
 	applyDBPoolSettings(drv.DB(), cfg)
 
-	// 确保数据库 schema 已准备就绪。
-	// SQL 迁移文件是 schema 的权威来源（source of truth）。
-	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
-	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
-		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
-		return nil, nil, err
+	if options.RunMigrations {
+		migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
+			_ = drv.Close()
+			return nil, nil, err
+		}
 	}
 
-	// 创建 Ent 客户端，绑定到已配置的数据库驱动。
 	client := ent.NewClient(ent.Driver(drv))
+	if !options.Bootstrap {
+		return client, drv.DB(), nil
+	}
 
-	// 启动阶段：从配置或数据库中确保系统密钥可用。
-	if err := ensureBootstrapSecrets(migrationCtx, client, cfg); err != nil {
+	bootstrapCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	if err := BootstrapInstallation(bootstrapCtx, drv.DB(), client, cfg); err != nil {
 		_ = client.Close()
 		return nil, nil, err
-	}
-
-	// 在密钥补齐后执行完整配置校验，避免空 jwt.secret 导致服务运行时失败。
-	if err := cfg.Validate(); err != nil {
-		_ = client.Close()
-		return nil, nil, fmt.Errorf("validate config after secret bootstrap: %w", err)
-	}
-
-	// SIMPLE 模式：启动时补齐各平台默认分组。
-	// - anthropic/openai/gemini: 确保存在 <platform>-default
-	// - antigravity: 仅要求存在 >=2 个未软删除分组（用于 claude/gemini 混合调度场景）
-	if cfg.RunMode == config.RunModeSimple {
-		seedCtx, seedCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer seedCancel()
-		if err := ensureSimpleModeDefaultGroups(seedCtx, client); err != nil {
-			_ = client.Close()
-			return nil, nil, err
-		}
-		if err := ensureSimpleModeAdminConcurrency(seedCtx, client); err != nil {
-			_ = client.Close()
-			return nil, nil, err
-		}
 	}
 
 	return client, drv.DB(), nil
+}
+
+func BootstrapEnt(ctx context.Context, client *ent.Client, cfg *config.Config) error {
+	if err := ensureBootstrapSecrets(ctx, client, cfg); err != nil {
+		return err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("validate config after secret bootstrap: %w", err)
+	}
+
+	if cfg.RunMode != config.RunModeSimple {
+		return nil
+	}
+
+	seedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := ensureSimpleModeDefaultGroups(seedCtx, client); err != nil {
+		return err
+	}
+	if err := ensureSimpleModeAdminConcurrency(seedCtx, client); err != nil {
+		return err
+	}
+	return nil
 }

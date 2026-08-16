@@ -51,12 +51,14 @@ type SubscriptionService struct {
 
 	// L1 缓存：加速中间件热路径的订阅查询
 	subCacheL1     *ristretto.Cache
+	subCacheConfig config.SubscriptionCacheConfig
 	subCacheGroup  singleflight.Group
 	subCacheTTL    time.Duration
 	subCacheJitter int // 抖动百分比
 
 	maintenanceQueue *SubscriptionMaintenanceQueue
 	now              func() time.Time
+	subscriberCancel context.CancelFunc
 }
 
 // NewSubscriptionService 创建订阅服务
@@ -68,9 +70,10 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 		entClient:           entClient,
 		now:                 time.Now,
 	}
-	svc.initSubCache(cfg)
+	if cfg != nil {
+		svc.subCacheConfig = cfg.SubscriptionCache
+	}
 	svc.initMaintenanceQueue(cfg)
-	svc.StartSubCacheInvalidationSubscriber(context.Background())
 	return svc
 }
 
@@ -85,6 +88,17 @@ func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {
 	s.maintenanceQueue = NewSubscriptionMaintenanceQueue(mc.WorkerCount, mc.QueueSize)
 }
 
+func (s *SubscriptionService) Start(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.initSubCache()
+	if s.maintenanceQueue != nil {
+		s.maintenanceQueue.Start()
+	}
+	s.StartSubCacheInvalidationSubscriber(ctx)
+}
+
 // Stop stops the maintenance worker pool.
 func (s *SubscriptionService) Stop() {
 	if s == nil {
@@ -93,14 +107,22 @@ func (s *SubscriptionService) Stop() {
 	if s.maintenanceQueue != nil {
 		s.maintenanceQueue.Stop()
 	}
+	if s.subscriberCancel != nil {
+		s.subscriberCancel()
+		s.subscriberCancel = nil
+	}
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Close()
+		s.subCacheL1 = nil
+	}
 }
 
 // initSubCache 初始化订阅 L1 缓存
-func (s *SubscriptionService) initSubCache(cfg *config.Config) {
-	if cfg == nil {
+func (s *SubscriptionService) initSubCache() {
+	if s.subCacheL1 != nil {
 		return
 	}
-	sc := cfg.SubscriptionCache
+	sc := s.subCacheConfig
 	if sc.L1Size <= 0 || sc.L1TTLSeconds <= 0 {
 		return
 	}
@@ -163,14 +185,18 @@ func (s *SubscriptionService) invalidateSubCacheKeySync(key string) {
 
 // StartSubCacheInvalidationSubscriber 启动跨实例订阅 L1 缓存失效订阅。
 func (s *SubscriptionService) StartSubCacheInvalidationSubscriber(ctx context.Context) {
-	if s.billingCacheService == nil || s.subCacheL1 == nil {
+	if s == nil || s.billingCacheService == nil || s.subCacheL1 == nil || s.subscriberCancel != nil {
 		return
 	}
-	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(ctx, func(cacheKey string) {
+	subscriberCtx, cancel := context.WithCancel(ctx)
+	if err := s.billingCacheService.SubscribeSubscriptionCacheInvalidation(subscriberCtx, func(cacheKey string) {
 		s.invalidateSubCacheKeySync(cacheKey)
 	}); err != nil {
+		cancel()
 		log.Printf("Warning: failed to start subscription cache invalidation subscriber: %v", err)
+		return
 	}
+	s.subscriberCancel = cancel
 }
 
 func (s *SubscriptionService) invalidateSubscriptionCaches(userID, groupID int64) error {

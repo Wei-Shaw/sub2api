@@ -915,6 +915,10 @@ func (s *GeminiOAuthService) BuildAccountCredentials(tokenInfo *GeminiTokenInfo)
 	return creds
 }
 
+func (s *GeminiOAuthService) Start() {
+	s.sessionStore.Start()
+}
+
 func (s *GeminiOAuthService) Stop() {
 	s.sessionStore.Stop()
 }

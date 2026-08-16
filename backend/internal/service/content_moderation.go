@@ -531,6 +531,11 @@ type ContentModerationService struct {
 	runtimeRefreshRetryAt    atomic.Int64
 	keyHealthMu              sync.Mutex
 	keyHealth                map[string]*contentModerationKeyHealth
+	startOnce                sync.Once
+	stopOnce                 sync.Once
+	cancel                   context.CancelFunc
+	done                     chan struct{}
+	workerWG                 sync.WaitGroup
 }
 
 type contentModerationRuntimeSnapshot struct {
@@ -580,7 +585,7 @@ func NewContentModerationService(
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
 	emailService *EmailService,
 ) *ContentModerationService {
-	svc := &ContentModerationService{
+	return &ContentModerationService{
 		settingRepo:          settingRepo,
 		repo:                 repo,
 		hashCache:            hashCache,
@@ -594,13 +599,51 @@ func NewContentModerationService(
 		asyncQueue:           make(chan contentModerationTask, maxContentModerationQueueSize),
 		keyHealth:            make(map[string]*contentModerationKeyHealth),
 	}
-	if settingRepo != nil && repo != nil {
-		for i := 0; i < svc.workerCount; i++ {
-			go svc.worker(i)
-		}
-		go svc.cleanupWorker()
+}
+
+func (s *ContentModerationService) Start() {
+	if s == nil || s.settingRepo == nil || s.repo == nil {
+		return
 	}
-	return svc
+	s.startOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.cancel = cancel
+		s.done = make(chan struct{})
+		for i := 0; i < s.workerCount; i++ {
+			s.workerWG.Add(1)
+			go s.worker(ctx, i)
+		}
+		s.workerWG.Add(1)
+		go s.cleanupWorker(ctx)
+		go func() {
+			s.workerWG.Wait()
+			close(s.done)
+		}()
+	})
+}
+
+func (s *ContentModerationService) Stop() {
+	_ = s.StopContext(context.Background())
+}
+
+func (s *ContentModerationService) StopContext(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	s.stopOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
+	})
+	if s.done == nil {
+		return nil
+	}
+	select {
+	case <-s.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *ContentModerationService) GetConfig(ctx context.Context) (*ContentModerationConfigView, error) {
@@ -1222,17 +1265,27 @@ func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInp
 	}
 }
 
-func (s *ContentModerationService) worker(id int) {
+func (s *ContentModerationService) worker(ctx context.Context, id int) {
+	defer s.workerWG.Done()
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), maxContentModerationTimeoutMS*time.Millisecond+10*time.Second)
-		runtimeSnapshot, err := s.loadRuntimeSnapshot(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		taskCtx, cancel := context.WithTimeout(ctx, maxContentModerationTimeoutMS*time.Millisecond+10*time.Second)
+		runtimeSnapshot, err := s.loadRuntimeSnapshot(taskCtx)
 		if err != nil || runtimeSnapshot == nil || runtimeSnapshot.config == nil || id >= runtimeSnapshot.config.WorkerCount {
 			cancel()
-			time.Sleep(time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 		cfg := runtimeSnapshot.config
-		task, ok := s.dequeueAsyncTask(ctx, time.Second)
+		task, ok := s.dequeueAsyncTask(taskCtx, time.Second)
 		if !ok {
 			cancel()
 			continue
@@ -1253,7 +1306,7 @@ func (s *ContentModerationService) worker(id int) {
 				if taskCfg == nil {
 					taskCfg = cfg
 				}
-				s.persistContentModerationLog(ctx, taskCfg, task.log, task.inputHash, task.recordHash, task.applySideEffects)
+				s.persistContentModerationLog(taskCtx, taskCfg, task.log, task.inputHash, task.recordHash, task.applySideEffects)
 				s.asyncProcessed.Add(1)
 				return
 			}
@@ -1269,7 +1322,7 @@ func (s *ContentModerationService) worker(id int) {
 			s.asyncActive.Add(1)
 			defer s.asyncActive.Add(-1)
 			queueDelay := int(time.Since(task.enqueuedAt).Milliseconds())
-			_ = s.checkSync(ctx, task.input, cfg, task.content, task.inputHash, &queueDelay, false)
+			_ = s.checkSync(taskCtx, task.input, cfg, task.content, task.inputHash, &queueDelay, false)
 			s.asyncProcessed.Add(1)
 		}()
 	}
@@ -1448,21 +1501,26 @@ func (s *ContentModerationService) GetStatus(ctx context.Context) (*ContentModer
 	}, nil
 }
 
-func (s *ContentModerationService) cleanupWorker() {
+func (s *ContentModerationService) cleanupWorker(ctx context.Context) {
+	defer s.workerWG.Done()
 	timer := time.NewTimer(contentModerationCleanupDelay)
 	defer timer.Stop()
 	for {
-		<-timer.C
-		s.runCleanupOnce()
-		timer.Reset(contentModerationCleanupInterval)
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			s.runCleanupOnce(ctx)
+			timer.Reset(contentModerationCleanupInterval)
+		}
 	}
 }
 
-func (s *ContentModerationService) runCleanupOnce() {
+func (s *ContentModerationService) runCleanupOnce(ctx context.Context) {
 	if s == nil || s.repo == nil || s.settingRepo == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), contentModerationCleanupTimeout)
+	ctx, cancel := context.WithTimeout(ctx, contentModerationCleanupTimeout)
 	defer cancel()
 	cfg, err := s.loadConfig(ctx)
 	if err != nil {

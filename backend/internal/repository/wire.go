@@ -8,6 +8,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -164,7 +165,7 @@ var ProviderSet = wire.NewSet(
 	NewGeminiCliCodeAssistClient,
 	NewGeminiDriveClient,
 
-	ProvideEnt,
+	ProvideEntForRole,
 	ProvideSQLDB,
 	ProvideRedis,
 )
@@ -178,6 +179,16 @@ var ProviderSet = wire.NewSet(
 // 提供：*ent.Client
 func ProvideEnt(cfg *config.Config) (*ent.Client, error) {
 	client, _, err := InitEnt(cfg)
+	return client, err
+}
+
+func entInitOptionsForRole(role runtime.Role) EntInitOptions {
+	return EntInitOptions{RunMigrations: role == runtime.RoleAll, Bootstrap: role == runtime.RoleAll}
+}
+
+func ProvideEntForRole(cfg *config.Config, role runtime.Role) (*ent.Client, error) {
+	options := entInitOptionsForRole(role)
+	client, _, err := InitEntWithOptions(cfg, options)
 	return client, err
 }
 

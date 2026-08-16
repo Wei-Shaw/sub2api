@@ -607,7 +607,7 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 			if singleErr != nil {
 				logger.LegacyPrintf("repository.usage_log", "best-effort single fallback insert failed: %v", singleErr)
 			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-				r.bestEffortRecent.SetDefault(group.key, struct{}{})
+				r.setBestEffortRecent(group.key)
 			}
 			for _, req := range group.reqs {
 				sendUsageLogBestEffortResult(req.resultCh, singleErr)
@@ -1350,6 +1350,16 @@ func sendUsageLogCreateResult(ch chan usageLogCreateResult, res usageLogCreateRe
 	select {
 	case ch <- res:
 	default:
+	}
+}
+
+func (r *usageLogRepository) setBestEffortRecent(key string) {
+	if r == nil || r.bestEffortRecent == nil {
+		return
+	}
+	r.bestEffortRecent.SetDefault(key, struct{}{})
+	if r.bestEffortWrites.Add(1)%1024 == 0 {
+		r.bestEffortRecent.DeleteExpired()
 	}
 }
 

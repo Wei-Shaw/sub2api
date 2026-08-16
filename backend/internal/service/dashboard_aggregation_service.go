@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -61,6 +62,11 @@ type DashboardAggregationService struct {
 	lockCache  LeaderLockCache
 	db         *sql.DB
 	instanceID string
+
+	stopOnce        sync.Once
+	recomputeCtx    context.Context
+	recomputeCancel context.CancelFunc
+	recomputeWg     sync.WaitGroup
 }
 
 // NewDashboardAggregationService 创建聚合服务。
@@ -105,7 +111,12 @@ func (s *DashboardAggregationService) Start() {
 	}
 
 	if s.cfg.RecomputeDays > 0 {
-		go s.recomputeRecentDays()
+		s.recomputeCtx, s.recomputeCancel = context.WithCancel(context.Background())
+		s.recomputeWg.Add(1)
+		go func() {
+			defer s.recomputeWg.Done()
+			s.recomputeRecentDays(s.recomputeCtx)
+		}()
 	}
 
 	s.timingWheel.ScheduleRecurring("dashboard:aggregation", interval, func() {
@@ -181,7 +192,22 @@ func (s *DashboardAggregationService) TriggerRecomputeRange(start, end time.Time
 	return nil
 }
 
-func (s *DashboardAggregationService) recomputeRecentDays() {
+func (s *DashboardAggregationService) Stop() {
+	if s == nil {
+		return
+	}
+	s.stopOnce.Do(func() {
+		if s.timingWheel != nil {
+			s.timingWheel.Cancel("dashboard:aggregation")
+		}
+		if s.recomputeCancel != nil {
+			s.recomputeCancel()
+		}
+		s.recomputeWg.Wait()
+	})
+}
+
+func (s *DashboardAggregationService) recomputeRecentDays(ctx context.Context) {
 	days := s.cfg.RecomputeDays
 	if days <= 0 {
 		return
@@ -189,7 +215,7 @@ func (s *DashboardAggregationService) recomputeRecentDays() {
 	now := time.Now().UTC()
 	start := now.AddDate(0, 0, -days)
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultDashboardAggregationBackfillTimeout)
 	defer cancel()
 	if err := s.backfillRange(ctx, start, now); err != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 启动重算失败: %v", err)

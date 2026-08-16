@@ -9,11 +9,13 @@ import (
 // SubscriptionMaintenanceQueue 提供"有界队列 + 固定 worker"的后台执行器。
 // 用于从请求热路径触发维护动作时，避免无限 goroutine 膨胀。
 type SubscriptionMaintenanceQueue struct {
-	queue  chan func()
-	wg     sync.WaitGroup
-	stop   sync.Once
-	mu     sync.RWMutex // 保护 closed 标志与 channel 操作的原子性
-	closed bool
+	queue     chan func()
+	workers   int
+	wg        sync.WaitGroup
+	startOnce sync.Once
+	stop      sync.Once
+	mu        sync.RWMutex // 保护 closed 标志与 channel 操作的原子性
+	closed    bool
 }
 
 func NewSubscriptionMaintenanceQueue(workerCount, queueSize int) *SubscriptionMaintenanceQueue {
@@ -25,27 +27,34 @@ func NewSubscriptionMaintenanceQueue(workerCount, queueSize int) *SubscriptionMa
 	}
 
 	q := &SubscriptionMaintenanceQueue{
-		queue: make(chan func(), queueSize),
+		queue:   make(chan func(), queueSize),
+		workers: workerCount,
 	}
-
-	q.wg.Add(workerCount)
-	for i := 0; i < workerCount; i++ {
-		go func(workerID int) {
-			defer q.wg.Done()
-			for fn := range q.queue {
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("SubscriptionMaintenance worker panic: %v", r)
-						}
-					}()
-					fn()
-				}()
-			}
-		}(i)
-	}
-
 	return q
+}
+
+func (q *SubscriptionMaintenanceQueue) Start() {
+	if q == nil {
+		return
+	}
+	q.startOnce.Do(func() {
+		q.wg.Add(q.workers)
+		for i := 0; i < q.workers; i++ {
+			go func() {
+				defer q.wg.Done()
+				for fn := range q.queue {
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("SubscriptionMaintenance worker panic: %v", r)
+							}
+						}()
+						fn()
+					}()
+				}
+			}()
+		}
+	})
 }
 
 // TryEnqueue 尝试将任务入队。

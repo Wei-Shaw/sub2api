@@ -74,8 +74,11 @@ func (c apiKeyAuthCacheConfig) jitterTTL(ttl time.Duration) time.Duration {
 	return time.Duration(float64(ttl) * factor)
 }
 
-func (s *APIKeyService) initAuthCache(cfg *config.Config) {
-	s.authCfg = newAPIKeyAuthCacheConfig(cfg)
+func (s *APIKeyService) startAuthCache() {
+	s.authCacheStart.Do(func() { s.initAuthCache() })
+}
+
+func (s *APIKeyService) initAuthCache() {
 	if s.authCfg.negativeEnabled() {
 		negativeSize := defaultNegativeAuthCacheSize
 		if s.authCfg.l1Size > 0 && s.authCfg.l1Size < negativeSize {
@@ -105,6 +108,7 @@ func (s *APIKeyService) initAuthCache(cfg *config.Config) {
 // StartAuthCacheInvalidationSubscriber starts the Pub/Sub subscriber for L1 cache invalidation.
 // This should be called after the service is fully initialized.
 func (s *APIKeyService) StartAuthCacheInvalidationSubscriber(ctx context.Context) {
+	s.startAuthCache()
 	if s.cache == nil || (s.authCacheL1 == nil && s.authNegativeCacheL1 == nil) {
 		return
 	}
@@ -188,6 +192,12 @@ func (s *APIKeyService) StopAuthCacheInvalidationSubscriber() {
 			s.authInvalidationCancel()
 		}
 		s.authInvalidationWG.Wait()
+		if s.authCacheL1 != nil {
+			s.authCacheL1.Close()
+		}
+		if s.authNegativeCacheL1 != nil {
+			s.authNegativeCacheL1.Close()
+		}
 	})
 }
 

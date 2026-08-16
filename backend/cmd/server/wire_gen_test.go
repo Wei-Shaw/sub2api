@@ -2,11 +2,9 @@ package main
 
 import (
 	"testing"
-	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
-	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/runtime"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,83 +18,29 @@ func TestProvideServiceBuildInfo(t *testing.T) {
 	require.Equal(t, in.BuildType, out.BuildType)
 }
 
-func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
-	cfg := &config.Config{}
+func TestProvideCleanupWithNilInfrastructure(t *testing.T) {
+	cleanup := provideCleanup(nil, nil)
+	require.NotPanics(t, cleanup)
+}
 
-	oauthSvc := service.NewOAuthService(nil, nil)
-	openAIOAuthSvc := service.NewOpenAIOAuthService(nil, nil)
-	geminiOAuthSvc := service.NewGeminiOAuthService(nil, nil, nil, nil, cfg)
-	antigravityOAuthSvc := service.NewAntigravityOAuthService(nil)
+func TestInitializeApplicationForRoleSelectsOnlyRequestedGraph(t *testing.T) {
+	buildInfo := handler.BuildInfo{Version: "v-test"}
+	selected := ""
+	initializers := applicationInitializers{
+		all:       func(handler.BuildInfo) (*Application, error) { selected = "all"; return &Application{}, nil },
+		api:       func(handler.BuildInfo) (*Application, error) { selected = "api"; return &Application{}, nil },
+		worker:    func(handler.BuildInfo) (*Application, error) { selected = "worker"; return &Application{}, nil },
+		scheduler: func(handler.BuildInfo) (*Application, error) { selected = "scheduler"; return &Application{}, nil },
+	}
 
-	tokenRefreshSvc := service.NewTokenRefreshService(
-		nil,
-		oauthSvc,
-		openAIOAuthSvc,
-		geminiOAuthSvc,
-		antigravityOAuthSvc,
-		nil,
-		nil,
-		cfg,
-		nil,
-	)
-	accountExpirySvc := service.NewAccountExpiryService(nil, time.Second)
-	codexVersionSyncSvc := service.NewOpenAICodexVersionSyncService(nil, nil, nil, time.Second)
-	proxyExpirySvc := service.NewProxyExpiryService(nil, time.Second)
-	subscriptionExpirySvc := service.NewSubscriptionExpiryService(nil, time.Second)
-	pricingSvc := service.NewPricingService(cfg, nil)
-	emailQueueSvc := service.NewEmailQueueService(nil, 1)
-	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
-	idempotencyCleanupSvc := service.NewIdempotencyCleanupService(nil, cfg)
-	schedulerSnapshotSvc := service.NewSchedulerSnapshotService(nil, nil, nil, nil, cfg)
-	opsSystemLogSinkSvc := service.NewOpsSystemLogSink(nil)
+	_, err := initializeApplicationForRole(runtime.RoleWorker, buildInfo, initializers)
 
-	cleanup := provideCleanup(
-		nil, // entClient
-		nil, // redis
-		&service.OpsMetricsCollector{},
-		&service.OpsAggregationService{},
-		&service.OpsAlertEvaluatorService{},
-		&service.OpsCleanupService{},
-		&service.OpsScheduledReportService{},
-		opsSystemLogSinkSvc,
-		nil, // opsService
-		nil, // opsIngressRejectAggregator
-		nil, // apiKeyService
-		nil, // authCacheInvalidationWorker
-		schedulerSnapshotSvc,
-		tokenRefreshSvc,
-		accountExpirySvc,
-		codexVersionSyncSvc,
-		proxyExpirySvc,
-		subscriptionExpirySvc,
-		&service.UsageCleanupService{},
-		idempotencyCleanupSvc,
-		&service.BatchImageCleanupService{},
-		nil, // batchImageWorker
-		pricingSvc,
-		emailQueueSvc,
-		billingCacheSvc,
-		&service.UsageRecordWorkerPool{},
-		&service.SubscriptionService{},
-		oauthSvc,
-		openAIOAuthSvc,
-		geminiOAuthSvc,
-		antigravityOAuthSvc,
-		nil, // grokOAuth
-		nil, // openAIGateway
-		nil, // scheduledTestRunner
-		nil, // backupSvc
-		nil, // paymentOrderExpiry
-		nil, // channelMonitorRunner
-		nil, // channelMonitorV2Aggregator
-		nil, // quotaFlusher
-		nil, // upstreamBillingProbe
-		nil, // ollamaCloudUsage
-		nil, // auditLog
-		nil, // promptAudit
-	)
+	require.NoError(t, err)
+	require.Equal(t, "worker", selected)
+}
 
-	require.NotPanics(t, func() {
-		cleanup()
-	})
+func TestInitializeApplicationForRoleRejectsOneShotRoles(t *testing.T) {
+	_, err := initializeApplicationForRole(runtime.RoleMigrate, handler.BuildInfo{}, applicationInitializers{})
+
+	require.ErrorContains(t, err, "does not have a resident application graph")
 }

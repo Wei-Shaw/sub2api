@@ -9,6 +9,28 @@ import (
 	"github.com/zeromicro/go-zero/core/collection"
 )
 
+func TestNewTimingWheelServiceDoesNotInitializeRuntime(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original })
+
+	called := false
+	newTimingWheel = func(_ time.Duration, _ int, _ collection.Execute) (*collection.TimingWheel, error) {
+		called = true
+		return nil, errors.New("must not be called during construction")
+	}
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("构造不应失败: %v", err)
+	}
+	if svc == nil {
+		t.Fatal("期望 svc 非空")
+	}
+	if called {
+		t.Fatal("构造阶段不应初始化 timing wheel runtime")
+	}
+}
+
 func TestNewTimingWheelService_InitFail_NoPanicAndReturnError(t *testing.T) {
 	original := newTimingWheel
 	t.Cleanup(func() { newTimingWheel = original })
@@ -18,11 +40,11 @@ func TestNewTimingWheelService_InitFail_NoPanicAndReturnError(t *testing.T) {
 	}
 
 	svc, err := NewTimingWheelService()
-	if err == nil {
-		t.Fatalf("期望返回 error，但得到 nil")
+	if err != nil {
+		t.Fatalf("构造不应初始化 timing wheel: %v", err)
 	}
-	if svc != nil {
-		t.Fatalf("期望返回 nil svc，但得到非空")
+	if err := svc.Start(); err == nil {
+		t.Fatalf("期望 Start 返回 error，但得到 nil")
 	}
 }
 
@@ -30,6 +52,9 @@ func TestNewTimingWheelService_Success(t *testing.T) {
 	svc, err := NewTimingWheelService()
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	if svc == nil {
 		t.Fatalf("期望 svc 非空，但得到 nil")
@@ -50,6 +75,9 @@ func TestNewTimingWheelService_ExecuteCallbackRunsFunc(t *testing.T) {
 	svc, err := NewTimingWheelService()
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	if captured == nil {
 		t.Fatalf("期望 captured 非空，但得到 nil")
@@ -75,6 +103,9 @@ func TestTimingWheelService_Schedule_ExecutesOnce(t *testing.T) {
 	svc, err := NewTimingWheelService()
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	defer svc.Stop()
 
@@ -106,6 +137,9 @@ func TestTimingWheelService_Cancel_PreventsExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
 	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
+	}
 	defer svc.Stop()
 
 	ch := make(chan struct{}, 1)
@@ -124,6 +158,9 @@ func TestTimingWheelService_Schedule_AfterStop_LogsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
 	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
+	}
 	svc.Stop()
 
 	// Stop 后调用 Schedule 应走 error 日志路径，不应 panic
@@ -137,6 +174,9 @@ func TestTimingWheelService_ScheduleRecurring_AfterStop_LogsError(t *testing.T) 
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
 	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
+	}
 	svc.Stop()
 
 	// Stop 后调用 ScheduleRecurring 应走 error 日志路径，不应 panic
@@ -149,6 +189,9 @@ func TestTimingWheelService_Stop_Idempotent(t *testing.T) {
 	svc, err := NewTimingWheelService()
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	svc.Stop()
 	svc.Stop() // 第二次调用不应 panic
@@ -165,6 +208,9 @@ func TestTimingWheelService_ScheduleRecurring_ExecutesMultipleTimes(t *testing.T
 	svc, err := NewTimingWheelService()
 	if err != nil {
 		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	if err := svc.Start(); err != nil {
+		t.Fatalf("启动 timing wheel 失败: %v", err)
 	}
 	defer svc.Stop()
 
