@@ -3,8 +3,6 @@ const i18nT = (key: string, params?: Record<string, unknown>) => {
     'channelMonitorV2.matrix.title': '色块矩阵',
     'channelMonitorV2.matrix.description': '趋势色块视图',
     'channelMonitorV2.bucket.minutes': '{count}分钟',
-    'channelMonitorV2.matrix.wheelZoomX': '滚轮缩放横向',
-    'channelMonitorV2.matrix.resetZoom': '重置缩放',
     'channelMonitorV2.matrix.dimension': '维度',
     'channelMonitorV2.metrics.successRate': '成功率',
     'channelMonitorV2.metrics.ttft': '首 Token',

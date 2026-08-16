@@ -16,24 +16,13 @@
       </div>
       <div class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400 sm:w-auto">
         <span class="badge badge-gray shrink-0">{{ bucketLabel }}</span>
-        <span class="hidden text-[11px] text-gray-400 dark:text-dark-400 sm:inline">{{ t('channelMonitorV2.matrix.wheelZoomX') }}</span>
-        <button
-          type="button"
-          class="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
-          :disabled="!zoomed"
-          @click="resetMatrixZoom"
-        >
-          {{ t('channelMonitorV2.matrix.resetZoom') }}
-        </button>
       </div>
     </div>
 
     <div class="card-body min-h-0 flex-1 !p-0">
       <div
         v-if="rows.length"
-        ref="scrollRef"
         class="matrix-scroll max-h-[min(42vh,420px)] max-w-full overflow-auto rounded-2xl bg-gray-50/60 p-2 dark:bg-dark-900/30"
-        @wheel="onMatrixWheel"
       >
         <div class="matrix-table w-full" :style="tableStyle">
           <div
@@ -166,7 +155,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive } from 'vue'
 import type {
   LatencyMetric,
   MonitorCoverage,
@@ -188,14 +177,6 @@ import {
   healthModeScore,
   healthScoreClass,
 } from '@/features/channel-monitor-v2/monitorFormat'
-import {
-  applyWheelZoom,
-  clientXRatio,
-  isZoomed,
-  resetZoom,
-  sliceByZoom,
-  type ZoomState,
-} from '@/features/channel-monitor-v2/monitorZoom'
 
 type HealthMode = 'overall' | 'success' | 'ttft' | 'cache'
 const { t, locale } = useI18n()
@@ -220,11 +201,7 @@ const floatingTooltip = reactive({
   lines: [] as string[],
 })
 
-const scrollRef = ref<HTMLElement | null>(null)
-const zoom = ref<ZoomState>(resetZoom())
-const zoomed = computed(() => isZoomed(zoom.value))
-
-const allBucketStarts = computed(() => {
+const bucketStarts = computed(() => {
   // X-axis always spans the UI-selected range [requested_start, requested_end).
   // Partial backfill leaves empty cells until coverage_start/data_through fill in.
   const step = Math.max(60, props.coverage.bucket_seconds) * 1000
@@ -244,33 +221,18 @@ const allBucketStarts = computed(() => {
   }
   return starts
 })
-/** Visible bucket window after X zoom (cursor-centered), not always the tail. */
-const bucketStarts = computed(() => sliceByZoom(allBucketStarts.value, zoom.value))
 const tableStyle = computed(() => ({
   '--bucket-count': String(Math.max(1, bucketStarts.value.length)),
-  minWidth: zoomed.value ? `calc(260px + ${pulseMinWidth.value})` : '0',
+  minWidth: '0',
 }))
-const pulseMinWidth = computed(() => {
-  const count = Math.max(1, bucketStarts.value.length)
-  if (!zoomed.value) return '0px'
-  // Zoom in = fewer columns + wider min cell (span shrinks → intensity grows).
-  const intensity = Math.min(12, Math.round((1 - zoom.value.span) / 0.08))
-  const width = 6 + intensity * 4
-  const gap = intensity >= 4 ? 3 : 2
-  return `${count * width + Math.max(0, count - 1) * gap}px`
-})
 const pulseStyle = computed(() => {
   const count = Math.max(1, bucketStarts.value.length)
-  const intensity = zoomed.value ? Math.min(12, Math.round((1 - zoom.value.span) / 0.08)) : 0
-  const gapPx = !zoomed.value ? (count > 24 ? 1 : 2) : intensity >= 4 ? 3 : 2
-  const heightPx = 16
-  // Unzoomed: equal flex fractions. Zoomed: enforce growing min width so blocks lengthen.
-  const minCell = !zoomed.value ? '0' : `${6 + intensity * 4}px`
+  const gapPx = count > 24 ? 1 : 2
   return {
-    gridTemplateColumns: `repeat(${count}, minmax(${minCell}, 1fr))`,
+    gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))`,
     gap: `${gapPx}px`,
-    height: `${heightPx}px`,
-    minWidth: pulseMinWidth.value,
+    height: '16px',
+    minWidth: '0px',
   }
 })
 const axisStart = computed(() =>
@@ -287,14 +249,14 @@ const bucketLabel = computed(() => {
   return t('channelMonitorV2.bucket.days', { count: hours / 24 })
 })
 
-/** Shared ISO start → column index for the visible window (rebuilt when zoom/coverage changes). */
+/** Shared ISO start → column index for the visible window. */
 const bucketStartIndex = computed(() => {
   const map = new Map<string, number>()
   bucketStarts.value.forEach((start, index) => map.set(start, index))
   return map
 })
 
-/** Pre-aligned sparse slots per row so wheel zoom does not rebuild Maps every paint. */
+/** Pre-aligned sparse slots per row. */
 const alignedRows = computed(() => {
   const starts = bucketStarts.value
   const indexByStart = bucketStartIndex.value
@@ -308,40 +270,6 @@ const alignedRows = computed(() => {
     return { row, slots }
   })
 })
-
-function onMatrixWheel(event: WheelEvent) {
-  const track = scrollRef.value
-  const target = event.target as HTMLElement | null
-  const pulse = target?.closest('.pulse-track') as HTMLElement | null
-  const overMatrix = Boolean(target?.closest('.matrix-scroll'))
-  // Plain vertical wheel over the matrix zooms X (narrower range → wider cells).
-  // Shift+wheel or horizontal delta pans; leave non-matrix page scroll alone.
-  const isPan = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)
-  if (!overMatrix && !pulse) return
-  // When not zoomed and user scrolls vertically outside pulse, still zoom if over matrix body.
-  if (!overMatrix && !isPan) return
-  event.preventDefault()
-  const ratioEl = pulse || track
-  const ratio = clientXRatio(event.clientX, ratioEl)
-  zoom.value = applyWheelZoom(zoom.value, event, ratio)
-}
-
-function resetMatrixZoom() {
-  zoom.value = resetZoom()
-}
-
-watch(
-  () => [
-    props.coverage.requested_start,
-    props.coverage.requested_end,
-    props.coverage.coverage_start,
-    props.coverage.data_through,
-    props.coverage.bucket_seconds,
-  ],
-  () => {
-    zoom.value = resetZoom()
-  },
-)
 
 function cellClass(health: MonitorHealth, requestCount: number): string {
   return healthScoreClass(health, props.healthMode, requestCount)
