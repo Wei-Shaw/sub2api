@@ -33,7 +33,7 @@ Introduce append-oriented records for `income`, `expense`, `promotional_consumpt
 
 ### 2. Separate cash and realized-profit calculations
 
-Cash income is settled payment-order money minus refunds, payment fees, and rebates. Realized income is paid-balance consumption plus the recognized portion of subscription consumption. Recharge and administrator gifts are not income; their consumed value is shown separately. Account costs are recorded by administrators as one-off or recurring account expenses because usage-derived upstream estimates are not sufficiently accurate. The API returns both cash profit and operating profit so one number cannot be mistaken for the other.
+Cash income is settled payment-order money minus refunds, payment fees, and rebates. Realized income is paid-balance consumption plus the recognized portion of subscription consumption. Recharge and administrator gifts are not income; their consumed value is shown separately. A recharge promotion's persisted `bonus_amount` is also recorded once as a settled expense when its balance order completes, using the payment order as the idempotent audit source. Account costs are recorded by administrators as one-off or recurring account expenses because usage-derived upstream estimates are not sufficiently accurate. The API returns both cash profit and operating profit so one number cannot be mistaken for the other.
 
 **Alternative rejected:** treating every token request as income; it double-counts prepaid recharge and overstates revenue for free/gift usage.
 

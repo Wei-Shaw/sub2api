@@ -236,7 +236,17 @@
               class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
               @click="emit('videoDetail', row.task_id as number)"
             >
-              详情
+              {{ t('usage.details') }}
+            </button>
+
+            <button
+              v-if="isImageUsage(row)"
+              type="button"
+              data-testid="image-usage-detail-button"
+              class="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10"
+              @click="openImageDetails(row)"
+            >
+              {{ t('usage.details') }}
             </button>
           </div>
         </template>
@@ -324,6 +334,53 @@
       </DataTable>
     </div>
   </div>
+
+  <BaseDialog
+    :show="imageDetailsRow !== null"
+    :title="t('usage.imageDetails')"
+    width="normal"
+    @close="closeImageDetails"
+  >
+    <div v-if="imageDetailsRow" data-testid="image-usage-detail-dialog" class="space-y-5">
+      <section>
+        <h4 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('usage.imageRequestParameters') }}
+        </h4>
+        <dl class="grid grid-cols-[minmax(8rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.requestedModel') }}</dt>
+          <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ imageDetailsRow.model || '-' }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.inboundEndpoint') }}</dt>
+          <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ imageDetailsRow.inbound_endpoint || '-' }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageRequestResolution') }}</dt>
+          <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ formatImageInputSize(imageDetailsRow, t) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageQuality') }}</dt>
+          <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ imageDetailsRow.image_quality || t('usage.imageParameterNotRecorded') }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageCount') }}</dt>
+          <dd class="text-right font-medium text-gray-900 dark:text-white">{{ imageDetailsRow.image_count }}{{ t('usage.imageUnit') }}</dd>
+        </dl>
+      </section>
+
+      <section class="border-t border-gray-200 pt-4 dark:border-dark-700">
+        <h4 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('usage.imageResultAndBilling') }}
+        </h4>
+        <dl class="grid grid-cols-[minmax(8rem,auto)_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageBillingSize') }}</dt>
+          <dd class="text-right font-medium text-gray-900 dark:text-white">{{ formatImageBillingSize(imageDetailsRow, t) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageOutputSize') }}</dt>
+          <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ formatImageOutputSize(imageDetailsRow, t) }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageSizeSource') }}</dt>
+          <dd class="text-right font-medium text-gray-900 dark:text-white">{{ formatImageSizeSource(imageDetailsRow, t) }}</dd>
+          <template v-if="formatImageSizeBreakdown(imageDetailsRow)">
+            <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.imageSizeBreakdown') }}</dt>
+            <dd class="break-all text-right font-medium text-gray-900 dark:text-white">{{ formatImageSizeBreakdown(imageDetailsRow) }}</dd>
+          </template>
+          <dt class="text-gray-500 dark:text-gray-400">{{ t('usage.requestId') }}</dt>
+          <dd class="break-all text-right font-mono text-xs text-gray-900 dark:text-white">{{ imageDetailsRow.request_id || '-' }}</dd>
+        </dl>
+      </section>
+    </div>
+  </BaseDialog>
 
   <!-- Token Tooltip Portal -->
   <Teleport to="body">
@@ -614,6 +671,7 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
 
 
 import DataTable from '@/components/common/DataTable.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -653,6 +711,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
 const copiedRequestId = ref<string | null>(null)
+const imageDetailsRow = ref<AdminUsageLog | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
@@ -769,6 +828,14 @@ const resultImageURLs = (row: AdminUsageLog): string[] => {
   const cos = row.cos_urls
   if (cos && cos.length > 0) return cos
   return row.image_urls ?? []
+}
+
+const openImageDetails = (row: AdminUsageLog) => {
+  imageDetailsRow.value = row
+}
+
+const closeImageDetails = () => {
+  imageDetailsRow.value = null
 }
 
 // 超过 1 分钟简化为 "Xm Ys"，免去人工换算（超过 1 小时再进位为 "Xh Ym"）

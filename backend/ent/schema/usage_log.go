@@ -156,6 +156,10 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(32).
 			Optional().
 			Nillable(),
+		field.String("image_quality").
+			MaxLen(32).
+			Optional().
+			Nillable(),
 		field.String("image_output_size").
 			MaxLen(32).
 			Optional().

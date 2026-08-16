@@ -445,6 +445,32 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 	require.Equal(t, BillingStatusCharged, taskRepo.lastUsageLog().BillingStatus)
 }
 
+func TestAsyncMediaWriteTerminalUsageLogPersistsImageRequestParameters(t *testing.T) {
+	taskRepo := newFakeTaskRepo()
+	svc := &AsyncMediaService{taskRepo: taskRepo}
+	accountID := int64(7)
+	size := "3840x2160"
+	quality := "high"
+	task := &AsyncMediaTask{
+		ID:                41,
+		UserID:            22,
+		APIKeyID:          11,
+		AccountID:         &accountID,
+		InternalRequestID: "req-image-parameters",
+		RequestedModel:    "gpt-image-2",
+		ImageSize:         &size,
+		Quality:           &quality,
+		NumImages:         2,
+		RateMultiplier:    1,
+	}
+
+	svc.writeTerminalUsageLog(context.Background(), task, BillingTypeBalance, 0.8, BillingStatusCharged, nil, nil)
+
+	require.Equal(t, 1, taskRepo.usageLogCount())
+	require.Equal(t, size, taskRepo.lastUsageLog().ImageSize)
+	require.Equal(t, quality, taskRepo.lastUsageLog().ImageQuality)
+}
+
 func TestAsyncMedia_UpstreamFailure_RefundsFull(t *testing.T) {
 	fs := newFalTestServer(t)
 	fs.statusCode = http.StatusBadRequest // status 返回 4xx → 明确失败

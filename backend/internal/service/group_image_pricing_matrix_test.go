@@ -16,12 +16,12 @@ func TestValidateImagePricingMatrix_AcceptsEmpty(t *testing.T) {
 
 func TestValidateImagePricingMatrix_AcceptsValidCells(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {
+		"1K": {
 			ImageQualityLow:    0,
 			ImageQualityMedium: 0.053,
 			ImageQualityHigh:   0.211,
 		},
-		ImagePricingTier3840x2160: {
+		"4K": {
 			ImageQualityHigh: 0.401,
 		},
 	}
@@ -39,7 +39,7 @@ func TestValidateImagePricingMatrix_RejectsUnknownTier(t *testing.T) {
 
 func TestValidateImagePricingMatrix_RejectsUnknownQuality(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {"ultra": 0.5},
+		"1K": {"ultra": 0.5},
 	}
 	err := validateImagePricingMatrix(matrix)
 	require.Error(t, err)
@@ -48,7 +48,7 @@ func TestValidateImagePricingMatrix_RejectsUnknownQuality(t *testing.T) {
 
 func TestValidateImagePricingMatrix_RejectsNegativePrice(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {ImageQualityHigh: -0.001},
+		"1K": {ImageQualityHigh: -0.001},
 	}
 	err := validateImagePricingMatrix(matrix)
 	require.Error(t, err)
@@ -57,7 +57,7 @@ func TestValidateImagePricingMatrix_RejectsNegativePrice(t *testing.T) {
 
 func TestValidateImagePricingMatrix_RejectsExceedsUpperBound(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {ImageQualityHigh: imagePricingMatrixCellMaxUSD + 0.01},
+		"1K": {ImageQualityHigh: imagePricingMatrixCellMaxUSD + 0.01},
 	}
 	err := validateImagePricingMatrix(matrix)
 	require.Error(t, err)
@@ -66,12 +66,12 @@ func TestValidateImagePricingMatrix_RejectsExceedsUpperBound(t *testing.T) {
 
 func TestNormalizeImagePricingMatrix_DropsEmptyRow(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {ImageQualityHigh: 0.211},
-		ImagePricingTier3840x2160: {}, // empty row 应被丢弃
+		"1K": {ImageQualityHigh: 0.211},
+		"4K": {}, // empty row 应被丢弃
 	}
 	out := normalizeImagePricingMatrix(matrix)
 	require.Len(t, out, 1)
-	_, ok := out[ImagePricingTier3840x2160]
+	_, ok := out["4K"]
 	require.False(t, ok)
 }
 
@@ -79,7 +79,7 @@ func TestNormalizeImagePricingMatrix_NilOrAllEmptyReturnsNil(t *testing.T) {
 	require.Nil(t, normalizeImagePricingMatrix(nil))
 	require.Nil(t, normalizeImagePricingMatrix(domain.ImagePricingMatrix{}))
 	require.Nil(t, normalizeImagePricingMatrix(domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {},
+		"1K": {},
 	}))
 }
 
@@ -128,7 +128,7 @@ func TestGroup_ImageDecodeSizeOnRspEnabled(t *testing.T) {
 
 func TestGroup_BuildImagePriceConfig_PassesThrough(t *testing.T) {
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {ImageQualityHigh: 0.211},
+		"1K": {ImageQualityHigh: 0.211},
 	}
 	p1k := 0.01
 	g := &Group{

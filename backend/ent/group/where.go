@@ -185,6 +185,21 @@ func ImagePrice4k(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
 }
 
+// ImageResolution1k applies equality check predicate on the "image_resolution_1k" field. It's identical to ImageResolution1kEQ.
+func ImageResolution1k(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution1k, v))
+}
+
+// ImageResolution2k applies equality check predicate on the "image_resolution_2k" field. It's identical to ImageResolution2kEQ.
+func ImageResolution2k(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution2k, v))
+}
+
+// ImageResolution4k applies equality check predicate on the "image_resolution_4k" field. It's identical to ImageResolution4kEQ.
+func ImageResolution4k(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution4k, v))
+}
+
 // ImagePreferFal applies equality check predicate on the "image_prefer_fal" field. It's identical to ImagePreferFalEQ.
 func ImagePreferFal(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePreferFal, v))
@@ -1548,6 +1563,201 @@ func ImagePrice4kIsNil() predicate.Group {
 // ImagePrice4kNotNil applies the NotNil predicate on the "image_price_4k" field.
 func ImagePrice4kNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldImagePrice4k))
+}
+
+// ImageResolution1kEQ applies the EQ predicate on the "image_resolution_1k" field.
+func ImageResolution1kEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kNEQ applies the NEQ predicate on the "image_resolution_1k" field.
+func ImageResolution1kNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kIn applies the In predicate on the "image_resolution_1k" field.
+func ImageResolution1kIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImageResolution1k, vs...))
+}
+
+// ImageResolution1kNotIn applies the NotIn predicate on the "image_resolution_1k" field.
+func ImageResolution1kNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImageResolution1k, vs...))
+}
+
+// ImageResolution1kGT applies the GT predicate on the "image_resolution_1k" field.
+func ImageResolution1kGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kGTE applies the GTE predicate on the "image_resolution_1k" field.
+func ImageResolution1kGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kLT applies the LT predicate on the "image_resolution_1k" field.
+func ImageResolution1kLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kLTE applies the LTE predicate on the "image_resolution_1k" field.
+func ImageResolution1kLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kContains applies the Contains predicate on the "image_resolution_1k" field.
+func ImageResolution1kContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kHasPrefix applies the HasPrefix predicate on the "image_resolution_1k" field.
+func ImageResolution1kHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kHasSuffix applies the HasSuffix predicate on the "image_resolution_1k" field.
+func ImageResolution1kHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kEqualFold applies the EqualFold predicate on the "image_resolution_1k" field.
+func ImageResolution1kEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldImageResolution1k, v))
+}
+
+// ImageResolution1kContainsFold applies the ContainsFold predicate on the "image_resolution_1k" field.
+func ImageResolution1kContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldImageResolution1k, v))
+}
+
+// ImageResolution2kEQ applies the EQ predicate on the "image_resolution_2k" field.
+func ImageResolution2kEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kNEQ applies the NEQ predicate on the "image_resolution_2k" field.
+func ImageResolution2kNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kIn applies the In predicate on the "image_resolution_2k" field.
+func ImageResolution2kIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImageResolution2k, vs...))
+}
+
+// ImageResolution2kNotIn applies the NotIn predicate on the "image_resolution_2k" field.
+func ImageResolution2kNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImageResolution2k, vs...))
+}
+
+// ImageResolution2kGT applies the GT predicate on the "image_resolution_2k" field.
+func ImageResolution2kGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kGTE applies the GTE predicate on the "image_resolution_2k" field.
+func ImageResolution2kGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kLT applies the LT predicate on the "image_resolution_2k" field.
+func ImageResolution2kLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kLTE applies the LTE predicate on the "image_resolution_2k" field.
+func ImageResolution2kLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kContains applies the Contains predicate on the "image_resolution_2k" field.
+func ImageResolution2kContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kHasPrefix applies the HasPrefix predicate on the "image_resolution_2k" field.
+func ImageResolution2kHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kHasSuffix applies the HasSuffix predicate on the "image_resolution_2k" field.
+func ImageResolution2kHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kEqualFold applies the EqualFold predicate on the "image_resolution_2k" field.
+func ImageResolution2kEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldImageResolution2k, v))
+}
+
+// ImageResolution2kContainsFold applies the ContainsFold predicate on the "image_resolution_2k" field.
+func ImageResolution2kContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldImageResolution2k, v))
+}
+
+// ImageResolution4kEQ applies the EQ predicate on the "image_resolution_4k" field.
+func ImageResolution4kEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kNEQ applies the NEQ predicate on the "image_resolution_4k" field.
+func ImageResolution4kNEQ(v string) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kIn applies the In predicate on the "image_resolution_4k" field.
+func ImageResolution4kIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldImageResolution4k, vs...))
+}
+
+// ImageResolution4kNotIn applies the NotIn predicate on the "image_resolution_4k" field.
+func ImageResolution4kNotIn(vs ...string) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldImageResolution4k, vs...))
+}
+
+// ImageResolution4kGT applies the GT predicate on the "image_resolution_4k" field.
+func ImageResolution4kGT(v string) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kGTE applies the GTE predicate on the "image_resolution_4k" field.
+func ImageResolution4kGTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kLT applies the LT predicate on the "image_resolution_4k" field.
+func ImageResolution4kLT(v string) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kLTE applies the LTE predicate on the "image_resolution_4k" field.
+func ImageResolution4kLTE(v string) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kContains applies the Contains predicate on the "image_resolution_4k" field.
+func ImageResolution4kContains(v string) predicate.Group {
+	return predicate.Group(sql.FieldContains(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kHasPrefix applies the HasPrefix predicate on the "image_resolution_4k" field.
+func ImageResolution4kHasPrefix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasPrefix(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kHasSuffix applies the HasSuffix predicate on the "image_resolution_4k" field.
+func ImageResolution4kHasSuffix(v string) predicate.Group {
+	return predicate.Group(sql.FieldHasSuffix(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kEqualFold applies the EqualFold predicate on the "image_resolution_4k" field.
+func ImageResolution4kEqualFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldEqualFold(FieldImageResolution4k, v))
+}
+
+// ImageResolution4kContainsFold applies the ContainsFold predicate on the "image_resolution_4k" field.
+func ImageResolution4kContainsFold(v string) predicate.Group {
+	return predicate.Group(sql.FieldContainsFold(FieldImageResolution4k, v))
 }
 
 // ImagePricingMatrixIsNil applies the IsNil predicate on the "image_pricing_matrix" field.

@@ -417,11 +417,13 @@ type OpenAIResponsesImageBillingConfig struct {
 	Model     string
 	SizeTier  string
 	InputSize string
+	Quality   string
 }
 
 func resolveOpenAIResponsesImageBillingConfigDetailed(reqBody map[string]any, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
 	imageModel := ""
 	imageSize := ""
+	imageQuality := ""
 	hasImageTool := false
 	if reqBody != nil {
 		rawTools, _ := reqBody["tools"].([]any)
@@ -433,10 +435,14 @@ func resolveOpenAIResponsesImageBillingConfigDetailed(reqBody map[string]any, fa
 			hasImageTool = true
 			imageModel = strings.TrimSpace(firstNonEmptyString(toolMap["model"]))
 			imageSize = strings.TrimSpace(firstNonEmptyString(toolMap["size"]))
+			imageQuality = strings.TrimSpace(firstNonEmptyString(toolMap["quality"]))
 			break
 		}
 		if imageSize == "" {
 			imageSize = strings.TrimSpace(firstNonEmptyString(reqBody["size"]))
+		}
+		if imageQuality == "" {
+			imageQuality = strings.TrimSpace(firstNonEmptyString(reqBody["quality"]))
 		}
 	}
 	if imageModel == "" && reqBody != nil {
@@ -456,6 +462,7 @@ func resolveOpenAIResponsesImageBillingConfigDetailed(reqBody map[string]any, fa
 		Model:     imageModel,
 		SizeTier:  sizeTier,
 		InputSize: imageSize,
+		Quality:   imageQuality,
 	}, nil
 }
 
@@ -470,6 +477,7 @@ func resolveOpenAIResponsesImageBillingConfigFromBody(body []byte, fallbackModel
 func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
 	imageModel := ""
 	imageSize := ""
+	imageQuality := ""
 	hasImageTool := false
 	if len(body) > 0 && gjson.ValidBytes(body) {
 		tools := gjson.GetBytes(body, "tools")
@@ -481,11 +489,15 @@ func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallb
 				hasImageTool = true
 				imageModel = openAIJSONString(item.Get("model"))
 				imageSize = openAIJSONString(item.Get("size"))
+				imageQuality = openAIJSONString(item.Get("quality"))
 				return false
 			})
 		}
 		if imageSize == "" {
 			imageSize = openAIJSONString(gjson.GetBytes(body, "size"))
+		}
+		if imageQuality == "" {
+			imageQuality = openAIJSONString(gjson.GetBytes(body, "quality"))
 		}
 		if imageModel == "" {
 			bodyModel := openAIJSONString(gjson.GetBytes(body, "model"))
@@ -504,6 +516,7 @@ func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallb
 		Model:     imageModel,
 		SizeTier:  normalizeOpenAIImageSizeTier(imageSize),
 		InputSize: imageSize,
+		Quality:   imageQuality,
 	}, nil
 }
 

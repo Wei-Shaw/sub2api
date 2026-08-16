@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	firstTokenMs       *int
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 	imageOutputURLs    []string
@@ -40,6 +41,7 @@ type openaiNonStreamingResult struct {
 	usage              *OpenAIUsage
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 	imageOutputURLs    []string
@@ -339,6 +341,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			firstTokenMs:       firstTokenMs,
 			responseID:         responseID,
 			imageCount:         imageCounter.Count(),
+			imageQuality:       imageCounter.Quality(),
 			imageOutputSizes:   imageCounter.Sizes(),
 			imageOutputBase64s: imageOutputBase64s,
 			imageOutputURLs:    imageOutputURLs,
@@ -1301,6 +1304,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
+	imageQuality := collectOpenAIResponseImageQualityFromJSONBytes(body)
 	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 	imageOutputURLs := collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
@@ -1319,6 +1323,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 		imageOutputURLs:    imageOutputURLs,
@@ -1409,12 +1414,14 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		}
 	}
 	imageCount := 0
+	imageQuality := ""
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
 	var imageOutputURLs []string
 	var imageOutputTexts []string
 	if ok {
 		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
+		imageQuality = collectOpenAIResponseImageQualityFromJSONBytes(body)
 		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 		imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
@@ -1425,6 +1432,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		}
 	} else {
 		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
+		imageQuality = collectOpenAIImageQualityFromSSEBody(bodyText)
 		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
 		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
 		imageOutputURLs = collectOpenAIImageOutputURLsFromSSEBody(bodyText)
@@ -1444,6 +1452,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 		imageOutputURLs:    imageOutputURLs,

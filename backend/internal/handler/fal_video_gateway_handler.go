@@ -64,6 +64,8 @@ func (h *FalVideoGatewayHandler) Native(c *gin.Context) {
 	method := c.Request.Method
 
 	switch {
+	case method == http.MethodPost && strings.HasSuffix(path, "/estimate_pricing"):
+		h.estimatePricing(c, path)
 	case method == http.MethodGet && strings.HasSuffix(path, "/status"):
 		h.nativeStatus(c, videoRequestIDFromPath(path))
 	case method == http.MethodPut && strings.HasSuffix(path, "/cancel"):

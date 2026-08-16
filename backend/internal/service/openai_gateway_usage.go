@@ -347,6 +347,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageCount:            result.ImageCount,
 		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
 		ImageInputSize:        optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageQuality:          optionalTrimmedStringPtr(result.ImageQuality),
 		ImageOutputSize:       optionalTrimmedStringPtr(result.ImageOutputSize),
 		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
 		ImageSizeBreakdown:    result.ImageSizeBreakdown,
@@ -693,14 +694,15 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	billingSize := imageBillingSizeOrTier(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if resolved != nil && resolved.Source == PricingSourceGroup &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-			RequestCount: result.ImageCount, SizeTier: sizeTier,
-			RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
+			RequestCount: result.ImageCount, SizeTier: billingSize,
+			Quality: result.ImageQuality, RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
 		})
 		if err == nil {
 			return cost
@@ -708,13 +710,13 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithQuality(billingModel, billingSize, result.ImageQuality, result.ImageCount, groupConfig, multiplier)
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = imagePriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-			return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+			return s.billingService.CalculateImageCostWithQuality(billingModel, billingSize, result.ImageQuality, result.ImageCount, groupConfig, multiplier)
 		}
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
@@ -726,7 +728,8 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			GroupID:        &gid,
 			Group:          apiKey.Group,
 			RequestCount:   result.ImageCount,
-			SizeTier:       sizeTier,
+			SizeTier:       billingSize,
+			Quality:        result.ImageQuality,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
@@ -737,7 +740,7 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithQuality(billingModel, billingSize, result.ImageQuality, result.ImageCount, groupConfig, multiplier)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(

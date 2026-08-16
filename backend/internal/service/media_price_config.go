@@ -1,13 +1,27 @@
 package service
 
+func imageBillingSizeOrTier(raw string) string {
+	if imageTierLabel(raw) != "" {
+		return imageTierLabel(raw)
+	}
+	if _, err := ParseImageRequestDimensions(raw); err == nil {
+		return raw
+	}
+	return NormalizeImageBillingTierOrDefault(raw)
+}
+
 func imagePriceConfigFromAPIKey(apiKey *APIKey) *ImagePriceConfig {
 	if apiKey == nil || apiKey.Group == nil {
 		return nil
 	}
 	return &ImagePriceConfig{
-		Price1K: apiKey.Group.ImagePrice1K,
-		Price2K: apiKey.Group.ImagePrice2K,
-		Price4K: apiKey.Group.ImagePrice4K,
+		Price1K:       apiKey.Group.ImagePrice1K,
+		Price2K:       apiKey.Group.ImagePrice2K,
+		Price4K:       apiKey.Group.ImagePrice4K,
+		Resolution1K:  apiKey.Group.ImageResolution1K,
+		Resolution2K:  apiKey.Group.ImageResolution2K,
+		Resolution4K:  apiKey.Group.ImageResolution4K,
+		PricingMatrix: apiKey.Group.ImagePricingMatrix,
 	}
 }
 

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { validateIntervals, type IntervalFormEntry } from '../types'
+import { formIntervalsToAPI, validateIntervals, type IntervalFormEntry } from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
     min_tokens: 0,
     max_tokens: null,
     tier_label: '',
+    resolution: '',
     quality: '',
     input_price: null,
     output_price: null,
@@ -59,12 +60,35 @@ describe('validateIntervals', () => {
   describe('image / per_request mode', () => {
     it('allows multiple unbounded tiers identified by label', () => {
       const intervals: IntervalFormEntry[] = [
-        makeInterval({ tier_label: '1K', per_request_price: 0.04 }),
-        makeInterval({ tier_label: '2K', per_request_price: 0.06 }),
-        makeInterval({ tier_label: '4K', per_request_price: 0.08 }),
+        makeInterval({ tier_label: '1K', resolution: '1024x1024', per_request_price: 0.04 }),
+        makeInterval({ tier_label: '2K', resolution: '2048x2048', per_request_price: 0.06 }),
+        makeInterval({ tier_label: '4K', resolution: '4096x4096', per_request_price: 0.08 }),
       ]
       expect(validateIntervals(intervals, 'image', t)).toBeNull()
       expect(validateIntervals(intervals, 'per_request', t)).toBeNull()
+    })
+
+    it('allows multiple qualities in the same image tier and ignores unpriced placeholders', () => {
+      const intervals: IntervalFormEntry[] = [
+        makeInterval({ tier_label: '1K', resolution: '1080x1080', quality: 'low', per_request_price: 1 }),
+        makeInterval({ tier_label: '1k', resolution: '1080x1080', quality: 'medium', per_request_price: 2 }),
+        makeInterval({ tier_label: '2K', resolution: '2048x2048' }),
+        makeInterval({ tier_label: '4K', resolution: '4096x4096' }),
+      ]
+
+      expect(validateIntervals(intervals, 'image', t)).toBeNull()
+      expect(formIntervalsToAPI(intervals)).toHaveLength(2)
+    })
+
+    it('allows equal short-side thresholds when the next tier expands the long side', () => {
+      const intervals: IntervalFormEntry[] = [
+        makeInterval({ tier_label: '1K', resolution: '1080x1080', quality: 'low', per_request_price: 1 }),
+        makeInterval({ tier_label: '1K', resolution: '1080x1080', quality: 'medium', per_request_price: 2 }),
+        makeInterval({ tier_label: '2K', resolution: '2160x2160', quality: 'high', per_request_price: 6 }),
+        makeInterval({ tier_label: '4K', resolution: '3840x2160', quality: 'low', per_request_price: 7 }),
+      ]
+
+      expect(validateIntervals(intervals, 'image', t)).toBeNull()
     })
 
     it('still rejects negative prices', () => {

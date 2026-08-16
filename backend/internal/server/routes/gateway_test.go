@@ -69,6 +69,29 @@ func TestGatewayRoutesVideoFeatureDisabledRejectsBeforeAuth(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"type":"feature_disabled"`)
 }
 
+func TestGatewayRoutesEstimatePricingBypassesVideoFeatureGate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	authCalled := false
+	settingService := service.NewSettingService(&videoFeatureRouteSettingRepo{}, &config.Config{})
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{},
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			authCalled = true
+			c.AbortWithStatus(http.StatusTeapot)
+		}),
+		nil, nil, nil, settingService, nil,
+		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1024}},
+	)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/model/fal-ai/flux/dev/estimate_pricing", strings.NewReader(`{"image_size":"square"}`))
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusTeapot, recorder.Code)
+	require.True(t, authCalled)
+}
+
 func (s *routeResponsesImageStatusStore) GetResponsesImageStatus(_ context.Context, requestID string) (*service.ResponsesImageStatus, error) {
 	s.gets++
 	if status := s.items[requestID]; status != nil {

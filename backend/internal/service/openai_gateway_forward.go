@@ -566,6 +566,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
+	imageRequestQuality := ""
+	imageDefaultQuality := ImageQualityMedium
 	if imageIntent {
 		var imageCfg OpenAIResponsesImageBillingConfig
 		var imageCfgErr error
@@ -582,6 +584,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageBillingModel = imageCfg.Model
 		imageSizeTier = imageCfg.SizeTier
 		imageInputSize = imageCfg.InputSize
+		imageRequestQuality = imageCfg.Quality
+		imageDefaultQuality = s.resolveOpenAIResponsesDefaultImageQuality(ctx, apiKey)
 	}
 
 	// Get access token
@@ -807,6 +811,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if wsResult.ImageCount > 0 {
 				wsResult.ImageSize = imageSizeTier
 				wsResult.ImageInputSize = imageInputSize
+				wsResult.ImageQuality = resolveOpenAIResponsesImageQuality(wsResult.ImageQuality, imageRequestQuality, imageDefaultQuality)
 				wsResult.BillingModel = imageBillingModel
 				s.MarkResponsesImageStatusUpstreamDone(upstreamCtx, wsResult)
 			}
@@ -990,6 +995,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenMs *int
 		responseID := ""
 		imageCount := 0
+		imageResponseQuality := ""
 		searchCount := 0
 		var imageOutputSizes []string
 		var imageOutputBase64s []string
@@ -1010,6 +1016,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			firstTokenMs = streamResult.firstTokenMs
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
+			imageResponseQuality = streamResult.imageQuality
 			imageOutputSizes = streamResult.imageOutputSizes
 			imageOutputBase64s = streamResult.imageOutputBase64s
 			imageOutputURLs = streamResult.imageOutputURLs
@@ -1023,6 +1030,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = nonStreamResult.usage
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
+			imageResponseQuality = nonStreamResult.imageQuality
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 			imageOutputBase64s = nonStreamResult.imageOutputBase64s
 			imageOutputURLs = nonStreamResult.imageOutputURLs
@@ -1063,6 +1071,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			forwardResult.ImageCount = imageCount
 			forwardResult.ImageSize = imageSizeTier
 			forwardResult.ImageInputSize = imageInputSize
+			forwardResult.ImageQuality = resolveOpenAIResponsesImageQuality(imageResponseQuality, imageRequestQuality, imageDefaultQuality)
 			forwardResult.ImageOutputSizes = imageOutputSizes
 			forwardResult.ImageOutputBase64 = imageOutputBase64s
 			forwardResult.ImageOutputURLs = imageOutputURLs

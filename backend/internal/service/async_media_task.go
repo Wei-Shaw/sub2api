@@ -124,9 +124,10 @@ type TerminalUsageLogInput struct {
 	BillingType int8  // 0=balance / 1=subscription
 	RequestType int16 // RequestTypeSync 等
 
-	ImageCount  int
-	ImageSize   string
-	BillingTier string // size_tier
+	ImageCount   int
+	ImageSize    string
+	ImageQuality string
+	BillingTier  string // size_tier
 
 	TaskID        int64
 	ImageURLs     []string

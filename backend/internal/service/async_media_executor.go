@@ -500,6 +500,7 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 		RequestType:     int16(RequestTypeSync),
 		ImageCount:      task.NumImages,
 		ImageSize:       amDerefStr(task.ImageSize),
+		ImageQuality:    amDerefStr(task.Quality),
 		BillingTier:     amDerefStr(task.SizeTier),
 		TaskID:          task.ID,
 		ImageURLs:       imageURLs,
@@ -589,7 +590,7 @@ func (s *AsyncMediaService) estimateCost(
 				Model:          model,
 				GroupID:        groupID,
 				RequestCount:   count,
-				SizeTier:       sizeTier,
+				SizeTier:       imageBillingSizeOrTier(rawSize),
 				Quality:        quality,
 				RateMultiplier: rateMultiplier,
 				Resolver:       s.resolver,
@@ -614,7 +615,10 @@ func (s *AsyncMediaService) estimateCost(
 		return 0, fmt.Errorf("%w: model=%s group=%v no channel pricing and group not loadable",
 			ErrAsyncMediaPricingMissing, model, groupID)
 	}
-	breakdown := s.billing.CalculateImageCostWithQuality(model, sizeTier, quality, count, groupCfg, rateMultiplier)
+	breakdown, err := s.billing.CalculateImageCostWithQualityValidated(model, imageBillingSizeOrTier(rawSize), quality, count, groupCfg, rateMultiplier)
+	if err != nil {
+		return 0, err
+	}
 	if breakdown == nil {
 		return 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, model)
 	}

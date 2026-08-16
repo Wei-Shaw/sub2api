@@ -84,6 +84,9 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice1K                    *float64                      `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64                      `json:"image_price_2k,omitempty"`
 	ImagePrice4K                    *float64                      `json:"image_price_4k,omitempty"`
+	ImageResolution1K               string                        `json:"image_resolution_1k,omitempty"`
+	ImageResolution2K               string                        `json:"image_resolution_2k,omitempty"`
+	ImageResolution4K               string                        `json:"image_resolution_4k,omitempty"`
 	VideoRateIndependent            bool                          `json:"video_rate_independent"`
 	VideoRateMultiplier             float64                       `json:"video_rate_multiplier"`
 	VideoPrice480P                  *float64                      `json:"video_price_480p,omitempty"`

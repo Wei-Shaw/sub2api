@@ -199,6 +199,7 @@ func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *test
 
 	imageSize := "4K"
 	inputSize := "1024x1024"
+	quality := "high"
 	outputSize := "3840x2160"
 	source := "output"
 	log := &service.UsageLog{
@@ -207,6 +208,7 @@ func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *test
 		ImageCount:         2,
 		ImageSize:          &imageSize,
 		ImageInputSize:     &inputSize,
+		ImageQuality:       &quality,
 		ImageOutputSize:    &outputSize,
 		ImageSizeSource:    &source,
 		ImageSizeBreakdown: map[string]int{"4K": 2},
@@ -221,6 +223,8 @@ func TestUsageLogFromService_IncludesImageBillingMetadataForUserAndAdmin(t *test
 		require.Equal(t, imageSize, *got.ImageSize)
 		require.NotNil(t, got.ImageInputSize)
 		require.Equal(t, inputSize, *got.ImageInputSize)
+		require.NotNil(t, got.ImageQuality)
+		require.Equal(t, quality, *got.ImageQuality)
 		require.NotNil(t, got.ImageOutputSize)
 		require.Equal(t, outputSize, *got.ImageOutputSize)
 		require.NotNil(t, got.ImageSizeSource)
@@ -243,6 +247,7 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 	require.Equal(t, 1, dto.ImageCount)
 	require.Nil(t, dto.ImageSize)
 	require.Nil(t, dto.ImageInputSize)
+	require.Nil(t, dto.ImageQuality)
 	require.Nil(t, dto.ImageOutputSize)
 	require.Nil(t, dto.ImageSizeSource)
 	require.Nil(t, dto.ImageSizeBreakdown)

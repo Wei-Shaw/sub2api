@@ -333,6 +333,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	imagePrice1K := normalizePrice(input.ImagePrice1K)
 	imagePrice2K := normalizePrice(input.ImagePrice2K)
 	imagePrice4K := normalizePrice(input.ImagePrice4K)
+	imageResolutions, err := normalizeGroupImageTierResolutions(
+		input.ImageResolution1K, input.ImageResolution2K, input.ImageResolution4K,
+	)
+	if err != nil {
+		return nil, err
+	}
 	videoPrice480P := normalizePrice(input.VideoPrice480P)
 	videoPrice720P := normalizePrice(input.VideoPrice720P)
 	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
@@ -504,6 +510,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
+		ImageResolution1K:               imageResolutions[0],
+		ImageResolution2K:               imageResolutions[1],
+		ImageResolution4K:               imageResolutions[2],
 		ImagePricingMatrix:              normalizeImagePricingMatrix(input.ImagePricingMatrix),
 		ImagePreferFal:                  input.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            input.ImageDecodeSizeOnRsp,
@@ -815,6 +824,25 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ImagePrice4K != nil {
 		group.ImagePrice4K = normalizePrice(input.ImagePrice4K)
 	}
+	resolution1K := group.ImageResolution1K
+	resolution2K := group.ImageResolution2K
+	resolution4K := group.ImageResolution4K
+	if input.ImageResolution1K != nil {
+		resolution1K = *input.ImageResolution1K
+	}
+	if input.ImageResolution2K != nil {
+		resolution2K = *input.ImageResolution2K
+	}
+	if input.ImageResolution4K != nil {
+		resolution4K = *input.ImageResolution4K
+	}
+	imageResolutions, err := normalizeGroupImageTierResolutions(resolution1K, resolution2K, resolution4K)
+	if err != nil {
+		return nil, err
+	}
+	group.ImageResolution1K = imageResolutions[0]
+	group.ImageResolution2K = imageResolutions[1]
+	group.ImageResolution4K = imageResolutions[2]
 	if input.ImagePricingMatrix != nil {
 		if err := validateImagePricingMatrix(*input.ImagePricingMatrix); err != nil {
 			return nil, err

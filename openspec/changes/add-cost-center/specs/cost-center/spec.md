@@ -12,6 +12,14 @@ The system SHALL record every in-scope post-activation cost-center event with an
 - **WHEN** the same payment fulfillment notification is processed more than once
 - **THEN** the cost-center event remains a single event linked to that payment order
 
+#### Scenario: Recharge bonus creates a settled expense
+- **WHEN** a balance recharge order with a positive persisted bonus amount is fulfilled successfully
+- **THEN** the system creates one idempotent settled expense for the granted bonus amount, linked to the payment order and carrying the bonus rate and activity identifier for audit
+
+#### Scenario: Orders without recharge bonus do not create bonus expense
+- **WHEN** a balance recharge has no positive bonus amount or a subscription order is fulfilled
+- **THEN** the system does not create a recharge-bonus expense event
+
 #### Scenario: Historical records are excluded
 - **WHEN** an administrator opens a report covering dates before activation
 - **THEN** the report does not invent cost-center events for historical orders, usage, balances, or expenses
@@ -82,7 +90,7 @@ The system SHALL snapshot a paid subscription plan's price, standard token-quota
 
 ### Requirement: Administrator reports provide cash and operating profit by time range
 
-The system SHALL provide an administrator-only report query with an inclusive start and exclusive end timestamp in the configured reporting timezone. The response SHALL include cash income, realized consumption income, promotional/free consumption, manually entered settled operating expenses, pending expense forecast, refunds, fees/rebates when available, cash profit, operating profit, and profit margin. It SHALL support filtering and grouping by account, platform, user, group, model, subscription plan, source classification, and expense category. Historical automatic upstream-cost events SHALL remain stored for audit but SHALL be excluded from reports and event listings.
+The system SHALL provide an administrator-only report query with an inclusive start and exclusive end timestamp in the configured reporting timezone. The response SHALL include cash income, realized consumption income, promotional/free consumption, settled recharge-bonus and manually entered operating expenses, pending expense forecast, refunds, fees/rebates when available, cash profit, operating profit, and profit margin. It SHALL support filtering and grouping by account, platform, user, group, model, subscription plan, source classification, and expense category. Historical automatic upstream-cost events SHALL remain stored for audit but SHALL be excluded from reports and event listings.
 
 #### Scenario: Time-range summary
 - **WHEN** an administrator requests a report for a custom date range

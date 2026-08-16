@@ -460,6 +460,7 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		}
 		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
 	}
+	o.CompletedAt = &now
 	if !s.hasAuditLog(ctx, o.ID, auditAction) {
 		s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
 			"rechargeCode":   o.RechargeCode,
@@ -474,6 +475,26 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		currency := PaymentOrderCurrency(o)
 		key := fmt.Sprintf("payment-order:%d:income", o.ID)
 		_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{EventType: CostEventIncome, SourceType: "payment_order", SourceID: costCenterStringPtr(strconv.FormatInt(o.ID, 10)), IdempotencyKey: &key, UserID: &o.UserID, Category: o.OrderType, AmountUSD: amount, OriginalAmount: &originalAmount, OriginalCurrency: &currency, OccurredAt: o.CompletedAt, Note: "payment order settled"})
+		if o.OrderType == payment.OrderTypeBalance && o.BonusAmount > 0 {
+			bonusKey := fmt.Sprintf("payment-order:%d:recharge-bonus-expense", o.ID)
+			metadata := map[string]any{"bonus_rate": o.BonusRate}
+			if o.ActivityID != nil {
+				metadata["activity_id"] = *o.ActivityID
+			}
+			_, _ = s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{
+				EventType:      CostEventExpense,
+				Status:         "settled",
+				SourceType:     "recharge_bonus",
+				SourceID:       costCenterStringPtr(strconv.FormatInt(o.ID, 10)),
+				IdempotencyKey: &bonusKey,
+				UserID:         &o.UserID,
+				Category:       "recharge_bonus",
+				AmountUSD:      o.BonusAmount,
+				OccurredAt:     o.CompletedAt,
+				Note:           "recharge bonus granted",
+				Metadata:       metadata,
+			})
+		}
 		if o.OrderType == payment.OrderTypeSubscription && o.PlanID != nil && o.SubscriptionDays != nil {
 			if plan, err := s.entClient.SubscriptionPlan.Get(ctx, *o.PlanID); err == nil {
 				starts := now

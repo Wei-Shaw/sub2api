@@ -1946,20 +1946,23 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-				Name:                  item.Name,
-				Notes:                 item.Notes,
-				Platform:              item.Platform,
-				Type:                  item.Type,
-				Credentials:           item.Credentials,
-				Extra:                 item.Extra,
-				ProxyID:               item.ProxyID,
-				Concurrency:           item.Concurrency,
-				Priority:              item.Priority,
-				RateMultiplier:        item.RateMultiplier,
-				GroupIDs:              item.GroupIDs,
-				ExpiresAt:             item.ExpiresAt,
-				AutoPauseOnExpired:    item.AutoPauseOnExpired,
-				SkipMixedChannelCheck: skipCheck,
+				Name:                   item.Name,
+				Notes:                  item.Notes,
+				Platform:               item.Platform,
+				Type:                   item.Type,
+				Credentials:            item.Credentials,
+				Extra:                  item.Extra,
+				ProxyID:                item.ProxyID,
+				Concurrency:            item.Concurrency,
+				Priority:               item.Priority,
+				RateMultiplier:         item.RateMultiplier,
+				GroupIDs:               item.GroupIDs,
+				ExpiresAt:              item.ExpiresAt,
+				AutoPauseOnExpired:     item.AutoPauseOnExpired,
+				SkipMixedChannelCheck:  skipCheck,
+				InitialExpenseUSD:      item.InitialExpenseUSD,
+				InitialExpenseCategory: item.InitialExpenseCategory,
+				InitialExpenseNote:     item.InitialExpenseNote,
 			})
 			if err != nil {
 				failed++

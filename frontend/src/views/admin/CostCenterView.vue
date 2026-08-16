@@ -212,6 +212,7 @@ const categoryOptions = computed(() =>
       'database',
       'bandwidth',
       'payment_fee',
+      'recharge_bonus',
       'rebate',
       'refund_loss',
       'other',

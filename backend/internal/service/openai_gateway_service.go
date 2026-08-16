@@ -269,6 +269,7 @@ type OpenAIForwardResult struct {
 	ImageCount            int
 	ImageSize             string
 	ImageInputSize        string
+	ImageQuality          string
 	ImageOutputSize       string
 	ImageOutputSizes      []string
 	ImageOutputBase64     []string

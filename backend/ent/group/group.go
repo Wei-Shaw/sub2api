@@ -68,6 +68,12 @@ const (
 	FieldImagePrice2k = "image_price_2k"
 	// FieldImagePrice4k holds the string denoting the image_price_4k field in the database.
 	FieldImagePrice4k = "image_price_4k"
+	// FieldImageResolution1k holds the string denoting the image_resolution_1k field in the database.
+	FieldImageResolution1k = "image_resolution_1k"
+	// FieldImageResolution2k holds the string denoting the image_resolution_2k field in the database.
+	FieldImageResolution2k = "image_resolution_2k"
+	// FieldImageResolution4k holds the string denoting the image_resolution_4k field in the database.
+	FieldImageResolution4k = "image_resolution_4k"
 	// FieldImagePricingMatrix holds the string denoting the image_pricing_matrix field in the database.
 	FieldImagePricingMatrix = "image_pricing_matrix"
 	// FieldImagePreferFal holds the string denoting the image_prefer_fal field in the database.
@@ -259,6 +265,9 @@ var Columns = []string{
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
+	FieldImageResolution1k,
+	FieldImageResolution2k,
+	FieldImageResolution4k,
 	FieldImagePricingMatrix,
 	FieldImagePreferFal,
 	FieldImageDecodeSizeOnRsp,
@@ -381,6 +390,18 @@ var (
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
 	DefaultImageRateMultiplier float64
+	// DefaultImageResolution1k holds the default value on creation for the "image_resolution_1k" field.
+	DefaultImageResolution1k string
+	// ImageResolution1kValidator is a validator for the "image_resolution_1k" field. It is called by the builders before save.
+	ImageResolution1kValidator func(string) error
+	// DefaultImageResolution2k holds the default value on creation for the "image_resolution_2k" field.
+	DefaultImageResolution2k string
+	// ImageResolution2kValidator is a validator for the "image_resolution_2k" field. It is called by the builders before save.
+	ImageResolution2kValidator func(string) error
+	// DefaultImageResolution4k holds the default value on creation for the "image_resolution_4k" field.
+	DefaultImageResolution4k string
+	// ImageResolution4kValidator is a validator for the "image_resolution_4k" field. It is called by the builders before save.
+	ImageResolution4kValidator func(string) error
 	// DefaultImagePreferFal holds the default value on creation for the "image_prefer_fal" field.
 	DefaultImagePreferFal bool
 	// DefaultImageDecodeSizeOnRsp holds the default value on creation for the "image_decode_size_on_rsp" field.
@@ -595,6 +616,21 @@ func ByImagePrice2k(opts ...sql.OrderTermOption) OrderOption {
 // ByImagePrice4k orders the results by the image_price_4k field.
 func ByImagePrice4k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImagePrice4k, opts...).ToFunc()
+}
+
+// ByImageResolution1k orders the results by the image_resolution_1k field.
+func ByImageResolution1k(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageResolution1k, opts...).ToFunc()
+}
+
+// ByImageResolution2k orders the results by the image_resolution_2k field.
+func ByImageResolution2k(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageResolution2k, opts...).ToFunc()
+}
+
+// ByImageResolution4k orders the results by the image_resolution_4k field.
+func ByImageResolution4k(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageResolution4k, opts...).ToFunc()
 }
 
 // ByImagePreferFal orders the results by the image_prefer_fal field.

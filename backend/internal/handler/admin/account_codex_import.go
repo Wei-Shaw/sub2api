@@ -39,6 +39,9 @@ type CodexSessionImportRequest struct {
 	UpdateExisting          *bool          `json:"update_existing"`
 	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+	InitialExpenseUSD       float64        `json:"initial_expense_usd"`
+	InitialExpenseCategory  string         `json:"initial_expense_category"`
+	InitialExpenseNote      string         `json:"initial_expense_note"`
 }
 
 type CodexSessionImportResult struct {
@@ -329,22 +332,25 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		}
 
 		account, createErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  accountName,
-			Notes:                 req.Notes,
-			Platform:              service.PlatformOpenAI,
-			Type:                  service.AccountTypeOAuth,
-			Credentials:           credentials,
-			Extra:                 extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           concurrency,
-			Priority:              priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             effectiveExpiresAt,
-			AutoPauseOnExpired:    autoPauseOnExpired,
-			SkipDefaultGroupBind:  skipDefaultGroupBind,
-			SkipMixedChannelCheck: skipMixedChannelCheck,
+			Name:                   accountName,
+			Notes:                  req.Notes,
+			Platform:               service.PlatformOpenAI,
+			Type:                   service.AccountTypeOAuth,
+			Credentials:            credentials,
+			Extra:                  extra,
+			ProxyID:                req.ProxyID,
+			Concurrency:            concurrency,
+			Priority:               priority,
+			RateMultiplier:         req.RateMultiplier,
+			LoadFactor:             req.LoadFactor,
+			GroupIDs:               req.GroupIDs,
+			ExpiresAt:              effectiveExpiresAt,
+			AutoPauseOnExpired:     autoPauseOnExpired,
+			SkipDefaultGroupBind:   skipDefaultGroupBind,
+			SkipMixedChannelCheck:  skipMixedChannelCheck,
+			InitialExpenseUSD:      req.InitialExpenseUSD,
+			InitialExpenseCategory: req.InitialExpenseCategory,
+			InitialExpenseNote:     req.InitialExpenseNote,
 		})
 		if createErr != nil {
 			result.Failed++

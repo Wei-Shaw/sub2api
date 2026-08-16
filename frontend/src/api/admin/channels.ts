@@ -13,6 +13,7 @@ export interface PricingInterval {
   min_tokens: number
   max_tokens: number | null
   tier_label: string
+  resolution?: string
   quality?: string
   input_price: number | null
   output_price: number | null

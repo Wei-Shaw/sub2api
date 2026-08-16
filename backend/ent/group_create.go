@@ -386,6 +386,48 @@ func (_c *GroupCreate) SetNillableImagePrice4k(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (_c *GroupCreate) SetImageResolution1k(v string) *GroupCreate {
+	_c.mutation.SetImageResolution1k(v)
+	return _c
+}
+
+// SetNillableImageResolution1k sets the "image_resolution_1k" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageResolution1k(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetImageResolution1k(*v)
+	}
+	return _c
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (_c *GroupCreate) SetImageResolution2k(v string) *GroupCreate {
+	_c.mutation.SetImageResolution2k(v)
+	return _c
+}
+
+// SetNillableImageResolution2k sets the "image_resolution_2k" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageResolution2k(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetImageResolution2k(*v)
+	}
+	return _c
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (_c *GroupCreate) SetImageResolution4k(v string) *GroupCreate {
+	_c.mutation.SetImageResolution4k(v)
+	return _c
+}
+
+// SetNillableImageResolution4k sets the "image_resolution_4k" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageResolution4k(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetImageResolution4k(*v)
+	}
+	return _c
+}
+
 // SetImagePricingMatrix sets the "image_pricing_matrix" field.
 func (_c *GroupCreate) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupCreate {
 	_c.mutation.SetImagePricingMatrix(v)
@@ -1165,6 +1207,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultImageRateMultiplier
 		_c.mutation.SetImageRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.ImageResolution1k(); !ok {
+		v := group.DefaultImageResolution1k
+		_c.mutation.SetImageResolution1k(v)
+	}
+	if _, ok := _c.mutation.ImageResolution2k(); !ok {
+		v := group.DefaultImageResolution2k
+		_c.mutation.SetImageResolution2k(v)
+	}
+	if _, ok := _c.mutation.ImageResolution4k(); !ok {
+		v := group.DefaultImageResolution4k
+		_c.mutation.SetImageResolution4k(v)
+	}
 	if _, ok := _c.mutation.ImagePreferFal(); !ok {
 		v := group.DefaultImagePreferFal
 		_c.mutation.SetImagePreferFal(v)
@@ -1379,6 +1433,30 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
 		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.ImageResolution1k(); !ok {
+		return &ValidationError{Name: "image_resolution_1k", err: errors.New(`ent: missing required field "Group.image_resolution_1k"`)}
+	}
+	if v, ok := _c.mutation.ImageResolution1k(); ok {
+		if err := group.ImageResolution1kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_1k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_1k": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ImageResolution2k(); !ok {
+		return &ValidationError{Name: "image_resolution_2k", err: errors.New(`ent: missing required field "Group.image_resolution_2k"`)}
+	}
+	if v, ok := _c.mutation.ImageResolution2k(); ok {
+		if err := group.ImageResolution2kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_2k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_2k": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ImageResolution4k(); !ok {
+		return &ValidationError{Name: "image_resolution_4k", err: errors.New(`ent: missing required field "Group.image_resolution_4k"`)}
+	}
+	if v, ok := _c.mutation.ImageResolution4k(); ok {
+		if err := group.ImageResolution4kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_4k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_4k": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ImagePreferFal(); !ok {
 		return &ValidationError{Name: "image_prefer_fal", err: errors.New(`ent: missing required field "Group.image_prefer_fal"`)}
@@ -1638,6 +1716,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ImagePrice4k(); ok {
 		_spec.SetField(group.FieldImagePrice4k, field.TypeFloat64, value)
 		_node.ImagePrice4k = &value
+	}
+	if value, ok := _c.mutation.ImageResolution1k(); ok {
+		_spec.SetField(group.FieldImageResolution1k, field.TypeString, value)
+		_node.ImageResolution1k = value
+	}
+	if value, ok := _c.mutation.ImageResolution2k(); ok {
+		_spec.SetField(group.FieldImageResolution2k, field.TypeString, value)
+		_node.ImageResolution2k = value
+	}
+	if value, ok := _c.mutation.ImageResolution4k(); ok {
+		_spec.SetField(group.FieldImageResolution4k, field.TypeString, value)
+		_node.ImageResolution4k = value
 	}
 	if value, ok := _c.mutation.ImagePricingMatrix(); ok {
 		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
@@ -2368,6 +2458,42 @@ func (u *GroupUpsert) AddImagePrice4k(v float64) *GroupUpsert {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (u *GroupUpsert) ClearImagePrice4k() *GroupUpsert {
 	u.SetNull(group.FieldImagePrice4k)
+	return u
+}
+
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (u *GroupUpsert) SetImageResolution1k(v string) *GroupUpsert {
+	u.Set(group.FieldImageResolution1k, v)
+	return u
+}
+
+// UpdateImageResolution1k sets the "image_resolution_1k" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageResolution1k() *GroupUpsert {
+	u.SetExcluded(group.FieldImageResolution1k)
+	return u
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (u *GroupUpsert) SetImageResolution2k(v string) *GroupUpsert {
+	u.Set(group.FieldImageResolution2k, v)
+	return u
+}
+
+// UpdateImageResolution2k sets the "image_resolution_2k" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageResolution2k() *GroupUpsert {
+	u.SetExcluded(group.FieldImageResolution2k)
+	return u
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (u *GroupUpsert) SetImageResolution4k(v string) *GroupUpsert {
+	u.Set(group.FieldImageResolution4k, v)
+	return u
+}
+
+// UpdateImageResolution4k sets the "image_resolution_4k" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageResolution4k() *GroupUpsert {
+	u.SetExcluded(group.FieldImageResolution4k)
 	return u
 }
 
@@ -3616,6 +3742,48 @@ func (u *GroupUpsertOne) UpdateImagePrice4k() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearImagePrice4k() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (u *GroupUpsertOne) SetImageResolution1k(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution1k(v)
+	})
+}
+
+// UpdateImageResolution1k sets the "image_resolution_1k" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageResolution1k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution1k()
+	})
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (u *GroupUpsertOne) SetImageResolution2k(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution2k(v)
+	})
+}
+
+// UpdateImageResolution2k sets the "image_resolution_2k" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageResolution2k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution2k()
+	})
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (u *GroupUpsertOne) SetImageResolution4k(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution4k(v)
+	})
+}
+
+// UpdateImageResolution4k sets the "image_resolution_4k" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageResolution4k() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution4k()
 	})
 }
 
@@ -5153,6 +5321,48 @@ func (u *GroupUpsertBulk) UpdateImagePrice4k() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearImagePrice4k() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearImagePrice4k()
+	})
+}
+
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (u *GroupUpsertBulk) SetImageResolution1k(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution1k(v)
+	})
+}
+
+// UpdateImageResolution1k sets the "image_resolution_1k" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageResolution1k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution1k()
+	})
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (u *GroupUpsertBulk) SetImageResolution2k(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution2k(v)
+	})
+}
+
+// UpdateImageResolution2k sets the "image_resolution_2k" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageResolution2k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution2k()
+	})
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (u *GroupUpsertBulk) SetImageResolution4k(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageResolution4k(v)
+	})
+}
+
+// UpdateImageResolution4k sets the "image_resolution_4k" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageResolution4k() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageResolution4k()
 	})
 }
 

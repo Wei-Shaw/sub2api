@@ -10,23 +10,38 @@ import (
 )
 
 type openAIImageOutputCounter struct {
-	seen         map[string]struct{}
-	seenSizes    map[string]string
-	seenBase64   map[string]string
-	seenURLs     map[string]string
-	seenOrder    []string
-	dataSizes    []string
-	count        int
-	maxDataCount int
+	seen          map[string]struct{}
+	seenSizes     map[string]string
+	seenQualities map[string]string
+	seenBase64    map[string]string
+	seenURLs      map[string]string
+	seenOrder     []string
+	dataSizes     []string
+	dataQuality   string
+	count         int
+	maxDataCount  int
 }
 
 func newOpenAIImageOutputCounter() *openAIImageOutputCounter {
 	return &openAIImageOutputCounter{
-		seen:       make(map[string]struct{}),
-		seenSizes:  make(map[string]string),
-		seenBase64: make(map[string]string),
-		seenURLs:   make(map[string]string),
+		seen:          make(map[string]struct{}),
+		seenSizes:     make(map[string]string),
+		seenQualities: make(map[string]string),
+		seenBase64:    make(map[string]string),
+		seenURLs:      make(map[string]string),
 	}
+}
+
+func (c *openAIImageOutputCounter) Quality() string {
+	if c == nil {
+		return ""
+	}
+	for _, key := range c.seenOrder {
+		if quality := strings.TrimSpace(c.seenQualities[key]); quality != "" {
+			return quality
+		}
+	}
+	return strings.TrimSpace(c.dataQuality)
 }
 
 func (c *openAIImageOutputCounter) Count() int {
@@ -117,6 +132,9 @@ func (c *openAIImageOutputCounter) AddJSONResponse(body []byte) {
 	c.addDataArray(gjson.GetBytes(body, "data"))
 	c.addOutputArray(gjson.GetBytes(body, "output"))
 	c.addOutputArray(gjson.GetBytes(body, "response.output"))
+	c.observeQuality(gjson.GetBytes(body, "quality"))
+	c.observeQuality(gjson.GetBytes(body, "tools.0.quality"))
+	c.observeQuality(gjson.GetBytes(body, "response.tools.0.quality"))
 }
 
 func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
@@ -124,6 +142,8 @@ func (c *openAIImageOutputCounter) AddSSEData(data []byte) {
 		return
 	}
 	root := gjson.ParseBytes(data)
+	c.observeQuality(root.Get("quality"))
+	c.observeQuality(root.Get("response.tools.0.quality"))
 	c.addDataArray(root.Get("data"))
 	eventType := strings.TrimSpace(root.Get("type").String())
 	switch eventType {
@@ -171,6 +191,9 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
 			sizes = append(sizes, size)
 		}
+		if c.dataQuality == "" {
+			c.dataQuality = strings.TrimSpace(item.Get("quality").String())
+		}
 		// 修复：对 data 数组中的每个项目也调用 addImageOutputItem 来处理 b64_json 字段
 		c.addImageOutputItem(item)
 	}
@@ -203,6 +226,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if strings.Contains(strings.ToLower(item.Raw), "partial_image") {
 		return
 	}
+	quality := strings.TrimSpace(item.Get("quality").String())
 	// 分别取 b64 与 url：b64 优先（用于 §5 解码），url 仅用于 hash key。
 	b64Payload := strings.TrimSpace(item.Get("b64_json").String())
 	if b64Payload == "" {
@@ -232,6 +256,9 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
 			c.seenSizes[key] = size
 		}
+		if quality != "" && strings.TrimSpace(c.seenQualities[key]) == "" {
+			c.seenQualities[key] = quality
+		}
 		// 已存在 slot：仅在尚未缓存 b64 时补齐（多帧/重复事件场景）。
 		if b64Payload != "" && c.seenBase64[key] == "" {
 			c.seenBase64[key] = b64Payload
@@ -246,6 +273,9 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if size != "" {
 		c.seenSizes[key] = size
 	}
+	if quality != "" {
+		c.seenQualities[key] = quality
+	}
 	if b64Payload != "" {
 		c.seenBase64[key] = b64Payload
 	}
@@ -253,6 +283,13 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		c.seenURLs[key] = urlPayload
 	}
 	c.count++
+}
+
+func (c *openAIImageOutputCounter) observeQuality(value gjson.Result) {
+	if c == nil || c.dataQuality != "" {
+		return
+	}
+	c.dataQuality = strings.TrimSpace(value.String())
 }
 
 func hashOpenAIImageOutputResult(result string) string {
@@ -288,6 +325,12 @@ func collectOpenAIResponseImageOutputURLsFromJSONBytes(body []byte) []string {
 	return counter.URLs()
 }
 
+func collectOpenAIResponseImageQualityFromJSONBytes(body []byte) string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddJSONResponse(body)
+	return counter.Quality()
+}
+
 func countOpenAIImageOutputsFromSSEBody(body string) int {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
@@ -310,6 +353,12 @@ func collectOpenAIImageOutputURLsFromSSEBody(body string) []string {
 	counter := newOpenAIImageOutputCounter()
 	counter.AddSSEBody(body)
 	return counter.URLs()
+}
+
+func collectOpenAIImageQualityFromSSEBody(body string) string {
+	counter := newOpenAIImageOutputCounter()
+	counter.AddSSEBody(body)
+	return counter.Quality()
 }
 
 type openAIResponseTextOutputCollector struct {

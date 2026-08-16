@@ -2037,6 +2037,7 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 			Model:            "gpt-image-2",
 			ImageCount:       1,
 			ImageInputSize:   "1024x1024",
+			ImageQuality:     "high",
 			ImageOutputSizes: []string{"3840x2160"},
 			Duration:         time.Second,
 		},
@@ -2060,6 +2061,8 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.Equal(t, ImageBillingSize4K, *usageRepo.lastLog.ImageSize)
 	require.NotNil(t, usageRepo.lastLog.ImageInputSize)
 	require.Equal(t, "1024x1024", *usageRepo.lastLog.ImageInputSize)
+	require.NotNil(t, usageRepo.lastLog.ImageQuality)
+	require.Equal(t, "high", *usageRepo.lastLog.ImageQuality)
 	require.NotNil(t, usageRepo.lastLog.ImageOutputSize)
 	require.Equal(t, "3840x2160", *usageRepo.lastLog.ImageOutputSize)
 	require.NotNil(t, usageRepo.lastLog.ImageSizeSource)

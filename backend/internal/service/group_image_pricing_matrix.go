@@ -8,13 +8,13 @@ import (
 
 // imagePricingMatrixCellMaxUSD 单格价格上限阈值（USD per image）。
 //
-// 取值依据 spec：当前公开的最贵档 3840x2160 + high = $0.401，
+// 取值依据 spec：当前 4K + high 默认价为 $0.401，
 // 给一倍冗余防止误填（例如把 4.01 当作 0.401 输入），同时阻止显然非法的
 // 大额价格（防止恶意用户开高价倒收用户额度）。
 const imagePricingMatrixCellMaxUSD = 1.0
 
 // validateImagePricingMatrix 校验二维定价矩阵：
-//  1. tier_key 必须属于 6 档之一
+//  1. tier_key 必须属于 1K/2K/4K 三档之一
 //  2. quality_key 必须属于 low/medium/high
 //  3. 每格价格 ≥ 0 且 ≤ imagePricingMatrixCellMaxUSD
 //  4. 空矩阵（nil 或全空 row）合法 —— 视为分组未配置

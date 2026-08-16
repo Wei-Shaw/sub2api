@@ -5484,10 +5484,11 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const requestPayload = { ...payload, ...initialExpenseFields() }
+    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(requestPayload))
     if (
-      payload.upstream_billing_probe_enabled === true &&
-      supportsUpstreamBillingProbe(payload.platform, payload.type)
+      requestPayload.upstream_billing_probe_enabled === true &&
+      supportsUpstreamBillingProbe(requestPayload.platform, requestPayload.type)
     ) {
       try {
         await adminAPI.accounts.probeUpstreamBilling(account.id)
@@ -5530,6 +5531,9 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
+  form.initial_expense_usd = 0
+  form.initial_expense_category = 'account_setup'
+  form.initial_expense_note = ''
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
@@ -5787,6 +5791,18 @@ const doCreateAccount = async (payload: CreateAccountRequest) => {
     return
   }
   await submitCreateAccount(payload)
+}
+
+const initialExpenseFields = () => {
+  const amount = Number(form.initial_expense_usd)
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {}
+  }
+  return {
+    initial_expense_usd: amount,
+    initial_expense_category: form.initial_expense_category || 'account_setup',
+    initial_expense_note: form.initial_expense_note.trim()
+  }
 }
 
 // Handle mixed channel warning confirmation
@@ -6391,7 +6407,8 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          ...initialExpenseFields()
         })
         successCount++
       } catch (error: any) {
@@ -6458,7 +6475,8 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       priority: form.priority,
       rate_multiplier: form.rate_multiplier,
       expires_at: form.expires_at,
-      auto_pause_on_expired: autoPauseOnExpired.value
+      auto_pause_on_expired: autoPauseOnExpired.value,
+      ...initialExpenseFields()
     })
 
     const successCount = result.created?.length || 0
@@ -6568,7 +6586,8 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          ...initialExpenseFields()
         })
         successCount++
       } catch (error: any) {
@@ -6667,7 +6686,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        ...initialExpenseFields()
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
@@ -6775,7 +6795,8 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra,
-      update_existing: true
+      update_existing: true,
+      ...initialExpenseFields()
     })
 
     const successCount = result.created + result.updated
@@ -6852,7 +6873,8 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra
+      extra,
+      ...initialExpenseFields()
     })
 
     appStore.showSuccess(t('admin.accounts.messages.accountCreated'))
@@ -6948,7 +6970,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
+            auto_pause_on_expired: autoPauseOnExpired.value,
+            ...initialExpenseFields()
           })
         }
 
@@ -7049,7 +7072,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await adminAPI.accounts.create(createPayload)
+        await adminAPI.accounts.create({ ...createPayload, ...initialExpenseFields() })
         successCount++
       } catch (error: any) {
         failedCount++
@@ -7535,7 +7558,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          ...initialExpenseFields()
         })
 
         successCount++

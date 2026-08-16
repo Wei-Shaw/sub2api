@@ -133,6 +133,9 @@ type Group struct {
 	ImagePrice1K       *float64 `json:"image_price_1k"`
 	ImagePrice2K       *float64 `json:"image_price_2k"`
 	ImagePrice4K       *float64 `json:"image_price_4k"`
+	ImageResolution1K  string   `json:"image_resolution_1k"`
+	ImageResolution2K  string   `json:"image_resolution_2k"`
+	ImageResolution4K  string   `json:"image_resolution_4k"`
 	VideoPrice480P     *float64 `json:"video_price_480p"`
 	VideoPrice720P     *float64 `json:"video_price_720p"`
 	VideoPrice1080P    *float64 `json:"video_price_1080p"`
@@ -560,6 +563,7 @@ type UsageLog struct {
 	ImageCount         int            `json:"image_count"`
 	ImageSize          *string        `json:"image_size"`
 	ImageInputSize     *string        `json:"image_input_size"`
+	ImageQuality       *string        `json:"image_quality"`
 	ImageOutputSize    *string        `json:"image_output_size"`
 	ImageInputTokens   int            `json:"image_input_tokens"`
 	ImageInputCost     float64        `json:"image_input_cost"`

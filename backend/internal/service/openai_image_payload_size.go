@@ -3,7 +3,7 @@
 // 实现 spec media-prepay-billing「回包图片分辨率自检（base64）」需求（D8/D9）：
 // 当 platform=openai 分组开启 image_decode_size_on_rsp 时，对回包中 size 缺失或 size="auto"
 // 的 slot，按其 b64_json 内容做最小代价的头部解码（image.DecodeConfig 仅读取尺寸元数据，
-// 不解码像素），用真实 {w}x{h} 回填 size，再交给 6 档归档计费。
+// 不解码像素），用真实 {w}x{h} 回填 size，再交给 1K/2K/4K 阈值计费。
 //
 // 仅 base64 模式：URL 模式（b64 为空）跳过；解码失败/异常一律走默认 2K 档兜底，不抛错。
 package service

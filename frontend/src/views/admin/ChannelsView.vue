@@ -354,6 +354,24 @@
               </div>
             </div>
 
+            <div v-if="section.platform === 'openai'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.responsesDefaultImageQuality') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.responsesDefaultImageQualityHint') }}
+                  </p>
+                </div>
+                <Select
+                  v-model="section.responses_default_image_quality"
+                  :options="imageQualityOptions"
+                  class="w-32"
+                />
+              </div>
+            </div>
+
             <!-- Bedrock CC Compatibility (Anthropic only) -->
             <div v-if="section.platform === 'anthropic'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between gap-4">
@@ -634,7 +652,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, intervalHasPrice, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
@@ -686,6 +704,7 @@ interface PlatformSection {
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
+  responses_default_image_quality: 'low' | 'medium' | 'high'
   bedrock_cc_compat: boolean
   account_stats_pricing_rules: FormPricingRule[]
 }
@@ -710,6 +729,12 @@ const statusFilterOptions = computed(() => [
 const statusEditOptions = computed(() => [
   { value: 'active', label: t('admin.channels.statusActive', 'Active') },
   { value: 'disabled', label: t('admin.channels.statusDisabled', 'Disabled') }
+])
+
+const imageQualityOptions = computed(() => [
+  { value: 'low', label: t('admin.groups.imagePricing.quality.low', 'Low') },
+  { value: 'medium', label: t('admin.groups.imagePricing.quality.medium', 'Medium') },
+  { value: 'high', label: t('admin.groups.imagePricing.quality.high', 'High') }
 ])
 
 const billingModelSourceOptions = computed(() => [
@@ -797,6 +822,7 @@ function addPlatformSection(platform: GroupPlatform) {
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
+    responses_default_image_quality: 'medium',
     bedrock_cc_compat: false,
     account_stats_pricing_rules: [],
   })
@@ -1254,6 +1280,18 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.codex_image_generation_bridge
   }
 
+  const responsesDefaultImageQuality: Record<string, string> = {}
+  for (const section of form.platforms) {
+    if (section.enabled && section.platform === 'openai') {
+      responsesDefaultImageQuality[section.platform] = section.responses_default_image_quality
+    }
+  }
+  if (Object.keys(responsesDefaultImageQuality).length > 0) {
+    featuresConfig.responses_default_image_quality = responsesDefaultImageQuality
+  } else {
+    delete featuresConfig.responses_default_image_quality
+  }
+
   const bedrockCCCompat: Record<string, boolean> = {}
   for (const section of form.platforms) {
     if (!section.enabled) continue
@@ -1350,6 +1388,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
     const webSearchEnabled = wsEmulation?.[platform] === true
     const codexImageGenerationBridge = fc?.codex_image_generation_bridge as Record<string, boolean> | undefined
     const codexImageGenerationBridgeEnabled = codexImageGenerationBridge?.[platform] === true
+    const responsesDefaultImageQuality = fc?.responses_default_image_quality as Record<string, unknown> | undefined
+    const configuredImageQuality = responsesDefaultImageQuality?.[platform]
+    const defaultImageQuality = configuredImageQuality === 'low' || configuredImageQuality === 'high'
+      ? configuredImageQuality
+      : 'medium'
     const bedrockCCCompatEnabled = fc?.bedrock_cc_compat === true
 
     sections.push({
@@ -1361,6 +1404,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
+      responses_default_image_quality: defaultImageQuality,
       bedrock_cc_compat: bedrockCCCompatEnabled,
       account_stats_pricing_rules: [],
     })
@@ -1643,7 +1687,7 @@ async function handleSubmit() {
       if (entry.models.length === 0) continue
       if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image' || entry.billing_mode === 'video') &&
           (entry.per_request_price == null || entry.per_request_price === '') &&
-          (!entry.intervals || entry.intervals.length === 0)) {
+          (!entry.intervals || !entry.intervals.some(intervalHasPrice))) {
         appStore.showError(t('admin.channels.form.perRequestPriceRequired'))
         return
       }

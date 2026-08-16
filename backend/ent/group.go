@@ -71,6 +71,12 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
+	// ImageResolution1k holds the value of the "image_resolution_1k" field.
+	ImageResolution1k string `json:"image_resolution_1k,omitempty"`
+	// ImageResolution2k holds the value of the "image_resolution_2k" field.
+	ImageResolution2k string `json:"image_resolution_2k,omitempty"`
+	// ImageResolution4k holds the value of the "image_resolution_4k" field.
+	ImageResolution4k string `json:"image_resolution_4k,omitempty"`
 	// 图片二维定价矩阵：{tier_key}{quality_key} -> 单价；为空表示沿用旧 image_price_1k/2k/4k 字段
 	ImagePricingMatrix domain.ImagePricingMatrix `json:"image_pricing_matrix,omitempty"`
 	// 仅 openai 分组生效：是否在图片调度时优先选择 fal 账号，openai 账号兜底
@@ -275,7 +281,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit, group.FieldKiroStickySessionTTLSeconds:
 			values[i] = new(sql.NullInt64)
-		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldDefaultMappedModel, group.FieldKiroEndpointMode, group.FieldMaxReasoningEffort:
+		case group.FieldName, group.FieldDescription, group.FieldPeakStart, group.FieldPeakEnd, group.FieldStatus, group.FieldDuplicateOperationID, group.FieldPlatform, group.FieldSubscriptionType, group.FieldImageResolution1k, group.FieldImageResolution2k, group.FieldImageResolution4k, group.FieldDefaultMappedModel, group.FieldKiroEndpointMode, group.FieldMaxReasoningEffort:
 			values[i] = new(sql.NullString)
 		case group.FieldCreatedAt, group.FieldUpdatedAt, group.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -464,6 +470,24 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ImagePrice4k = new(float64)
 				*_m.ImagePrice4k = value.Float64
+			}
+		case group.FieldImageResolution1k:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_resolution_1k", values[i])
+			} else if value.Valid {
+				_m.ImageResolution1k = value.String
+			}
+		case group.FieldImageResolution2k:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_resolution_2k", values[i])
+			} else if value.Valid {
+				_m.ImageResolution2k = value.String
+			}
+		case group.FieldImageResolution4k:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field image_resolution_4k", values[i])
+			} else if value.Valid {
+				_m.ImageResolution4k = value.String
 			}
 		case group.FieldImagePricingMatrix:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -932,6 +956,15 @@ func (_m *Group) String() string {
 		builder.WriteString("image_price_4k=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("image_resolution_1k=")
+	builder.WriteString(_m.ImageResolution1k)
+	builder.WriteString(", ")
+	builder.WriteString("image_resolution_2k=")
+	builder.WriteString(_m.ImageResolution2k)
+	builder.WriteString(", ")
+	builder.WriteString("image_resolution_4k=")
+	builder.WriteString(_m.ImageResolution4k)
 	builder.WriteString(", ")
 	builder.WriteString("image_pricing_matrix=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImagePricingMatrix))

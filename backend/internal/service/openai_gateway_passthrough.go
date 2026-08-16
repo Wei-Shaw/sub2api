@@ -134,6 +134,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	imageBillingModel := ""
 	imageSizeTier := ""
 	imageInputSize := ""
+	imageRequestQuality := ""
+	imageDefaultQuality := ImageQualityMedium
 	imageGroup := apiKeyGroup(apiKey)
 	if imageIntent {
 		var imageCfgErr error
@@ -152,6 +154,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageBillingModel = imageCfg.Model
 		imageSizeTier = imageCfg.SizeTier
 		imageInputSize = imageCfg.InputSize
+		imageRequestQuality = imageCfg.Quality
+		imageDefaultQuality = s.resolveOpenAIResponsesDefaultImageQuality(ctx, apiKey)
 		logImageGenerationRequest(fmt.Sprintf("account=%s passthrough", account.Name), reqModel, body)
 	}
 
@@ -254,6 +258,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	imageCount := 0
+	imageResponseQuality := ""
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
 	if reqStream {
@@ -270,6 +275,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		firstTokenMs = result.firstTokenMs
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
+		imageResponseQuality = result.imageQuality
 		imageOutputSizes = result.imageOutputSizes
 		imageOutputBase64s = result.imageOutputBase64s
 	} else {
@@ -280,6 +286,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
+		imageResponseQuality = result.imageQuality
 		imageOutputSizes = result.imageOutputSizes
 		imageOutputBase64s = result.imageOutputBase64s
 	}
@@ -315,6 +322,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageCount = imageCount
 		forwardResult.ImageSize = imageSizeTier
 		forwardResult.ImageInputSize = imageInputSize
+		forwardResult.ImageQuality = resolveOpenAIResponsesImageQuality(imageResponseQuality, imageRequestQuality, imageDefaultQuality)
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.ImageOutputBase64 = imageOutputBase64s
 		forwardResult.BillingModel = imageBillingModel
@@ -779,6 +787,7 @@ type openaiStreamingResultPassthrough struct {
 	firstTokenMs       *int
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 }
@@ -788,6 +797,7 @@ type openaiNonStreamingResultPassthrough struct {
 	usage              *OpenAIUsage
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 }
@@ -1310,6 +1320,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			firstTokenMs:       firstTokenMs,
 			responseID:         responseID,
 			imageCount:         imageCounter.Count(),
+			imageQuality:       imageCounter.Quality(),
 			imageOutputSizes:   imageCounter.Sizes(),
 			imageOutputBase64s: imageCounter.Base64Payloads(),
 		}
@@ -1576,6 +1587,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		logImageGenerationResponse(fmt.Sprintf("model=%s passthrough", mappedModel), false, body)
 	}
 	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
+	imageQuality := collectOpenAIResponseImageQualityFromJSONBytes(body)
 	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 	if imageCount > 0 {
@@ -1590,6 +1602,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 	}, nil
@@ -1655,11 +1668,13 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(ctx context.Context, r
 		}
 	}
 	var imageCount int
+	var imageQuality string
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
 	if ok {
 		// 终端事件已被重建为 JSON 响应体，按 JSON 形状提取/放大。
 		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
+		imageQuality = collectOpenAIResponseImageQualityFromJSONBytes(body)
 		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 		if imageCount > 0 {
@@ -1668,6 +1683,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(ctx context.Context, r
 	} else {
 		// 仍是 SSE 文本，按 SSE 形状提取/放大。
 		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
+		imageQuality = collectOpenAIImageQualityFromSSEBody(bodyText)
 		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
 		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
 		if imageCount > 0 {
@@ -1684,6 +1700,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(ctx context.Context, r
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 	}, nil

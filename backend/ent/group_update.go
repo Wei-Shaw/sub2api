@@ -483,6 +483,48 @@ func (_u *GroupUpdate) ClearImagePrice4k() *GroupUpdate {
 	return _u
 }
 
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (_u *GroupUpdate) SetImageResolution1k(v string) *GroupUpdate {
+	_u.mutation.SetImageResolution1k(v)
+	return _u
+}
+
+// SetNillableImageResolution1k sets the "image_resolution_1k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageResolution1k(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImageResolution1k(*v)
+	}
+	return _u
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (_u *GroupUpdate) SetImageResolution2k(v string) *GroupUpdate {
+	_u.mutation.SetImageResolution2k(v)
+	return _u
+}
+
+// SetNillableImageResolution2k sets the "image_resolution_2k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageResolution2k(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImageResolution2k(*v)
+	}
+	return _u
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (_u *GroupUpdate) SetImageResolution4k(v string) *GroupUpdate {
+	_u.mutation.SetImageResolution4k(v)
+	return _u
+}
+
+// SetNillableImageResolution4k sets the "image_resolution_4k" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageResolution4k(v *string) *GroupUpdate {
+	if v != nil {
+		_u.SetImageResolution4k(*v)
+	}
+	return _u
+}
+
 // SetImagePricingMatrix sets the "image_pricing_matrix" field.
 func (_u *GroupUpdate) SetImagePricingMatrix(v domain.ImagePricingMatrix) *GroupUpdate {
 	_u.mutation.SetImagePricingMatrix(v)
@@ -1595,6 +1637,21 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageResolution1k(); ok {
+		if err := group.ImageResolution1kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_1k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_1k": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ImageResolution2k(); ok {
+		if err := group.ImageResolution2kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_2k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_2k": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ImageResolution4k(); ok {
+		if err := group.ImageResolution4kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_4k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_4k": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SearchPricePer1k(); ok {
 		if err := group.SearchPricePer1kValidator(v); err != nil {
 			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)}
@@ -1773,6 +1830,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageResolution1k(); ok {
+		_spec.SetField(group.FieldImageResolution1k, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageResolution2k(); ok {
+		_spec.SetField(group.FieldImageResolution2k, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageResolution4k(); ok {
+		_spec.SetField(group.FieldImageResolution4k, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ImagePricingMatrix(); ok {
 		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)
@@ -2780,6 +2846,48 @@ func (_u *GroupUpdateOne) AddImagePrice4k(v float64) *GroupUpdateOne {
 // ClearImagePrice4k clears the value of the "image_price_4k" field.
 func (_u *GroupUpdateOne) ClearImagePrice4k() *GroupUpdateOne {
 	_u.mutation.ClearImagePrice4k()
+	return _u
+}
+
+// SetImageResolution1k sets the "image_resolution_1k" field.
+func (_u *GroupUpdateOne) SetImageResolution1k(v string) *GroupUpdateOne {
+	_u.mutation.SetImageResolution1k(v)
+	return _u
+}
+
+// SetNillableImageResolution1k sets the "image_resolution_1k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageResolution1k(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageResolution1k(*v)
+	}
+	return _u
+}
+
+// SetImageResolution2k sets the "image_resolution_2k" field.
+func (_u *GroupUpdateOne) SetImageResolution2k(v string) *GroupUpdateOne {
+	_u.mutation.SetImageResolution2k(v)
+	return _u
+}
+
+// SetNillableImageResolution2k sets the "image_resolution_2k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageResolution2k(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageResolution2k(*v)
+	}
+	return _u
+}
+
+// SetImageResolution4k sets the "image_resolution_4k" field.
+func (_u *GroupUpdateOne) SetImageResolution4k(v string) *GroupUpdateOne {
+	_u.mutation.SetImageResolution4k(v)
+	return _u
+}
+
+// SetNillableImageResolution4k sets the "image_resolution_4k" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageResolution4k(v *string) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageResolution4k(*v)
+	}
 	return _u
 }
 
@@ -3908,6 +4016,21 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "subscription_type", err: fmt.Errorf(`ent: validator failed for field "Group.subscription_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageResolution1k(); ok {
+		if err := group.ImageResolution1kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_1k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_1k": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ImageResolution2k(); ok {
+		if err := group.ImageResolution2kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_2k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_2k": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ImageResolution4k(); ok {
+		if err := group.ImageResolution4kValidator(v); err != nil {
+			return &ValidationError{Name: "image_resolution_4k", err: fmt.Errorf(`ent: validator failed for field "Group.image_resolution_4k": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SearchPricePer1k(); ok {
 		if err := group.SearchPricePer1kValidator(v); err != nil {
 			return &ValidationError{Name: "search_price_per_1k", err: fmt.Errorf(`ent: validator failed for field "Group.search_price_per_1k": %w`, err)}
@@ -4103,6 +4226,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ImagePrice4kCleared() {
 		_spec.ClearField(group.FieldImagePrice4k, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ImageResolution1k(); ok {
+		_spec.SetField(group.FieldImageResolution1k, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageResolution2k(); ok {
+		_spec.SetField(group.FieldImageResolution2k, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ImageResolution4k(); ok {
+		_spec.SetField(group.FieldImageResolution4k, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ImagePricingMatrix(); ok {
 		_spec.SetField(group.FieldImagePricingMatrix, field.TypeJSON, value)

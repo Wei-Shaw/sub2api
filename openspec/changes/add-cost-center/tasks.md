@@ -74,3 +74,8 @@
 
 - [x] 10.1 Allow the cost-center append-cost form to submit without a note and omit empty notes from the request.
 - [x] 10.2 Add focused frontend coverage and run proportional frontend and OpenSpec verification.
+
+## 11. Recharge Bonus Expense
+
+- [x] 11.1 Record each fulfilled balance order's positive recharge bonus as one idempotent settled cost-center expense.
+- [x] 11.2 Add recharge-bonus category labels and focused fulfillment coverage for bonus, no-bonus, and retry behavior.

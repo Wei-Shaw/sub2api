@@ -111,6 +111,7 @@ type PricingInterval struct {
 	MinTokens       int       `json:"min_tokens"`
 	MaxTokens       *int      `json:"max_tokens"`
 	TierLabel       string    `json:"tier_label"`
+	Resolution      string    `json:"resolution"`
 	Quality         string    `json:"quality"`
 	InputPrice      *float64  `json:"input_price"`
 	OutputPrice     *float64  `json:"output_price"`
@@ -314,12 +315,62 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 			return err
 		}
 	}
+	if mode == BillingModeImage {
+		return validateImagePricingIntervals(intervals)
+	}
 
 	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
-	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
+	if mode == BillingModePerRequest || mode == BillingModeVideo {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)
+}
+
+func validateImagePricingIntervals(intervals []PricingInterval) error {
+	if len(intervals) == 0 {
+		return nil
+	}
+	byLabel := make(map[string]ImagePricingTier, 3)
+	seenCells := make(map[string]struct{}, len(intervals))
+	for _, interval := range intervals {
+		label := imageTierLabel(interval.TierLabel)
+		if label == "" {
+			return fmt.Errorf("image pricing tier must be one of 1K, 2K, or 4K")
+		}
+		quality := strings.ToLower(strings.TrimSpace(interval.Quality))
+		if quality != "" && quality != ImageQualityLow && quality != ImageQualityMedium && quality != ImageQualityHigh {
+			return fmt.Errorf("image pricing tier %s has invalid quality %q", label, interval.Quality)
+		}
+		cellKey := label + "\x00" + quality
+		if _, exists := seenCells[cellKey]; exists {
+			return fmt.Errorf("duplicate image pricing tier %s quality %q", label, quality)
+		}
+		seenCells[cellKey] = struct{}{}
+		resolution := strings.TrimSpace(interval.Resolution)
+		if resolution == "" {
+			resolution = defaultImageTierResolutions[label]
+		}
+		if existing, exists := byLabel[label]; exists {
+			if resolution == "" {
+				resolution = existing.Resolution
+			}
+			if !strings.EqualFold(existing.Resolution, resolution) {
+				return fmt.Errorf("image pricing tier %s must use one consistent resolution", label)
+			}
+		} else {
+			byLabel[label] = ImagePricingTier{Label: label, Resolution: resolution}
+		}
+	}
+	tiers := make([]ImagePricingTier, 0, 3)
+	for _, label := range []string{"1K", "2K", "4K"} {
+		tier, exists := byLabel[label]
+		if !exists {
+			tier = ImagePricingTier{Label: label, Resolution: defaultImageTierResolutions[label]}
+		}
+		tiers = append(tiers, tier)
+	}
+	_, err := normalizeImagePricingTiers(tiers)
+	return err
 }
 
 // validateSingleInterval 校验单个区间的字段合法性

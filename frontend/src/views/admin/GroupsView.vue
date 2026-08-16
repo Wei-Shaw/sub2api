@@ -968,12 +968,17 @@
               placeholder="1"
             />
           </div>
-          <!-- 6×3 二维定价矩阵（最高优先级） -->
+          <!-- 3×3 二维定价矩阵（最高优先级） -->
           <div class="mb-3">
             <label class="input-label">{{
               t("admin.groups.imagePricing.matrixTitle")
             }}</label>
-            <ImagePricingMatrixEditor v-model="createForm.image_pricing_matrix" />
+            <ImagePricingMatrixEditor
+              v-model="createForm.image_pricing_matrix"
+              v-model:resolution1k="createForm.image_resolution_1k"
+              v-model:resolution2k="createForm.image_resolution_2k"
+              v-model:resolution4k="createForm.image_resolution_4k"
+            />
           </div>
 
           <!-- 兼容回退价（旧版 1K/2K/4K 单维定价） -->
@@ -2842,12 +2847,17 @@
               placeholder="1"
             />
           </div>
-          <!-- 6×3 二维定价矩阵（最高优先级） -->
+          <!-- 3×3 二维定价矩阵（最高优先级） -->
           <div class="mb-3">
             <label class="input-label">{{
               t("admin.groups.imagePricing.matrixTitle")
             }}</label>
-            <ImagePricingMatrixEditor v-model="editForm.image_pricing_matrix" />
+            <ImagePricingMatrixEditor
+              v-model="editForm.image_pricing_matrix"
+              v-model:resolution1k="editForm.image_resolution_1k"
+              v-model:resolution2k="editForm.image_resolution_2k"
+              v-model:resolution4k="editForm.image_resolution_4k"
+            />
           </div>
 
           <!-- 兼容回退价（旧版 1K/2K/4K 单维定价） -->
@@ -5368,6 +5378,9 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_resolution_1k: "1024x1024",
+  image_resolution_2k: "2048x2048",
+  image_resolution_4k: "4096x4096",
   // 二维图片定价矩阵（行=分辨率，列=quality）；为空对象时以 image_price_*K 单维价兜底
   image_pricing_matrix: createEmptyImagePricingMatrix() as EditableImagePricingMatrix,
   // 仅 platform=openai 时生效：true 反转为「fal 优先 + openai 兜底」
@@ -5742,6 +5755,9 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_resolution_1k: "1024x1024",
+  image_resolution_2k: "2048x2048",
+  image_resolution_4k: "4096x4096",
   // 二维图片定价矩阵（行=分辨率，列=quality）；为空对象时以 image_price_*K 单维价兜底
   image_pricing_matrix: createEmptyImagePricingMatrix() as EditableImagePricingMatrix,
   // 仅 platform=openai 时生效：true 反转为「fal 优先 + openai 兜底」
@@ -6211,6 +6227,9 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.image_resolution_1k = "1024x1024";
+  createForm.image_resolution_2k = "2048x2048";
+  createForm.image_resolution_4k = "4096x4096";
   createForm.image_pricing_matrix = createEmptyImagePricingMatrix();
   createForm.image_prefer_fal = false;
   createForm.image_decode_size_on_rsp = false;
@@ -6523,6 +6542,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.image_resolution_1k = group.image_resolution_1k || "1024x1024";
+  editForm.image_resolution_2k = group.image_resolution_2k || "2048x2048";
+  editForm.image_resolution_4k = group.image_resolution_4k || "4096x4096";
   editForm.image_pricing_matrix = loadEditableImagePricingMatrix(
     group.image_pricing_matrix,
   );

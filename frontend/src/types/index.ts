@@ -635,8 +635,11 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
+  image_resolution_1k: string
+  image_resolution_2k: string
+  image_resolution_4k: string
   // 按分辨率 + quality 二维计费矩阵（最高优先级，未命中时回退到上面单维价）
-  // shape: { "1024x1024": { "low": 0.006, "medium": 0.053, "high": 0.211 }, ... }
+  // shape: { "1K": { "low": 0.006, "medium": 0.053, "high": 0.211 }, ... }
   image_pricing_matrix?: Record<string, Record<string, number>> | null
   // 仅 platform=openai 分组生效：true 时混合调度“fal 优先 + openai 兜底”
   image_prefer_fal?: boolean
@@ -863,6 +866,9 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_resolution_1k?: string
+  image_resolution_2k?: string
+  image_resolution_4k?: string
   image_pricing_matrix?: Record<string, Record<string, number>> | null
   image_prefer_fal?: boolean
   image_decode_size_on_rsp?: boolean
@@ -934,6 +940,9 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_resolution_1k?: string
+  image_resolution_2k?: string
+  image_resolution_4k?: string
   image_pricing_matrix?: Record<string, Record<string, number>> | null
   image_prefer_fal?: boolean
   image_decode_size_on_rsp?: boolean
@@ -1561,6 +1570,9 @@ export interface CreateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
+  initial_expense_usd?: number
+  initial_expense_category?: string
+  initial_expense_note?: string
 }
 
 export interface UpdateAccountRequest {
@@ -1701,6 +1713,9 @@ export interface CodexSessionImportRequest {
   update_existing?: boolean
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
+  initial_expense_usd?: number
+  initial_expense_category?: string
+  initial_expense_note?: string
 }
 
 export interface OpenAICodexPATCreateRequest {
@@ -1719,6 +1734,9 @@ export interface OpenAICodexPATCreateRequest {
   extra?: Record<string, unknown>
   skip_default_group_bind?: boolean
   confirm_mixed_channel_risk?: boolean
+  initial_expense_usd?: number
+  initial_expense_category?: string
+  initial_expense_note?: string
 }
 
 export interface CodexSessionImportMessage {
@@ -1795,6 +1813,7 @@ export interface UsageLog {
   image_count: number
   image_size: string | null
   image_input_size: string | null
+  image_quality: string | null
   image_output_size: string | null
   image_size_source: ImageSizeSource | null
   image_size_breakdown: ImageSizeBreakdown | null

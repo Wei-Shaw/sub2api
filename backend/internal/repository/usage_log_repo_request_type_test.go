@@ -81,6 +81,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.ImageCount,
 			sqlmock.AnyArg(), // image_size
 			sqlmock.AnyArg(), // image_input_size
+			sqlmock.AnyArg(), // image_quality
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
 			sqlmock.AnyArg(), // image_size_breakdown
@@ -180,6 +181,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.ImageCount,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(), // image_input_size
+			sqlmock.AnyArg(), // image_quality
 			sqlmock.AnyArg(), // image_output_size
 			sqlmock.AnyArg(), // image_size_source
 			sqlmock.AnyArg(), // image_size_breakdown
@@ -273,6 +275,7 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 	imageSize := "4K"
 	inputSize := "1024x1024"
+	quality := "high"
 	outputSize := "3840x2160"
 	source := "output"
 	prepared := prepareUsageLogInsert(&service.UsageLog{
@@ -285,6 +288,7 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		ImageCount:         2,
 		ImageSize:          &imageSize,
 		ImageInputSize:     &inputSize,
+		ImageQuality:       &quality,
 		ImageOutputSize:    &outputSize,
 		ImageSizeSource:    &source,
 		ImageSizeBreakdown: map[string]int{"1K": 1, "4K": 1},
@@ -293,9 +297,10 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 
 	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[38])
 	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[39])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[40])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[41])
-	breakdownJSON, ok := prepared.args[42].(string)
+	require.Equal(t, sql.NullString{String: quality, Valid: true}, prepared.args[40])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[41])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[42])
+	breakdownJSON, ok := prepared.args[43].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
 }
@@ -848,6 +853,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			2,
 			sql.NullString{Valid: true, String: "4K"},
 			sql.NullString{Valid: true, String: "1024x1024"},
+			sql.NullString{Valid: true, String: "high"},
 			sql.NullString{Valid: true, String: "3840x2160"},
 			sql.NullString{Valid: true, String: "output"},
 			sql.NullString{Valid: true, String: `{"4K":2}`},
@@ -883,6 +889,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, "4K", *log.ImageSize)
 		require.NotNil(t, log.ImageInputSize)
 		require.Equal(t, "1024x1024", *log.ImageInputSize)
+		require.NotNil(t, log.ImageQuality)
+		require.Equal(t, "high", *log.ImageQuality)
 		require.NotNil(t, log.ImageOutputSize)
 		require.Equal(t, "3840x2160", *log.ImageOutputSize)
 		require.NotNil(t, log.ImageSizeSource)
@@ -934,6 +942,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,
 			sql.NullString{},
 			sql.NullString{}, // image_input_size
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
 			sql.NullString{}, // image_size_breakdown
@@ -1003,6 +1012,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,
 			sql.NullString{},
 			sql.NullString{}, // image_input_size
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
 			sql.NullString{}, // image_size_breakdown
@@ -1072,6 +1082,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,
 			sql.NullString{},
 			sql.NullString{}, // image_input_size
+			sql.NullString{}, // image_quality
 			sql.NullString{}, // image_output_size
 			sql.NullString{}, // image_size_source
 			sql.NullString{}, // image_size_breakdown

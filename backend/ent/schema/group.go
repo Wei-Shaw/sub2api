@@ -123,6 +123,15 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.String("image_resolution_1k").
+			MaxLen(32).
+			Default("1024x1024"),
+		field.String("image_resolution_2k").
+			MaxLen(32).
+			Default("2048x2048"),
+		field.String("image_resolution_4k").
+			MaxLen(32).
+			Default("4096x4096"),
 		// 图片二维定价矩阵（added by migration 158）
 		// 结构：tier_key -> quality_key -> price，详见 domain.ImagePricingMatrix。
 		// 为 nil/空 map 时分组未启用矩阵定价，保持兼容现网行为。

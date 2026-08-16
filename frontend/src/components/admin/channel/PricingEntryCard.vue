@@ -321,7 +321,7 @@ function emitField(field: keyof PricingFormEntry, value: string) {
 function addInterval() {
   const intervals = [...(props.entry.intervals || [])]
   intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: '', quality: '',
+    min_tokens: 0, max_tokens: null, tier_label: '', resolution: '', quality: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length
@@ -331,15 +331,29 @@ function addInterval() {
 
 function addMediaTier() {
   const intervals = [...(props.entry.intervals || [])]
-  const labels = props.entry.billing_mode === 'video'
-    ? ['480p', '720p', '1080p']
-    : ['1K', '2K', '4K', 'HD']
-  intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '', quality: '',
-    input_price: null, output_price: null, cache_write_price: null,
-    cache_read_price: null, per_request_price: null,
-    sort_order: intervals.length
-  })
+  if (props.entry.billing_mode === 'image' && intervals.length === 0) {
+    const templates: Array<[string, string]> = [
+      ['1K', '1024x1024'],
+      ['2K', '2048x2048'],
+      ['4K', '4096x4096']
+    ]
+    for (const [tier_label, resolution] of templates) {
+      intervals.push({
+        min_tokens: 0, max_tokens: null, tier_label, resolution, quality: 'low',
+        input_price: null, output_price: null, cache_write_price: null,
+        cache_read_price: null, per_request_price: null,
+        sort_order: intervals.length
+      })
+    }
+  } else {
+    intervals.push({
+      min_tokens: 0, max_tokens: null, tier_label: '', resolution: '',
+      quality: props.entry.billing_mode === 'image' ? 'low' : '',
+      input_price: null, output_price: null, cache_write_price: null,
+      cache_read_price: null, per_request_price: null,
+      sort_order: intervals.length
+    })
+  }
   emit('update', { ...props.entry, intervals })
 }
 
@@ -350,7 +364,7 @@ function addVideoTier() {
   const intervals = [...(props.entry.intervals || [])]
   const templates = ['480p', '720p', '1080p', '4k']
   intervals.push({
-    min_tokens: 0, max_tokens: null, tier_label: templates[intervals.length] || '', quality: '',
+    min_tokens: 0, max_tokens: null, tier_label: templates[intervals.length] || '', resolution: '', quality: '',
     input_price: null, output_price: null, cache_write_price: null,
     cache_read_price: null, per_request_price: null,
     sort_order: intervals.length
