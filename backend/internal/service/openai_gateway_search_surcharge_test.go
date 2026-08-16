@@ -37,7 +37,7 @@ func TestCalculateOpenAIRecordUsageCost_SearchIsAdditiveToTokens(t *testing.T) {
 		UsageTokens{InputTokens: 1000, OutputTokens: 500},
 		"",
 		nil,
-		false,
+		boolPtr(false),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cost)
@@ -68,7 +68,7 @@ func TestCalculateOpenAIRecordUsageCost_SearchOnlyWhenNoTokenPricing(t *testing.
 		UsageTokens{},
 		"",
 		nil,
-		false,
+		boolPtr(false),
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cost)
@@ -114,7 +114,7 @@ func TestCalculateOpenAIRecordUsageCost_TokenPricingErrorNotSwallowedBySearch(t 
 		UsageTokens{InputTokens: 1000, OutputTokens: 500},
 		"",
 		nil,
-		false,
+		boolPtr(false),
 	)
 	require.Error(t, err)
 	require.Nil(t, cost)

@@ -5,8 +5,7 @@ package handler
 // 槽位终检与生图跳门回归（handler 半程）：
 //   - 槽位获取成功后的利润终检：越线账号释放槽位并要求调用方排除重选，
 //     不写响应、不绑定粘连；
-//   - openAIResponsesRequiredCapability 的生图意图映射钉死（scheduler 的
-//     跳门条件依赖 CapabilityResponses ⇔ 显式生图意图这一耦合）。
+//   - openAIResponsesRequiredCapability 的请求能力映射覆盖生图与原生远程压缩。
 
 import (
 	"context"
@@ -141,10 +140,10 @@ func TestAcquireResponsesAccountSlotProfitRecheck(t *testing.T) {
 	})
 }
 
-// scheduler 跳门条件依赖"CapabilityResponses 仅在显式生图意图时被要求"这一
-// 映射；后续若扩展该 capability 的用途，本测试失败提示同步收窄跳门条件。
-func TestOpenAIResponsesRequiredCapabilityPinsImageIntentMapping(t *testing.T) {
+func TestOpenAIResponsesRequiredCapabilityForRequest(t *testing.T) {
 	require.Equal(t, service.OpenAIEndpointCapabilityResponses, openAIResponsesRequiredCapability(true, service.PlatformOpenAI))
 	require.Equal(t, service.OpenAIEndpointCapabilityChatCompletions, openAIResponsesRequiredCapability(false, service.PlatformOpenAI))
 	require.Equal(t, service.OpenAIEndpointCapabilityChatCompletions, openAIResponsesRequiredCapability(true, service.PlatformGrok))
+	require.Equal(t, service.OpenAIEndpointCapabilityResponses, openAIResponsesRequiredCapabilityForRequest(false, true, service.PlatformOpenAI))
+	require.Equal(t, service.OpenAIEndpointCapabilityChatCompletions, openAIResponsesRequiredCapabilityForRequest(false, true, service.PlatformGrok))
 }
