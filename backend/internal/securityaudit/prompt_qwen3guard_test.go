@@ -83,6 +83,72 @@ func TestQwen3GuardOfficialCategoriesAliasesAndUnknownAreStable(t *testing.T) {
 	require.Contains(t, unknown.UnknownCategories[0], "unknown:")
 }
 
+func TestParseNemotronContentSafetySupportsAllPromptAuditCategories(t *testing.T) {
+	official := "Violent, Non-violent Illegal Acts, Sexual Content or Sexual Acts, PII, Suicide and Self-Harm, Unethical Acts, Politically Sensitive Topics, Copyright Violation, Jailbreak"
+	result, err := ParseNemotronContentSafety("User Safety: unsafe\nResponse Safety: safe\nSafety Categories: "+official, AllScannerIDs)
+	require.NoError(t, err)
+	require.Equal(t, EventCritical, result.Decision)
+	require.Equal(t, ActionBlock, result.Action)
+	require.Equal(t, AllScannerIDs, result.MatchedScanners)
+	require.Empty(t, result.UnknownCategories)
+	require.Equal(t, "nemotron-content-safety", result.ScannerBackend)
+}
+
+func TestParseNemotronContentSafetyPolicySemantics(t *testing.T) {
+	tests := []struct {
+		name, output string
+		enabled      []string
+		decision     EventDecision
+		action       Action
+		wantErr      bool
+	}{
+		{"safe without categories", "User Safety: safe", AllScannerIDs, EventPass, ActionAllow, false},
+		{"thinking is ignored", "<think>User Safety: safe</think>\nUser Safety: unsafe\nSafety Categories: Prompt Injection", AllScannerIDs, EventCritical, ActionBlock, false},
+		{"OpenRouter manipulation maps to jailbreak", "User Safety: unsafe\nSafety Categories: Manipulation", []string{"jailbreak"}, EventCritical, ActionBlock, false},
+		{"response safety is ignored", "User Safety: safe\nResponse Safety: unsafe\nSafety Categories: None", AllScannerIDs, EventPass, ActionAllow, false},
+		{"disabled category flags", "User Safety: unsafe\nSafety Categories: Violence", []string{"pii"}, EventFlag, ActionWarn, false},
+		{"unknown unsafe blocks", "User Safety: unsafe\nSafety Categories: Future Risk", AllScannerIDs, EventCritical, ActionBlock, false},
+		{"uncategorized unsafe blocks", "User Safety: unsafe", AllScannerIDs, EventCritical, ActionBlock, false},
+		{"missing user safety", "Safety Categories: Jailbreak", AllScannerIDs, "", "", true},
+		{"invalid user safety", "User Safety: maybe\nSafety Categories: Jailbreak", AllScannerIDs, "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseNemotronContentSafety(tt.output, tt.enabled)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.decision, result.Decision)
+			require.Equal(t, tt.action, result.Action)
+		})
+	}
+}
+
+func TestParseNemotronOpenRouterManipulationPreservesBothRiskCategories(t *testing.T) {
+	result, err := ParseNemotronContentSafety("User Safety: unsafe\nSafety Categories: Manipulation", AllScannerIDs)
+	require.NoError(t, err)
+	require.Equal(t, []string{"unethical_acts", "jailbreak"}, result.Categories)
+	require.Equal(t, []string{"unethical_acts", "jailbreak"}, result.MatchedScanners)
+}
+
+func TestNemotronBuiltInCategoryAliasesCoverPromptAuditScanners(t *testing.T) {
+	aliases := map[string]string{
+		"Violence": "violent", "Guns/Illegal Weapons": "violent",
+		"Illegal Activity": "non_violent_illegal_acts", "Fraud/Deception": "non_violent_illegal_acts", "Malware": "non_violent_illegal_acts",
+		"Sexual": "sexual_content_or_sexual_acts", "Sexual/Minor": "sexual_content_or_sexual_acts",
+		"PII/Privacy": "pii", "Suicide and Self Harm": "suicide_and_self_harm",
+		"Hate/Identity Hate": "unethical_acts", "Manipulation": "unethical_acts",
+		"Political Misinformation/Conspiracy": "politically_sensitive_topics",
+		"Copyright/Trademark/Plagiarism":      "copyright_violation",
+		"System Prompt Extraction":            "jailbreak", "Tool Manipulation": "jailbreak",
+	}
+	for alias, canonical := range aliases {
+		require.Equal(t, canonical, NormalizeCategory(alias), alias)
+	}
+}
+
 func TestExtractOpenAIContentSupportsStringAndTextBlocks(t *testing.T) {
 	content, err := extractOpenAIContent([]byte(`{"choices":[{"message":{"content":"Safety: Safe\nCategories: None"}}]}`))
 	require.NoError(t, err)

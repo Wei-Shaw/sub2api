@@ -184,6 +184,76 @@ func TestGuardEvaluatorBlockStopsRemainingChunksButReportsPlannedTotal(t *testin
 	require.Equal(t, int64(1), metrics.Snapshot().Blocked)
 }
 
+func TestGuardEvaluatorScansModerationChunksSequentially(t *testing.T) {
+	var scanned []string
+	scanner := PromptScannerFunc(func(_ context.Context, endpoint ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
+		scanned = append(scanned, chunk)
+		return &NormalizedResult{
+			Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow,
+			ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}, GuardEndpointID: endpoint.ID,
+		}, nil
+	})
+	evaluator := newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 4, 2)
+	decision, err := evaluator.Evaluate(context.Background(), guardConfig(ActiveEndpoint{
+		ID: "moderation", Protocol: ProtocolOpenAIModeration, Enabled: true, TimeoutMS: 1000, InputLimit: 3,
+	}), PromptSnapshot{ScanText: "abcdef", PromptLength: 6})
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, decision.Kind)
+	require.Equal(t, []string{"abc", "def"}, scanned)
+}
+
+func TestGuardEvaluatorCachesOnlyExactPolicyAndChunk(t *testing.T) {
+	calls := 0
+	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
+		calls++
+		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
+	})
+	cache := newPromptResultCache(8, time.Minute)
+	evaluator := newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 4, 2, cache)
+	cfg := guardConfig(ActiveEndpoint{ID: "moderation", Protocol: ProtocolOpenAIModeration, Enabled: true, TimeoutMS: 1000, InputLimit: 100})
+	snapshot := PromptSnapshot{ScanText: "system agent instructions", PromptLength: 25}
+	_, err := evaluator.Evaluate(context.Background(), cfg, snapshot)
+	require.NoError(t, err)
+	_, err = evaluator.Evaluate(context.Background(), cfg, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, 1, calls, "same exact chunk and policy should use the cached AI result")
+	_, err = evaluator.Evaluate(context.Background(), cfg, PromptSnapshot{ScanText: "system agent instructions\nnew user input", PromptLength: 41})
+	require.NoError(t, err)
+	require.Equal(t, 2, calls, "changed full context must be audited again")
+	changedPolicy := cfg
+	changedPolicy.ConfigVersion++
+	_, err = evaluator.Evaluate(context.Background(), changedPolicy, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, 3, calls, "a new audit policy version must not reuse old results")
+}
+
+func TestGuardEvaluatorCachesSuccessfulChunksBeforeLaterFailure(t *testing.T) {
+	calls := map[string]int{}
+	failSecondChunk := true
+	scanner := PromptScannerFunc(func(_ context.Context, endpoint ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
+		calls[chunk]++
+		if chunk == "def" && failSecondChunk {
+			return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Timeout: true}
+		}
+		return &NormalizedResult{
+			Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow,
+			ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}, GuardEndpointID: endpoint.ID,
+		}, nil
+	})
+	cache := newPromptResultCache(8, time.Minute)
+	evaluator := newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 4, 2, cache)
+	cfg := guardConfig(ActiveEndpoint{ID: "moderation", Protocol: ProtocolOpenAIModeration, Enabled: true, TimeoutMS: 1000, InputLimit: 3})
+	snapshot := PromptSnapshot{ScanText: "abcdef", PromptLength: 6}
+
+	_, err := evaluator.Evaluate(context.Background(), cfg, snapshot)
+	require.Error(t, err)
+	failSecondChunk = false
+	_, err = evaluator.Evaluate(context.Background(), cfg, snapshot)
+	require.NoError(t, err)
+	require.Equal(t, 1, calls["abc"], "the successful first chunk should be reused after the later chunk fails")
+	require.Equal(t, 2, calls["def"])
+}
+
 func TestGuardEvaluatorFlagSharedDeadlineFailClosedAndContextCancel(t *testing.T) {
 	t.Run("flag allows next stage", func(t *testing.T) {
 		metrics := NewAtomicMetrics()

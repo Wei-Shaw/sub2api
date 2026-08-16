@@ -14,9 +14,16 @@ import (
 	"github.com/lib/pq"
 )
 
+const (
+	EventAuditTypeAI      = "ai"
+	EventAuditTypeKeyword = "keyword"
+	EventAuditTypeHash    = "hash"
+)
+
 type EventFilter struct {
 	Decision   string     `json:"decision,omitempty"`
 	RiskLevel  string     `json:"risk_level,omitempty"`
+	AuditType  string     `json:"audit_type,omitempty"`
 	Endpoint   string     `json:"endpoint,omitempty"`
 	GroupID    *int64     `json:"group_id,omitempty"`
 	UserID     *int64     `json:"user_id,omitempty"`
@@ -48,6 +55,8 @@ type DeletePreview struct {
 type DeleteResult struct {
 	DeletedEvents int64   `json:"deleted_events"`
 	DeletedJobs   int64   `json:"deleted_jobs"`
+	HasMore       bool    `json:"has_more,omitempty"`
+	NextCursorID  int64   `json:"next_cursor_id,omitempty"`
 	JobIDs        []int64 `json:"-"`
 }
 
@@ -58,6 +67,7 @@ type EventRepository interface {
 	DeleteEventsByIDs(ctx context.Context, ids []int64) (*DeleteResult, error)
 	PreviewDelete(ctx context.Context, filter EventFilter) (*DeletePreview, error)
 	DeleteEventsByFilter(ctx context.Context, filter EventFilter, snapshotMaxID int64, batchSize int) (*DeleteResult, error)
+	DeleteEventsByFilterBatch(ctx context.Context, filter EventFilter, snapshotMaxID, cursorID int64, batchSize int) (*DeleteResult, error)
 }
 
 func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilter, page, pageSize int) (*EventPage, error) {
@@ -167,64 +177,100 @@ func (r *PostgreSQLRepository) PreviewDelete(ctx context.Context, filter EventFi
 }
 
 func (r *PostgreSQLRepository) DeleteEventsByFilter(ctx context.Context, filter EventFilter, snapshotMaxID int64, batchSize int) (*DeleteResult, error) {
-	if err := validateDeleteFilter(filter); err != nil {
-		return nil, err
-	}
-	if snapshotMaxID <= 0 {
-		return &DeleteResult{}, nil
-	}
-	if batchSize < 1 || batchSize > 1000 {
-		batchSize = 200
-	}
 	total := &DeleteResult{}
 	jobSet := map[int64]struct{}{}
+	var cursorID int64
 	for {
-		tx, err := r.db.BeginTx(ctx, nil)
+		batch, err := r.DeleteEventsByFilterBatch(ctx, filter, snapshotMaxID, cursorID, batchSize)
 		if err != nil {
 			return nil, err
 		}
-		where, args := buildEventWhere(filter, 1)
-		maxIndex := len(args) + 1
-		limitIndex := maxIndex + 1
-		args = append(args, snapshotMaxID, batchSize)
-		rows, err := tx.QueryContext(ctx, `
-			WITH selected AS (
-				SELECT e.id FROM prompt_audit_events e`+where+
-			fmt.Sprintf(` AND e.id <= $%d ORDER BY e.id LIMIT $%d FOR UPDATE SKIP LOCKED`, maxIndex, limitIndex)+`
-			), deleted AS (
-				DELETE FROM prompt_audit_events e USING selected s WHERE e.id=s.id RETURNING e.job_id
-			) SELECT job_id FROM deleted`, args...)
-		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
-		}
-		jobIDs, err := scanReturnedJobIDs(rows)
-		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
-		}
-		deletedJobs, err := deleteOrphanJobs(ctx, tx, jobIDs)
-		if err != nil {
-			_ = tx.Rollback()
-			return nil, err
-		}
-		if err := tx.Commit(); err != nil {
-			return nil, err
-		}
-		total.DeletedEvents += int64(len(jobIDs))
-		total.DeletedJobs += deletedJobs
-		for _, id := range jobIDs {
+		total.DeletedEvents += batch.DeletedEvents
+		total.DeletedJobs += batch.DeletedJobs
+		for _, id := range batch.JobIDs {
 			jobSet[id] = struct{}{}
 		}
-		if len(jobIDs) < batchSize {
+		if !batch.HasMore || batch.NextCursorID <= cursorID {
 			break
 		}
+		cursorID = batch.NextCursorID
 	}
 	for id := range jobSet {
 		total.JobIDs = append(total.JobIDs, id)
 	}
 	total.JobIDs = canonicalInt64s(total.JobIDs)
 	return total, nil
+}
+
+// DeleteEventsByFilterBatch deletes one bounded batch. The cursor is an event
+// ID, so subsequent batches never rescan rows already considered by the
+// current deletion operation. The snapshot high-water mark keeps the preview
+// contract intact while allowing each HTTP request to finish quickly.
+func (r *PostgreSQLRepository) DeleteEventsByFilterBatch(ctx context.Context, filter EventFilter, snapshotMaxID, cursorID int64, batchSize int) (*DeleteResult, error) {
+	if err := validateDeleteFilter(filter); err != nil {
+		return nil, err
+	}
+	if snapshotMaxID <= 0 {
+		return &DeleteResult{}, nil
+	}
+	if cursorID < 0 || cursorID > snapshotMaxID {
+		return nil, errors.New("prompt audit delete cursor is outside the preview snapshot")
+	}
+	if batchSize < 1 || batchSize > 1000 {
+		batchSize = 200
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	where, args := buildEventWhere(filter, 1)
+	snapshotIndex := len(args) + 1
+	cursorIndex := snapshotIndex + 1
+	limitIndex := cursorIndex + 1
+	args = append(args, snapshotMaxID, cursorID, batchSize)
+	rows, err := tx.QueryContext(ctx, `
+		WITH selected AS (
+			SELECT e.id FROM prompt_audit_events e`+where+
+		fmt.Sprintf(` AND e.id > $%d AND e.id <= $%d ORDER BY e.id LIMIT $%d FOR UPDATE SKIP LOCKED`, cursorIndex, snapshotIndex, limitIndex)+`
+		), deleted AS (
+			DELETE FROM prompt_audit_events e USING selected s WHERE e.id=s.id RETURNING e.id, e.job_id
+		) SELECT id, job_id FROM deleted ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	deletedEvents, err := scanReturnedEventJobs(rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(deletedEvents) == 0 {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &DeleteResult{}, nil
+	}
+
+	jobIDs := make([]int64, 0, len(deletedEvents))
+	for _, event := range deletedEvents {
+		jobIDs = append(jobIDs, event.JobID)
+	}
+	deletedJobs, err := deleteOrphanJobs(ctx, tx, jobIDs)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &DeleteResult{
+		DeletedEvents: int64(len(deletedEvents)),
+		DeletedJobs:   deletedJobs,
+		HasMore:       len(deletedEvents) == batchSize,
+		NextCursorID:  deletedEvents[len(deletedEvents)-1].EventID,
+		JobIDs:        canonicalInt64s(jobIDs),
+	}, nil
 }
 
 func FilterHash(filter EventFilter, snapshotMaxID int64) string {
@@ -241,12 +287,16 @@ func validateDeleteFilter(filter EventFilter) error {
 	if filter.StartAt == nil || filter.EndAt == nil || !filter.StartAt.Before(*filter.EndAt) {
 		return errors.New("prompt audit filter delete requires a valid explicit time range")
 	}
+	if filter.AuditType != "" && !isValidEventAuditType(filter.AuditType) {
+		return errors.New("prompt audit filter contains an invalid audit type")
+	}
 	return nil
 }
 
 func canonicalEventFilter(filter EventFilter) EventFilter {
 	filter.Decision = strings.TrimSpace(strings.ToLower(filter.Decision))
 	filter.RiskLevel = strings.TrimSpace(strings.ToLower(filter.RiskLevel))
+	filter.AuditType = strings.TrimSpace(strings.ToLower(filter.AuditType))
 	filter.Endpoint = strings.TrimSpace(filter.Endpoint)
 	filter.RequestID = strings.TrimSpace(filter.RequestID)
 	filter.PromptHash = strings.ToLower(strings.TrimSpace(filter.PromptHash))
@@ -276,6 +326,16 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	if filter.RiskLevel != "" {
 		add(" AND e.risk_level=$%d", filter.RiskLevel)
 	}
+	switch filter.AuditType {
+	case EventAuditTypeAI:
+		first := firstIndex + len(args)
+		clauses = append(clauses, fmt.Sprintf(" AND COALESCE(e.scanner_backend,'') NOT IN ($%d, $%d)", first, first+1))
+		args = append(args, promptKeywordCategory, promptHashCategory)
+	case EventAuditTypeKeyword:
+		add(" AND e.scanner_backend=$%d", promptKeywordCategory)
+	case EventAuditTypeHash:
+		add(" AND e.scanner_backend=$%d", promptHashCategory)
+	}
 	if filter.Endpoint != "" {
 		add(" AND e.endpoint=$%d", filter.Endpoint)
 	}
@@ -296,10 +356,12 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	}
 	if filter.Keyword != "" {
 		add(` AND (e.request_id ILIKE $%d OR e.prompt_hash ILIKE $%d OR e.redacted_preview ILIKE $%d
-			OR e.username_snapshot ILIKE $%d OR e.user_email_snapshot ILIKE $%d OR e.api_key_name_snapshot ILIKE $%d)`, "%"+TrimRunes(filter.Keyword, 128)+"%")
-		// The clause has six placeholders but add only supplied one. Rebuild it with one shared placeholder.
+			OR e.username_snapshot ILIKE $%d OR e.user_email_snapshot ILIKE $%d OR e.api_key_name_snapshot ILIKE $%d
+			OR e.matched_keyword ILIKE $%d)`, "%"+TrimRunes(filter.Keyword, 128)+"%")
+		// The clause has seven placeholders but add only supplied one. Rebuild it with one shared placeholder.
 		clauses[len(clauses)-1] = fmt.Sprintf(` AND (e.request_id ILIKE $%[1]d OR e.prompt_hash ILIKE $%[1]d OR e.redacted_preview ILIKE $%[1]d
-			OR e.username_snapshot ILIKE $%[1]d OR e.user_email_snapshot ILIKE $%[1]d OR e.api_key_name_snapshot ILIKE $%[1]d)`, firstIndex+len(args)-1)
+			OR e.username_snapshot ILIKE $%[1]d OR e.user_email_snapshot ILIKE $%[1]d OR e.api_key_name_snapshot ILIKE $%[1]d
+			OR e.matched_keyword ILIKE $%[1]d)`, firstIndex+len(args)-1)
 	}
 	if filter.StartAt != nil {
 		add(" AND e.created_at >= $%d", filter.StartAt.UTC())
@@ -310,11 +372,20 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	return strings.Join(clauses, ""), args
 }
 
+func isValidEventAuditType(value string) bool {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case EventAuditTypeAI, EventAuditTypeKeyword, EventAuditTypeHash:
+		return true
+	default:
+		return false
+	}
+}
+
 func eventColumns(alias string) string {
 	return fmt.Sprintf(`%[1]s.id,%[1]s.job_id,%[1]s.request_id,%[1]s.user_id,%[1]s.username_snapshot,
 		%[1]s.user_email_snapshot,%[1]s.api_key_id,%[1]s.api_key_name_snapshot,%[1]s.group_id,%[1]s.group_name,
 		%[1]s.provider,%[1]s.endpoint,%[1]s.protocol,%[1]s.model,%[1]s.prompt_hash,%[1]s.redacted_preview,
-		%[1]s.stage,%[1]s.decision,%[1]s.risk_level,%[1]s.action,%[1]s.categories,%[1]s.matched_scanners,
+		%[1]s.stage,%[1]s.decision,%[1]s.risk_level,%[1]s.action,%[1]s.matched_keyword,%[1]s.categories,%[1]s.matched_scanners,
 		%[1]s.scanner_scores,%[1]s.scanner_evidence,%[1]s.scanner_backend,%[1]s.scanner_version,
 		%[1]s.guard_endpoint_id,%[1]s.policy_id,%[1]s.policy_version,%[1]s.config_version,
 		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.created_at`, alias)
@@ -335,7 +406,7 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 		&event.Snapshot.APIKeyNameSnapshot, &groupID, &event.Snapshot.GroupName,
 		&event.Snapshot.Provider, &event.Snapshot.Endpoint, &event.Snapshot.Protocol, &event.Snapshot.Model,
 		&event.Snapshot.PromptHash, &event.Snapshot.RedactedPreview, &event.Snapshot.Stage, &event.Decision,
-		&event.RiskLevel, &event.Action, &categories, &matched, &scores, &evidence, &event.ScannerBackend,
+		&event.RiskLevel, &event.Action, &event.MatchedKeyword, &categories, &matched, &scores, &evidence, &event.ScannerBackend,
 		&event.ScannerVersion, &event.GuardEndpointID, &event.PolicyID, &event.PolicyVersion,
 		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CreatedAt}
 	if len(withFullPrompt) > 0 && withFullPrompt[0] {
@@ -353,7 +424,8 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 	_ = json.Unmarshal(scores, &event.ScannerScores)
 	_ = json.Unmarshal(evidence, &event.ScannerEvidence)
 	result := NormalizedResult{Decision: event.Decision, RiskLevel: event.RiskLevel, Action: event.Action,
-		Categories: event.Categories, MatchedScanners: event.MatchedScanners, ScannerScores: event.ScannerScores,
+		MatchedKeyword: event.MatchedKeyword,
+		Categories:     event.Categories, MatchedScanners: event.MatchedScanners, ScannerScores: event.ScannerScores,
 		ScannerEvidence: event.ScannerEvidence}
 	event.IssueSummaries = BuildIssueSummaries(result)
 	return event, nil
@@ -368,6 +440,24 @@ func scanReturnedJobIDs(rows *sql.Rows) ([]int64, error) {
 			return nil, err
 		}
 		result = append(result, id)
+	}
+	return result, rows.Err()
+}
+
+type deletedEventJob struct {
+	EventID int64
+	JobID   int64
+}
+
+func scanReturnedEventJobs(rows *sql.Rows) ([]deletedEventJob, error) {
+	defer func() { _ = rows.Close() }()
+	result := make([]deletedEventJob, 0)
+	for rows.Next() {
+		var event deletedEventJob
+		if err := rows.Scan(&event.EventID, &event.JobID); err != nil {
+			return nil, err
+		}
+		result = append(result, event)
 	}
 	return result, rows.Err()
 }

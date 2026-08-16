@@ -1,4 +1,6 @@
 import { apiClient } from '@/api/client'
+import { adminAPI } from '@/api/admin'
+import type { Proxy } from '@/types'
 import type {
   PromptAuditConfig,
   PromptAuditEvent,
@@ -11,6 +13,8 @@ import type {
   PromptEventPage,
   PromptProbeResult,
   PromptAuditEndpointDraft,
+  PromptAuditDeleteHashResult,
+  PromptAuditClearHashesResult,
 } from './types'
 import { eventFilterPayload, eventQueryParams } from './viewModel'
 
@@ -26,12 +30,12 @@ export async function updateConfig(payload: PromptAuditUpdateRequest): Promise<P
   return data
 }
 
-export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise<PromptProbeResult> {
+export async function probeEndpoint(endpoint: PromptAuditEndpointDraft, proxyId: number | null): Promise<PromptProbeResult> {
   const { data } = await apiClient.post<PromptProbeResult>(`${basePath}/endpoints/probe`, {
     endpoint: {
       id: endpoint.id,
       name: endpoint.name,
-      protocol: 'openai_compatible',
+      protocol: endpoint.protocol,
       base_url: endpoint.base_url,
       model: endpoint.model,
       token: endpoint.token || undefined,
@@ -39,12 +43,26 @@ export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise
       input_limit: endpoint.input_limit,
       enabled: endpoint.enabled,
     },
+    // 0 explicitly tests a direct connection; positive values select a managed proxy.
+    proxy_id: proxyId ?? 0,
   })
   return data
 }
 
 export async function getRuntime(): Promise<PromptAuditRuntime> {
   const { data } = await apiClient.get<PromptAuditRuntime>(`${basePath}/runtime`)
+  return data
+}
+
+export async function deleteFlaggedHash(promptHash: string): Promise<PromptAuditDeleteHashResult> {
+  const { data } = await apiClient.delete<PromptAuditDeleteHashResult>(`${basePath}/hashes`, {
+    data: { prompt_hash: promptHash },
+  })
+  return data
+}
+
+export async function clearFlaggedHashes(): Promise<PromptAuditClearHashesResult> {
+  const { data } = await apiClient.delete<PromptAuditClearHashesResult>(`${basePath}/hashes/all`)
   return data
 }
 
@@ -86,14 +104,26 @@ export async function deleteEventsByFilter(
   filters: PromptEventFilters,
   preview: PromptDeletePreview,
 ): Promise<PromptDeleteResult> {
-  const { data } = await apiClient.post<PromptDeleteResult>(`${basePath}/events/delete-by-filter`, {
-    filter: eventFilterPayload(filters),
-    snapshot_max_id: preview.snapshot_max_id,
-    filter_hash: preview.filter_hash,
-    confirmation_token: preview.confirmation_token,
-    confirm: true,
-  })
-  return data
+  const result: PromptDeleteResult = { deleted_events: 0, deleted_jobs: 0 }
+  let cursorId = 0
+  while (true) {
+    const { data } = await apiClient.post<PromptDeleteResult>(`${basePath}/events/delete-by-filter`, {
+      filter: eventFilterPayload(filters),
+      snapshot_max_id: preview.snapshot_max_id,
+      cursor_id: cursorId,
+      filter_hash: preview.filter_hash,
+      confirmation_token: preview.confirmation_token,
+      confirm: true,
+    })
+    result.deleted_events += data.deleted_events || 0
+    result.deleted_jobs += data.deleted_jobs || 0
+    if (!data.has_more) return result
+    const nextCursorID = Number(data.next_cursor_id || 0)
+    if (nextCursorID <= cursorId) {
+      throw new Error('Prompt audit deletion did not advance its cursor')
+    }
+    cursorId = nextCursorID
+  }
 }
 
 export async function listGroups(): Promise<PromptAuditGroup[]> {
@@ -103,11 +133,17 @@ export async function listGroups(): Promise<PromptAuditGroup[]> {
   return data
 }
 
+export async function listProxies(): Promise<Proxy[]> {
+  return adminAPI.proxies.getAll()
+}
+
 export const promptAuditAPI = {
   getConfig,
   updateConfig,
   probeEndpoint,
   getRuntime,
+  deleteFlaggedHash,
+  clearFlaggedHashes,
   listEvents,
   getEvent,
   deleteEvent,
@@ -115,6 +151,7 @@ export const promptAuditAPI = {
   previewDelete,
   deleteEventsByFilter,
   listGroups,
+  listProxies,
 }
 
 export default promptAuditAPI

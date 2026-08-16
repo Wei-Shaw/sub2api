@@ -46,6 +46,7 @@ func TestPromptServiceHasExplicitIdempotentLifecycle(t *testing.T) {
 		NewRedisPayloadStore(nil),
 		NewOpenAICompatibleScanner(),
 		NewAtomicMetrics(),
+		nil,
 	)
 
 	require.Nil(t, service.cancel, "construction must not start background work")
@@ -68,7 +69,30 @@ func TestPromptServiceStartReportsDependencyFailureWithoutPanic(t *testing.T) {
 	require.NoError(t, service.Shutdown(ctx))
 }
 
-func TestPromptServiceBlockingLatestTurnOnlyUsesNarrowSnapshot(t *testing.T) {
+func TestPromptServiceBlockingUsesFullSnapshot(t *testing.T) {
+	seen := make([]string, 0, 2)
+	evaluator := newGuardEvaluator(PromptScannerFunc(func(_ context.Context, _ ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
+		seen = append(seen, chunk)
+		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
+	}), nil, NewAtomicMetrics(), 2, 2)
+	service := &PromptService{
+		config: &fakeConfigStore{active: true, cfg: ActiveConfig{
+			RiskControlEnabled: true, Enabled: true, BlockingEnabled: true, AllGroups: true,
+			Scanners: AllScannerIDs, Endpoints: []ActiveEndpoint{{ID: "guard-1", Enabled: true, TimeoutMS: 1000, InputLimit: 4096}},
+		}},
+		evaluator: evaluator,
+	}
+	decision, err := service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"user","content":"older user input"},{"role":"assistant","content":"previous output"},{"role":"user","content":"latest user input"}]}`)})
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, decision.Kind)
+	combined := strings.Join(seen, "\n")
+	require.Contains(t, combined, "system instruction")
+	require.Contains(t, combined, "older user input")
+	require.Contains(t, combined, "previous output")
+	require.Contains(t, combined, "latest user input")
+}
+
+func TestPromptServiceBlockingCanUseLatestTurnOnly(t *testing.T) {
 	seen := make([]string, 0, 2)
 	evaluator := newGuardEvaluator(PromptScannerFunc(func(_ context.Context, _ ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
 		seen = append(seen, chunk)
@@ -84,7 +108,11 @@ func TestPromptServiceBlockingLatestTurnOnlyUsesNarrowSnapshot(t *testing.T) {
 	decision, err := service.Evaluate(context.Background(), Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"user","content":"older user input"},{"role":"assistant","content":"previous output"},{"role":"user","content":"latest user input"}]}`)})
 	require.NoError(t, err)
 	require.Equal(t, DecisionAllow, decision.Kind)
-	require.Equal(t, []string{"latest user input", "previous output"}, seen)
+	combined := strings.Join(seen, "\n")
+	require.Contains(t, combined, "previous output")
+	require.Contains(t, combined, "latest user input")
+	require.NotContains(t, combined, "system instruction")
+	require.NotContains(t, combined, "older user input")
 }
 
 func TestPromptServiceRejectsInvalidDeleteConfirmationClaims(t *testing.T) {
@@ -125,6 +153,8 @@ func TestPromptServiceRejectsInvalidDeleteConfirmationClaims(t *testing.T) {
 			return value
 		}(), adminID: 7},
 		{name: "snapshot mismatch", request: func() DeleteByFilterRequest { value := validRequest; value.SnapshotMaxID++; return value }(), adminID: 7},
+		{name: "negative cursor", request: func() DeleteByFilterRequest { value := validRequest; value.CursorID = -1; return value }(), adminID: 7},
+		{name: "cursor past snapshot", request: func() DeleteByFilterRequest { value := validRequest; value.CursorID = snapshotMaxID + 1; return value }(), adminID: 7},
 		{name: "expired", request: func() DeleteByFilterRequest {
 			value := validRequest
 			claims := validClaims

@@ -45,6 +45,12 @@ func (s *fakePromptAdminService) Probe(ctx context.Context, req ProbeRequest) Pr
 	return s.probe(ctx, req)
 }
 func (s *fakePromptAdminService) Runtime(context.Context) RuntimeSnapshot { return s.runtime }
+func (s *fakePromptAdminService) DeleteFlaggedPromptHash(context.Context, string) (*PromptAuditDeleteHashResult, error) {
+	return &PromptAuditDeleteHashResult{}, nil
+}
+func (s *fakePromptAdminService) ClearFlaggedPromptHashes(context.Context) (*PromptAuditClearHashesResult, error) {
+	return &PromptAuditClearHashesResult{}, nil
+}
 func (s *fakePromptAdminService) ListEvents(ctx context.Context, filter EventFilter, page, pageSize int) (*EventPage, error) {
 	if s.list == nil {
 		return &EventPage{}, nil
@@ -96,6 +102,8 @@ func promptAdminRouter(service PromptAdminService) *gin.Engine {
 	group.PUT("/config", handler.UpdateConfig)
 	group.POST("/endpoints/probe", handler.ProbeEndpoint)
 	group.GET("/runtime", handler.GetRuntime)
+	group.DELETE("/hashes", handler.DeleteFlaggedHash)
+	group.DELETE("/hashes/all", handler.ClearFlaggedHashes)
 	group.GET("/events", handler.ListEvents)
 	group.GET("/events/:id", handler.GetEvent)
 	group.DELETE("/events/:id", handler.DeleteEvent)
@@ -209,6 +217,7 @@ func TestPromptAdminRejectsInvalidEventIDsTimesAndPagination(t *testing.T) {
 		{http.MethodGet, "/admin/prompt-audit/events/not-a-number", nil, "prompt_audit_invalid_event_id"},
 		{http.MethodDelete, "/admin/prompt-audit/events/-1", nil, "prompt_audit_invalid_event_id"},
 		{http.MethodGet, "/admin/prompt-audit/events?group_id=bad", nil, "prompt_audit_invalid_filter_id"},
+		{http.MethodGet, "/admin/prompt-audit/events?audit_type=other", nil, "prompt_audit_invalid_audit_type"},
 		{http.MethodGet, "/admin/prompt-audit/events?start_at=not-time", nil, "prompt_audit_invalid_time"},
 		{http.MethodGet, "/admin/prompt-audit/events?page=0", nil, "prompt_audit_invalid_pagination"},
 		{http.MethodPost, "/admin/prompt-audit/events/batch-delete", map[string]any{"ids": []int64{1, -2}}, "prompt_audit_invalid_event_id"},
@@ -216,6 +225,21 @@ func TestPromptAdminRejectsInvalidEventIDsTimesAndPagination(t *testing.T) {
 		response := promptAdminRequest(t, router, tc.method, tc.path, tc.body)
 		require.Equalf(t, http.StatusBadRequest, response.Code, "%s %s", tc.method, tc.path)
 		require.Contains(t, response.Body.String(), tc.reason)
+	}
+}
+
+func TestPromptAdminParsesAuditTypeFilter(t *testing.T) {
+	for _, auditType := range []string{EventAuditTypeAI, EventAuditTypeKeyword, EventAuditTypeHash} {
+		t.Run(auditType, func(t *testing.T) {
+			service := &fakePromptAdminService{list: func(_ context.Context, filter EventFilter, page, pageSize int) (*EventPage, error) {
+				require.Equal(t, auditType, filter.AuditType)
+				require.Equal(t, 1, page)
+				require.Equal(t, 20, pageSize)
+				return &EventPage{Items: []*Event{}, Page: page, PageSize: pageSize}, nil
+			}}
+			response := promptAdminRequest(t, promptAdminRouter(service), http.MethodGet, "/admin/prompt-audit/events?audit_type="+auditType, nil)
+			require.Equal(t, http.StatusOK, response.Code)
+		})
 	}
 }
 

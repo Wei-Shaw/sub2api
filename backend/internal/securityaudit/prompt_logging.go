@@ -152,8 +152,10 @@ func stableErrorMessage(code string) string {
 	switch stableErrorCode(code) {
 	case ErrorCodeBlocked:
 		return "Prompt Guard blocked the request"
-	case ErrorCodeUnavailable, "payload_store_unavailable", "payload_missing":
+	case ErrorCodeUnavailable, "payload_store_unavailable":
 		return "Prompt Audit dependency is unavailable"
+	case "payload_missing":
+		return "Prompt Audit payload expired before processing"
 	case ErrorCodeInvalidResponse:
 		return "Prompt Guard returned an invalid response"
 	case "queue_full", "queue_admission_busy":

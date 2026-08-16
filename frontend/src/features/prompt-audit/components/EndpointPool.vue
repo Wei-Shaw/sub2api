@@ -10,6 +10,19 @@
       </button>
     </div>
 
+    <div class="mt-5 max-w-xl">
+      <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-dark-200">
+        {{ t('admin.promptAudit.pool.proxy') }}
+      </label>
+      <ProxySelector
+        :model-value="proxyId"
+        :proxies="proxies"
+        data-test="prompt-audit-proxy"
+        @update:model-value="$emit('update:proxyId', $event)"
+      />
+      <p class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.pool.proxyHint') }}</p>
+    </div>
+
     <div v-if="endpoints.length === 0" class="mt-5 rounded-xl border border-dashed border-gray-300 px-5 py-10 text-center text-sm text-gray-500 dark:border-dark-600 dark:bg-dark-900/20 dark:text-dark-300">
       {{ t('admin.promptAudit.pool.empty') }}
     </div>
@@ -47,7 +60,7 @@
             <div class="min-w-0">
               <div class="flex min-w-0 items-center gap-2">
                 <p class="truncate font-semibold text-gray-950 dark:text-white">{{ endpoint.name }}</p>
-                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="endpoint.enabled ? 'bg-gray-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
+                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="endpoint.enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
               </div>
               <p class="mt-0.5 truncate font-mono text-[11px] text-gray-500 dark:text-dark-400" :title="endpoint.base_url">{{ endpoint.base_url }}</p>
             </div>
@@ -68,14 +81,14 @@
 
           <div class="min-w-0">
             <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 xl:hidden">{{ t('admin.promptAudit.pool.credential') }}</p>
-            <div class="flex items-center gap-1.5 text-xs font-medium" :class="credentialInvalid(endpoint) ? 'text-red-600 dark:text-red-300' : hasCredential(endpoint) ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-dark-400'">
-              <span class="h-1.5 w-1.5 rounded-full" :class="credentialInvalid(endpoint) ? 'bg-red-500' : hasCredential(endpoint) ? 'bg-gray-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
+            <div class="flex items-center gap-1.5 text-xs font-medium" :class="credentialInvalid(endpoint) ? 'text-red-600 dark:text-red-300' : hasCredential(endpoint) ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-dark-400'">
+              <span class="h-1.5 w-1.5 rounded-full" :class="credentialInvalid(endpoint) ? 'bg-red-500' : hasCredential(endpoint) ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-dark-500'" aria-hidden="true" />
               {{ credentialInvalid(endpoint) ? t('admin.promptAudit.pool.invalid') : hasCredential(endpoint) ? t('admin.promptAudit.pool.configured') : t('admin.promptAudit.pool.missing') }}
             </div>
             <p v-if="probingIds.includes(endpoint.id)" class="mt-1.5 text-xs text-primary-600 dark:text-primary-300">
               {{ t('admin.promptAudit.pool.probeProgress') }}
             </p>
-            <p v-if="probeResults[endpoint.id]" class="mt-1.5 line-clamp-2 text-xs leading-5" :class="probeResults[endpoint.id].ok ? 'text-gray-600 dark:text-gray-300' : 'text-red-600 dark:text-red-300'">
+            <p v-if="probeResults[endpoint.id]" class="mt-1.5 line-clamp-2 text-xs leading-5" :class="probeResults[endpoint.id].ok ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'">
               {{ t('admin.promptAudit.pool.probeResult', { status: probeResults[endpoint.id].status, http: probeResults[endpoint.id].http_status || '—', latency: probeResults[endpoint.id].latency_ms }) }}
               · {{ probeResults[endpoint.id].message }}
             </p>
@@ -115,9 +128,21 @@
           <input v-model="editing.clear_token" type="checkbox" :aria-label="t('admin.promptAudit.pool.clearSecret')" />
           {{ t('admin.promptAudit.pool.clearSecret') }}
         </label>
-        <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+        <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
+          <span>{{ t('admin.promptAudit.pool.protocol') }}</span>
+          <select v-model="editing.protocol" class="input w-full" :aria-label="t('admin.promptAudit.pool.protocol')" @change="onProtocolChange">
+            <option value="openai_compatible">{{ t('admin.promptAudit.pool.openaiCompatible') }}</option>
+            <option value="openai_moderation">{{ t('admin.promptAudit.pool.openaiModeration') }}</option>
+            <option value="nemotron_content_safety">{{ t('admin.promptAudit.pool.nemotronContentSafety') }}</option>
+          </select>
+        </label>
+        <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.pool.model') }}</span>
-          <input v-model="editing.model" class="input w-full" :aria-label="t('admin.promptAudit.pool.model')" />
+          <input v-model="editing.model" class="input w-full" :list="editing.protocol === 'nemotron_content_safety' ? 'prompt-audit-nemotron-models' : undefined" :aria-label="t('admin.promptAudit.pool.model')" />
+          <span v-if="editing.protocol === 'nemotron_content_safety'" class="block text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.pool.nemotronHint') }}</span>
+          <datalist id="prompt-audit-nemotron-models">
+            <option v-for="model in NEMOTRON_MODEL_OPTIONS" :key="model" :value="model" />
+          </datalist>
         </label>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.pool.timeout') }}</span>
@@ -142,17 +167,31 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ProxySelector from '@/components/common/ProxySelector.vue'
+import type { Proxy } from '@/types'
 import type { PromptAuditEndpointDraft, PromptProbeResult } from '../types'
-import { cloneData, createDefaultEndpoint } from '../viewModel'
+import {
+  cloneData,
+  createDefaultEndpoint,
+  defaultModelForProtocol,
+  normalizeEndpointModel,
+  DEFAULT_GUARD_MODEL,
+  DEFAULT_MODERATION_MODEL,
+  DEFAULT_NEMOTRON_MODEL,
+  NEMOTRON_MODEL_OPTIONS,
+} from '../viewModel'
 
 const props = defineProps<{
   endpoints: PromptAuditEndpointDraft[]
   probeResults: Record<string, PromptProbeResult>
   probingIds: string[]
+  proxyId: number | null
+  proxies: Proxy[]
 }>()
 const emit = defineEmits<{
   (event: 'update:endpoints', value: PromptAuditEndpointDraft[]): void
   (event: 'probe', endpoint: PromptAuditEndpointDraft): void
+  (event: 'update:proxyId', value: number | null): void
 }>()
 const { t } = useI18n()
 const editing = ref<PromptAuditEndpointDraft | null>(null)
@@ -170,10 +209,19 @@ function closeEditor() {
   editing.value = null
   editingIndex.value = -1
 }
+function onProtocolChange() {
+  if (!editing.value) return
+  const model = editing.value.model.trim()
+  const presetModels: readonly string[] = [DEFAULT_GUARD_MODEL, DEFAULT_MODERATION_MODEL, DEFAULT_NEMOTRON_MODEL, ...NEMOTRON_MODEL_OPTIONS]
+  if (!model || presetModels.includes(model)) {
+    editing.value.model = defaultModelForProtocol(editing.value.protocol, editing.value.base_url)
+  }
+}
 function saveEditor() {
   if (!editing.value?.id.trim() || !editing.value.name.trim() || !editing.value.base_url.trim()) return
   const next = props.endpoints.map((item) => cloneData(item))
   const value = cloneData(editing.value)
+  value.model = normalizeEndpointModel(value)
   if (value.token.trim()) value.clear_token = false
   if (editingIndex.value < 0) next.push(value)
   else next.splice(editingIndex.value, 1, value)

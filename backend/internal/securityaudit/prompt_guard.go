@@ -12,6 +12,7 @@ type GuardEvaluator struct {
 	repo    JobRepository
 	metrics Metrics
 	clock   Clock
+	cache   PromptResultCache
 
 	global       chan struct{}
 	perNodeLimit int
@@ -19,18 +20,22 @@ type GuardEvaluator struct {
 	nodes        map[string]chan struct{}
 }
 
-func NewGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics) *GuardEvaluator {
-	return newGuardEvaluator(scanner, repo, metrics, 64, 16)
+func NewGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics, caches ...PromptResultCache) *GuardEvaluator {
+	return newGuardEvaluator(scanner, repo, metrics, 64, 16, caches...)
 }
 
-func newGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics, globalLimit, perNodeLimit int) *GuardEvaluator {
+func newGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics, globalLimit, perNodeLimit int, caches ...PromptResultCache) *GuardEvaluator {
 	if globalLimit < 1 {
 		globalLimit = 64
 	}
 	if perNodeLimit < 1 {
 		perNodeLimit = 16
 	}
-	return &GuardEvaluator{scanner: scanner, repo: repo, metrics: metrics, clock: realClock{},
+	var cache PromptResultCache
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
+	return &GuardEvaluator{scanner: scanner, repo: repo, metrics: metrics, clock: realClock{}, cache: cache,
 		global: make(chan struct{}, globalLimit), perNodeLimit: perNodeLimit, nodes: map[string]chan struct{}{}}
 }
 
@@ -79,22 +84,38 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
 	LogInfo(EventEvaluationStarted, mergeLogFields(baseFields, map[string]any{"chunk_total": len(chunks), "status": "started"}))
-	results := make([]*NormalizedResult, 0, len(chunks))
+	results := make([]*NormalizedResult, len(chunks))
+	pending := make([]pendingPromptChunk, 0, len(chunks))
+	cachedBlockIndex := -1
 	for index, chunk := range chunks {
-		chunkStarted := g.clock.Now()
-		LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{
-			"chunk_index": index + 1, "chunk_total": len(chunks),
-			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-			"status": "started",
-		}))
-		result, err := g.scanChunk(evalCtx, cfg, endpoints, chunk)
+		if cached := g.cachedResult(cfg, endpoints, chunk); cached != nil {
+			cached.ChunkTotal = len(chunks)
+			cached.LatencyMS = 0
+			results[index] = cached
+			LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
+				"chunk_index": index + 1, "chunk_total": len(chunks), "chunk_chars": len([]rune(chunk)),
+				"input_chars": snapshot.PromptLength, "input_limit": inputLimit, "guard_endpoint_id": cached.GuardEndpointID,
+				"action": cached.Action, "cache_hit": true, "latency_ms": 0, "status": "cached",
+			}))
+			if cached.Action == ActionBlock {
+				cachedBlockIndex = index
+				break
+			}
+			continue
+		}
+		pending = append(pending, pendingPromptChunk{index: index, text: chunk})
+	}
+	if len(pending) > 0 {
+		for _, item := range pending {
+			LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{
+				"chunk_index": item.index + 1, "chunk_total": len(chunks),
+				"chunk_chars": len([]rune(item.text)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
+				"status": "started",
+			}))
+		}
+		pendingResults, err := g.scanPending(evalCtx, cfg, endpoints, pending)
 		if err != nil {
 			code := guardErrorCode(err)
-			LogWarn(EventChunkFailed, mergeLogFields(baseFields, map[string]any{
-				"chunk_index": index + 1, "chunk_total": len(chunks),
-				"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-				"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "error_code": code, "status": "failed",
-			}))
 			kind := DecisionUnavailable
 			if code == ErrorCodeInvalidResponse {
 				kind = DecisionInvalid
@@ -109,15 +130,28 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 			logGuardFailure(snapshot, cfg, kind, code, "", g.clock.Now().Sub(start))
 			return nil, err
 		}
-		result.ChunkTotal = len(chunks)
-		results = append(results, result)
-		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
-			"chunk_index": index + 1, "chunk_total": len(chunks),
-			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-			"guard_endpoint_id": result.GuardEndpointID, "action": result.Action,
-			"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed",
-		}))
+		for offset, result := range pendingResults {
+			item := pending[offset]
+			result.ChunkTotal = len(chunks)
+			results[item.index] = result
+			g.cacheResult(cfg, endpoints, item.text, result)
+			LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
+				"chunk_index": item.index + 1, "chunk_total": len(chunks), "chunk_chars": len([]rune(item.text)),
+				"input_chars": snapshot.PromptLength, "input_limit": inputLimit, "guard_endpoint_id": result.GuardEndpointID,
+				"action": result.Action, "cache_hit": false, "latency_ms": result.LatencyMS, "status": "completed",
+			}))
+		}
+	}
+	if cachedBlockIndex >= 0 {
+		results = results[:cachedBlockIndex+1]
+	}
+	for index, result := range results {
+		if result == nil {
+			return nil, &GuardError{Code: ErrorCodeInvalidResponse}
+		}
 		if result.Action == ActionBlock {
+			// A block is terminal, so an uncached tail does not need to be sent.
+			results = results[:index+1]
 			break
 		}
 	}
@@ -185,6 +219,44 @@ func logGuardFailure(snapshot PromptSnapshot, cfg ActiveConfig, kind DecisionKin
 		"decision": kind, "guard_endpoint_id": guardEndpointID, "latency_ms": latency.Milliseconds(),
 		"status": "failed", "error_code": code, "upstream_dispatched": false, "billing_preconsumed": false,
 	}))
+}
+
+type pendingPromptChunk struct {
+	index int
+	text  string
+}
+
+func (g *GuardEvaluator) cachedResult(cfg ActiveConfig, endpoints []ActiveEndpoint, chunk string) *NormalizedResult {
+	if g == nil {
+		return nil
+	}
+	return getPromptResultFromCache(g.cache, cfg, endpoints, cfg.Scanners, chunk)
+}
+
+func (g *GuardEvaluator) cacheResult(cfg ActiveConfig, endpoints []ActiveEndpoint, chunk string, result *NormalizedResult) {
+	if g == nil {
+		return
+	}
+	setPromptResultCache(g.cache, cfg, endpoints, cfg.Scanners, chunk, result)
+}
+
+func (g *GuardEvaluator) scanPending(ctx context.Context, cfg ActiveConfig, endpoints []ActiveEndpoint, pending []pendingPromptChunk) ([]*NormalizedResult, error) {
+	if len(pending) == 0 {
+		return nil, nil
+	}
+	results := make([]*NormalizedResult, 0, len(pending))
+	for _, item := range pending {
+		result, err := g.scanChunk(ctx, cfg, endpoints, item.text)
+		if err != nil {
+			return nil, err
+		}
+		g.cacheResult(cfg, endpoints, item.text, result)
+		results = append(results, result)
+		if result.Action == ActionBlock {
+			break
+		}
+	}
+	return results, nil
 }
 
 func (g *GuardEvaluator) scanChunk(ctx context.Context, cfg ActiveConfig, endpoints []ActiveEndpoint, chunk string) (*NormalizedResult, error) {

@@ -12,15 +12,28 @@ const (
 	ConfigInvalidationChannel = "sub2api:prompt_guard:config:invalidate"
 	PayloadKeyPrefix          = "sub2api:prompt_audit:payload:"
 
-	ErrorCodeBlocked               = "prompt_guard_blocked"
-	ErrorCodeUnavailable           = "prompt_guard_unavailable"
-	ErrorCodeInvalidResponse       = "prompt_guard_invalid_response"
-	ErrorCodeConfigConflict        = "prompt_audit_config_conflict"
-	ErrorCodeConfigUnavailable     = "prompt_audit_config_unavailable"
-	ErrorCodeEncryptionKeyRequired = "prompt_audit_encryption_key_required"
-	ErrorCodeRequiresEnabled       = "prompt_guard_requires_audit_enabled"
+	ErrorCodeBlocked                         = "prompt_guard_blocked"
+	ErrorCodeUnavailable                     = "prompt_guard_unavailable"
+	ErrorCodeInvalidResponse                 = "prompt_guard_invalid_response"
+	ErrorCodeConfigConflict                  = "prompt_audit_config_conflict"
+	ErrorCodeConfigUnavailable               = "prompt_audit_config_unavailable"
+	ErrorCodeEncryptionKeyRequired           = "prompt_audit_encryption_key_required"
+	ErrorCodeRequiresEnabled                 = "prompt_guard_requires_audit_enabled"
+	ErrorCodePromptAuditHashInvalid          = "PROMPT_AUDIT_HASH_INVALID"
+	ErrorCodePromptAuditHashCacheUnavailable = "PROMPT_AUDIT_HASH_CACHE_UNAVAILABLE"
 
-	DefaultGuardModel = "sileader/qwen3guard:0.6b"
+	DefaultGuardModel       = "sileader/qwen3guard:0.6b"
+	DefaultModerationModel  = "omni-moderation-latest"
+	DefaultNemotronModel    = "nemotron-3.5-content-safety-free"
+	OpenRouterNemotronModel = "nvidia/nemotron-3.5-content-safety:free"
+
+	PromptKeywordModeAIOnly       = "ai_only"
+	PromptKeywordModeKeywordOnly  = "keyword_only"
+	PromptKeywordModeKeywordAndAI = "keyword_and_ai"
+
+	ProtocolOpenAICompatible = "openai_compatible"
+	ProtocolOpenAIModeration = "openai_moderation"
+	ProtocolNemotronSafety   = "nemotron_content_safety"
 )
 
 type Mode string
@@ -124,6 +137,7 @@ type NormalizedResult struct {
 	Decision          EventDecision      `json:"decision"`
 	RiskLevel         RiskLevel          `json:"risk_level"`
 	Action            Action             `json:"action"`
+	MatchedKeyword    string             `json:"matched_keyword,omitempty"`
 	Safety            string             `json:"safety"`
 	Categories        []string           `json:"categories"`
 	MatchedScanners   []string           `json:"matched_scanners"`
@@ -147,13 +161,14 @@ type PromptDecision struct {
 }
 
 type LegacyDecision struct {
-	Allowed    bool   `json:"allowed"`
-	Blocked    bool   `json:"blocked"`
-	Flagged    bool   `json:"flagged"`
-	Message    string `json:"message"`
-	StatusCode int    `json:"status_code"`
-	ErrorCode  string `json:"error_code"`
-	Action     string `json:"action"`
+	Allowed         bool   `json:"allowed"`
+	Blocked         bool   `json:"blocked"`
+	Flagged         bool   `json:"flagged"`
+	Message         string `json:"message"`
+	StatusCode      int    `json:"status_code"`
+	ErrorCode       string `json:"error_code"`
+	Action          string `json:"action"`
+	FallbackOnBlock bool   `json:"fallback_on_block,omitempty"`
 }
 
 type Decision struct {
@@ -250,8 +265,18 @@ type RuntimeSnapshot struct {
 	LastErrorMessage      string                 `json:"last_error_message,omitempty"`
 	DatabaseStatus        string                 `json:"database_status"`
 	RedisStatus           string                 `json:"redis_status"`
+	FlaggedHashCount      int64                  `json:"flagged_hash_count"`
 	Endpoints             map[string]ProbeResult `json:"endpoints"`
 	GuardMetrics          GuardMetricsSnapshot   `json:"guard_metrics"`
+}
+
+type PromptAuditDeleteHashResult struct {
+	PromptHash string `json:"prompt_hash"`
+	Deleted    bool   `json:"deleted"`
+}
+
+type PromptAuditClearHashesResult struct {
+	Deleted int64 `json:"deleted"`
 }
 
 type Clock interface {

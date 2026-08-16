@@ -24,8 +24,11 @@ describe('Prompt Audit API', () => {
     const result = await promptAuditAPI.probeEndpoint({
       id: 'guard-1', name: 'Guard', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000', model: 'guard',
       token: 'api-canary-secret', clear_token: false, timeout_ms: 1000, input_limit: 1000, enabled: true, has_token: false, token_status: 'missing',
-    })
-    expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/endpoints/probe', expect.objectContaining({ endpoint: expect.objectContaining({ token: 'api-canary-secret' }) }))
+    }, 18)
+    expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/endpoints/probe', expect.objectContaining({
+      endpoint: expect.objectContaining({ token: 'api-canary-secret' }),
+      proxy_id: 18,
+    }))
     expect(JSON.stringify(result)).not.toContain('api-canary-secret')
   })
 
@@ -40,5 +43,21 @@ describe('Prompt Audit API', () => {
     expect(client.post).toHaveBeenCalledWith('/admin/prompt-audit/events/delete-by-filter', expect.objectContaining({
       snapshot_max_id: 10, filter_hash: 'a'.repeat(64), confirmation_token: 'opaque-token', confirm: true,
     }))
+  })
+
+  it('continues large filter deletes with the server cursor', async () => {
+    client.post
+      .mockResolvedValueOnce({ data: { deleted_events: 1000, deleted_jobs: 1000, has_more: true, next_cursor_id: 1000 } })
+      .mockResolvedValueOnce({ data: { deleted_events: 3, deleted_jobs: 3, has_more: false } })
+    const filters = emptyEventFilters()
+    filters.start_at = '2026-07-15T00:00'
+    filters.end_at = '2026-07-16T00:00'
+    const result = await promptAuditAPI.deleteEventsByFilter(filters, {
+      matched_count: 1003, filter_summary: {}, snapshot_max_id: 1003, filter_hash: 'a'.repeat(64), confirmation_token: 'opaque-token', expires_at: '2026-07-16T00:05:00Z',
+    })
+
+    expect(result).toEqual({ deleted_events: 1003, deleted_jobs: 1003 })
+    expect(client.post).toHaveBeenNthCalledWith(1, '/admin/prompt-audit/events/delete-by-filter', expect.objectContaining({ cursor_id: 0 }))
+    expect(client.post).toHaveBeenNthCalledWith(2, '/admin/prompt-audit/events/delete-by-filter', expect.objectContaining({ cursor_id: 1000 }))
   })
 })

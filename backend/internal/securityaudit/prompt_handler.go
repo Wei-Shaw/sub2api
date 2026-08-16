@@ -17,6 +17,8 @@ type PromptAdminService interface {
 	SaveConfig(context.Context, UpdateConfigRequest, int64) (PublicConfig, error)
 	Probe(context.Context, ProbeRequest) ProbeResult
 	Runtime(context.Context) RuntimeSnapshot
+	DeleteFlaggedPromptHash(context.Context, string) (*PromptAuditDeleteHashResult, error)
+	ClearFlaggedPromptHashes(context.Context) (*PromptAuditClearHashesResult, error)
 	ListEvents(context.Context, EventFilter, int, int) (*EventPage, error)
 	GetEvent(context.Context, int64) (*Event, error)
 	DeleteEvent(context.Context, int64) (*DeleteResult, error)
@@ -78,6 +80,38 @@ func (h *PromptAdminHandler) ProbeEndpoint(c *gin.Context) {
 
 func (h *PromptAdminHandler) GetRuntime(c *gin.Context) {
 	response.Success(c, h.service.Runtime(c.Request.Context()))
+}
+
+type promptAuditHashRequest struct {
+	PromptHash string `json:"prompt_hash"`
+}
+
+func (h *PromptAdminHandler) DeleteFlaggedHash(c *gin.Context) {
+	var request promptAuditHashRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		setPromptAdminAudit(c, "failed", ErrorCodePromptAuditHashInvalid, nil)
+		response.ErrorFrom(c, infraerrors.BadRequest(ErrorCodePromptAuditHashInvalid, "提示词哈希请求无效"))
+		return
+	}
+	result, err := h.service.DeleteFlaggedPromptHash(c.Request.Context(), request.PromptHash)
+	if err != nil {
+		setPromptAdminAudit(c, "failed", infraerrors.Reason(err), map[string]any{"prompt_hash": strings.TrimSpace(request.PromptHash)})
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{"prompt_hash": result.PromptHash, "deleted": result.Deleted})
+	response.Success(c, result)
+}
+
+func (h *PromptAdminHandler) ClearFlaggedHashes(c *gin.Context) {
+	result, err := h.service.ClearFlaggedPromptHashes(c.Request.Context())
+	if err != nil {
+		setPromptAdminAudit(c, "failed", infraerrors.Reason(err), nil)
+		response.ErrorFrom(c, err)
+		return
+	}
+	setPromptAdminAudit(c, "success", "", map[string]any{"deleted": result.Deleted})
+	response.Success(c, result)
 }
 
 func (h *PromptAdminHandler) ListEvents(c *gin.Context) {
@@ -229,9 +263,11 @@ func configAuditFields(request UpdateConfigRequest, saved *PublicConfig) map[str
 	return map[string]any{
 		"enabled": request.Enabled, "blocking_enabled": request.BlockingEnabled,
 		"blocking_latest_turn_only": request.BlockingLatestTurnOnly,
+		"pre_hash_check_enabled":    request.PreHashCheckEnabled,
 		"config_version":            version, "endpoint_count": len(request.Endpoints),
 		"scanner_count": len(request.Scanners), "all_groups": request.AllGroups,
-		"group_count": len(request.GroupIDs),
+		"group_count":      len(request.GroupIDs),
+		"proxy_configured": request.ProxyID != nil && *request.ProxyID > 0,
 	}
 }
 
@@ -256,6 +292,10 @@ func adminID(c *gin.Context) int64 {
 }
 
 func eventFilterFromQuery(c *gin.Context) (EventFilter, error) {
+	auditType := strings.TrimSpace(strings.ToLower(c.Query("audit_type")))
+	if auditType != "" && !isValidEventAuditType(auditType) {
+		return EventFilter{}, infraerrors.BadRequest("prompt_audit_invalid_audit_type", "审查方式筛选无效")
+	}
 	groupID, err := optionalPositiveInt64Query(c, "group_id")
 	if err != nil {
 		return EventFilter{}, err
@@ -269,7 +309,7 @@ func eventFilterFromQuery(c *gin.Context) (EventFilter, error) {
 		return EventFilter{}, err
 	}
 	filter := EventFilter{
-		Decision: c.Query("decision"), RiskLevel: c.Query("risk_level"), Endpoint: c.Query("endpoint"),
+		Decision: c.Query("decision"), RiskLevel: c.Query("risk_level"), AuditType: auditType, Endpoint: c.Query("endpoint"),
 		GroupID: groupID, UserID: userID, APIKeyID: apiKeyID, RequestID: c.Query("request_id"),
 		PromptHash: c.Query("prompt_hash"), Keyword: c.Query("keyword"),
 	}

@@ -36,8 +36,12 @@ func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
 // ExtractBlockingPromptSnapshot builds the narrow, low-latency blocking input
 // when configured. Asynchronous auditing always uses ExtractPromptSnapshot so
 // the complete client-controlled transcript is retained for review.
-func ExtractBlockingPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, error) {
-	return extractPromptSnapshot(req, latestTurnOnly)
+func ExtractBlockingPromptSnapshot(req Request, latestTurnOnly ...bool) (PromptSnapshot, error) {
+	narrow := false
+	if len(latestTurnOnly) > 0 {
+		narrow = latestTurnOnly[0]
+	}
+	return extractPromptSnapshot(req, narrow)
 }
 
 func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, error) {

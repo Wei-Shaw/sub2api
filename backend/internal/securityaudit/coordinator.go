@@ -17,6 +17,13 @@ type PromptEngine interface {
 	Evaluate(ctx context.Context, req Request) (*PromptDecision, error)
 }
 
+// PromptPrechecker is an optional fast path used by asynchronous prompt audit.
+// Implementations may reject a request from a previously flagged digest without
+// putting it back through the asynchronous scanner queue.
+type PromptPrechecker interface {
+	PreCheck(context.Context, Request) (*PromptDecision, error)
+}
+
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
@@ -36,17 +43,37 @@ func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	}
 	switch mode {
 	case ModeAsync:
+		if prompt := c.preCheck(ctx, req); prompt != nil && prompt.Kind == DecisionBlock {
+			legacy, _ := c.checkLegacy(ctx, req)
+			return prioritize(legacy, prompt)
+		}
 		// Enqueue is deliberately best-effort. The implementation owns a bounded
 		// context and copies request memory before it can outlive the Handler.
 		_ = c.prompt.Enqueue(ctx, req.Clone())
 		legacy, _ := c.checkLegacy(ctx, req)
 		return prioritize(legacy, nil)
 	case ModeBlocking:
+		if prompt := c.preCheck(ctx, req); prompt != nil && prompt.Kind == DecisionBlock {
+			legacy, _ := c.checkLegacy(ctx, req)
+			return prioritize(legacy, prompt)
+		}
 		return c.checkBlocking(ctx, req)
 	default:
 		legacy, _ := c.checkLegacy(ctx, req)
 		return prioritize(legacy, nil)
 	}
+}
+
+func (c *Coordinator) preCheck(ctx context.Context, req Request) *PromptDecision {
+	prechecker, ok := c.prompt.(PromptPrechecker)
+	if !ok {
+		return nil
+	}
+	prompt, err := prechecker.PreCheck(ctx, req.Clone())
+	if err != nil || prompt == nil {
+		return nil
+	}
+	return prompt
 }
 
 func (c *Coordinator) checkBlocking(ctx context.Context, req Request) Decision {

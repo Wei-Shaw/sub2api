@@ -64,3 +64,7 @@ func TestPromptGuardFailureLogUsesCompleteAllowlistedContextAndNoSideEffects(t *
 	require.Equal(t, false, entry["billing_preconsumed"])
 	require.EqualValues(t, 25, entry["latency_ms"])
 }
+
+func TestPayloadMissingErrorIsReportedAsExpiredInsteadOfDependencyFailure(t *testing.T) {
+	require.Equal(t, "Prompt Audit payload expired before processing", stableErrorMessage("payload_missing"))
+}

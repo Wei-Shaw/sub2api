@@ -9,6 +9,8 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 )
 
 const maxGuardResponseBytes int64 = 256 * 1024
@@ -47,6 +49,14 @@ func ChatCompletionsURL(base string) (string, error) {
 	return normalized + "/v1/chat/completions", nil
 }
 
+func ModerationsURL(base string) (string, error) {
+	normalized, err := NormalizeBaseURL(base)
+	if err != nil {
+		return "", err
+	}
+	return normalized + "/v1/moderations", nil
+}
+
 func ModelsURL(base string) (string, error) {
 	normalized, err := NormalizeBaseURL(base)
 	if err != nil {
@@ -55,16 +65,15 @@ func ModelsURL(base string) (string, error) {
 	return normalized + "/v1/models", nil
 }
 
-func NewSecureHTTPClient(endpoint ActiveEndpoint) (*http.Client, error) {
+func NewSecureHTTPClient(endpoint ActiveEndpoint, rawProxyURL string) (*http.Client, error) {
 	_, err := NormalizeBaseURL(endpoint.BaseURL)
 	if err != nil {
 		return nil, err
 	}
 	dialer := &net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &http.Transport{
-		// Do not inherit HTTP(S)_PROXY. A proxy would move the actual destination
-		// dial outside secureDialContext and bypass this module's DNS/IP validation.
 		Proxy:                 nil,
+		DialContext:           dialer.DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          64,
 		MaxIdleConnsPerHost:   16,
@@ -74,10 +83,15 @@ func NewSecureHTTPClient(endpoint ActiveEndpoint) (*http.Client, error) {
 		ExpectContinueTimeout: time.Second,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
 	}
-	// Endpoint ownership and destination trust are administrator concerns.
-	// Use the standard dialer so configured private, loopback, reserved, and
-	// DNS-resolved addresses are all reachable from the service environment.
-	transport.DialContext = dialer.DialContext
+	_, proxyURL, err := proxyurl.Parse(strings.TrimSpace(rawProxyURL))
+	if err != nil {
+		return nil, infraerrors.BadRequest("prompt_audit_invalid_proxy_url", "提示词审计代理地址无效").WithCause(err)
+	}
+	if proxyURL != nil {
+		if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+			return nil, infraerrors.BadRequest("prompt_audit_invalid_proxy_url", "提示词审计代理地址无效").WithCause(err)
+		}
+	}
 	timeout := time.Duration(endpoint.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = DefaultTimeoutMS * time.Millisecond

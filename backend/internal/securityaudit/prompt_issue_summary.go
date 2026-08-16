@@ -13,17 +13,34 @@ func BuildIssueSummaries(result NormalizedResult) []IssueSummary {
 	summaries := make([]IssueSummary, 0, len(resultCategories)+len(result.UnknownCategories))
 	for _, category := range resultCategories {
 		definition, ok := ScannerCatalog[category]
-		if !ok {
+		title, description := "", ""
+		if category == promptKeywordCategory {
+			title = "关键词命中"
+			description = "提示词命中了已配置的关键词拦截规则"
+		} else if category == promptHashCategory {
+			title = "哈希命中"
+			description = "提示词哈希命中了此前 AI 审计记录的阻断结果"
+		} else if ok {
+			title = definition.LabelZH
+			description = definition.Description
+		} else {
 			continue
 		}
 		evidence := RedactPreview(result.ScannerEvidence[category], 160)
+		if category == promptKeywordCategory && evidence == "" {
+			evidence = RedactPreview(result.MatchedKeyword, 160)
+		}
 		if evidence == "" {
-			evidence = definition.Label
+			if ok {
+				evidence = definition.Label
+			} else {
+				evidence = title
+			}
 		}
 		digest := sha256.Sum256([]byte(evidence))
 		summaries = append(summaries, IssueSummary{
-			Category: category, ScannerID: category, Title: definition.LabelZH,
-			Description: definition.Description, Severity: string(result.RiskLevel),
+			Category: category, ScannerID: category, Title: title,
+			Description: description, Severity: string(result.RiskLevel),
 			SeverityLabel: riskLabelZH(result.RiskLevel), Action: string(result.Action),
 			ActionLabel: actionLabelZH(result.Action), Code: "prompt_audit_" + category,
 			Score: result.ScannerScores[category], Evidence: evidence,

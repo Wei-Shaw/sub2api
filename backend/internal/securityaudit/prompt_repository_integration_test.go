@@ -43,7 +43,7 @@ func openPromptAuditIntegrationDB(t *testing.T) *sql.DB {
 		);
 	`)
 	require.NoError(t, err)
-	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql"} {
+	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql", "238_prompt_audit_keywords.sql"} {
 		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
 		require.NoError(t, err)
 		// The migration runner can retry an interrupted deployment; the migration
@@ -137,9 +137,14 @@ func TestPromptAuditMigrationSchemaAndLeakageGate(t *testing.T) {
 		"idx_prompt_audit_events_decision_created", "idx_prompt_audit_events_risk_created",
 		"idx_prompt_audit_events_user_created", "idx_prompt_audit_events_api_key_created",
 		"idx_prompt_audit_events_group_created", "idx_prompt_audit_events_prompt_hash", "idx_prompt_audit_events_created",
+		"idx_prompt_audit_events_matched_keyword",
 	} {
 		require.Truef(t, indexes[name], "missing index %s", name)
 	}
+	var matchedKeywordColumn string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT column_name FROM information_schema.columns
+		WHERE table_schema='public' AND table_name='prompt_audit_events' AND column_name='matched_keyword'`).Scan(&matchedKeywordColumn))
+	require.Equal(t, "matched_keyword", matchedKeywordColumn)
 
 	_, err = db.ExecContext(ctx, `INSERT INTO prompt_audit_jobs(status) VALUES ('unknown')`)
 	require.Error(t, err)
@@ -196,6 +201,29 @@ func TestPromptAuditDatabasePersistsFullPromptOnEventsOnly(t *testing.T) {
 	require.Equal(t, stableErrorMessage(code), message)
 	require.NotContains(t, message, errorCanary)
 	require.LessOrEqual(t, len([]rune(message)), 160)
+}
+
+func TestPromptAuditDatabasePersistsMatchedKeywordAndFiltersIt(t *testing.T) {
+	db := openPromptAuditIntegrationDB(t)
+	repo := NewPostgreSQLRepository(db)
+	ctx := context.Background()
+	snapshot := integrationSnapshot("keyword")
+	result := newPromptKeywordBlockResult("Jailbreak-Token", 2*time.Millisecond)
+	event, err := repo.RecordBlocking(ctx, snapshot, 11, result, true)
+	require.NoError(t, err)
+	require.Equal(t, "Jailbreak-Token", event.MatchedKeyword)
+	require.Equal(t, "Jailbreak-Token", event.IssueSummaries[0].Evidence)
+
+	page, err := repo.ListEvents(ctx, EventFilter{Keyword: "jailbreak-token"}, 1, 20)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Equal(t, "Jailbreak-Token", page.Items[0].MatchedKeyword)
+
+	detail, err := repo.GetEvent(ctx, event.ID)
+	require.NoError(t, err)
+	require.Equal(t, "Jailbreak-Token", detail.MatchedKeyword)
+	require.Len(t, detail.IssueSummaries, 1)
+	require.Equal(t, promptKeywordCategory, detail.IssueSummaries[0].Category)
 }
 
 func TestPromptAuditRepositoryAdmissionClaimFencingAndEventTransaction(t *testing.T) {
@@ -393,6 +421,37 @@ func TestPromptAuditRepositoryHighWaterAndSafeDeletion(t *testing.T) {
 	batchResult, err := repo.DeleteEventsByIDs(ctx, ids)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), batchResult.DeletedEvents)
+}
+
+func TestPromptAuditRepositoryFilterDeletionBatchUsesCursor(t *testing.T) {
+	db := openPromptAuditIntegrationDB(t)
+	repo := NewPostgreSQLRepository(db)
+	ctx := context.Background()
+	resetPromptAuditIntegrationDB(t, db)
+	for i := 0; i < 3; i++ {
+		_, err := repo.RecordBlocking(ctx, integrationSnapshot(fmt.Sprintf("cursor-%02d", i)), 1, integrationResult(EventCritical), true)
+		require.NoError(t, err)
+	}
+	start, end := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	filter := EventFilter{Decision: string(EventCritical), StartAt: &start, EndAt: &end}
+	preview, err := repo.PreviewDelete(ctx, filter)
+	require.NoError(t, err)
+
+	first, err := repo.DeleteEventsByFilterBatch(ctx, filter, preview.SnapshotMaxID, 0, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), first.DeletedEvents)
+	require.True(t, first.HasMore)
+	require.Greater(t, first.NextCursorID, int64(0))
+
+	second, err := repo.DeleteEventsByFilterBatch(ctx, filter, preview.SnapshotMaxID, first.NextCursorID, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), second.DeletedEvents)
+	require.False(t, second.HasMore)
+	require.Equal(t, int64(0), second.NextCursorID, "the final response does not need another cursor")
+
+	remaining, err := repo.ListEvents(ctx, filter, 1, 100)
+	require.NoError(t, err)
+	require.Zero(t, remaining.Total)
 }
 
 func TestPromptAuditServiceConfirmationKeepsPostPreviewEventsAndConcurrentDeletesAreSafe(t *testing.T) {

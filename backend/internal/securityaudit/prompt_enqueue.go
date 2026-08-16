@@ -26,7 +26,7 @@ func (e *Enqueuer) Enqueue(ctx context.Context, req Request) error {
 	}
 	cfg, ok := e.config.Active()
 	baseFields := requestLogFields(req)
-	if !ok || cfg.EffectiveMode() != ModeAsync {
+	if !ok || !cfg.ShouldRunAsyncAudit() {
 		LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{"status": "skipped", "error_code": "mode_not_async"}))
 		return nil
 	}
@@ -35,7 +35,7 @@ func (e *Enqueuer) Enqueue(ctx context.Context, req Request) error {
 		LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{"status": "skipped", "error_code": "group_out_of_scope"}))
 		return nil
 	}
-	if len(cfg.EnabledEndpoints()) == 0 {
+	if !promptKeywordModeSkipsAI(cfg.KeywordBlockingMode) && len(cfg.EnabledEndpoints()) == 0 {
 		e.recordDropped()
 		LogWarn(EventEnqueueDropped, mergeLogFields(baseFields, map[string]any{"status": "dropped", "error_code": "no_enabled_endpoint"}))
 		return nil
@@ -49,6 +49,25 @@ func (e *Enqueuer) Enqueue(ctx context.Context, req Request) error {
 		e.recordDropped()
 		LogWarn(EventEnqueueDropped, mergeLogFields(baseFields, map[string]any{"status": "dropped", "error_code": "snapshot_invalid"}))
 		return nil
+	}
+	// The synchronous path already rejected keyword hits. Re-check the
+	// snapshot here because enqueueing is best effort and may run after a
+	// configuration refresh; a hit must never be sent to the AI audit queue.
+	if cfg.keywordModeUsesKeywords() && cfg.effectiveKeywordBlockingEnabled() {
+		if _, hit := cfg.MatchBlockedKeyword(snapshot.ScanText); hit {
+			LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{
+				"status": "skipped", "error_code": "keyword_already_blocked",
+			}))
+			return nil
+		}
+	}
+	if promptKeywordModeSkipsAI(cfg.KeywordBlockingMode) && !cfg.StorePassEvents {
+		if _, hit := cfg.MatchBlockedKeyword(snapshot.ScanText); !hit {
+			LogInfo(EventEnqueueSkipped, mergeLogFields(baseFields, map[string]any{
+				"status": "skipped", "error_code": "keyword_not_matched",
+			}))
+			return nil
+		}
 	}
 	job, err := e.repo.CreateStagingWithCapacity(ctx, snapshot.Redacted(), cfg.ConfigVersion, 3, cfg.QueueCapacity)
 	if err != nil {

@@ -3,6 +3,7 @@ package securityaudit
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,25 +21,39 @@ type WorkerRuntime struct {
 }
 
 type Runner struct {
-	config  ConfigStore
-	repo    JobRepository
-	payload PayloadStore
-	scanner PromptScanner
-	metrics Metrics
-	clock   Clock
-	runtime WorkerRuntime
+	config    ConfigStore
+	repo      JobRepository
+	payload   PayloadStore
+	scanner   PromptScanner
+	metrics   Metrics
+	cache     PromptResultCache
+	hashCache PromptAuditHashCache
+	clock     Clock
+	runtime   WorkerRuntime
 
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewRunner(config ConfigStore, repo JobRepository, payload PayloadStore, scanner PromptScanner, metrics Metrics) *Runner {
-	return &Runner{config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics, clock: realClock{}}
+func NewRunner(config ConfigStore, repo JobRepository, payload PayloadStore, scanner PromptScanner, metrics Metrics, caches ...PromptResultCache) *Runner {
+	var cache PromptResultCache
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
+	return newRunner(config, repo, payload, scanner, metrics, cache, nil)
+}
+
+func NewRunnerWithHashCache(config ConfigStore, repo JobRepository, payload PayloadStore, scanner PromptScanner, metrics Metrics, cache PromptResultCache, hashCache PromptAuditHashCache) *Runner {
+	return newRunner(config, repo, payload, scanner, metrics, cache, hashCache)
+}
+
+func newRunner(config ConfigStore, repo JobRepository, payload PayloadStore, scanner PromptScanner, metrics Metrics, cache PromptResultCache, hashCache PromptAuditHashCache) *Runner {
+	return &Runner{config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics, cache: cache, hashCache: hashCache, clock: realClock{}}
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	if r == nil || r.config == nil || r.repo == nil || r.payload == nil || r.scanner == nil {
+	if r == nil || r.config == nil || r.repo == nil || r.payload == nil {
 		return errors.New("prompt audit worker dependencies unavailable")
 	}
 	r.mu.Lock()
@@ -143,20 +158,23 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 	// The job row only carries redacted metadata; the full prompt for the audit
 	// event is reconstructed here from the transient scan payload.
 	job.Snapshot.FullPrompt = FullPromptFromScanText(scanText)
+	started := r.clock.Now()
+	if keywordResult, handled := cfg.keywordResult(scanText, r.clock.Now().Sub(started)); handled {
+		return r.completeJobResult(ctx, workerID, cfg, job, keywordResult, started, baseFields)
+	}
 	endpoints := cfg.EnabledEndpoints()
 	if len(endpoints) == 0 {
 		return r.finishFailure(ctx, job, &GuardError{Code: "no_enabled_endpoint", Retryable: true})
 	}
 	chunks := SplitRunes(scanText, minimumInputLimit(endpoints))
 	results := make([]*NormalizedResult, 0, len(chunks))
-	started := r.clock.Now()
 	for index, chunk := range chunks {
 		if err := r.repo.RefreshLease(ctx, job.ID, job.ClaimVersion, r.clock.Now()); err != nil {
 			return err
 		}
 		chunkStarted := r.clock.Now()
 		LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "chunk_chars": len([]rune(chunk)), "input_chars": job.Snapshot.PromptLength, "input_limit": minimumInputLimit(endpoints), "status": "started"}))
-		result, scanErr := scanWithFailover(ctx, r.scanner, cfg.Scanners, endpoints, chunk, r.metrics)
+		result, scanErr := scanWithFailover(ctx, r.scanner, cfg.Scanners, endpoints, chunk, r.metrics, cfg, r.cache)
 		if scanErr != nil {
 			LogWarn(EventChunkFailed, mergeLogFields(baseFields, map[string]any{
 				"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks),
@@ -167,8 +185,13 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 			r.observeAsyncFailure(scanErr, r.clock.Now().Sub(started))
 			return r.finishFailure(ctx, job, scanErr)
 		}
+		result.ChunkTotal = len(chunks)
 		results = append(results, result)
-		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks), "guard_endpoint_id": result.GuardEndpointID, "action": result.Action, "latency_ms": r.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed"}))
+		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
+			"worker_id": workerID, "chunk_index": index + 1, "chunk_total": len(chunks),
+			"guard_endpoint_id": result.GuardEndpointID, "action": result.Action,
+			"latency_ms": r.clock.Now().Sub(chunkStarted).Milliseconds(), "cache_hit": result.LatencyMS == 0, "status": "completed",
+		}))
 		if result.Action == ActionBlock {
 			break
 		}
@@ -181,24 +204,42 @@ func (r *Runner) processJob(ctx context.Context, workerID int, cfg ActiveConfig,
 		return r.finishFailure(ctx, job, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err})
 	}
 	aggregated.ChunkTotal = len(chunks)
+	return r.completeJobResult(ctx, workerID, cfg, job, aggregated, started, baseFields)
+}
+
+func (r *Runner) completeJobResult(ctx context.Context, workerID int, cfg ActiveConfig, job *Job, result *NormalizedResult, started time.Time, baseFields map[string]any) error {
 	if r.metrics != nil {
-		r.metrics.Observe(decisionKindForResult(aggregated), r.clock.Now().Sub(started))
+		r.metrics.Observe(decisionKindForResult(result), r.clock.Now().Sub(started))
 	}
 	LogInfo(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
-		"worker_id": workerID, "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel,
-		"action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
-		"latency_ms": aggregated.LatencyMS, "guard_endpoint_id": aggregated.GuardEndpointID, "status": "completed",
+		"worker_id": workerID, "decision": result.Decision, "risk_level": result.RiskLevel,
+		"action": result.Action, "chunk_total": result.ChunkTotal,
+		"latency_ms": result.LatencyMS, "guard_endpoint_id": result.GuardEndpointID,
+		"matched_keyword": result.MatchedKeyword, "status": "completed",
 	}))
-	event, err := r.repo.Complete(ctx, job, aggregated, cfg.StorePassEvents)
+	event, err := r.repo.Complete(ctx, job, result, cfg.StorePassEvents)
 	if err != nil {
 		return err
+	}
+	if cfg.PreHashCheckEnabled && result.Action == ActionBlock && r.hashCache != nil && strings.TrimSpace(job.Snapshot.PromptHash) != "" {
+		if hashErr := r.hashCache.RecordFlaggedPromptHash(ctx, job.Snapshot.PromptHash); hashErr != nil {
+			LogWarn(EventProcessFailed, mergeLogFields(baseFields, map[string]any{
+				"worker_id": workerID, "prompt_hash": job.Snapshot.PromptHash,
+				"status": "prompt_hash_record_failed", "error_code": "prompt_hash_record_failed",
+			}))
+		} else {
+			LogInfo(EventProcessed, mergeLogFields(baseFields, map[string]any{
+				"worker_id": workerID, "prompt_hash": job.Snapshot.PromptHash,
+				"status": "prompt_hash_recorded",
+			}))
+		}
 	}
 	if deleteErr := r.payload.Delete(ctx, job.ID); deleteErr != nil {
 		LogWarn(EventProcessFailed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "status": "payload_delete_deferred", "error_code": "payload_delete_failed"}))
 	}
-	LogInfo(EventProcessed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": eventID(event), "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "guard_endpoint_id": aggregated.GuardEndpointID, "latency_ms": aggregated.LatencyMS, "status": "done"}))
-	if event != nil && aggregated.Decision != EventPass {
-		LogWarn(EventFindingRecorded, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": event.ID, "decision": aggregated.Decision, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "guard_endpoint_id": aggregated.GuardEndpointID, "status": "recorded"}))
+	LogInfo(EventProcessed, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": eventID(event), "decision": result.Decision, "risk_level": result.RiskLevel, "action": result.Action, "guard_endpoint_id": result.GuardEndpointID, "matched_keyword": result.MatchedKeyword, "latency_ms": result.LatencyMS, "status": "done"}))
+	if event != nil && result.Decision != EventPass {
+		LogWarn(EventFindingRecorded, mergeLogFields(baseFields, map[string]any{"worker_id": workerID, "event_id": event.ID, "decision": result.Decision, "risk_level": result.RiskLevel, "action": result.Action, "guard_endpoint_id": result.GuardEndpointID, "matched_keyword": result.MatchedKeyword, "status": "recorded"}))
 	}
 	return nil
 }
@@ -306,11 +347,16 @@ func (r *Runner) setLastError(code, _ string) {
 	r.runtime.lastErrorMu.Unlock()
 }
 
-func scanWithFailover(ctx context.Context, scanner PromptScanner, scanners []string, endpoints []ActiveEndpoint, chunk string, metrics Metrics) (*NormalizedResult, error) {
+func scanWithFailover(ctx context.Context, scanner PromptScanner, scanners []string, endpoints []ActiveEndpoint, chunk string, metrics Metrics, cfg ActiveConfig, cache PromptResultCache) (*NormalizedResult, error) {
 	var lastErr error
 	for index, endpoint := range endpoints {
+		if cached := getPromptResultFromCache(cache, cfg, []ActiveEndpoint{endpoint}, scanners, chunk); cached != nil {
+			cached.LatencyMS = 0
+			return cached, nil
+		}
 		result, err := scanner.Scan(ctx, endpoint, chunk, scanners)
 		if err == nil && result != nil {
+			setPromptResultCache(cache, cfg, []ActiveEndpoint{endpoint}, scanners, chunk, result)
 			return result, nil
 		}
 		if err == nil {

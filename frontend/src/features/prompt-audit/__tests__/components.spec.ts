@@ -28,7 +28,7 @@ describe('Prompt Audit components', () => {
 
   it('edits a saved endpoint with blank-secret keep, explicit clear, replacement, and probe actions', async () => {
     const wrapper = mount(EndpointPool, {
-      props: { endpoints: [endpoint()], probeResults: {}, probingIds: [] },
+      props: { endpoints: [endpoint()], proxyId: null, proxies: [], probeResults: {}, probingIds: [] },
       global: { stubs: { BaseDialog: DialogStub } },
     })
     expect(wrapper.text()).toContain('admin.promptAudit.pool.configured')
@@ -53,7 +53,7 @@ describe('Prompt Audit components', () => {
   it('surfaces an undecryptable saved credential and prompts for re-entry', async () => {
     const invalidEndpoint = { ...endpoint(), token_status: 'invalid' }
     const wrapper = mount(EndpointPool, {
-      props: { endpoints: [invalidEndpoint], probeResults: {}, probingIds: [] },
+      props: { endpoints: [invalidEndpoint], proxyId: null, proxies: [], probeResults: {}, probingIds: [] },
       global: { stubs: { BaseDialog: DialogStub } },
     })
     expect(wrapper.text()).toContain('admin.promptAudit.pool.invalid')
@@ -65,15 +65,46 @@ describe('Prompt Audit components', () => {
     expect(token.attributes('placeholder')).toContain('admin.promptAudit.pool.reenterSecret')
   })
 
+  it('offers Nemotron with both provider model aliases and applies its default', async () => {
+    const nemotronCandidate = { ...endpoint(), base_url: 'https://openrouter.ai/api', model: 'sileader/qwen3guard:0.6b' }
+    const wrapper = mount(EndpointPool, {
+      props: { endpoints: [nemotronCandidate], proxyId: null, proxies: [], probeResults: {}, probingIds: [] },
+      global: { stubs: { BaseDialog: DialogStub } },
+    })
+    const edit = wrapper.findAll('button').find((button) => button.text().includes('common.edit'))
+    await edit!.trigger('click')
+    const protocol = wrapper.get<HTMLSelectElement>('[aria-label="admin.promptAudit.pool.protocol"]')
+    expect(protocol.find('option[value="nemotron_content_safety"]').exists()).toBe(true)
+    await protocol.setValue('nemotron_content_safety')
+    const model = wrapper.get<HTMLInputElement>('[aria-label="admin.promptAudit.pool.model"]')
+    expect(model.element.value).toBe('nvidia/nemotron-3.5-content-safety:free')
+    expect(model.attributes('list')).toBe('prompt-audit-nemotron-models')
+    expect(wrapper.findAll('#prompt-audit-nemotron-models option').map((item) => item.attributes('value'))).toEqual([
+      'nemotron-3.5-content-safety-free',
+      'nvidia/nemotron-3.5-content-safety:free',
+    ])
+    expect(wrapper.text()).toContain('admin.promptAudit.pool.nemotronHint')
+  })
+
   it('supports group search, stale configured groups, nine scanners, and bounded worker inputs', async () => {
     const draft: PromptAuditDraft = {
-      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+      enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, keyword_blocking_enabled: false, ai_blocking_enabled: false, store_pass_events: false, blocked_keywords: [], keyword_blocking_mode: 'ai_only', effective_mode: 'async_audit', strategy: 'priority',
       worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: false, group_ids: [1, 99],
+      proxy_id: null,
       endpoints: [endpoint()], config_version: 1, updated_at: '', updated_by: 0, change_summary: '',
     }
     const wrapper = mount(PolicyPanel, {
       props: { draft, groups: [{ id: 1, name: 'Alpha', platform: 'openai', status: 'active' }, { id: 2, name: 'Beta', platform: 'claude', status: 'inactive' }] },
     })
+    expect(wrapper.get('[data-test="blocked-keywords"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="keyword-mode-keyword_only"]').trigger('click')
+    const keywordOnlyDraft = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
+    expect(keywordOnlyDraft.keyword_blocking_mode).toBe('keyword_only')
+    await wrapper.setProps({ draft: keywordOnlyDraft })
+    await wrapper.get<HTMLTextAreaElement>('[data-test="blocked-keywords"]').setValue(' Secret\nsecret\n' + 'x'.repeat(201))
+    const keywordDraft = wrapper.emitted('update:draft')?.at(-1)?.[0] as PromptAuditDraft
+    expect(keywordDraft.blocked_keywords).toEqual(['Secret', 'x'.repeat(200)])
+    expect(wrapper.get('[data-test="blocked-keywords"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.text()).toContain('99')
     expect(wrapper.findAll('input[type="checkbox"]').filter((input) => SCANNER_CATALOG.some((scanner) => input.attributes('aria-label') === `admin.promptAudit.scanners.${scanner.id}`))).toHaveLength(9)
     await wrapper.get('[aria-label="admin.promptAudit.policy.searchGroups"]').setValue('Beta')
@@ -86,7 +117,7 @@ describe('Prompt Audit components', () => {
 
   it('keeps identity fields separate, supports selection, and opens filter deletion from the toolbar', async () => {
     const event: PromptAuditEvent = {
-      id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block', categories: ['pii'], matched_scanners: ['pii'], scanner_scores: { pii: 1 }, scanner_evidence: { pii: 'redacted' }, scanner_backend: 'qwen3guard-openai', scanner_version: '1', guard_endpoint_id: 'guard-1', policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 10, issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
+      id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block', matched_keyword: 'secret', categories: ['keyword'], matched_scanners: ['keyword'], scanner_scores: { keyword: 1 }, scanner_evidence: { keyword: 'secret' }, scanner_backend: 'keyword', scanner_version: 'keyword', guard_endpoint_id: '', policy_id: 'keyword', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 0, issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
       snapshot: { request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted preview', full_prompt: 'full prompt text', prompt_length: 10, message_count: 1, stage: 'http' },
     }
     const wrapper = mount(EventWorkspace, {
@@ -97,7 +128,10 @@ describe('Prompt Audit components', () => {
     expect(wrapper.text()).toContain('alice@example.test')
     expect(wrapper.text()).toContain('alice-key')
     expect(wrapper.text()).toContain('admin.promptAudit.decisions.critical · admin.promptAudit.riskLevels.critical')
-    expect(wrapper.text()).toContain('admin.promptAudit.scanners.pii')
+    expect(wrapper.text()).toContain('admin.promptAudit.scanners.keyword')
+    expect(wrapper.text()).toContain('admin.promptAudit.events.matchedKeyword: secret')
+    await wrapper.get('[aria-label="admin.promptAudit.events.auditType"]').setValue('keyword')
+    expect((wrapper.emitted('filters-change')?.at(-1)?.[0] as PromptEventFilters).audit_type).toBe('keyword')
     expect(wrapper.get('[data-test="filter-delete"]').attributes()).not.toHaveProperty('disabled')
     await wrapper.get('[data-test="filter-delete"]').trigger('click')
     expect(wrapper.emitted('preview-delete')).toHaveLength(1)
@@ -137,9 +171,11 @@ describe('Prompt Audit components', () => {
     await wrapper.get('[data-test="range-preset-30d"]').setValue()
     expect(wrapper.emitted('criteria-change')?.length).toBeGreaterThan(0)
     await wrapper.get('[data-test="delete-risk"]').setValue('high')
+    await wrapper.get('[data-test="delete-audit-type"]').setValue('keyword')
     await wrapper.get('[data-test="run-delete-preview"]').trigger('click')
     const presetPreview = wrapper.emitted('preview')?.at(-1)?.[0] as PromptEventFilters
     expect(presetPreview.risk_level).toBe('high')
+    expect(presetPreview.audit_type).toBe('keyword')
     expect(presetPreview.start_at).toBe('1970-01-01T00:00:00.000Z')
     expect(Date.now() - new Date(presetPreview.end_at).getTime()).toBeGreaterThanOrEqual(30 * 24 * 60 * 60 * 1000)
 
@@ -204,17 +240,17 @@ describe('Prompt Audit components', () => {
   it('shows the full unredacted prompt and structured guard return on the risks tab', async () => {
     const event: PromptAuditEvent = {
       id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block',
-      categories: ['sexual_content_or_sexual_acts'], matched_scanners: ['sexual_content_or_sexual_acts'],
-      scanner_scores: { sexual_content_or_sexual_acts: 1 },
-      scanner_evidence: { sexual_content_or_sexual_acts: 'Sexual Content or Sexual Acts' },
-      scanner_backend: 'qwen3guard-openai', scanner_version: 'qwen3guard', guard_endpoint_id: 'guard-1',
+      matched_keyword: 'jailbreak', categories: ['keyword'], matched_scanners: ['keyword'],
+      scanner_scores: { keyword: 1 },
+      scanner_evidence: { keyword: 'jailbreak' },
+      scanner_backend: 'keyword', scanner_version: 'keyword', guard_endpoint_id: '',
       policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 12,
       issue_summaries: [{
-        category: 'sexual_content_or_sexual_acts', scanner_id: 'sexual_content_or_sexual_acts',
-        title: '性内容或性行为', description: 'Sexual content or sexual acts', severity: 'critical',
-        severity_label: '严重', action: 'Block', action_label: '阻止',
-        code: 'prompt_audit_sexual_content_or_sexual_acts', score: 1,
-        evidence: 'Sexual Content or Sexual Acts', evidence_hash: 'abc',
+        category: 'keyword', scanner_id: 'keyword',
+        title: 'Keyword match', description: 'Configured prompt keyword', severity: 'critical',
+        severity_label: 'Critical', action: 'Block', action_label: 'Block',
+        code: 'prompt_audit_keyword', score: 1,
+        evidence: 'jailbreak', evidence_hash: 'abc',
       }],
       created_at: '2026-07-16T00:00:00Z',
       snapshot: {
@@ -241,8 +277,9 @@ describe('Prompt Audit components', () => {
     expect(wrapper.get('[data-test="risk-prompt-preview"]').text()).not.toContain('redacted prompt body')
     expect(wrapper.get('[data-test="risk-prompt-full"]').classes()).toContain('overflow-auto')
     expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('"decision": "admin.promptAudit.decisions.critical"')
-    expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
-    expect(wrapper.get('[data-test="risk-issue"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
+    expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('admin.promptAudit.scanners.keyword')
+    expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('jailbreak')
+    expect(wrapper.get('[data-test="risk-issue"]').text()).toContain('admin.promptAudit.scanners.keyword')
   })
 
   it('falls back to the redacted preview for events stored before full prompts were kept', async () => {

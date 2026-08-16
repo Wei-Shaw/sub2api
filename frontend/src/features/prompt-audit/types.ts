@@ -1,11 +1,13 @@
 export type PromptAuditMode = 'off' | 'async_audit' | 'blocking'
+export type PromptKeywordBlockingMode = 'ai_only' | 'keyword_only' | 'keyword_and_ai'
 export type PromptDecision = 'pass' | 'flag' | 'critical'
 export type PromptRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+export type PromptAuditProtocol = 'openai_compatible' | 'openai_moderation' | 'nemotron_content_safety'
 
 export interface PromptAuditEndpoint {
   id: string
   name: string
-  protocol: 'openai_compatible'
+  protocol: PromptAuditProtocol
   base_url: string
   model: string
   timeout_ms: number
@@ -24,7 +26,12 @@ export interface PromptAuditConfig {
   enabled: boolean
   blocking_enabled: boolean
   blocking_latest_turn_only: boolean
+  keyword_blocking_enabled: boolean
+  ai_blocking_enabled: boolean
   store_pass_events: boolean
+  pre_hash_check_enabled: boolean
+  blocked_keywords: string[]
+  keyword_blocking_mode: PromptKeywordBlockingMode
   effective_mode: PromptAuditMode
   strategy: 'priority'
   worker_count: number
@@ -32,6 +39,7 @@ export interface PromptAuditConfig {
   scanners: string[]
   all_groups: boolean
   group_ids: number[]
+  proxy_id: number | null
   endpoints: PromptAuditEndpoint[]
   config_version: number
   updated_at: string
@@ -48,17 +56,23 @@ export interface PromptAuditUpdateRequest {
   enabled: boolean
   blocking_enabled: boolean
   blocking_latest_turn_only: boolean
+  keyword_blocking_enabled: boolean
+  ai_blocking_enabled: boolean
   store_pass_events: boolean
+  pre_hash_check_enabled: boolean
+  blocked_keywords: string[]
+  keyword_blocking_mode: PromptKeywordBlockingMode
   strategy: 'priority'
   worker_count: number
   queue_capacity: number
   scanners: string[]
   all_groups: boolean
   group_ids: number[]
+  proxy_id: number | null
   endpoints: Array<{
     id: string
     name: string
-    protocol: 'openai_compatible'
+    protocol: PromptAuditProtocol
     base_url: string
     model: string
     token?: string
@@ -130,6 +144,7 @@ export interface PromptAuditRuntime {
   last_error_message?: string
   database_status: string
   redis_status: string
+  flagged_hash_count: number
   endpoints: Record<string, PromptProbeResult>
   guard_metrics: PromptGuardMetrics
 }
@@ -179,6 +194,7 @@ export interface PromptAuditEvent {
   decision: PromptDecision
   risk_level: PromptRiskLevel
   action: 'Allow' | 'Warn' | 'Block' | string
+  matched_keyword?: string
   categories: string[]
   matched_scanners: string[]
   scanner_scores: Record<string, number>
@@ -198,6 +214,7 @@ export interface PromptAuditEvent {
 export interface PromptEventFilters {
   decision: string
   risk_level: string
+  audit_type: string
   endpoint: string
   group_id: string
   user_id: string
@@ -220,6 +237,17 @@ export interface PromptEventPage {
 export interface PromptDeleteResult {
   deleted_events: number
   deleted_jobs: number
+  has_more?: boolean
+  next_cursor_id?: number
+}
+
+export interface PromptAuditDeleteHashResult {
+  prompt_hash: string
+  deleted: boolean
+}
+
+export interface PromptAuditClearHashesResult {
+  deleted: number
 }
 
 export interface PromptDeletePreview {

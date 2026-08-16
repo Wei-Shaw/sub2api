@@ -2,6 +2,7 @@ package securityaudit
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 type PromptService struct {
@@ -21,6 +24,7 @@ type PromptService struct {
 	evaluator *GuardEvaluator
 	scanner   *OpenAICompatibleScanner
 	metrics   *AtomicMetrics
+	hashCache PromptAuditHashCache
 	clock     Clock
 
 	lifecycleMu  sync.Mutex
@@ -38,12 +42,14 @@ func NewPromptService(
 	payload *RedisPayloadStore,
 	scanner *OpenAICompatibleScanner,
 	metrics *AtomicMetrics,
+	hashCache PromptAuditHashCache,
 ) *PromptService {
+	resultCache := NewPromptResultCache()
 	enqueuer := NewEnqueuer(config, repo, payload, metrics)
-	evaluator := NewGuardEvaluator(scanner, repo, metrics)
-	runner := NewRunner(config, repo, payload, scanner, metrics)
+	evaluator := NewGuardEvaluator(scanner, repo, metrics, resultCache)
+	runner := NewRunnerWithHashCache(config, repo, payload, scanner, metrics, resultCache, hashCache)
 	return &PromptService{
-		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics,
+		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics, hashCache: hashCache,
 		enqueuer: enqueuer, evaluator: evaluator, runner: runner, clock: realClock{},
 		enqueueSlots: make(chan struct{}, 128), probes: map[string]ProbeResult{},
 	}
@@ -108,7 +114,15 @@ func (s *PromptService) EffectiveMode() Mode {
 }
 
 func (s *PromptService) Enqueue(_ context.Context, req Request) error {
-	if s == nil || s.enqueuer == nil || s.EffectiveMode() != ModeAsync {
+	return s.enqueueAsyncAudit(req, false)
+}
+
+func (s *PromptService) enqueueAsyncAudit(req Request, allowMixedMode bool) error {
+	if s == nil || s.enqueuer == nil {
+		return nil
+	}
+	mode := s.EffectiveMode()
+	if mode != ModeAsync && (!allowMixedMode || mode != ModeBlocking) {
 		return nil
 	}
 	select {
@@ -139,8 +153,50 @@ func (s *PromptService) Enqueue(_ context.Context, req Request) error {
 	return nil
 }
 
+// PreCheck is the cheap admission path for async audit. A digest is only
+// considered a block after an earlier async audit has persisted it; Redis
+// failures deliberately fail open here so the existing async queue behavior is
+// preserved.
+func (s *PromptService) PreCheck(ctx context.Context, req Request) (*PromptDecision, error) {
+	allow := &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}
+	if s == nil || s.config == nil || s.hashCache == nil {
+		return allow, nil
+	}
+	cfg, ok := s.config.Active()
+	if !ok || !cfg.RiskControlEnabled || !cfg.Enabled || !cfg.PreHashCheckEnabled || !cfg.IncludesGroup(req.GroupID) {
+		return allow, nil
+	}
+	// Hashes are produced by the asynchronous full-context audit, so keep this
+	// lookup on the same full transcript even when synchronous AI blocking is
+	// narrowed to the latest turn.
+	snapshot, err := ExtractBlockingPromptSnapshot(req, false)
+	if err != nil {
+		return allow, nil
+	}
+	matched, err := s.hashCache.HasFlaggedPromptHash(ctx, snapshot.PromptHash)
+	if err != nil {
+		LogWarn(EventGuardFailed, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+			"status": "hash_check_failed", "error_code": ErrorCodePromptAuditHashCacheUnavailable,
+		}))
+		return allow, nil
+	}
+	if !matched {
+		return allow, nil
+	}
+	result := newPromptHashBlockResult(snapshot.PromptHash)
+	s.recordBlockingResult(ctx, snapshot, cfg, result)
+	if s.metrics != nil {
+		s.metrics.Observe(DecisionBlock, 0)
+	}
+	LogWarn(EventGuardBlocked, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+		"decision": DecisionBlock, "action": result.Action, "prompt_hash": snapshot.PromptHash,
+		"status": "blocked", "error_code": ErrorCodeBlocked, "stage": snapshot.Stage,
+	}))
+	return &PromptDecision{Kind: DecisionBlock, ErrorCode: ErrorCodeBlocked, Result: result, AllowNextStage: false}, nil
+}
+
 func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecision, error) {
-	if s == nil || s.config == nil || s.evaluator == nil {
+	if s == nil || s.config == nil {
 		return nil, &GuardError{Code: ErrorCodeUnavailable}
 	}
 	if s.config.BlockingActivationDegraded() {
@@ -163,13 +219,109 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
+	if cfg.keywordModeUsesKeywords() && cfg.effectiveKeywordBlockingEnabled() {
+		if result, handled := cfg.keywordResult(snapshot.ScanText, 0); handled {
+			kind := DecisionAllow
+			allowNextStage := true
+			if result.Action == ActionBlock {
+				kind = DecisionBlock
+				allowNextStage = false
+			}
+			if result.Decision != EventPass || cfg.StorePassEvents {
+				s.recordBlockingResult(ctx, snapshot, cfg, result)
+			}
+			if s.metrics != nil {
+				s.metrics.Observe(kind, 0)
+			}
+			decision := &PromptDecision{Kind: kind, Result: result, AllowNextStage: allowNextStage}
+			if kind == DecisionBlock {
+				decision.ErrorCode = ErrorCodeBlocked
+				LogWarn(EventGuardBlocked, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+					"decision": kind, "action": result.Action, "matched_keyword": result.MatchedKeyword,
+					"status": "blocked", "error_code": ErrorCodeBlocked, "stage": snapshot.Stage,
+				}))
+			}
+			return decision, nil
+		}
+	}
+	if !cfg.keywordModeUsesAI() || !cfg.effectiveAIBlockingEnabled() {
+		// A mixed policy (keyword sync + AI async) reaches this path after a
+		// keyword miss. Enqueueing is best effort and never delays admission.
+		if cfg.shouldRunAsyncAudit() {
+			_ = s.enqueueAsyncAudit(req, true)
+		}
+		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
+	}
+	if s.evaluator == nil {
+		return nil, &GuardError{Code: ErrorCodeUnavailable}
+	}
 	return s.evaluator.Evaluate(ctx, cfg, snapshot)
+}
+
+func (s *PromptService) recordBlockingResult(ctx context.Context, snapshot PromptSnapshot, cfg ActiveConfig, result *NormalizedResult) {
+	if s == nil || s.repo == nil || result == nil {
+		return
+	}
+	if _, err := s.repo.RecordBlocking(ctx, snapshot.Redacted(), cfg.ConfigVersion, result, cfg.StorePassEvents); err != nil {
+		if s.metrics != nil {
+			s.metrics.IncRecordFailed()
+		}
+		LogWarn(EventResultRecordFailed, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+			"decision": result.Decision, "error_code": "result_record_failed", "stage": snapshot.Stage,
+			"status": "failed",
+		}))
+	}
 }
 
 func (s *PromptService) GetConfig() (PublicConfig, error) { return s.config.Public() }
 
 func (s *PromptService) SaveConfig(ctx context.Context, req UpdateConfigRequest, actorID int64) (PublicConfig, error) {
+	if req.ProxyID != nil && *req.ProxyID > 0 {
+		if s.scanner == nil {
+			return PublicConfig{}, infraerrors.ServiceUnavailable("prompt_audit_proxy_unavailable", "提示词审计代理服务暂不可用")
+		}
+		if err := s.scanner.validateProxy(ctx, req.ProxyID); err != nil {
+			return PublicConfig{}, infraerrors.BadRequest("prompt_audit_invalid_proxy", "提示词审计代理服务器不存在、未启用或已过期").WithCause(err)
+		}
+	}
 	return s.config.Save(ctx, req, actorID)
+}
+
+func normalizePromptAuditHash(promptHash string) (string, error) {
+	promptHash = strings.ToLower(strings.TrimSpace(promptHash))
+	if len(promptHash) != 64 {
+		return "", infraerrors.BadRequest(ErrorCodePromptAuditHashInvalid, "提示词哈希必须是 64 位 SHA-256")
+	}
+	if _, err := hex.DecodeString(promptHash); err != nil {
+		return "", infraerrors.BadRequest(ErrorCodePromptAuditHashInvalid, "提示词哈希必须是有效的十六进制 SHA-256")
+	}
+	return promptHash, nil
+}
+
+func (s *PromptService) DeleteFlaggedPromptHash(ctx context.Context, promptHash string) (*PromptAuditDeleteHashResult, error) {
+	promptHash, err := normalizePromptAuditHash(promptHash)
+	if err != nil {
+		return nil, err
+	}
+	if s == nil || s.hashCache == nil {
+		return nil, infraerrors.ServiceUnavailable(ErrorCodePromptAuditHashCacheUnavailable, "提示词审计哈希缓存暂不可用")
+	}
+	deleted, err := s.hashCache.DeleteFlaggedPromptHash(ctx, promptHash)
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable(ErrorCodePromptAuditHashCacheUnavailable, "提示词审计哈希缓存暂不可用").WithCause(err)
+	}
+	return &PromptAuditDeleteHashResult{PromptHash: promptHash, Deleted: deleted}, nil
+}
+
+func (s *PromptService) ClearFlaggedPromptHashes(ctx context.Context) (*PromptAuditClearHashesResult, error) {
+	if s == nil || s.hashCache == nil {
+		return nil, infraerrors.ServiceUnavailable(ErrorCodePromptAuditHashCacheUnavailable, "提示词审计哈希缓存暂不可用")
+	}
+	deleted, err := s.hashCache.ClearFlaggedPromptHashes(ctx)
+	if err != nil {
+		return nil, infraerrors.ServiceUnavailable(ErrorCodePromptAuditHashCacheUnavailable, "提示词审计哈希缓存暂不可用").WithCause(err)
+	}
+	return &PromptAuditClearHashesResult{Deleted: deleted}, nil
 }
 
 func (s *PromptService) Runtime(ctx context.Context) RuntimeSnapshot {
@@ -203,6 +355,17 @@ func (s *PromptService) Runtime(ctx context.Context) RuntimeSnapshot {
 			runtime.LastErrorCode = "payload_store_unavailable"
 		}
 	}
+	if s.hashCache != nil {
+		count, err := s.hashCache.CountFlaggedPromptHashes(ctx)
+		if err != nil {
+			runtime.RedisStatus = "error"
+			if runtime.LastErrorCode == "" {
+				runtime.LastErrorCode = ErrorCodePromptAuditHashCacheUnavailable
+			}
+		} else {
+			runtime.FlaggedHashCount = count
+		}
+	}
 	activeWorkers, processed, failed, heartbeat, lastProcessed, workerCode, workerMessage := s.runner.Snapshot()
 	runtime.WorkerActive, runtime.ProcessedTotal, runtime.FailedTotal = activeWorkers, processed, failed
 	if s.metrics != nil {
@@ -227,6 +390,8 @@ func (s *PromptService) Runtime(ctx context.Context) RuntimeSnapshot {
 
 type ProbeRequest struct {
 	Endpoint UpdateEndpoint `json:"endpoint"`
+	// ProxyID nil 表示沿用已保存配置，<=0 表示强制直连，>0 表示使用指定代理。
+	ProxyID *int64 `json:"proxy_id"`
 }
 
 func (s *PromptService) Probe(ctx context.Context, request ProbeRequest) ProbeResult {
@@ -236,9 +401,33 @@ func (s *PromptService) Probe(ctx context.Context, request ProbeRequest) ProbeRe
 		return s.finishProbe(request.Endpoint.ID, started, ProbeResult{Status: "failed", ErrorCode: "endpoint_invalid", Message: "审计节点配置无效"})
 	}
 	LogInfo(EventProbeStarted, map[string]any{"guard_endpoint_id": endpoint.ID, "status": "started"})
-	client, err := NewSecureHTTPClient(endpoint)
+	endpoint.ProxyID = s.resolveProbeProxyID(request.ProxyID)
+	client, err := s.scanner.clientFor(ctx, endpoint)
 	if err != nil {
 		return s.finishProbe(endpoint.ID, started, ProbeResult{Status: "failed", ErrorCode: "endpoint_unsafe", Message: "审计节点地址不在允许范围", TokenApplied: tokenApplied})
+	}
+	if endpoint.Protocol == ProtocolOpenAIModeration || endpoint.Protocol == ProtocolNemotronSafety {
+		result, scanErr := s.scanner.Scan(ctx, endpoint, "Hello", AllScannerIDs)
+		if scanErr == nil && result != nil {
+			message := "审计节点 Moderation API 调用正常"
+			if endpoint.Protocol == ProtocolNemotronSafety {
+				message = "审计节点 Nemotron 模型调用正常"
+			}
+			return s.finishProbe(endpoint.ID, started, ProbeResult{OK: true, Status: "healthy", Message: message, HTTPStatus: http.StatusOK, TokenApplied: tokenApplied})
+		}
+		code, status, retryable := guardErrorCode(scanErr), 0, false
+		var guardErr *GuardError
+		if errors.As(scanErr, &guardErr) {
+			status, retryable = guardErr.HTTPStatus, guardErr.Retryable
+		}
+		if code == "" {
+			code = ErrorCodeInvalidResponse
+		}
+		message := "审计节点 Moderation API 调用失败"
+		if endpoint.Protocol == ProtocolNemotronSafety {
+			message = "审计节点 Nemotron 模型调用失败"
+		}
+		return s.finishProbe(endpoint.ID, started, ProbeResult{Status: "failed", ErrorCode: code, Message: message, HTTPStatus: status, Retryable: retryable, TokenApplied: tokenApplied})
 	}
 	modelsURL, _ := ModelsURL(endpoint.BaseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
@@ -311,6 +500,21 @@ func modelsResponseReady(body []byte, model string) bool {
 	return false
 }
 
+func (s *PromptService) resolveProbeProxyID(requested *int64) *int64 {
+	if requested != nil {
+		if *requested <= 0 {
+			return nil
+		}
+		return cloneInt64Ptr(requested)
+	}
+	if s != nil && s.config != nil {
+		if cfg, ok := s.config.Active(); ok {
+			return cloneInt64Ptr(cfg.ProxyID)
+		}
+	}
+	return nil
+}
+
 func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoint, bool, error) {
 	baseURL, err := NormalizeBaseURL(input.BaseURL)
 	if err != nil {
@@ -333,10 +537,12 @@ func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoi
 			}
 		}
 	}
-	model := strings.TrimSpace(input.Model)
-	if model == "" {
-		model = DefaultGuardModel
+	protocol := strings.TrimSpace(input.Protocol)
+	if protocol == "" {
+		protocol = ProtocolOpenAICompatible
 	}
+	model := strings.TrimSpace(input.Model)
+	model = normalizeModelForEndpoint(protocol, baseURL, model)
 	timeout := input.TimeoutMS
 	if timeout == 0 {
 		timeout = DefaultTimeoutMS
@@ -346,7 +552,7 @@ func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoi
 		limit = DefaultInputLimit
 	}
 	storage := storageConfig{Enabled: false, Strategy: "priority", WorkerCount: DefaultWorkerCount, QueueCapacity: DefaultQueueCapacity, Scanners: append([]string(nil), AllScannerIDs...), AllGroups: true,
-		Endpoints: []StorageEndpoint{{ID: strings.TrimSpace(input.ID), Name: strings.TrimSpace(input.Name), Protocol: "openai_compatible", BaseURL: baseURL, Model: model, TimeoutMS: timeout, InputLimit: limit}}}
+		Endpoints: []StorageEndpoint{{ID: strings.TrimSpace(input.ID), Name: strings.TrimSpace(input.Name), Protocol: protocol, BaseURL: baseURL, Model: model, TimeoutMS: timeout, InputLimit: limit}}}
 	if storage.Endpoints[0].ID == "" {
 		storage.Endpoints[0].ID = "probe"
 	}
@@ -356,7 +562,7 @@ func (s *PromptService) resolveProbeEndpoint(input UpdateEndpoint) (ActiveEndpoi
 	if err := validateStorageConfig(storage); err != nil {
 		return ActiveEndpoint{}, false, err
 	}
-	return ActiveEndpoint{ID: storage.Endpoints[0].ID, Name: storage.Endpoints[0].Name, Protocol: "openai_compatible", BaseURL: baseURL, Model: model, Token: token, TimeoutMS: timeout, InputLimit: limit, Enabled: true}, token != "", nil
+	return ActiveEndpoint{ID: storage.Endpoints[0].ID, Name: storage.Endpoints[0].Name, Protocol: protocol, BaseURL: baseURL, Model: model, Token: token, TimeoutMS: timeout, InputLimit: limit, Enabled: true}, token != "", nil
 }
 
 func (s *PromptService) finishProbe(id string, started time.Time, result ProbeResult) ProbeResult {
@@ -433,6 +639,7 @@ func (s *PromptService) PreviewDelete(ctx context.Context, filter EventFilter, a
 type DeleteByFilterRequest struct {
 	Filter            EventFilter `json:"filter"`
 	SnapshotMaxID     int64       `json:"snapshot_max_id"`
+	CursorID          int64       `json:"cursor_id,omitempty"`
 	FilterHash        string      `json:"filter_hash"`
 	ConfirmationToken string      `json:"confirmation_token"`
 	Confirm           bool        `json:"confirm"`
@@ -454,7 +661,12 @@ func (s *PromptService) DeleteByFilter(ctx context.Context, request DeleteByFilt
 	if claims.AdminID != adminID || claims.SnapshotMaxID != request.SnapshotMaxID || claims.FilterHash != request.FilterHash || request.FilterHash != computed || !s.clock.Now().Before(claims.ExpiresAt) {
 		return nil, errors.New("prompt audit confirmation token does not match deletion request")
 	}
-	result, err := s.repo.DeleteEventsByFilter(ctx, request.Filter, request.SnapshotMaxID, 200)
+	if request.CursorID < 0 || request.CursorID > request.SnapshotMaxID {
+		return nil, errors.New("prompt audit delete cursor is outside the preview snapshot")
+	}
+	// Keep each HTTP request bounded. The frontend continues with the returned
+	// cursor, so a large deletion cannot occupy one request until completion.
+	result, err := s.repo.DeleteEventsByFilterBatch(ctx, request.Filter, request.SnapshotMaxID, request.CursorID, 1000)
 	if err == nil {
 		s.deletePayloads(ctx, result.JobIDs)
 		LogWarn(EventEventsFilterDeleted, map[string]any{"user_id": adminID, "status": "deleted"})

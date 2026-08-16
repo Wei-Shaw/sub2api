@@ -44,13 +44,23 @@
             <template v-if="draft">
               <EndpointPool
                 :endpoints="draft.endpoints"
+                :proxy-id="draft.proxy_id"
+                :proxies="proxies"
                 :probe-results="probeResults"
                 :probing-ids="probingIds"
                 @update:endpoints="updateEndpoints"
+                @update:proxy-id="replaceDraft({ ...draft!, proxy_id: $event })"
                 @probe="runProbe"
               />
               <div v-if="loadErrors.groups" role="alert" class="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ loadErrors.groups }}</div>
-              <PolicyPanel :draft="draft" :groups="groups" @update:draft="replaceDraft" />
+              <PolicyPanel
+                :draft="draft"
+                :groups="groups"
+                :runtime="runtime"
+                @update:draft="replaceDraft"
+                @delete-hash="deletePromptHash"
+                @clear-hashes="showPromptHashClearConfirmation = true"
+              />
             </template>
           </div>
 
@@ -94,7 +104,8 @@
       <div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
           <SaveToggle :label="t('admin.promptAudit.saveBar.enabled')" :model-value="draft.enabled" data-test="enabled-toggle" @update:model-value="setEnabled" />
-          <SaveToggle :label="t('admin.promptAudit.saveBar.blocking')" :model-value="draft.blocking_enabled" :disabled="!draft.enabled" data-test="blocking-toggle" @update:model-value="setBlocking" />
+          <SaveToggle :label="t('admin.promptAudit.saveBar.keywordBlocking')" :model-value="draft.keyword_blocking_enabled" :disabled="!draft.enabled || draft.keyword_blocking_mode === 'ai_only'" data-test="keyword-blocking-toggle" @update:model-value="setSyncBlocking('keyword', $event)" />
+          <SaveToggle :label="t('admin.promptAudit.saveBar.aiBlocking')" :model-value="draft.ai_blocking_enabled" :disabled="!draft.enabled || draft.keyword_blocking_mode === 'keyword_only'" data-test="ai-blocking-toggle" @update:model-value="setSyncBlocking('ai', $event)" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.blockingLatestTurnOnly')" :model-value="draft.blocking_latest_turn_only" :disabled="!draft.enabled || !draft.blocking_enabled" data-test="blocking-latest-turn-only-toggle" @update:model-value="replaceDraft({ ...draft!, blocking_latest_turn_only: $event })" />
           <SaveToggle :label="t('admin.promptAudit.saveBar.storePass')" :model-value="draft.store_pass_events" data-test="store-pass-toggle" @update:model-value="replaceDraft({ ...draft!, store_pass_events: $event })" />
         </div>
@@ -117,7 +128,16 @@
       :confirm-text="t('admin.promptAudit.blockingConfirm.confirm')"
       danger
       @confirm="confirmBlocking"
-      @cancel="showBlockingConfirmation = false"
+      @cancel="cancelBlocking"
+    />
+    <ConfirmDialog
+      :show="showPromptHashClearConfirmation"
+      :title="t('admin.promptAudit.policy.clearFlaggedHashes')"
+      :message="t('admin.promptAudit.policy.clearFlaggedHashesConfirm')"
+      :confirm-text="t('admin.promptAudit.policy.clearFlaggedHashes')"
+      danger
+      @confirm="clearPromptHashes"
+      @cancel="showPromptHashClearConfirmation = false"
     />
     <ConfirmDialog
       :show="deleteRequest.mode !== ''"
@@ -150,6 +170,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
+import type { Proxy } from '@/types'
 import RuntimeOverview from './components/RuntimeOverview.vue'
 import EndpointPool from './components/EndpointPool.vue'
 import PolicyPanel from './components/PolicyPanel.vue'
@@ -183,6 +204,7 @@ const serverConfig = ref<PromptAuditDraft | null>(null)
 const draft = ref<PromptAuditDraft | null>(null)
 const runtime = ref<PromptAuditRuntime | null>(null)
 const groups = ref<PromptAuditGroup[]>([])
+const proxies = ref<Proxy[]>([])
 const events = reactive<PromptEventPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
 const filters = ref<PromptEventFilters>(emptyEventFilters())
 const appliedFilters = ref<PromptEventFilters>(emptyEventFilters())
@@ -195,6 +217,8 @@ const showFilterDelete = ref(false)
 const deletePreview = ref<PromptDeletePreview | null>(null)
 const deletePreviewFilters = ref<PromptEventFilters | null>(null)
 const showBlockingConfirmation = ref(false)
+const showPromptHashClearConfirmation = ref(false)
+const promptHashActionLoading = ref(false)
 const deleteRequest = reactive<{ mode: '' | 'single' | 'batch'; ids: number[] }>({ mode: '', ids: [] })
 const loading = reactive({ config: false, runtime: false, groups: false, events: false, saving: false, detail: false, deleting: false, previewing: false })
 const loadErrors = reactive<PromptLoadErrors>({ config: '', runtime: '', groups: '', events: '' })
@@ -272,6 +296,10 @@ async function loadGroups() {
   catch (error) { loadErrors.groups = errorMessage(error, 'admin.promptAudit.errors.loadGroups') }
   finally { loading.groups = false }
 }
+async function loadProxies() {
+  try { proxies.value = await promptAuditAPI.listProxies() }
+  catch { proxies.value = [] }
+}
 async function loadEvents() {
   loading.events = true
   loadErrors.events = ''
@@ -286,7 +314,7 @@ async function loadEvents() {
   }
 }
 async function loadInitial() {
-  await Promise.allSettled([loadConfig(), loadRuntime(), loadGroups(), loadEvents()])
+  await Promise.allSettled([loadConfig(), loadRuntime(), loadGroups(), loadProxies(), loadEvents()])
 }
 
 function replaceDraft(value: PromptAuditDraft) { draft.value = cloneData(value) }
@@ -296,16 +324,36 @@ function updateEndpoints(value: PromptAuditEndpointDraft[]) {
 }
 function setEnabled(value: boolean) {
   if (!draft.value) return
-  replaceDraft({ ...draft.value, enabled: value, blocking_enabled: value ? draft.value.blocking_enabled : false })
+  replaceDraft({
+    ...draft.value,
+    enabled: value,
+    blocking_enabled: value ? draft.value.blocking_enabled : false,
+    keyword_blocking_enabled: value ? draft.value.keyword_blocking_enabled : false,
+    ai_blocking_enabled: value ? draft.value.ai_blocking_enabled : false,
+  })
 }
-function setBlocking(value: boolean) {
+const blockingConfirmationTarget = ref<'keyword' | 'ai' | null>(null)
+function setSyncBlocking(target: 'keyword' | 'ai', value: boolean) {
   if (!draft.value || !draft.value.enabled) return
-  if (value && !draft.value.blocking_enabled) { showBlockingConfirmation.value = true; return }
-  replaceDraft({ ...draft.value, blocking_enabled: value })
+  const field = target === 'keyword' ? 'keyword_blocking_enabled' : 'ai_blocking_enabled'
+  if (value && !draft.value[field]) {
+    blockingConfirmationTarget.value = target
+    showBlockingConfirmation.value = true
+    return
+  }
+  replaceDraft({ ...draft.value, [field]: value, blocking_enabled: target === 'keyword' ? value || draft.value.ai_blocking_enabled : draft.value.keyword_blocking_enabled || value })
 }
 function confirmBlocking() {
   showBlockingConfirmation.value = false
-  if (draft.value) replaceDraft({ ...draft.value, blocking_enabled: true })
+  const target = blockingConfirmationTarget.value
+  blockingConfirmationTarget.value = null
+  if (!draft.value || !target) return
+  const field = target === 'keyword' ? 'keyword_blocking_enabled' : 'ai_blocking_enabled'
+  replaceDraft({ ...draft.value, [field]: true, blocking_enabled: true })
+}
+function cancelBlocking() {
+  showBlockingConfirmation.value = false
+  blockingConfirmationTarget.value = null
 }
 function resetDraft() {
   if (serverConfig.value) draft.value = cloneData(serverConfig.value)
@@ -326,11 +374,39 @@ async function saveConfig() {
     loading.saving = false
   }
 }
+async function deletePromptHash(promptHash: string) {
+  if (promptHashActionLoading.value) return
+  promptHashActionLoading.value = true
+  try {
+    const result = await promptAuditAPI.deleteFlaggedHash(promptHash)
+    if (result.deleted) appStore.showSuccess(t('admin.promptAudit.messages.flaggedHashDeleted'))
+    else appStore.showError(t('admin.promptAudit.messages.flaggedHashNotFound'))
+    await loadRuntime()
+  } catch (error) {
+    appStore.showError(errorMessage(error, 'admin.promptAudit.errors.flaggedHashDeleteFailed'))
+  } finally {
+    promptHashActionLoading.value = false
+  }
+}
+async function clearPromptHashes() {
+  showPromptHashClearConfirmation.value = false
+  if (promptHashActionLoading.value) return
+  promptHashActionLoading.value = true
+  try {
+    const result = await promptAuditAPI.clearFlaggedHashes()
+    appStore.showSuccess(t('admin.promptAudit.messages.flaggedHashesCleared', { count: result.deleted }))
+    await loadRuntime()
+  } catch (error) {
+    appStore.showError(errorMessage(error, 'admin.promptAudit.errors.flaggedHashesClearFailed'))
+  } finally {
+    promptHashActionLoading.value = false
+  }
+}
 async function runProbe(endpoint: PromptAuditEndpointDraft) {
   if (probingIds.value.includes(endpoint.id)) return
   probingIds.value = [...probingIds.value, endpoint.id]
   try {
-    const result = await promptAuditAPI.probeEndpoint(endpoint)
+    const result = await promptAuditAPI.probeEndpoint(endpoint, draft.value?.proxy_id ?? null)
     probeResults[endpoint.id] = result
     if (result.ok) appStore.showSuccess(t('admin.promptAudit.messages.probeSucceeded'))
     else appStore.showError(`${result.error_code || result.status}: ${result.message}`)

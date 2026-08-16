@@ -1,6 +1,13 @@
 package securityaudit
 
-import "github.com/google/wire"
+import (
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/wire"
+)
+
+func ProvideOpenAICompatibleScanner(proxyRepo service.ProxyRepository) *OpenAICompatibleScanner {
+	return NewOpenAICompatibleScanner(proxyRepo)
+}
 
 var ProviderSet = wire.NewSet(
 	NewPostgreSQLRepository,
@@ -8,7 +15,8 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(EventRepository), new(*PostgreSQLRepository)),
 	NewRedisPayloadStore,
 	wire.Bind(new(PayloadStore), new(*RedisPayloadStore)),
-	NewOpenAICompatibleScanner,
+	NewRedisPromptAuditHashCache,
+	ProvideOpenAICompatibleScanner,
 	wire.Bind(new(PromptScanner), new(*OpenAICompatibleScanner)),
 	NewAtomicMetrics,
 	wire.Bind(new(Metrics), new(*AtomicMetrics)),

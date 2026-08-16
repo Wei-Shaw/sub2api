@@ -136,6 +136,7 @@ func (r *fakeJobRepository) ClaimNextJob(context.Context, time.Time) (*Job, bool
 func (r *fakeJobRepository) RefreshLease(context.Context, int64, int64, time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.record("refresh_lease")
 	r.refreshes++
 	return r.refreshErr
 }
@@ -581,6 +582,37 @@ func TestPromptAuditSyntheticAsyncBaseline(t *testing.T) {
 	require.LessOrEqual(t, snapshot.LatencyP50MS, snapshot.LatencyP95MS)
 	require.LessOrEqual(t, snapshot.LatencyP95MS, snapshot.LatencyP99MS)
 	t.Logf("synthetic async baseline: p50=%dms p95=%dms p99=%dms failure_rate=2%% false_positive_rate=0%% event_growth=8/100", snapshot.LatencyP50MS, snapshot.LatencyP95MS, snapshot.LatencyP99MS)
+}
+
+func TestAsyncModerationScansChunksSeparatelyAndRefreshesLease(t *testing.T) {
+	var scanned []string
+	trace := []string{}
+	scanner := PromptScannerFunc(func(_ context.Context, endpoint ActiveEndpoint, chunk string, _ []string) (*NormalizedResult, error) {
+		scanned = append(scanned, chunk)
+		trace = append(trace, "scan:"+chunk)
+		return &NormalizedResult{
+			Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow,
+			GuardEndpointID: endpoint.ID, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{},
+		}, nil
+	})
+	cfg := asyncConfig()
+	cfg.Endpoints = []ActiveEndpoint{{
+		ID: "moderation", Protocol: ProtocolOpenAIModeration, Enabled: true,
+		TimeoutMS: 1000, InputLimit: 3,
+	}}
+	repo := &fakeJobRepository{trace: &trace}
+	payload := &fakePayloadStore{values: map[int64]string{51: "abcdefghi"}}
+	runner := NewRunner(&fakeConfigStore{cfg: cfg, active: true}, repo, payload, scanner, nil)
+	runner.clock = fixedClock{now: time.Unix(100, 0).UTC()}
+
+	err := runner.processJob(context.Background(), 0, cfg, workerJob(1, 3))
+	require.NoError(t, err)
+	require.Equal(t, []string{"abc", "def", "ghi"}, scanned)
+	require.Equal(t, []string{
+		"refresh_lease", "scan:abc",
+		"refresh_lease", "scan:def",
+		"refresh_lease", "scan:ghi",
+	}, trace)
 }
 
 func TestRequestCloneOwnsMutableInputs(t *testing.T) {

@@ -35,6 +35,15 @@
           <option value="critical">{{ t('admin.promptAudit.riskLevels.critical') }}</option>
         </select>
       </label>
+      <label class="text-xs text-gray-600 dark:text-dark-200">
+        <span>{{ t('admin.promptAudit.events.auditType') }}</span>
+        <select v-model="localFilters.audit_type" class="input mt-1 w-full" :aria-label="t('admin.promptAudit.events.auditType')" @change="filtersChanged">
+          <option value="">{{ t('common.all') }}</option>
+          <option value="ai">{{ t('admin.promptAudit.events.auditTypes.ai') }}</option>
+          <option value="keyword">{{ t('admin.promptAudit.events.auditTypes.keyword') }}</option>
+          <option value="hash">{{ t('admin.promptAudit.events.auditTypes.hash') }}</option>
+        </select>
+      </label>
       <FilterInput v-model="localFilters.endpoint" :label="t('admin.promptAudit.events.endpoint')" @change="filtersChanged" />
       <FilterInput v-model="localFilters.group_id" :label="t('admin.promptAudit.events.groupId')" type="number" @change="filtersChanged" />
       <FilterInput v-model="localFilters.user_id" :label="t('admin.promptAudit.events.userId')" type="number" @change="filtersChanged" />
@@ -89,6 +98,9 @@
             <td class="px-3 py-3">
               <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="decisionClass(event.decision)">{{ formatDecisionRisk(event.decision, event.risk_level) }}</span>
               <p class="mt-2 max-w-48 truncate text-xs text-gray-500" :title="formatCategories(event.categories)">{{ formatCategories(event.categories) }}</p>
+              <p v-if="event.matched_keyword" class="mt-1 max-w-48 truncate text-xs text-red-600 dark:text-red-300" :title="event.matched_keyword" data-test="matched-keyword">
+                {{ t('admin.promptAudit.events.matchedKeyword') }}: {{ event.matched_keyword }}
+              </p>
             </td>
             <td class="max-w-xs px-3 py-3"><p class="line-clamp-2 break-words text-gray-600 dark:text-dark-300">{{ event.snapshot.redacted_preview || '—' }}</p></td>
             <td class="whitespace-nowrap px-3 py-3 text-right">
@@ -186,7 +198,7 @@ function formatDate(value: string): string {
 function decisionClass(decision: string): string {
   if (decision === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
   if (decision === 'flag') return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-  return 'bg-gray-100 text-gray-700 dark:bg-gray-950/50 dark:text-gray-300'
+  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
 }
 const DECISIONS = new Set(['pass', 'flag', 'critical'])
 const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
@@ -198,6 +210,7 @@ function translateRiskLevel(riskLevel: string): string {
   return RISK_LEVELS.has(riskLevel) ? t(`admin.promptAudit.riskLevels.${riskLevel}`) : riskLevel
 }
 function translateCategory(category: string): string {
+  if (category === 'keyword') return t('admin.promptAudit.scanners.keyword')
   return SCANNER_CATALOG.some((scanner) => scanner.id === category)
     ? t(`admin.promptAudit.scanners.${category}`)
     : category

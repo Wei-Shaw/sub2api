@@ -23,6 +23,7 @@
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.group') }}</dt><dd>{{ event.snapshot.group_name || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.model') }}</dt><dd>{{ event.snapshot.model || '—' }}</dd>
             <dt class="text-gray-500">{{ t('admin.promptAudit.events.categories') }}</dt><dd>{{ formatCategories(event.categories) }}</dd>
+            <dt class="text-gray-500">{{ t('admin.promptAudit.events.matchedKeyword') }}</dt><dd class="break-words">{{ event.matched_keyword || '—' }}</dd>
           </dl>
         </div>
 
@@ -51,7 +52,7 @@
               <dl class="mt-2 grid gap-1 text-xs text-gray-500 dark:text-dark-400 sm:grid-cols-2">
                 <div><dt class="inline text-gray-400">{{ t('admin.promptAudit.events.categories') }} · </dt><dd class="inline">{{ translateCategory(issue.category || issue.scanner_id) }}</dd></div>
                 <div><dt class="inline text-gray-400">{{ t('admin.promptAudit.events.score') }} · </dt><dd class="inline">{{ issue.score }}</dd></div>
-                <div class="sm:col-span-2"><dt class="inline text-gray-400">{{ t('admin.promptAudit.events.evidence') }} · </dt><dd class="inline break-words">{{ issue.evidence ? translateEvidence(issue.evidence) : '—' }}</dd></div>
+                <div class="sm:col-span-2"><dt class="inline text-gray-400">{{ t('admin.promptAudit.events.evidence') }} · </dt><dd class="inline break-words">{{ issue.evidence ? translateEvidence(issue.evidence, issue.category || issue.scanner_id) : '—' }}</dd></div>
               </dl>
             </article>
             <p v-if="event.issue_summaries.length === 0" class="py-6 text-center text-sm text-gray-500">{{ t('admin.promptAudit.events.noRisks') }}</p>
@@ -103,6 +104,7 @@ function formatDecisionAction(decision: string, action: string): string {
   return `${decisionLabel} · ${actionLabel}`
 }
 function translateCategory(category: string): string {
+  if (category === 'keyword') return t('admin.promptAudit.scanners.keyword')
   return SCANNER_CATALOG.some((scanner) => scanner.id === category)
     ? t(`admin.promptAudit.scanners.${category}`)
     : category
@@ -111,7 +113,8 @@ function formatCategories(categories: string[]): string {
   if (!categories.length) return '—'
   return categories.map(translateCategory).join(', ')
 }
-function translateEvidence(value: string): string {
+function translateEvidence(value: string, category = ''): string {
+  if (category === 'keyword') return value
   const byId = SCANNER_CATALOG.find((scanner) => scanner.id === value)
   if (byId) return t(`admin.promptAudit.scanners.${byId.id}`)
   const byLabel = SCANNER_CATALOG.find((scanner) => scanner.label === value)
@@ -121,12 +124,13 @@ function translateEvidence(value: string): string {
 function formatGuardReturn(event: PromptAuditEvent): string {
   const evidence: Record<string, string> = {}
   for (const [key, value] of Object.entries(event.scanner_evidence || {})) {
-    evidence[key] = translateEvidence(value)
+    evidence[key] = translateEvidence(value, key)
   }
   return JSON.stringify({
     decision: DECISIONS.has(event.decision) ? t(`admin.promptAudit.decisions.${event.decision}`) : event.decision,
     risk_level: RISK_LEVELS.has(event.risk_level) ? t(`admin.promptAudit.riskLevels.${event.risk_level}`) : event.risk_level,
     action: ACTIONS.has(event.action) ? t(`admin.promptAudit.actions.${event.action}`) : event.action,
+    matched_keyword: event.matched_keyword || '',
     categories: event.categories.map(translateCategory),
     matched_scanners: event.matched_scanners.map(translateCategory),
     scanner_scores: event.scanner_scores,

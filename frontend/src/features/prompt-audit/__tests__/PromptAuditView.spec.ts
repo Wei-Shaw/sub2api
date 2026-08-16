@@ -8,6 +8,7 @@ import PromptAuditView from '../PromptAuditView.vue'
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(), updateConfig: vi.fn(), probeEndpoint: vi.fn(), getRuntime: vi.fn(), listEvents: vi.fn(),
   getEvent: vi.fn(), deleteEvent: vi.fn(), batchDeleteEvents: vi.fn(), previewDelete: vi.fn(), deleteEventsByFilter: vi.fn(), listGroups: vi.fn(),
+  listProxies: vi.fn(),
   showSuccess: vi.fn(), showError: vi.fn(),
 }))
 
@@ -19,8 +20,9 @@ vi.mock('vue-i18n', async () => {
 })
 
 const baseConfig = (): PromptAuditConfig => ({
-  enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, store_pass_events: false, effective_mode: 'async_audit', strategy: 'priority',
+  enabled: true, blocking_enabled: false, blocking_latest_turn_only: false, keyword_blocking_enabled: false, ai_blocking_enabled: false, store_pass_events: false, pre_hash_check_enabled: false, blocked_keywords: [], keyword_blocking_mode: 'keyword_and_ai', effective_mode: 'async_audit', strategy: 'priority',
   worker_count: 4, queue_capacity: 100, scanners: SCANNER_CATALOG.map((item) => item.id), all_groups: true, group_ids: [],
+  proxy_id: null,
   endpoints: [{ id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000', model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true, has_token: true, token_status: 'configured' }],
   config_version: 7, updated_at: '2026-07-16T00:00:00Z', updated_by: 1, change_summary: '{}',
 })
@@ -28,14 +30,14 @@ const runtime = (): PromptAuditRuntime => ({
   process_status: 'running', effective_mode: 'async_audit', expected_config_version: 7, active_config_version: 7,
   worker_total: 4, worker_active: 1, queue_capacity: 100,
   queue: { staging: 0, queued: 0, processing: 1, retry: 0, done: 5, failed: 0, active: 1 },
-  processed_total: 5, failed_total: 0, enqueued_total: 5, dropped_total: 0, database_status: 'ok', redis_status: 'ok', endpoints: {},
+  processed_total: 5, failed_total: 0, enqueued_total: 5, dropped_total: 0, database_status: 'ok', redis_status: 'ok', flagged_hash_count: 0, endpoints: {},
   guard_metrics: { total: 1, allowed: 1, flagged: 0, blocked: 0, unavailable: 0, invalid: 0, timeouts: 0, failovers: 0, bulkhead_full: 0, record_failed: 0 },
 })
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const RuntimeStub = defineComponent({ props: ['runtime', 'loading', 'error'], emits: ['refresh'], template: '<div data-test="runtime">{{ error }}</div>' })
 const EndpointStub = defineComponent({
-  props: ['endpoints', 'probeResults', 'probingIds'], emits: ['update:endpoints', 'probe'],
+  props: ['endpoints', 'proxyId', 'proxies', 'probeResults', 'probingIds'], emits: ['update:endpoints', 'update:proxyId', 'probe'],
   template: '<div data-test="endpoint"><button data-test="inject-secret" @click="$emit(\'update:endpoints\', endpoints.map((e) => ({ ...e, token: \'PROMPT_AUDIT_CANARY_SECRET_DO_NOT_PERSIST\' })))">secret</button><button data-test="probe" @click="$emit(\'probe\', endpoints[0])">probe</button></div>',
 })
 const PolicyStub = defineComponent({ props: ['draft', 'groups'], emits: ['update:draft'], template: '<div data-test="policy" />' })
@@ -64,6 +66,7 @@ describe('PromptAuditView', () => {
     mocks.getConfig.mockResolvedValue(baseConfig())
     mocks.getRuntime.mockResolvedValue(runtime())
     mocks.listGroups.mockResolvedValue([])
+    mocks.listProxies.mockResolvedValue([])
     mocks.listEvents.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     mocks.updateConfig.mockImplementation(async () => ({ ...baseConfig(), config_version: 8 }))
     mocks.probeEndpoint.mockResolvedValue({ ok: true, status: 'healthy', message: 'ok', latency_ms: 2, http_status: 200, retryable: false, checked_at: '2026-07-16T00:00:00Z', token_applied: true })
@@ -118,20 +121,26 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="tab-panel-config"]').attributes('style') || '').not.toContain('display: none')
   })
 
-  it('requires confirmation for blocking and disables it when audit is turned off', async () => {
+  it('requires confirmation for each sync blocker and disables both when audit is turned off', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-test="tab-config"]').trigger('click')
-    await wrapper.get('[data-test="blocking-toggle"]').trigger('click')
+    await wrapper.get('[data-test="keyword-blocking-toggle"]').trigger('click')
     expect(wrapper.find('[data-test="confirm"]').exists()).toBe(true)
     await wrapper.get('[data-test="confirm-action"]').trigger('click')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-test="keyword-blocking-toggle"]').attributes('aria-checked')).toBe('true')
+    await wrapper.get('[data-test="ai-blocking-toggle"]').trigger('click')
+    expect(wrapper.find('[data-test="confirm"]').exists()).toBe(true)
+    await wrapper.get('[data-test="confirm-action"]').trigger('click')
+    expect(wrapper.get('[data-test="ai-blocking-toggle"]').attributes('aria-checked')).toBe('true')
     await wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').trigger('click')
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes('aria-checked')).toBe('true')
     await wrapper.get('[data-test="enabled-toggle"]').trigger('click')
     expect(wrapper.get('[data-test="enabled-toggle"]').attributes('aria-checked')).toBe('false')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes('aria-checked')).toBe('false')
-    expect(wrapper.get('[data-test="blocking-toggle"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="keyword-blocking-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.get('[data-test="ai-blocking-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(wrapper.get('[data-test="keyword-blocking-toggle"]').attributes()).toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="ai-blocking-toggle"]').attributes()).toHaveProperty('disabled')
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes()).toHaveProperty('disabled')
   })
 
@@ -178,7 +187,7 @@ describe('PromptAuditView', () => {
     await flushPromises()
     await wrapper.get('[data-test="tab-config"]').trigger('click')
     const switches = wrapper.findAll('[role="switch"]')
-    expect(switches).toHaveLength(4)
+	    expect(switches).toHaveLength(5)
     expect(switches.every((item) => Boolean(item.attributes('aria-label')))).toBe(true)
     expect(wrapper.html()).toContain('fixed inset-x-0 bottom-0')
     expect(wrapper.html()).toContain('flex-wrap')
