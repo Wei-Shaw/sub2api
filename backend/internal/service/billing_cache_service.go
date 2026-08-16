@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -21,6 +22,9 @@ import (
 // errBillingCacheUnavailable 内部哨兵：用于 quota 校验路径在 cache==nil 时
 // 与"Redis 故障"走同一条 fail-open + DB 一次性检查的分支。
 var errBillingCacheUnavailable = fmt.Errorf("billing cache unavailable")
+
+// ErrBillingBalanceCacheMiss 表示原子扣减没有命中余额缓存键。
+var ErrBillingBalanceCacheMiss = fmt.Errorf("billing balance cache miss")
 
 var (
 	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
@@ -87,6 +91,8 @@ type cacheWriteTask struct {
 	groupID          int64
 	apiKeyID         int64
 	balance          float64
+	balanceVersion   int64
+	balanceVersionOK bool
 	amount           float64
 	subscriptionData *subscriptionCacheData
 }
@@ -113,6 +119,7 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	billingRiskStore      BillingRiskStore
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -126,6 +133,12 @@ type BillingCacheService struct {
 	cacheWriteDropFullLastLog   int64
 	cacheWriteDropClosedCount   uint64
 	cacheWriteDropClosedLastLog int64
+}
+
+type billingBalanceLoadResult struct {
+	balance       float64
+	authoritative bool
+	riskVersion   int64
 }
 
 // NewBillingCacheService 创建计费缓存服务
@@ -219,7 +232,7 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
-			s.setBalanceCache(ctx, task.userID, task.balance)
+			s.setVersionedBalanceCache(ctx, task)
 		case cacheWriteSetSubscription:
 			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
 		case cacheWriteUpdateSubscriptionUsage:
@@ -230,7 +243,7 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 			}
 		case cacheWriteDeductBalance:
 			if s.cache != nil {
-				if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
+				if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil && !errors.Is(err, ErrBillingBalanceCacheMiss) {
 					logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
 				}
 			}
@@ -307,23 +320,49 @@ func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason stri
 // 余额缓存方法
 // ============================================
 
+type BillingBalanceSnapshot struct {
+	Balance       float64
+	Authoritative bool
+	RiskVersion   int64
+}
+
 // GetUserBalance 获取用户余额（优先从缓存读取）
 func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) (float64, error) {
+	snapshot, err := s.GetUserBalanceSnapshot(ctx, userID)
+	return snapshot.Balance, err
+}
+
+// GetUserBalanceSnapshot 返回余额及数据库回源时的风险版本栅栏，
+// 供只需要刷新余额而不应触发 RPM/配额检查的入口使用。
+func (s *BillingCacheService) GetUserBalanceSnapshot(ctx context.Context, userID int64) (BillingBalanceSnapshot, error) {
+	balance, authoritative, version, err := s.getUserBalanceWithAuthority(ctx, userID)
+	return BillingBalanceSnapshot{
+		Balance:       balance,
+		Authoritative: authoritative,
+		RiskVersion:   version,
+	}, err
+}
+
+// getUserBalanceWithAuthority 同时报告余额是否来自本次数据库回源。
+func (s *BillingCacheService) getUserBalanceWithAuthority(ctx context.Context, userID int64) (float64, bool, int64, error) {
 	if s.cache == nil {
 		// Redis不可用，直接查询数据库
-		return s.getUserBalanceFromDB(ctx, userID)
+		version, authoritative := s.billingRiskBalanceVersion(ctx, userID)
+		balance, err := s.getUserBalanceFromDB(ctx, userID)
+		return balance, err == nil && authoritative, version, err
 	}
 
 	// 尝试从缓存读取
 	balance, err := s.cache.GetUserBalance(ctx, userID)
 	if err == nil {
-		return balance, nil
+		return balance, false, 0, nil
 	}
 
 	// 缓存未命中：singleflight 合并同一 userID 的并发回源请求。
 	value, err, _ := s.balanceLoadSF.Do(strconv.FormatInt(userID, 10), func() (any, error) {
 		loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
 		defer cancel()
+		version, authoritative := s.billingRiskBalanceVersion(loadCtx, userID)
 
 		balance, err := s.getUserBalanceFromDB(loadCtx, userID)
 		if err != nil {
@@ -332,20 +371,36 @@ func (s *BillingCacheService) GetUserBalance(ctx context.Context, userID int64) 
 
 		// 异步建立缓存
 		_ = s.enqueueCacheWrite(cacheWriteTask{
-			kind:    cacheWriteSetBalance,
-			userID:  userID,
-			balance: balance,
+			kind:             cacheWriteSetBalance,
+			userID:           userID,
+			balance:          balance,
+			balanceVersion:   version,
+			balanceVersionOK: authoritative,
 		})
-		return balance, nil
+		return billingBalanceLoadResult{balance: balance, authoritative: authoritative, riskVersion: version}, nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, false, 0, err
 	}
-	balance, ok := value.(float64)
+	loaded, ok := value.(billingBalanceLoadResult)
 	if !ok {
-		return 0, fmt.Errorf("unexpected balance type: %T", value)
+		return 0, false, 0, fmt.Errorf("unexpected balance type: %T", value)
 	}
-	return balance, nil
+	return loaded.balance, loaded.authoritative, loaded.riskVersion, nil
+}
+
+func (s *BillingCacheService) billingRiskBalanceVersion(ctx context.Context, userID int64) (int64, bool) {
+	if s == nil || s.billingRiskStore == nil {
+		return 0, false
+	}
+	version, err := s.billingRiskStore.GetBalanceVersion(ctx, userID)
+	return version, err == nil
+}
+
+func (s *BillingCacheService) SetBillingRiskStore(store BillingRiskStore) {
+	if s != nil {
+		s.billingRiskStore = store
+	}
 }
 
 // getUserBalanceFromDB 从数据库获取用户余额
@@ -365,6 +420,29 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
 	}
+}
+
+func (s *BillingCacheService) setVersionedBalanceCache(ctx context.Context, task cacheWriteTask) {
+	if !task.balanceVersionOK {
+		s.setBalanceCache(ctx, task.userID, task.balance)
+		return
+	}
+	if !s.billingRiskBalanceVersionMatches(ctx, task.userID, task.balanceVersion) {
+		return
+	}
+	s.setBalanceCache(ctx, task.userID, task.balance)
+	if s.billingRiskBalanceVersionMatches(ctx, task.userID, task.balanceVersion) {
+		return
+	}
+	_ = s.InvalidateUserBalance(ctx, task.userID)
+}
+
+func (s *BillingCacheService) billingRiskBalanceVersionMatches(ctx context.Context, userID, expected int64) bool {
+	if s == nil || s.billingRiskStore == nil {
+		return false
+	}
+	version, err := s.billingRiskStore.GetBalanceVersion(ctx, userID)
+	return err == nil && version == expected
 }
 
 // DeductBalanceCache 扣减余额缓存（同步调用）
@@ -390,7 +468,7 @@ func (s *BillingCacheService) QueueDeductBalance(userID int64, amount float64) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
-	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
+	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil && !errors.Is(err, ErrBillingBalanceCacheMiss) {
 		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
 	}
 }
@@ -733,12 +811,25 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	_, err := s.CheckBillingEligibilityWithBalance(ctx, user, apiKey, group, subscription, platform)
+	return err
+}
+
+// CheckBillingEligibilityWithBalance 在余额模式返回本次资格检查实际读取的余额，
+// 供后续风险准入复用，避免再查一次缓存或使用长 TTL 的认证余额快照。
+func (s *BillingCacheService) CheckBillingEligibilityWithBalance(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) (float64, error) {
+	currentBalance := 0.0
+	if user != nil {
+		currentBalance = user.Balance
+		user.BillingBalanceAuthoritative = false
+		user.BillingBalanceVersion = 0
+	}
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
-		return nil
+		return currentBalance, nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
-		return ErrBillingServiceUnavailable
+		return currentBalance, ErrBillingServiceUnavailable
 	}
 
 	// 判断计费模式
@@ -746,34 +837,41 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 
 	if isSubscriptionMode {
 		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
-			return err
+			return currentBalance, err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
-			return err
+		balance, authoritative, version, err := s.checkBalanceEligibility(ctx, user.ID)
+		if err != nil {
+			return balance, err
 		}
+		currentBalance = balance
+		// API Key 认证快照按请求物化；同步本次已读取的 Billing 余额，
+		// 让后续风险准入不受认证缓存长 TTL 的旧余额影响。
+		user.Balance = balance
+		user.BillingBalanceAuthoritative = authoritative
+		user.BillingBalanceVersion = version
 	}
 
 	// user × platform quota 仅在 standard（余额）模式生效；订阅模式豁免
 	if !isSubscriptionMode {
 		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {
-			return err
+			return currentBalance, err
 		}
 	}
 
 	// Check API Key rate limits (applies to both billing modes)
 	if apiKey != nil && apiKey.HasRateLimits() {
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
-			return err
+			return currentBalance, err
 		}
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
 	if err := s.checkRPM(ctx, user, group); err != nil {
-		return err
+		return currentBalance, err
 	}
 
-	return nil
+	return currentBalance, nil
 }
 
 // checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：
@@ -876,24 +974,24 @@ func (s *BillingCacheService) balanceBelowEligibilityThreshold(balance float64) 
 }
 
 // checkBalanceEligibility 检查余额模式资格
-func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) error {
-	balance, err := s.GetUserBalance(ctx, userID)
+func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userID int64) (float64, bool, int64, error) {
+	balance, authoritative, version, err := s.getUserBalanceWithAuthority(ctx, userID)
 	if err != nil {
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
 		}
 		logger.LegacyPrintf("service.billing_cache", "ALERT: billing balance check failed for user %d: %v", userID, err)
-		return ErrBillingServiceUnavailable.WithCause(err)
+		return 0, false, 0, ErrBillingServiceUnavailable.WithCause(err)
 	}
 	if s.circuitBreaker != nil {
 		s.circuitBreaker.OnSuccess()
 	}
 
 	if s.balanceBelowEligibilityThreshold(balance) {
-		return ErrInsufficientBalance
+		return balance, authoritative, version, ErrInsufficientBalance
 	}
 
-	return nil
+	return balance, authoritative, version, nil
 }
 
 // checkSubscriptionEligibility 检查订阅模式资格

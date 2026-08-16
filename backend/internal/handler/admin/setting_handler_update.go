@@ -243,19 +243,30 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	BillingRiskEnabled                     *bool    `json:"billing_risk_enabled"`
+	BillingRiskLowBalanceThreshold         *float64 `json:"billing_risk_low_balance_threshold"`
+	BillingRiskSafetyFactor                *float64 `json:"billing_risk_safety_factor"`
+	BillingRiskMinimumRequestRisk          *float64 `json:"billing_risk_minimum_request_risk"`
+	BillingRiskOverdraftAllowance          *float64 `json:"billing_risk_overdraft_allowance"`
+	BillingRiskHighCostTrigger             *float64 `json:"billing_risk_high_cost_trigger"`
+	BillingRiskLeaseTTLSeconds             *int     `json:"billing_risk_lease_ttl_seconds"`
+	BillingRiskRefreshIntervalSeconds      *int     `json:"billing_risk_refresh_interval_seconds"`
+	BillingRiskUncertainCooldownSeconds    *int     `json:"billing_risk_uncertain_cooldown_seconds"`
+	BillingRiskVideoLeaseTTLSeconds        *int     `json:"billing_risk_video_lease_ttl_seconds"`
+	BillingRiskIdleBalanceTTLSeconds       *int     `json:"billing_risk_idle_balance_ttl_seconds"`
+	EnableFingerprintUnification           *bool    `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool    `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool    `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection *bool    `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                *string  `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          *string  `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     *bool    `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool    `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      *bool    `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion            *string  `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   *string  `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               *string  `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled      *bool    `json:"openai_codex_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1673,6 +1684,72 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpsMetricsIntervalSeconds
 		}(),
+		BillingRiskEnabled: func() bool {
+			if req.BillingRiskEnabled != nil {
+				return *req.BillingRiskEnabled
+			}
+			return previousSettings.BillingRiskEnabled
+		}(),
+		BillingRiskLowBalanceThreshold: func() float64 {
+			if req.BillingRiskLowBalanceThreshold != nil {
+				return *req.BillingRiskLowBalanceThreshold
+			}
+			return previousSettings.BillingRiskLowBalanceThreshold
+		}(),
+		BillingRiskSafetyFactor: func() float64 {
+			if req.BillingRiskSafetyFactor != nil {
+				return *req.BillingRiskSafetyFactor
+			}
+			return previousSettings.BillingRiskSafetyFactor
+		}(),
+		BillingRiskMinimumRequestRisk: func() float64 {
+			if req.BillingRiskMinimumRequestRisk != nil {
+				return *req.BillingRiskMinimumRequestRisk
+			}
+			return previousSettings.BillingRiskMinimumRequestRisk
+		}(),
+		BillingRiskOverdraftAllowance: func() float64 {
+			if req.BillingRiskOverdraftAllowance != nil {
+				return *req.BillingRiskOverdraftAllowance
+			}
+			return previousSettings.BillingRiskOverdraftAllowance
+		}(),
+		BillingRiskHighCostTrigger: func() float64 {
+			if req.BillingRiskHighCostTrigger != nil {
+				return *req.BillingRiskHighCostTrigger
+			}
+			return previousSettings.BillingRiskHighCostTrigger
+		}(),
+		BillingRiskLeaseTTLSeconds: func() int {
+			if req.BillingRiskLeaseTTLSeconds != nil {
+				return *req.BillingRiskLeaseTTLSeconds
+			}
+			return previousSettings.BillingRiskLeaseTTLSeconds
+		}(),
+		BillingRiskRefreshIntervalSeconds: func() int {
+			if req.BillingRiskRefreshIntervalSeconds != nil {
+				return *req.BillingRiskRefreshIntervalSeconds
+			}
+			return previousSettings.BillingRiskRefreshIntervalSeconds
+		}(),
+		BillingRiskUncertainCooldownSeconds: func() int {
+			if req.BillingRiskUncertainCooldownSeconds != nil {
+				return *req.BillingRiskUncertainCooldownSeconds
+			}
+			return previousSettings.BillingRiskUncertainCooldownSeconds
+		}(),
+		BillingRiskVideoLeaseTTLSeconds: func() int {
+			if req.BillingRiskVideoLeaseTTLSeconds != nil {
+				return *req.BillingRiskVideoLeaseTTLSeconds
+			}
+			return previousSettings.BillingRiskVideoLeaseTTLSeconds
+		}(),
+		BillingRiskIdleBalanceTTLSeconds: func() int {
+			if req.BillingRiskIdleBalanceTTLSeconds != nil {
+				return *req.BillingRiskIdleBalanceTTLSeconds
+			}
+			return previousSettings.BillingRiskIdleBalanceTTLSeconds
+		}(),
 		EnableFingerprintUnification: func() bool {
 			if req.EnableFingerprintUnification != nil {
 				return *req.EnableFingerprintUnification
@@ -2257,6 +2334,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MaxClaudeCodeVersion:                                   updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:                            updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                                     updatedSettings.BackendModeEnabled,
+		BillingRiskEnabled:                                     updatedSettings.BillingRiskEnabled,
+		BillingRiskLowBalanceThreshold:                         updatedSettings.BillingRiskLowBalanceThreshold,
+		BillingRiskSafetyFactor:                                updatedSettings.BillingRiskSafetyFactor,
+		BillingRiskMinimumRequestRisk:                          updatedSettings.BillingRiskMinimumRequestRisk,
+		BillingRiskOverdraftAllowance:                          updatedSettings.BillingRiskOverdraftAllowance,
+		BillingRiskHighCostTrigger:                             updatedSettings.BillingRiskHighCostTrigger,
+		BillingRiskLeaseTTLSeconds:                             updatedSettings.BillingRiskLeaseTTLSeconds,
+		BillingRiskRefreshIntervalSeconds:                      updatedSettings.BillingRiskRefreshIntervalSeconds,
+		BillingRiskUncertainCooldownSeconds:                    updatedSettings.BillingRiskUncertainCooldownSeconds,
+		BillingRiskVideoLeaseTTLSeconds:                        updatedSettings.BillingRiskVideoLeaseTTLSeconds,
+		BillingRiskIdleBalanceTTLSeconds:                       updatedSettings.BillingRiskIdleBalanceTTLSeconds,
 		EnableFingerprintUnification:                           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:                              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                                       updatedSettings.EnableCCHSigning,

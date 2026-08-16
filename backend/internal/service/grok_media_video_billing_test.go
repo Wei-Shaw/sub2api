@@ -130,6 +130,7 @@ func TestGrokMediaUsageFromResponseVideoStatusBillsOnOfficialDone(t *testing.T) 
 	require.Equal(t, 1, meta.VideoCount)
 	require.Equal(t, 9, meta.VideoDurationSeconds)
 	require.Equal(t, "grok-imagine-video-1.5", meta.Model)
+	require.Equal(t, "done", meta.VideoStatus)
 
 	// Official non-done must not set billable units.
 	pendingOnly := grokMediaUsageFromResponse(
@@ -138,6 +139,7 @@ func TestGrokMediaUsageFromResponseVideoStatusBillsOnOfficialDone(t *testing.T) 
 		[]byte(`{"status":"pending"}`),
 	)
 	require.Equal(t, 0, pendingOnly.VideoCount)
+	require.Equal(t, "pending", pendingOnly.VideoStatus)
 
 	// completed is not official done.
 	completed := grokMediaUsageFromResponse(
@@ -146,4 +148,13 @@ func TestGrokMediaUsageFromResponseVideoStatusBillsOnOfficialDone(t *testing.T) 
 		[]byte(`{"status":"completed","video":{"url":"https://vidgen.x.ai/a.mp4","duration":9}}`),
 	)
 	require.Equal(t, 0, completed.VideoCount)
+}
+
+func TestGrokVideoTerminalStatusOnlyMatchesFailedAndExpired(t *testing.T) {
+	t.Parallel()
+	require.True(t, IsGrokVideoTerminalStatus("failed"))
+	require.True(t, IsGrokVideoTerminalStatus(" EXPIRED "))
+	require.False(t, IsGrokVideoTerminalStatus("pending"))
+	require.False(t, IsGrokVideoTerminalStatus("done"))
+	require.False(t, IsGrokVideoTerminalStatus("completed"))
 }

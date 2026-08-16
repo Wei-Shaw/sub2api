@@ -96,6 +96,8 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
+	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(embPricingCtx)
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_embeddings.billing_check_failed", zap.Error(err))
@@ -105,6 +107,23 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		}
 		h.errorResponse(c, status, code, message)
 		return
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                service.BillingRiskRequestText,
+		InputTokens:         billingRiskInputTokens(body),
+		NoOutput:            true,
+		PricingAt:           pricingAt,
+		ConservativeUnknown: billingRiskHasImageInput(body),
+	}, channelMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.errorResponse(c, status, code, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	profitVetoCount := 0
@@ -116,10 +135,6 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		maxAccountSwitches = 3
 	}
 	routingStart := time.Now()
-
-	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。
-	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(embPricingCtx)
 
 	for {
 		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -258,7 +273,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
 
-		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+		channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
 				APIKey:             apiKey,
@@ -272,8 +289,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelUsageFields,
 				PricingAt:          pricingAt,
+				RiskPermit:         riskPermit,
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.embeddings"),

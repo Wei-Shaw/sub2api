@@ -840,6 +840,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
+	applyBillingRiskSettingsToSystem(result, parseBillingRiskSettings(settings))
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {
@@ -969,6 +970,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		DefaultText:          result.GrokDefaultTextModel,
 		EnableCrossClientMap: result.GrokCrossClientModelMapEnabled,
 	})
+	s.storeBillingRiskSettings(billingRiskSettingsFromSystem(result))
 
 	return result
 }

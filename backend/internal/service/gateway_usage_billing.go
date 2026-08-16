@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -49,6 +51,7 @@ type RecordUsageInput struct {
 	IPAddress          string             // 请求的客户端 IP 地址
 	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RiskPermit         *BillingRiskPermit // 可选：余额风险租约，由数据库账务完成后结算
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
@@ -82,6 +85,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	RiskPermit            *BillingRiskPermit
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -339,6 +343,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps)
+		resolveBillingRiskPermit(ctx, p, nil, true, nil)
 		return true, nil
 	}
 
@@ -347,12 +352,23 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	result, err := repo.Apply(billingCtx, cmd)
 	if err != nil {
+		resolveBillingRiskPermit(billingCtx, p, nil, false, err)
 		return false, err
 	}
 
 	if result == nil || !result.Applied {
+		resolveBillingRiskPermit(billingCtx, p, result, false, nil)
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 		return false, nil
+	}
+	riskBalanceSyncErr := syncBillingRiskBalanceCacheBeforeSettlement(billingCtx, p, deps, result)
+	cacheMiss := errors.Is(riskBalanceSyncErr, ErrBillingBalanceCacheMiss)
+	if cacheMiss {
+		riskBalanceSyncErr = nil
+	}
+	resolveBillingRiskPermit(billingCtx, p, result, true, riskBalanceSyncErr)
+	if cacheMiss {
+		_ = deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID)
 	}
 
 	if result.APIKeyQuotaExhausted {
@@ -363,6 +379,37 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
+}
+
+func resolveBillingRiskPermit(ctx context.Context, p *postUsageBillingParams, result *UsageBillingApplyResult, applied bool, billingErr error) {
+	if p == nil || p.RiskPermit == nil || p.RiskPermit.guard == nil {
+		return
+	}
+	settlementBase := context.Background()
+	if ctx != nil {
+		settlementBase = context.WithoutCancel(ctx)
+	}
+	settlementCtx, cancel := context.WithTimeout(settlementBase, 3*time.Second)
+	defer cancel()
+
+	permit := p.RiskPermit
+	guard := permit.guard
+	var err error
+	switch {
+	case billingErr != nil:
+		err = guard.MarkUncertain(settlementCtx, permit)
+	case !applied:
+		err = guard.Release(settlementCtx, permit)
+	case p.IsSubscriptionBill || p.Cost == nil || p.Cost.ActualCost <= 0:
+		err = guard.Release(settlementCtx, permit)
+	case result != nil && result.NewBalance != nil:
+		err = guard.Commit(settlementCtx, permit, *result.NewBalance)
+	default:
+		err = guard.MarkUncertain(settlementCtx, permit)
+	}
+	if err != nil {
+		slog.WarnContext(settlementCtx, "结算余额风险租约失败，等待 TTL 收敛", "user_id", permit.UserID, "lease_id", permit.LeaseID, "error", err)
+	}
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -428,6 +475,10 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 	if p == nil || p.Cost == nil || p.User == nil || deps == nil || deps.billingCacheService == nil {
 		return
 	}
+	if p.RiskPermit != nil && result != nil && result.NewBalance != nil {
+		// 风险许可结算前已经同步发布过事务余额，不能再按 cost 重复扣减缓存。
+		return
+	}
 	if result != nil && result.NewBalance != nil && deps.billingCacheService.balanceBelowEligibilityThreshold(*result.NewBalance) {
 		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
 			slog.Warn("invalidate balance cache after exhausted deduction failed",
@@ -440,6 +491,25 @@ func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingPara
 		return
 	}
 	deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+}
+
+func syncBillingRiskBalanceCacheBeforeSettlement(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) error {
+	if p == nil || p.RiskPermit == nil || p.IsSubscriptionBill || p.Cost == nil || p.Cost.ActualCost <= 0 ||
+		p.User == nil || deps == nil || deps.billingCacheService == nil || result == nil || result.NewBalance == nil {
+		return nil
+	}
+	newBalance := *result.NewBalance
+	if deps.billingCacheService.balanceBelowEligibilityThreshold(newBalance) {
+		return deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID)
+	}
+	if err := deps.billingCacheService.DeductBalanceCache(ctx, p.User.ID, p.Cost.ActualCost); err == nil {
+		return nil
+	} else if invalidateErr := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); invalidateErr != nil {
+		return fmt.Errorf("同步风险结算余额缓存失败: deduct: %v; invalidate: %w", err, invalidateErr)
+	} else if errors.Is(err, ErrBillingBalanceCacheMiss) {
+		return err
+	}
+	return nil
 }
 
 // notifyBalanceLow sends balance low notification after deduction.
@@ -618,6 +688,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		IPAddress:          input.IPAddress,
 		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
+		RiskPermit:         input.RiskPermit,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
@@ -639,6 +710,7 @@ type RecordUsageLongContextInput struct {
 	IPAddress             string             // 请求的客户端 IP 地址
 	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	RiskPermit            *BillingRiskPermit // 可选：余额风险租约
 	LongContextThreshold  int                // 长上下文阈值（如 200000）
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
@@ -663,6 +735,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		IPAddress:          input.IPAddress,
 		SessionID:          input.SessionID,
 		RequestPayloadHash: input.RequestPayloadHash,
+		RiskPermit:         input.RiskPermit,
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
@@ -687,6 +760,7 @@ type recordUsageCoreInput struct {
 	IPAddress          string
 	SessionID          string
 	RequestPayloadHash string
+	RiskPermit         *BillingRiskPermit
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
@@ -919,6 +993,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		RiskPermit:            input.RiskPermit,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

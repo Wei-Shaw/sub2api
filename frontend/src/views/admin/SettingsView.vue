@@ -6169,6 +6169,8 @@
             </div>
           </div>
         </div>
+
+        <BillingRiskGuardSettings v-model="billingRiskForm" />
         </div>
         <!-- /Tab: Gateway — Claude Code, Scheduling -->
 
@@ -8668,6 +8670,7 @@ import {
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
   resolveWeChatConnectModeCapabilities,
+  validateBillingRiskGuardSettings,
 } from "@/api/admin/settings";
 import type {
   AuthSourceDefaultsState,
@@ -8681,6 +8684,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+  BillingRiskGuardSettings as BillingRiskGuardSettingsValue,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -8703,6 +8707,7 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
+import BillingRiskGuardSettings from "@/components/custom/BillingRiskGuardSettings.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,
@@ -9650,6 +9655,17 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_weight_previous_response: "",
   openai_advanced_scheduler_weight_session_sticky: "",
   // Gateway forwarding behavior
+  billing_risk_enabled: false,
+  billing_risk_low_balance_threshold: 10,
+  billing_risk_safety_factor: 1.25,
+  billing_risk_minimum_request_risk: 0.001,
+  billing_risk_overdraft_allowance: 0.2,
+  billing_risk_high_cost_trigger: 1,
+  billing_risk_lease_ttl_seconds: 60,
+  billing_risk_refresh_interval_seconds: 15,
+  billing_risk_uncertain_cooldown_seconds: 300,
+  billing_risk_video_lease_ttl_seconds: 86400,
+  billing_risk_idle_balance_ttl_seconds: 120,
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
@@ -9694,6 +9710,23 @@ const form = reactive<SettingsForm>({
   affiliate_enabled: false,
   // Allow user view error requests
   allow_user_view_error_requests: false,
+});
+
+const billingRiskForm = computed<BillingRiskGuardSettingsValue>({
+  get: () => ({
+    billing_risk_enabled: form.billing_risk_enabled,
+    billing_risk_low_balance_threshold: form.billing_risk_low_balance_threshold,
+    billing_risk_safety_factor: form.billing_risk_safety_factor,
+    billing_risk_minimum_request_risk: form.billing_risk_minimum_request_risk,
+    billing_risk_overdraft_allowance: form.billing_risk_overdraft_allowance,
+    billing_risk_high_cost_trigger: form.billing_risk_high_cost_trigger,
+    billing_risk_lease_ttl_seconds: form.billing_risk_lease_ttl_seconds,
+    billing_risk_refresh_interval_seconds: form.billing_risk_refresh_interval_seconds,
+    billing_risk_uncertain_cooldown_seconds: form.billing_risk_uncertain_cooldown_seconds,
+    billing_risk_video_lease_ttl_seconds: form.billing_risk_video_lease_ttl_seconds,
+    billing_risk_idle_balance_ttl_seconds: form.billing_risk_idle_balance_ttl_seconds,
+  }),
+  set: (value) => Object.assign(form, value),
 });
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
@@ -10888,6 +10921,16 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const billingRiskValidationError = validateBillingRiskGuardSettings(
+      billingRiskForm.value,
+    );
+    if (billingRiskValidationError) {
+      appStore.showError(
+        t(`admin.settings.billingRisk.errors.${billingRiskValidationError}`),
+      );
+      return;
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11217,6 +11260,17 @@ async function saveSettings() {
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+      billing_risk_enabled: form.billing_risk_enabled,
+      billing_risk_low_balance_threshold: form.billing_risk_low_balance_threshold,
+      billing_risk_safety_factor: form.billing_risk_safety_factor,
+      billing_risk_minimum_request_risk: form.billing_risk_minimum_request_risk,
+      billing_risk_overdraft_allowance: form.billing_risk_overdraft_allowance,
+      billing_risk_high_cost_trigger: form.billing_risk_high_cost_trigger,
+      billing_risk_lease_ttl_seconds: form.billing_risk_lease_ttl_seconds,
+      billing_risk_refresh_interval_seconds: form.billing_risk_refresh_interval_seconds,
+      billing_risk_uncertain_cooldown_seconds: form.billing_risk_uncertain_cooldown_seconds,
+      billing_risk_video_lease_ttl_seconds: form.billing_risk_video_lease_ttl_seconds,
+      billing_risk_idle_balance_ttl_seconds: form.billing_risk_idle_balance_ttl_seconds,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
       enable_cch_signing: form.enable_cch_signing,

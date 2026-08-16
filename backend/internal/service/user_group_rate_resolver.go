@@ -42,8 +42,19 @@ func newUserGroupRateResolver(repo UserGroupRateRepository, cache *gocache.Cache
 }
 
 func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
-	if r == nil || userID <= 0 || groupID <= 0 {
+	multiplier, err := r.ResolveStrict(ctx, userID, groupID, groupDefaultMultiplier)
+	if err != nil {
+		userGroupRateCacheFallbackTotal.Add(1)
+		logger.LegacyPrintf(r.logComponent, "get user group rate failed, fallback to group default: user=%d group=%d err=%v", userID, groupID, err)
 		return groupDefaultMultiplier
+	}
+	return multiplier
+}
+
+// ResolveStrict 返回用户实际倍率；repository 读取失败时不回退，供风险估价避免低估。
+func (r *userGroupRateResolver) ResolveStrict(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) (float64, error) {
+	if r == nil || userID <= 0 || groupID <= 0 {
+		return groupDefaultMultiplier, nil
 	}
 
 	key := fmt.Sprintf("%d:%d", userID, groupID)
@@ -51,12 +62,12 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		if cached, ok := r.cache.Get(key); ok {
 			if multiplier, castOK := cached.(float64); castOK {
 				userGroupRateCacheHitTotal.Add(1)
-				return multiplier
+				return multiplier, nil
 			}
 		}
 	}
 	if r.repo == nil {
-		return groupDefaultMultiplier
+		return groupDefaultMultiplier, nil
 	}
 	userGroupRateCacheMissTotal.Add(1)
 
@@ -89,15 +100,12 @@ func (r *userGroupRateResolver) Resolve(ctx context.Context, userID, groupID int
 		userGroupRateCacheSFSharedTotal.Add(1)
 	}
 	if err != nil {
-		userGroupRateCacheFallbackTotal.Add(1)
-		logger.LegacyPrintf(r.logComponent, "get user group rate failed, fallback to group default: user=%d group=%d err=%v", userID, groupID, err)
-		return groupDefaultMultiplier
+		return 0, err
 	}
 
 	multiplier, ok := value.(float64)
 	if !ok {
-		userGroupRateCacheFallbackTotal.Add(1)
-		return groupDefaultMultiplier
+		return 0, fmt.Errorf("invalid user group rate cache value: %T", value)
 	}
-	return multiplier
+	return multiplier, nil
 }

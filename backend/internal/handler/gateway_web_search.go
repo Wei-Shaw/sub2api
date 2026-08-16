@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -86,6 +87,23 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		}
 		c.JSON(status, gin.H{"error": gin.H{"type": code, "message": message}})
 		return
+	}
+	pricingAt := time.Now()
+	riskLease, riskErr := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, service.BillingRiskAdmissionInput{
+		APIKey:       apiKey,
+		Subscription: subscription,
+		Kind:         service.BillingRiskRequestSearch,
+		BillingModel: searchModel,
+		SearchCalls:  1,
+		PricingAt:    pricingAt,
+	})
+	if riskErr != nil {
+		status, code, message := billingRiskErrorDetails(riskErr)
+		c.JSON(status, gin.H{"error": gin.H{"type": code, "message": message}})
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	subject, _ := middleware2.GetAuthSubjectFromContext(c)
@@ -228,7 +246,8 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			).Info("gateway.web_search.search_price_per_1k_explicit_free")
 		}
 	}
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	riskPermit := riskLease.Handoff()
+	h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result: &service.ForwardResult{
 				RequestID:   searchRequestID,
@@ -247,6 +266,8 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			PricingAt:          pricingAt,
+			RiskPermit:         riskPermit,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.web_search"),

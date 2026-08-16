@@ -95,7 +95,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 里的任何工具声明（含 Codex 被动 image_gen namespace）而关闭。生图意图
 	// 仅用于能力路由与图片计费；独立图片/视频端点才在利润门范围之外。
 	requestCtx, pricingAt := service.WithGatewayTokenRequestPricing(requestCtx)
-	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
+	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	imageIntent := service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, requestPlatform)
+	billableSearchIntent := billingRiskHasBillableSearchTool(body)
+	billableSearchIntent = requestPlatform == service.PlatformGrok && billableSearchIntent
+	if imageIntent {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
 	}
 	c.Request = c.Request.WithContext(requestCtx)
@@ -149,6 +153,29 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		h.responsesErrorResponse(c, status, code, message)
 		return
+	}
+	riskKind := service.BillingRiskRequestText
+	if imageIntent {
+		riskKind = service.BillingRiskRequestSyncImage
+	}
+	riskLease, err := acquireBillingRiskLease(requestCtx, h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                riskKind,
+		InputTokens:         billingRiskInputTokens(body),
+		MaxOutputTokens:     billingRiskMaxOutputTokens(body, 0),
+		RequestCount:        1,
+		ServiceTier:         billingRiskServiceTier(body),
+		PricingAt:           pricingAt,
+		ConservativeUnknown: imageIntent || billableSearchIntent,
+	}, channelMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.responsesErrorResponse(c, status, code, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(requestCtx)
 	}
 
 	// Parse request for session hash
@@ -321,7 +348,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
-		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
 				QuotaPlatform:      quotaPlatform,
@@ -335,6 +363,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
+				RiskPermit:         riskPermit,
 				APIKeyService:      h.apiKeyService,
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),

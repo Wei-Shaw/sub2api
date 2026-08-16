@@ -99,6 +99,10 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	billingRiskSettings, err := validateBillingRiskSystemSettings(settings)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -458,6 +462,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
 
 	// Gateway forwarding behavior
+	updates[SettingKeyBillingRiskEnabled] = strconv.FormatBool(billingRiskSettings.Enabled)
+	updates[SettingKeyBillingRiskLowBalanceThreshold] = strconv.FormatFloat(billingRiskSettings.LowBalanceThreshold, 'g', -1, 64)
+	updates[SettingKeyBillingRiskSafetyFactor] = strconv.FormatFloat(billingRiskSettings.SafetyFactor, 'g', -1, 64)
+	updates[SettingKeyBillingRiskMinimumRequestRisk] = strconv.FormatFloat(billingRiskSettings.MinimumRequestRisk, 'g', -1, 64)
+	updates[SettingKeyBillingRiskOverdraftAllowance] = strconv.FormatFloat(billingRiskSettings.OverdraftAllowance, 'g', -1, 64)
+	updates[SettingKeyBillingRiskHighCostTrigger] = strconv.FormatFloat(billingRiskSettings.HighCostTrigger, 'g', -1, 64)
+	updates[SettingKeyBillingRiskLeaseTTLSeconds] = strconv.Itoa(billingRiskSettings.LeaseTTLSeconds)
+	updates[SettingKeyBillingRiskRefreshIntervalSeconds] = strconv.Itoa(billingRiskSettings.RefreshIntervalSeconds)
+	updates[SettingKeyBillingRiskUncertainCooldownSeconds] = strconv.Itoa(billingRiskSettings.UncertainCooldownSeconds)
+	updates[SettingKeyBillingRiskVideoLeaseTTLSeconds] = strconv.Itoa(billingRiskSettings.VideoLeaseTTLSeconds)
+	updates[SettingKeyBillingRiskIdleBalanceTTLSeconds] = strconv.Itoa(billingRiskSettings.IdleBalanceTTLSeconds)
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
@@ -680,6 +695,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if settings == nil {
 		return
 	}
+	s.storeBillingRiskSettings(billingRiskSettingsFromSystem(settings))
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
 	versionBoundsSF.Forget("version_bounds")

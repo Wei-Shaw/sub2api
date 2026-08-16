@@ -98,6 +98,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	imageIntent := service.IsGeminiImageGenerationRequest(reqModel, channelMapping.MappedModel, body)
+	riskKind := service.BillingRiskRequestText
+	if imageIntent {
+		riskKind = service.BillingRiskRequestSyncImage
+	}
 
 	// Claude Code only restriction
 	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
@@ -140,6 +145,24 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		h.chatCompletionsErrorResponse(c, status, code, message)
 		return
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                riskKind,
+		InputTokens:         billingRiskInputTokens(body),
+		MaxOutputTokens:     billingRiskMaxOutputTokens(body, 0),
+		ServiceTier:         billingRiskServiceTier(body),
+		PricingAt:           pricingAt,
+		ConservativeUnknown: imageIntent,
+	}, channelMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.chatCompletionsErrorResponse(c, status, code, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	// Parse request for session hash
@@ -333,7 +356,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
-		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
 				QuotaPlatform:      quotaPlatform,
@@ -347,6 +371,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
+				RiskPermit:         riskPermit,
 				APIKeyService:      h.apiKeyService,
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),

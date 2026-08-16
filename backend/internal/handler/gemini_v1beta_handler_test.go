@@ -4,11 +4,99 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestGeminiBillingRiskAdmissionInputUsesMappedModelAndRequestShape(t *testing.T) {
+	pricingAt := time.Date(2026, time.August, 16, 4, 0, 0, 0, time.UTC)
+	apiKey := &service.APIKey{ID: 11, User: &service.User{ID: 13}}
+	subscription := &service.UserSubscription{ID: 17}
+	body := []byte(`{"contents":[{"parts":[{"text":"hello"}]}],"generationConfig":{"maxOutputTokens":321}}`)
+
+	input := geminiBillingRiskAdmissionInput(
+		apiKey,
+		subscription,
+		service.ChannelMappingResult{Mapped: true, MappedModel: "gemini-2.5-pro"},
+		"public-gemini",
+		body,
+		pricingAt,
+	)
+
+	require.Same(t, apiKey, input.APIKey)
+	require.Same(t, subscription, input.Subscription)
+	require.Equal(t, service.BillingRiskRequestText, input.Kind)
+	require.Equal(t, "gemini-2.5-pro", input.BillingModel)
+	require.Positive(t, input.InputTokens)
+	require.Equal(t, 321, input.MaxOutputTokens)
+	require.Equal(t, 200_000, input.LongContextThreshold)
+	require.Equal(t, 2.0, input.LongContextMultiplier)
+	require.Equal(t, pricingAt, input.PricingAt)
+	require.False(t, input.ConservativeUnknown)
+}
+
+func TestGeminiBillingRiskAdmissionInputClassifiesNativeImageGeneration(t *testing.T) {
+	body := []byte(`{
+		"contents":[{"parts":[{"text":"draw a city"}]}],
+		"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"imageSize":"4K"}}
+	}`)
+
+	input := geminiBillingRiskAdmissionInput(
+		&service.APIKey{ID: 11, User: &service.User{ID: 13}},
+		nil,
+		service.ChannelMappingResult{Mapped: true, MappedModel: "gemini-3-pro-image"},
+		"public-gemini",
+		body,
+		time.Now(),
+	)
+
+	require.Equal(t, service.BillingRiskRequestSyncImage, input.Kind)
+	require.Equal(t, 1, input.RequestCount)
+	require.Equal(t, "4K", input.SizeTier)
+	require.True(t, input.ConservativeUnknown)
+}
+
+func TestGeminiBillingRiskAdmissionInputUsesMappedModelForImageIntent(t *testing.T) {
+	input := geminiBillingRiskAdmissionInput(
+		&service.APIKey{ID: 11, User: &service.User{ID: 13}},
+		nil,
+		service.ChannelMappingResult{
+			Mapped:             true,
+			MappedModel:        "gemini-3-pro-image",
+			BillingModelSource: service.BillingModelSourceRequested,
+		},
+		"public-model-alias",
+		[]byte(`{"contents":[{"parts":[{"text":"draw a city"}]}]}`),
+		time.Now(),
+	)
+
+	require.Equal(t, "public-model-alias", input.BillingModel)
+	require.Equal(t, service.BillingRiskRequestSyncImage, input.Kind)
+	require.True(t, input.ConservativeUnknown)
+}
+
+func TestGeminiBillingRiskGatePrecedesSelectionAndHandsPermitToMandatoryUsage(t *testing.T) {
+	source := stripGoComments(goFunctionSource(t, "gemini_v1beta_handler.go", "GeminiV1BetaModels"))
+	eligibility := strings.Index(source, "CheckBillingEligibility(")
+	acquire := strings.Index(source, "acquireBillingRiskLease(")
+	selection := strings.Index(source, "SelectAccount")
+	handoff := strings.Index(source, ".Handoff()")
+	mandatoryUsage := strings.Index(source, "submitBillingRiskUsageRecordTask(")
+
+	require.NotEqual(t, -1, eligibility)
+	require.NotEqual(t, -1, acquire)
+	require.NotEqual(t, -1, selection)
+	require.NotEqual(t, -1, handoff)
+	require.NotEqual(t, -1, mandatoryUsage)
+	require.Less(t, eligibility, acquire)
+	require.Less(t, acquire, selection)
+	require.Less(t, handoff, mandatoryUsage)
+	require.Contains(t, source, "RiskPermit:")
+}
 
 // TestGeminiV1BetaHandler_PlatformRoutingInvariant 文档化并验证 Handler 层的平台路由逻辑不变量
 // 该测试确保 gemini 和 antigravity 平台的路由逻辑符合预期

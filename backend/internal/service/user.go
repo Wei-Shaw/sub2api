@@ -19,11 +19,16 @@ type User struct {
 	PasswordHash   string
 	Role           string
 	Balance        float64
-	FrozenBalance  float64
-	Concurrency    int
-	Status         string
-	AllowedGroups  []int64
-	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	// BillingBalanceAuthoritative 仅标记本次请求的余额是否刚从数据库回源，
+	// 供风险准入在版本未变化时接受充值后的上调；不持久化，也不进入认证缓存快照。
+	BillingBalanceAuthoritative bool
+	// BillingBalanceVersion 是数据库回源开始前读取的 Redis 风险余额版本。
+	BillingBalanceVersion int64
+	FrozenBalance         float64
+	Concurrency           int
+	Status                string
+	AllowedGroups         []int64
+	TokenVersion          int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool

@@ -57,6 +57,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	billingRiskAdmission      *service.BillingRiskAdmissionService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -248,6 +249,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+	var riskLease *billingRiskLease
+	defer func() {
+		if riskLease != nil {
+			riskLease.Close(c.Request.Context())
+		}
+	}()
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -275,6 +282,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	} else if apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 	}
+	billableSearchIntent := platform == service.PlatformGrok && billingRiskHasBillableSearchTool(body)
 	sessionKey := sessionHash
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
@@ -304,6 +312,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
+		riskLease, err = acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+			APIKey:              apiKey,
+			Subscription:        subscription,
+			Kind:                service.BillingRiskRequestText,
+			InputTokens:         billingRiskInputTokens(body),
+			MaxOutputTokens:     billingRiskMaxOutputTokens(body, parsedReq.MaxTokens),
+			ServiceTier:         billingRiskServiceTier(body),
+			PricingAt:           pricingAt,
+			ConservativeUnknown: billableSearchIntent,
+		}, channelMapping, reqModel))
+		if err != nil {
+			status, code, message := billingRiskErrorDetails(err)
+			h.handleStreamingAwareError(c, status, code, message, streamStarted)
+			return
+		}
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
 
 		// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
@@ -560,7 +583,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			sessionID := service.ExtractClientSessionID(c)
-			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+			riskPermit := riskLease.Handoff()
+			h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
 					QuotaPlatform:      quotaPlatform,
@@ -575,6 +599,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					IPAddress:          clientIP,
 					SessionID:          sessionID,
 					RequestPayloadHash: requestPayloadHash,
+					RiskPermit:         riskPermit,
 					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
@@ -611,6 +636,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
+		riskAdmissionResolved := false
+		var attemptChannelMapping service.ChannelMappingResult
 
 		for {
 			attemptParsedReq, err := parsedReq.CloneForBody(body)
@@ -775,6 +802,31 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// 账号选择可能切换计费分组或解析出不同的渠道映射。只有最终计费
+			// 上下文确定后才占用风险预算；同一分组内的账号 failover 复用许可。
+			if !riskAdmissionResolved {
+				attemptChannelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), currentAPIKey.GroupID, reqModel)
+				riskLease, err = acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+					APIKey:              currentAPIKey,
+					Subscription:        currentSubscription,
+					Kind:                service.BillingRiskRequestText,
+					InputTokens:         billingRiskInputTokens(body),
+					MaxOutputTokens:     billingRiskMaxOutputTokens(body, parsedReq.MaxTokens),
+					ServiceTier:         billingRiskServiceTier(body),
+					PricingAt:           pricingAt,
+					ConservativeUnknown: billableSearchIntent,
+				}, attemptChannelMapping, reqModel))
+				riskAdmissionResolved = true
+				if err != nil {
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+					status, code, message := billingRiskErrorDetails(err)
+					h.handleStreamingAwareError(c, status, code, message, streamStarted)
+					return
+				}
+			}
+
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
 			umqMode := h.getUserMsgQueueMode(account, attemptParsedReq)
@@ -881,6 +933,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				requestPayloadHash := service.HashUsageRequestPayload(attemptParsedReq.Body.Bytes())
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+				channelUsageFields := clientRequestedUsageFields(c, attemptChannelMapping, reqModel, result.UpstreamModel)
 
 				if result.ReasoningEffort == nil {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
@@ -899,7 +952,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				forceCacheBilling := fs.ForceCacheBilling
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 				sessionID := service.ExtractClientSessionID(c)
-				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+				riskPermit := riskLease.Handoff()
+				h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 					if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 						Result:             result,
 						QuotaPlatform:      quotaPlatform,
@@ -914,9 +968,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						IPAddress:          clientIP,
 						SessionID:          sessionID,
 						RequestPayloadHash: requestPayloadHash,
+						RiskPermit:         riskPermit,
 						ForceCacheBilling:  forceCacheBilling,
 						APIKeyService:      h.apiKeyService,
-						ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+						ChannelUsageFields: channelUsageFields,
 					}); err != nil {
 						logger.L().With(
 							zap.String("component", "handler.gateway.messages"),
@@ -976,6 +1031,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
 						c.Request = c.Request.WithContext(ctx)
+						if riskLease != nil {
+							riskLease.Close(c.Request.Context())
+							riskLease = nil
+						}
 						currentAPIKey = fallbackAPIKey
 						currentSubscription = nil
 						fallbackUsed = true

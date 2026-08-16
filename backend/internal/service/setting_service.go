@@ -149,6 +149,10 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+	billingRiskSettingsCache          atomic.Value // *cachedBillingRiskSettings
+	billingRiskSettingsSF             singleflight.Group
+	billingRiskSettingsMu             sync.Mutex
+	billingRiskSettingsVersion        uint64
 
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()
@@ -282,10 +286,12 @@ const (
 
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
-	return &SettingService{
+	service := &SettingService{
 		settingRepo: settingRepo,
 		cfg:         cfg,
 	}
+	service.storeBillingRiskSettings(DefaultBillingRiskSettings())
+	return service
 }
 
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.

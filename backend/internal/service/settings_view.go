@@ -226,6 +226,17 @@ type SystemSettings struct {
 	BackendModeEnabled bool
 
 	// Gateway forwarding behavior
+	BillingRiskEnabled                     bool // 是否启用余额风险租约
+	BillingRiskLowBalanceThreshold         float64
+	BillingRiskSafetyFactor                float64
+	BillingRiskMinimumRequestRisk          float64
+	BillingRiskOverdraftAllowance          float64
+	BillingRiskHighCostTrigger             float64
+	BillingRiskLeaseTTLSeconds             int
+	BillingRiskRefreshIntervalSeconds      int
+	BillingRiskUncertainCooldownSeconds    int
+	BillingRiskVideoLeaseTTLSeconds        int
+	BillingRiskIdleBalanceTTLSeconds       int
 	EnableFingerprintUnification           bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough              bool   // 是否透传客户端原始 metadata（默认 false）
 	EnableCCHSigning                       bool   // 已废弃 no-op：新版 CLI 取消 cch 签名后网关不再注入/签名 cch，开关无效果

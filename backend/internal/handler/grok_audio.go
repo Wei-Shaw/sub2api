@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -42,6 +43,26 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		}
 		h.errorResponse(c, status, code, message)
 		return
+	}
+	model := c.Query("model")
+	if strings.TrimSpace(model) == "" {
+		model = "grok-voice-latest"
+	}
+	riskLease, riskErr := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                service.BillingRiskRequestAudio,
+		BillingModel:        model,
+		ConservativeUnknown: true,
+		PricingAt:           time.Now(),
+	})
+	if riskErr != nil {
+		status, code, message := billingRiskErrorDetails(riskErr)
+		h.errorResponse(c, status, code, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -84,10 +105,6 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	}
 	defer func() { _ = conn.CloseNow() }()
 
-	model := c.Query("model")
-	if strings.TrimSpace(model) == "" {
-		model = "grok-voice-latest"
-	}
 	started := time.Now()
 	audioObserved, proxyErr := h.gatewayService.ProxyGrokRealtime(c.Request.Context(), c, conn, selection.Account, token, model)
 	elapsed := time.Since(started)
@@ -99,7 +116,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		}
 	}
 	if result := grokRealtimeBillingResult(model, elapsed, audioObserved); result != nil {
-		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result)
+		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result, riskLease.Handoff())
 	}
 }
 
@@ -171,6 +188,31 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			return
 		}
 	}
+	var riskLease *billingRiskLease
+	if endpoint == "tts" || endpoint == "stt" {
+		admissionInput := service.BillingRiskAdmissionInput{
+			APIKey:       apiKey,
+			Subscription: subscription,
+			Kind:         service.BillingRiskRequestAudio,
+			BillingModel: "grok-voice-latest",
+			PricingAt:    time.Now(),
+		}
+		if endpoint == "tts" {
+			admissionInput.AudioMode = "tts"
+			admissionInput.UsageUnits = float64(utf8.RuneCountInString(extractGrokTTSInputText(body))) / 1_000_000
+		} else {
+			admissionInput.ConservativeUnknown = true
+		}
+		riskLease, err = acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, admissionInput)
+		if err != nil {
+			status, code, message := billingRiskErrorDetails(err)
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		if riskLease != nil {
+			defer riskLease.Close(c.Request.Context())
+		}
+	}
 	contentType := c.GetHeader("Content-Type")
 	if strings.TrimSpace(contentType) == "" {
 		contentType = "application/json"
@@ -225,7 +267,11 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			return h.gatewayService.ForwardGrokVoice(c.Request.Context(), c, account, endpoint, body, contentType)
 		}()
 		if forwardErr == nil {
-			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result)
+			var riskPermit *service.BillingRiskPermit
+			if result != nil && result.AudioUsage != nil {
+				riskPermit = riskLease.Handoff()
+			}
+			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result, riskPermit)
 			return
 		}
 		var failoverErr *service.UpstreamFailoverError
@@ -251,6 +297,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	endpoint string,
 	body []byte,
 	result *service.OpenAIForwardResult,
+	riskPermit *service.BillingRiskPermit,
 ) {
 	if h == nil || c == nil || apiKey == nil || account == nil || result == nil {
 		return
@@ -278,8 +325,9 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	if model == "" {
 		model = endpoint
 	}
+	channelUsageFields := clientRequestedUsageFields(c, service.ChannelMappingResult{}, model, result.UpstreamModel)
 
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
 			APIKey:             apiKey,
@@ -294,7 +342,8 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
 			SessionID:          sessionID,
-			ChannelUsageFields: clientRequestedUsageFields(c, service.ChannelMappingResult{}, model, result.UpstreamModel),
+			ChannelUsageFields: channelUsageFields,
+			RiskPermit:         riskPermit,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.openai_gateway.grok_voice"),

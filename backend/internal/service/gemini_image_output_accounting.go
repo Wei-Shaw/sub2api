@@ -90,6 +90,28 @@ func resolveGeminiImageCount(c *gin.Context, originalModel, mappedModel string) 
 	return 0
 }
 
+// IsGeminiImageGenerationRequest 在上游响应返回前识别可能生成图片的 Gemini 原生请求。
+func IsGeminiImageGenerationRequest(originalModel, mappedModel string, body []byte) bool {
+	if isImageGenerationModel(originalModel) || isImageGenerationModel(mappedModel) {
+		return true
+	}
+	for _, path := range []string{"generationConfig.responseModalities", "generation_config.response_modalities"} {
+		modalities := gjson.GetBytes(body, path)
+		if !modalities.IsArray() {
+			continue
+		}
+		found := false
+		modalities.ForEach(func(_, modality gjson.Result) bool {
+			found = strings.EqualFold(strings.TrimSpace(modality.String()), "IMAGE")
+			return !found
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
 // countGeminiInlineImageOutputs 统计一段 Gemini 响应 JSON 里的内联图片 part。
 // Gemini REST 回 camelCase 的 inlineData，官方 SDK 与部分中转会回 snake_case
 // 的 inline_data，两种都要认。

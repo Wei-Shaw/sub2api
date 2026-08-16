@@ -160,10 +160,13 @@ func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
 	key := billingBalanceKey(userID)
-	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{key}, amount, int(jitteredTTL().Seconds())).Result()
+	result, err := deductBalanceScript.Run(ctx, c.rdb, []string{key}, amount, int(jitteredTTL().Seconds())).Int64()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: deduct balance cache failed for user %d: %v", userID, err)
 		return err
+	}
+	if result == 0 {
+		return service.ErrBillingBalanceCacheMiss
 	}
 	return nil
 }

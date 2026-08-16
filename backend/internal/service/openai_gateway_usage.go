@@ -31,6 +31,7 @@ type OpenAIRecordUsageInput struct {
 	IPAddress          string // 请求的客户端 IP 地址
 	SessionID          string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
 	RequestPayloadHash string
+	RiskPermit         *BillingRiskPermit
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
@@ -63,6 +64,8 @@ type CyberPolicyUsageInput struct {
 	SessionID          string
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
+	PricingAt          time.Time
+	RiskPermit         *BillingRiskPermit
 	ChannelUsageFields
 }
 
@@ -98,6 +101,8 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		SessionID:          in.SessionID,
 		RequestPayloadHash: in.RequestPayloadHash,
 		APIKeyService:      in.APIKeyService,
+		PricingAt:          in.PricingAt,
+		RiskPermit:         in.RiskPermit,
 		ChannelUsageFields: in.ChannelUsageFields,
 		CyberBlocked:       true,
 	}); err != nil {
@@ -135,6 +140,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if result == nil {
 		return errors.New("openai usage result is nil")
 	}
+	riskPermitSettled := false
+	defer func() {
+		if !riskPermitSettled && input.RiskPermit != nil {
+			resolveBillingRiskPermit(ctx, &postUsageBillingParams{RiskPermit: input.RiskPermit}, nil, false,
+				errors.New("openai usage ended before billing risk permit settlement"))
+		}
+	}()
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
 	}
@@ -449,7 +461,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              quotaPlatform,
+			RiskPermit:            input.RiskPermit,
 		}, s.billingDeps(), s.usageBillingRepo)
+		riskPermitSettled = true
 		return err
 	}()
 

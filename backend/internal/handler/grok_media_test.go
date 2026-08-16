@@ -5,10 +5,65 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestReleaseGrokVideoRiskPermitSnapshotRestoresAndReleases(t *testing.T) {
+	store := &handlerBillingRiskStoreStub{}
+	settings := newEnabledBillingRiskSettingService(t)
+	guard := service.NewBillingRiskGuard(store, settings)
+	admission := service.NewBillingRiskAdmissionService(guard, nil, nil, &config.Config{})
+	snapshot := &service.BillingRiskPermitSnapshot{
+		UserID:                   71,
+		LeaseID:                  "video-lease",
+		RiskMicros:               500_000,
+		LeaseTTLSeconds:          int64((24 * time.Hour) / time.Second),
+		IdleTTLSeconds:           120,
+		UncertainCooldownSeconds: 300,
+		RefreshIntervalSeconds:   20,
+	}
+
+	require.NoError(t, releaseGrokVideoRiskPermitSnapshot(context.Background(), admission, snapshot))
+	_, releaseCalls, _ := store.counts()
+	require.Equal(t, 1, releaseCalls)
+}
+
+func TestGrokVideoStatusTerminalPathReleasesPendingRiskPermit(t *testing.T) {
+	source := stripGoComments(goFunctionSource(t, "grok_media.go", "handleGrokMedia"))
+	require.Contains(t, source, "IsGrokVideoTerminalStatus(result.VideoStatus)")
+	require.Contains(t, source, "releaseGrokVideoTerminalRiskPermit(")
+}
+
+func TestFinalizeGrokVideoCreateRiskLeaseRequiresDurableRecoveryState(t *testing.T) {
+	store := &handlerBillingRiskStoreStub{}
+
+	persisted := newBillingRiskLease(newHandlerBillingRiskPermit(t, store))
+	finalizeGrokVideoCreateRiskLease(context.Background(), persisted, true)
+	persisted.Close(context.Background())
+	_, releaseCalls, uncertainCalls := store.counts()
+	require.Zero(t, releaseCalls)
+	require.Zero(t, uncertainCalls)
+
+	failed := newBillingRiskLease(newHandlerBillingRiskPermit(t, store))
+	finalizeGrokVideoCreateRiskLease(context.Background(), failed, false)
+	failed.Close(context.Background())
+	_, releaseCalls, uncertainCalls = store.counts()
+	require.Zero(t, releaseCalls)
+	require.Equal(t, 1, uncertainCalls, "恢复状态不完整时只能进入短冷却，不能移交 24 小时租约")
+}
+
+func TestGrokVideoCreateWithoutTaskIDMarksRiskLeaseUncertain(t *testing.T) {
+	source := stripGoComments(goFunctionSource(t, "grok_media.go", "handleGrokMedia"))
+	compact := strings.Join(strings.Fields(source), "")
+	require.Contains(t, compact,
+		`ifisGrokVideoCreateEndpoint(endpoint)&&strings.TrimSpace(result.ResponseID)==""{finalizeGrokVideoCreateRiskLease(requestCtx,riskLease,false)`,
+		"上游已接受视频但缺少任务 ID 时不能按普通失败释放风险许可",
+	)
+}
 
 type grokMediaEligibilityProberStub struct {
 	eligible bool

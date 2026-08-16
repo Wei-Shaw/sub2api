@@ -99,8 +99,20 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
 		return
 	}
+	riskLease, err := h.acquireUnifiedRiskLease(c, apiKey, platform, body)
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		imageTaskJSONError(c, status, code, message)
+		return
+	}
+	riskLeaseTransferred := false
+	defer func() {
+		if !riskLeaseTransferred && riskLease != nil {
+			riskLease.Close(c.Request.Context())
+		}
+	}()
 
-	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
+	taskCtx, recorder, cancel, usageCollector := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout(), riskLease)
 	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
 	if err != nil {
 		cancel()
@@ -122,7 +134,8 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+	go h.run(task.ID, platform, taskCtx, recorder, cancel, usageCollector, riskLease)
+	riskLeaseTransferred = true
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
@@ -208,6 +221,60 @@ func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, bod
 	return nil
 }
 
+func (h *AsyncImageHandler) acquireUnifiedRiskLease(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) (*billingRiskLease, error) {
+	if h == nil || h.openAI == nil || c == nil {
+		return nil, nil
+	}
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+	subscriptionBilling := subscription != nil && apiKey != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	if h.openAI.billingRiskAdmission != nil && h.openAI.billingRiskAdmission.IsEnabled() &&
+		h.openAI.billingCacheService != nil && apiKey != nil && apiKey.User != nil && !subscriptionBilling {
+		snapshot, err := h.openAI.billingCacheService.GetUserBalanceSnapshot(c.Request.Context(), apiKey.User.ID)
+		if err != nil {
+			return nil, service.ErrBillingServiceUnavailable.WithCause(err)
+		}
+		apiKey.User.Balance = snapshot.Balance
+		apiKey.User.BillingBalanceAuthoritative = snapshot.Authoritative
+		apiKey.User.BillingBalanceVersion = snapshot.RiskVersion
+	}
+	model := ""
+	sizeTier := ""
+	requestCount := 1
+	if platform == service.PlatformGrok {
+		parsed := service.ParseGrokMediaRequest(c.GetHeader("Content-Type"), body)
+		model = parsed.Model
+		sizeTier = parsed.SizeTier
+		if parsed.N > 0 {
+			requestCount = parsed.N
+		}
+	} else if h.openAI.gatewayService != nil {
+		parsed, err := h.openAI.gatewayService.ParseOpenAIImagesRequest(c, body)
+		if err != nil {
+			return nil, err
+		}
+		model = parsed.Model
+		sizeTier = parsed.SizeTier
+		if parsed.N > 0 {
+			requestCount = parsed.N
+		}
+	}
+
+	input := service.BillingRiskAdmissionInput{
+		APIKey:       apiKey,
+		Subscription: subscription,
+		Kind:         service.BillingRiskRequestSyncImage,
+		BillingModel: model,
+		RequestCount: requestCount,
+		SizeTier:     sizeTier,
+		PricingAt:    time.Now(),
+	}
+	if platform == service.PlatformOpenAI && h.openAI.gatewayService != nil {
+		mapping, _ := h.openAI.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, model)
+		input = billingRiskAdmissionInputForMapping(input, mapping, model)
+	}
+	return acquireBillingRiskLease(c.Request.Context(), h.openAI.billingRiskAdmission, input)
+}
+
 func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) {
 	if h.openAI == nil {
 		imageTaskJSONError(c, http.StatusServiceUnavailable, "api_error", "image gateway is unavailable")
@@ -220,8 +287,12 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 	h.openAI.Images(c)
 }
 
-func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
+func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc, usageCollector *asyncImageUsageCollector, riskLease *billingRiskLease) {
 	defer cancel()
+	defer usageCollector.abandon(context.Background())
+	if riskLease != nil {
+		defer riskLease.Close(context.Background())
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
@@ -244,12 +315,39 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
 			return
 		}
+		usageSettled := false
+		defer func() {
+			if !usageSettled {
+				h.runCollectedUsage(usageCollector)
+			}
+		}()
 		if err := h.tasks.Complete(context.Background(), taskID, statusCode, json.RawMessage(body)); err != nil {
 			logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
+			return
 		}
+		h.runCollectedUsage(usageCollector)
+		usageSettled = true
 		return
 	}
 	h.failTask(taskID, statusCode, extractImageTaskError(body))
+}
+
+func (h *AsyncImageHandler) runCollectedUsage(collector *asyncImageUsageCollector) {
+	if collector == nil {
+		return
+	}
+	for _, collected := range collector.take() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					logger.L().Error("image_task.usage_record_panicked", zap.Any("panic", recovered))
+				}
+			}()
+			collected.task(ctx)
+		}()
+		cancel()
+	}
 }
 
 func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json.RawMessage) {
@@ -258,9 +356,11 @@ func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json
 	}
 }
 
-func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
+func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration, riskLease *billingRiskLease) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc, *asyncImageUsageCollector) {
 	base := context.WithoutCancel(c.Request.Context())
+	base = withBillingRiskLease(base, riskLease)
 	executionCtx, cancel := context.WithTimeout(base, timeoutDuration)
+	executionCtx, usageCollector := withAsyncImageUsageCollector(executionCtx)
 	request := c.Request.Clone(executionCtx)
 	request.Body = io.NopCloser(bytes.NewReader(body))
 	request.GetBody = func() (io.ReadCloser, error) {
@@ -274,7 +374,7 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	recorderCtx, _ := gin.CreateTestContext(recorder)
 	taskCtx.Writer = recorderCtx.Writer
 	taskCtx.Request = request
-	return taskCtx, recorder, cancel
+	return taskCtx, recorder, cancel, usageCollector
 }
 
 func asyncImageRequestStreams(contentType string, body []byte) bool {

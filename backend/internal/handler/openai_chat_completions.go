@@ -115,6 +115,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	billableSearchIntent := requestPlatform == service.PlatformGrok && billingRiskHasBillableSearchTool(body)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -126,6 +127,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
+	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_chat_completions.billing_eligibility_check_failed", zap.Error(err))
@@ -135,6 +138,24 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                service.BillingRiskRequestText,
+		InputTokens:         billingRiskInputTokens(body),
+		MaxOutputTokens:     billingRiskMaxOutputTokens(body, 0),
+		ServiceTier:         billingRiskServiceTier(body),
+		PricingAt:           pricingAt,
+		ConservativeUnknown: billableSearchIntent,
+	}, channelMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
@@ -147,10 +168,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
-
-	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
-	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(ccPricingCtx)
 
 	for {
 		if failoverClientGone(c) {
@@ -243,7 +260,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyChat = service.CyberSessionBlockKey(apiKey.ID, c, body)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyChat, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body), requestStart, riskLease)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -356,7 +373,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		sessionID := service.ExtractClientSessionID(c)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+		channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
 				APIKey:             apiKey,
@@ -370,9 +389,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelUsageFields,
 				PricingAt:          pricingAt,
 				CyberBlocked:       cyberBlocked,
+				RiskPermit:         riskPermit,
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),

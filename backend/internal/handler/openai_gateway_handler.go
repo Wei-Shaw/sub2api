@@ -43,6 +43,7 @@ type OpenAIGatewayHandler struct {
 	imageLimiter               *imageConcurrencyLimiter
 	maxAccountSwitches         int
 	cfg                        *config.Config
+	billingRiskAdmission       *service.BillingRiskAdmissionService
 }
 
 type openAIWSTurnChannelMappingSnapshot struct {
@@ -373,7 +374,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 使用 IsExplicitImageGenerationIntent 排除被动 image_gen namespace 声明。
 	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
 	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
+	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
+	billableSearchIntent := billingRiskHasBillableSearchTool(body)
+	billableSearchIntent = requestPlatform == service.PlatformGrok && billableSearchIntent
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
@@ -416,8 +420,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// Get subscription info (may be nil)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
-
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
 
@@ -429,6 +431,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
+	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(pricingCtx)
 
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
@@ -439,6 +443,29 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
+	}
+	riskKind := service.BillingRiskRequestText
+	if imageIntent {
+		riskKind = service.BillingRiskRequestSyncImage
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                riskKind,
+		InputTokens:         billingRiskInputTokens(body),
+		MaxOutputTokens:     billingRiskMaxOutputTokens(body, 0),
+		RequestCount:        1,
+		ServiceTier:         billingRiskServiceTier(body),
+		PricingAt:           pricingAt,
+		ConservativeUnknown: imageIntent || billableSearchIntent,
+	}, channelMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
@@ -470,9 +497,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
-	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(pricingCtx)
-
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
 		// be drained after a disconnect. Re-check the client context before every
@@ -586,7 +610,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyHTTP = service.CyberSessionBlockKey(apiKey.ID, c, sessionHashBody)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyHTTP, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body), pricingAt, riskLease)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -725,7 +749,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+		channelUsageFields := clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel)
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
 				APIKey:             apiKey,
@@ -740,9 +766,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelUsageFields,
 				PricingAt:          pricingAt,
 				CyberBlocked:       cyberBlocked,
+				RiskPermit:         riskPermit,
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
@@ -995,6 +1022,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
+	billableSearchIntent := requestPlatform == service.PlatformGrok && billingRiskHasBillableSearchTool(body)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
@@ -1006,6 +1034,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	if userReleaseFunc != nil {
 		defer userReleaseFunc()
 	}
+	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
@@ -1015,6 +1045,29 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		}
 		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
 		return
+	}
+	riskMapping := channelMappingMsg
+	if !channelMappingMsg.Mapped && preferredMappedModel != "" {
+		riskMapping.Mapped = true
+		riskMapping.MappedModel = preferredMappedModel
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:              apiKey,
+		Subscription:        subscription,
+		Kind:                service.BillingRiskRequestText,
+		InputTokens:         billingRiskInputTokens(body),
+		MaxOutputTokens:     billingRiskMaxOutputTokens(body, 0),
+		ServiceTier:         billingRiskServiceTier(body),
+		PricingAt:           pricingAt,
+		ConservativeUnknown: billableSearchIntent,
+	}, riskMapping, reqModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
@@ -1032,10 +1085,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	effectiveMappedModel := preferredMappedModel
-
-	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
-	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	for {
 		if failoverClientGone(c) {
@@ -1134,7 +1183,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyMsg = service.CyberSessionBlockKey(apiKey.ID, c, body)
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, clientRequestedUsageFields(c, channelMappingMsg, reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockKeyMsg, clientRequestedUsageFields(c, channelMappingMsg, reqModel, ""), service.HashUsageRequestPayload(body), pricingAt, riskLease)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -1246,7 +1295,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		sessionID := service.ExtractClientSessionID(c)
 
 		cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-		h.submitOpenAIUsageRecordTask(c.Request.Context(), result, func(ctx context.Context) {
+		channelUsageFields := clientRequestedUsageFields(c, channelMappingMsg, reqModel, result.UpstreamModel)
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
 				APIKey:             apiKey,
@@ -1261,9 +1312,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMappingMsg, reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelUsageFields,
 				PricingAt:          pricingAt,
 				CyberBlocked:       cyberBlocked,
+				RiskPermit:         riskPermit,
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
@@ -1417,15 +1469,10 @@ const (
 )
 
 // openAIWSTurnPricing 持有 WebSocket 连接内「当前 turn」的计费定价时刻。
-// 由 BeforeTurn 在每个 turn 开始时冻结，AfterTurn 的用量提交读取它；turn 在
+// 风险准入为每个 turn 冻结一次，AfterTurn 的用量提交复用同一时刻；turn 在
 // 连接内串行推进，互斥锁只为跨用量提交 goroutine 的读取安全。
-//
-// 零值语义（重要）：ws_v2 passthrough ingress 只实现了 AfterTurn，没有任何
-// turn 起始回调，BeforeTurn 永远不会被调用。此时本值保持零，RecordUsage 经
-// openAIUsagePricingAt 回退到记录时刻——与引入分组利润控制前的基线一致。
-// 绝不能用建连时刻初始化：那会把透传连接的所有 turn 钉死在建连时的高峰因子，
-// 客户端只要峰前一分钟建连并保活，整条连接就能全程按谷价结算，正是利润控制
-// 想堵的漏洞。透传 ingress 目前不做 turn 级利润复核，只有建连时的准入门。
+// 零值仍保留 RecordUsage 的既有回退语义，但正常入口会在首轮准入后初始化，
+// 后续 turn 由 BeforeRequest 覆盖，因此长连接不会一直沿用建连时刻。
 type openAIWSTurnPricing struct {
 	mu sync.Mutex
 	at time.Time
@@ -1749,6 +1796,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage)
+	firstBillableSearchIntent := billingRiskHasBillableSearchTool(firstMessage)
+	firstBillableSearchIntent = openAICompatibleRequestPlatform(ctx, apiKey) == service.PlatformGrok && firstBillableSearchIntent
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
@@ -1821,10 +1870,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if requestPlatform == service.PlatformGrok {
 		requiredTransport = service.OpenAIUpstreamTransportHTTPSSE
 	}
+	wsPricingCtx, firstTurnPricingAt := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
+	ctx = wsPricingCtx
 	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 		return
+	}
+	turnRiskLeases := newBillingRiskTurnLeases()
+	defer turnRiskLeases.CloseAll(ctx)
+	firstRiskKind := service.BillingRiskRequestWebSocket
+	if imageIntent {
+		firstRiskKind = service.BillingRiskRequestSyncImage
 	}
 
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
@@ -1885,17 +1942,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
 
-	// 分组利润控制：WS 桥按连接装配定价上下文并装门（选号与抢槽共用该
-	// ctx）。连接内不重选号，但每个 turn 开始经 BeforeTurn 重新冻结 pricingAt
-	// 并按最新门复核当前账号（准入与计费同源），峰前建连保活不能让后续 turn
-	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
-	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
-	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
-	ctx = wsPricingCtx
-
 	for {
 		if ctx.Err() != nil {
 			return
+		}
+		if !turnRiskLeases.Has(1) {
+			firstRiskLease, riskErr := acquireBillingRiskLease(ctx, h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+				APIKey:              apiKey,
+				Subscription:        subscription,
+				Kind:                firstRiskKind,
+				InputTokens:         billingRiskInputTokens(firstMessage),
+				MaxOutputTokens:     billingRiskMaxOutputTokens(firstMessage, 0),
+				RequestCount:        1,
+				ServiceTier:         billingRiskServiceTier(firstMessage),
+				PricingAt:           firstTurnPricingAt,
+				ConservativeUnknown: imageIntent || firstBillableSearchIntent,
+			}, channelMappingWS, reqModel))
+			if riskErr != nil {
+				_, _, message := billingRiskErrorDetails(riskErr)
+				closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, message)
+				return
+			}
+			turnRiskLeases.Store(1, firstRiskLease)
 		}
 		reqLog.Debug("openai.websocket_account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -2035,10 +2103,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
 		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWS})
-		// turn 级定价：BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号，
-		// AfterTurn 的计费读取所属 turn 的时刻。零值起步的语义见
-		// openAIWSTurnPricing 的注释——绝不能用建连时刻初始化。
+		// 风险准入与最终账单复用同一个 turn 定价时刻；BeforeTurn 仍按最新门
+		// 复核当前账号，但不再用稍后的时钟覆盖已经用于准入的 pricingAt。
 		var turnPricing openAIWSTurnPricing
+		turnPricing.freeze(firstTurnPricingAt)
+		turnProfitCtx := ctx
 		hooks := &service.OpenAIWSIngressHooks{
 			ClientLifecycleContext:  clientLifecycleCtx,
 			InitialRequestModel:     reqModel,
@@ -2063,6 +2132,37 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
 				}
+				if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+					reqLog.Info("openai.websocket_turn_billing_eligibility_check_failed", zap.Int("turn", turn), zap.Error(err))
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "billing check failed", err)
+				}
+				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
+				turnImageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", model, payload)
+				turnBillableSearchIntent := billingRiskHasBillableSearchTool(payload)
+				turnBillableSearchIntent = requestPlatform == service.PlatformGrok && turnBillableSearchIntent
+				kind := service.BillingRiskRequestWebSocket
+				if turnImageIntent {
+					kind = service.BillingRiskRequestSyncImage
+				}
+				turnCtx, pricingAt := h.gatewayService.WithOpenAITurnPricingContext(ctx, apiKey.GroupID)
+				lease, riskErr := acquireBillingRiskLease(turnCtx, h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+					APIKey:              apiKey,
+					Subscription:        subscription,
+					Kind:                kind,
+					InputTokens:         billingRiskInputTokens(payload),
+					MaxOutputTokens:     billingRiskMaxOutputTokens(payload, 0),
+					RequestCount:        1,
+					ServiceTier:         billingRiskServiceTier(payload),
+					PricingAt:           pricingAt,
+					ConservativeUnknown: turnImageIntent || turnBillableSearchIntent,
+				}, mapping, model))
+				if riskErr != nil {
+					_, _, message := billingRiskErrorDetails(riskErr)
+					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, message, riskErr)
+				}
+				turnProfitCtx = turnCtx
+				turnPricing.freeze(pricingAt)
+				turnRiskLeases.Store(turn, lease)
 				return nil
 			},
 			MapRequestModel: func(turn int, originalModel string) (string, error) {
@@ -2089,15 +2189,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 长连接跨峰谷/倍率刷新防护：每个 turn 按当前时刻重装门并复核
 				// 当前账号，越线即要求客户端重连重选（连接绑定单一上游账号，
 				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
-				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(ctx, apiKey.GroupID)
-				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
+				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnProfitCtx, account); vetoed {
 					reqLog.Info("openai.websocket_turn_profit_vetoed",
 						zap.Int("turn", turn),
 						zap.Int64("account_id", account.ID),
 						zap.String("reason", reason))
 					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is no longer eligible for this connection, please reconnect", nil)
 				}
-				turnPricing.freeze(turnAt)
 				if turn == 1 {
 					return nil
 				}
@@ -2129,6 +2227,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				return nil
 			},
 			AfterTurn: func(turn int, result *service.OpenAIForwardResult, turnErr error) {
+				riskLease := turnRiskLeases.Take(turn)
+				if riskLease != nil {
+					defer riskLease.Close(ctx)
+				}
+				turnRecordPricingAt := turnPricing.current()
 				// F1: cyber 标记按 turn 生命周期清理——defer 保证任意早返回路径都执行；
 				// CyberBlocked 必须在 submit 前同步预捕获（task 闭包由 worker 池异步执行，
 				// 届时 defer 已清除标记）。
@@ -2154,7 +2257,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					turnUpstreamModel = turnRequestedModel
 				}
 				turnUsageFields := turnMapping.ToUsageFields(turnRequestedModel, turnUpstreamModel)
-				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockKey, turnUsageFields, requestPayloadHash)
+				h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, turnRequestedModel, turnErr != nil, cyberBlockKey, turnUsageFields, requestPayloadHash, turnRecordPricingAt, riskLease)
 				if service.GetOpsCyberPolicy(c) != nil {
 					cyberBlockedThisConn = true
 				}
@@ -2196,9 +2299,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 				sessionID := service.ExtractClientSessionID(c)
-				turnRecordPricingAt := turnPricing.current()
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
-				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
+				riskPermit := riskLease.Handoff()
+				h.submitBillingRiskUsageRecordTask(ctx, riskPermit, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
 						APIKey:             apiKey,
@@ -2216,6 +2319,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						ChannelUsageFields: turnUsageFields,
 						PricingAt:          turnRecordPricingAt,
 						CyberBlocked:       cyberBlocked,
+						RiskPermit:         riskPermit,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",
 							zap.Int64("account_id", account.ID),
@@ -3174,7 +3278,7 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 // 并在 forward 返回错误时写一条 tokens=0 用量行。标记由 gateway 服务层在透传 cyber 后设置；
 // 当前请求已发给用户，本方法只做事后记录，不影响响应。forwardErrored 为 true 时才写用量行，
 // 避免与正常 RecordUsage(forward 成功路径)重复。每请求至多记录一次。
-func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockKey string, channelFields service.ChannelUsageFields, requestPayloadHash string) {
+func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, model string, forwardErrored bool, cyberBlockKey string, channelFields service.ChannelUsageFields, requestPayloadHash string, pricingAt time.Time, riskLease *billingRiskLease) {
 	mark := service.GetOpsCyberPolicy(c)
 	if mark == nil {
 		return
@@ -3218,6 +3322,8 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 	gwSvc := h.gatewayService
 	opsSvc := h.opsService
 	apiKeySvc := h.apiKeyService
+	riskPermit := handoffBillingRiskLeaseForCyberUsage(riskLease,
+		forwardErrored && gwSvc != nil && apiKey != nil && apiKey.User != nil && account != nil && strings.TrimSpace(model) != "")
 	requestPath := ""
 	if c.Request != nil && c.Request.URL != nil {
 		requestPath = c.Request.URL.Path
@@ -3256,6 +3362,28 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		ClientIP:        clientIPStr,
 		CreatedAt:       time.Now(),
 	}
+	cyberUsageTask := wrapBillingRiskUsageRecordTask(riskPermit, func(ctx context.Context) {
+		gwSvc.RecordCyberPolicyUsageLog(ctx, service.CyberPolicyUsageInput{
+			APIKey:             apiKey,
+			Account:            account,
+			Subscription:       subscription,
+			RequestID:          requestID,
+			Model:              model,
+			Stream:             stream,
+			InputTokens:        mark.UpstreamInTok,
+			OutputTokens:       mark.UpstreamOutTok,
+			InboundEndpoint:    inboundEndpoint,
+			UpstreamEndpoint:   upstreamEndpoint,
+			UserAgent:          userAgent,
+			IPAddress:          clientIPStr,
+			SessionID:          sessionID,
+			RequestPayloadHash: requestPayloadHash,
+			APIKeyService:      apiKeySvc,
+			PricingAt:          pricingAt,
+			RiskPermit:         riskPermit,
+			ChannelUsageFields: channelFields,
+		})
+	})
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -3278,24 +3406,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 			})
 		}
 		if forwardErrored && gwSvc != nil {
-			gwSvc.RecordCyberPolicyUsageLog(ctx, service.CyberPolicyUsageInput{
-				APIKey:             apiKey,
-				Account:            account,
-				Subscription:       subscription,
-				RequestID:          requestID,
-				Model:              model,
-				Stream:             stream,
-				InputTokens:        mark.UpstreamInTok,
-				OutputTokens:       mark.UpstreamOutTok,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIPStr,
-				SessionID:          sessionID,
-				RequestPayloadHash: requestPayloadHash,
-				APIKeyService:      apiKeySvc,
-				ChannelUsageFields: channelFields,
-			})
+			cyberUsageTask(ctx)
 		}
 		if gwSvc != nil && cyberBlockKey != "" {
 			gwSvc.MarkCyberSessionBlocked(ctx, cyberBlockKey)

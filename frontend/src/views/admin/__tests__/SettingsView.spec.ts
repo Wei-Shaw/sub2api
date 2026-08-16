@@ -778,6 +778,58 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(wrapper.text()).not.toContain("支付来源");
   });
 
+  it("loads and submits billing risk guard settings from the end of gateway settings", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      billing_risk_enabled: true,
+      billing_risk_low_balance_threshold: 10,
+      billing_risk_safety_factor: 1.25,
+      billing_risk_minimum_request_risk: 0.001,
+      billing_risk_overdraft_allowance: 0.2,
+      billing_risk_high_cost_trigger: 1,
+      billing_risk_lease_ttl_seconds: 60,
+      billing_risk_refresh_interval_seconds: 15,
+      billing_risk_uncertain_cooldown_seconds: 300,
+      billing_risk_video_lease_ttl_seconds: 86400,
+      billing_risk_idle_balance_ttl_seconds: 120,
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+    const section = wrapper.get('[data-testid="billing-risk-settings"]');
+    expect((section.get('[data-testid="billing-risk-low-balance-threshold"]').element as HTMLInputElement).value).toBe("10");
+
+    await section.get('[data-testid="billing-risk-low-balance-threshold"]').setValue("8");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      billing_risk_enabled: true,
+      billing_risk_low_balance_threshold: 8,
+      billing_risk_safety_factor: 1.25,
+      billing_risk_minimum_request_risk: 0.001,
+      billing_risk_overdraft_allowance: 0.2,
+      billing_risk_high_cost_trigger: 1,
+      billing_risk_lease_ttl_seconds: 60,
+      billing_risk_refresh_interval_seconds: 15,
+      billing_risk_uncertain_cooldown_seconds: 300,
+      billing_risk_video_lease_ttl_seconds: 86400,
+      billing_risk_idle_balance_ttl_seconds: 120,
+    }));
+  });
+
+  it("keeps billing risk protection disabled when the server omits the new setting", async () => {
+    getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const section = wrapper.get('[data-testid="billing-risk-settings"]');
+    expect((section.get("input.toggle-stub").element as HTMLInputElement).checked).toBe(false);
+  });
+
   it("shows valid passkey RP configuration and persists the sign-in toggle", async () => {
     const wrapper = mountView();
 

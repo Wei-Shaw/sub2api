@@ -95,6 +95,8 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	if userRelease != nil {
 		defer userRelease()
 	}
+	asPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(asPricingCtx)
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -103,6 +105,21 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		}
 		h.errorResponse(c, status, code, message)
 		return
+	}
+	riskLease, err := acquireBillingRiskLease(c.Request.Context(), h.billingRiskAdmission, billingRiskAdmissionInputForMapping(service.BillingRiskAdmissionInput{
+		APIKey:         apiKey,
+		Subscription:   subscription,
+		Kind:           service.BillingRiskRequestSearch,
+		WebSearchCalls: 1,
+		PricingAt:      pricingAt,
+	}, channelMapping, requestedModel))
+	if err != nil {
+		status, code, message := billingRiskErrorDetails(err)
+		h.errorResponse(c, status, code, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
 	}
 
 	searchID := strings.TrimSpace(gjson.GetBytes(body, "id").String())
@@ -113,11 +130,6 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	switchCount := 0
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	routingStart := time.Now()
-
-	// 分组利润控制：alpha search 文本入口请求级装门并固定 pricingAt
-	//（记录路径经 service.OpenAIPricingAtFromContext 从请求 ctx 回读）。
-	asPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(asPricingCtx)
 
 	for {
 		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -184,7 +196,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		if err == nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestedModel), true, nil)
 			if result != nil {
-				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID)
+				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID, riskLease.Handoff())
 			}
 			return
 		}
@@ -244,6 +256,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	body []byte,
 	result *service.OpenAIForwardResult,
 	userID int64,
+	riskPermit *service.BillingRiskPermit,
 ) {
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
@@ -253,7 +266,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
-	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+	h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, result, func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
 			APIKey:             apiKey,
@@ -270,6 +283,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 			SessionID:          sessionID,
 			ChannelUsageFields: channelMapping.ToUsageFields(requestedModel, result.UpstreamModel),
 			PricingAt:          service.OpenAIPricingAtFromContext(c.Request.Context()),
+			RiskPermit:         riskPermit,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.openai_gateway.alpha_search"),

@@ -552,6 +552,17 @@ const (
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 
 	// Gateway Forwarding Behavior
+	SettingKeyBillingRiskEnabled                  = "billing_risk_enabled"
+	SettingKeyBillingRiskLowBalanceThreshold      = "billing_risk_low_balance_threshold"
+	SettingKeyBillingRiskSafetyFactor             = "billing_risk_safety_factor"
+	SettingKeyBillingRiskMinimumRequestRisk       = "billing_risk_minimum_request_risk"
+	SettingKeyBillingRiskOverdraftAllowance       = "billing_risk_overdraft_allowance"
+	SettingKeyBillingRiskHighCostTrigger          = "billing_risk_high_cost_trigger"
+	SettingKeyBillingRiskLeaseTTLSeconds          = "billing_risk_lease_ttl_seconds"
+	SettingKeyBillingRiskRefreshIntervalSeconds   = "billing_risk_refresh_interval_seconds"
+	SettingKeyBillingRiskUncertainCooldownSeconds = "billing_risk_uncertain_cooldown_seconds"
+	SettingKeyBillingRiskVideoLeaseTTLSeconds     = "billing_risk_video_lease_ttl_seconds"
+	SettingKeyBillingRiskIdleBalanceTTLSeconds    = "billing_risk_idle_balance_ttl_seconds"
 	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）

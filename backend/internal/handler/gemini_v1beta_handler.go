@@ -252,6 +252,19 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, status, message)
 		return
 	}
+	riskLease, err := acquireBillingRiskLease(
+		c.Request.Context(),
+		h.billingRiskAdmission,
+		geminiBillingRiskAdmissionInput(apiKey, subscription, channelMapping, modelName, body, pricingAt),
+	)
+	if err != nil {
+		status, _, message := billingRiskErrorDetails(err)
+		googleError(c, status, message)
+		return
+	}
+	if riskLease != nil {
+		defer riskLease.Close(c.Request.Context())
+	}
 
 	// 3) select account (sticky session based on request body)
 	// 优先使用 Gemini CLI 的会话标识（privileged-user-id + tmp 目录哈希）
@@ -569,7 +582,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		forceCacheBilling := fs.ForceCacheBilling
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
-		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+		riskPermit := riskLease.Handoff()
+		h.submitBillingRiskUsageRecordTask(c.Request.Context(), riskPermit, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
 				QuotaPlatform:         quotaPlatform,
@@ -583,6 +597,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				UserAgent:             userAgent,
 				IPAddress:             clientIP,
 				RequestPayloadHash:    requestPayloadHash,
+				RiskPermit:            riskPermit,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
 				ForceCacheBilling:     forceCacheBilling,

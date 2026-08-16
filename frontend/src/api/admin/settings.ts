@@ -16,6 +16,63 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+export interface BillingRiskGuardSettings {
+  billing_risk_enabled: boolean;
+  billing_risk_low_balance_threshold: number;
+  billing_risk_safety_factor: number;
+  billing_risk_minimum_request_risk: number;
+  billing_risk_overdraft_allowance: number;
+  billing_risk_high_cost_trigger: number;
+  billing_risk_lease_ttl_seconds: number;
+  billing_risk_refresh_interval_seconds: number;
+  billing_risk_uncertain_cooldown_seconds: number;
+  billing_risk_video_lease_ttl_seconds: number;
+  billing_risk_idle_balance_ttl_seconds: number;
+}
+
+export type BillingRiskSettingsValidationError =
+  | "safetyFactor"
+  | "amount"
+  | "refreshInterval"
+  | "leaseTTL"
+  | "duration"
+  | "videoTTL";
+
+export function validateBillingRiskGuardSettings(
+  settings: BillingRiskGuardSettings,
+): BillingRiskSettingsValidationError | null {
+  if (!Number.isFinite(settings.billing_risk_safety_factor) || settings.billing_risk_safety_factor < 1) {
+    return "safetyFactor";
+  }
+  const amounts = [
+    settings.billing_risk_low_balance_threshold,
+    settings.billing_risk_minimum_request_risk,
+    settings.billing_risk_overdraft_allowance,
+    settings.billing_risk_high_cost_trigger,
+  ];
+  if (amounts.some((value) => !Number.isFinite(value) || value < 0)) {
+    return "amount";
+  }
+  const refresh = settings.billing_risk_refresh_interval_seconds;
+  if (!Number.isInteger(refresh) || refresh <= 0) {
+    return "refreshInterval";
+  }
+  const leaseTTL = settings.billing_risk_lease_ttl_seconds;
+  if (!Number.isInteger(leaseTTL) || leaseTTL <= 2 * refresh) {
+    return "leaseTTL";
+  }
+  const cooldown = settings.billing_risk_uncertain_cooldown_seconds;
+  const idleTTL = settings.billing_risk_idle_balance_ttl_seconds;
+  if (!Number.isInteger(cooldown) || cooldown <= 0 || !Number.isInteger(idleTTL) || idleTTL <= 0) {
+    return "duration";
+  }
+  const videoTTL = settings.billing_risk_video_lease_ttl_seconds;
+  if (!Number.isInteger(videoTTL) || videoTTL < leaseTTL) {
+    return "videoTTL";
+  }
+  return null;
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -614,6 +671,17 @@ export interface SystemSettings {
   allow_ungrouped_key_scheduling: boolean;
 
   // Gateway forwarding behavior
+  billing_risk_enabled: boolean;
+  billing_risk_low_balance_threshold: number;
+  billing_risk_safety_factor: number;
+  billing_risk_minimum_request_risk: number;
+  billing_risk_overdraft_allowance: number;
+  billing_risk_high_cost_trigger: number;
+  billing_risk_lease_ttl_seconds: number;
+  billing_risk_refresh_interval_seconds: number;
+  billing_risk_uncertain_cooldown_seconds: number;
+  billing_risk_video_lease_ttl_seconds: number;
+  billing_risk_idle_balance_ttl_seconds: number;
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
@@ -927,6 +995,17 @@ export interface UpdateSettingsRequest {
   min_claude_code_version?: string;
   max_claude_code_version?: string;
   allow_ungrouped_key_scheduling?: boolean;
+  billing_risk_enabled?: boolean;
+  billing_risk_low_balance_threshold?: number;
+  billing_risk_safety_factor?: number;
+  billing_risk_minimum_request_risk?: number;
+  billing_risk_overdraft_allowance?: number;
+  billing_risk_high_cost_trigger?: number;
+  billing_risk_lease_ttl_seconds?: number;
+  billing_risk_refresh_interval_seconds?: number;
+  billing_risk_uncertain_cooldown_seconds?: number;
+  billing_risk_video_lease_ttl_seconds?: number;
+  billing_risk_idle_balance_ttl_seconds?: number;
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
