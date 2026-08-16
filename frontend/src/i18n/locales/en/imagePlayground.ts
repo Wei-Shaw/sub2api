@@ -2,7 +2,7 @@ export default {
   imagePlayground: {
     title: 'Image Playground',
     galleryTitle: 'Creations',
-    description: 'Choose a group and image model, then generate, preview, and download images directly from a prompt.',
+    description: 'Generate images from a prompt.',
     generatedImage: 'Generated image',
     images: 'images',
     untitledPrompt: 'Untitled prompt',

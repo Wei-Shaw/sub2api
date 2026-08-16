@@ -2,7 +2,7 @@ export default {
   imagePlayground: {
     title: '图片工作台',
     galleryTitle: '作品',
-    description: '选择分组和图片模型，用提示词直接生成、预览并下载图片。生成任务会在后台继续运行。',
+    description: '用提示词生成图片。',
     generatedImage: '生成的图片',
     images: '张',
     untitledPrompt: '未命名提示词',

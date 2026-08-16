@@ -35,6 +35,14 @@ describe('doc_url sanitization', () => {
   })
 })
 
+describe('page header description layout', () => {
+  it('truncates the page description so docs stay on one row', () => {
+    expect(headerSource).toContain('flex min-w-0 flex-1 items-center')
+    expect(headerSource).toContain('truncate text-xs text-gray-500')
+    expect(headerSource).toContain('flex shrink-0 items-center gap-1 sm:gap-3')
+  })
+})
+
 describe('customer service header entry', () => {
   it('uses the public display switch and stays immediately before Model Plaza', () => {
     expect(headerSource).toContain("publicSettings?.customer_service_enabled !== false")
