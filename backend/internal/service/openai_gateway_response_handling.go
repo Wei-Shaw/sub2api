@@ -1103,11 +1103,13 @@ func mergeHostedImageGenToolUsage(imageGen gjson.Result, usage *OpenAIUsage) {
 	if usage.ImageOutputTokens == 0 {
 		if v := imageGen.Get("output_tokens_details.image_tokens").Int(); v > 0 {
 			usage.ImageOutputTokens = int(v)
+			usage.SeparateImageOutputTokens = int(v)
 		}
 	}
 	if usage.ImageInputTokens == 0 {
 		if v := imageGen.Get("input_tokens_details.image_tokens").Int(); v > 0 {
 			usage.ImageInputTokens = int(v)
+			usage.SeparateImageInputTokens = int(v)
 		}
 	}
 }

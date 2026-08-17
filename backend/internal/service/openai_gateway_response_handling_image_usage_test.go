@@ -35,6 +35,8 @@ func TestExtractOpenAIUsageFromJSONBytes_MergesHostedImageGenToolUsage(t *testin
 	assert.Equal(t, 1005, usage.OutputTokens, "output_tokens from response.usage")
 	assert.Equal(t, 186, usage.ImageOutputTokens, "image output tokens merged from tool_usage.image_gen")
 	assert.Equal(t, 7620, usage.ImageInputTokens, "image input tokens merged from tool_usage.image_gen")
+	assert.Equal(t, 186, usage.SeparateImageOutputTokens)
+	assert.Equal(t, 7620, usage.SeparateImageInputTokens)
 }
 
 func TestExtractOpenAIUsageFromJSONBytes_NonStreamingMergesImageGen(t *testing.T) {
@@ -63,6 +65,8 @@ func TestExtractOpenAIUsageFromJSONBytes_NonStreamingMergesImageGen(t *testing.T
 	assert.Equal(t, 200, usage.OutputTokens)
 	assert.Equal(t, 150, usage.ImageOutputTokens, "image output tokens from tool_usage.image_gen")
 	assert.Equal(t, 2800, usage.ImageInputTokens, "image input tokens from tool_usage.image_gen")
+	assert.Equal(t, 150, usage.SeparateImageOutputTokens)
+	assert.Equal(t, 2800, usage.SeparateImageInputTokens)
 }
 
 func TestExtractOpenAIUsageFromJSONBytes_NoToolUsageUnchanged(t *testing.T) {
@@ -104,6 +108,7 @@ func TestExtractOpenAIUsageFromJSONBytes_BaseUsageHasImageTokensNoOverride(t *te
 	usage, ok := extractOpenAIUsageFromJSONBytes(body)
 	assert.True(t, ok)
 	assert.Equal(t, 30, usage.ImageOutputTokens, "base usage image tokens preserved, not overridden")
+	assert.Zero(t, usage.SeparateImageOutputTokens)
 }
 
 func TestMergeHostedImageGenToolUsage_EmptyImageGen(t *testing.T) {
@@ -154,4 +159,6 @@ func TestParseSSEUsageBytes_ResponseCompletedWithImageGen(t *testing.T) {
 	assert.Equal(t, 500, usage.OutputTokens)
 	assert.Equal(t, 186, usage.ImageOutputTokens, "image output tokens from SSE tool_usage")
 	assert.Equal(t, 3800, usage.ImageInputTokens, "image input tokens from SSE tool_usage")
+	assert.Equal(t, 186, usage.SeparateImageOutputTokens)
+	assert.Equal(t, 3800, usage.SeparateImageInputTokens)
 }

@@ -542,6 +542,7 @@ export default {
       billingModeToken: 'Token',
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Image',
+      billingModeMixed: 'Token + Image',
       billingModeVideo: 'Video',
       allBillingModes: 'All Billing Modes',
 	  upstreamModelAudit: 'Upstream model audit',

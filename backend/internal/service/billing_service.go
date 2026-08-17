@@ -163,7 +163,10 @@ type CostBreakdown struct {
 	CacheReadCost             float64
 	TotalCost                 float64
 	ActualCost                float64 // 应用倍率后的实际费用
-	BillingMode               string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	ImageGenerationCost       float64 // 按图片数量、尺寸计算的倍率前费用
+	ImageActualCost           float64 // 图片生成费用应用图片倍率后的费用
+	ImageRateMultiplier       float64 // 图片倍率快照
+	BillingMode               string  // 计费模式（"token"/"per_request"/"image"/"mixed"）
 	LongContextBillingApplied bool
 }
 

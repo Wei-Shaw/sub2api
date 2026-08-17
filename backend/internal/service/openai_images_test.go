@@ -807,7 +807,12 @@ func TestParseOpenAIImagesSSEUsageBytes_ToolUsagePrecedenceAndFallback(t *testin
 		{
 			name:      "valid tool usage takes atomic precedence",
 			toolUsage: `{"input_tokens":4.6e1,"output_tokens":2459e0,"output_tokens_details":{"image_tokens":24590e-1}}`,
-			want:      OpenAIUsage{InputTokens: 46, OutputTokens: 2459, ImageOutputTokens: 2459},
+			want: OpenAIUsage{
+				InputTokens:               46,
+				OutputTokens:              2459,
+				ImageOutputTokens:         2459,
+				SeparateImageOutputTokens: 2459,
+			},
 		},
 		{name: "absent", want: fallback},
 		{name: "malformed field", toolUsage: `{"input_tokens":"46","output_tokens":2459,"output_tokens_details":{"image_tokens":2459}}`, want: fallback},
@@ -1554,7 +1559,12 @@ func TestOpenAIGatewayServiceForwardImages_OAuthStreamingTransformsEvents(t *tes
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 	require.Equal(t, 1, result.ImageCount)
-	require.Equal(t, OpenAIUsage{InputTokens: 46, OutputTokens: 2459, ImageOutputTokens: 2459}, result.Usage)
+	require.Equal(t, OpenAIUsage{
+		InputTokens:               46,
+		OutputTokens:              2459,
+		ImageOutputTokens:         2459,
+		SeparateImageOutputTokens: 2459,
+	}, result.Usage)
 	events := parseOpenAIImageTestSSEEvents(rec.Body.String())
 	partial, ok := findOpenAIImageTestSSEEvent(events, "image_generation.partial_image")
 	require.True(t, ok)

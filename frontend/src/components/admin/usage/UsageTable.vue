@@ -184,6 +184,10 @@
               <div class="flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-gray-100 transition-colors group-hover:bg-blue-100 dark:bg-gray-700 dark:group-hover:bg-blue-900/50">
                 <Icon name="infoCircle" size="xs" class="text-gray-400 group-hover:text-blue-500 dark:text-gray-500 dark:group-hover:text-blue-400" />
               </div>
+              <div v-if="row.billing_mode === BILLING_MODE_MIXED" class="flex items-center gap-1.5 text-xs text-pink-600 dark:text-pink-300">
+                <span>{{ row.image_count }}{{ t('usage.imageUnit') }}</span>
+                <span>({{ formatImageBillingSize(row, t) }})</span>
+              </div>
             </div>
           </div>
         </template>
@@ -389,13 +393,21 @@
               <span class="text-gray-400">{{ t('usage.imageOutputCost') }}</span>
               <span class="font-medium text-pink-300">${{ tooltipData.image_output_cost.toFixed(6) }}</span>
             </div>
+            <div v-if="tooltipData?.billing_mode === BILLING_MODE_MIXED" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.imageGenerationCost') }}</span>
+              <span class="font-medium text-pink-300">${{ (tooltipData.image_generation_cost ?? 0).toFixed(6) }}</span>
+            </div>
+            <div v-if="tooltipData?.billing_mode === BILLING_MODE_MIXED" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.imageActualCost') }}</span>
+              <span class="font-medium text-pink-300">${{ (tooltipData.image_actual_cost ?? 0).toFixed(6) }}</span>
+            </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="tooltipData && !isImageUsage(tooltipData) && (!tooltipData.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN)">
+            <template v-if="tooltipData && !isImageUsage(tooltipData) && (!tooltipData.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN || tooltipData.billing_mode === BILLING_MODE_MIXED)">
               <div v-if="tooltipData && textInputTokens(tooltipData) > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, textInputTokens(tooltipData)) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
-              <div v-if="tooltipData && hasImageInputTokens(tooltipData)" class="flex items-center justify-between gap-4">
+              <div v-if="tooltipData && tooltipData.billing_mode !== BILLING_MODE_MIXED && hasImageInputTokens(tooltipData)" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageInputTokenPrice') }}</span>
                 <span class="font-medium text-fuchsia-300">{{ formatTokenPricePerMillion(tooltipData.image_input_cost ?? 0, tooltipData.image_input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
@@ -403,7 +415,7 @@
                 <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
                 <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, textOutputTokens(tooltipData)) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
-              <div v-if="tooltipData && hasImageOutputTokens(tooltipData)" class="flex items-center justify-between gap-4">
+              <div v-if="tooltipData && tooltipData.billing_mode !== BILLING_MODE_MIXED && hasImageOutputTokens(tooltipData)" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.imageOutputTokenPrice') }}</span>
                 <span class="font-medium text-pink-300">{{ formatTokenPricePerMillion(tooltipData.image_output_cost ?? 0, tooltipData.image_output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
               </div>
@@ -464,6 +476,10 @@
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
             <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span>
           </div>
+          <div v-if="tooltipData?.billing_mode === BILLING_MODE_MIXED" class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.imageRate') }}</span>
+            <span class="font-semibold text-pink-300">{{ formatMultiplier(tooltipData.image_rate_multiplier ?? 0) }}x</span>
+          </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
             <span class="font-medium text-white">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' }}</span>
@@ -514,6 +530,7 @@ import {
   firstTokenSeverity,
 } from '@/utils/latencyHealth'
 import {
+  BILLING_MODE_MIXED,
   BILLING_MODE_TOKEN,
   getBillingModeLabel,
   getBillingModeBadgeClass,

@@ -54,6 +54,11 @@ const messages: Record<string, string> = {
   'usage.imageSizeUnknown': 'unknown',
   'usage.imageUnitPrice': 'Per-image price',
   'usage.imageTotalPrice': 'Image total price',
+  'usage.imageGenerationCost': 'Image generation cost',
+  'usage.imageActualCost': 'Billed image cost',
+  'usage.imageRate': 'Image rate',
+  'usage.imageInputTokenPrice': 'Image input token price',
+  'usage.imageOutputTokenPrice': 'Image output token price',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
@@ -66,6 +71,7 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
+  'admin.usage.billingModeMixed': 'Token + Image',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -119,6 +125,9 @@ const baseImageRow = {
   image_output_size: null,
   image_size_source: null,
   image_size_breakdown: null,
+  image_generation_cost: 0.4,
+  image_actual_cost: 0.4,
+  image_rate_multiplier: 1,
 }
 
 describe('admin UsageTable tooltip', () => {
@@ -394,6 +403,7 @@ describe('admin UsageTable tooltip', () => {
             image_output_size: null,
             image_size_source: null,
             image_size_breakdown: null,
+            image_generation_cost: 0,
           },
         ],
         loading: false,
@@ -416,8 +426,58 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Image')
     expect(text).toContain('Image count')
     expect(text).toContain('Per-image price')
+    expect(text).toContain('$0.200000')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+
+  it('displays mixed Token and image billing components together', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-admin-mixed-image',
+          billing_mode: 'mixed',
+          input_tokens: 1000,
+          image_input_tokens: 200,
+          output_tokens: 500,
+          image_output_tokens: 100,
+          input_cost: 0.003,
+          output_cost: 0.0075,
+          total_cost: 0.4105,
+          actual_cost: 0.401575,
+          rate_multiplier: 0.15,
+          image_generation_cost: 0.4,
+          image_actual_cost: 0.4,
+          image_rate_multiplier: 1,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Token + Image')
+    expect(wrapper.text()).toContain('2 images')
+
+    const tooltipTriggers = wrapper.findAll('.group.relative')
+    await tooltipTriggers[tooltipTriggers.length - 1].trigger('mouseenter')
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Image generation cost')
+    expect(text).toContain('Billed image cost')
+    expect(text).toContain('Image rate')
+    expect(text).toContain('$0.400000')
+    expect(text).not.toContain('Image input token price')
+    expect(text).not.toContain('Image output token price')
   })
 })
 

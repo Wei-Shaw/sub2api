@@ -390,6 +390,7 @@ const billingModeOptions = computed<SelectOption[]>(() => [
   { value: 'token', label: t('admin.usage.billingModeToken') },
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
   { value: 'image', label: t('admin.usage.billingModeImage') },
+  { value: 'mixed', label: t('admin.usage.billingModeMixed') },
   { value: 'video', label: t('admin.usage.billingModeVideo') },
 ])
 
@@ -649,6 +650,9 @@ const exportToCSV = async () => {
       'Cache Read Tokens',
       'Cache Creation Tokens',
       'Rate Multiplier',
+      'Image Generation Cost',
+      'Image Rate Multiplier',
+      'Image Billed Cost',
       'Billed Cost',
       'Original Cost',
       'First Token (ms)',
@@ -668,6 +672,9 @@ const exportToCSV = async () => {
       log.cache_read_tokens,
       log.cache_creation_tokens,
       log.rate_multiplier,
+      (log.image_generation_cost ?? 0).toFixed(8),
+      log.image_rate_multiplier ?? 0,
+      (log.image_actual_cost ?? 0).toFixed(8),
       log.actual_cost.toFixed(8),
       log.total_cost.toFixed(8),
       log.first_token_ms ?? '',

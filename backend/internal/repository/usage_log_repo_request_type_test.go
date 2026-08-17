@@ -99,6 +99,9 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // image_generation_cost
+			sqlmock.AnyArg(), // image_actual_cost
+			sqlmock.AnyArg(), // image_rate_multiplier
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -191,6 +194,9 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // image_generation_cost
+			sqlmock.AnyArg(), // image_actual_cost
+			sqlmock.AnyArg(), // image_rate_multiplier
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -852,6 +858,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			sql.NullString{},
+			0.4, // image_generation_cost
+			0.8, // image_actual_cost
+			2.0, // image_rate_multiplier
 			now,
 		}})
 		require.NoError(t, err)
@@ -865,6 +874,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.NotNil(t, log.ImageSizeSource)
 		require.Equal(t, "output", *log.ImageSizeSource)
 		require.Equal(t, map[string]int{"4K": 2}, log.ImageSizeBreakdown)
+		require.InDelta(t, 0.4, log.ImageGenerationCost, 1e-12)
+		require.InDelta(t, 0.8, log.ImageActualCost, 1e-12)
+		require.InDelta(t, 2.0, log.ImageRateMultiplier, 1e-12)
 	})
 
 	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
@@ -929,6 +941,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			0.0,               // image_generation_cost
+			0.0,               // image_actual_cost
+			0.0,               // image_rate_multiplier
 			now,
 		}})
 		require.NoError(t, err)
@@ -989,6 +1004,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			0.0,               // image_generation_cost
+			0.0,               // image_actual_cost
+			0.0,               // image_rate_multiplier
 			now,
 		}})
 		require.NoError(t, err)
@@ -1049,6 +1067,9 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			0.0,               // image_generation_cost
+			0.0,               // image_actual_cost
+			0.0,               // image_rate_multiplier
 			now,
 		}})
 		require.NoError(t, err)
