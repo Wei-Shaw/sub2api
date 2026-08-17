@@ -436,6 +436,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 		}
 	case 402:
+		// 国产供应商：余额不足是可恢复状态（充值/检测恢复后由周期任务自动解除），
+		// 不能走 handleAuthError 永久置 status=error。改为可恢复的临时停调。
+		if account.IsCNProvider() {
+			s.handleCNProviderInsufficientBalance(ctx, account, upstreamMsg)
+			shouldDisable = true
+			break
+		}
 		// OpenAI: deactivated_workspace 表示工作区已停用，直接标记 error
 		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
 			msg := "Workspace deactivated (402): workspace has been deactivated"
@@ -1047,6 +1054,13 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// QueryUsage→persistOpenAICodexProbeSnapshot 维护,枯竭由调度守卫处理。
 	if account.IsShadow() {
 		return
+	}
+	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
+	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。
+	if account.IsCNProvider() {
+		if s.applyCNProviderReactive429(ctx, account, headers, responseBody) {
+			return
+		}
 	}
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {

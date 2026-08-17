@@ -129,8 +129,9 @@ type AsyncMediaSubmitInput struct {
 
 	Input fal.ImageGenInput // 协议无关的图片请求描述
 
-	BillingType    int8    // 0=balance / 1=subscription
-	RateMultiplier float64 // 计费倍率
+	BillingType       int8    // 0=balance / 1=subscription
+	RateMultiplier    float64 // 下游图片计费倍率
+	RateMultiplierSet bool    // true 时保留显式 0 倍率
 
 	// 请求元信息（提交时持久化到任务表，供终态 usage_log 回填端点/IP/UA）。
 	ClientIP        string // 客户端 IP
@@ -149,7 +150,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	if in.Account == nil {
 		return nil, errors.New("async media: account is required")
 	}
-	if in.RateMultiplier == 0 {
+	if !in.RateMultiplierSet && in.RateMultiplier == 0 {
 		in.RateMultiplier = 1
 	}
 
@@ -163,7 +164,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	}
 
 	// 预估并预扣费用（按 num_images 的满额预扣）。
-	heldCost, err := s.estimateCost(ctx, upstreamModel, in.GroupID, rawSize, sizeTier, quality, numImages, in.RateMultiplier)
+	_, heldCost, err := s.estimateCost(ctx, upstreamModel, in.GroupID, rawSize, sizeTier, quality, numImages, in.RateMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("async media: estimate cost: %w", err)
 	}
@@ -336,6 +337,9 @@ func (s *AsyncMediaService) ReconcileTask(ctx context.Context, task *AsyncMediaT
 	if task == nil {
 		return nil
 	}
+	if task.IsTerminal() {
+		return nil
+	}
 	billingType := BillingTypeBalance // 兜底退费按余额账本（订阅额度由 usage_log 路径核算）
 
 	if task.FailDeadlineAt != nil && time.Now().After(*task.FailDeadlineAt) {
@@ -391,38 +395,53 @@ func (s *AsyncMediaService) pollOnce(ctx context.Context, task *AsyncMediaTask, 
 		return task, false, nil
 	}
 
-	imageURLs := extractFalImageURLs(result)
+	imageURLs, imageOutputSizes := extractFalImageResult(result)
 	if len(imageURLs) == 0 {
 		s.markFailedAndRefund(ctx, task, billingType, "upstream returned no images")
 		return task, true, nil
 	}
 
-	s.markSucceeded(ctx, task, billingType, imageURLs)
+	s.markSucceeded(ctx, task, account.BillingRateMultiplier(), billingType, imageURLs, imageOutputSizes)
 	return task, true, nil
 }
 
 // markSucceeded 成功结算：转存 COS、结算 finalCost（退差）、置 succeeded、终态写 usage_log。
-func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaTask, billingType int8, imageURLs []string) {
-	// COS 转存（失败回退 fal url，任务仍成功不退费）。
+func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaTask, accountRateMultiplier float64, billingType int8, imageURLs, imageOutputSizes []string) {
+	// COS 转存成功时复用已下载图片解析尺寸；未转存或 fal 未返回宽高时，再从原图文件头补测。
 	var cosURLs []string
-	if s.cos != nil && s.cos.IsEnabled(ctx) {
-		if transferred, ok := s.cos.TransferImages(ctx, imageURLs); ok {
-			cosURLs = transferred
+	imageOutputSizes = mergeImageOutputSizes(imageOutputSizes, nil, len(imageURLs))
+	if s.cos != nil {
+		if s.cos.IsEnabled(ctx) {
+			transferred, transferredSizes, ok := s.cos.TransferImagesWithSizes(ctx, imageURLs)
+			imageOutputSizes = mergeImageOutputSizes(imageOutputSizes, transferredSizes, len(imageURLs))
+			if ok {
+				cosURLs = transferred
+			}
+		}
+		if hasMissingImageOutputSize(imageOutputSizes) {
+			detectedSizes := s.cos.DetectImageSizes(ctx, imageURLs)
+			imageOutputSizes = mergeImageOutputSizes(imageOutputSizes, detectedSizes, len(imageURLs))
 		}
 	}
+	logger.L().Info("async_media.image_output_sizes_resolved",
+		zap.Int64("task_id", task.ID),
+		zap.String("request_id", task.InternalRequestID),
+		zap.Strings("image_output_sizes", imageOutputSizes))
 
 	// 结算 finalCost：按实际出图数量重算。
 	upstreamModel := amDerefStr(task.UpstreamModel)
 	rawSize := amDerefStr(task.ImageSize)
 	sizeTier := amDerefStr(task.SizeTier)
 	quality := amDerefStr(task.Quality)
-	finalCost, err := s.estimateCost(ctx, upstreamModel, task.GroupID, rawSize, sizeTier, quality, len(imageURLs), task.RateMultiplier)
+	finalTotalCost, finalCost, err := s.estimateCost(ctx, upstreamModel, task.GroupID, rawSize, sizeTier, quality, len(imageURLs), task.RateMultiplier)
 	if err != nil {
 		// 结算失败时按预扣额结算，避免误退。
 		finalCost = task.HeldCost
+		finalTotalCost = asyncMediaBaseCost(task.HeldCost, task.RateMultiplier)
 	}
 	if finalCost > task.HeldCost {
 		finalCost = task.HeldCost // 预扣为上限，不超额扣费
+		finalTotalCost = asyncMediaBaseCost(finalCost, task.RateMultiplier)
 	}
 
 	updated, err := s.taskRepo.MarkSucceeded(ctx, task.ID, imageURLs, cosURLs, finalCost)
@@ -431,7 +450,39 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 		return
 	}
 	if !updated {
-		// 已被其它路径终结（幂等）。
+		// 可能已被另一条轮询路径成功终结。回读任务并刷新当前对象，避免外层把旧的 running task 当失败处理。
+		current, getErr := s.taskRepo.GetByID(ctx, task.ID)
+		if getErr != nil {
+			logger.L().Warn("async_media.mark_succeeded_reload_failed", zap.Int64("task_id", task.ID), zap.Error(getErr))
+			return
+		}
+		if current == nil || current.Status != AsyncMediaStatusSucceeded {
+			status := ""
+			if current != nil {
+				status = current.Status
+			}
+			logger.L().Info("async_media.mark_succeeded_skipped_terminal", zap.Int64("task_id", task.ID), zap.String("current_status", status))
+			return
+		}
+		*task = *current
+		repairTotalCost := finalTotalCost
+		repairCost := task.FinalCost
+		if repairCost <= 0 {
+			repairCost = finalCost
+			if task.RateMultiplier > 0 {
+				repairTotalCost = asyncMediaBaseCost(repairCost, task.RateMultiplier)
+			}
+		}
+		repairImages := task.ImageURLs
+		if len(repairImages) == 0 {
+			repairImages = imageURLs
+		}
+		repairCos := task.CosURLs
+		if len(repairCos) == 0 {
+			repairCos = cosURLs
+		}
+		logger.L().Info("async_media.mark_succeeded_already_terminal", zap.Int64("task_id", task.ID), zap.String("request_id", task.InternalRequestID))
+		s.writeTerminalUsageLog(ctx, task, billingType, repairTotalCost, repairCost, amFloat64Ptr(accountRateMultiplier), BillingStatusCharged, repairImages, repairCos, imageOutputSizes)
 		return
 	}
 	task.Status = AsyncMediaStatusSucceeded
@@ -444,7 +495,7 @@ func (s *AsyncMediaService) markSucceeded(ctx context.Context, task *AsyncMediaT
 		s.refund(ctx, billingType, asyncMediaBillingContext(task), refundDelta)
 	}
 
-	s.writeTerminalUsageLog(ctx, task, billingType, finalCost, BillingStatusCharged, imageURLs, cosURLs)
+	s.writeTerminalUsageLog(ctx, task, billingType, finalTotalCost, finalCost, amFloat64Ptr(accountRateMultiplier), BillingStatusCharged, imageURLs, cosURLs, imageOutputSizes)
 }
 
 // markFailedAndRefund 失败终态：退还全部预扣、置 refunded/expired、终态写 usage_log（refunded）。
@@ -467,7 +518,7 @@ func (s *AsyncMediaService) markFailedAndRefund(ctx context.Context, task *Async
 	if task.HeldCost > 0 {
 		s.refund(ctx, billingType, asyncMediaBillingContext(task), task.HeldCost)
 	}
-	s.writeTerminalUsageLog(ctx, task, billingType, 0, BillingStatusRefunded, nil, nil)
+	s.writeTerminalUsageLog(ctx, task, billingType, 0, 0, nil, BillingStatusRefunded, nil, nil, nil)
 }
 
 // writeTerminalUsageLog 终态追加写一条 usage_log。
@@ -475,36 +526,49 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 	ctx context.Context,
 	task *AsyncMediaTask,
 	billingType int8,
-	cost float64,
+	totalCost float64,
+	actualCost float64,
+	accountRateMultiplier *float64,
 	billingStatus string,
-	imageURLs, cosURLs []string,
+	imageURLs, cosURLs, imageOutputSizes []string,
 ) {
+	outputMetadata := ResolveImageBillingSize("", imageOutputSizes)
+	imageCount := task.NumImages
+	if billingStatus == BillingStatusCharged && len(imageURLs) > 0 {
+		imageCount = len(imageURLs)
+	}
 	in := &TerminalUsageLogInput{
-		UserID:          task.UserID,
-		APIKeyID:        task.APIKeyID,
-		AccountID:       amDerefInt64(task.AccountID),
-		RequestID:       task.InternalRequestID,
-		OrganizationID:  task.OrganizationID,
-		PayerUserID:     task.PayerUserID,
-		BalanceSource:   task.BalanceSource,
-		AuthzGeneration: task.AuthzGeneration,
-		Model:           amDerefStr(task.UpstreamModel),
-		RequestedModel:  task.RequestedModel,
-		UpstreamModel:   amDerefStr(task.UpstreamModel),
-		GroupID:         task.GroupID,
-		ChannelID:       task.ChannelID,
-		TotalCost:       cost,
-		ActualCost:      cost,
-		RateMultiplier:  task.RateMultiplier,
-		BillingType:     billingType,
-		RequestType:     int16(RequestTypeSync),
-		ImageCount:      task.NumImages,
-		ImageSize:       amDerefStr(task.ImageSize),
-		BillingTier:     amDerefStr(task.SizeTier),
-		TaskID:          task.ID,
-		ImageURLs:       imageURLs,
-		CosURLs:         cosURLs,
-		BillingStatus:   billingStatus,
+		UserID:                task.UserID,
+		APIKeyID:              task.APIKeyID,
+		AccountID:             amDerefInt64(task.AccountID),
+		RequestID:             task.InternalRequestID,
+		OrganizationID:        task.OrganizationID,
+		PayerUserID:           task.PayerUserID,
+		BalanceSource:         task.BalanceSource,
+		AuthzGeneration:       task.AuthzGeneration,
+		Model:                 amDerefStr(task.UpstreamModel),
+		RequestedModel:        task.RequestedModel,
+		UpstreamModel:         amDerefStr(task.UpstreamModel),
+		GroupID:               task.GroupID,
+		ChannelID:             task.ChannelID,
+		TotalCost:             totalCost,
+		ActualCost:            actualCost,
+		RateMultiplier:        task.RateMultiplier,
+		AccountRateMultiplier: accountRateMultiplier,
+		BillingType:           billingType,
+		RequestType:           int16(RequestTypeSync),
+		ImageCount:            imageCount,
+		ImageSize:             asyncMediaUsageLogImageSize(task),
+		ImageInputSize:        amDerefStr(task.ImageSize),
+		ImageQuality:          amDerefStr(task.Quality),
+		ImageOutputSize:       outputMetadata.OutputSize,
+		ImageSizeSource:       asyncMediaUsageLogImageSizeSource(task),
+		ImageSizeBreakdown:    outputMetadata.Breakdown,
+		BillingTier:           asyncMediaUsageLogImageSize(task),
+		TaskID:                task.ID,
+		ImageURLs:             imageURLs,
+		CosURLs:               cosURLs,
+		BillingStatus:         billingStatus,
 
 		ClientIP:         amDerefStr(task.ClientIP),
 		UserAgent:        amDerefStr(task.UserAgent),
@@ -512,10 +576,39 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 		UpstreamEndpoint: amDerefStr(task.UpstreamEndpoint),
 		DurationMs:       asyncMediaDurationMs(task),
 	}
-	if _, err := s.taskRepo.InsertTerminalUsageLog(ctx, in); err != nil {
+	inserted, err := s.taskRepo.InsertTerminalUsageLog(ctx, in)
+	if err != nil {
 		logger.L().Warn("async_media.terminal_usage_log_failed",
-			zap.Int64("task_id", task.ID), zap.String("billing_status", billingStatus), zap.Error(err))
+			zap.Int64("task_id", task.ID),
+			zap.String("request_id", task.InternalRequestID),
+			zap.String("billing_status", billingStatus),
+			zap.Float64("total_cost", totalCost),
+			zap.Float64("actual_cost", actualCost),
+			zap.String("image_input_size", in.ImageInputSize),
+			zap.String("image_output_size", in.ImageOutputSize),
+			zap.Error(err))
 		return
+	}
+	if inserted {
+		logger.L().Info("async_media.terminal_usage_log_written",
+			zap.Int64("task_id", task.ID),
+			zap.String("request_id", task.InternalRequestID),
+			zap.String("billing_status", billingStatus),
+			zap.Float64("total_cost", totalCost),
+			zap.Float64("actual_cost", actualCost),
+			zap.String("image_input_size", in.ImageInputSize),
+			zap.String("image_output_size", in.ImageOutputSize),
+			zap.Int("image_count", len(imageURLs)))
+	} else {
+		logger.L().Warn("async_media.terminal_usage_log_conflict_or_skipped",
+			zap.Int64("task_id", task.ID),
+			zap.String("request_id", task.InternalRequestID),
+			zap.String("billing_status", billingStatus),
+			zap.Float64("total_cost", totalCost),
+			zap.Float64("actual_cost", actualCost),
+			zap.String("image_input_size", in.ImageInputSize),
+			zap.String("image_output_size", in.ImageOutputSize),
+			zap.Int("image_count", len(imageURLs)))
 	}
 	if billingStatus == BillingStatusCharged && s.billingContextResolver != nil {
 		billing := &BillingContext{ConsumerUserID: task.UserID, OrganizationID: task.OrganizationID, PayerUserID: asyncMediaPayerID(task), BalanceSource: amDerefStr(task.BalanceSource)}
@@ -523,6 +616,25 @@ func (s *AsyncMediaService) writeTerminalUsageLog(
 			logger.L().Warn("async_media.spend_limit_alert_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		}
 	}
+}
+
+func asyncMediaUsageLogImageSize(task *AsyncMediaTask) string {
+	if task == nil {
+		return ImageBillingSize2K
+	}
+	if tier, ok := ClassifyImageBillingTier(amDerefStr(task.SizeTier)); ok {
+		return tier
+	}
+	return NormalizeImageBillingTierOrDefault(amDerefStr(task.ImageSize))
+}
+
+func asyncMediaUsageLogImageSizeSource(task *AsyncMediaTask) string {
+	if task != nil {
+		if _, ok := ClassifyImageBillingTier(amDerefStr(task.ImageSize)); ok {
+			return ImageSizeSourceInput
+		}
+	}
+	return ImageSizeSourceDefault
 }
 
 func asyncMediaPayerID(task *AsyncMediaTask) int64 {
@@ -548,7 +660,15 @@ func asyncMediaBillingContext(task *AsyncMediaTask) *BillingContext {
 	}
 }
 
-func amInt64Ptr(value int64) *int64 { return &value }
+func amInt64Ptr(value int64) *int64       { return &value }
+func amFloat64Ptr(value float64) *float64 { return &value }
+
+func asyncMediaBaseCost(actualCost, rateMultiplier float64) float64 {
+	if rateMultiplier > 0 {
+		return actualCost / rateMultiplier
+	}
+	return actualCost
+}
 
 // estimateCost 通过统一计费入口估算 (size × quality × count) 的实际费用。
 //
@@ -564,12 +684,12 @@ func (s *AsyncMediaService) estimateCost(
 	ctx context.Context,
 	model string, groupID *int64,
 	rawSize, sizeTier, quality string, count int, rateMultiplier float64,
-) (float64, error) {
+) (float64, float64, error) {
 	if s.billing == nil {
-		return 0, fmt.Errorf("%w: billing service not initialized", ErrAsyncMediaPricingMissing)
+		return 0, 0, fmt.Errorf("%w: billing service not initialized", ErrAsyncMediaPricingMissing)
 	}
 	if s.resolver == nil {
-		return 0, fmt.Errorf("%w: pricing resolver not initialized", ErrAsyncMediaPricingMissing)
+		return 0, 0, fmt.Errorf("%w: pricing resolver not initialized", ErrAsyncMediaPricingMissing)
 	}
 	if count <= 0 {
 		count = 1
@@ -589,17 +709,17 @@ func (s *AsyncMediaService) estimateCost(
 				Model:          model,
 				GroupID:        groupID,
 				RequestCount:   count,
-				SizeTier:       sizeTier,
+				SizeTier:       imageBillingSizeOrTier(rawSize),
 				Quality:        quality,
 				RateMultiplier: rateMultiplier,
 				Resolver:       s.resolver,
 				Resolved:       resolved,
 			})
 			if err != nil && !errors.Is(err, ErrModelPricingUnavailable) {
-				return 0, err
+				return 0, 0, err
 			}
 			if err == nil && breakdown != nil && (rateMultiplier <= 0 || breakdown.ActualCost > 0) {
-				return breakdown.ActualCost, nil
+				return breakdown.TotalCost, breakdown.ActualCost, nil
 			}
 			// 渠道定价计算未拿到正向费用：继续走分组兜底（沉默回退，与 openai 路径一致）。
 		}
@@ -608,21 +728,24 @@ func (s *AsyncMediaService) estimateCost(
 	// 路径 2：分组二维价格矩阵兜底。
 	groupCfg, err := s.buildGroupImagePriceConfig(ctx, groupID, rawSize, quality)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if groupCfg == nil {
-		return 0, fmt.Errorf("%w: model=%s group=%v no channel pricing and group not loadable",
+		return 0, 0, fmt.Errorf("%w: model=%s group=%v no channel pricing and group not loadable",
 			ErrAsyncMediaPricingMissing, model, groupID)
 	}
-	breakdown := s.billing.CalculateImageCostWithQuality(model, sizeTier, quality, count, groupCfg, rateMultiplier)
+	breakdown, err := s.billing.CalculateImageCostWithQualityValidated(model, imageBillingSizeOrTier(rawSize), quality, count, groupCfg, rateMultiplier)
+	if err != nil {
+		return 0, 0, err
+	}
 	if breakdown == nil {
-		return 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, model)
+		return 0, 0, fmt.Errorf("%w: model=%s empty group breakdown", ErrAsyncMediaPricingMissing, model)
 	}
 	if rateMultiplier > 0 && breakdown.ActualCost <= 0 {
-		return 0, fmt.Errorf("%w: model=%s size=%s quality=%s group fallback zero cost",
+		return 0, 0, fmt.Errorf("%w: model=%s size=%s quality=%s group fallback zero cost",
 			ErrAsyncMediaPricingMissing, model, sizeTier, quality)
 	}
-	return breakdown.ActualCost, nil
+	return breakdown.TotalCost, breakdown.ActualCost, nil
 }
 
 // buildGroupImagePriceConfig 拉取分组并构造带原始分辨率/quality 的 ImagePriceConfig，
@@ -711,17 +834,51 @@ func (s *AsyncMediaService) resolveUpstreamModel(account *Account, requestedMode
 // 缺失时按是否为编辑请求选择内置默认 slug）。抽成包级函数供异步执行与选号阶段共用，
 // 确保「选号时的定价预判」与「提交时的实际计费」使用同一上游模型。
 func resolveFalUpstreamModel(account *Account, requestedModel string, isEdit bool) string {
+	var mapping map[string]string
 	if account != nil {
-		if mapping := account.GetModelMapping(); mapping != nil {
-			if v := strings.TrimSpace(mapping[requestedModel]); v != "" {
-				return v
-			}
+		mapping = account.GetModelMapping()
+	}
+	mapped := strings.TrimSpace(mapping[requestedModel])
+	if !isEdit {
+		if mapped != "" {
+			return mapped
+		}
+		return domain.FalSlugTextToImage
+	}
+
+	// 直接映射本身已经是 edit endpoint 时原样使用。
+	if _, api := falEndpointModelAPI(mapped); strings.EqualFold(api, FalAPIEdit) {
+		return mapped
+	}
+
+	// /images/edits 可能仍以基础模型名请求；从同一账号映射中寻找同模型的 edit endpoint。
+	targetModel, _ := falEndpointModelAPI(mapped)
+	if targetModel == "" {
+		targetModel, _ = falEndpointModelAPI(requestedModel)
+	}
+	bestKey := ""
+	editEndpoint := ""
+	for key, endpoint := range mapping {
+		model, api := falEndpointModelAPI(endpoint)
+		if !strings.EqualFold(api, FalAPIEdit) || !strings.EqualFold(model, targetModel) {
+			continue
+		}
+		if bestKey == "" || key < bestKey {
+			bestKey = key
+			editEndpoint = strings.TrimSpace(endpoint)
 		}
 	}
-	if isEdit {
-		return domain.FalSlugImageEdit
+	if editEndpoint != "" {
+		return editEndpoint
 	}
-	return domain.FalSlugTextToImage
+
+	// 自定义映射只有基础 endpoint 时，保持其 organization/model 并切换到 edit API。
+	if mapped != "" {
+		if _, api := falEndpointModelAPI(mapped); api == "" {
+			return strings.TrimRight(mapped, "/") + "/" + FalAPIEdit
+		}
+	}
+	return domain.FalSlugImageEdit
 }
 
 // newClient 基于账号凭证与代理构建 fal 客户端。
@@ -740,19 +897,47 @@ func (s *AsyncMediaService) newClient(account *Account) (*fal.Client, error) {
 
 // ----- helpers -----
 
-func extractFalImageURLs(resp *fal.Response) []string {
+func extractFalImageResult(resp *fal.Response) ([]string, []string) {
 	if resp == nil {
-		return nil
+		return nil, nil
 	}
-	out := make([]string, 0, len(resp.Images))
+	urls := make([]string, 0, len(resp.Images))
+	sizes := make([]string, 0, len(resp.Images))
 	for _, img := range resp.Images {
 		if u := strings.TrimSpace(img.URL); u != "" {
-			out = append(out, u)
+			urls = append(urls, u)
+			size := ""
+			if img.Width > 0 && img.Height > 0 {
+				size = fmt.Sprintf("%dx%d", img.Width, img.Height)
+			}
+			sizes = append(sizes, size)
+		}
+	}
+	return urls, sizes
+}
+
+func mergeImageOutputSizes(current, fallback []string, count int) []string {
+	if count < 0 {
+		count = 0
+	}
+	out := make([]string, count)
+	copy(out, current)
+	for i := 0; i < count && i < len(fallback); i++ {
+		if strings.TrimSpace(out[i]) == "" {
+			out[i] = strings.TrimSpace(fallback[i])
 		}
 	}
 	return out
 }
 
+func hasMissingImageOutputSize(sizes []string) bool {
+	for _, size := range sizes {
+		if strings.TrimSpace(size) == "" {
+			return true
+		}
+	}
+	return false
+}
 func amStrPtr(s string) *string {
 	if s == "" {
 		return nil

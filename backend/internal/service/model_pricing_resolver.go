@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 )
@@ -391,20 +392,55 @@ func (r *ModelPricingResolver) GetRequestTierPriceWithQuality(resolved *Resolved
 	if resolved == nil {
 		return 0
 	}
+	tierLabel = strings.TrimSpace(tierLabel)
+	quality = strings.TrimSpace(quality)
 	if quality != "" {
 		for _, tier := range resolved.RequestTiers {
-			if tier.TierLabel == tierLabel && tier.Quality == quality && tier.PerRequestPrice != nil {
+			if strings.EqualFold(strings.TrimSpace(tier.TierLabel), tierLabel) &&
+				strings.EqualFold(strings.TrimSpace(tier.Quality), quality) && tier.PerRequestPrice != nil {
 				return *tier.PerRequestPrice
 			}
 		}
 	}
 	// 回退：尺寸档位匹配且 quality 维度为空（存量单维定价）
 	for _, tier := range resolved.RequestTiers {
-		if tier.TierLabel == tierLabel && tier.Quality == "" && tier.PerRequestPrice != nil {
+		if strings.EqualFold(strings.TrimSpace(tier.TierLabel), tierLabel) &&
+			strings.TrimSpace(tier.Quality) == "" && tier.PerRequestPrice != nil {
 			return *tier.PerRequestPrice
 		}
 	}
 	return 0
+}
+
+// GetImageTierPrice validates dimensions against the configured 1K/2K/4K
+// thresholds, then returns the matching quality-specific or fallback price.
+func (r *ModelPricingResolver) GetImageTierPrice(resolved *ResolvedPricing, dimensions ImageDimensions, quality string) (float64, string, error) {
+	if resolved == nil {
+		return 0, "", fmt.Errorf("image pricing is unavailable")
+	}
+	tierByLabel := make(map[string]ImagePricingTier, 3)
+	for _, interval := range resolved.RequestTiers {
+		label := imageTierLabel(interval.TierLabel)
+		if label == "" {
+			continue
+		}
+		if _, exists := tierByLabel[label]; !exists {
+			tierByLabel[label] = ImagePricingTier{Label: label, Resolution: interval.Resolution}
+		}
+	}
+	tiers := make([]ImagePricingTier, 0, 3)
+	for _, label := range []string{"1K", "2K", "4K"} {
+		if tier, exists := tierByLabel[label]; exists {
+			tiers = append(tiers, tier)
+		} else {
+			tiers = append(tiers, ImagePricingTier{Label: label, Resolution: defaultImageTierResolutions[label]})
+		}
+	}
+	matched, err := MatchImagePricingTier(dimensions, tiers)
+	if err != nil {
+		return 0, "", err
+	}
+	return r.GetRequestTierPriceWithQuality(resolved, matched.Label, NormalizeImageQuality(quality)), matched.Label, nil
 }
 
 // GetRequestTierPriceByContext 根据 context token 数获取按次价格

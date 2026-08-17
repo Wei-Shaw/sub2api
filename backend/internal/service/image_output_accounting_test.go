@@ -4,6 +4,40 @@ import (
 	"testing"
 )
 
+func TestOpenAIImageOutputCounter_CollectsQuality(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "image output item",
+			body: `{"output":[{"id":"ig_1","type":"image_generation_call","result":"image-data","quality":"high"}]}`,
+			want: ImageQualityHigh,
+		},
+		{
+			name: "response tool fallback",
+			body: `{"response":{"tools":[{"type":"image_generation","quality":"low"}],"output":[{"id":"ig_1","type":"image_generation_call","result":"image-data"}]}}`,
+			want: ImageQualityLow,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := collectOpenAIResponseImageQualityFromJSONBytes([]byte(tt.body)); got != tt.want {
+				t.Fatalf("quality = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	sseBody := `data: {"type":"response.completed","response":{"tools":[{"type":"image_generation","quality":"medium"}],"output":[{"id":"ig_1","type":"image_generation_call","result":"image-data"}]}}
+
+data: [DONE]`
+	if got := collectOpenAIImageQualityFromSSEBody(sseBody); got != ImageQualityMedium {
+		t.Fatalf("SSE quality = %q, want %q", got, ImageQualityMedium)
+	}
+}
+
 func TestOpenAIImageOutputCounter_TextOnlyMessage(t *testing.T) {
 	// Simulate a text-only response from /v1/responses
 	// The response.output_item.done event for a text message

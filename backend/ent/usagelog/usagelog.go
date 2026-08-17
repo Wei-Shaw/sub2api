@@ -100,6 +100,8 @@ const (
 	FieldImageSize = "image_size"
 	// FieldImageInputSize holds the string denoting the image_input_size field in the database.
 	FieldImageInputSize = "image_input_size"
+	// FieldImageQuality holds the string denoting the image_quality field in the database.
+	FieldImageQuality = "image_quality"
 	// FieldImageOutputSize holds the string denoting the image_output_size field in the database.
 	FieldImageOutputSize = "image_output_size"
 	// FieldImageSizeSource holds the string denoting the image_size_source field in the database.
@@ -219,6 +221,7 @@ var Columns = []string{
 	FieldImageCount,
 	FieldImageSize,
 	FieldImageInputSize,
+	FieldImageQuality,
 	FieldImageOutputSize,
 	FieldImageSizeSource,
 	FieldImageSizeBreakdown,
@@ -304,6 +307,8 @@ var (
 	ImageSizeValidator func(string) error
 	// ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	ImageInputSizeValidator func(string) error
+	// ImageQualityValidator is a validator for the "image_quality" field. It is called by the builders before save.
+	ImageQualityValidator func(string) error
 	// ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
 	ImageOutputSizeValidator func(string) error
 	// ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
@@ -541,6 +546,11 @@ func ByImageSize(opts ...sql.OrderTermOption) OrderOption {
 // ByImageInputSize orders the results by the image_input_size field.
 func ByImageInputSize(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageInputSize, opts...).ToFunc()
+}
+
+// ByImageQuality orders the results by the image_quality field.
+func ByImageQuality(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageQuality, opts...).ToFunc()
 }
 
 // ByImageOutputSize orders the results by the image_output_size field.

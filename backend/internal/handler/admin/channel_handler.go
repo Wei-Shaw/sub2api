@@ -74,6 +74,7 @@ type pricingIntervalRequest struct {
 	MinTokens       int      `json:"min_tokens"`
 	MaxTokens       *int     `json:"max_tokens"`
 	TierLabel       string   `json:"tier_label"`
+	Resolution      string   `json:"resolution"`
 	Quality         string   `json:"quality"`
 	InputPrice      *float64 `json:"input_price"`
 	OutputPrice     *float64 `json:"output_price"`
@@ -128,6 +129,7 @@ type pricingIntervalResponse struct {
 	MinTokens       int      `json:"min_tokens"`
 	MaxTokens       *int     `json:"max_tokens"`
 	TierLabel       string   `json:"tier_label,omitempty"`
+	Resolution      string   `json:"resolution,omitempty"`
 	Quality         string   `json:"quality,omitempty"`
 	InputPrice      *float64 `json:"input_price"`
 	OutputPrice     *float64 `json:"output_price"`
@@ -239,6 +241,7 @@ func intervalToResponse(iv service.PricingInterval) pricingIntervalResponse {
 		MinTokens:       iv.MinTokens,
 		MaxTokens:       iv.MaxTokens,
 		TierLabel:       iv.TierLabel,
+		Resolution:      iv.Resolution,
 		Quality:         iv.Quality,
 		InputPrice:      iv.InputPrice,
 		OutputPrice:     iv.OutputPrice,
@@ -263,6 +266,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 				MinTokens:       iv.MinTokens,
 				MaxTokens:       iv.MaxTokens,
 				TierLabel:       iv.TierLabel,
+				Resolution:      iv.Resolution,
 				Quality:         iv.Quality,
 				InputPrice:      iv.InputPrice,
 				OutputPrice:     iv.OutputPrice,

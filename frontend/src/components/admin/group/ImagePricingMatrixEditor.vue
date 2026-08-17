@@ -13,11 +13,17 @@ import {
 
 interface Props {
   modelValue: EditableImagePricingMatrix
+  resolution1k: string
+  resolution2k: string
+  resolution4k: string
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: EditableImagePricingMatrix): void
+  (e: 'update:resolution1k', value: string): void
+  (e: 'update:resolution2k', value: string): void
+  (e: 'update:resolution4k', value: string): void
 }>()
 
 const { t } = useI18n()
@@ -33,6 +39,18 @@ function cellId(tier: string, quality: string): string {
 
 function isInvalid(tier: string, quality: string): boolean {
   return invalidCells.value.has(cellId(tier, quality))
+}
+
+function resolutionFor(tier: string): string {
+  if (tier === '1K') return props.resolution1k
+  if (tier === '2K') return props.resolution2k
+  return props.resolution4k
+}
+
+function updateResolution(tier: string, value: string) {
+  if (tier === '1K') emit('update:resolution1k', value)
+  else if (tier === '2K') emit('update:resolution2k', value)
+  else emit('update:resolution4k', value)
 }
 
 function updateCell(tier: string, quality: string, raw: string) {
@@ -104,11 +122,14 @@ function clearRow(tier: string) {
     </div>
 
     <div class="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
-      <table class="w-full min-w-[480px] text-sm">
+      <table class="w-full min-w-[640px] text-sm">
         <thead class="bg-gray-50 dark:bg-gray-800">
           <tr>
             <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
-              {{ t('admin.groups.imagePricing.matrixSizeHeader') }}
+              {{ t('admin.groups.imagePricing.matrixTierHeader') }}
+            </th>
+            <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+              {{ t('admin.groups.imagePricing.matrixResolutionHeader') }}
             </th>
             <th
               v-for="quality in qualities"
@@ -129,6 +150,15 @@ function clearRow(tier: string) {
           >
             <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-700 dark:text-gray-200">
               {{ tier }}
+            </td>
+            <td class="min-w-36 px-2 py-1">
+              <input
+                type="text"
+                :value="resolutionFor(tier)"
+                class="input w-full font-mono text-sm"
+                :placeholder="tier === '1K' ? '1024x1024' : tier === '2K' ? '2048x2048' : '4096x4096'"
+                @input="(e) => updateResolution(tier, (e.target as HTMLInputElement).value)"
+              />
             </td>
             <td
               v-for="quality in qualities"

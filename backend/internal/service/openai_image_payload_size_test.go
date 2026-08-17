@@ -186,7 +186,7 @@ func TestDecodeOpenAIImageOutputSizes_NilGroupSafe(t *testing.T) {
 	require.Equal(t, []string{""}, result.ImageOutputSizes)
 }
 
-// (h) 解码后 size 进入 6 档归档与矩阵命中端到端：
+// (h) 解码后 size 进入三档阈值匹配与矩阵命中端到端：
 // ApplyOpenAIImageBillingResolution 在解码后会基于真实 size 归档，并把 Source 标为 output_decoded。
 func TestApplyOpenAIImageBillingResolution_WithDecodingEndToEnd(t *testing.T) {
 	b64 := makeTestPNG(t, 1920, 1080)

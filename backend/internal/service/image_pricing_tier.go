@@ -1,91 +1,207 @@
 package service
 
 import (
+	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 )
 
-// ===== Image pricing tier (6 档分辨率) =====
-//
-// 见 spec media-prepay-billing「图片定价矩阵」与 design.md D1：
-// 计费按图片像素总数（width*height）向上取最近档；
-// 所有 > 3840x2160 的输入封顶到 3840x2160（4K UHD）。
-//
-// 6 档代表分辨率与像素总数（按像素总数升序）：
-//
-//	1024x768   ->   786432
-//	1024x1024  ->  1048576
-//	1024x1536  ->  1572864
-//	1920x1080  ->  2073600
-//	2560x1440  ->  3686400
-//	3840x2160  ->  8294400  (4K 封顶档)
+const MaxImageAspectRatio = 3
 
-const (
-	ImagePricingTier1024x768  = "1024x768"
-	ImagePricingTier1024x1024 = "1024x1024"
-	ImagePricingTier1024x1536 = "1024x1536"
-	ImagePricingTier1920x1080 = "1920x1080"
-	ImagePricingTier2560x1440 = "2560x1440"
-	ImagePricingTier3840x2160 = "3840x2160"
-)
-
-type imagePricingTierEntry struct {
-	key    string
-	width  int
-	height int
-	pixels int64
+var defaultImageTierResolutions = map[string]string{
+	"1K": "1024x1024",
+	"2K": "2048x2048",
+	"4K": "4096x4096",
 }
 
-// imagePricingTiersAsc 按像素总数升序，向上取档时遍历此切片。
-var imagePricingTiersAsc = []imagePricingTierEntry{
-	{ImagePricingTier1024x768, 1024, 768, 1024 * 768},
-	{ImagePricingTier1024x1024, 1024, 1024, 1024 * 1024},
-	{ImagePricingTier1024x1536, 1024, 1536, 1024 * 1536},
-	{ImagePricingTier1920x1080, 1920, 1080, 1920 * 1080},
-	{ImagePricingTier2560x1440, 2560, 1440, 2560 * 1440},
-	{ImagePricingTier3840x2160, 3840, 2160, 3840 * 2160},
+type ImageDimensions struct {
+	Width  int `json:"width"`
+	Height int `json:"height"`
 }
 
-// ClassifyImagePricingTier6 把任意 (width, height) 映射到 6 档之一。
-//
-// 规则（见 design.md D1）：
-//  1. 输入归一为正向尺寸（取 max/min 顺序无关，仅看像素总数）。
-//  2. 若 width<=0 或 height<=0，返回空串和 false（让调用方自行决定回退）。
-//  3. 否则按 imagePricingTiersAsc 顺序，找到首个 pixels >= 输入像素的档位。
-//  4. 若超出最大档（3840x2160），封顶到 3840x2160。
-func ClassifyImagePricingTier6(width, height int) (string, bool) {
-	if width <= 0 || height <= 0 {
-		return "", false
+func (d ImageDimensions) ShortSide() int {
+	if d.Width < d.Height {
+		return d.Width
 	}
-	pixels := int64(width) * int64(height)
-	for _, tier := range imagePricingTiersAsc {
-		if pixels <= tier.pixels {
-			return tier.key, true
+	return d.Height
+}
+
+func (d ImageDimensions) LongSide() int {
+	if d.Width > d.Height {
+		return d.Width
+	}
+	return d.Height
+}
+
+func (d ImageDimensions) Pixels() int64 {
+	return int64(d.Width) * int64(d.Height)
+}
+
+func (d ImageDimensions) String() string {
+	return fmt.Sprintf("%dx%d", d.Width, d.Height)
+}
+
+func ParseImageDimensions(value string) (ImageDimensions, error) {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(value)), "x")
+	if len(parts) != 2 {
+		return ImageDimensions{}, fmt.Errorf("resolution must use WIDTHxHEIGHT format")
+	}
+	width, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || width <= 0 {
+		return ImageDimensions{}, fmt.Errorf("resolution width must be a positive integer")
+	}
+	height, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || height <= 0 {
+		return ImageDimensions{}, fmt.Errorf("resolution height must be a positive integer")
+	}
+	return ImageDimensions{Width: width, Height: height}, nil
+}
+
+func ParseImageRequestDimensions(value string) (ImageDimensions, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "square":
+		return ImageDimensions{Width: 512, Height: 512}, nil
+	case "square_hd":
+		return ImageDimensions{Width: 1024, Height: 1024}, nil
+	case "portrait_4_3":
+		return ImageDimensions{Width: 768, Height: 1024}, nil
+	case "portrait_16_9":
+		return ImageDimensions{Width: 576, Height: 1024}, nil
+	case "landscape_4_3":
+		return ImageDimensions{Width: 1024, Height: 768}, nil
+	case "landscape_16_9":
+		return ImageDimensions{Width: 1024, Height: 576}, nil
+	default:
+		return ParseImageDimensions(value)
+	}
+}
+
+// ImagePricingTier uses Resolution as a bounding box. A request matches the
+// first tier whose short and long edges both fit within that box.
+type ImagePricingTier struct {
+	Label      string
+	Resolution string
+	Price      *float64
+}
+
+type normalizedImagePricingTier struct {
+	ImagePricingTier
+	dimensions ImageDimensions
+}
+
+func MatchImagePricingTier(dimensions ImageDimensions, tiers []ImagePricingTier) (*ImagePricingTier, error) {
+	if dimensions.Width <= 0 || dimensions.Height <= 0 {
+		return nil, fmt.Errorf("image width and height must be positive")
+	}
+	shortSide := dimensions.ShortSide()
+	longSide := dimensions.LongSide()
+	if int64(longSide) > int64(shortSide)*MaxImageAspectRatio {
+		return nil, fmt.Errorf("image aspect ratio must not exceed 1:%d", MaxImageAspectRatio)
+	}
+
+	normalized, err := normalizeImagePricingTiers(tiers)
+	if err != nil {
+		return nil, err
+	}
+	if len(normalized) == 0 {
+		return nil, fmt.Errorf("no image pricing tiers configured")
+	}
+
+	last := normalized[len(normalized)-1]
+	if dimensions.Pixels() > last.dimensions.Pixels() {
+		return nil, fmt.Errorf("image total pixels exceed the %s tier limit (%s)", last.Label, last.dimensions.String())
+	}
+	for i := range normalized {
+		tier := &normalized[i]
+		if shortSide > tier.dimensions.ShortSide() || longSide > tier.dimensions.LongSide() {
+			continue
+		}
+		matched := tier.ImagePricingTier
+		return &matched, nil
+	}
+	return nil, fmt.Errorf("image dimensions exceed the %s tier limit (%s)", last.Label, last.dimensions.String())
+}
+
+func normalizeImagePricingTiers(tiers []ImagePricingTier) ([]normalizedImagePricingTier, error) {
+	normalized := make([]normalizedImagePricingTier, 0, len(tiers))
+	seen := make(map[string]struct{}, len(tiers))
+	for _, tier := range tiers {
+		label := imageTierLabel(tier.Label)
+		if label == "" {
+			return nil, fmt.Errorf("image pricing tier must be one of 1K, 2K, or 4K")
+		}
+		if _, exists := seen[label]; exists {
+			return nil, fmt.Errorf("duplicate image pricing tier %s", label)
+		}
+		seen[label] = struct{}{}
+		resolution := strings.TrimSpace(tier.Resolution)
+		if resolution == "" {
+			resolution = defaultImageTierResolutions[label]
+		}
+		dimensions, err := ParseImageDimensions(resolution)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resolution for image pricing tier %s: %w", label, err)
+		}
+		normalized = append(normalized, normalizedImagePricingTier{
+			ImagePricingTier: ImagePricingTier{Label: label, Resolution: dimensions.String(), Price: tier.Price},
+			dimensions:       dimensions,
+		})
+	}
+	sort.SliceStable(normalized, func(i, j int) bool {
+		return imagePricingTierRank(normalized[i].Label) < imagePricingTierRank(normalized[j].Label)
+	})
+	for i := 1; i < len(normalized); i++ {
+		prev := normalized[i-1].dimensions
+		current := normalized[i].dimensions
+		if current.ShortSide() < prev.ShortSide() || current.LongSide() < prev.LongSide() || current.Pixels() <= prev.Pixels() {
+			return nil, fmt.Errorf("image pricing tier resolution bounds must not decrease and total pixels must increase")
 		}
 	}
-	// 超出最大档，封顶到 4K UHD
-	return ImagePricingTier3840x2160, true
+	return normalized, nil
 }
 
-// ParseImagePricingTier6 接受 "WxH"/"WIDTHxHEIGHT" 形式的字符串，
-// 返回归一后的 6 档 tier_key。识别失败返回空串和 false。
-//
-// 同时兼容直接传入已经是 tier_key 的字符串（如 "1024x1024"）—— 此时
-// 解析后再次走 ClassifyImagePricingTier6 会幂等命中自身档位。
-func ParseImagePricingTier6(size string) (string, bool) {
-	width, height, ok := parseImageBillingDimensions(size)
-	if !ok {
-		return "", false
+func imagePricingTierRank(label string) int {
+	switch imageTierLabel(label) {
+	case "1K":
+		return 0
+	case "2K":
+		return 1
+	case "4K":
+		return 2
+	default:
+		return 3
 	}
-	return ClassifyImagePricingTier6(width, height)
 }
 
-// ===== Image quality 归一 =====
-//
-// 见 spec D2：客户端可能传 "low"/"medium"/"high"/"auto"/空串/任意大小写。
-// 计费层归一规则：
-//   - "auto"、空串、未识别值 -> "high"（auto 默认按 high 档计费，与
-//     design.md「Q3 auto 默认算 high」一致）
-//   - "low"/"medium"/"high" -> 自身（小写）
+func imageTierLabel(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "1K":
+		return "1K"
+	case "2K":
+		return "2K"
+	case "4K":
+		return "4K"
+	default:
+		return ""
+	}
+}
+
+func normalizeGroupImageTierResolutions(oneK, twoK, fourK string) ([3]string, error) {
+	normalized, err := normalizeImagePricingTiers([]ImagePricingTier{
+		{Label: "1K", Resolution: oneK},
+		{Label: "2K", Resolution: twoK},
+		{Label: "4K", Resolution: fourK},
+	})
+	if err != nil {
+		return [3]string{}, err
+	}
+	byLabel := make(map[string]string, len(normalized))
+	for _, tier := range normalized {
+		byLabel[tier.Label] = tier.Resolution
+	}
+	return [3]string{byLabel["1K"], byLabel["2K"], byLabel["4K"]}, nil
+}
 
 const (
 	ImageQualityLow    = "low"
@@ -102,22 +218,14 @@ func NormalizeImageQuality(q string) string {
 	case ImageQualityHigh:
 		return ImageQualityHigh
 	default:
-		// auto / "" / 未识别 -> high
 		return ImageQualityHigh
 	}
 }
 
-// SortedImagePricingTiers 返回 6 档按像素升序排列的副本，
-// 仅供前端/管理面板渲染或测试断言时使用。
 func SortedImagePricingTiers() []string {
-	out := make([]string, 0, len(imagePricingTiersAsc))
-	for _, tier := range imagePricingTiersAsc {
-		out = append(out, tier.key)
-	}
-	return out
+	return []string{"1K", "2K", "4K"}
 }
 
-// SortedImageQualities 返回 quality 三档按 low->high 顺序排列的副本。
 func SortedImageQualities() []string {
 	return []string{ImageQualityLow, ImageQualityMedium, ImageQualityHigh}
 }

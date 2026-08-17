@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 const responsesImageStatusKeyPrefix = "gen_img:"
@@ -101,5 +103,18 @@ func (c *responsesImageStatusCache) SetResponsesImageStatus(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	return c.rdb.Set(ctx, ResponsesImageStatusKey(status.RequestID), payload, ttl).Err()
+	key := ResponsesImageStatusKey(status.RequestID)
+	if err := c.rdb.Set(ctx, key, payload, ttl).Err(); err != nil {
+		return err
+	}
+	logger.L().Info("responses.image_status.redis_set",
+		zap.String("component", "repository.responses_image_status_cache"),
+		zap.String("key", key),
+		zap.String("request_id", strings.TrimSpace(status.RequestID)),
+		zap.String("status", status.Status),
+		zap.Int("progress", status.Progress),
+		zap.Duration("ttl", ttl),
+		zap.ByteString("payload", payload),
+	)
+	return nil
 }

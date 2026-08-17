@@ -81,3 +81,21 @@ func TestGatewayServiceGetUserGroupRateMultiplier_FallbacksAndUsesExistingResolv
 	require.Equal(t, rate, got)
 	require.Equal(t, 1, repo.calls)
 }
+
+func TestOpenAIGatewayServiceResolveImageRateMultiplier(t *testing.T) {
+	groupID := int64(202)
+	apiKey := &APIKey{GroupID: &groupID, Group: &Group{ID: groupID, RateMultiplier: 0.2}}
+
+	svc := &OpenAIGatewayService{}
+	require.InDelta(t, 0.2, svc.ResolveImageRateMultiplier(context.Background(), 101, apiKey), 1e-12)
+
+	userRate := 0.3
+	svc.userGroupRateResolver = newUserGroupRateResolver(
+		&userGroupRateResolverRepoStub{rate: &userRate}, nil, time.Minute, nil, "service.openai_gateway",
+	)
+	require.InDelta(t, 0.3, svc.ResolveImageRateMultiplier(context.Background(), 101, apiKey), 1e-12)
+
+	apiKey.Group.ImageRateIndependent = true
+	apiKey.Group.ImageRateMultiplier = 0.4
+	require.InDelta(t, 0.4, svc.ResolveImageRateMultiplier(context.Background(), 101, apiKey), 1e-12)
+}

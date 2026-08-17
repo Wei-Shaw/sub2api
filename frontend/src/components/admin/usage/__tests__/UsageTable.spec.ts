@@ -13,7 +13,14 @@ vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
 vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
 
 vi.mock('@/composables/useClipboard', () => ({
-  useClipboard: () => ({ copyToClipboard: vi.fn(), copied: { value: false } }),
+  useClipboard: () => ({
+    copyToClipboard: async (text: string, successMessage?: string) => {
+      await navigator.clipboard.writeText(text)
+      appStoreMocks.showSuccess(successMessage)
+      return true
+    },
+    copied: { value: false },
+  }),
 }))
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -46,6 +53,14 @@ const messages: Record<string, string> = {
   'usage.imageCount': 'Image count',
   'usage.imageBillingSize': 'Billing size',
   'usage.imageInputSize': 'Input size',
+  'usage.imageQuality': 'Quality',
+  'usage.imageDetails': 'Image details',
+  'usage.imageRequestParameters': 'Request parameters',
+  'usage.imageRequestResolution': 'Requested resolution',
+  'usage.imageResultAndBilling': 'Result and billing',
+  'usage.imageParameterNotRecorded': 'Not recorded',
+  'usage.details': 'Details',
+  'usage.requestId': 'Request ID',
   'usage.imageOutputSize': 'Output size',
   'usage.imageSizeSource': 'Size source',
   'usage.imageSizeBreakdown': 'Size breakdown',
@@ -121,9 +136,21 @@ const baseImageRow = {
   image_count: 2,
   image_size: '2K',
   image_input_size: null,
+  image_quality: null,
   image_output_size: null,
   image_size_source: null,
   image_size_breakdown: null,
+}
+
+const DataTableStubWithResult = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id">
+        <slot name="cell-result" :row="row" />
+      </div>
+    </div>
+  `,
 }
 
 describe('admin UsageTable tooltip', () => {
@@ -479,6 +506,73 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Per-image price')
     expect(text).toContain('not recorded')
     expect(text).not.toContain('(2K)')
+  })
+
+  it('opens image request details from the result column', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-image-details',
+          inbound_endpoint: '/v1/images/generations',
+          image_input_size: '3840x2160',
+          image_quality: 'high',
+          image_output_size: '3840x2160',
+          image_size: '4K',
+          image_size_source: 'output',
+          image_size_breakdown: { '4K': 2 },
+          cos_urls: ['https://cdn.example.com/result.png'],
+        }],
+        loading: false,
+        columns: [{ key: 'result', label: 'Result' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithResult,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await wrapper.get('[data-testid="image-usage-detail-button"]').trigger('click')
+    await nextTick()
+
+    const dialog = wrapper.get('[data-testid="image-usage-detail-dialog"]')
+    expect(dialog.text()).toContain('Request parameters')
+    expect(dialog.text()).toContain('Requested resolution')
+    expect(dialog.text()).toContain('3840x2160')
+    expect(dialog.text()).toContain('Quality')
+    expect(dialog.text()).toContain('high')
+    expect(dialog.text()).toContain('4K')
+    expect(dialog.text()).toContain('req-image-details')
+  })
+
+  it('does not show image details for token usage', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-token-row',
+          billing_mode: 'token',
+          image_count: 0,
+          image_size: null,
+        }],
+        loading: false,
+        columns: [{ key: 'result', label: 'Result' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithResult,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="image-usage-detail-button"]').exists()).toBe(false)
   })
 })
 

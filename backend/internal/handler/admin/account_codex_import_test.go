@@ -648,6 +648,32 @@ func TestImportCodexSessionsAccessTokenOnlySameWorkspaceDifferentUsersCreatesTwo
 	}
 }
 
+func TestImportCodexSessionsPassesInitialExpenseToAccountCreation(t *testing.T) {
+	svc := newCodexImportMemoryAdminService(nil)
+	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	req := CodexSessionImportRequest{
+		SkipDefaultGroupBind:   boolPtr(true),
+		InitialExpenseUSD:      8.5,
+		InitialExpenseCategory: "account_setup",
+		InitialExpenseNote:     "subscription",
+	}
+	entries := []codexImportEntry{
+		{Index: 1, Value: buildCodexAccessOnlyImportValue(t, "workspace-1", "user-1")},
+	}
+
+	result, err := handler.importCodexSessions(context.Background(), req, entries)
+	if err != nil {
+		t.Fatalf("importCodexSessions error = %v", err)
+	}
+	if result.Created != 1 || len(svc.createdAccounts) != 1 {
+		t.Fatalf("result = %+v, created accounts = %d; want one created account", result, len(svc.createdAccounts))
+	}
+	created := svc.createdAccounts[0]
+	if created.InitialExpenseUSD != 8.5 || created.InitialExpenseCategory != "account_setup" || created.InitialExpenseNote != "subscription" {
+		t.Fatalf("initial expense = (%v, %q, %q), want (8.5, account_setup, subscription)", created.InitialExpenseUSD, created.InitialExpenseCategory, created.InitialExpenseNote)
+	}
+}
+
 func TestImportCodexSessionsAccessTokenOnlySameWorkspaceAndUserDifferentTokensCreatesTwoAccounts(t *testing.T) {
 	svc := newCodexImportMemoryAdminService(nil)
 	handler := NewAccountHandler(svc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)

@@ -190,6 +190,9 @@ type OpenAICodexPATCreateRequest struct {
 	Extra                   map[string]any `json:"extra"`
 	SkipDefaultGroupBind    *bool          `json:"skip_default_group_bind"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"`
+	InitialExpenseUSD       float64        `json:"initial_expense_usd"`
+	InitialExpenseCategory  string         `json:"initial_expense_category"`
+	InitialExpenseNote      string         `json:"initial_expense_note"`
 }
 
 // RefreshToken refreshes an OpenAI OAuth token
@@ -435,22 +438,25 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 	}
 
 	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-		Name:                  buildOpenAICodexPATAccountName(req.Name, tokenInfo),
-		Notes:                 req.Notes,
-		Platform:              service.PlatformOpenAI,
-		Type:                  service.AccountTypeOAuth,
-		Credentials:           credentials,
-		Extra:                 extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           concurrency,
-		Priority:              priority,
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		SkipDefaultGroupBind:  skipDefaultGroupBind,
-		SkipMixedChannelCheck: req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk,
+		Name:                   buildOpenAICodexPATAccountName(req.Name, tokenInfo),
+		Notes:                  req.Notes,
+		Platform:               service.PlatformOpenAI,
+		Type:                   service.AccountTypeOAuth,
+		Credentials:            credentials,
+		Extra:                  extra,
+		ProxyID:                req.ProxyID,
+		Concurrency:            concurrency,
+		Priority:               priority,
+		RateMultiplier:         req.RateMultiplier,
+		LoadFactor:             req.LoadFactor,
+		GroupIDs:               req.GroupIDs,
+		ExpiresAt:              req.ExpiresAt,
+		AutoPauseOnExpired:     req.AutoPauseOnExpired,
+		SkipDefaultGroupBind:   skipDefaultGroupBind,
+		SkipMixedChannelCheck:  req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk,
+		InitialExpenseUSD:      req.InitialExpenseUSD,
+		InitialExpenseCategory: req.InitialExpenseCategory,
+		InitialExpenseNote:     req.InitialExpenseNote,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

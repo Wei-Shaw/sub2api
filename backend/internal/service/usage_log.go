@@ -194,6 +194,7 @@ type UsageLog struct {
 	ImageCount         int
 	ImageSize          *string
 	ImageInputSize     *string
+	ImageQuality       *string
 	ImageOutputSize    *string
 	ImageSizeSource    *string
 	ImageSizeBreakdown map[string]int

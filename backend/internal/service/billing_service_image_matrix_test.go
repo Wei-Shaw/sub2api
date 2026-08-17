@@ -9,93 +9,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ===== ClassifyImagePricingTier6 =====
-
-func TestClassifyImagePricingTier6_ExactMatchAllSixTiers(t *testing.T) {
-	cases := []struct {
-		name   string
-		w, h   int
-		expect string
-	}{
-		{"1024x768", 1024, 768, ImagePricingTier1024x768},
-		{"1024x1024", 1024, 1024, ImagePricingTier1024x1024},
-		{"1024x1536", 1024, 1536, ImagePricingTier1024x1536},
-		{"1920x1080", 1920, 1080, ImagePricingTier1920x1080},
-		{"2560x1440", 2560, 1440, ImagePricingTier2560x1440},
-		{"3840x2160", 3840, 2160, ImagePricingTier3840x2160},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			tier, ok := ClassifyImagePricingTier6(tc.w, tc.h)
-			require.True(t, ok)
-			require.Equal(t, tc.expect, tier)
-		})
+func testImageTiers() []ImagePricingTier {
+	return []ImagePricingTier{
+		{Label: "1K", Resolution: "1024x1536"},
+		{Label: "2K", Resolution: "2048x3072"},
+		{Label: "4K", Resolution: "4096x6144"},
 	}
 }
 
-func TestClassifyImagePricingTier6_RoundsUpByPixelCount(t *testing.T) {
-	// 800x600 = 480000 像素，第一档 1024x768=786432 已能覆盖 -> 1024x768
-	tier, ok := ClassifyImagePricingTier6(800, 600)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier1024x768, tier)
+func TestMatchImagePricingTierRules(t *testing.T) {
+	tier, err := MatchImagePricingTier(ImageDimensions{Width: 1200, Height: 1800}, testImageTiers())
+	require.NoError(t, err)
+	require.Equal(t, "2K", tier.Label)
 
-	// 1024x769 = 787456 > 786432，需要进到下一档 1024x1024 = 1048576
-	tier, ok = ClassifyImagePricingTier6(1024, 769)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier1024x1024, tier)
+	tier, err = MatchImagePricingTier(ImageDimensions{Width: 900, Height: 1800}, testImageTiers())
+	require.NoError(t, err)
+	require.Equal(t, "2K", tier.Label)
 
-	// 1500x1000 = 1500000 < 1572864（1024x1536），应落到 1024x1536
-	tier, ok = ClassifyImagePricingTier6(1500, 1000)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier1024x1536, tier)
+	_, err = MatchImagePricingTier(ImageDimensions{Width: 1000, Height: 3001}, testImageTiers())
+	require.ErrorContains(t, err, "1:3")
 
-	// 1920x1081 = 2075520 > 2073600（1920x1080），应落到 2560x1440=3686400
-	tier, ok = ClassifyImagePricingTier6(1920, 1081)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier2560x1440, tier)
-}
+	_, err = MatchImagePricingTier(ImageDimensions{Width: 4096, Height: 6145}, testImageTiers())
+	require.ErrorContains(t, err, "total pixels")
 
-func TestClassifyImagePricingTier6_CapsAt4K(t *testing.T) {
-	// 5120x2880 = 14745600 > 8294400（3840x2160），应封顶到 3840x2160
-	tier, ok := ClassifyImagePricingTier6(5120, 2880)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier3840x2160, tier)
+	_, err = MatchImagePricingTier(ImageDimensions{Width: 800, Height: 800}, []ImagePricingTier{
+		{Label: "1K", Resolution: "4096x4096"},
+		{Label: "2K", Resolution: "2048x2048"},
+		{Label: "4K", Resolution: "1024x1024"},
+	})
+	require.ErrorContains(t, err, "must not decrease")
 
-	// 7680x4320 (8K) 同样封顶
-	tier, ok = ClassifyImagePricingTier6(7680, 4320)
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier3840x2160, tier)
-}
-
-func TestClassifyImagePricingTier6_OrientationAgnostic(t *testing.T) {
-	// 像素总数相同，方向无关
-	tier1, _ := ClassifyImagePricingTier6(1024, 1536)
-	tier2, _ := ClassifyImagePricingTier6(1536, 1024)
-	require.Equal(t, tier1, tier2)
-}
-
-func TestClassifyImagePricingTier6_InvalidInputs(t *testing.T) {
-	for _, dim := range [][2]int{{0, 100}, {100, 0}, {-1, 100}, {100, -1}, {0, 0}} {
-		_, ok := ClassifyImagePricingTier6(dim[0], dim[1])
-		require.False(t, ok, "dim=%v should be invalid", dim)
+	userTiers := []ImagePricingTier{
+		{Label: "1K", Resolution: "1080x1080"},
+		{Label: "2K", Resolution: "2160x2160"},
+		{Label: "4K", Resolution: "3840x2160"},
 	}
-}
+	tier, err = MatchImagePricingTier(ImageDimensions{Width: 2160, Height: 2160}, userTiers)
+	require.NoError(t, err)
+	require.Equal(t, "2K", tier.Label)
 
-func TestParseImagePricingTier6_ParsesAndClassifies(t *testing.T) {
-	tier, ok := ParseImagePricingTier6("1920x1080")
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier1920x1080, tier)
-
-	// 大写 X 也接受
-	tier, ok = ParseImagePricingTier6("1024X1024")
-	require.True(t, ok)
-	require.Equal(t, ImagePricingTier1024x1024, tier)
-
-	// 非法格式
-	_, ok = ParseImagePricingTier6("auto")
-	require.False(t, ok)
-	_, ok = ParseImagePricingTier6("")
-	require.False(t, ok)
+	tier, err = MatchImagePricingTier(ImageDimensions{Width: 3840, Height: 2160}, userTiers)
+	require.NoError(t, err)
+	require.Equal(t, "4K", tier.Label)
 }
 
 // ===== NormalizeImageQuality =====
@@ -122,12 +77,12 @@ func TestNormalizeImageQuality(t *testing.T) {
 
 func makeMatrix() domain.ImagePricingMatrix {
 	return domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {
+		"1K": {
 			ImageQualityLow:    0.006,
 			ImageQualityMedium: 0.053,
 			ImageQualityHigh:   0.211,
 		},
-		ImagePricingTier3840x2160: {
+		"4K": {
 			ImageQualityHigh: 0.401, // 仅有 high，medium/low 缺失 -> 应回退
 		},
 	}
@@ -175,17 +130,13 @@ func TestCalculateImageCost_MatrixRoundUpAcrossTiers(t *testing.T) {
 	svc := &BillingService{}
 	cfg := &ImagePriceConfig{
 		PricingMatrix: makeMatrix(),
-		// 800x600 像素 < 1024x1024，应向上取到 1024x1024 档
+		// 短边 600 <= 1K 阈值 1024，应命中 1K。
 		RawWidth:  800,
 		RawHeight: 600,
 		Quality:   "low",
 	}
-	// 800x600 像素总数 480000 ≤ 1024x768=786432，应取 1024x768。
-	// makeMatrix 中没有 1024x768 行 -> 矩阵未命中 -> 回退到旧字段或默认
-	// （这里没配旧字段也没配 pricingService，回退到硬编码默认）。
 	cost := svc.CalculateImageCost("gpt-image-2", "1K", 1, cfg, 1.0)
-	// 默认硬编码 0.134（基于 1K，无倍率）
-	require.InDelta(t, 0.134, cost.TotalCost, 1e-9)
+	require.InDelta(t, 0.006, cost.TotalCost, 1e-9)
 }
 
 func TestCalculateImageCost_MatrixCellMissing_FallsBackToLegacyPrice(t *testing.T) {
@@ -195,7 +146,7 @@ func TestCalculateImageCost_MatrixCellMissing_FallsBackToLegacyPrice(t *testing.
 		PricingMatrix: makeMatrix(),
 		RawWidth:      3840,
 		RawHeight:     2160,
-		Quality:       "low", // 矩阵 3840x2160 行只有 high，缺 low -> 回退
+		Quality:       "low", // 矩阵 4K 行只有 high，缺 low -> 回退
 		Price4K:       &legacyPrice,
 	}
 	cost := svc.CalculateImageCost("gpt-image-2", "4K", 1, cfg, 1.0)

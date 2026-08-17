@@ -376,6 +376,105 @@ func TestGatewayModels_CompositeCustomModelsListFiltersAcrossConcretePlatforms(t
 	require.Equal(t, []string{"gemini-2.5-flash", "ag-custom-model", "gpt-5.5"}, modelIDsForTest(got.Data))
 }
 
+func TestGatewayModels_CompositeIncludesFalAccountMappings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(35)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{groupID: {{ID: 1, Platform: service.PlatformFal, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-image-2": "openai/gpt-image-2"}}}}}})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: &service.Group{ID: groupID, Platform: service.PlatformComposite}})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Contains(t, modelIDsForTest(got.Data), "gpt-image-2")
+}
+
+func TestGatewayModels_OpenAIGroupIncludesFalAccountMappings(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(36)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {
+			{
+				ID:       1,
+				Platform: service.PlatformOpenAI,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"},
+				},
+			},
+			{
+				ID:       2,
+				Platform: service.PlatformFal,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{
+						"gpt-image-2":             "openai/gpt-image-2",
+						"gpt-image-2-edit":        "openai/gpt-image-2/edit",
+						"openai/gpt-image-2":      "openai/gpt-image-2",
+						"gpt-image-2/edit":        "openai/gpt-image-2/edit",
+						"openai/gpt-image-2/edit": "openai/gpt-image-2/edit",
+					},
+				},
+			},
+		},
+	}})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI}})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "gpt-image-2")
+	require.Contains(t, ids, "gpt-image-2-edit")
+	require.NotContains(t, ids, "openai/gpt-image-2")
+	require.NotContains(t, ids, "gpt-image-2/edit")
+	require.NotContains(t, ids, "openai/gpt-image-2/edit")
+}
+
+func TestGatewayModels_OpenAIGroupMergesFalWithOpenAIDefaultFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(37)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
+		groupID: {
+			{ID: 1, Platform: service.PlatformOpenAI},
+			{
+				ID:       2,
+				Platform: service.PlatformFal,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-image-2": "openai/gpt-image-2"},
+				},
+			},
+		},
+	}})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI}})
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "gpt-image-2")
+}
+
 func TestGatewayModels_CompositeUnmappedAccountsFallbackToLinkedPlatformsOnly(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -729,4 +828,14 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 		ids = append(ids, model.ID)
 	}
 	return ids
+}
+
+func TestFilterOpenAIExposedFalModelIDsRemovesEndpointSlugs(t *testing.T) {
+	got := filterOpenAIExposedFalModelIDs(defaultModelIDsForPlatform(service.PlatformFal))
+
+	require.Contains(t, got, "gpt-image-2")
+	require.Contains(t, got, "gpt-image-2-edit")
+	require.NotContains(t, got, "openai/gpt-image-2")
+	require.NotContains(t, got, "gpt-image-2/edit")
+	require.NotContains(t, got, "openai/gpt-image-2/edit")
 }

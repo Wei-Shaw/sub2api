@@ -28,6 +28,7 @@ type openaiStreamingResult struct {
 	firstTokenMs       *int
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 	imageOutputURLs    []string
@@ -40,6 +41,7 @@ type openaiNonStreamingResult struct {
 	usage              *OpenAIUsage
 	responseID         string
 	imageCount         int
+	imageQuality       string
 	imageOutputSizes   []string
 	imageOutputBase64s []string
 	imageOutputURLs    []string
@@ -71,6 +73,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	} else if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
+	// x-codex-turn-state 不在通用响应头白名单内，按 Codex 协议显式回传：
+	// 客户端会在同回合的后续请求中回带（openai_codex_turn_state.go）。
+	// 首输出守卫模式下只暂存，溯源在 applyAttemptResponseHeaders 真正提交时记录。
+	if guardFirstOutput {
+		stageOpenAICodexTurnState(&attemptResponseHeaders, resp.Header)
+	} else {
+		s.relayOpenAICodexTurnState(c, account, resp.Header)
+	}
 
 	// Set SSE response headers
 	c.Header("Content-Type", "text/event-stream")
@@ -92,6 +102,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				c.Writer.Header().Add(key, value)
 			}
 		}
+		// 暂存头此刻才真正写给客户端：turn-state 溯源在这里记录（见
+		// noteStagedOpenAICodexTurnStateCommitted 的 failover 说明）。
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, attemptResponseHeaders)
 		// These headers describe this gateway's SSE stream and are stable across
 		// account attempts. Keep them authoritative over upstream values.
 		c.Header("Content-Type", "text/event-stream")
@@ -339,6 +352,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			firstTokenMs:       firstTokenMs,
 			responseID:         responseID,
 			imageCount:         imageCounter.Count(),
+			imageQuality:       imageCounter.Quality(),
 			imageOutputSizes:   imageCounter.Sizes(),
 			imageOutputBase64s: imageOutputBase64s,
 			imageOutputURLs:    imageOutputURLs,
@@ -1240,7 +1254,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// Some OpenAI-compatible upstreams (including other sub2api instances)
 	// may return SSE even when stream=false was requested.
 	if isEventStreamResponse(resp.Header) {
-		return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
+		return s.handleSSEToJSON(ctx, resp, c, account, body, originalModel, mappedModel, group, requestedImageSize)
 	}
 	// bodyLooksLikeSSE is a line-level heuristic: real SSE framing requires
 	// "data:"/"event:" field names at the very start of a physical line. A
@@ -1256,7 +1270,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// positives on JSON responses that coincidentally contain "data:" or
 	// "event:" in their text content.
 	if account.Type == AccountTypeOAuth && bodyLooksLikeSSE {
-		return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
+		return s.handleSSEToJSON(ctx, resp, c, account, body, originalModel, mappedModel, group, requestedImageSize)
 	}
 	if account != nil && account.IsGrok() && isOpenAIResponsesCompactPath(c) {
 		body, err = convertGrokResponseToOpenAICompact(body)
@@ -1268,7 +1282,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
 		if bodyLooksLikeSSE {
-			return s.handleSSEToJSON(ctx, resp, c, body, originalModel, mappedModel, group, requestedImageSize)
+			return s.handleSSEToJSON(ctx, resp, c, account, body, originalModel, mappedModel, group, requestedImageSize)
 		}
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
@@ -1292,6 +1306,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
+	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
+	s.relayOpenAICodexTurnState(c, account, resp.Header)
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -1301,6 +1318,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 
 	imageCount := countOpenAIResponseImageOutputsFromJSONBytes(body)
+	imageQuality := collectOpenAIResponseImageQualityFromJSONBytes(body)
 	imageOutputSizes := collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 	imageOutputBase64s := collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 	imageOutputURLs := collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
@@ -1319,6 +1337,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 		imageOutputURLs:    imageOutputURLs,
@@ -1348,7 +1367,7 @@ func bodyHasSSEFraming(body []byte) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string, group *Group, requestedImageSize string) (*openaiNonStreamingResult, error) {
+func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel, mappedModel string, group *Group, requestedImageSize string) (*openaiNonStreamingResult, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -1400,6 +1419,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	s.relayOpenAICodexTurnState(c, account, resp.Header)
 
 	contentType := "application/json; charset=utf-8"
 	if !ok {
@@ -1409,12 +1429,14 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		}
 	}
 	imageCount := 0
+	imageQuality := ""
 	var imageOutputSizes []string
 	var imageOutputBase64s []string
 	var imageOutputURLs []string
 	var imageOutputTexts []string
 	if ok {
 		imageCount = countOpenAIResponseImageOutputsFromJSONBytes(body)
+		imageQuality = collectOpenAIResponseImageQualityFromJSONBytes(body)
 		imageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(body)
 		imageOutputBase64s = collectOpenAIResponseImageOutputBase64sFromJSONBytes(body)
 		imageOutputURLs = collectOpenAIResponseImageOutputURLsFromJSONBytes(body)
@@ -1425,6 +1447,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		}
 	} else {
 		imageCount = countOpenAIImageOutputsFromSSEBody(bodyText)
+		imageQuality = collectOpenAIImageQualityFromSSEBody(bodyText)
 		imageOutputSizes = collectOpenAIImageOutputSizesFromSSEBody(bodyText)
 		imageOutputBase64s = collectOpenAIImageOutputBase64sFromSSEBody(bodyText)
 		imageOutputURLs = collectOpenAIImageOutputURLsFromSSEBody(bodyText)
@@ -1444,6 +1467,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 		usage:              usage,
 		responseID:         extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:         imageCount,
+		imageQuality:       imageQuality,
 		imageOutputSizes:   imageOutputSizes,
 		imageOutputBase64s: imageOutputBase64s,
 		imageOutputURLs:    imageOutputURLs,

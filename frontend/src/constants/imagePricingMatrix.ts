@@ -1,19 +1,16 @@
 /**
  * \u56fe\u7247\u8ba1\u8d39\u77e9\u9635\u4ee3\u53f7\u4e0e\u9ed8\u8ba4\u4ef7\u8868\u3002
  *
- * - 6 \u4e2a\u5206\u8fa8\u7387\u6863\u4f4d\uff08\u4e0e\u540e\u7aef classifyImagePricingTier6 \u4e00\u81f4\uff09
+ * - 3 \u4e2a\u53ef\u914d\u7f6e\u5206\u8fa8\u7387\u9608\u503c\u6863\u4f4d\uff081K / 2K / 4K\uff09
  * - 3 \u4e2a quality \u6863\u4f4d\uff08\u4e0e\u540e\u7aef NormalizeImageQuality \u4e00\u81f4\uff1aauto/\"\" \u2192 high\uff09
  * - DEFAULT_IMAGE_PRICING_MATRIX \u662f OpenAI gpt-image \u516c\u793a\u4ef7\uff08\u5355\u4f4d\uff1a\u7f8e\u5143/\u5f20\uff09\uff0c
  *   \u7528\u4e8e\u201c\u586b\u5165\u5b98\u65b9\u9ed8\u8ba4\u8868\u201d\u4e00\u952e\u586b\u5145
  */
 
 export const IMAGE_PRICING_TIER_KEYS = [
-  '1024x768',
-  '1024x1024',
-  '1024x1536',
-  '1920x1080',
-  '2560x1440',
-  '3840x2160',
+  '1K',
+  '2K',
+  '4K',
 ] as const
 
 export type ImagePricingTierKey = (typeof IMAGE_PRICING_TIER_KEYS)[number]
@@ -29,12 +26,9 @@ export type ImagePricingMatrix = Record<string, Record<string, number>>
  * \u4f9b\u5206\u7ec4\u8868\u5355\u201c\u586b\u5165\u5b98\u65b9\u9ed8\u8ba4\u8868\u201d\u6309\u94ae\u4f7f\u7528\u3002
  */
 export const DEFAULT_IMAGE_PRICING_MATRIX: ImagePricingMatrix = {
-  '1024x768': { low: 0.005, medium: 0.037, high: 0.145 },
-  '1024x1024': { low: 0.006, medium: 0.053, high: 0.211 },
-  '1024x1536': { low: 0.005, medium: 0.042, high: 0.165 },
-  '1920x1080': { low: 0.005, medium: 0.040, high: 0.158 },
-  '2560x1440': { low: 0.007, medium: 0.056, high: 0.222 },
-  '3840x2160': { low: 0.012, medium: 0.101, high: 0.401 },
+  '1K': { low: 0.006, medium: 0.053, high: 0.211 },
+  '2K': { low: 0.007, medium: 0.056, high: 0.222 },
+  '4K': { low: 0.012, medium: 0.101, high: 0.401 },
 }
 
 /**
@@ -49,7 +43,7 @@ export function cloneDefaultImagePricingMatrix(): ImagePricingMatrix {
 }
 
 /**
- * \u521b\u5efa\u4e00\u4e2a\u201c\u7a7a\u201d\u77e9\u9635\u9aa8\u67b6\uff086 \u884c \u00d7 3 \u5217\uff0c\u521d\u59cb\u503c null\uff09\uff0c
+ * \u521b\u5efa\u4e00\u4e2a\u201c\u7a7a\u201d\u77e9\u9635\u9aa8\u67b6\uff083 \u884c \u00d7 3 \u5217\uff0c\u521d\u59cb\u503c null\uff09\uff0c
  * \u4f9b\u8868\u5355\u8868\u683c\u4f7f\u7528\uff1b\u5e8f\u5217\u5316\u65f6\u9700\u4ee5 toMatrixDTO \u8fc7\u6ee4\u6389 null\u3002
  */
 export type EditableImagePricingMatrix = Record<string, Record<string, number | null>>
@@ -74,7 +68,8 @@ export function loadEditableImagePricingMatrix(
     return out
   }
   for (const tier of IMAGE_PRICING_TIER_KEYS) {
-    const row = source[tier]
+    const legacyKey = tier === '1K' ? '1024x1024' : tier === '2K' ? '2560x1440' : '3840x2160'
+    const row = source[tier] || source[legacyKey]
     if (!row || typeof row !== 'object') {
       continue
     }

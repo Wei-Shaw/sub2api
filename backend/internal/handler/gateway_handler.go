@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1113,40 +1114,91 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	var groupID *int64
 	var platform string
+	var groupPlatform string
+	var apiKeyID int64
+	var groupIDValue int64
 
+	if apiKey != nil {
+		apiKeyID = apiKey.ID
+	}
 	if apiKey != nil && apiKey.Group != nil {
 		groupID = &apiKey.Group.ID
+		groupIDValue = apiKey.Group.ID
 		platform = apiKey.Group.Platform
+		groupPlatform = apiKey.Group.Platform
 	}
-	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
+	forcedPlatform := ""
+	if value, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(value) != "" {
+		forcedPlatform = strings.TrimSpace(value)
 		platform = forcedPlatform
 	}
 
+	reqLog := requestLogger(c, "handler.gateway.models",
+		zap.Int64("api_key_id", apiKeyID),
+		zap.Int64("group_id", groupIDValue),
+		zap.String("group_platform", groupPlatform),
+		zap.String("platform", platform),
+		zap.String("forced_platform", forcedPlatform),
+	)
+
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
-		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+		customModelsList := apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled()
+		reqLog.Info("gateway.models.composite_available",
+			zap.Bool("custom_models_list", customModelsList),
+			zap.Int("available_count", len(availableModels)),
+			zap.Strings("available_models", availableModels),
+		)
+		if customModelsList {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
+			reqLog.Info("gateway.models.response", zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 			writeCustomModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
 		if len(availableModels) > 0 {
+			reqLog.Info("gateway.models.response", zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		fallbackModels := defaultModelIDsForPlatform(service.PlatformComposite)
+		reqLog.Info("gateway.models.response", zap.Bool("fallback", true), zap.Int("model_count", len(fallbackModels)), zap.Strings("models", fallbackModels))
+		writeModelsList(c, service.PlatformComposite, fallbackModels)
 		return
 	}
 
 	// Get available models from account configurations for the selected group platform.
-	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	platformModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	availableModels := platformModels
+	falModels := []string(nil)
+	if platform == service.PlatformOpenAI {
+		falModels = filterOpenAIExposedFalModelIDs(h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, service.PlatformFal))
+		if len(platformModels) == 0 {
+			availableModels = mergeModelIDs(defaultModelIDsForPlatform(service.PlatformOpenAI), falModels)
+		} else {
+			availableModels = mergeModelIDs(platformModels, falModels)
+		}
+	}
+	reqLog.Info("gateway.models.available",
+		zap.Int("platform_model_count", len(platformModels)),
+		zap.Strings("platform_models", platformModels),
+		zap.Int("available_count", len(availableModels)),
+		zap.Strings("available_models", availableModels),
+		zap.Int("fal_model_count", len(falModels)),
+		zap.Strings("fal_models", falModels),
+	)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
+		if platform == service.PlatformOpenAI {
+			fallbackModels = mergeModelIDs(fallbackModels, filterOpenAIExposedFalModelIDs(defaultModelIDsForPlatform(service.PlatformFal)))
+		}
 		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
+		reqLog.Info("gateway.models.response", zap.Bool("custom_models_list", true), zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 		writeCustomModelsList(c, platform, availableModels)
 		return
 	}
 
 	if len(availableModels) > 0 {
+		reqLog.Info("gateway.models.response", zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 		writeModelsList(c, platform, availableModels)
 		return
 	}
@@ -1185,7 +1237,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			if _, ok := schedulablePlatforms[platform]; ok {
@@ -1407,10 +1459,17 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return mergeModelIDs(ids, nil)
 	case service.PlatformGrok:
 		return xai.DefaultModelIDs()
+	case service.PlatformFal:
+		ids := make([]string, 0, len(domain.DefaultFalModelMapping))
+		for id := range domain.DefaultFalModelMapping {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		return ids
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue
@@ -1427,6 +1486,18 @@ func defaultModelIDsForPlatform(platform string) []string {
 		}
 		return ids
 	}
+}
+
+func filterOpenAIExposedFalModelIDs(models []string) []string {
+	filtered := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" || strings.Contains(model, "/") {
+			continue
+		}
+		filtered = append(filtered, model)
+	}
+	return filtered
 }
 
 func mergeModelIDs(primary, secondary []string) []string {

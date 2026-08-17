@@ -44,9 +44,6 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 	if task.NumImages <= 0 {
 		task.NumImages = 1
 	}
-	if task.RateMultiplier == 0 {
-		task.RateMultiplier = 1
-	}
 
 	imageURLsJSON, err := marshalStringSlice(task.ImageURLs)
 	if err != nil {
@@ -233,9 +230,6 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 	if in == nil {
 		return false, errors.New("nil terminal usage log input")
 	}
-	if in.RateMultiplier == 0 {
-		in.RateMultiplier = 1
-	}
 	model := in.Model
 	if model == "" {
 		model = in.UpstreamModel
@@ -270,11 +264,12 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			group_id, channel_id,
 			total_cost, actual_cost, rate_multiplier,
 			billing_type, request_type,
-			image_count, image_size,
+			image_count, image_size, image_input_size, image_quality,
+			image_output_size, image_size_source, image_size_breakdown,
 			billing_mode, billing_tier,
 			task_id, image_urls, cos_url, billing_status,
 			inbound_endpoint, upstream_endpoint, duration_ms, ip_address, user_agent,
-			organization_id, payer_user_id, balance_source, authz_generation,
+			organization_id, payer_user_id, balance_source, authz_generation, account_rate_multiplier,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4,
@@ -282,14 +277,56 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			$8, $9,
 			$10, $11, $12,
 			$13, $14,
-			$15, $16,
-			$17, $18,
-			$19, $20, $21, $22,
-			$23, $24, $25, $26, $27,
-			$28, $29, $30, $31,
+			$15, $16, $17, $18,
+			$19, $20, $21,
+			$22, $23,
+			$24, $25, $26, $27,
+			$28, $29, $30, $31, $32,
+			$33, $34, $35, $36, $37,
 			NOW()
 		)
-		ON CONFLICT (request_id, api_key_id) DO NOTHING`
+		ON CONFLICT (request_id, api_key_id) DO UPDATE SET
+			user_id = EXCLUDED.user_id,
+			account_id = EXCLUDED.account_id,
+			model = EXCLUDED.model,
+			requested_model = EXCLUDED.requested_model,
+			upstream_model = EXCLUDED.upstream_model,
+			group_id = EXCLUDED.group_id,
+			channel_id = EXCLUDED.channel_id,
+			total_cost = EXCLUDED.total_cost,
+			actual_cost = EXCLUDED.actual_cost,
+			rate_multiplier = EXCLUDED.rate_multiplier,
+			account_rate_multiplier = EXCLUDED.account_rate_multiplier,
+			billing_type = EXCLUDED.billing_type,
+			request_type = EXCLUDED.request_type,
+			image_count = EXCLUDED.image_count,
+			image_size = EXCLUDED.image_size,
+			image_input_size = EXCLUDED.image_input_size,
+			image_quality = EXCLUDED.image_quality,
+			image_output_size = EXCLUDED.image_output_size,
+			image_size_source = EXCLUDED.image_size_source,
+			image_size_breakdown = EXCLUDED.image_size_breakdown,
+			billing_mode = EXCLUDED.billing_mode,
+			billing_tier = EXCLUDED.billing_tier,
+			task_id = EXCLUDED.task_id,
+			image_urls = EXCLUDED.image_urls,
+			cos_url = EXCLUDED.cos_url,
+			billing_status = EXCLUDED.billing_status,
+			inbound_endpoint = EXCLUDED.inbound_endpoint,
+			upstream_endpoint = EXCLUDED.upstream_endpoint,
+			duration_ms = EXCLUDED.duration_ms,
+			ip_address = EXCLUDED.ip_address,
+			user_agent = EXCLUDED.user_agent,
+			organization_id = EXCLUDED.organization_id,
+			payer_user_id = EXCLUDED.payer_user_id,
+			balance_source = EXCLUDED.balance_source,
+			authz_generation = EXCLUDED.authz_generation
+		WHERE usage_logs.task_id = EXCLUDED.task_id
+			OR (
+				EXCLUDED.billing_status = 'charged'
+				AND COALESCE(usage_logs.actual_cost, 0) = 0
+				AND COALESCE(usage_logs.total_cost, 0) = 0
+			)`
 
 	res, err := r.sql.ExecContext(ctx, query,
 		in.UserID, in.APIKeyID, in.AccountID, nullIfEmpty(in.RequestID),
@@ -297,11 +334,12 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 		in.GroupID, in.ChannelID,
 		in.TotalCost, in.ActualCost, in.RateMultiplier,
 		int16(in.BillingType), in.RequestType,
-		in.ImageCount, nullIfEmpty(in.ImageSize),
+		in.ImageCount, nullIfEmpty(in.ImageSize), nullIfEmpty(in.ImageInputSize), nullIfEmpty(in.ImageQuality),
+		nullIfEmpty(in.ImageOutputSize), nullIfEmpty(in.ImageSizeSource), nullStringIntMapJSON(in.ImageSizeBreakdown),
 		string(service.BillingModeImage), nullIfEmpty(in.BillingTier),
 		taskID, imageURLsJSON, cosURLsJSON, nullIfEmpty(in.BillingStatus),
 		nullIfEmpty(in.InboundEndpoint), nullIfEmpty(in.UpstreamEndpoint), durationMs, nullIfEmpty(in.ClientIP), nullIfEmpty(in.UserAgent),
-		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration,
+		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration, in.AccountRateMultiplier,
 	)
 	if err != nil {
 		return false, err

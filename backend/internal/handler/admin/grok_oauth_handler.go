@@ -317,20 +317,23 @@ func (h *GrokOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 }
 
 type GrokSSOToOAuthRequest struct {
-	SSOTokens          []string       `json:"sso_tokens"`
-	SSOToken           string         `json:"sso_token"`
-	Name               string         `json:"name"`
-	Notes              *string        `json:"notes"`
-	ProxyID            *int64         `json:"proxy_id"`
-	GroupIDs           []int64        `json:"group_ids"`
-	Credentials        map[string]any `json:"credentials"`
-	Extra              map[string]any `json:"extra"`
-	Concurrency        int            `json:"concurrency"`
-	LoadFactor         *int           `json:"load_factor"`
-	Priority           int            `json:"priority"`
-	RateMultiplier     *float64       `json:"rate_multiplier"`
-	ExpiresAt          *int64         `json:"expires_at"`
-	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	SSOTokens              []string       `json:"sso_tokens"`
+	SSOToken               string         `json:"sso_token"`
+	Name                   string         `json:"name"`
+	Notes                  *string        `json:"notes"`
+	ProxyID                *int64         `json:"proxy_id"`
+	GroupIDs               []int64        `json:"group_ids"`
+	Credentials            map[string]any `json:"credentials"`
+	Extra                  map[string]any `json:"extra"`
+	Concurrency            int            `json:"concurrency"`
+	LoadFactor             *int           `json:"load_factor"`
+	Priority               int            `json:"priority"`
+	RateMultiplier         *float64       `json:"rate_multiplier"`
+	ExpiresAt              *int64         `json:"expires_at"`
+	AutoPauseOnExpired     *bool          `json:"auto_pause_on_expired"`
+	InitialExpenseUSD      float64        `json:"initial_expense_usd"`
+	InitialExpenseCategory string         `json:"initial_expense_category"`
+	InitialExpenseNote     string         `json:"initial_expense_note"`
 }
 
 type GrokSSOToOAuthItemResult struct {
@@ -430,20 +433,23 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 	name := grokSSOImportAccountName(req.Name, tokenInfo, index, total)
 	expiresAt, autoPauseOnExpired := grokSSOImportExpiry(req.ExpiresAt, req.AutoPauseOnExpired, tokenInfo)
 	account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-		Name:               name,
-		Notes:              req.Notes,
-		Platform:           service.PlatformGrok,
-		Type:               service.AccountTypeOAuth,
-		Credentials:        credentials,
-		Extra:              cloneGrokSSOMap(req.Extra),
-		ProxyID:            req.ProxyID,
-		Concurrency:        req.Concurrency,
-		LoadFactor:         req.LoadFactor,
-		Priority:           req.Priority,
-		RateMultiplier:     req.RateMultiplier,
-		GroupIDs:           append([]int64(nil), req.GroupIDs...),
-		ExpiresAt:          expiresAt,
-		AutoPauseOnExpired: autoPauseOnExpired,
+		Name:                   name,
+		Notes:                  req.Notes,
+		Platform:               service.PlatformGrok,
+		Type:                   service.AccountTypeOAuth,
+		Credentials:            credentials,
+		Extra:                  cloneGrokSSOMap(req.Extra),
+		ProxyID:                req.ProxyID,
+		Concurrency:            req.Concurrency,
+		LoadFactor:             req.LoadFactor,
+		Priority:               req.Priority,
+		RateMultiplier:         req.RateMultiplier,
+		GroupIDs:               append([]int64(nil), req.GroupIDs...),
+		ExpiresAt:              expiresAt,
+		AutoPauseOnExpired:     autoPauseOnExpired,
+		InitialExpenseUSD:      req.InitialExpenseUSD,
+		InitialExpenseCategory: req.InitialExpenseCategory,
+		InitialExpenseNote:     req.InitialExpenseNote,
 	})
 	if err != nil {
 		return grokSSOImportWorkerResult{item: GrokSSOToOAuthItemResult{Index: index, Name: name, Email: tokenInfo.Email, Error: grokSSOImportErrorMessage(err)}}

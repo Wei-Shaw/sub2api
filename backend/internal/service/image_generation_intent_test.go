@@ -284,6 +284,15 @@ func TestResolveOpenAIResponsesImageBillingConfigToolModelWins(t *testing.T) {
 	require.Equal(t, "1K", imageSize)
 }
 
+func TestResolveOpenAIResponsesImageBillingConfigReadsQuality(t *testing.T) {
+	cfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(
+		[]byte(`{"model":"gpt-5.4","tools":[{"type":"image_generation","model":"gpt-image-2","size":"1536x1024","quality":"low"}]}`),
+		"requested-model",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "low", cfg.Quality)
+}
+
 func TestResolveOpenAIResponsesImageBillingConfigFromBodyIgnoresUnrelatedLargeInput(t *testing.T) {
 	cfg, err := resolveOpenAIResponsesImageBillingConfigDetailedFromBody(
 		[]byte(`{"model":"mapped-text-model","tools":[{"type":"image_generation","model":"gpt-image-2","size":"2048x1152"}],"input":[{"type":"message","content":[{"type":"input_text","text":"hi","nonce":1e1000000}]}]}`),

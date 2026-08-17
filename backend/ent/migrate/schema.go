@@ -1233,6 +1233,9 @@ var (
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
+		{Name: "image_resolution_1k", Type: field.TypeString, Size: 32, Default: "1024x1024"},
+		{Name: "image_resolution_2k", Type: field.TypeString, Size: 32, Default: "2048x2048"},
+		{Name: "image_resolution_4k", Type: field.TypeString, Size: 32, Default: "4096x4096"},
 		{Name: "image_pricing_matrix", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "image_prefer_fal", Type: field.TypeBool, Default: false},
 		{Name: "image_decode_size_on_rsp", Type: field.TypeBool, Default: false},
@@ -1313,7 +1316,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[53]},
+				Columns: []*schema.Column{GroupsColumns[56]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",
@@ -2785,6 +2788,7 @@ var (
 		{Name: "image_count", Type: field.TypeInt, Default: 0},
 		{Name: "image_size", Type: field.TypeString, Nullable: true, Size: 10},
 		{Name: "image_input_size", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "image_quality", Type: field.TypeString, Nullable: true, Size: 32},
 		{Name: "image_output_size", Type: field.TypeString, Nullable: true, Size: 32},
 		{Name: "image_size_source", Type: field.TypeString, Nullable: true, Size: 16},
 		{Name: "image_size_breakdown", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
@@ -2811,31 +2815,31 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "usage_logs_api_keys_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[51]},
+				Columns:    []*schema.Column{UsageLogsColumns[52]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_accounts_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[52]},
+				Columns:    []*schema.Column{UsageLogsColumns[53]},
 				RefColumns: []*schema.Column{AccountsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_groups_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[53]},
+				Columns:    []*schema.Column{UsageLogsColumns[54]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "usage_logs_users_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[54]},
+				Columns:    []*schema.Column{UsageLogsColumns[55]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "usage_logs_user_subscriptions_usage_logs",
-				Columns:    []*schema.Column{UsageLogsColumns[55]},
+				Columns:    []*schema.Column{UsageLogsColumns[56]},
 				RefColumns: []*schema.Column{UserSubscriptionsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -2844,37 +2848,37 @@ var (
 			{
 				Name:    "usagelog_organization_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[1], UsageLogsColumns[50]},
+				Columns: []*schema.Column{UsageLogsColumns[1], UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[54]},
+				Columns: []*schema.Column{UsageLogsColumns[55]},
 			},
 			{
 				Name:    "usagelog_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[51]},
+				Columns: []*schema.Column{UsageLogsColumns[52]},
 			},
 			{
 				Name:    "usagelog_account_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[52]},
+				Columns: []*schema.Column{UsageLogsColumns[53]},
 			},
 			{
 				Name:    "usagelog_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[53]},
+				Columns: []*schema.Column{UsageLogsColumns[54]},
 			},
 			{
 				Name:    "usagelog_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[55]},
+				Columns: []*schema.Column{UsageLogsColumns[56]},
 			},
 			{
 				Name:    "usagelog_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[50]},
+				Columns: []*schema.Column{UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_model",
@@ -2894,17 +2898,17 @@ var (
 			{
 				Name:    "usagelog_user_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[54], UsageLogsColumns[50]},
+				Columns: []*schema.Column{UsageLogsColumns[55], UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_api_key_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[51], UsageLogsColumns[50]},
+				Columns: []*schema.Column{UsageLogsColumns[52], UsageLogsColumns[51]},
 			},
 			{
 				Name:    "usagelog_group_id_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{UsageLogsColumns[53], UsageLogsColumns[50]},
+				Columns: []*schema.Column{UsageLogsColumns[54], UsageLogsColumns[51]},
 			},
 		},
 	}

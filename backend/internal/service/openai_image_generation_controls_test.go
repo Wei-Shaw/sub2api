@@ -80,6 +80,66 @@ func TestOpenAIGatewayServiceForward_DisabledGroupAllowsTextOnlyResponses(t *tes
 	require.NotNil(t, upstream.lastReq)
 }
 
+func TestOpenAIGatewayServiceForward_ResolvesResponsesImageQuality(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name            string
+		requestQuality  string
+		responseQuality string
+		channelQuality  string
+		want            string
+	}{
+		{name: "response wins", requestQuality: "low", responseQuality: "high", channelQuality: "medium", want: "high"},
+		{name: "request fallback", requestQuality: "low", channelQuality: "high", want: "low"},
+		{name: "channel fallback", channelQuality: "high", want: "high"},
+		{name: "default medium", want: "medium"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			qualityField := ""
+			if tt.responseQuality != "" {
+				qualityField = `,"quality":"` + tt.responseQuality + `"`
+			}
+			upstream := &httpUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(
+						`{"id":"resp_image_quality","model":"gpt-5.4","output":[{"id":"ig_1","type":"image_generation_call","result":"aGVsbG8="` +
+							qualityField +
+							`}],"usage":{"input_tokens":1,"output_tokens":1}}`,
+					)),
+				},
+			}
+			svc := newOpenAIImageGenerationControlTestService(upstream)
+			if tt.channelQuality != "" {
+				svc.channelService = newOpenAIImageGenerationControlChannelService(4242, &Channel{
+					ID:     9002,
+					Status: StatusActive,
+					FeaturesConfig: map[string]any{
+						featureKeyResponsesDefaultImageQuality: map[string]any{PlatformOpenAI: tt.channelQuality},
+					},
+				})
+			}
+			c, _ := newOpenAIImageGenerationControlTestContext(true, "unit-test-agent/1.0")
+			qualityField = ""
+			if tt.requestQuality != "" {
+				qualityField = `,"quality":"` + tt.requestQuality + `"`
+			}
+			body := []byte(`{"model":"gpt-5.4","input":"draw","stream":false,"tools":[{"type":"image_generation"` + qualityField + `}]}`)
+
+			result, err := svc.Forward(context.Background(), c, newOpenAIImageGenerationControlTestAccount(), body)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, 1, result.ImageCount)
+			require.Equal(t, tt.want, result.ImageQuality)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceForward_ImageIntentDetachedContextContinuesAfterClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

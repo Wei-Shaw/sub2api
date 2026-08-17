@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/platform/liveattestation"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -127,6 +127,9 @@ type CreateGroupRequest struct {
 	ImagePrice1K                    *float64                      `json:"image_price_1k"`
 	ImagePrice2K                    *float64                      `json:"image_price_2k"`
 	ImagePrice4K                    *float64                      `json:"image_price_4k"`
+	ImageResolution1K               string                        `json:"image_resolution_1k"`
+	ImageResolution2K               string                        `json:"image_resolution_2k"`
+	ImageResolution4K               string                        `json:"image_resolution_4k"`
 	VideoPrice480P                  *float64                      `json:"video_price_480p"`
 	VideoPrice720P                  *float64                      `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
@@ -206,6 +209,9 @@ type UpdateGroupRequest struct {
 	ImagePrice1K                    *float64                      `json:"image_price_1k"`
 	ImagePrice2K                    *float64                      `json:"image_price_2k"`
 	ImagePrice4K                    *float64                      `json:"image_price_4k"`
+	ImageResolution1K               *string                       `json:"image_resolution_1k"`
+	ImageResolution2K               *string                       `json:"image_resolution_2k"`
+	ImageResolution4K               *string                       `json:"image_resolution_4k"`
 	VideoPrice480P                  *float64                      `json:"video_price_480p"`
 	VideoPrice720P                  *float64                      `json:"video_price_720p"`
 	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
@@ -553,6 +559,9 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImageResolution1K:               req.ImageResolution1K,
+		ImageResolution2K:               req.ImageResolution2K,
+		ImageResolution4K:               req.ImageResolution4K,
 		ImagePricingMatrix:              req.ImagePricingMatrix,
 		ImagePreferFal:                  req.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
@@ -691,6 +700,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
+		ImageResolution1K:               req.ImageResolution1K,
+		ImageResolution2K:               req.ImageResolution2K,
+		ImageResolution4K:               req.ImageResolution4K,
 		ImagePricingMatrix:              req.ImagePricingMatrix,
 		ImagePreferFal:                  req.ImagePreferFal,
 		ImageDecodeSizeOnRsp:            req.ImageDecodeSizeOnRsp,
@@ -773,12 +785,10 @@ func (h *GroupHandler) GetStats(c *gin.Context) {
 	_ = groupID // TODO: implement actual stats
 }
 
-// GetUsageSummary returns today's and cumulative cost for all groups.
-// GET /api/v1/admin/groups/usage-summary?timezone=Asia/Shanghai
+// GetUsageSummary returns today's, yesterday's, and cumulative cost for all groups.
+// GET /api/v1/admin/groups/usage-summary
 func (h *GroupHandler) GetUsageSummary(c *gin.Context) {
-	userTZ := c.Query("timezone")
-	now := timezone.NowInUserLocation(userTZ)
-	todayStart := timezone.StartOfDayInUserLocation(now, userTZ)
+	todayStart := service.GroupUsageTodayStart(time.Now())
 
 	results, err := h.dashboardService.GetGroupUsageSummary(c.Request.Context(), todayStart)
 	if err != nil {

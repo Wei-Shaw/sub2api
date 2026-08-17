@@ -240,6 +240,9 @@ type CreateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	ImageResolution1K  string
+	ImageResolution2K  string
+	ImageResolution4K  string
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64
@@ -325,6 +328,9 @@ type UpdateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	ImageResolution1K  *string
+	ImageResolution2K  *string
+	ImageResolution4K  *string
 	VideoPrice480P     *float64
 	VideoPrice720P     *float64
 	VideoPrice1080P    *float64

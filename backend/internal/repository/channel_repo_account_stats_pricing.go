@@ -202,9 +202,9 @@ func createAccountStatsModelPricingTx(ctx context.Context, tx *sql.Tx, ruleID in
 func createAccountStatsIntervalTx(ctx context.Context, tx *sql.Tx, iv *service.PricingInterval) error {
 	return tx.QueryRowContext(ctx,
 		`INSERT INTO channel_account_stats_pricing_intervals
-		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
-		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel,
+		 (pricing_id, min_tokens, max_tokens, tier_label, resolution, quality, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at, updated_at`,
+		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel, iv.Resolution, iv.Quality,
 		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheReadPrice,
 		iv.PerRequestPrice, iv.SortOrder,
 	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
@@ -216,7 +216,7 @@ func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, 
 		return nil, nil
 	}
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
+		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label, COALESCE(resolution, ''), COALESCE(quality, ''),
 		        input_price, output_price, cache_write_price, cache_read_price,
 		        per_request_price, sort_order, created_at, updated_at
 		 FROM channel_account_stats_pricing_intervals
@@ -232,7 +232,7 @@ func (r *channelRepository) batchLoadAccountStatsIntervals(ctx context.Context, 
 	for rows.Next() {
 		var iv service.PricingInterval
 		if err := rows.Scan(
-			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
+			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel, &iv.Resolution, &iv.Quality,
 			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheReadPrice,
 			&iv.PerRequestPrice, &iv.SortOrder, &iv.CreatedAt, &iv.UpdatedAt,
 		); err != nil {

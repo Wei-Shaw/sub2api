@@ -1,13 +1,7 @@
 package domain
 
-// ImagePricingTierKey 是 ImagePricingMatrix 的顶层键，取值为「{width}x{height}」
-// 字符串，与 image_size 6 档归一后的代表分辨率一一对应：
-//   - "1024x768"
-//   - "1024x1024"
-//   - "1024x1536"
-//   - "1920x1080"
-//   - "2560x1440"
-//   - "3840x2160"
+// ImagePricingTierKey 是 ImagePricingMatrix 的顶层键，固定为 1K/2K/4K。
+// 每档的可配置分辨率阈值存储在 groups.image_resolution_* 字段。
 type ImagePricingTierKey = string
 
 // ImageQualityKey 是 ImagePricingMatrix 二级键，取值为归一后的 quality：
@@ -25,8 +19,8 @@ type ImageQualityKey = string
 // 例：
 //
 //	{
-//	  "1024x1024": { "low": 0.006, "medium": 0.053, "high": 0.211 },
-//	  "3840x2160": { "low": 0.012, "medium": 0.101, "high": 0.401 }
+//	  "1K": { "low": 0.006, "medium": 0.053, "high": 0.211 },
+//	  "4K": { "low": 0.012, "medium": 0.101, "high": 0.401 }
 //	}
 //
 // 缺失某 (tier, quality) 即视为该格未配置，BillingService 将按 spec

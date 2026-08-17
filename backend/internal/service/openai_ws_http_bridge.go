@@ -324,6 +324,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			result.ImageCount = imageCount
 			result.ImageSize = imageSizeTier
 			result.ImageInputSize = imageInputSize
+			result.ImageQuality = imageCounter.Quality()
 			result.ImageOutputSizes = imageCounter.Sizes()
 			result.ImageOutputBase64 = imageCounter.Base64Payloads()
 			result.ImageOutputURLs = imageCounter.URLs()

@@ -45,16 +45,16 @@ https://localhost:8443 {
         respond "" 204
     }
 
-	tls ./localhost+2.pem ./localhost+2-key.pem
+    tls ./localhost+2.pem ./localhost+2-key.pem
 
-	# 后端：OIDC 端点 + API。
-	@backend path /oidc* /api/* /v1/* /setup* /.well-known/*
-	handle @backend {
-		reverse_proxy 127.0.0.1:8080
-	}
+    # 后端：OIDC 端点 + API。
+    @backend path /oidc* /api/* /v1/* /setup* /.well-known/*
+    handle @backend {
+        reverse_proxy 127.0.0.1:8080
+    }
 
-	# 其余（含前端 SPA 页面 /login、/oauth/consent、/auth/* 等）→ 前端 dev server。
-	handle {
-		reverse_proxy 127.0.0.1:3000
-	}
+    # 其余（含前端 SPA 页面 /login、/oauth/consent、/auth/* 等）→ 前端 dev server。
+    handle {
+        reverse_proxy 127.0.0.1:3000
+    }
 }

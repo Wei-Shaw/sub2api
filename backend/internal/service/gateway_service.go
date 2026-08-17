@@ -1443,6 +1443,14 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
 			if models, ok := cached.([]string); ok {
 				modelsListCacheHitTotal.Add(1)
+				if shouldLogModelsListPlatform(platform) {
+					slog.Info("gateway.models.available.cache_hit",
+						"group_id", derefGroupID(groupID),
+						"platform", platform,
+						"model_count", len(models),
+						"models", models,
+					)
+				}
 				return cloneStringSlice(models)
 			}
 		}
@@ -1458,7 +1466,27 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts, err = s.accountRepo.ListSchedulable(ctx)
 	}
 
-	if err != nil || len(accounts) == 0 {
+	if err != nil {
+		if shouldLogModelsListPlatform(platform) {
+			slog.Warn("gateway.models.available.query_failed",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"error", err,
+			)
+		}
+		return nil
+	}
+	rawAccountCount := len(accounts)
+	if len(accounts) == 0 {
+		if shouldLogModelsListPlatform(platform) {
+			slog.Info("gateway.models.available.query",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"raw_account_count", rawAccountCount,
+				"filtered_account_count", 0,
+				"model_count", 0,
+			)
+		}
 		return nil
 	}
 
@@ -1489,6 +1517,17 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 	// If no account has model_mapping, return nil (use default)
 	if !hasAnyMapping {
+		if shouldLogModelsListPlatform(platform) {
+			slog.Info("gateway.models.available.query",
+				"group_id", derefGroupID(groupID),
+				"platform", platform,
+				"raw_account_count", rawAccountCount,
+				"filtered_account_count", len(accounts),
+				"has_any_mapping", false,
+				"model_count", 0,
+				"account_mappings", accountModelMappingLogSummary(accounts),
+			)
+		}
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
 			modelsListCacheStoreTotal.Add(1)
@@ -1503,11 +1542,54 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 	sort.Strings(models)
 
+	if shouldLogModelsListPlatform(platform) {
+		slog.Info("gateway.models.available.query",
+			"group_id", derefGroupID(groupID),
+			"platform", platform,
+			"raw_account_count", rawAccountCount,
+			"filtered_account_count", len(accounts),
+			"has_any_mapping", true,
+			"model_count", len(models),
+			"models", models,
+			"account_mappings", accountModelMappingLogSummary(accounts),
+		)
+	}
+
 	if s.modelsListCache != nil {
 		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
+}
+
+func shouldLogModelsListPlatform(platform string) bool {
+	return platform == PlatformOpenAI || platform == PlatformFal
+}
+
+func accountModelMappingLogSummary(accounts []Account) []map[string]any {
+	if len(accounts) == 0 {
+		return nil
+	}
+	summary := make([]map[string]any, 0, len(accounts))
+	for i := range accounts {
+		mapping := accounts[i].GetModelMapping()
+		keys := make([]string, 0, len(mapping))
+		for model := range mapping {
+			model = strings.TrimSpace(model)
+			if model != "" {
+				keys = append(keys, model)
+			}
+		}
+		sort.Strings(keys)
+		summary = append(summary, map[string]any{
+			"account_id":    accounts[i].ID,
+			"account_name":  accounts[i].Name,
+			"platform":      accounts[i].Platform,
+			"mapping_count": len(keys),
+			"mapping_keys":  keys,
+		})
+	}
+	return summary
 }
 
 // GetSchedulablePlatforms returns the concrete platforms that currently have

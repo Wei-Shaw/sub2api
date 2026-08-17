@@ -270,6 +270,11 @@ func ImageInputSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageInputSize, v))
 }
 
+// ImageQuality applies equality check predicate on the "image_quality" field. It's identical to ImageQualityEQ.
+func ImageQuality(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageQuality, v))
+}
+
 // ImageOutputSize applies equality check predicate on the "image_output_size" field. It's identical to ImageOutputSizeEQ.
 func ImageOutputSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputSize, v))
@@ -2378,6 +2383,81 @@ func ImageInputSizeEqualFold(v string) predicate.UsageLog {
 // ImageInputSizeContainsFold applies the ContainsFold predicate on the "image_input_size" field.
 func ImageInputSizeContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldImageInputSize, v))
+}
+
+// ImageQualityEQ applies the EQ predicate on the "image_quality" field.
+func ImageQualityEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageQuality, v))
+}
+
+// ImageQualityNEQ applies the NEQ predicate on the "image_quality" field.
+func ImageQualityNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageQuality, v))
+}
+
+// ImageQualityIn applies the In predicate on the "image_quality" field.
+func ImageQualityIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageQuality, vs...))
+}
+
+// ImageQualityNotIn applies the NotIn predicate on the "image_quality" field.
+func ImageQualityNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageQuality, vs...))
+}
+
+// ImageQualityGT applies the GT predicate on the "image_quality" field.
+func ImageQualityGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageQuality, v))
+}
+
+// ImageQualityGTE applies the GTE predicate on the "image_quality" field.
+func ImageQualityGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageQuality, v))
+}
+
+// ImageQualityLT applies the LT predicate on the "image_quality" field.
+func ImageQualityLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageQuality, v))
+}
+
+// ImageQualityLTE applies the LTE predicate on the "image_quality" field.
+func ImageQualityLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageQuality, v))
+}
+
+// ImageQualityContains applies the Contains predicate on the "image_quality" field.
+func ImageQualityContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldImageQuality, v))
+}
+
+// ImageQualityHasPrefix applies the HasPrefix predicate on the "image_quality" field.
+func ImageQualityHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldImageQuality, v))
+}
+
+// ImageQualityHasSuffix applies the HasSuffix predicate on the "image_quality" field.
+func ImageQualityHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldImageQuality, v))
+}
+
+// ImageQualityIsNil applies the IsNil predicate on the "image_quality" field.
+func ImageQualityIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldImageQuality))
+}
+
+// ImageQualityNotNil applies the NotNil predicate on the "image_quality" field.
+func ImageQualityNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldImageQuality))
+}
+
+// ImageQualityEqualFold applies the EqualFold predicate on the "image_quality" field.
+func ImageQualityEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldImageQuality, v))
+}
+
+// ImageQualityContainsFold applies the ContainsFold predicate on the "image_quality" field.
+func ImageQualityContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldImageQuality, v))
 }
 
 // ImageOutputSizeEQ applies the EQ predicate on the "image_output_size" field.

@@ -165,6 +165,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+    expect(createAccountMock.mock.calls[0]?.[0]?.initial_expense_usd).toBe(0)
+  })
+
+  it('sends the initial expense when creating an account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('input[placeholder="admin.accounts.enterAccountName"]').setValue('OpenAI account')
+    await wrapper.get('input[placeholder="USD"]').setValue('12.34')
+    await wrapper.get('input[placeholder="admin.costCenter.note"]').setValue('license')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      initial_expense_usd: 12.34,
+      initial_expense_category: 'account_setup',
+      initial_expense_note: 'license',
+    })
   })
 
   // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
@@ -317,6 +337,24 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+  })
+
+  it('sends the initial expense for Codex session imports', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('input[placeholder="admin.accounts.enterAccountName"]').setValue('Codex import')
+    await wrapper.get('input[placeholder="USD"]').setValue('8.5')
+    await wrapper.get('input[placeholder="admin.costCenter.note"]').setValue('subscription')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
+    expect(importCodexSessionMock.mock.calls[0]?.[0]).toMatchObject({
+      initial_expense_usd: 8.5,
+      initial_expense_category: 'account_setup',
+      initial_expense_note: 'subscription',
+    })
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {

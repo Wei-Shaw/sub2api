@@ -1054,7 +1054,8 @@ func (h *AccountHandler) Update(c *gin.Context) {
 // 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
 // 网关会按"现状即证据"默认走 Responses。
 func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
-	if account == nil || account.Platform != service.PlatformOpenAI || account.Type != service.AccountTypeAPIKey {
+	if account == nil || account.Type != service.AccountTypeAPIKey ||
+		(account.Platform != service.PlatformOpenAI && !service.IsCNProvider(account.Platform)) {
 		return
 	}
 	if h.accountTestService == nil {
@@ -1946,20 +1947,23 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-				Name:                  item.Name,
-				Notes:                 item.Notes,
-				Platform:              item.Platform,
-				Type:                  item.Type,
-				Credentials:           item.Credentials,
-				Extra:                 item.Extra,
-				ProxyID:               item.ProxyID,
-				Concurrency:           item.Concurrency,
-				Priority:              item.Priority,
-				RateMultiplier:        item.RateMultiplier,
-				GroupIDs:              item.GroupIDs,
-				ExpiresAt:             item.ExpiresAt,
-				AutoPauseOnExpired:    item.AutoPauseOnExpired,
-				SkipMixedChannelCheck: skipCheck,
+				Name:                   item.Name,
+				Notes:                  item.Notes,
+				Platform:               item.Platform,
+				Type:                   item.Type,
+				Credentials:            item.Credentials,
+				Extra:                  item.Extra,
+				ProxyID:                item.ProxyID,
+				Concurrency:            item.Concurrency,
+				Priority:               item.Priority,
+				RateMultiplier:         item.RateMultiplier,
+				GroupIDs:               item.GroupIDs,
+				ExpiresAt:              item.ExpiresAt,
+				AutoPauseOnExpired:     item.AutoPauseOnExpired,
+				SkipMixedChannelCheck:  skipCheck,
+				InitialExpenseUSD:      item.InitialExpenseUSD,
+				InitialExpenseCategory: item.InitialExpenseCategory,
+				InitialExpenseNote:     item.InitialExpenseNote,
 			})
 			if err != nil {
 				failed++

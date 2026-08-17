@@ -915,6 +915,26 @@ func (_u *UsageLogUpdate) ClearImageInputSize() *UsageLogUpdate {
 	return _u
 }
 
+// SetImageQuality sets the "image_quality" field.
+func (_u *UsageLogUpdate) SetImageQuality(v string) *UsageLogUpdate {
+	_u.mutation.SetImageQuality(v)
+	return _u
+}
+
+// SetNillableImageQuality sets the "image_quality" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageQuality(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageQuality(*v)
+	}
+	return _u
+}
+
+// ClearImageQuality clears the value of the "image_quality" field.
+func (_u *UsageLogUpdate) ClearImageQuality() *UsageLogUpdate {
+	_u.mutation.ClearImageQuality()
+	return _u
+}
+
 // SetImageOutputSize sets the "image_output_size" field.
 func (_u *UsageLogUpdate) SetImageOutputSize(v string) *UsageLogUpdate {
 	_u.mutation.SetImageOutputSize(v)
@@ -1286,6 +1306,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageQuality(); ok {
+		if err := usagelog.ImageQualityValidator(v); err != nil {
+			return &ValidationError{Name: "image_quality", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_quality": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageOutputSize(); ok {
 		if err := usagelog.ImageOutputSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_output_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_output_size": %w`, err)}
@@ -1566,6 +1591,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImageInputSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageInputSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageQuality(); ok {
+		_spec.SetField(usagelog.FieldImageQuality, field.TypeString, value)
+	}
+	if _u.mutation.ImageQualityCleared() {
+		_spec.ClearField(usagelog.FieldImageQuality, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageOutputSize(); ok {
 		_spec.SetField(usagelog.FieldImageOutputSize, field.TypeString, value)
@@ -2693,6 +2724,26 @@ func (_u *UsageLogUpdateOne) ClearImageInputSize() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetImageQuality sets the "image_quality" field.
+func (_u *UsageLogUpdateOne) SetImageQuality(v string) *UsageLogUpdateOne {
+	_u.mutation.SetImageQuality(v)
+	return _u
+}
+
+// SetNillableImageQuality sets the "image_quality" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageQuality(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageQuality(*v)
+	}
+	return _u
+}
+
+// ClearImageQuality clears the value of the "image_quality" field.
+func (_u *UsageLogUpdateOne) ClearImageQuality() *UsageLogUpdateOne {
+	_u.mutation.ClearImageQuality()
+	return _u
+}
+
 // SetImageOutputSize sets the "image_output_size" field.
 func (_u *UsageLogUpdateOne) SetImageOutputSize(v string) *UsageLogUpdateOne {
 	_u.mutation.SetImageOutputSize(v)
@@ -3077,6 +3128,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "image_input_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_input_size": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ImageQuality(); ok {
+		if err := usagelog.ImageQualityValidator(v); err != nil {
+			return &ValidationError{Name: "image_quality", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_quality": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageOutputSize(); ok {
 		if err := usagelog.ImageOutputSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_output_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_output_size": %w`, err)}
@@ -3374,6 +3430,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.ImageInputSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageInputSize, field.TypeString)
+	}
+	if value, ok := _u.mutation.ImageQuality(); ok {
+		_spec.SetField(usagelog.FieldImageQuality, field.TypeString, value)
+	}
+	if _u.mutation.ImageQualityCleared() {
+		_spec.ClearField(usagelog.FieldImageQuality, field.TypeString)
 	}
 	if value, ok := _u.mutation.ImageOutputSize(); ok {
 		_spec.SetField(usagelog.FieldImageOutputSize, field.TypeString, value)

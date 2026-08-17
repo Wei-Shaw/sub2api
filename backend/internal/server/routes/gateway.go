@@ -52,7 +52,9 @@ func RegisterGatewayRoutes(
 
 	isOpenAIResponsesCompatibleGatewayPlatform := func(c *gin.Context) bool {
 		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI, service.PlatformGrok:
+		case service.PlatformOpenAI, service.PlatformGrok,
+			service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
+			// 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 openai/grok 一样经 OpenAI 网关转发。
 			return true
 		default:
 			return false
@@ -63,7 +65,7 @@ func RegisterGatewayRoutes(
 	}
 	countTokensHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
-		case service.PlatformOpenAI:
+		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
 			h.OpenAIGateway.CountTokens(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokCountTokens(c)
@@ -548,6 +550,10 @@ func RegisterGatewayRoutes(
 	//   - 选号阶段做混合分组选号，按“该模型属于哪个平台”转发到对应平台账号
 	tasksGroup := r.Group("/api/v1/model")
 	tasksGroup.Use(func(c *gin.Context) {
+		if strings.HasSuffix(strings.Trim(c.Request.URL.Path, "/"), "/estimate_pricing") {
+			c.Next()
+			return
+		}
 		if settingService == nil || !settingService.IsVideoFeatureEnabled(c.Request.Context()) {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": gin.H{"type": "feature_disabled", "message": "Video feature is disabled"},

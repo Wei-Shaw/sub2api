@@ -25,12 +25,12 @@ import (
 func TestD3Invariant_SameGroupSameSizeQuality_SameCostAcrossPlatforms(t *testing.T) {
 	svc := &BillingService{}
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {
+		"1K": {
 			ImageQualityLow:    0.006,
 			ImageQualityMedium: 0.053,
 			ImageQualityHigh:   0.211,
 		},
-		ImagePricingTier3840x2160: {
+		"4K": {
 			ImageQualityHigh: 0.401,
 		},
 	}
@@ -76,7 +76,7 @@ func TestD3Invariant_SameGroupSameSizeQuality_SameCostAcrossPlatforms(t *testing
 func TestD3Invariant_MatrixHitIgnoresUpstreamModelName(t *testing.T) {
 	svc := &BillingService{}
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1920x1080: {
+		"2K": {
 			ImageQualityMedium: 0.040,
 		},
 	}
@@ -106,7 +106,7 @@ func TestD3Invariant_MatrixHitIgnoresUpstreamModelName(t *testing.T) {
 func TestD3Invariant_ActualCostStableUnderConstantMultiplier(t *testing.T) {
 	svc := &BillingService{}
 	matrix := domain.ImagePricingMatrix{
-		ImagePricingTier1024x1024: {ImageQualityHigh: 0.211},
+		"1K": {ImageQualityHigh: 0.211},
 	}
 	cfg := &ImagePriceConfig{
 		PricingMatrix: matrix,
