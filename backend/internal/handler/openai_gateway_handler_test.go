@@ -1476,8 +1476,8 @@ func TestOpenAIResponsesWebSocket_PassthroughKeepsTurnMappingSnapshot(t *testing
 				return errors.New("channel service is nil")
 			}
 			_, err := channelSvc.Update(context.Background(), 7701, &service.UpdateChannelInput{
-				ModelMapping: map[string]map[string]string{
-					service.PlatformOpenAI: {"sol": "gpt-5.6-terra"},
+				ModelMapping: map[string][]service.ModelMappingEntry{
+					service.PlatformOpenAI: {{Sources: []string{"sol"}, Target: "gpt-5.6-terra"}},
 				},
 			})
 			return err
@@ -2789,11 +2789,17 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if len(tc.channelMapping) > 0 {
 		channelSvc = service.NewChannelService(&openAIWSUsageHandlerChannelRepoStub{
 			channels: []service.Channel{{
-				ID:                 7701,
-				Name:               "openai-ws-e2e-channel",
-				Status:             service.StatusActive,
-				GroupIDs:           []int64{groupID},
-				ModelMapping:       map[string]map[string]string{service.PlatformOpenAI: tc.channelMapping},
+				ID:       7701,
+				Name:     "openai-ws-e2e-channel",
+				Status:   service.StatusActive,
+				GroupIDs: []int64{groupID},
+				ModelMapping: func() map[string][]service.ModelMappingEntry {
+					entries := make([]service.ModelMappingEntry, 0, len(tc.channelMapping))
+					for source, target := range tc.channelMapping {
+						entries = append(entries, service.ModelMappingEntry{Sources: []string{source}, Target: target})
+					}
+					return map[string][]service.ModelMappingEntry{service.PlatformOpenAI: entries}
+				}(),
 				BillingModelSource: tc.billingModelSource,
 			}},
 			groupPlatforms: map[int64]string{groupID: service.PlatformOpenAI},

@@ -51,6 +51,23 @@
         {{ t('admin.channels.form.pricingEntry') }}
       </div>
 
+      <div class="flex flex-shrink-0 items-center gap-2" @click.stop>
+        <span class="text-[10px] text-gray-400 dark:text-gray-500" :title="t('admin.channels.form.pricingEnabled', 'Enabled')">
+          {{ entry.enabled ? '' : t('admin.channels.form.disabled', 'OFF') }}
+        </span>
+        <Toggle
+          :modelValue="entry.enabled"
+          @update:modelValue="emit('update', { ...props.entry, enabled: $event })"
+        />
+        <span class="text-[10px] text-gray-400 dark:text-gray-500" :title="t('admin.channels.form.pricingHidden', 'Hidden')">
+          {{ entry.hidden ? t('admin.channels.form.hidden', 'H') : '' }}
+        </span>
+        <Toggle
+          :modelValue="entry.hidden"
+          @update:modelValue="emit('update', { ...props.entry, hidden: $event })"
+        />
+      </div>
+
       <!-- Remove button (always visible, stop propagation) -->
       <button
         type="button"
@@ -235,6 +252,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'

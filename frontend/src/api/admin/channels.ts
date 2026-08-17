@@ -21,6 +21,13 @@ export interface PricingInterval {
   sort_order: number
 }
 
+export interface ChannelModelMappingEntry {
+  sources: string[]
+  target: string
+  enabled?: boolean
+  hidden: boolean
+}
+
 export interface ChannelModelPricing {
   id?: number
   platform: string
@@ -34,6 +41,8 @@ export interface ChannelModelPricing {
   image_output_price: number | null
   per_request_price: number | null
   intervals: PricingInterval[]
+  enabled?: boolean
+  hidden: boolean
 }
 
 export interface AccountStatsPricingRule {
@@ -54,7 +63,7 @@ export interface Channel {
   features_config?: Record<string, unknown>
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
-  model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
+  model_mapping: Record<string, ChannelModelMappingEntry[]> // platform → mapping rules
   apply_pricing_to_account_stats: boolean
   account_stats_pricing_rules: AccountStatsPricingRule[]
   created_at: string
@@ -66,7 +75,7 @@ export interface CreateChannelRequest {
   description?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
-  model_mapping?: Record<string, Record<string, string>>
+  model_mapping?: Record<string, ChannelModelMappingEntry[]>
   billing_model_source?: string
   restrict_models?: boolean
   features_config?: Record<string, unknown>
@@ -80,7 +89,7 @@ export interface UpdateChannelRequest {
   status?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
-  model_mapping?: Record<string, Record<string, string>>
+  model_mapping?: Record<string, ChannelModelMappingEntry[]>
   billing_model_source?: string
   restrict_models?: boolean
   features_config?: Record<string, unknown>

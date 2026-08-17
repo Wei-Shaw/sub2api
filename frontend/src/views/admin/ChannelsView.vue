@@ -378,37 +378,43 @@
                 </button>
               </div>
               <div
-                v-if="Object.keys(section.model_mapping).length === 0"
+                v-if="section.model_mapping.length === 0"
                 class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
               >
                 {{ t('admin.channels.form.noMappingRules', 'No mapping rules. Click "Add" to create one.') }}
               </div>
               <div v-else class="space-y-1">
                 <div
-                  v-for="(_, srcModel) in section.model_mapping"
-                  :key="srcModel"
+                  v-for="(entry, mappingIndex) in section.model_mapping"
+                  :key="mappingIndex"
                   class="flex items-center gap-2"
                 >
-                  <input
-                    :value="srcModel"
-                    type="text"
-                    class="input flex-1 text-xs"
-                    :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
-                    @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                  <ModelTagInput
+                    :models="entry.sources"
+                    :platform="section.platform"
+                    @update:models="entry.sources = $event"
+                    :placeholder="t('admin.channels.form.mappingSource', 'Source models')"
+                    class="min-w-0 flex-1"
                   />
                   <span class="text-gray-400 text-xs">→</span>
                   <input
-                    :value="section.model_mapping[srcModel]"
+                    v-model="entry.target"
                     type="text"
-                    class="input flex-1 text-xs"
+                    class="input min-w-0 flex-1 text-xs"
                     :class="platformTextClass(section.platform)"
                     :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
-                    @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+                  />
+                  <Toggle
+                    v-model="entry.enabled"
+                    :title="t('admin.channels.form.mappingEnabled', 'Enabled: when off, this rule is ignored entirely')"
+                  />
+                  <Toggle
+                    v-model="entry.hidden"
+                    :title="t('admin.channels.form.mappingHidden', 'Hidden: rule still works but source models are not listed')"
                   />
                   <button
                     type="button"
-                    @click="removeMappingEntry(sIdx, srcModel)"
+                    @click="removeMappingEntry(sIdx, mappingIndex)"
                     class="rounded p-0.5 text-gray-400 hover:text-red-500"
                   >
                     <Icon name="trash" size="sm" />
@@ -647,6 +653,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useKeyedDebouncedSearch } from '@/composables/useKeyedDebouncedSearch'
@@ -680,7 +687,7 @@ interface PlatformSection {
   enabled: boolean
   collapsed: boolean
   group_ids: number[]
-  model_mapping: Record<string, string>
+  model_mapping: Array<{ sources: string[], target: string, enabled: boolean, hidden: boolean }>
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
@@ -778,7 +785,7 @@ function addPlatformSection(platform: GroupPlatform) {
     enabled: true,
     collapsed: false,
     group_ids: [],
-    model_mapping: {},
+    model_mapping: [],
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
@@ -851,6 +858,8 @@ function toggleGroupInSection(sectionIdx: number, groupId: number) {
 function addPricingEntry(sectionIdx: number) {
   form.platforms[sectionIdx].model_pricing.push({
     models: [],
+    enabled: true,
+    hidden: false,
     billing_mode: 'token',
     input_price: null,
     output_price: null,
@@ -884,6 +893,8 @@ async function syncLatestModels(sectionIdx: number) {
     // Add new models as a single new pricing entry (user fills in prices)
     form.platforms[sectionIdx].model_pricing.push({
       models: newModels,
+      enabled: true,
+      hidden: false,
       billing_mode: 'token',
       input_price: null,
       output_price: null,
@@ -912,28 +923,11 @@ function removePricingEntry(sectionIdx: number, idx: number) {
 
 // ── Model Mapping helpers ──
 function addMappingEntry(sectionIdx: number) {
-  const mapping = form.platforms[sectionIdx].model_mapping
-  let key = ''
-  let i = 1
-  while (key === '' || key in mapping) {
-    key = `model-${i}`
-    i++
-  }
-  mapping[key] = ''
+  form.platforms[sectionIdx].model_mapping.push({ sources: [], target: '', enabled: true, hidden: false })
 }
 
-function removeMappingEntry(sectionIdx: number, key: string) {
-  delete form.platforms[sectionIdx].model_mapping[key]
-}
-
-function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
-  newKey = newKey.trim()
-  if (!newKey || newKey === oldKey) return
-  const mapping = form.platforms[sectionIdx].model_mapping
-  if (newKey in mapping) return
-  const value = mapping[oldKey]
-  delete mapping[oldKey]
-  mapping[newKey] = value
+function removeMappingEntry(sectionIdx: number, index: number) {
+  form.platforms[sectionIdx].model_mapping.splice(index, 1)
 }
 
 // ── Account Stats Pricing helpers ──
@@ -949,6 +943,8 @@ function addAccountStatsRule(sectionIdx: number) {
 function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
   form.platforms[sectionIdx].account_stats_pricing_rules[ruleIndex].pricing.push({
     models: [],
+    enabled: true,
+    hidden: false,
     billing_mode: 'token',
     input_price: null,
     output_price: null,
@@ -1082,10 +1078,10 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
 }
 
 // ── Form ↔ API conversion ──
-function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> } {
+function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Array<{ sources: string[], target: string, enabled: boolean, hidden: boolean }>>, features_config: Record<string, unknown> } {
   const group_ids: number[] = []
   const model_pricing: ChannelModelPricing[] = []
-  const model_mapping: Record<string, Record<string, string>> = {}
+  const model_mapping: Record<string, Array<{ sources: string[], target: string, enabled: boolean, hidden: boolean }>> = {}
   // Preserve existing features_config fields not managed by the form
   const featuresConfig: Record<string, unknown> = editingChannel.value?.features_config
     ? { ...editingChannel.value.features_config }
@@ -1096,8 +1092,8 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     group_ids.push(...section.group_ids)
 
     // Model mapping per platform
-    if (Object.keys(section.model_mapping).length > 0) {
-      model_mapping[section.platform] = { ...section.model_mapping }
+    if (section.model_mapping.length > 0) {
+      model_mapping[section.platform] = section.model_mapping.map(entry => ({ ...entry, sources: [...entry.sources] }))
     }
 
     // Model pricing with platform tag
@@ -1114,7 +1110,9 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || [])
+        intervals: formIntervalsToAPI(entry.intervals || []),
+        enabled: entry.enabled,
+        hidden: entry.hidden
       })
     }
   }
@@ -1198,11 +1196,18 @@ function apiToForm(channel: Channel): PlatformSection[] {
       const groupPlatform = groupPlatformMap.get(gid)
       return groupPlatform === platform || groupPlatform === 'composite'
     })
-    const mapping = (channel.model_mapping || {})[platform] || {}
+    const mapping = ((channel.model_mapping || {})[platform] || []).map(entry => ({
+      sources: [...(entry.sources || [])],
+      target: entry.target || '',
+      enabled: entry.enabled !== false,
+      hidden: !!entry.hidden
+    }))
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
       .map(p => ({
         models: p.models || [],
+        enabled: p.enabled !== false,
+        hidden: !!p.hidden,
         billing_mode: p.billing_mode,
         input_price: perTokenToMTok(p.input_price),
         output_price: perTokenToMTok(p.output_price),
@@ -1227,7 +1232,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       enabled: true,
       collapsed: false,
       group_ids: groupIds,
-      model_mapping: { ...mapping },
+      model_mapping: mapping,
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
@@ -1481,7 +1486,7 @@ async function handleSubmit() {
       return
     }
     // Check model mapping source pattern conflicts
-    const mappingKeys = Object.keys(section.model_mapping)
+    const mappingKeys = section.model_mapping.flatMap(entry => entry.sources)
     if (mappingKeys.length > 0) {
       const mappingConflict = findModelConflict(mappingKeys)
       if (mappingConflict) {

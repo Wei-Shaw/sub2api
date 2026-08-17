@@ -219,6 +219,9 @@ func newEmptyChannelCache() *channelCache {
 func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform string) {
 	for j := range ch.ModelPricing {
 		pricing := &ch.ModelPricing[j]
+		if !pricing.IsEnabled() {
+			continue // 停用条目不参与路由和计费缓存
+		}
 		if !isPlatformPricingMatch(platform, pricing.Platform) {
 			continue // 跳过非本平台的定价
 		}
@@ -244,22 +247,28 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 // 各平台严格独立：antigravity 分组只匹配 antigravity 映射。
 func expandMappingToCache(cache *channelCache, ch *Channel, gid int64, platform string) {
 	for _, mappingPlatform := range matchingPlatforms(platform) {
-		platformMapping, ok := ch.ModelMapping[mappingPlatform]
+		entries, ok := ch.ModelMapping[mappingPlatform]
 		if !ok {
 			continue
 		}
 		// 使用映射条目的原始平台作为缓存 key，防止跨平台同名映射冲突
 		gpKey := channelGroupPlatformKey{groupID: gid, platform: mappingPlatform}
-		for src, dst := range platformMapping {
-			if strings.HasSuffix(src, "*") {
-				prefix := strings.ToLower(strings.TrimSuffix(src, "*"))
-				cache.wildcardMappingByGP[gpKey] = append(cache.wildcardMappingByGP[gpKey], &wildcardMappingEntry{
-					prefix: prefix,
-					target: dst,
-				})
-			} else {
-				key := channelModelKey{groupID: gid, platform: mappingPlatform, model: strings.ToLower(src)}
-				cache.mappingByGroupModel[key] = dst
+		for _, entry := range entries {
+			if !entry.IsEnabled() {
+				continue // 禁用条目不参与路由
+			}
+			for _, src := range entry.Sources {
+				dst := entry.Target
+				if strings.HasSuffix(src, "*") {
+					prefix := strings.ToLower(strings.TrimSuffix(src, "*"))
+					cache.wildcardMappingByGP[gpKey] = append(cache.wildcardMappingByGP[gpKey], &wildcardMappingEntry{
+						prefix: prefix,
+						target: dst,
+					})
+				} else {
+					key := channelModelKey{groupID: gid, platform: mappingPlatform, model: strings.ToLower(src)}
+					cache.mappingByGroupModel[key] = dst
+				}
 			}
 		}
 	}
@@ -630,7 +639,7 @@ func RemovePreviousResponseIDFromBody(body []byte) []byte {
 
 // validateChannelConfig 校验渠道的定价和映射配置（冲突检测 + 区间校验 + 计费模式校验）。
 // Create 和 Update 共用此函数，避免重复。
-func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map[string]string) error {
+func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string][]ModelMappingEntry) error {
 	if err := validatePricingEntries(pricing); err != nil {
 		return err
 	}
@@ -1009,13 +1018,18 @@ func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
 }
 
 // validateNoConflictingMappings 检查模型映射中是否有冲突的源模式
-func validateNoConflictingMappings(mapping map[string]map[string]string) error {
-	for platform, platformMapping := range mapping {
-		entries := make([]modelEntry, 0, len(platformMapping))
-		for src := range platformMapping {
-			entries = append(entries, toModelEntry(src))
+func validateNoConflictingMappings(mapping map[string][]ModelMappingEntry) error {
+	for platform, entries := range mapping {
+		modelEntries := make([]modelEntry, 0)
+		for _, e := range entries {
+			if !e.IsEnabled() {
+				continue // 禁用条目不参与冲突检测
+			}
+			for _, src := range e.Sources {
+				modelEntries = append(modelEntries, toModelEntry(src))
+			}
 		}
-		if err := detectConflicts(entries, platform, "MAPPING_PATTERN_CONFLICT", "mapping source patterns"); err != nil {
+		if err := detectConflicts(modelEntries, platform, "MAPPING_PATTERN_CONFLICT", "mapping source patterns"); err != nil {
 			return err
 		}
 	}
@@ -1058,7 +1072,7 @@ type CreateChannelInput struct {
 	Description                string
 	GroupIDs                   []int64
 	ModelPricing               []ChannelModelPricing
-	ModelMapping               map[string]map[string]string // platform → {src→dst}
+	ModelMapping               map[string][]ModelMappingEntry // platform → []ModelMappingEntry
 	BillingModelSource         string
 	RestrictModels             bool
 	Features                   string
@@ -1074,7 +1088,7 @@ type UpdateChannelInput struct {
 	Status                     string
 	GroupIDs                   *[]int64
 	ModelPricing               *[]ChannelModelPricing
-	ModelMapping               map[string]map[string]string // platform → {src→dst}
+	ModelMapping               map[string][]ModelMappingEntry // platform → []ModelMappingEntry
 	BillingModelSource         string
 	RestrictModels             *bool
 	Features                   *string

@@ -474,9 +474,9 @@ func (r *channelRepository) GetGroupsInOtherChannels(ctx context.Context, channe
 	return conflicting, nil
 }
 
-// marshalModelMapping 将 model mapping 序列化为嵌套 JSON 字节
-// 格式：{"platform": {"src": "dst"}, ...}
-func marshalModelMapping(m map[string]map[string]string) ([]byte, error) {
+// marshalModelMapping 将 model mapping 序列化为 JSON 字节
+// 新格式：{"platform": [{"sources":["src"],"target":"dst","enabled":null,"hidden":false}], ...}
+func marshalModelMapping(m map[string][]service.ModelMappingEntry) ([]byte, error) {
 	if len(m) == 0 {
 		return []byte("{}"), nil
 	}
@@ -487,16 +487,51 @@ func marshalModelMapping(m map[string]map[string]string) ([]byte, error) {
 	return data, nil
 }
 
-// unmarshalModelMapping 将 JSON 字节反序列化为嵌套 model mapping
-func unmarshalModelMapping(data []byte) map[string]map[string]string {
+// unmarshalModelMapping 将 JSON 字节反序列化为 model mapping，兼容新旧两种格式：
+// 旧格式：{"platform": {"src": "dst"}}
+// 新格式：{"platform": [{"sources":["src"],"target":"dst","enabled":null,"hidden":false}]}
+func unmarshalModelMapping(data []byte) map[string][]service.ModelMappingEntry {
 	if len(data) == 0 {
 		return nil
 	}
-	var m map[string]map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
+	// 先解析为 platform → raw JSON，再逐平台判断格式
+	var rawMap map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rawMap); err != nil {
 		return nil
 	}
-	return m
+	result := make(map[string][]service.ModelMappingEntry, len(rawMap))
+	for platform, raw := range rawMap {
+		trimmed := strings.TrimSpace(string(raw))
+		if len(trimmed) == 0 {
+			continue
+		}
+		switch trimmed[0] {
+		case '[':
+			// 新格式：条目数组
+			var entries []service.ModelMappingEntry
+			if err := json.Unmarshal(raw, &entries); err != nil {
+				continue
+			}
+			result[platform] = entries
+		case '{':
+			// 旧格式：{src: dst} → 转换为条目数组（每个 src 单独一条，Enabled=nil 即默认启用）
+			var oldMapping map[string]string
+			if err := json.Unmarshal(raw, &oldMapping); err != nil {
+				continue
+			}
+			entries := make([]service.ModelMappingEntry, 0, len(oldMapping))
+			for src, dst := range oldMapping {
+				entries = append(entries, service.ModelMappingEntry{
+					Sources: []string{src},
+					Target:  dst,
+					// Enabled: nil = 默认启用
+					Hidden: false,
+				})
+			}
+			result[platform] = entries
+		}
+	}
+	return result
 }
 
 func marshalFeaturesConfig(m map[string]any) ([]byte, error) {
