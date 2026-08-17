@@ -17,7 +17,6 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/google/uuid"
 )
 
 // Account management implementations
@@ -865,20 +864,13 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
 	delete(updates, codexFingerprintSeedExtraKey)
 	normalizeCodexFingerprintModeExtra(updates)
-	mode := normalizeCodexFingerprintMode(fmt.Sprint(updates[codexFingerprintModeExtraKey]))
-	enablesCodexFingerprint := mode == codexFingerprintDevice
-	if _, validatesLongContext := updates[openAILongContextBillingEnabledKey]; validatesLongContext || enablesCodexFingerprint {
+	if _, validatesLongContext := updates[openAILongContextBillingEnabledKey]; validatesLongContext {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
 			return err
 		}
-		if validatesLongContext {
-			if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
-				return err
-			}
-		}
-		if enablesCodexFingerprint && account.IsOpenAIOAuth() && account.getCodexFingerprintSeed() == "" {
-			updates[codexFingerprintSeedExtraKey] = uuid.NewString()
+		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
+			return err
 		}
 	}
 	if len(updates) == 0 {
@@ -1045,27 +1037,12 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
 	}
 
-	// Seed before enabling convergence. If the later bulk update fails, the
-	// dormant seed has no outbound effect; if it succeeds, every target already
-	// has a unique stable identity and there is no account.ID fallback window.
-	if hasCodexFingerprintModeUpdate {
-		for _, account := range cachedTargets {
-			if account == nil || !account.IsOpenAIOAuth() || account.getCodexFingerprintSeed() != "" {
-				continue
-			}
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-				codexFingerprintSeedExtraKey: uuid.NewString(),
-			}); err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials:  input.Credentials,
-		Extra:        input.Extra,
-		ProbeEnabled: input.ProbeEnabled,
+		Credentials:                input.Credentials,
+		Extra:                      input.Extra,
+		ProbeEnabled:               input.ProbeEnabled,
+		EnsureCodexFingerprintSeed: hasCodexFingerprintModeUpdate,
 	}
 	if input.ProbeEnabled != nil {
 		if repoUpdates.Extra == nil {

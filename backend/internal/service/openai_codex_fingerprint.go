@@ -95,6 +95,15 @@ func normalizeCodexFingerprintModeExtra(extra map[string]any) {
 	}
 }
 
+// ShouldEnsureCodexFingerprintSeedForExtraUpdates reports whether a key-level
+// extra update enables the account-owned installation identity.
+func ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates map[string]any) bool {
+	if updates == nil {
+		return false
+	}
+	return normalizeCodexFingerprintMode(fmt.Sprint(updates[codexFingerprintModeExtraKey])) == codexFingerprintDevice
+}
+
 func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	if a == nil || !a.IsOpenAIOAuth() {
 		return codexFingerprintOff

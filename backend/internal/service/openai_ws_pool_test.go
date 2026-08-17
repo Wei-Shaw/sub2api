@@ -623,6 +623,52 @@ func TestOpenAIWSConnPool_AcquireReusesOnlyMatchingBetaFeatures(t *testing.T) {
 	require.Equal(t, 2, dialer.DialCount())
 }
 
+func TestOpenAIWSConnPool_DoesNotReuseChangedCodexInstallationIdentity(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 2
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 2
+
+	pool := newOpenAIWSConnPool(cfg)
+	dialer := &openAIWSCountingDialer{}
+	pool.setClientDialerForTest(dialer)
+	headers := http.Header{"X-Codex-Beta-Features": {"responses_websockets_v2"}}
+	accountA := &Account{
+		ID:       132,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			codexFingerprintModeExtraKey: "device",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+		},
+	}
+
+	first, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: accountA,
+		WSURL:   "wss://example.com/v1/responses",
+		Headers: headers,
+	})
+	require.NoError(t, err)
+	firstConnID := first.ConnID()
+	first.Release()
+
+	accountB := *accountA
+	accountB.Extra = map[string]any{
+		codexFingerprintModeExtraKey: "device",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+	}
+	second, err := pool.Acquire(context.Background(), openAIWSAcquireRequest{
+		Account: &accountB,
+		WSURL:   "wss://example.com/v1/responses",
+		Headers: headers,
+	})
+	require.NoError(t, err)
+	require.False(t, second.Reused())
+	require.NotEqual(t, firstConnID, second.ConnID())
+	second.Release()
+	require.Equal(t, 2, dialer.DialCount())
+}
+
 func TestOpenAIWSConnPool_AcquireReplacesIdleConnWithDifferentBetaFeatures(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
