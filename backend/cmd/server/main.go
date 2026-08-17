@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	serverroutes "github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 	"github.com/Wei-Shaw/sub2api/internal/web"
 
@@ -183,8 +185,9 @@ func runMainServer() {
 	<-quit
 
 	log.Println("Shutting down server...")
+	serverroutes.MarkDraining()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownTimeout())
 	defer cancel()
 
 	if err := app.Server.Shutdown(ctx); err != nil {
@@ -192,4 +195,14 @@ func runMainServer() {
 	}
 
 	log.Println("Server exited")
+}
+
+const defaultGracefulShutdownTimeout = 30 * time.Minute
+
+func gracefulShutdownTimeout() time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(os.Getenv("SHUTDOWN_TIMEOUT_SECONDS")))
+	if err != nil || seconds <= 0 {
+		return defaultGracefulShutdownTimeout
+	}
+	return time.Duration(seconds) * time.Second
 }

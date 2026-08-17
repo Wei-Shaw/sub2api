@@ -12,6 +12,7 @@
 
 services:
   sub2api:
+    stop_grace_period: ${SHUTDOWN_TIMEOUT_SECONDS:-1800}s
     image: weishaw/sub2api:latest
     container_name: sub2api
     restart: unless-stopped
@@ -39,6 +40,7 @@ services:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
+      - SHUTDOWN_TIMEOUT_SECONDS=${SHUTDOWN_TIMEOUT_SECONDS:-1800}
       - ENABLE_SERVER_TIMING=${ENABLE_SERVER_TIMING:-false}
       - RUN_MODE=${RUN_MODE:-standard}
       - UPDATE_GITHUB_TOKEN=${UPDATE_GITHUB_TOKEN:-}
