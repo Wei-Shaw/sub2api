@@ -547,6 +547,7 @@
       <OllamaCloudUsageCell
         v-if="account.ollama_cloud_usage?.eligible"
         :account="account"
+        @updated="handleOllamaCloudUsageUpdated"
       />
       <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
@@ -1475,6 +1476,10 @@ const handleQuotaResetAccountUpdated = (account: Account) => {
   // account-updated) cannot latch it and swallow a later, unrelated refresh.
   suppressOpenAIUsageRefreshUntil.value = Date.now() + SUPPRESS_USAGE_REFRESH_WINDOW_MS
   emit('account-updated', account)
+REDACTED
+
+const handleOllamaCloudUsageUpdated = (state: NonNullable<Account['ollama_cloud_usage']>) => {
+  emit('account-updated', { ...props.account, ollama_cloud_usage: state REDACTED)
 REDACTED
 
 // ===== Key account today stats formatters =====
