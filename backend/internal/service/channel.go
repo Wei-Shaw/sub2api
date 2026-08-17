@@ -17,6 +17,23 @@ const (
 	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
 )
 
+// ModelMappingEntry 渠道模型映射条目（支持多源模式、启用/隐藏）
+type ModelMappingEntry struct {
+	// Sources 源模型模式列表（支持通配符后缀 *，如 "gpt-*"）
+	Sources []string `json:"sources"`
+	// Target 映射目标模型名（空字符串 = 透传，即保持原始模型名）
+	Target string `json:"target"`
+	// Enabled nil 或 true = 启用（默认值）；false = 禁用，该条目不参与路由
+	Enabled *bool `json:"enabled"`
+	// Hidden true = 隐藏：不在可用渠道/返回的模型列表中显示，但路由仍然生效
+	Hidden bool `json:"hidden"`
+}
+
+// IsEnabled 返回此映射条目是否启用（nil 视为 true）
+func (e *ModelMappingEntry) IsEnabled() bool {
+	return e.Enabled == nil || *e.Enabled
+}
+
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
@@ -62,8 +79,8 @@ type Channel struct {
 	GroupIDs []int64
 	// 模型定价列表（每条含 Platform 字段）
 	ModelPricing []ChannelModelPricing
-	// 渠道级模型映射（按平台分组：platform → {src→dst}）
-	ModelMapping map[string]map[string]string
+	// 渠道级模型映射（按平台分组：platform → []ModelMappingEntry）
+	ModelMapping map[string][]ModelMappingEntry
 
 	// 账号统计定价
 	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
@@ -100,8 +117,16 @@ type ChannelModelPricing struct {
 	ImageOutputPrice *float64          `json:"image_output_price"`
 	PerRequestPrice  *float64          `json:"per_request_price"`
 	Intervals        []PricingInterval `json:"intervals"`
-	CreatedAt        time.Time         `json:"created_at,omitempty"`
-	UpdatedAt        time.Time         `json:"updated_at,omitempty"`
+	// Enabled false = 停用（相当于该条目不存在：不参与计费，也不在模型列表中显示）
+	Enabled *bool `json:"enabled"`
+	// Hidden true = 隐藏（不在可用渠道/返回的模型列表中显示，但仍参与计费）
+	Hidden    bool      `json:"hidden"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+}
+
+func (p ChannelModelPricing) IsEnabled() bool {
+	return p.Enabled == nil || *p.Enabled
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
@@ -139,11 +164,15 @@ func (c *Channel) normalizeBillingModelSource() {
 }
 
 // GetModelPricing 根据模型名查找渠道定价，未找到返回 nil。
-// 精确匹配，大小写不敏感。返回值拷贝，不污染缓存。
+// 精确匹配，大小写不敏感。已停用（Enabled=false）的条目被跳过。
+// 返回值拷贝，不污染缓存。
 func (c *Channel) GetModelPricing(model string) *ChannelModelPricing {
 	modelLower := strings.ToLower(model)
 
 	for i := range c.ModelPricing {
+		if !c.ModelPricing[i].IsEnabled() {
+			continue // 停用条目不参与计费
+		}
 		for _, m := range c.ModelPricing[i].Models {
 			if strings.ToLower(m) == modelLower {
 				cp := c.ModelPricing[i].Clone()
@@ -215,13 +244,18 @@ func (c *Channel) Clone() *Channel {
 		}
 	}
 	if c.ModelMapping != nil {
-		cp.ModelMapping = make(map[string]map[string]string, len(c.ModelMapping))
-		for platform, mapping := range c.ModelMapping {
-			inner := make(map[string]string, len(mapping))
-			for k, v := range mapping {
-				inner[k] = v
+		cp.ModelMapping = make(map[string][]ModelMappingEntry, len(c.ModelMapping))
+		for platform, entries := range c.ModelMapping {
+			entriesCopy := make([]ModelMappingEntry, len(entries))
+			for i, e := range entries {
+				ec := e
+				if e.Sources != nil {
+					ec.Sources = make([]string, len(e.Sources))
+					copy(ec.Sources, e.Sources)
+				}
+				entriesCopy[i] = ec
 			}
-			cp.ModelMapping[platform] = inner
+			cp.ModelMapping[platform] = entriesCopy
 		}
 	}
 	if c.FeaturesConfig != nil {
@@ -422,12 +456,16 @@ func splitWildcardSuffix(pattern string) (prefix string, isWildcard bool) {
 
 // GetModelPricingByPlatform 在指定平台下查找精确模型的定价，未找到返回 nil。
 // 与 GetModelPricing 的区别：按 Platform 隔离，避免跨平台同名模型误匹配。
+// 已停用（Enabled=false）的条目被跳过。
 func (c *Channel) GetModelPricingByPlatform(platform, model string) *ChannelModelPricing {
 	if c == nil {
 		return nil
 	}
 	modelLower := strings.ToLower(model)
 	for i := range c.ModelPricing {
+		if !c.ModelPricing[i].IsEnabled() {
+			continue // 停用条目不参与计费
+		}
 		if c.ModelPricing[i].Platform != platform {
 			continue
 		}
@@ -515,7 +553,16 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		return nil
 	}
 
-	idx := buildPricingIndex(c.ModelPricing)
+	// 模型列表只显示 enabled=true && hidden=false 的定价条目
+	visiblePricing := make([]ChannelModelPricing, 0, len(c.ModelPricing))
+	for i := range c.ModelPricing {
+		p := &c.ModelPricing[i]
+		if !p.IsEnabled() || p.Hidden {
+			continue
+		}
+		visiblePricing = append(visiblePricing, *p)
+	}
+	idx := buildPricingIndex(visiblePricing)
 
 	type dedupKey struct {
 		platform string
@@ -549,39 +596,46 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		})
 	}
 
-	// Pass A：从 mapping 展开
-	for platform, mapping := range c.ModelMapping {
-		if len(mapping) == 0 {
+	// Pass A：从 mapping 展开（跳过 disabled 和 hidden 条目）
+	for platform, entries := range c.ModelMapping {
+		if len(entries) == 0 {
 			continue
 		}
 		pidx := idx[platform]
-		for src, target := range mapping {
-			prefix, isWild := splitWildcardSuffix(src)
-			if isWild {
-				if pidx == nil {
-					continue
-				}
-				prefixLower := strings.ToLower(prefix)
-				for _, candidate := range pidx.names {
-					if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
-						display, pricing := lookup(pidx, candidate)
-						add(platform, display, pricing)
-					}
-				}
+		for _, entry := range entries {
+			// 停用或隐藏的条目不在模型列表中显示
+			if !entry.IsEnabled() || entry.Hidden {
 				continue
 			}
-			// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
-			pricingKey := target
-			if pricingKey == "" {
-				pricingKey = src
+			for _, src := range entry.Sources {
+				target := entry.Target
+				prefix, isWild := splitWildcardSuffix(src)
+				if isWild {
+					if pidx == nil {
+						continue
+					}
+					prefixLower := strings.ToLower(prefix)
+					for _, candidate := range pidx.names {
+						if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
+							display, pricing := lookup(pidx, candidate)
+							add(platform, display, pricing)
+						}
+					}
+					continue
+				}
+				// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
+				pricingKey := target
+				if pricingKey == "" {
+					pricingKey = src
+				}
+				if _, targetWild := splitWildcardSuffix(pricingKey); targetWild {
+					pricingKey = src
+				}
+				_, pricing := lookup(pidx, pricingKey)
+				// 显示名优先用 src 在定价里的原始大小写（若 src 本身是个定价模型名）
+				displayName, _ := lookup(pidx, src)
+				add(platform, displayName, pricing)
 			}
-			if _, targetWild := splitWildcardSuffix(pricingKey); targetWild {
-				pricingKey = src
-			}
-			_, pricing := lookup(pidx, pricingKey)
-			// 显示名优先用 src 在定价里的原始大小写（若 src 本身是个定价模型名）
-			displayName, _ := lookup(pidx, src)
-			add(platform, displayName, pricing)
 		}
 	}
 

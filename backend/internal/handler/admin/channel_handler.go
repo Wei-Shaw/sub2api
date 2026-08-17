@@ -27,33 +27,49 @@ func NewChannelHandler(channelService *service.ChannelService, billingService *s
 
 // --- Request / Response types ---
 
+// channelModelMappingEntryRequest 模型映射条目（请求体）
+type channelModelMappingEntryRequest struct {
+	Sources []string `json:"sources"` // 源模型模式列表（支持通配符后缀 *）
+	Target  string   `json:"target"`  // 映射目标（空 = 透传原始模型名）
+	Enabled *bool    `json:"enabled"` // nil 或 true = 启用（默认值）；false = 禁用
+	Hidden  bool     `json:"hidden"`  // true = 隐藏（不在模型列表中显示）
+}
+
+// channelModelMappingEntryResponse 模型映射条目（响应体）
+type channelModelMappingEntryResponse struct {
+	Sources []string `json:"sources"`
+	Target  string   `json:"target"`
+	Enabled bool     `json:"enabled"`
+	Hidden  bool     `json:"hidden"`
+}
+
 type createChannelRequest struct {
-	Name                       string                           `json:"name" binding:"required,max=100"`
-	Description                string                           `json:"description"`
-	GroupIDs                   []int64                          `json:"group_ids"`
-	ModelPricing               []channelModelPricingRequest     `json:"model_pricing"`
-	ModelMapping               map[string]map[string]string     `json:"model_mapping"`
-	BillingModelSource         string                           `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped response_model"`
-	RestrictModels             bool                             `json:"restrict_models"`
-	Features                   string                           `json:"features"`
-	FeaturesConfig             map[string]any                   `json:"features_config"`
-	ApplyPricingToAccountStats bool                             `json:"apply_pricing_to_account_stats"`
-	AccountStatsPricingRules   []accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+	Name                       string                                       `json:"name" binding:"required,max=100"`
+	Description                string                                       `json:"description"`
+	GroupIDs                   []int64                                      `json:"group_ids"`
+	ModelPricing               []channelModelPricingRequest                 `json:"model_pricing"`
+	ModelMapping               map[string][]channelModelMappingEntryRequest `json:"model_mapping"`
+	BillingModelSource         string                                       `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped response_model"`
+	RestrictModels             bool                                         `json:"restrict_models"`
+	Features                   string                                       `json:"features"`
+	FeaturesConfig             map[string]any                               `json:"features_config"`
+	ApplyPricingToAccountStats bool                                         `json:"apply_pricing_to_account_stats"`
+	AccountStatsPricingRules   []accountStatsPricingRuleRequest             `json:"account_stats_pricing_rules"`
 }
 
 type updateChannelRequest struct {
-	Name                       string                            `json:"name" binding:"omitempty,max=100"`
-	Description                *string                           `json:"description"`
-	Status                     string                            `json:"status" binding:"omitempty,oneof=active disabled"`
-	GroupIDs                   *[]int64                          `json:"group_ids"`
-	ModelPricing               *[]channelModelPricingRequest     `json:"model_pricing"`
-	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
-	BillingModelSource         string                            `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped response_model"`
-	RestrictModels             *bool                             `json:"restrict_models"`
-	Features                   *string                           `json:"features"`
-	FeaturesConfig             map[string]any                    `json:"features_config"`
-	ApplyPricingToAccountStats *bool                             `json:"apply_pricing_to_account_stats"`
-	AccountStatsPricingRules   *[]accountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
+	Name                       string                                       `json:"name" binding:"omitempty,max=100"`
+	Description                *string                                      `json:"description"`
+	Status                     string                                       `json:"status" binding:"omitempty,oneof=active disabled"`
+	GroupIDs                   *[]int64                                     `json:"group_ids"`
+	ModelPricing               *[]channelModelPricingRequest                `json:"model_pricing"`
+	ModelMapping               map[string][]channelModelMappingEntryRequest `json:"model_mapping"`
+	BillingModelSource         string                                       `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped response_model"`
+	RestrictModels             *bool                                        `json:"restrict_models"`
+	Features                   *string                                      `json:"features"`
+	FeaturesConfig             map[string]any                               `json:"features_config"`
+	ApplyPricingToAccountStats *bool                                        `json:"apply_pricing_to_account_stats"`
+	AccountStatsPricingRules   *[]accountStatsPricingRuleRequest            `json:"account_stats_pricing_rules"`
 }
 
 type channelModelPricingRequest struct {
@@ -68,6 +84,10 @@ type channelModelPricingRequest struct {
 	ImageOutputPrice *float64                 `json:"image_output_price" binding:"omitempty,min=0"`
 	PerRequestPrice  *float64                 `json:"per_request_price" binding:"omitempty,min=0"`
 	Intervals        []pricingIntervalRequest `json:"intervals"`
+	// Enabled nil 或 true = 启用；false = 停用（等于不存在）
+	Enabled *bool `json:"enabled"`
+	// Hidden true = 隐藏（不在模型列表中显示）
+	Hidden bool `json:"hidden"`
 }
 
 type pricingIntervalRequest struct {
@@ -90,21 +110,21 @@ type accountStatsPricingRuleRequest struct {
 }
 
 type channelResponse struct {
-	ID                         int64                             `json:"id"`
-	Name                       string                            `json:"name"`
-	Description                string                            `json:"description"`
-	Status                     string                            `json:"status"`
-	BillingModelSource         string                            `json:"billing_model_source"`
-	RestrictModels             bool                              `json:"restrict_models"`
-	Features                   string                            `json:"features"`
-	FeaturesConfig             map[string]any                    `json:"features_config"`
-	GroupIDs                   []int64                           `json:"group_ids"`
-	ModelPricing               []channelModelPricingResponse     `json:"model_pricing"`
-	ModelMapping               map[string]map[string]string      `json:"model_mapping"`
-	ApplyPricingToAccountStats bool                              `json:"apply_pricing_to_account_stats"`
-	AccountStatsPricingRules   []accountStatsPricingRuleResponse `json:"account_stats_pricing_rules"`
-	CreatedAt                  string                            `json:"created_at"`
-	UpdatedAt                  string                            `json:"updated_at"`
+	ID                         int64                                         `json:"id"`
+	Name                       string                                        `json:"name"`
+	Description                string                                        `json:"description"`
+	Status                     string                                        `json:"status"`
+	BillingModelSource         string                                        `json:"billing_model_source"`
+	RestrictModels             bool                                          `json:"restrict_models"`
+	Features                   string                                        `json:"features"`
+	FeaturesConfig             map[string]any                                `json:"features_config"`
+	GroupIDs                   []int64                                       `json:"group_ids"`
+	ModelPricing               []channelModelPricingResponse                 `json:"model_pricing"`
+	ModelMapping               map[string][]channelModelMappingEntryResponse `json:"model_mapping"`
+	ApplyPricingToAccountStats bool                                          `json:"apply_pricing_to_account_stats"`
+	AccountStatsPricingRules   []accountStatsPricingRuleResponse             `json:"account_stats_pricing_rules"`
+	CreatedAt                  string                                        `json:"created_at"`
+	UpdatedAt                  string                                        `json:"updated_at"`
 }
 
 type channelModelPricingResponse struct {
@@ -120,6 +140,8 @@ type channelModelPricingResponse struct {
 	ImageOutputPrice *float64                  `json:"image_output_price"`
 	PerRequestPrice  *float64                  `json:"per_request_price"`
 	Intervals        []pricingIntervalResponse `json:"intervals"`
+	Enabled          bool                      `json:"enabled"`
+	Hidden           bool                      `json:"hidden"`
 }
 
 type pricingIntervalResponse struct {
@@ -156,7 +178,6 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		Features:       ch.Features,
 		FeaturesConfig: ch.FeaturesConfig,
 		GroupIDs:       ch.GroupIDs,
-		ModelMapping:   ch.ModelMapping,
 		CreatedAt:      ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:      ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
@@ -164,8 +185,19 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
 	}
-	if resp.ModelMapping == nil {
-		resp.ModelMapping = map[string]map[string]string{}
+	resp.ModelMapping = make(map[string][]channelModelMappingEntryResponse, len(ch.ModelMapping))
+	for platform, entries := range ch.ModelMapping {
+		converted := make([]channelModelMappingEntryResponse, 0, len(entries))
+		for _, entry := range entries {
+			sources := append([]string(nil), entry.Sources...)
+			converted = append(converted, channelModelMappingEntryResponse{
+				Sources: sources,
+				Target:  entry.Target,
+				Enabled: entry.IsEnabled(),
+				Hidden:  entry.Hidden,
+			})
+		}
+		resp.ModelMapping[platform] = converted
 	}
 
 	resp.ModelPricing = make([]channelModelPricingResponse, 0, len(ch.ModelPricing))
@@ -228,6 +260,8 @@ func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingRespon
 		ImageOutputPrice: p.ImageOutputPrice,
 		PerRequestPrice:  p.PerRequestPrice,
 		Intervals:        intervals,
+		Enabled:          p.IsEnabled(),
+		Hidden:           p.Hidden,
 	}
 }
 
@@ -268,6 +302,11 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 				SortOrder:       iv.SortOrder,
 			})
 		}
+		// Enabled: nil = true (默认启用)
+		enabled := true
+		if r.Enabled != nil {
+			enabled = *r.Enabled
+		}
 		result = append(result, service.ChannelModelPricing{
 			Platform:         platform,
 			Models:           r.Models,
@@ -280,7 +319,30 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 			ImageOutputPrice: r.ImageOutputPrice,
 			PerRequestPrice:  r.PerRequestPrice,
 			Intervals:        intervals,
+			Enabled:          &enabled,
+			Hidden:           r.Hidden,
 		})
+	}
+	return result
+}
+
+// mappingRequestToService 将请求体中的映射条目转换为服务层类型
+func mappingRequestToService(m map[string][]channelModelMappingEntryRequest) map[string][]service.ModelMappingEntry {
+	if len(m) == 0 {
+		return nil
+	}
+	result := make(map[string][]service.ModelMappingEntry, len(m))
+	for platform, entries := range m {
+		svcEntries := make([]service.ModelMappingEntry, 0, len(entries))
+		for _, e := range entries {
+			svcEntries = append(svcEntries, service.ModelMappingEntry{
+				Sources: e.Sources,
+				Target:  e.Target,
+				Enabled: e.Enabled, // nil = 默认启用
+				Hidden:  e.Hidden,
+			})
+		}
+		result[platform] = svcEntries
 	}
 	return result
 }
@@ -381,7 +443,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		Description:                req.Description,
 		GroupIDs:                   req.GroupIDs,
 		ModelPricing:               pricing,
-		ModelMapping:               req.ModelMapping,
+		ModelMapping:               mappingRequestToService(req.ModelMapping),
 		BillingModelSource:         req.BillingModelSource,
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
@@ -417,7 +479,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		Description:                req.Description,
 		Status:                     req.Status,
 		GroupIDs:                   req.GroupIDs,
-		ModelMapping:               req.ModelMapping,
+		ModelMapping:               mappingRequestToService(req.ModelMapping),
 		BillingModelSource:         req.BillingModelSource,
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,

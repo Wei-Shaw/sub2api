@@ -294,17 +294,19 @@ func TestChannelClone_EdgeCases(t *testing.T) {
 	t.Run("deep copy model mapping", func(t *testing.T) {
 		original := &Channel{
 			ID: 1,
-			ModelMapping: map[string]map[string]string{
-				"openai": {"gpt-4": "gpt-4-turbo"},
+			ModelMapping: map[string][]ModelMappingEntry{
+				"openai": {{Sources: []string{"gpt-4"}, Target: "gpt-4-turbo"}},
 			},
 		}
 		cloned := original.Clone()
 
-		// Modify the cloned nested map
-		cloned.ModelMapping["openai"]["gpt-4"] = "hacked"
+		// Modify the cloned nested entry and sources slice.
+		cloned.ModelMapping["openai"][0].Target = "hacked"
+		cloned.ModelMapping["openai"][0].Sources[0] = "hacked-source"
 
-		// Original must remain unchanged
-		require.Equal(t, "gpt-4-turbo", original.ModelMapping["openai"]["gpt-4"])
+		// Original must remain unchanged.
+		require.Equal(t, "gpt-4-turbo", original.ModelMapping["openai"][0].Target)
+		require.Equal(t, "gpt-4", original.ModelMapping["openai"][0].Sources[0])
 	})
 }
 
@@ -512,7 +514,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 		require.NotContains(t, m.Name, "*")
 	}
 }
-
 
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
