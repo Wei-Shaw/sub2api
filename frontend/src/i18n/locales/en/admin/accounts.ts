@@ -125,6 +125,7 @@ export default {
           responses: 'Responses',
           responsesDesc: 'Provider’s native Responses endpoint — ideal for Codex.',
         },
+        balance: 'Balance --',
         window5h: '5-hour window',
         windowWeekly: 'Weekly window',
         probeTooltip: 'Query the provider quota endpoint for 5-hour / weekly rolling window usage',

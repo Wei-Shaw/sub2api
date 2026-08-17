@@ -328,6 +328,7 @@ export default {
           responses: 'Responses',
           responsesDesc: '供应商原生 Responses 端点，适配 Codex。',
         },
+        balance: '余额 --',
         window5h: '5 小时窗口',
         windowWeekly: '每周窗口',
         probeTooltip: '请求供应商额度端点，查询 5 小时 / 每周滚动窗口用量',
