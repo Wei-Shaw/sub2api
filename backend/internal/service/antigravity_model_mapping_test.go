@@ -125,6 +125,18 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "gemini-3.6-flash-tiered",
 		},
 		{
+			name:           "默认映射 - gemini-3.7-flash → gemini-3.7-flash-tiered",
+			requestedModel: "gemini-3.7-flash",
+			accountMapping: nil,
+			expected:       "gemini-3.7-flash-tiered",
+		},
+		{
+			name:           "默认映射透传 - gemini-3.7-flash-high",
+			requestedModel: "gemini-3.7-flash-high",
+			accountMapping: nil,
+			expected:       "gemini-3.7-flash-high",
+		},
+		{
 			name:           "默认映射透传 - gemini-3.7-flash-tiered",
 			requestedModel: "gemini-3.7-flash-tiered",
 			accountMapping: nil,

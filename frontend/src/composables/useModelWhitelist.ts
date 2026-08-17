@@ -90,6 +90,10 @@ const antigravityModels = [
   'gemini-3.6-flash-low',
   'gemini-3.6-flash-medium',
   'gemini-3.6-flash-tiered',
+  'gemini-3.7-flash',
+  'gemini-3.7-flash-high',
+  'gemini-3.7-flash-low',
+  'gemini-3.7-flash-medium',
   'gemini-3.7-flash-tiered',
   // 其他
   'gpt-oss-120b-medium',
@@ -366,6 +370,8 @@ const antigravityPresetMappings = [
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'claude-opus-4-6-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: 'Opus 4.6-thinking', from: 'claude-opus-4-6-thinking', to: 'claude-opus-4-6-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
   { label: '3.6-Flash→tiered', from: 'gemini-3.6-flash', to: 'gemini-3.6-flash-tiered', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' },
+  { label: '3.7-Flash→tiered', from: 'gemini-3.7-flash', to: 'gemini-3.7-flash-tiered', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' },
+  { label: '3.7-Flash-high透传', from: 'gemini-3.7-flash-high', to: 'gemini-3.7-flash-high', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' },
   { label: '3.7-Flash-tiered透传', from: 'gemini-3.7-flash-tiered', to: 'gemini-3.7-flash-tiered', color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400' }
 ]
 
