@@ -71,12 +71,29 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 
 const postgresParameterBatchSize = 50000
 
-const codexFingerprintSeedCanonicalPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-const codexFingerprintNilSeed = "00000000-0000-0000-0000-000000000000"
+const (
+	codexFingerprintSeedCanonicalPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+	codexFingerprintSeedCompactPattern   = "^[0-9a-f]{32}$"
+	codexFingerprintSeedURNPattern       = "^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+	codexFingerprintSeedBracedPattern    = "^\\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\}$"
+	codexFingerprintNilSeedHex           = "00000000000000000000000000000000"
+)
+
+var codexFingerprintSeedAcceptedPatterns = []string{
+	codexFingerprintSeedCanonicalPattern,
+	codexFingerprintSeedCompactPattern,
+	codexFingerprintSeedURNPattern,
+	codexFingerprintSeedBracedPattern,
+}
 
 func codexFingerprintSeedValidSQL(extraExpr string) string {
-	value := "(" + extraExpr + " ->> 'codex_fingerprint_seed')"
-	return "(" + value + " ~ '" + codexFingerprintSeedCanonicalPattern + "' AND " + value + " <> '" + codexFingerprintNilSeed + "')"
+	value := "BTRIM(COALESCE((" + extraExpr + " ->> 'codex_fingerprint_seed'), ''))"
+	formats := make([]string, 0, len(codexFingerprintSeedAcceptedPatterns))
+	for _, pattern := range codexFingerprintSeedAcceptedPatterns {
+		formats = append(formats, value+" ~* '"+pattern+"'")
+	}
+	normalizedHex := "regexp_replace(LOWER(" + value + "), '^(urn:uuid:)|[{}-]', '', 'g')"
+	return "((" + strings.Join(formats, " OR ") + ") AND " + normalizedHex + " <> '" + codexFingerprintNilSeedHex + "')"
 }
 
 func ensureCodexFingerprintSeedSQL(extraExpr string) string {

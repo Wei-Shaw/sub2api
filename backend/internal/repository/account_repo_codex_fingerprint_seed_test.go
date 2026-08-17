@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -34,7 +35,13 @@ func TestBulkUpdateEnsuresCodexFingerprintSeedWithPerRowSQL(t *testing.T) {
 	require.Contains(t, query, "gen_random_uuid()::text")
 	require.Contains(t, query, "platform = 'openai' AND type = 'oauth'")
 	require.Contains(t, query, "to_jsonb(extra ->> 'codex_fingerprint_seed')")
-	require.Contains(t, query, codexFingerprintSeedCanonicalPattern)
+	for _, pattern := range codexFingerprintSeedAcceptedPatterns {
+		require.Contains(t, query, pattern)
+	}
+	require.Equal(t, len(codexFingerprintSeedAcceptedPatterns), strings.Count(query, " ~* '"))
+	require.Contains(t, query, "BTRIM(COALESCE((extra ->> 'codex_fingerprint_seed'), ''))")
+	require.Contains(t, query, "regexp_replace(LOWER(")
+	require.Contains(t, query, codexFingerprintNilSeedHex)
 	require.NotContains(t, query, "22222222-2222-4222-8222-222222222222")
 	require.NotEmpty(t, exec.execArgs)
 	payload, ok := exec.execArgs[0][0].([]byte)
