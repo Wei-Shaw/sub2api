@@ -772,32 +772,40 @@ func grokResponsesToolDedupKey(tool gjson.Result) string {
 	return "json:" + normalizeCompatSeedJSON(json.RawMessage(tool.Raw))
 }
 
-// sanitizeGrokReasoningNullContent 删除 reasoning 项中的 "content": null。
-// xAI 的 untagged enum 反序列化器拒收该字段，返回 422。
+// sanitizeGrokReasoningNullContent 删除 Responses input 对象上的显式 JSON null。
+// xAI 的 untagged enum ModelInput 拒收这些字段，返回 422。
+// 旧实现只扫 reasoning.content；生产仍有 1MB grok-4.6 请求 422，说明其它 item type / 其它 null 字段也会踩中。
 func sanitizeGrokReasoningNullContent(body []byte) ([]byte, error) {
+	return stripExplicitNullsFromGrokResponsesInput(body)
+}
+
+func stripExplicitNullsFromGrokResponsesInput(body []byte) ([]byte, error) {
 	input := gjson.GetBytes(body, "input")
 	if !input.Exists() || !input.IsArray() {
 		return body, nil
 	}
 
 	items := input.Array()
-	changed := false
-	for i := len(items) - 1; i >= 0; i-- {
+	var paths []string
+	for i := range items {
 		item := items[i]
-		if strings.TrimSpace(item.Get("type").String()) != "reasoning" {
+		if !item.IsObject() {
 			continue
 		}
-		contentResult := item.Get("content")
-		if contentResult.Exists() && contentResult.Type == gjson.Null {
-			var err error
-			body, err = sjson.DeleteBytes(body, fmt.Sprintf("input.%d.content", i))
-			if err != nil {
-				return nil, err
+		item.ForEach(func(key, value gjson.Result) bool {
+			if value.Type == gjson.Null {
+				paths = append(paths, fmt.Sprintf("input.%d.%s", i, key.String()))
 			}
-			changed = true
-		}
+			return true
+		})
 	}
-	_ = changed
+	for _, path := range paths {
+		next, err := sjson.DeleteBytes(body, path)
+		if err != nil {
+			return nil, err
+		}
+		body = next
+	}
 	return body, nil
 }
 

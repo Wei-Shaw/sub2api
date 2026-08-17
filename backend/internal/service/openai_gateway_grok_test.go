@@ -3327,6 +3327,33 @@ func TestPatchGrokResponsesBody_StripsReasoningContentNull(t *testing.T) {
 	require.Equal(t, "reasoning", reasoning.Get("type").String())
 	require.True(t, reasoning.Get("summary").Exists(), "summary should be preserved")
 	require.False(t, reasoning.Get("content").Exists(), "content: null should be stripped")
+	require.False(t, reasoning.Get("encrypted_content").Exists(), "encrypted_content: null should be stripped")
+}
+
+func TestPatchGrokResponsesBody_StripsExplicitNullsOnNonReasoningItems(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}],"status":null},
+			{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}","status":null},
+			{"type":"function_call_output","call_id":"call_1","output":"ok","status":null},
+			{"type":"web_search_call","id":"ws_1","status":null}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 4)
+	for i, item := range items {
+		require.Falsef(t, item.Get("status").Exists(), "input.%d.status: null should be stripped", i)
+	}
+	require.Equal(t, "lookup", items[1].Get("name").String())
+	require.Equal(t, "ok", items[2].Get("output").String())
 }
 
 func TestPatchGrokResponsesBody_KeepsReasoningContentNonNull(t *testing.T) {
