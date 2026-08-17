@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -218,6 +219,50 @@ REDACTED
 			require.Nil(t, result)
 			require.Equal(t, http.StatusBadRequest, recorder.Code)
 			require.Contains(t, recorder.Body.String(), "native OAuth account required for antigravity compatibility mode")
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *testing.T) {
+	svc := &AntigravityGatewayService{REDACTED
+	tests := []struct {
+		name      string
+		tools     string
+		wantField bool
+REDACTED{
+		{
+			name:      "mixed server and client tools",
+			tools:     `[{"name":"get_weather","input_schema":{"type":"object"REDACTEDREDACTED,{"type":"web_search_20250305","name":"web_search"REDACTED]`,
+			wantField: true,
+	REDACTED,
+		{
+			name:  "client tools only",
+			tools: `[{"name":"get_weather","input_schema":{"type":"object"REDACTEDREDACTED]`,
+	REDACTED,
+		{
+			name:  "server tools only",
+			tools: `[{"type":"web_search_20250305","name":"web_search"REDACTED]`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claudeBody := []byte(`{"messages":[{"role":"user","content":"hello"REDACTED],"tools":` + tt.tools + `REDACTED`)
+			claudeBody = bytes.ReplaceAll(claudeBody, []byte{92REDACTED, nil)
+			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash")
+		REDACTED
+
+			var wrapped map[string]any
+			require.NoError(t, json.Unmarshal(body, &wrapped))
+			request := wrapped["request"].(map[string]any)
+			toolConfig, exists := request["toolConfig"].(map[string]any)
+			if !tt.wantField {
+				require.False(t, exists)
+				return
+		REDACTED
+			require.True(t, exists)
+			require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
+			require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
 	REDACTED)
 REDACTED
 REDACTED
