@@ -161,7 +161,7 @@ func applyOpenAICodexProbeHeaders(h http.Header) {
 		return
 	}
 	ensureCodexIdentityHeaders(h)
-	h.Set("X-Codex-Window-ID", uuid.NewString())
+	h.Set("X-Codex-Window-ID", uuid.Must(uuid.NewV7()).String())
 }
 
 // enforceCodexIdentityHeaders 收口 OAuth（ChatGPT 内部接口）出站请求的客户端身份头。

@@ -169,6 +169,7 @@ func TestCRSSyncOwnsCodexFingerprintSeedLocally(t *testing.T) {
 
 		require.Equal(t, "updated", result.Items[0].Action)
 		stored := repo.accounts["crs-openai-1"]
+		require.Equal(t, "device", stored.Extra[codexFingerprintModeExtraKey])
 		require.Equal(t, testCodexFingerprintSeedB, stored.getCodexFingerprintSeed())
 	})
 

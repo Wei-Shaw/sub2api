@@ -2034,7 +2034,13 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	if isOAuth {
 		testModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payloadBytes, _ := json.Marshal(createOpenAICompactProbePayload(testModelID, isOAuth))
+	payload := createOpenAICompactProbePayload(testModelID, isOAuth)
+	var fingerprintIDs *codexFingerprintIDs
+	if isOAuth {
+		fingerprintIDs = resolveCodexFingerprintIDsFromRequest(account, nil)
+		applyCodexFingerprintClientMetadata(payload, fingerprintIDs)
+	}
+	payloadBytes, _ := json.Marshal(payload)
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
 		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 	}
@@ -2064,18 +2070,17 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	}
 	applyOpenAICodexProbeHeaders(req.Header)
 	probeSessionID := compactProbeSessionID(account.ID)
-	req.Header.Set("Session_ID", probeSessionID)
-	req.Header.Set("Conversation_ID", probeSessionID)
+	req.Header.Set("session-id", probeSessionID)
+	req.Header.Set("thread-id", probeSessionID)
+	req.Header.Set("x-client-request-id", probeSessionID)
 
 	if isOAuth {
 		req.Host = "chatgpt.com"
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
-		// 指纹收敛：探测与真实转发走同一个 /responses 端点，身份也必须同构，
-		// 否则探测流量会以「缺 x-codex-installation-id + 非收敛 session」的
-		// 形态暴露在上游眼里。账号关闭收敛（off）时返回 nil，探测保持原样。
-		if fpIDs := resolveCodexFingerprintIDsFromRequest(account, req.Header); fpIDs != nil {
-			applyCodexFingerprintHeaders(req.Header, fpIDs)
-		}
+		// Remote compaction v2 uses the regular /responses shape: installation
+		// identity lives in body client_metadata while the probe owns a fresh,
+		// internally coherent session/thread pair.
+		applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
 	}
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -153,14 +155,8 @@ func mergeExtraUpdates(base map[string]any, more map[string]any) map[string]any 
 	return out
 }
 
-// compactProbeSessionID 返回探测请求使用的会话标识。真实 Codex 的
-// session-id / thread-id 恒为 UUID（codex-protocol ThreadId 是 UUIDv7），
-// 探测既然与真实流量走同一个 /responses 端点，标识形态就必须同构——
-// 否则上游能凭 "probe_compact_5" 这类字面量一眼区分出探测流量。
-// 账号级稳定派生：重复探测复用同一会话，而不是每次新开一个。
-func compactProbeSessionID(accountID int64) string {
-	if accountID <= 0 {
-		return deriveStableUUIDv4("sub2api:codex-compact-probe:v1:anonymous")
-	}
-	return deriveStableUUIDv4("sub2api:codex-compact-probe:v1:" + strconv.FormatInt(accountID, 10))
+// compactProbeSessionID returns a fresh UUIDv7 root-thread identity, matching
+// the official Codex lifecycle without exposing a deployment-local account ID.
+func compactProbeSessionID(_ int64) string {
+	return uuid.Must(uuid.NewV7()).String()
 }

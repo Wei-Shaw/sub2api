@@ -395,6 +395,17 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 		}
 		normalized = policyApplied
+		if fpIDs := resolveCodexFingerprintIDsFromRequest(account, nil); fpIDs != nil {
+			fingerprinted, _, fingerprintErr := applyCodexFingerprintClientMetadataRaw(normalized, fpIDs)
+			if fingerprintErr != nil {
+				return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					"invalid websocket client metadata",
+					fingerprintErr,
+				)
+			}
+			normalized = fingerprinted
+		}
 		ingressSessionOriginalModel = originalModel
 
 		return openAIWSClientPayload{

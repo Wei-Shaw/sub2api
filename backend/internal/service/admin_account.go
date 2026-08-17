@@ -864,8 +864,9 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
 	delete(updates, codexFingerprintSeedExtraKey)
-	mode := codexFingerprintMode(strings.TrimSpace(fmt.Sprint(updates[codexFingerprintModeExtraKey])))
-	enablesCodexFingerprint := mode == codexFingerprintDevice || mode == codexFingerprintSession || mode == codexFingerprintFull
+	normalizeCodexFingerprintModeExtra(updates)
+	mode := normalizeCodexFingerprintMode(fmt.Sprint(updates[codexFingerprintModeExtraKey]))
+	enablesCodexFingerprint := mode == codexFingerprintDevice
 	if _, validatesLongContext := updates[openAILongContextBillingEnabledKey]; validatesLongContext || enablesCodexFingerprint {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -925,10 +926,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 	_, hasLongContextBillingUpdate := input.Extra[openAILongContextBillingEnabledKey]
-	requestedCodexFingerprintMode := codexFingerprintMode(strings.TrimSpace(fmt.Sprint(input.Extra[codexFingerprintModeExtraKey])))
-	hasCodexFingerprintModeUpdate := requestedCodexFingerprintMode == codexFingerprintDevice ||
-		requestedCodexFingerprintMode == codexFingerprintSession ||
-		requestedCodexFingerprintMode == codexFingerprintFull
+	normalizeCodexFingerprintModeExtra(input.Extra)
+	requestedCodexFingerprintMode := normalizeCodexFingerprintMode(fmt.Sprint(input.Extra[codexFingerprintModeExtraKey]))
+	hasCodexFingerprintModeUpdate := requestedCodexFingerprintMode == codexFingerprintDevice
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account

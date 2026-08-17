@@ -199,6 +199,7 @@ func TestAdminServiceUpdateAccountExtraInitializesCodexFingerprintSeed(t *testin
 	})
 	require.NoError(t, err)
 	updates := repo.extraUpdates[1]
+	require.Equal(t, "device", updates[codexFingerprintModeExtraKey])
 	seed, _ := updates[codexFingerprintSeedExtraKey].(string)
 	require.NotEmpty(t, seed)
 	require.NotEqual(t, testCodexFingerprintSeedB, seed)

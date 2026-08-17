@@ -672,11 +672,9 @@ export default {
         codexCLIOnlyAppServer: '允许 Codex app-server 客户端',
         codexCLIOnlyAppServerDesc: '仅在上方开关开启时生效。开启后本账号额外放行内嵌 Codex 引擎、经 app-server 协议接入的第三方客户端（如 Claude Code 的 codex 插件），仍需通过全局引擎指纹门；与全局 app-server 开关取 OR（任一开即放行）。',
         codexFingerprintMode: 'Codex 指纹收敛',
-        codexFingerprintModeDesc: '多人共享同一 OAuth 账号时，将各用户的设备/会话标识收敛为账号级恒定值，减少上游可见的设备数和会话数。默认关闭（原样透传客户端标识），需要时再显式开启；部分账号开启收敛后出现过额度缩水，请按自己的实测结果选择。',
+        codexFingerprintModeDesc: '可选地为此 OAuth 账号使用一个持久 installation identity；客户端原始 session、thread、turn、window 与 prompt cache identity 保持不变，与官方 Codex 协议一致。默认关闭，请灰度验证后再开启。',
         codexFingerprintOff: '关闭（透传，默认）',
-        codexFingerprintDevice: '仅设备',
-        codexFingerprintSession: '设备+会话',
-        codexFingerprintFull: '完全收敛',
+        codexFingerprintDevice: '稳定 Installation',
         codexImageTool: 'Codex 图片桥接策略',
         codexImageToolDesc:
           '统一控制 Codex /responses 文本请求的 hosted image_generation 桥接和客户端图片工具声明。hosted 工具自动注入仅适用于非 Responses Lite 请求；账号级策略优先于渠道和全局配置，不影响独立图片生成接口。',

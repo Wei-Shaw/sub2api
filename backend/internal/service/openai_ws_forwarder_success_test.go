@@ -690,6 +690,8 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	c.Request.Header.Set("session_id", "sess-oauth-1")
 	c.Request.Header.Set("conversation_id", "conv-oauth-1")
 	c.Request.Header.Set("x-codex-beta-features", "remote_compaction_v2")
+	c.Request.Header.Set("x-codex-installation-id", "client-installation")
+	c.Request.Header.Set("x-codex-turn-metadata", `{"installation_id":"client-installation","session_id":"client-session","thread_id":"client-thread","window_id":"client-window"}`)
 
 	cfg := &config.Config{}
 	cfg.Security.URLAllowlist.Enabled = false
@@ -733,10 +735,12 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 		},
 		Extra: map[string]any{
 			"responses_websockets_v2_enabled": true,
+			codexFingerprintModeExtraKey:      "device",
+			codexFingerprintSeedExtraKey:      testCodexFingerprintSeedA,
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.1","stream":false,"store":true,"input":[{"type":"input_text","text":"hello","namespace":"native-wsv2"}]}`)
+	body := []byte(`{"model":"gpt-5.1","stream":false,"store":true,"prompt_cache_key":"client-cache","client_metadata":{"x-codex-installation-id":"client-installation","session_id":"client-session","thread_id":"client-thread","x-codex-window-id":"client-window"},"input":[{"type":"input_text","text":"hello","namespace":"native-wsv2"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -749,8 +753,16 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
 	require.Equal(t, "native-wsv2", gjson.Get(requestJSON, "input.0.namespace").String(), "OAuth WSv2 应保留原生 namespace")
+	require.Equal(t, testCodexFingerprintSeedA, gjson.Get(requestJSON, "client_metadata.x-codex-installation-id").String())
+	require.Equal(t, "client-session", gjson.Get(requestJSON, "client_metadata.session_id").String())
+	require.Equal(t, "client-thread", gjson.Get(requestJSON, "client_metadata.thread_id").String())
+	require.Equal(t, "client-window", gjson.Get(requestJSON, "client_metadata.x-codex-window-id").String())
+	require.Equal(t, "client-cache", gjson.Get(requestJSON, "prompt_cache_key").String())
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
 	require.Equal(t, "remote_compaction_v2", captureDialer.lastHeaders.Get("x-codex-beta-features"))
+	require.Empty(t, captureDialer.lastHeaders.Get("x-codex-installation-id"))
+	require.Equal(t, testCodexFingerprintSeedA, gjson.Get(captureDialer.lastHeaders.Get("x-codex-turn-metadata"), "installation_id").String())
+	require.Equal(t, "client-session", gjson.Get(captureDialer.lastHeaders.Get("x-codex-turn-metadata"), "session_id").String())
 	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
 	// 测试中未设置 api_key 到 context，apiKeyID=0。
 	require.Equal(t, isolateOpenAISessionID(0, "sess-oauth-1"), captureDialer.lastHeaders.Get("session_id"))
