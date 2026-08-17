@@ -113,7 +113,9 @@ REDACTED
 
 const balanceLabel = computed(() => {
   if (currentEntries.value.length === 0) {
-    return t('admin.accounts.grokBalance')?.trim() || 'Balance'
+    // 修复:此前误引 admin.accounts.grokBalance(实际嵌套在 usageWindow 下),
+    // 未命中时渲染原始 key。CN 供应商使用自己的占位键。
+    return t('admin.accounts.cnProviders.balance')
   REDACTED
   return currentEntries.value.map(formatEntry).join(' · ')
 REDACTED)
