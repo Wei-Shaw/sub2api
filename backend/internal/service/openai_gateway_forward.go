@@ -108,6 +108,13 @@ REDACTED
 		return s.forwardGrokResponses(ctx, c, account, body, originalModel, reqStream, startTime)
 REDACTED
 
+	// CN 供应商 anthropic 协议账号：/v1/responses 入站是交叉协议组合
+	// （Responses 客户端 × Anthropic 上游），转成 Anthropic 请求走原生端点。
+	// 不能落到下面的 raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
+	if account.IsAnthropicProtocol() {
+		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
+REDACTED
+
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 REDACTED
@@ -1051,12 +1058,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			if err != nil {
 				return nil, err
 		REDACTED
-			targetURL = buildOpenAIResponsesURL(validatedURL)
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
 	REDACTED
 	default:
 		targetURL = openaiPlatformAPIURL
 REDACTED
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+
+	// DeepSeek 原生 Responses 端点为无状态实现：强制 store=false、清除
+	// previous_response_id，避免携带状态字段被上游拒绝。
+	body = normalizeDeepSeekResponsesRequestBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {

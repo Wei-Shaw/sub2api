@@ -381,7 +381,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 REDACTED()
 
 	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
-	if previousResponseID != "" && normalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
+	if previousResponseID != "" && NormalizeOpenAICompatiblePlatform(req.Platform) == PlatformOpenAI &&
 		(!req.StickyWeighted || !req.PreviousResponseCanMove) {
 		selection, err := s.service.selectAccountByPreviousResponseIDForCapability(
 			ctx,
@@ -486,7 +486,7 @@ REDACTED
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 REDACTED
-	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
+	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 REDACTED
@@ -1406,7 +1406,7 @@ REDACTED
 			filterStats.exclude("not_schedulable")
 			continue
 	REDACTED
-		if account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
+		if account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
 			filterStats.exclude("platform_mismatch")
 			continue
 	REDACTED
@@ -2125,7 +2125,7 @@ REDACTED
 		return selection, decision, err
 REDACTED
 	// The circuit only ever quarantines PlatformOpenAI accounts.
-	if normalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
+	if NormalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
 		return selection, decision, err
 REDACTED
 	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
@@ -2161,7 +2161,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	if requiredImageCapability == "" {
 		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 REDACTED
-	platform = normalizeOpenAICompatiblePlatform(platform)
+	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{REDACTED
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {

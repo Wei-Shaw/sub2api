@@ -34,7 +34,7 @@ REDACTED
 		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: trueREDACTED
 REDACTED
 
-	platform = normalizeOpenAICompatiblePlatform(platform)
+	platform = NormalizeOpenAICompatiblePlatform(platform)
 	queryGroupID := groupID
 	includeGrouped := false
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
