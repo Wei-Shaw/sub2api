@@ -99,7 +99,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
-	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
+	if account != nil && (account.IsAnthropicAPIKeyPassthroughEnabled() || account.IsMiniMax()) {
 		passthroughBody := parsed.Body.Bytes()
 		passthroughModel := parsed.Model
 		if passthroughModel != "" {

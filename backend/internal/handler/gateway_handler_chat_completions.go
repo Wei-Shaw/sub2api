@@ -264,7 +264,16 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
-		if account.Platform == service.PlatformGemini {
+		if account.IsMiniMax() {
+			if h.openAIGatewayService == nil {
+				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "MiniMax compatibility service is not configured")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			result, err = h.openAIGatewayService.ForwardMiniMaxChatCompletions(c.Request.Context(), c, account, forwardBody, "")
+		} else if account.Platform == service.PlatformGemini {
 			if h.geminiCompatService == nil {
 				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
 				if accountReleaseFunc != nil {

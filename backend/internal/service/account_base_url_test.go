@@ -5,6 +5,7 @@ package service
 import (
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/minimax"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/stretchr/testify/require"
 )
@@ -76,6 +77,35 @@ func TestGetBaseURL(t *testing.T) {
 			if result != tt.expected {
 				t.Errorf("GetBaseURL() = %q, want %q", result, tt.expected)
 			}
+		})
+	}
+}
+
+func TestGetOpenAIBaseURLForMiniMax(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		expected string
+	}{
+		{name: "default", expected: minimax.DefaultOpenAIBaseURL},
+		{name: "global messages endpoint", baseURL: minimax.DefaultAnthropicBaseURL, expected: minimax.DefaultOpenAIBaseURL},
+		{name: "CN messages endpoint", baseURL: minimax.CNAnthropicBaseURL, expected: minimax.CNOpenAIBaseURL},
+		{name: "custom compatible endpoint", baseURL: "https://minimax.example.com/v1", expected: "https://minimax.example.com/v1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := Account{
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformMiniMax,
+				Credentials: map[string]any{
+					"api_key":  "test-key",
+					"base_url": tt.baseURL,
+				},
+			}
+
+			require.Equal(t, tt.expected, account.GetOpenAIBaseURL())
+			require.Equal(t, "test-key", account.GetOpenAIApiKey())
 		})
 	}
 }

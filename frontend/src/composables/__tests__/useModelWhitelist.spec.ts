@@ -103,6 +103,10 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gemini-3.1-pro')
   })
 
+  it('minimax model list contains current text models', () => {
+    expect(getModelsByPlatform('minimax')).toEqual(['MiniMax-M3', 'MiniMax-M2.7'])
+  })
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({

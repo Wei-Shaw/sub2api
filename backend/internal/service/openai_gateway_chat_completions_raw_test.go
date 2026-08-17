@@ -52,6 +52,46 @@ func TestBuildOpenAIChatCompletionsURL(t *testing.T) {
 	}
 }
 
+func TestForwardMiniMaxChatCompletionsUsesRawCompatibleEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"MiniMax-M3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-minimax"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl-minimax","object":"chat.completion","model":"MiniMax-M3","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	account := &Account{
+		ID:       5174,
+		Name:     "minimax-compatible",
+		Platform: PlatformMiniMax,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "test-key",
+			"base_url": "http://upstream.example/v1",
+		},
+	}
+
+	result, err := svc.ForwardMiniMaxChatCompletions(context.Background(), c, account, body, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer test-key", upstream.lastReq.Header.Get("Authorization"))
+	require.JSONEq(t, string(body), string(upstream.lastBody))
+}
+
 // TestBuildOpenAIResponsesURL_ProbeURL 锁定 probe/测试端点使用的 URL 构建逻辑，
 // 确保 buildOpenAIResponsesURL 对标准 OpenAI base_url 格式均拼出 `/v1/responses`。
 func TestBuildOpenAIResponsesURL_ProbeURL(t *testing.T) {

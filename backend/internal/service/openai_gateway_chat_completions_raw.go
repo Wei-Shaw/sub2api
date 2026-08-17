@@ -35,6 +35,54 @@ var openaiCCRawAllowedHeaders = map[string]bool{
 	"user-agent":      true,
 }
 
+// ForwardMiniMaxChatCompletions forwards a MiniMax request without protocol conversion.
+func (s *OpenAIGatewayService) ForwardMiniMaxChatCompletions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+) (*ForwardResult, error) {
+	if account == nil || !account.IsMiniMax() {
+		return nil, errors.New("MiniMax account is required")
+	}
+	beginUpstreamResponseModelObservation(c)
+
+	result, err := s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
+	if result == nil {
+		return nil, err
+	}
+
+	return &ForwardResult{
+		RequestID: result.RequestID,
+		Usage: ClaudeUsage{
+			InputTokens:              result.Usage.InputTokens,
+			OutputTokens:             result.Usage.OutputTokens,
+			CacheCreationInputTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     result.Usage.CacheReadInputTokens,
+			ImageOutputTokens:        result.Usage.ImageOutputTokens,
+		},
+		Model:                         result.Model,
+		UpstreamModel:                 result.UpstreamModel,
+		UpstreamResponseModel:         result.UpstreamResponseModel,
+		UpstreamResponseModelConflict: result.UpstreamResponseModelConflict,
+		Stream:                        result.Stream,
+		Duration:                      result.Duration,
+		FirstTokenMs:                  result.FirstTokenMs,
+		ClientDisconnect:              result.ClientDisconnect,
+		ReasoningEffort:               result.ReasoningEffort,
+		ImageCount:                    result.ImageCount,
+		ImageSize:                     result.ImageSize,
+		ImageInputSize:                result.ImageInputSize,
+		ImageOutputSize:               result.ImageOutputSize,
+		ImageOutputSizes:              result.ImageOutputSizes,
+		ImageSizeSource:               result.ImageSizeSource,
+		ImageSizeBreakdown:            result.ImageSizeBreakdown,
+		SearchCount:                   result.SearchCount,
+		AudioUsage:                    result.AudioUsage,
+	}, err
+}
+
 // forwardAsRawChatCompletions 直转客户端的 Chat Completions 请求到上游
 // `{base_url}/v1/chat/completions`，**不**做 CC↔Responses 协议转换。
 //
