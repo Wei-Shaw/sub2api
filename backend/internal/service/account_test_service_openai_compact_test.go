@@ -284,7 +284,10 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactProbeIdentityMatc
 			"chatgpt_account_id": "chatgpt-acc",
 		},
 		// 收敛是显式 opt-in（#5610），这里显式开启以验证探测身份与真实流量同构。
-		Extra: map[string]any{"codex_fingerprint_mode": "session"},
+		Extra: map[string]any{
+			"codex_fingerprint_mode":     "session",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+		},
 	}
 	repo := &snapshotUpdateAccountRepo{
 		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},

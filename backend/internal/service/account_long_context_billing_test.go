@@ -78,6 +78,7 @@ type longContextBillingRepoStub struct {
 	createdAccount   *Account
 	updateExtraCalls int
 	bulkUpdateCalls  int
+	extraUpdates     map[int64]map[string]any
 }
 
 func (r *longContextBillingRepoStub) Create(_ context.Context, account *Account) error {
@@ -106,8 +107,12 @@ func (r *longContextBillingRepoStub) Update(_ context.Context, account *Account)
 	return nil
 }
 
-func (r *longContextBillingRepoStub) UpdateExtra(_ context.Context, _ int64, _ map[string]any) error {
+func (r *longContextBillingRepoStub) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
 	r.updateExtraCalls++
+	if r.extraUpdates == nil {
+		r.extraUpdates = make(map[int64]map[string]any)
+	}
+	r.extraUpdates[id] = updates
 	return nil
 }
 
@@ -131,6 +136,72 @@ func TestAdminServiceCreateAccountDefaultsOpenAILongContextBillingDisabled(t *te
 	require.NoError(t, err)
 	require.Same(t, account, repo.createdAccount)
 	require.Equal(t, false, account.Extra[openAILongContextBillingEnabledKey])
+}
+
+func TestAdminServiceUpdateAccountInitializesAndPreservesCodexFingerprintSeed(t *testing.T) {
+	repo := &longContextBillingRepoStub{account: &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{openAILongContextBillingEnabledKey: false},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	account, err := svc.UpdateAccount(context.Background(), 1, &UpdateAccountInput{Extra: map[string]any{
+		codexFingerprintModeExtraKey: "device",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+	}})
+	require.NoError(t, err)
+	seed := account.getCodexFingerprintSeed()
+	require.NotEmpty(t, seed)
+	require.NotEqual(t, testCodexFingerprintSeedB, seed)
+
+	account, err = svc.UpdateAccount(context.Background(), 1, &UpdateAccountInput{Extra: map[string]any{
+		codexFingerprintModeExtraKey: "device",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+	}})
+	require.NoError(t, err)
+	require.Equal(t, seed, account.getCodexFingerprintSeed())
+}
+
+func TestAdminServiceBulkUpdateAccountsInitializesUniqueCodexFingerprintSeeds(t *testing.T) {
+	repo := &longContextBillingRepoStub{accounts: []*Account{
+		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2},
+		Extra:      map[string]any{codexFingerprintModeExtraKey: "device"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Success)
+	require.Len(t, repo.extraUpdates, 2)
+	seed1, _ := repo.extraUpdates[1][codexFingerprintSeedExtraKey].(string)
+	seed2, _ := repo.extraUpdates[2][codexFingerprintSeedExtraKey].(string)
+	require.NotEmpty(t, seed1)
+	require.NotEmpty(t, seed2)
+	require.NotEqual(t, seed1, seed2)
+}
+
+func TestAdminServiceUpdateAccountExtraInitializesCodexFingerprintSeed(t *testing.T) {
+	repo := &longContextBillingRepoStub{account: &Account{
+		ID:       1,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	err := svc.UpdateAccountExtra(context.Background(), 1, map[string]any{
+		codexFingerprintModeExtraKey: "session",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+	})
+	require.NoError(t, err)
+	updates := repo.extraUpdates[1]
+	seed, _ := updates[codexFingerprintSeedExtraKey].(string)
+	require.NotEmpty(t, seed)
+	require.NotEqual(t, testCodexFingerprintSeedB, seed)
 }
 
 func TestAdminServiceCreateAccountRejectsMalformedOpenAILongContextBillingValue(t *testing.T) {

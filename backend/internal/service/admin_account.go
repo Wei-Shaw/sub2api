@@ -17,6 +17,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/google/uuid"
 )
 
 // Account management implementations
@@ -417,6 +418,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+	initializeCodexFingerprintSeed(account, true)
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
 			return nil, ErrUpstreamBillingProbeAccountInvalid
@@ -632,6 +634,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
+		delete(normalizedExtra, codexFingerprintSeedExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -646,6 +649,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
+			codexFingerprintSeedExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
@@ -670,6 +674,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
+	initializeCodexFingerprintSeed(account, false)
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
 			return nil, infraerrors.BadRequest(
@@ -858,13 +863,21 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
-	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
+	delete(updates, codexFingerprintSeedExtraKey)
+	mode := codexFingerprintMode(strings.TrimSpace(fmt.Sprint(updates[codexFingerprintModeExtraKey])))
+	enablesCodexFingerprint := mode == codexFingerprintDevice || mode == codexFingerprintSession || mode == codexFingerprintFull
+	if _, validatesLongContext := updates[openAILongContextBillingEnabledKey]; validatesLongContext || enablesCodexFingerprint {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
 			return err
 		}
-		if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
-			return err
+		if validatesLongContext {
+			if err := ValidateOpenAILongContextBillingExtra(account.Platform, updates); err != nil {
+				return err
+			}
+		}
+		if enablesCodexFingerprint && account.IsOpenAIOAuth() && account.getCodexFingerprintSeed() == "" {
+			updates[codexFingerprintSeedExtraKey] = uuid.NewString()
 		}
 	}
 	if len(updates) == 0 {
@@ -883,6 +896,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	// The seed is system-managed and must never be copied to every account in a
+	// bulk JSONB merge. Unique seeds are prepared per target below.
+	delete(input.Extra, codexFingerprintSeedExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -909,10 +925,14 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 	_, hasLongContextBillingUpdate := input.Extra[openAILongContextBillingEnabledKey]
+	requestedCodexFingerprintMode := codexFingerprintMode(strings.TrimSpace(fmt.Sprint(input.Extra[codexFingerprintModeExtraKey])))
+	hasCodexFingerprintModeUpdate := requestedCodexFingerprintMode == codexFingerprintDevice ||
+		requestedCodexFingerprintMode == codexFingerprintSession ||
+		requestedCodexFingerprintMode == codexFingerprintFull
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil || hasCodexFingerprintModeUpdate {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1023,6 +1043,22 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// only when platform is known Grok — empty platform still strips password/*).
 	if input.Credentials != nil {
 		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
+	}
+
+	// Seed before enabling convergence. If the later bulk update fails, the
+	// dormant seed has no outbound effect; if it succeeds, every target already
+	// has a unique stable identity and there is no account.ID fallback window.
+	if hasCodexFingerprintModeUpdate {
+		for _, account := range cachedTargets {
+			if account == nil || !account.IsOpenAIOAuth() || account.getCodexFingerprintSeed() != "" {
+				continue
+			}
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				codexFingerprintSeedExtraKey: uuid.NewString(),
+			}); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Prepare bulk updates for columns and JSONB fields.
