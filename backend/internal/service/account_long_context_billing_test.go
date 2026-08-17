@@ -79,6 +79,7 @@ type longContextBillingRepoStub struct {
 	updateExtraCalls int
 	bulkUpdateCalls  int
 	extraUpdates     map[int64]map[string]any
+	lastBulkUpdate   AccountBulkUpdate
 }
 
 func (r *longContextBillingRepoStub) Create(_ context.Context, account *Account) error {
@@ -116,8 +117,9 @@ func (r *longContextBillingRepoStub) UpdateExtra(_ context.Context, id int64, up
 	return nil
 }
 
-func (r *longContextBillingRepoStub) BulkUpdate(_ context.Context, _ []int64, _ AccountBulkUpdate) (int64, error) {
+func (r *longContextBillingRepoStub) BulkUpdate(_ context.Context, _ []int64, updates AccountBulkUpdate) (int64, error) {
 	r.bulkUpdateCalls++
+	r.lastBulkUpdate = updates
 	return 1, nil
 }
 
@@ -164,7 +166,7 @@ func TestAdminServiceUpdateAccountInitializesAndPreservesCodexFingerprintSeed(t 
 	require.Equal(t, seed, account.getCodexFingerprintSeed())
 }
 
-func TestAdminServiceBulkUpdateAccountsInitializesUniqueCodexFingerprintSeeds(t *testing.T) {
+func TestAdminServiceBulkUpdateAccountsRequestsAtomicCodexFingerprintSeeds(t *testing.T) {
 	repo := &longContextBillingRepoStub{accounts: []*Account{
 		{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
 		{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
@@ -177,15 +179,14 @@ func TestAdminServiceBulkUpdateAccountsInitializesUniqueCodexFingerprintSeeds(t 
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, result.Success)
-	require.Len(t, repo.extraUpdates, 2)
-	seed1, _ := repo.extraUpdates[1][codexFingerprintSeedExtraKey].(string)
-	seed2, _ := repo.extraUpdates[2][codexFingerprintSeedExtraKey].(string)
-	require.NotEmpty(t, seed1)
-	require.NotEmpty(t, seed2)
-	require.NotEqual(t, seed1, seed2)
+	require.Equal(t, 1, repo.bulkUpdateCalls)
+	require.True(t, repo.lastBulkUpdate.EnsureCodexFingerprintSeed)
+	require.Equal(t, "device", repo.lastBulkUpdate.Extra[codexFingerprintModeExtraKey])
+	require.NotContains(t, repo.lastBulkUpdate.Extra, codexFingerprintSeedExtraKey)
+	require.Empty(t, repo.extraUpdates)
 }
 
-func TestAdminServiceUpdateAccountExtraInitializesCodexFingerprintSeed(t *testing.T) {
+func TestAdminServiceUpdateAccountExtraDelegatesAtomicCodexFingerprintSeed(t *testing.T) {
 	repo := &longContextBillingRepoStub{account: &Account{
 		ID:       1,
 		Platform: PlatformOpenAI,
@@ -200,9 +201,7 @@ func TestAdminServiceUpdateAccountExtraInitializesCodexFingerprintSeed(t *testin
 	require.NoError(t, err)
 	updates := repo.extraUpdates[1]
 	require.Equal(t, "device", updates[codexFingerprintModeExtraKey])
-	seed, _ := updates[codexFingerprintSeedExtraKey].(string)
-	require.NotEmpty(t, seed)
-	require.NotEqual(t, testCodexFingerprintSeedB, seed)
+	require.NotContains(t, updates, codexFingerprintSeedExtraKey)
 }
 
 func TestAdminServiceCreateAccountRejectsMalformedOpenAILongContextBillingValue(t *testing.T) {
