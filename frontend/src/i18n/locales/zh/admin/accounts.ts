@@ -586,6 +586,10 @@ export default {
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
+        countTokensMode: 'Token 计算方式',
+        countTokensModeDesc: '远程模式调用账号上游的 /v1/responses/input_tokens；本地模式使用 Sub2API 内置 tokenizer 估算，不请求上游。',
+        countTokensModeRemote: '远程精确计算',
+        countTokensModeLocal: '本地估算',
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',

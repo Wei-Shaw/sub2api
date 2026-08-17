@@ -1157,6 +1157,27 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
+        <div
+          v-if="form.platform === 'openai'"
+          class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.countTokensMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.countTokensModeDesc') }}
+            </p>
+          </div>
+          <select
+            v-model="openAICountTokensMode"
+            class="input w-52 text-sm"
+            data-testid="openai-count-tokens-mode-select"
+            :aria-label="t('admin.accounts.openai.countTokensMode')"
+          >
+            <option value="remote">{{ t('admin.accounts.openai.countTokensModeRemote') }}</option>
+            <option value="local">{{ t('admin.accounts.openai.countTokensModeLocal') }}</option>
+          </select>
+        </div>
+
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3752,6 +3773,7 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+const openAICountTokensMode = ref<'remote' | 'local'>('remote')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4699,6 +4721,7 @@ const resetForm = () => {
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
+  openAICountTokensMode.value = 'remote'
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5170,6 +5193,9 @@ const handleSubmit = async () => {
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {
       credentials.compact_model_mapping = compactModelMapping
+    }
+    if (openAICountTokensMode.value === 'local') {
+      credentials.openai_count_tokens_mode = 'local'
     }
   }
 

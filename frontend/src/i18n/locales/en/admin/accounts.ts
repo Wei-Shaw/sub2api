@@ -509,6 +509,11 @@ export default {
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
+        countTokensMode: 'Token counting mode',
+        countTokensModeDesc:
+          'Remote mode calls the account upstream /v1/responses/input_tokens endpoint. Local mode estimates with Sub2API’s built-in tokenizer without calling upstream.',
+        countTokensModeRemote: 'Remote exact count',
+        countTokensModeLocal: 'Local estimate',
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',

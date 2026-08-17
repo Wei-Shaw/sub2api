@@ -23,6 +23,11 @@ const (
 	openAIInputTokensFallbackMinimum      = 1
 )
 
+const (
+	openAIAPICountTokensModeCredentialKey = "openai_count_tokens_mode"
+	openAIAPICountTokensModeLocal         = "local"
+)
+
 type openAIInputTokensCountRequest struct {
 	Model        string                    `json:"model"`
 	Instructions string                    `json:"instructions,omitempty"`
@@ -72,8 +77,9 @@ func EstimateGrokCountTokens(body []byte) (int, error) {
 	return estimated, nil
 }
 
-// ForwardCountTokensAsAnthropic bridges Anthropic /v1/messages/count_tokens to
-// OpenAI POST /v1/responses/input_tokens and returns Anthropic-compatible output.
+// ForwardCountTokensAsAnthropic returns an Anthropic-compatible token count.
+// OpenAI API Key accounts may estimate locally; all other accounts use
+// OpenAI POST /v1/responses/input_tokens with the existing OAuth fallback.
 func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	ctx context.Context,
 	c *gin.Context,
@@ -90,6 +96,25 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	if err != nil {
 		writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return err
+	}
+
+	if account.Type == AccountTypeAPIKey &&
+		strings.EqualFold(strings.TrimSpace(account.GetCredential(openAIAPICountTokensModeCredentialKey)), openAIAPICountTokensModeLocal) {
+		estimated, estimateErr := estimateOpenAIInputTokens(prepared.Request)
+		if estimateErr != nil {
+			writeAnthropicCountTokensError(c, http.StatusInternalServerError, "api_error", "Failed to estimate input tokens")
+			return fmt.Errorf("estimate openai input tokens locally: %w", estimateErr)
+		}
+		if estimated < openAIInputTokensFallbackMinimum {
+			estimated = openAIInputTokensFallbackMinimum
+		}
+		logger.L().Debug("openai count_tokens: using local tiktoken estimate",
+			zap.Int64("account_id", account.ID),
+			zap.Int("estimated_input_tokens", estimated),
+			zap.String("upstream_model", prepared.UpstreamModel),
+		)
+		c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
+		return nil
 	}
 
 	upstreamBody, err := marshalOpenAIUpstreamJSON(prepared.Request)
