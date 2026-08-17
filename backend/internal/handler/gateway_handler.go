@@ -1244,6 +1244,12 @@ func writeGrokModelsList(c *gin.Context, modelIDs []string) {
 				{Value: "medium", Label: "Medium"},
 				{Value: "high", Label: "High", Default: true},
 			}
+			if xai.SupportsXHighReasoningEffort(modelID) {
+				item.ReasoningEfforts = append(item.ReasoningEfforts, grokReasoningEffortOption{
+					Value: "xhigh",
+					Label: "XHigh",
+				})
+			}
 		}
 		models = append(models, item)
 	}

@@ -223,6 +223,19 @@ func isGrokNativeOrAlias(model string) bool {
 		strings.HasPrefix(model, "composer")
 }
 
+// SupportsXHighReasoningEffort reports whether the model accepts xAI's "xhigh"
+// reasoning effort. Officially documented for grok-4.6 and later on that line,
+// and for grok-4.20-multi-agent (where it selects agent count). Older models
+// such as grok-4.5 treat a forwarded "xhigh" as "high".
+func SupportsXHighReasoningEffort(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(strings.TrimSpace(model)))
+	if slash := strings.LastIndex(normalized, "/"); slash >= 0 {
+		normalized = strings.TrimSpace(normalized[slash+1:])
+	}
+	return strings.HasPrefix(normalized, "grok-4.6") ||
+		strings.HasPrefix(normalized, "grok-4.20-multi-agent")
+}
+
 // StripGrokProviderPrefix removes common provider prefixes accepted for
 // xAI/Grok models, returning the native model ID.
 func StripGrokProviderPrefix(model string) string {
