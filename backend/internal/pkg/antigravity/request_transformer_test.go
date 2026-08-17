@@ -565,3 +565,27 @@ REDACTED
 	require.Equal(t, "get_weather", req.Request.Tools[0].FunctionDeclarations[0].Name)
 	require.NotNil(t, req.Request.Tools[1].GoogleSearch)
 REDACTED
+
+func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
+	t.Run("serialize and deserialize toolConfig with includeServerSideToolInvocations", func(t *testing.T) {
+		trueVal := true
+		cfg := GeminiToolConfig{
+			FunctionCallingConfig: &GeminiFunctionCallingConfig{
+				Mode: "VALIDATED",
+		REDACTED,
+			IncludeServerSideToolInvocations: &trueVal,
+	REDACTED
+
+		data, err := json.Marshal(cfg)
+	REDACTED
+		require.Contains(t, string(data), `"includeServerSideToolInvocations":true`)
+
+		var decoded GeminiToolConfig
+		err = json.Unmarshal(data, &decoded)
+	REDACTED
+		require.NotNil(t, decoded.IncludeServerSideToolInvocations)
+		require.True(t, *decoded.IncludeServerSideToolInvocations)
+		require.Equal(t, "VALIDATED", decoded.FunctionCallingConfig.Mode)
+REDACTED)
+REDACTED
+
