@@ -254,7 +254,8 @@ REDACTED
 
 			var wrapped map[string]any
 			require.NoError(t, json.Unmarshal(body, &wrapped))
-			request := wrapped["request"].(map[string]any)
+			request, ok := wrapped["request"].(map[string]any)
+			require.True(t, ok)
 			toolConfig, exists := request["toolConfig"].(map[string]any)
 			if !tt.wantField {
 				require.False(t, exists)

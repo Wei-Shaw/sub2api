@@ -370,8 +370,10 @@ REDACTED
 
 	var wrapped map[string]any
 	require.NoError(t, json.Unmarshal(upstream.requestBodies[0], &wrapped))
-	request := wrapped["request"].(map[string]any)
-	toolConfig := request["toolConfig"].(map[string]any)
+	request, ok := wrapped["request"].(map[string]any)
+	require.True(t, ok)
+	toolConfig, ok := request["toolConfig"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, true, toolConfig["includeServerSideToolInvocations"])
 	require.NotContains(t, toolConfig, "include_server_side_tool_invocations")
 REDACTED
