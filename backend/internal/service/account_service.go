@@ -140,6 +140,8 @@ type AccountBillingSettingsRepository interface {
 		account *Account,
 		probeEnabled *bool,
 		rateSyncEnabled *bool,
+		rechargeMultiplier *float64,
+		newAPIGroup *string,
 		rateMultiplier *float64,
 	) error
 }
@@ -155,17 +157,19 @@ type AdminAccountRepository interface {
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
 // Nil pointers mean "do not change".
 type AccountBulkUpdate struct {
-	Name           *string
-	ProxyID        *int64
-	Concurrency    *int
-	Priority       *int
-	RateMultiplier *float64
-	LoadFactor     *int
-	Status         *string
-	Schedulable    *bool
-	Credentials    map[string]any
-	Extra          map[string]any
-	ProbeEnabled   *bool
+	Name               *string
+	ProxyID            *int64
+	Concurrency        *int
+	Priority           *int
+	RateMultiplier     *float64
+	LoadFactor         *int
+	Status             *string
+	Schedulable        *bool
+	Credentials        map[string]any
+	Extra              map[string]any
+	ProbeEnabled       *bool
+	RechargeMultiplier *float64
+	NewAPIGroup        *string
 }
 
 // CreateAccountRequest 创建账号请求

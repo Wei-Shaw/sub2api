@@ -305,6 +305,14 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		SkipDefaultGroupBind:  true,
 		SkipMixedChannelCheck: true,
 	}
+	if _, configured := source.Extra[UpstreamBillingRechargeMultiplierExtraKey]; configured {
+		if value, valid := upstreamBillingRechargeMultiplier(source); valid {
+			input.RechargeMultiplier = &value
+		}
+	}
+	if group, valid := upstreamBillingNewAPIGroup(source); valid && group != "" {
+		input.NewAPIGroup = &group
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
@@ -401,6 +409,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingProbeExtraKey)
+	delete(accountExtra, UpstreamBillingRechargeMultiplierExtraKey)
+	delete(accountExtra, UpstreamBillingNewAPIGroupExtraKey)
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -416,6 +426,29 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+	}
+	if input.RechargeMultiplier != nil || input.NewAPIGroup != nil {
+		if !isUpstreamBillingProbeAccount(account) {
+			return nil, ErrUpstreamBillingProbeAccountInvalid
+		}
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		if input.RechargeMultiplier != nil {
+			if err := validateUpstreamBillingRechargeMultiplier(*input.RechargeMultiplier); err != nil {
+				return nil, err
+			}
+			account.Extra[UpstreamBillingRechargeMultiplierExtraKey] = *input.RechargeMultiplier
+		}
+		if input.NewAPIGroup != nil {
+			group, err := normalizeUpstreamBillingNewAPIGroup(*input.NewAPIGroup)
+			if err != nil {
+				return nil, err
+			}
+			if group != "" {
+				account.Extra[UpstreamBillingNewAPIGroupExtraKey] = group
+			}
+		}
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -546,6 +579,20 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	requestedRechargeMultiplierUpdate := input.RechargeMultiplier
+	requestedNewAPIGroupUpdate := input.NewAPIGroup
+	if requestedRechargeMultiplierUpdate != nil {
+		if err := validateUpstreamBillingRechargeMultiplier(*requestedRechargeMultiplierUpdate); err != nil {
+			return nil, err
+		}
+	}
+	if requestedNewAPIGroupUpdate != nil {
+		normalized, normalizeErr := normalizeUpstreamBillingNewAPIGroup(*requestedNewAPIGroupUpdate)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		requestedNewAPIGroupUpdate = &normalized
+	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -629,6 +676,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, UpstreamBillingProbeEnabledExtraKey)
 		delete(normalizedExtra, UpstreamBillingRateSyncEnabledExtraKey)
 		delete(normalizedExtra, UpstreamBillingProbeExtraKey)
+		delete(normalizedExtra, UpstreamBillingRechargeMultiplierExtraKey)
+		delete(normalizedExtra, UpstreamBillingNewAPIGroupExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
@@ -643,6 +692,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingRateSyncEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
+			UpstreamBillingRechargeMultiplierExtraKey,
+			UpstreamBillingNewAPIGroupExtraKey,
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
@@ -685,12 +736,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		requestedRateSyncEnabledUpdate = &disabled
 	}
 	if (requestedProbeEnabledUpdate != nil && *requestedProbeEnabledUpdate) ||
-		(requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate) {
+		(requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate) ||
+		requestedRechargeMultiplierUpdate != nil || requestedNewAPIGroupUpdate != nil {
 		if !isUpstreamBillingProbeAccount(account) {
 			return nil, ErrUpstreamBillingProbeAccountInvalid
 		}
 	}
-	if account.Extra == nil && (requestedProbeEnabledUpdate != nil || requestedRateSyncEnabledUpdate != nil) {
+	if account.Extra == nil && (requestedProbeEnabledUpdate != nil || requestedRateSyncEnabledUpdate != nil ||
+		requestedRechargeMultiplierUpdate != nil || requestedNewAPIGroupUpdate != nil) {
 		account.Extra = make(map[string]any)
 	}
 	if requestedProbeEnabledUpdate != nil {
@@ -698,6 +751,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if requestedRateSyncEnabledUpdate != nil {
 		account.Extra[UpstreamBillingRateSyncEnabledExtraKey] = *requestedRateSyncEnabledUpdate
+	}
+	if requestedRechargeMultiplierUpdate != nil {
+		account.Extra[UpstreamBillingRechargeMultiplierExtraKey] = *requestedRechargeMultiplierUpdate
+	}
+	if requestedNewAPIGroupUpdate != nil {
+		if *requestedNewAPIGroupUpdate == "" {
+			delete(account.Extra, UpstreamBillingNewAPIGroupExtraKey)
+		} else {
+			account.Extra[UpstreamBillingNewAPIGroupExtraKey] = *requestedNewAPIGroupUpdate
+		}
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
@@ -715,6 +778,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if !isUpstreamBillingProbeAccount(account) {
 			delete(account.Extra, UpstreamBillingProbeEnabledExtraKey)
 			delete(account.Extra, UpstreamBillingRateSyncEnabledExtraKey)
+			delete(account.Extra, UpstreamBillingRechargeMultiplierExtraKey)
+			delete(account.Extra, UpstreamBillingNewAPIGroupExtraKey)
 		}
 	}
 	if account.Extra != nil {
@@ -801,6 +866,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account,
 			requestedProbeEnabledUpdate,
 			requestedRateSyncEnabledUpdate,
+			requestedRechargeMultiplierUpdate,
+			requestedNewAPIGroupUpdate,
 			input.RateMultiplier,
 		); err != nil {
 			return nil, err
@@ -811,14 +878,29 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := s.accountRepo.Update(ctx, account); err != nil {
 			return nil, err
 		}
-		if (requestedProbeEnabledUpdate != nil || requestedRateSyncEnabledUpdate != nil) &&
+		if (requestedProbeEnabledUpdate != nil || requestedRateSyncEnabledUpdate != nil ||
+			requestedRechargeMultiplierUpdate != nil || requestedNewAPIGroupUpdate != nil) &&
 			isUpstreamBillingProbeAccount(account) {
-			settings := make(map[string]any, 2)
+			settings := make(map[string]any, 4)
 			if requestedProbeEnabledUpdate != nil {
 				settings[UpstreamBillingProbeEnabledExtraKey] = *requestedProbeEnabledUpdate
 			}
 			if requestedRateSyncEnabledUpdate != nil {
 				settings[UpstreamBillingRateSyncEnabledExtraKey] = *requestedRateSyncEnabledUpdate
+			}
+			if requestedRechargeMultiplierUpdate != nil {
+				settings[UpstreamBillingRechargeMultiplierExtraKey] = *requestedRechargeMultiplierUpdate
+				settings[UpstreamBillingProbeExtraKey] = nil
+			}
+			if requestedNewAPIGroupUpdate != nil {
+				if *requestedNewAPIGroupUpdate == "" {
+					// UpdateExtra is a narrow compatibility fallback and merges JSONB
+					// keys; nil is the explicit delete signal for an empty group.
+					settings[UpstreamBillingNewAPIGroupExtraKey] = nil
+				} else {
+					settings[UpstreamBillingNewAPIGroupExtraKey] = *requestedNewAPIGroupUpdate
+				}
+				settings[UpstreamBillingProbeExtraKey] = nil
 			}
 			if err := s.accountRepo.UpdateExtra(ctx, account.ID, settings); err != nil {
 				return nil, err
@@ -855,6 +937,8 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
+	delete(updates, UpstreamBillingRechargeMultiplierExtraKey)
+	delete(updates, UpstreamBillingNewAPIGroupExtraKey)
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
@@ -880,9 +964,23 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)
+	delete(input.Extra, UpstreamBillingRechargeMultiplierExtraKey)
+	delete(input.Extra, UpstreamBillingNewAPIGroupExtraKey)
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	if input.RechargeMultiplier != nil {
+		if err := validateUpstreamBillingRechargeMultiplier(*input.RechargeMultiplier); err != nil {
+			return nil, err
+		}
+	}
+	if input.NewAPIGroup != nil {
+		normalized, err := normalizeUpstreamBillingNewAPIGroup(*input.NewAPIGroup)
+		if err != nil {
+			return nil, err
+		}
+		input.NewAPIGroup = &normalized
+	}
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -912,14 +1010,15 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate ||
+		input.ProbeEnabled != nil || input.RateMultiplier != nil || input.RechargeMultiplier != nil || input.NewAPIGroup != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
 	}
-	if input.ProbeEnabled != nil {
+	if input.ProbeEnabled != nil || input.RechargeMultiplier != nil || input.NewAPIGroup != nil {
 		targetsByID := make(map[int64]*Account, len(cachedTargets))
 		for _, account := range cachedTargets {
 			if account != nil {
@@ -1027,9 +1126,11 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials:  input.Credentials,
-		Extra:        input.Extra,
-		ProbeEnabled: input.ProbeEnabled,
+		Credentials:        input.Credentials,
+		Extra:              input.Extra,
+		ProbeEnabled:       input.ProbeEnabled,
+		RechargeMultiplier: input.RechargeMultiplier,
+		NewAPIGroup:        input.NewAPIGroup,
 	}
 	if input.ProbeEnabled != nil {
 		if repoUpdates.Extra == nil {
@@ -1040,7 +1141,24 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 			repoUpdates.Extra[UpstreamBillingRateSyncEnabledExtraKey] = false
 		}
 	}
-	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
+	if input.RechargeMultiplier != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+		}
+		repoUpdates.Extra[UpstreamBillingRechargeMultiplierExtraKey] = *input.RechargeMultiplier
+	}
+	if input.NewAPIGroup != nil {
+		if repoUpdates.Extra == nil {
+			repoUpdates.Extra = make(map[string]any)
+		}
+		if *input.NewAPIGroup == "" {
+			repoUpdates.Extra[UpstreamBillingNewAPIGroupExtraKey] = nil
+		} else {
+			repoUpdates.Extra[UpstreamBillingNewAPIGroupExtraKey] = *input.NewAPIGroup
+		}
+	}
+	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil ||
+		input.RechargeMultiplier != nil || input.NewAPIGroup != nil {
 		if repoUpdates.Extra == nil {
 			repoUpdates.Extra = make(map[string]any)
 		}
@@ -1142,6 +1260,16 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 		if value, ok := account.Credentials[key]; ok {
 			identity[key] = value
 		}
+	}
+	if multiplier, valid := upstreamBillingRechargeMultiplier(account); valid {
+		identity[UpstreamBillingRechargeMultiplierExtraKey] = multiplier
+	} else if account.Extra != nil {
+		identity[UpstreamBillingRechargeMultiplierExtraKey] = account.Extra[UpstreamBillingRechargeMultiplierExtraKey]
+	}
+	if group, valid := upstreamBillingNewAPIGroup(account); valid {
+		identity[UpstreamBillingNewAPIGroupExtraKey] = group
+	} else if account.Extra != nil {
+		identity[UpstreamBillingNewAPIGroupExtraKey] = account.Extra[UpstreamBillingNewAPIGroupExtraKey]
 	}
 	return identity
 }

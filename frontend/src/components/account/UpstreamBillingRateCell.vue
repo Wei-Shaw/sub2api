@@ -12,6 +12,12 @@
       </template>
       <div class="space-y-1">
         <template v-if="hasEffectiveRate && data">
+          <p v-if="providerLabel" data-testid="upstream-billing-provider">
+            {{ t('admin.accounts.upstreamBilling.provider', { value: providerLabel }) }}
+          </p>
+          <p v-if="data.upstream_group" data-testid="upstream-billing-upstream-group">
+            {{ t('admin.accounts.upstreamBilling.upstreamGroup', { value: data.upstream_group }) }}
+          </p>
           <p>{{ t('admin.accounts.upstreamBilling.groupRate', { value: data.group_rate_multiplier }) }}</p>
           <p v-if="data.user_rate_multiplier != null">
             {{ t('admin.accounts.upstreamBilling.userRate', { value: data.user_rate_multiplier }) }}
@@ -26,6 +32,15 @@
                     timezone: data.timezone
                   })
                 : t('admin.accounts.upstreamBilling.noPeakRate')
+            }}
+          </p>
+          <p v-if="hasRateFormula" data-testid="upstream-billing-rate-formula">
+            {{
+              t('admin.accounts.upstreamBilling.rateFormula', {
+                raw: formatFormulaValue(rawResolvedRate),
+                recharge: formatFormulaValue(rechargeMultiplier),
+                resolved: formatFormulaValue(data.resolved_rate_multiplier)
+              })
             }}
           </p>
           <p>{{ t('admin.accounts.upstreamBilling.effectiveRate', { value: currentEffectiveRate ?? '-' }) }}</p>
@@ -43,6 +58,9 @@
           </p>
         </template>
         <p v-else>{{ statusLabel || '-' }}</p>
+        <p v-if="probeErrorLabel" data-testid="upstream-billing-probe-error">
+          {{ probeErrorLabel }}
+        </p>
         <p
           v-if="probeEnabled && globalProbeEnabled !== false && nextProbeAt"
           data-testid="upstream-billing-next-probe"
@@ -110,6 +128,31 @@ const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000
 const eligible = computed(() => props.account.type === 'apikey')
 const snapshot = computed<UpstreamBillingProbeSnapshot | undefined>(() => props.account.extra?.upstream_billing_probe)
 const data = computed(() => snapshot.value?.data)
+const provider = computed(() => {
+  if (!data.value) return undefined
+  if (data.value.provider === 'sub2api' || data.value.provider === 'newapi') {
+    return data.value.provider
+  }
+  if (data.value.object === 'sub2api.key_billing') return 'sub2api'
+  if (data.value.object === 'newapi.group_ratio') return 'newapi'
+  return undefined
+})
+const providerLabel = computed(() => {
+  if (provider.value === 'sub2api') return t('admin.accounts.upstreamBilling.providerSub2API')
+  if (provider.value === 'newapi') return t('admin.accounts.upstreamBilling.providerNewAPI')
+  return ''
+})
+const rawResolvedRate = computed(() => {
+  const value = data.value?.raw_resolved_rate_multiplier
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+})
+const rechargeMultiplier = computed(() => {
+  const value = data.value?.recharge_multiplier
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+})
+const hasRateFormula = computed(() => rawResolvedRate.value != null && rechargeMultiplier.value != null)
+const formatFormulaValue = (value: number | null) =>
+  value == null ? '-' : `${formatMultiplier(value)}x`
 const probeEnabled = computed(() => props.account.extra?.upstream_billing_probe_enabled === true)
 const nextProbeAt = computed(() => {
   const value = snapshot.value?.next_probe_at
@@ -200,6 +243,20 @@ const statusLabel = computed(() => {
   if (stale.value) return t('admin.accounts.upstreamBilling.stale')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
   return ''
+})
+const probeErrorLabel = computed(() => {
+  const error = snapshot.value?.last_error
+  if (!error || snapshot.value?.status === 'ok') return ''
+  switch (error) {
+    case 'newapi_pricing_auth_required':
+      return t('admin.accounts.upstreamBilling.newAPIPricingAuthRequired')
+    case 'newapi_group_required':
+      return t('admin.accounts.upstreamBilling.newAPIGroupRequired')
+    case 'newapi_group_not_found':
+      return t('admin.accounts.upstreamBilling.newAPIGroupNotFound')
+    default:
+      return ''
+  }
 })
 const statusClass = computed(() => {
   if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'

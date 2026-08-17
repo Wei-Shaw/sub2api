@@ -436,6 +436,41 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('批量编辑可设置充值倍率和 New API 分组，并只提交顶层字段', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-upstream-billing-recharge-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-upstream-billing-recharge-multiplier"]').setValue('1.4')
+    await wrapper.get('#bulk-edit-upstream-billing-newapi-group-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-upstream-billing-newapi-group"]').setValue('  premium  ')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      upstream_billing_recharge_multiplier: 1.4,
+      upstream_billing_newapi_group: 'premium'
+    })
+  })
+
+  it('批量编辑用空分组清除 New API 分组', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-upstream-billing-newapi-group-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-upstream-billing-newapi-group"]').setValue('   ')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      upstream_billing_newapi_group: ''
+    })
+  })
+
   it('OpenAI API Key 批量编辑可统一关闭上游倍率自动探测', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
