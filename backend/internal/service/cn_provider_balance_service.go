@@ -125,6 +125,13 @@ REDACTED
 REDACTED
 
 	targetURL := cnBalanceURL(account)
+	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
+	// DeepSeek 端点由账号 base_url 衍生，不得把 API key 发往策略外主机。
+	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
+	if err != nil {
+		return nil, infraerrors.New(http.StatusForbidden, "CN_BALANCE_URL_REJECTED", err.Error())
+REDACTED
+	targetURL = validatedURL
 	proxyURL := s.resolveProxyURL(ctx, account)
 	callCtx, cancel := context.WithTimeout(ctx, cnBalanceUpstreamTimeout)
 	defer cancel()

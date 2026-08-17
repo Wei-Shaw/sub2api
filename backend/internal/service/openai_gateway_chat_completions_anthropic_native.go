@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -163,18 +164,53 @@ REDACTED
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	// 读间隔上限：上游挂住 SSE 时中止组装（缓冲路径尚未提交响应头，可回 502）。
+	streamInterval := s.anthropicNativeStreamInterval()
+	pump := newAnthropicNativeLinePump(scanner, streamInterval)
+	defer pump.stop()
+
+	logReadErr := func(err error) {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			logger.L().Warn("openai cc via native anthropic buffered: read error",
+				zap.Error(err),
+				zap.String("request_id", requestID),
+			)
+	REDACTED
+REDACTED
+	onIdle := func() (*OpenAIForwardResult, error) {
+		_ = resp.Body.Close()
+		logger.L().Warn("openai cc via native anthropic buffered: data interval timeout",
+			zap.String("request_id", requestID),
+			zap.Duration("interval", streamInterval),
+		)
+		writeChatCompletionsError(c, http.StatusBadGateway, "server_error", "Upstream stream data interval timeout")
+		return nil, fmt.Errorf("stream data interval timeout")
+REDACTED
+
+	for {
+		line, rerr := pump.next()
+		if rerr != nil {
+			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				return onIdle()
+		REDACTED
+			logReadErr(rerr)
+			break
+	REDACTED
 		// SSE 规范允许 `event:xxx`（冒号后无空格）：Kimi 等 Anthropic 兼容上游
 		// 返回紧凑格式，严格匹配 "event: " 会丢弃全部事件（#4653 同根因）。
 		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 	REDACTED
 
-		if !scanner.Scan() {
+		dataLine, rerr := pump.next()
+		if rerr != nil {
+			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				return onIdle()
+		REDACTED
+			logReadErr(rerr)
 			break
 	REDACTED
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
 			continue
 	REDACTED
@@ -211,15 +247,6 @@ REDACTED
 					finalResp.Content[idx].Input = appendRawJSON(finalResp.Content[idx].Input, event.Delta.PartialJSON)
 			REDACTED
 		REDACTED
-	REDACTED
-REDACTED
-
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai cc via native anthropic buffered: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
 	REDACTED
 REDACTED
 
@@ -322,6 +349,34 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 读间隔上限：上游挂住 SSE（不发数据也不断连）时结束排水。上游 ctx 为
+	// WithoutCancel 且 http.Client 无整体 Timeout，无此界限则客户端断开后
+	// scanner.Scan() 永久阻塞（见 anthropic native pump 文件注释）。
+	streamInterval := s.anthropicNativeStreamInterval()
+	pump := newAnthropicNativeLinePump(scanner, streamInterval)
+	defer pump.stop()
+
+	logReadErr := func(err error) {
+		if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			logger.L().Warn("openai cc via native anthropic stream: read error",
+				zap.Error(err),
+				zap.String("request_id", requestID),
+			)
+	REDACTED
+REDACTED
+	// onIdle 关闭上游连接（解除阻塞的读、归还连接池位），并按已累计 usage
+	// 返回——与 messages 主路径 "stream usage incomplete after timeout" 同语义。
+	onIdle := func() (*OpenAIForwardResult, error) {
+		_ = resp.Body.Close()
+		if !clientDisconnected {
+			logger.L().Warn("openai cc via native anthropic stream: data interval timeout",
+				zap.String("request_id", requestID),
+				zap.Duration("interval", streamInterval),
+			)
+	REDACTED
+		return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+REDACTED
+
 	writeChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
 		if clientDisconnected {
 			return false // 已断开：不再写客户端，只排水上游累计 usage
@@ -372,16 +427,29 @@ REDACTED
 		return false
 REDACTED
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for {
+		line, rerr := pump.next()
+		if rerr != nil {
+			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				return onIdle()
+		REDACTED
+			logReadErr(rerr)
+			break
+	REDACTED
 		if _, ok := extractOpenAISSEEventLine(line); !ok {
 			continue
 	REDACTED
 
-		if !scanner.Scan() {
+		dataLine, rerr := pump.next()
+		if rerr != nil {
+			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				return onIdle()
+		REDACTED
+			// EOF / 读错误：事件行后流终止，进入 finalize。
+			logReadErr(rerr)
 			break
 	REDACTED
-		payload, ok := extractOpenAISSEDataLine(scanner.Text())
+		payload, ok := extractOpenAISSEDataLine(dataLine)
 		if !ok {
 			continue
 	REDACTED
@@ -393,15 +461,6 @@ REDACTED
 
 		if processAnthropicEvent(&event) {
 			return resultWithUsage(), nil
-	REDACTED
-REDACTED
-
-	if err := scanner.Err(); err != nil {
-		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai cc via native anthropic stream: read error",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-			)
 	REDACTED
 REDACTED
 

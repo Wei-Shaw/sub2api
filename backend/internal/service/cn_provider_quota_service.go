@@ -144,6 +144,14 @@ REDACTED
 		authHeader = apiKey // 智谱额度端点鉴权不加 Bearer 前缀
 REDACTED
 
+	// 探测发起前过出站 URL 安全策略（与网关转发/Grok 探测同一套校验）：
+	// 端点多由账号 base_url 衍生，不得把 API key 发往策略外主机。
+	validatedURL, err := cnValidateProbeURL(s.cfg, targetURL)
+	if err != nil {
+		return nil, infraerrors.New(http.StatusForbidden, "CN_QUOTA_URL_REJECTED", err.Error())
+REDACTED
+	targetURL = validatedURL
+
 	proxyURL := s.resolveProxyURL(ctx, account)
 	callCtx, cancel := context.WithTimeout(ctx, cnQuotaUpstreamTimeout)
 	defer cancel()
