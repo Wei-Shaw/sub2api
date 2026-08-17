@@ -646,7 +646,47 @@ REDACTED
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 REDACTED
-	return validatePricingBillingMode(pricing)
+	if err := validatePricingBillingMode(pricing); err != nil {
+		return err
+REDACTED
+	return validatePricingTimePricing(pricing)
+REDACTED
+
+func validatePricingTimePricing(pricing []ChannelModelPricing) error {
+	for i := range pricing {
+		config := pricing[i].TimePricing
+		if config == nil {
+			continue
+	REDACTED
+		if len(config.Periods) == 0 {
+			pricing[i].TimePricing = nil
+			continue
+	REDACTED
+		mode := pricing[i].BillingMode
+		if mode != "" && mode != BillingModeToken {
+			return infraerrors.BadRequest("TIME_PRICING_UNSUPPORTED_MODE", "time pricing only supports token billing mode")
+	REDACTED
+		if err := validateChannelTimePricing(config); err != nil {
+			return infraerrors.BadRequest("INVALID_TIME_PRICING", fmt.Sprintf(
+				"invalid time pricing for platform '%s' models %v: %v", pricing[i].Platform, pricing[i].Models, err))
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func validateAccountStatsPricingRules(rules []AccountStatsPricingRule) error {
+	for i := range rules {
+		for _, pricing := range rules[i].Pricing {
+			if pricing.TimePricing != nil && len(pricing.TimePricing.Periods) > 0 {
+				return fmt.Errorf("account stats pricing rule #%d: %w", i+1,
+					infraerrors.BadRequest("ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", "account stats pricing does not support time pricing"))
+		REDACTED
+	REDACTED
+		if err := validatePricingEntries(rules[i].Pricing); err != nil {
+			return fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 // validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
@@ -755,10 +795,8 @@ REDACTED
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 REDACTED
-	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
-			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-	REDACTED
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
+		return nil, err
 REDACTED
 
 	if err := s.repo.Create(ctx, channel); err != nil {
@@ -799,10 +837,8 @@ REDACTED
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 REDACTED
-	for i, rule := range channel.AccountStatsPricingRules {
-		if err := validatePricingEntries(rule.Pricing); err != nil {
-			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
-	REDACTED
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
+		return nil, err
 REDACTED
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)

@@ -1,4 +1,4 @@
-import type { BillingMode, PricingInterval REDACTED from '@/api/admin/channels'
+import type { BillingMode, ChannelTimePricing, PricingInterval REDACTED from '@/api/admin/channels'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -25,6 +25,134 @@ export interface PricingFormEntry {
   image_output_price: number | string | null
   per_request_price: number | string | null
   intervals: IntervalFormEntry[]
+  time_pricing: TimePricingFormEntry
+REDACTED
+
+export interface TimePricingPeriodFormEntry {
+  start_time: string
+  end_time: string
+  multiplier: number | string
+REDACTED
+
+export interface TimePricingFormEntry {
+  timezone: string
+  periods: TimePricingPeriodFormEntry[]
+REDACTED
+
+export const DEFAULT_TIME_PRICING_TIMEZONE = 'Asia/Shanghai'
+
+const CLOCK_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/
+const LEGACY_CLOCK_TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+const TWO_DECIMAL_MULTIPLIER = /^\d+(?:\.\d{1,2REDACTED)?$/
+
+export function isValidTimePricingMultiplier(value: number | string): boolean {
+  const multiplier = String(value)
+  const numericValue = Number(multiplier)
+  return TWO_DECIMAL_MULTIPLIER.test(multiplier) &&
+    Number.isFinite(numericValue) && numericValue > 0
+REDACTED
+
+export const COMMON_TIMEZONES = [
+  'UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Kolkata',
+  'Australia/Sydney', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Toronto', 'America/Sao_Paulo', 'Pacific/Auckland', 'Pacific/Honolulu',
+]
+
+export function createDefaultTimePricingForm(): TimePricingFormEntry {
+  return { timezone: DEFAULT_TIME_PRICING_TIMEZONE, periods: [] REDACTED
+REDACTED
+
+export function apiTimePricingToForm(value: ChannelTimePricing | null | undefined): TimePricingFormEntry {
+  if (!value) return createDefaultTimePricingForm()
+  return {
+    timezone: value.timezone || DEFAULT_TIME_PRICING_TIMEZONE,
+    periods: (value.periods || []).map(period => ({
+      start_time: LEGACY_CLOCK_TIME.test(period.start_time) ? `${period.start_timeREDACTED:00` : period.start_time,
+      end_time: LEGACY_CLOCK_TIME.test(period.end_time) ? `${period.end_timeREDACTED:00` : period.end_time,
+      multiplier: Number(period.multiplier).toFixed(2),
+    REDACTED)),
+  REDACTED
+REDACTED
+
+export function formTimePricingToAPI(value: TimePricingFormEntry | null | undefined): ChannelTimePricing | null {
+  if (!value?.periods?.length) return null
+  const timezone = typeof value.timezone === 'string' ? value.timezone.trim() : ''
+  return {
+    timezone,
+    periods: value.periods.map(period => ({
+      start_time: period.start_time,
+      end_time: period.end_time,
+      multiplier: Number(period.multiplier),
+    REDACTED)),
+  REDACTED
+REDACTED
+
+function timeToSeconds(time: string, isEnd: boolean): number {
+  if (isEnd && time === '00:00:00') return 24 * 60 * 60
+  const [hours, minutes, seconds] = time.split(':').map(Number)
+  return hours * 60 * 60 + minutes * 60 + seconds
+REDACTED
+
+function timePricingValidationMessage(t: TranslateFn, key: string): string {
+  return t(`admin.channels.timePricingValidation.${keyREDACTED`)
+REDACTED
+
+export function validateTimePricing(value: TimePricingFormEntry, t: TranslateFn): string | null {
+  if (!value?.periods?.length) return null
+
+  if (typeof value.timezone !== 'string' || value.timezone.trim() === '') {
+    return timePricingValidationMessage(t, 'timezone')
+  REDACTED
+  const timezone = value.timezone.trim()
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone REDACTED)
+  REDACTED catch {
+    return timePricingValidationMessage(t, 'timezone')
+  REDACTED
+
+  const periods = [] as { start: number, end: number REDACTED[]
+  for (const period of value.periods) {
+    if (!CLOCK_TIME.test(period.start_time) || !CLOCK_TIME.test(period.end_time)) {
+      return timePricingValidationMessage(t, 'format')
+    REDACTED
+    if (period.start_time === period.end_time) {
+      return timePricingValidationMessage(t, 'range')
+    REDACTED
+
+    const start = timeToSeconds(period.start_time, false)
+    const end = timeToSeconds(period.end_time, true)
+    if (start >= end) return timePricingValidationMessage(t, 'range')
+
+    if (!isValidTimePricingMultiplier(period.multiplier)) {
+      return timePricingValidationMessage(t, 'multiplier')
+    REDACTED
+    periods.push({ start, end REDACTED)
+  REDACTED
+
+  const sorted = [...periods].sort((a, b) => a.start - b.start)
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start < sorted[i - 1].end) {
+      return timePricingValidationMessage(t, 'overlap')
+    REDACTED
+  REDACTED
+  return null
+REDACTED
+
+export function formatTimezoneOffset(timezone: string, at = new Date()): string {
+  try {
+    const part = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'shortOffset',
+    REDACTED).formatToParts(at).find(item => item.type === 'timeZoneName')?.value
+    if (!part || part === 'GMT') return 'UTC+00:00'
+    const match = /^GMT([+-])(\d{1,2REDACTED)(?::(\d{2REDACTED))?$/.exec(part)
+    if (!match) return ''
+    return `UTC${match[1]REDACTED${match[2].padStart(2, '0')REDACTED:${match[3] || '00'REDACTED`
+  REDACTED catch {
+    return ''
+  REDACTED
 REDACTED
 
 // 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
