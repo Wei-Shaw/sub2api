@@ -106,7 +106,7 @@ func (k *openAICompactSSEKeepalive) beat() bool {
 	n, err := k.writer.Write([]byte(": keepalive\n\n"))
 	k.bytes += n
 	if err != nil {
-		k.stopped = true
+		k.markStoppedLocked()
 		return false
 	}
 	k.writer.Flush()

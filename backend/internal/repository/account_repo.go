@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -67,6 +68,58 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
 	"grok_billing_snapshot":      {},
 	"session_window_utilization": {},
+}
+
+type compactProbeExtraUpdateGroup struct {
+	observedAt int64
+	updates    map[string]any
+}
+
+func compactProbeSnapshotExtraKey(key string) bool {
+	switch key {
+	case "openai_compact_supported",
+		"openai_compact_probe_version",
+		"openai_compact_checked_at",
+		"openai_compact_last_status",
+		"openai_compact_last_error",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func partitionCompactProbeExtraUpdates(updates map[string]any) (map[string]any, *compactProbeExtraUpdateGroup) {
+	common := make(map[string]any, len(updates))
+	observedAt, monotonic := updates[service.OpenAICompactProbeObservedAtUnixNanoExtraKey].(int64)
+	if !monotonic || observedAt <= 0 {
+		for key, value := range updates {
+			common[key] = value
+		}
+		return common, nil
+	}
+
+	group := &compactProbeExtraUpdateGroup{
+		observedAt: observedAt,
+		updates:    make(map[string]any),
+	}
+	for key, value := range updates {
+		if compactProbeSnapshotExtraKey(key) {
+			group.updates[key] = value
+			continue
+		}
+		common[key] = value
+	}
+	return common, group
+}
+
+func compactProbeExtraDeleteKeys(updates map[string]any) []string {
+	deleteKeys := make([]string, 0, 1)
+	if value, exists := updates["openai_compact_supported"]; exists && value == nil {
+		deleteKeys = append(deleteKeys, "openai_compact_supported")
+	}
+	sort.Strings(deleteKeys)
+	return deleteKeys
 }
 
 const postgresParameterBatchSize = 50000
@@ -2524,8 +2577,12 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return nil
 	}
 
-	// 使用 JSONB 合并操作实现原子更新，避免读-改-写的并发丢失更新问题
-	payload, err := json.Marshal(updates)
+	// Compact capability observations can finish out of order. Keep their
+	// snapshot as one monotonic group so an older probe cannot overwrite a
+	// newer verdict or its diagnostics. Unrelated fields in the same call are
+	// still merged independently.
+	commonUpdates, compactProbeGroup := partitionCompactProbeExtraUpdates(updates)
+	payload, err := json.Marshal(commonUpdates)
 	if err != nil {
 		return err
 	}
@@ -2552,10 +2609,34 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	if clearProbeSnapshot {
 		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 	}
+	args := []any{string(payload), id}
+	if deleteKeys := compactProbeExtraDeleteKeys(commonUpdates); len(deleteKeys) > 0 {
+		extraExpression = "(" + extraExpression + ") - $3::text[]"
+		args = append(args, pq.Array(deleteKeys))
+	}
+	if compactProbeGroup != nil {
+		previousExpression := extraExpression
+		observedAtParam := "$" + strconv.Itoa(len(args)+1)
+		args = append(args, compactProbeGroup.observedAt)
+
+		groupPayload, marshalErr := json.Marshal(compactProbeGroup.updates)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		payloadParam := "$" + strconv.Itoa(len(args)+1)
+		args = append(args, string(groupPayload))
+		candidateExpression := "(" + previousExpression + " || " + payloadParam + "::jsonb)"
+		if deleteKeys := compactProbeExtraDeleteKeys(compactProbeGroup.updates); len(deleteKeys) > 0 {
+			deleteParam := "$" + strconv.Itoa(len(args)+1)
+			args = append(args, pq.Array(deleteKeys))
+			candidateExpression = "(" + candidateExpression + ") - " + deleteParam + "::text[]"
+		}
+		extraExpression = "CASE WHEN COALESCE(CASE WHEN jsonb_typeof(COALESCE(extra, '{}'::jsonb)->'" + service.OpenAICompactProbeObservedAtUnixNanoExtraKey + "') = 'number' THEN (extra->>'" + service.OpenAICompactProbeObservedAtUnixNanoExtraKey + "')::numeric END, 0) <= " + observedAtParam + "::numeric THEN " + candidateExpression + " ELSE " + previousExpression + " END"
+	}
 	result, err := client.ExecContext(
 		ctx,
 		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
-		string(payload), id,
+		args...,
 	)
 
 	if err != nil {

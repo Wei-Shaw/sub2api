@@ -55,23 +55,34 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	}
 	guardFirstOutput := firstOutputTimeout > 0
 	var attemptResponseHeaders http.Header
+	var directResponseHeaders http.Header
 	if guardFirstOutput {
 		if s.responseHeaderFilter != nil {
 			attemptResponseHeaders = responseheaders.FilterHeaders(resp.Header, s.responseHeaderFilter)
 		} else if requestID := strings.TrimSpace(resp.Header.Get("x-request-id")); requestID != "" {
 			attemptResponseHeaders = http.Header{"X-Request-Id": []string{requestID}}
 		}
-	} else if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	} else {
+		// Header() stops the compact keepalive under its mutex. Only after that
+		// happens-before edge is it safe to decide whether response headers are
+		// still relayable.
+		directResponseHeaders = c.Writer.Header()
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(directResponseHeaders, resp.Header, s.responseHeaderFilter)
+		}
 	}
 	// x-codex-turn-state 不在通用响应头白名单内，按 Codex 协议显式回传：
 	// 客户端会在同回合的后续请求中回带（openai_codex_turn_state.go）。
 	// 首输出守卫模式下只暂存，溯源在 applyAttemptResponseHeaders 真正提交时记录。
+	var turnStateResponseHeaders http.Header
 	if guardFirstOutput {
 		stageOpenAICodexTurnState(&attemptResponseHeaders, resp.Header)
-	} else {
-		s.relayOpenAICodexTurnState(c, account, resp.Header)
+		turnStateResponseHeaders = attemptResponseHeaders
+	} else if !c.Writer.Written() {
+		turnStateResponseHeaders = directResponseHeaders
+		stageOpenAICodexTurnState(&turnStateResponseHeaders, resp.Header)
 	}
+	turnStateHeaderApplied := !guardFirstOutput && turnStateResponseHeaders != nil
 
 	// Set SSE response headers
 	c.Header("Content-Type", "text/event-stream")
@@ -85,17 +96,19 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		c.Header("x-request-id", v)
 	}
 	applyAttemptResponseHeaders := func() {
-		if !guardFirstOutput || len(attemptResponseHeaders) == 0 || c.Writer.Written() {
+		if !guardFirstOutput || len(attemptResponseHeaders) == 0 {
+			return
+		}
+		downstreamHeaders := c.Writer.Header()
+		if c.Writer.Written() {
 			return
 		}
 		for key, values := range attemptResponseHeaders {
 			for _, value := range values {
-				c.Writer.Header().Add(key, value)
+				downstreamHeaders.Add(key, value)
 			}
 		}
-		// 暂存头此刻才真正写给客户端：turn-state 溯源在这里记录（见
-		// noteStagedOpenAICodexTurnStateCommitted 的 failover 说明）。
-		s.noteStagedOpenAICodexTurnStateCommitted(c, account, attemptResponseHeaders)
+		turnStateHeaderApplied = true
 		// These headers describe this gateway's SSE stream and are stable across
 		// account attempts. Keep them authoritative over upstream values.
 		c.Header("Content-Type", "text/event-stream")
@@ -116,6 +129,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	var firstTokenMs *int
 	firstOutputProgressObserved := false
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
+	turnStateProvenanceNoted := false
+	noteTurnStateProvenance := func() {
+		if turnStateProvenanceNoted || !turnStateHeaderApplied {
+			return
+		}
+		turnStateProvenanceNoted = true
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, turnStateResponseHeaders)
+	}
 	var firstOutputStage *openAIFirstOutputStage
 	if guardFirstOutput {
 		firstOutputStage = newDefaultOpenAIFirstOutputStage()
@@ -148,6 +169,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 		}
 		flusher.Flush()
+		noteTurnStateProvenance()
 		return nil
 	}
 
@@ -1277,9 +1299,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 	}
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
-	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
-	s.relayOpenAICodexTurnState(c, account, resp.Header)
+	turnStateResponseHeaders := c.Writer.Header()
+	if c.Writer.Written() {
+		turnStateResponseHeaders = nil
+	} else {
+		stageOpenAICodexTurnState(&turnStateResponseHeaders, resp.Header)
+	}
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -1288,8 +1313,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
-	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
-		c.Data(resp.StatusCode, contentType, body)
+	handled, writeErr := writeOpenAICompactSSEBridgeResult(c, resp.StatusCode, body)
+	if !handled {
+		writeErr = writeOpenAINonStreamingData(c, resp.StatusCode, contentType, body)
+	}
+	if writeErr != nil {
+		return nil, fmt.Errorf("write OpenAI response: %w", writeErr)
+	}
+	if turnStateResponseHeaders != nil {
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, turnStateResponseHeaders)
 	}
 
 	return &openaiNonStreamingResult{
@@ -1375,7 +1407,12 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	s.relayOpenAICodexTurnState(c, account, resp.Header)
+	turnStateResponseHeaders := c.Writer.Header()
+	if c.Writer.Written() {
+		turnStateResponseHeaders = nil
+	} else {
+		stageOpenAICodexTurnState(&turnStateResponseHeaders, resp.Header)
+	}
 
 	contentType := "application/json; charset=utf-8"
 	if !ok {
@@ -1384,8 +1421,15 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			contentType = "text/event-stream"
 		}
 	}
-	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
-		c.Data(resp.StatusCode, contentType, body)
+	handled, writeErr := writeOpenAICompactSSEBridgeResult(c, resp.StatusCode, body)
+	if !handled {
+		writeErr = writeOpenAINonStreamingData(c, resp.StatusCode, contentType, body)
+	}
+	if writeErr != nil {
+		return nil, fmt.Errorf("write OpenAI SSE response: %w", writeErr)
+	}
+	if turnStateResponseHeaders != nil {
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, turnStateResponseHeaders)
 	}
 
 	return &openaiNonStreamingResult{
@@ -1634,27 +1678,26 @@ func responsesStreamEventMayContributeToOutput(eventType string) bool {
 // response.output_item.done 携带的原始 item。除已产生结果但仍停留在进行中
 // 的图片状态外，item 以 raw JSON 逐字节保留，
 // 避免经窄结构体重建时丢弃 encrypted_content/summary/opaque 等 compact
-// 专属或未来新增字段（#3777 问题 2）。若整条流没有任何 done 事件，退回
-// 收集 output_item.added 中的 compaction 类 item——compaction 结果没有
-// delta 事件，部分上游只在 added 事件中携带完整 item。
+// 专属或未来新增字段（#3777 问题 2）。Codex 的 remote-compaction-v2
+// collector 只计 done 事件；added 不能升级为最终输出，重复 compaction done
+// 也不能通过去重伪装成合法的单项结果。
 func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
 	var items []json.RawMessage
 	seen := make(map[string]struct{})
-	hasCompactionItem := false
 	appendItem := func(item gjson.Result) {
 		if !item.Exists() || !item.IsObject() {
 			return
 		}
-		key := strings.TrimSpace(item.Get("id").String())
-		if key == "" {
-			key = item.Raw
-		}
-		if _, dup := seen[key]; dup {
-			return
-		}
-		seen[key] = struct{}{}
-		if isResponsesCompactionItemType(item.Get("type").String()) {
-			hasCompactionItem = true
+		isCompaction := isResponsesCompactionItemType(item.Get("type").String())
+		if !isCompaction {
+			key := strings.TrimSpace(item.Get("id").String())
+			if key == "" {
+				key = item.Raw
+			}
+			if _, dup := seen[key]; dup {
+				return
+			}
+			seen[key] = struct{}{}
 		}
 		items = append(items, json.RawMessage(item.Raw))
 	}
@@ -1667,21 +1710,6 @@ func collectRawResponsesOutputItemsFromSSE(bodyText string) ([]byte, bool) {
 		}
 		appendItem(gjson.GetBytes(data, "item"))
 	})
-	// done 事件未携带 compaction item 时再看 added：覆盖"其他 item 有 done、
-	// compaction 只在 added 中"的混合形态；done 已含 compaction 时跳过，
-	// 避免同一 item 在无 id 可去重时被收集两份（Codex 要求恰好一个）。
-	if !hasCompactionItem {
-		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
-			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.added" {
-				return
-			}
-			item := gjson.GetBytes(data, "item")
-			if !isResponsesCompactionItemType(item.Get("type").String()) {
-				return
-			}
-			appendItem(item)
-		})
-	}
 	if len(items) == 0 {
 		return nil, false
 	}
@@ -1704,8 +1732,8 @@ func isResponsesCompactionItemType(itemType string) bool {
 }
 
 // supplementCompactionItemFromSSE 保证 compact 请求的终态 output 携带
-// compaction item：终态 output 非空但缺失 compaction、而原始事件流的
-// output_item.done（或 added）中存在时（上游不一致形态），以 raw JSON 补入。
+// compaction item：终态 output 非空但缺失 compaction、而原始事件流恰有一个
+// output_item.done compaction 时，以 raw JSON 补入。
 // Codex remote compact v2 只从 output_item.done 收集 item 且要求恰好一个
 // compaction item——纯流式透传（v0.1.146）下客户端直接读事件流天然拿得到，
 // SSE→JSON 提取链路必须给出等价结果。非 compact 请求原样返回。
@@ -1742,30 +1770,26 @@ func responsesOutputHasCompactionItem(response []byte) bool {
 	return false
 }
 
-// findRawCompactionItemFromSSE 从原始 SSE 事件流中提取第一个 compaction 类
-// item 的 raw JSON：output_item.done 优先，output_item.added 兜底。
+// findRawCompactionItemFromSSE 仅在原始 SSE 事件流恰好包含一个
+// output_item.done compaction 时返回该 raw item。Codex 会把 0 个或多个
+// compaction 都判为失败，不能在桥接层挑一个掩盖协议错误。
 func findRawCompactionItemFromSSE(bodyText string) (json.RawMessage, bool) {
 	var found json.RawMessage
-	pick := func(eventType string) {
-		forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
-			if found != nil {
-				return
-			}
-			if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != eventType {
-				return
-			}
-			item := gjson.GetBytes(data, "item")
-			if !item.IsObject() || !isResponsesCompactionItemType(item.Get("type").String()) {
-				return
-			}
+	count := 0
+	forEachOpenAISSEDataPayload(bodyText, func(data []byte) {
+		if strings.TrimSpace(gjson.GetBytes(data, "type").String()) != "response.output_item.done" {
+			return
+		}
+		item := gjson.GetBytes(data, "item")
+		if !item.IsObject() || !isResponsesCompactionItemType(item.Get("type").String()) {
+			return
+		}
+		count++
+		if count == 1 {
 			found = json.RawMessage(item.Raw)
-		})
-	}
-	pick("response.output_item.done")
-	if found == nil {
-		pick("response.output_item.added")
-	}
-	return found, found != nil
+		}
+	})
+	return found, count == 1
 }
 
 // reconstructResponseOutputFromSSE scans raw SSE body text and returns a

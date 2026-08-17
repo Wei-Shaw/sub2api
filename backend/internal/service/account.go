@@ -875,7 +875,10 @@ func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
 	if a.Extra == nil {
 		return false, false
 	}
-	supported, ok := a.Extra["openai_compact_supported"].(bool)
+	if !openAICompactProbeSnapshotFresh(a.Extra, time.Now().UTC()) {
+		return false, false
+	}
+	supported, ok := a.Extra[openAICompactProbeSupportedExtraKey].(bool)
 	if !ok {
 		return false, false
 	}

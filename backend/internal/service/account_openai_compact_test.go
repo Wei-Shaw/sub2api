@@ -1,6 +1,27 @@
 package service
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func currentCompactProbeTestExtra(supported bool) map[string]any {
+	return map[string]any{
+		openAICompactProbeSupportedExtraKey: supported,
+		openAICompactProbeVersionExtraKey:   openAICompactProbeProtocolVersion,
+		openAICompactProbeCheckedAtExtraKey: time.Now().UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func addCurrentCompactProbeTestExtra(extra map[string]any, supported bool) map[string]any {
+	if extra == nil {
+		extra = make(map[string]any)
+	}
+	for key, value := range currentCompactProbeTestExtra(supported) {
+		extra[key] = value
+	}
+	return extra
+}
 
 func TestAccountGetOpenAICompactMode(t *testing.T) {
 	tests := []struct {
@@ -111,7 +132,7 @@ func TestAccountOpenAICompactSupportKnown(t *testing.T) {
 			name: "auto true is known supported",
 			account: &Account{
 				Platform: PlatformOpenAI,
-				Extra:    map[string]any{"openai_compact_supported": true},
+				Extra:    currentCompactProbeTestExtra(true),
 			},
 			wantSupported: true,
 			wantKnown:     true,
@@ -120,7 +141,7 @@ func TestAccountOpenAICompactSupportKnown(t *testing.T) {
 			name: "auto false is known unsupported",
 			account: &Account{
 				Platform: PlatformOpenAI,
-				Extra:    map[string]any{"openai_compact_supported": false},
+				Extra:    currentCompactProbeTestExtra(false),
 			},
 			wantSupported: false,
 			wantKnown:     true,
@@ -130,6 +151,15 @@ func TestAccountOpenAICompactSupportKnown(t *testing.T) {
 			account: &Account{
 				Platform: PlatformOpenAI,
 				Extra:    map[string]any{},
+			},
+			wantSupported: false,
+			wantKnown:     false,
+		},
+		{
+			name: "unversioned probe state remains unknown",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Extra:    map[string]any{"openai_compact_supported": true},
 			},
 			wantSupported: false,
 			wantKnown:     false,
@@ -184,7 +214,7 @@ func TestAccountAllowsOpenAICompact(t *testing.T) {
 			name: "supported openai account is allowed",
 			account: &Account{
 				Platform: PlatformOpenAI,
-				Extra:    map[string]any{"openai_compact_supported": true},
+				Extra:    currentCompactProbeTestExtra(true),
 			},
 			want: true,
 		},
@@ -192,7 +222,7 @@ func TestAccountAllowsOpenAICompact(t *testing.T) {
 			name: "unsupported openai account is rejected",
 			account: &Account{
 				Platform: PlatformOpenAI,
-				Extra:    map[string]any{"openai_compact_supported": false},
+				Extra:    currentCompactProbeTestExtra(false),
 			},
 			want: false,
 		},

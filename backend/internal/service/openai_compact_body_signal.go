@@ -40,20 +40,38 @@ func ensureOpenAIRemoteCompactionV2BetaFeature(h http.Header) {
 		return
 	}
 	tokens := make([]string, 0, 4)
-	for _, value := range h.Values("x-codex-beta-features") {
+	seen := make(map[string]struct{}, 4)
+	for _, value := range openAICodexBetaFeatureHeaderValues(h) {
 		for _, token := range strings.Split(value, ",") {
 			token = strings.TrimSpace(token)
 			if token == "" {
 				continue
 			}
-			if token == openAIRemoteCompactionV2Feature {
-				return
+			if _, exists := seen[token]; exists {
+				continue
 			}
+			seen[token] = struct{}{}
 			tokens = append(tokens, token)
 		}
 	}
-	tokens = append(tokens, openAIRemoteCompactionV2Feature)
+	if _, exists := seen[openAIRemoteCompactionV2Feature]; !exists {
+		tokens = append(tokens, openAIRemoteCompactionV2Feature)
+	}
+	deleteOpenAIHeaderEqualFold(h, "x-codex-beta-features")
 	h.Set("x-codex-beta-features", strings.Join(tokens, ","))
+}
+
+func openAICodexBetaFeatureHeaderValues(h http.Header) []string {
+	if h == nil {
+		return nil
+	}
+	values := make([]string, 0, 2)
+	for name, headerValues := range h {
+		if strings.EqualFold(strings.TrimSpace(name), "x-codex-beta-features") {
+			values = append(values, headerValues...)
+		}
+	}
+	return values
 }
 
 // hasOpenAICodexBetaFeaturesHeader 报告出站头里是否已存在非空的
@@ -62,7 +80,7 @@ func hasOpenAICodexBetaFeaturesHeader(h http.Header) bool {
 	if h == nil {
 		return false
 	}
-	for _, value := range h.Values("x-codex-beta-features") {
+	for _, value := range openAICodexBetaFeatureHeaderValues(h) {
 		if strings.TrimSpace(value) != "" {
 			return true
 		}

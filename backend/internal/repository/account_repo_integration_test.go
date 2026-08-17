@@ -5,7 +5,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1449,6 +1451,156 @@ func (s *AccountRepoSuite) TestUpdateExtra_NilExtra() {
 	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
 	s.Require().Equal("val", got.Extra["key"])
+}
+
+func (s *AccountRepoSuite) TestUpdateExtra_OlderCompactProbeCannotOverwriteNewerObservation() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-extra-compact-probe-monotonic",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra:    map[string]any{},
+	})
+	const newer = int64(1771236000200000000)
+	const older = int64(1771236000100000000)
+
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_supported":                           true,
+		"openai_compact_last_error":                          "newer",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: newer,
+	}))
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_supported":                           false,
+		"openai_compact_last_error":                          "older",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: older,
+	}))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(true, got.Extra["openai_compact_supported"])
+	s.Require().Equal("newer", got.Extra["openai_compact_last_error"])
+	s.Require().Equal(float64(newer), got.Extra[service.OpenAICompactProbeObservedAtUnixNanoExtraKey])
+}
+
+func (s *AccountRepoSuite) TestUpdateExtra_OlderSupportedCompactProbeCannotOverwriteNewerUnsupportedObservation() {
+	account := &service.Account{
+		Name: "compact-probe-newer-unsupported", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"}, Extra: map[string]any{}, Status: service.StatusActive, Schedulable: true,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, account))
+
+	const newer = int64(200)
+	const older = int64(100)
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_supported":                           false,
+		"openai_compact_last_error":                          "newer unsupported",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: newer,
+	}))
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_supported":                           true,
+		"openai_compact_last_error":                          "older supported",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: older,
+	}))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(false, got.Extra["openai_compact_supported"])
+	s.Require().Equal("newer unsupported", got.Extra["openai_compact_last_error"])
+	s.Require().Equal(float64(newer), got.Extra[service.OpenAICompactProbeObservedAtUnixNanoExtraKey])
+}
+
+func (s *AccountRepoSuite) TestUpdateExtra_InconclusiveCompactProbePreservesLastConclusiveVerdict() {
+	account := &service.Account{
+		Name: "compact-probe-inconclusive", Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"}, Extra: map[string]any{}, Status: service.StatusActive, Schedulable: true,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, account))
+
+	const observedAt = int64(300)
+	const checkedAt = "2026-08-16T01:00:00Z"
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_supported":                           true,
+		"openai_compact_probe_version":                       2,
+		"openai_compact_checked_at":                          checkedAt,
+		"openai_compact_last_status":                         200,
+		"openai_compact_last_error":                          "",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: observedAt,
+	}))
+	// An older inconclusive result must not replace diagnostics from the newer
+	// conclusive observation.
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_last_status":                         502,
+		"openai_compact_last_error":                          "stale temporary failure",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: observedAt - 1,
+	}))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(true, got.Extra["openai_compact_supported"])
+	s.Require().Equal(float64(2), got.Extra["openai_compact_probe_version"])
+	s.Require().Equal(checkedAt, got.Extra["openai_compact_checked_at"])
+	s.Require().Equal(float64(observedAt), got.Extra[service.OpenAICompactProbeObservedAtUnixNanoExtraKey])
+	s.Require().Equal(float64(200), got.Extra["openai_compact_last_status"])
+	s.Require().Equal("", got.Extra["openai_compact_last_error"])
+
+	// A newer inconclusive observation may update diagnostics, but it must not
+	// erase or refresh the last reliable capability verdict.
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"openai_compact_last_status":                         502,
+		"openai_compact_last_error":                          "newer temporary failure",
+		service.OpenAICompactProbeObservedAtUnixNanoExtraKey: observedAt + 1,
+	}))
+	got, err = s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(true, got.Extra["openai_compact_supported"])
+	s.Require().Equal(float64(2), got.Extra["openai_compact_probe_version"])
+	s.Require().Equal(checkedAt, got.Extra["openai_compact_checked_at"])
+	s.Require().Equal(float64(observedAt+1), got.Extra[service.OpenAICompactProbeObservedAtUnixNanoExtraKey])
+	s.Require().Equal(float64(502), got.Extra["openai_compact_last_status"])
+	s.Require().Equal("newer temporary failure", got.Extra["openai_compact_last_error"])
+}
+
+func (s *AccountRepoSuite) TestUpdateExtra_ConcurrentCompactProbeObservationsConvergeOnNewestResult() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-extra-concurrent-compact-probe",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra:    map[string]any{"unrelated_setting": "preserved"},
+	})
+
+	const writers = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := 1; i <= writers; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			checkedAt := time.Date(2026, 8, 16, 0, 0, 0, i, time.UTC).Format(time.RFC3339Nano)
+			errs <- s.repo.UpdateExtra(context.Background(), account.ID, map[string]any{
+				"openai_compact_supported":                           i%2 == 0,
+				"openai_compact_probe_version":                       2,
+				"openai_compact_checked_at":                          checkedAt,
+				"openai_compact_last_status":                         i,
+				"openai_compact_last_error":                          fmt.Sprintf("writer-%d", i),
+				service.OpenAICompactProbeObservedAtUnixNanoExtraKey: int64(i),
+			})
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		s.Require().NoError(err)
+	}
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(float64(writers), got.Extra[service.OpenAICompactProbeObservedAtUnixNanoExtraKey])
+	s.Require().Equal(float64(writers), got.Extra["openai_compact_last_status"])
+	s.Require().Equal(true, got.Extra["openai_compact_supported"])
+	s.Require().Equal(float64(2), got.Extra["openai_compact_probe_version"])
+	s.Require().Equal(time.Date(2026, 8, 16, 0, 0, 0, writers, time.UTC).Format(time.RFC3339Nano), got.Extra["openai_compact_checked_at"])
+	s.Require().Equal(fmt.Sprintf("writer-%d", writers), got.Extra["openai_compact_last_error"])
+	s.Require().Equal("preserved", got.Extra["unrelated_setting"])
 }
 
 func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFreshSnapshot() {

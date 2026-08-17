@@ -1983,6 +1983,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 // endpoint has been sunset upstream (404, #5598/#5624) and is no longer probed.
 func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string) error {
 	ctx := c.Request.Context()
+	probeStartedAt := time.Now().UTC()
 	credentialAccount := account
 	if account.IsShadow() {
 		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)
@@ -2063,23 +2064,43 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 	applyOpenAICodexProbeHeaders(req.Header)
-	probeSessionID := compactProbeSessionID(account.ID)
-	req.Header.Set("Session_ID", probeSessionID)
-	req.Header.Set("Conversation_ID", probeSessionID)
+	probeSessionID := compactProbeSessionID(credentialAccount.ID)
+	req.Header.Set("session-id", probeSessionID)
+	req.Header.Set("thread-id", probeSessionID)
 
+	var fingerprintIDs *codexFingerprintIDs
 	if isOAuth {
 		req.Host = "chatgpt.com"
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
-		// 指纹收敛：探测与真实转发走同一个 /responses 端点，身份也必须同构，
-		// 否则探测流量会以「缺 x-codex-installation-id + 非收敛 session」的
-		// 形态暴露在上游眼里。账号关闭收敛（off）时返回 nil，探测保持原样。
-		if fpIDs := resolveCodexFingerprintIDsFromRequest(account, req.Header); fpIDs != nil {
-			applyCodexFingerprintHeaders(req.Header, fpIDs)
+		// This is a server-generated Codex probe, so it must supply one complete,
+		// internally consistent Codex identity even when the account's client
+		// convergence mode is off. The same IDs are projected into headers/body.
+		fingerprintIDs = resolveCodexFingerprintIDs(credentialAccount, probeSessionID, codexFingerprintSession)
+		if fingerprintIDs != nil {
+			var changed bool
+			payloadBytes, changed, err = applyCodexFingerprintClientMetadataRaw(payloadBytes, fingerprintIDs)
+			if err != nil {
+				return s.sendErrorAndEnd(c, "Failed to build Codex compact probe metadata")
+			}
+			if changed {
+				req.Body = io.NopCloser(bytes.NewReader(payloadBytes))
+				req.ContentLength = int64(len(payloadBytes))
+			}
+			if turnMetadata := gjson.GetBytes(payloadBytes, "client_metadata.x-codex-turn-metadata").String(); turnMetadata != "" {
+				req.Header.Set("x-codex-turn-metadata", turnMetadata)
+			}
 		}
 	}
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	// The probe itself is a native-v2 request. Administrative overrides may
+	// add other beta features, but cannot remove the capability being tested.
+	ensureOpenAIRemoteCompactionV2BetaFeature(req.Header)
+	if isOAuth {
+		enforceCodexIdentityHeaders(req.Header)
+		applyCodexFingerprintHeaders(req.Header, fingerprintIDs)
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -2089,17 +2110,18 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
 		if s.accountRepo != nil {
-			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, false, time.Now())
-			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
-			mergeAccountExtra(account, updates)
+			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, openAIProbeVerdictUnknown, "", probeStartedAt, time.Now())
+			if persistErr := persistOpenAIProbeExtra(ctx, s.accountRepo, account.ID, updates); persistErr != nil {
+				log.Printf("failed to persist OpenAI compact probe result: account_id=%d err=%v", account.ID, persistErr)
+			}
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	body, readErr := readOpenAIProbeBody(resp.Body, openAICompactProbeMaxBodyBytes)
 	body = redactAgentIdentitySensitiveBodyForAccount(ctx, s.accountRepo, credentialAccount, body)
-	if !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
+	if readErr == nil && !agentIdentityTaskRecoveryWasTried(ctx) && credentialAccount.IsOpenAIAgentIdentity() && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, body) {
 		expectedTaskID := credentialAccount.GetCredential("task_id")
 		if err := ensureAgentIdentityTaskForAccount(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, credentialAccount, expectedTaskID); err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
@@ -2108,15 +2130,24 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		return s.testOpenAICompactConnection(c, account, testModelID)
 	}
 
-	compactionFound := openAICompactProbeFoundCompactionItem(body)
+	verdict, verdictReason := evaluateOpenAICompactProbeHTTP(resp, body)
+	if readErr != nil {
+		verdict = openAIProbeVerdictUnknown
+		verdictReason = openAICompactProbeReadError(readErr)
+	}
 	if s.accountRepo != nil {
-		updates := buildOpenAICompactProbeExtraUpdates(resp, body, nil, compactionFound, time.Now())
-		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
-			updates = mergeExtraUpdates(updates, codexUpdates)
-		}
+		updates := buildOpenAICompactProbeExtraUpdates(resp, body, readErr, verdict, verdictReason, probeStartedAt, time.Now())
 		if len(updates) > 0 {
-			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
-			mergeAccountExtra(account, updates)
+			if persistErr := persistOpenAIProbeExtra(ctx, s.accountRepo, account.ID, updates); persistErr != nil {
+				log.Printf("failed to persist OpenAI compact probe result: account_id=%d err=%v", account.ID, persistErr)
+			}
+		}
+		if codexUpdates, extractErr := extractOpenAICodexProbeUpdates(resp); extractErr == nil && len(codexUpdates) > 0 {
+			if persistErr := persistOpenAIProbeExtra(ctx, s.accountRepo, account.ID, codexUpdates); persistErr == nil {
+				mergeAccountExtra(account, codexUpdates)
+			} else {
+				log.Printf("failed to persist OpenAI Codex quota probe result: account_id=%d err=%v", account.ID, persistErr)
+			}
 		}
 		// 探测如返回 429,主动同步限流状态,避免后续短时间内继续选中。
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -2124,7 +2155,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
@@ -2132,8 +2163,14 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	if !compactionFound {
-		return s.sendErrorAndEnd(c, "Upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported on this chain)")
+	if readErr != nil {
+		return s.sendErrorAndEnd(c, verdictReason)
+	}
+	if verdict != openAIProbeVerdictSupported {
+		if verdictReason == "" {
+			verdictReason = "native remote compaction v2 probe was inconclusive"
+		}
+		return s.sendErrorAndEnd(c, verdictReason)
 	}
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded (native remote compaction v2)"})
