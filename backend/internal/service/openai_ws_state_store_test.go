@@ -207,6 +207,13 @@ func (c *openAIWSStateStoreTimeoutProbeCache) ReleaseGrokVideoBilled(_ context.C
 	return nil
 REDACTED
 
+func (c *openAIWSStateStoreTimeoutProbeCache) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+REDACTED
+func (c *openAIWSStateStoreTimeoutProbeCache) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+REDACTED
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{REDACTED
 	store := NewOpenAIWSStateStore(probe)

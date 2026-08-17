@@ -17,15 +17,37 @@ const (
 
 type toolOutputMediaByCallID map[string][]ChatContentPart
 
+// ResponsesToChatOptions carries optional hooks for
+// ResponsesToChatCompletionsRequestWithOptions. All fields are optional; a nil
+// *ResponsesToChatOptions behaves exactly like ResponsesToChatCompletionsRequest.
+type ResponsesToChatOptions struct {
+	// ReasoningContentByID looks up the cached reasoning text for a reasoning
+	// item id. Codex histories may carry reasoning items with no plaintext
+	// summary (empty summary + opaque encrypted_content, e.g. after remote
+	// compaction); DeepSeek's thinking mode rejects such histories with 400
+	// "The `reasoning_content` in the thinking mode must be passed back to the
+	// API". The gateway caches the reasoning text it streamed under the item
+	// id, so the lookup restores the reasoning_content the client can no
+	// longer provide. Return "" on a miss. A nil lookup keeps the original
+	// behavior.
+	ReasoningContentByID func(itemID string) string
+REDACTED
+
 // ResponsesToChatCompletionsRequest converts a Responses API request into a
 // Chat Completions request for upstreams that only implement
 // /v1/chat/completions.
 func ResponsesToChatCompletionsRequest(req *ResponsesRequest) (*ChatCompletionsRequest, error) {
+	return ResponsesToChatCompletionsRequestWithOptions(req, nil)
+REDACTED
+
+// ResponsesToChatCompletionsRequestWithOptions is ResponsesToChatCompletionsRequest
+// with optional hooks (see ResponsesToChatOptions).
+func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *ResponsesToChatOptions) (*ChatCompletionsRequest, error) {
 	if req == nil {
 		return nil, fmt.Errorf("responses request is nil")
 REDACTED
 
-	messages, err := responsesInputToChatMessages(req.Instructions, req.Input)
+	messages, err := responsesInputToChatMessagesWithOptions(req.Instructions, req.Input, opts)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -202,6 +224,12 @@ REDACTED
 // scattered across per-item cases, and makes unknown future codex item types
 // fail safe instead of leaking into the upstream request.
 func responsesInputToChatMessages(instructions string, inputRaw json.RawMessage) ([]ChatMessage, error) {
+	return responsesInputToChatMessagesWithOptions(instructions, inputRaw, nil)
+REDACTED
+
+// responsesInputToChatMessagesWithOptions is responsesInputToChatMessages with
+// optional hooks (see ResponsesToChatOptions).
+func responsesInputToChatMessagesWithOptions(instructions string, inputRaw json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, error) {
 	var messages []ChatMessage
 	if strings.TrimSpace(instructions) != "" {
 		content, _ := json.Marshal(instructions)
@@ -226,7 +254,7 @@ REDACTED
 		return nil, fmt.Errorf("parse responses input: %w", err)
 REDACTED
 
-	built, mediaByCallID, err := buildChatMessagesFromItems(messages, rawItems)
+	built, mediaByCallID, err := buildChatMessagesFromItems(messages, rawItems, opts)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -235,7 +263,7 @@ REDACTED
 
 // buildChatMessagesFromItems walks the Responses input items and appends the
 // corresponding Chat messages.
-func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage) ([]ChatMessage, toolOutputMediaByCallID, error) {
+func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessage, opts *ResponsesToChatOptions) ([]ChatMessage, toolOutputMediaByCallID, error) {
 	// pendingReasoning holds the reasoning text from a reasoning item until the
 	// assistant message it belongs to is emitted. DeepSeek's thinking mode
 	// requires the reasoning_content that produced a tool call to be passed back
@@ -269,6 +297,15 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		case "reasoning":
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
+		REDACTED else if opts != nil && opts.ReasoningContentByID != nil {
+				// No plaintext summary (encrypted-only reasoning, e.g. after codex
+				// remote compaction): fall back to the gateway-side cache keyed
+				// by the reasoning item id, which always round-trips in history.
+				if id := rawString(item["id"]); id != "" {
+					if cached := opts.ReasoningContentByID(id); cached != "" {
+						pendingReasoning = cached
+				REDACTED
+			REDACTED
 		REDACTED
 			continue
 		case "function_call":
@@ -685,6 +722,26 @@ REDACTED
 		collect(item["content"])
 REDACTED
 	return strings.Join(parts, "\n")
+REDACTED
+
+// ExtractResponsesReasoningItem parses a raw Responses input item and, when it
+// is a reasoning item, returns its id and extractable plaintext (summary
+// preferred, content fallback). ok is false for non-reasoning items. It exists
+// for the gateway-side reasoning cache: items with plaintext get (re)cached so
+// later encrypted-only replicas of the same item id can be restored.
+func ExtractResponsesReasoningItem(raw json.RawMessage) (id string, text string, ok bool) {
+	raw = bytesTrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", "", false
+REDACTED
+	var item map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return "", "", false
+REDACTED
+	if rawString(item["type"]) != "reasoning" {
+		return "", "", false
+REDACTED
+	return rawString(item["id"]), extractResponsesReasoningText(item), true
 REDACTED
 
 func chatCompletionsBridgeRole(role string) string {
