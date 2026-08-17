@@ -77,10 +77,10 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 
 		// 3. 默认映射中的透传（映射到自己）
 		{
-			name:           "默认映射透传 - claude-fable-5",
+			name:           "已下架原样透传 - claude-fable-5 返回空",
 			requestedModel: "claude-fable-5",
 			accountMapping: nil,
-			expected:       "claude-fable-5",
+			expected:       "",
 		},
 		{
 			name:           "默认映射透传 - claude-sonnet-4-6",
@@ -95,16 +95,16 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-5",
 		},
 		{
-			name:           "默认映射透传 - claude-opus-4-8",
+			name:           "已下架原样透传 - claude-opus-4-8 返回空",
 			requestedModel: "claude-opus-4-8",
 			accountMapping: nil,
-			expected:       "claude-opus-4-8",
+			expected:       "",
 		},
 		{
-			name:           "默认映射透传 - claude-opus-4-7",
+			name:           "已下架原样透传 - claude-opus-4-7 返回空",
 			requestedModel: "claude-opus-4-7",
 			accountMapping: nil,
-			expected:       "claude-opus-4-7",
+			expected:       "",
 		},
 		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
@@ -117,6 +117,30 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			requestedModel: "claude-sonnet-4-5-thinking",
 			accountMapping: nil,
 			expected:       "claude-sonnet-4-5-thinking",
+		},
+		{
+			name:           "默认映射 - gemini-3.6-flash → gemini-3.6-flash-tiered",
+			requestedModel: "gemini-3.6-flash",
+			accountMapping: nil,
+			expected:       "gemini-3.6-flash-tiered",
+		},
+		{
+			name:           "默认映射 - gemini-3.7-flash → gemini-3.7-flash-tiered",
+			requestedModel: "gemini-3.7-flash",
+			accountMapping: nil,
+			expected:       "gemini-3.7-flash-tiered",
+		},
+		{
+			name:           "默认映射透传 - gemini-3.7-flash-high",
+			requestedModel: "gemini-3.7-flash-high",
+			accountMapping: nil,
+			expected:       "gemini-3.7-flash-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-3.7-flash-tiered",
+			requestedModel: "gemini-3.7-flash-tiered",
+			accountMapping: nil,
+			expected:       "gemini-3.7-flash-tiered",
 		},
 		{
 			name:           "默认映射透传 - gemini-2.5-flash",

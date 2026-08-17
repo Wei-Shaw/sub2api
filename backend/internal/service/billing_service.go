@@ -757,7 +757,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		}
 		return s.fallbackPrices["gemini-3.6-flash"]
 	}
-	if strings.Contains(modelLower, "gpt-oss") || strings.Contains(modelLower, "tab_flash") {
+	if strings.Contains(modelLower, "gpt-oss") || strings.Contains(modelLower, "tab_flash") || strings.Contains(modelLower, "tab_jump") {
 		// Antigravity 附带模型：无独立公开价卡时按 Flash 档兜底，避免计费中断。
 		return s.fallbackPrices["gemini-2.5-flash"]
 	}
