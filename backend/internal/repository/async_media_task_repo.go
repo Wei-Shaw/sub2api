@@ -44,9 +44,6 @@ func (r *asyncMediaTaskRepository) Create(ctx context.Context, task *service.Asy
 	if task.NumImages <= 0 {
 		task.NumImages = 1
 	}
-	if task.RateMultiplier == 0 {
-		task.RateMultiplier = 1
-	}
 
 	imageURLsJSON, err := marshalStringSlice(task.ImageURLs)
 	if err != nil {
@@ -233,9 +230,6 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 	if in == nil {
 		return false, errors.New("nil terminal usage log input")
 	}
-	if in.RateMultiplier == 0 {
-		in.RateMultiplier = 1
-	}
 	model := in.Model
 	if model == "" {
 		model = in.UpstreamModel
@@ -275,7 +269,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			billing_mode, billing_tier,
 			task_id, image_urls, cos_url, billing_status,
 			inbound_endpoint, upstream_endpoint, duration_ms, ip_address, user_agent,
-			organization_id, payer_user_id, balance_source, authz_generation,
+			organization_id, payer_user_id, balance_source, authz_generation, account_rate_multiplier,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4,
@@ -288,7 +282,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			$22, $23,
 			$24, $25, $26, $27,
 			$28, $29, $30, $31, $32,
-			$33, $34, $35, $36,
+			$33, $34, $35, $36, $37,
 			NOW()
 		)
 		ON CONFLICT (request_id, api_key_id) DO UPDATE SET
@@ -302,6 +296,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 			total_cost = EXCLUDED.total_cost,
 			actual_cost = EXCLUDED.actual_cost,
 			rate_multiplier = EXCLUDED.rate_multiplier,
+			account_rate_multiplier = EXCLUDED.account_rate_multiplier,
 			billing_type = EXCLUDED.billing_type,
 			request_type = EXCLUDED.request_type,
 			image_count = EXCLUDED.image_count,
@@ -344,7 +339,7 @@ func (r *asyncMediaTaskRepository) InsertTerminalUsageLog(ctx context.Context, i
 		string(service.BillingModeImage), nullIfEmpty(in.BillingTier),
 		taskID, imageURLsJSON, cosURLsJSON, nullIfEmpty(in.BillingStatus),
 		nullIfEmpty(in.InboundEndpoint), nullIfEmpty(in.UpstreamEndpoint), durationMs, nullIfEmpty(in.ClientIP), nullIfEmpty(in.UserAgent),
-		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration,
+		in.OrganizationID, in.PayerUserID, in.BalanceSource, in.AuthzGeneration, in.AccountRateMultiplier,
 	)
 	if err != nil {
 		return false, err

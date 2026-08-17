@@ -16,26 +16,28 @@ func TestAsyncMediaTaskRepositoryTerminalUsageLogUpsertsZeroCostTimeoutRecord(t 
 	t.Cleanup(func() { _ = db.Close() })
 
 	repo := &asyncMediaTaskRepository{sql: db}
+	accountRate := 0.5
 	mock.ExpectExec("insert terminal usage log").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	inserted, err := repo.InsertTerminalUsageLog(context.Background(), &service.TerminalUsageLogInput{
-		UserID:         1,
-		APIKeyID:       2,
-		AccountID:      3,
-		RequestID:      "req-timeout-then-success",
-		Model:          "openai/gpt-image-2",
-		RequestedModel: "gpt-image-2",
-		UpstreamModel:  "openai/gpt-image-2",
-		TotalCost:      0.05,
-		ActualCost:     0.05,
-		RateMultiplier: 1,
-		BillingType:    service.BillingTypeBalance,
-		RequestType:    int16(service.RequestTypeSync),
-		ImageCount:     1,
-		TaskID:         9,
-		ImageURLs:      []string{"https://fal.media/out.png"},
-		BillingStatus:  service.BillingStatusCharged,
+		UserID:                1,
+		APIKeyID:              2,
+		AccountID:             3,
+		RequestID:             "req-timeout-then-success",
+		Model:                 "openai/gpt-image-2",
+		RequestedModel:        "gpt-image-2",
+		UpstreamModel:         "openai/gpt-image-2",
+		TotalCost:             0.05,
+		ActualCost:            0.05,
+		RateMultiplier:        1,
+		AccountRateMultiplier: &accountRate,
+		BillingType:           service.BillingTypeBalance,
+		RequestType:           int16(service.RequestTypeSync),
+		ImageCount:            1,
+		TaskID:                9,
+		ImageURLs:             []string{"https://fal.media/out.png"},
+		BillingStatus:         service.BillingStatusCharged,
 	})
 
 	require.NoError(t, err)
@@ -47,6 +49,7 @@ func TestAsyncMediaTaskRepositoryTerminalUsageLogUpsertsZeroCostTimeoutRecord(t 
 	require.Contains(t, normalized, "image_input_size")
 	require.Contains(t, normalized, "image_output_size")
 	require.Contains(t, normalized, "image_size_breakdown")
+	require.Contains(t, normalized, "account_rate_multiplier")
 	require.Contains(t, normalized, "EXCLUDED.billing_status = 'charged'")
 	require.Contains(t, normalized, "COALESCE(usage_logs.actual_cost, 0) = 0")
 	require.Contains(t, normalized, "COALESCE(usage_logs.total_cost, 0) = 0")

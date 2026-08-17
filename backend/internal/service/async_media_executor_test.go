@@ -425,7 +425,7 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 	defer fs.Close()
 
 	groupID := int64(1)
-	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
+	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 6)
 	userRepo := &fakeUserRepo{balance: 100}
 	taskRepo := newFakeTaskRepo()
 	billing := newTestBillingService()
@@ -435,26 +435,35 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 
 	acc := newFalAccount(fs.URL)
 	in := newSubmitInput(acc, groupID, 2) // 预扣 2 张
+	in.RateMultiplier = 0.2
+	in.RateMultiplierSet = true
+	accountRate := 0.5
+	acc.RateMultiplier = &accountRate
 
 	task, err := svc.SubmitAsync(context.Background(), in)
 	require.NoError(t, err)
 	require.Equal(t, AsyncMediaStatusRunning, task.Status)
-	// 预扣 2 × 0.05 = 0.10
-	require.InDelta(t, 0.10, task.HeldCost, 1e-9)
-	require.InDelta(t, 99.90, userRepo.balance, 1e-9)
+	// 渠道原价 2 × 6，再乘分组图片倍率 0.2，预扣 2.4。
+	require.InDelta(t, 2.4, task.HeldCost, 1e-9)
+	require.InDelta(t, 97.6, userRepo.balance, 1e-9)
 
 	final, err := svc.WaitForTerminal(context.Background(), task, in)
 	require.NoError(t, err)
 	require.Equal(t, AsyncMediaStatusSucceeded, final.Status)
-	// 实际出图 1 张 → finalCost = 0.05，退差 0.05
-	require.InDelta(t, 0.05, final.FinalCost, 1e-9)
-	require.InDelta(t, 99.95, userRepo.balance, 1e-9)
+	// 实际出图 1 张：原价 6，扣费 1.2，退回预扣差额 1.2。
+	require.InDelta(t, 1.2, final.FinalCost, 1e-9)
+	require.InDelta(t, 98.8, userRepo.balance, 1e-9)
 	require.Equal(t, []string{"https://fal.media/out-1.png"}, final.ImageURLs)
 
 	// 终态写一条 charged usage_log
 	require.Equal(t, 1, taskRepo.usageLogCount())
 	require.Equal(t, BillingStatusCharged, taskRepo.lastUsageLog().BillingStatus)
 	usage := taskRepo.lastUsageLog()
+	require.InDelta(t, 6, usage.TotalCost, 1e-9)
+	require.InDelta(t, 1.2, usage.ActualCost, 1e-9)
+	require.InDelta(t, 0.2, usage.RateMultiplier, 1e-9)
+	require.NotNil(t, usage.AccountRateMultiplier)
+	require.InDelta(t, 0.5, *usage.AccountRateMultiplier, 1e-9)
 	require.Equal(t, "1024x1024", usage.ImageInputSize)
 	require.Equal(t, "1536x1024", usage.ImageOutputSize)
 }
@@ -506,7 +515,7 @@ func TestAsyncMediaWriteTerminalUsageLogPersistsImageRequestParameters(t *testin
 	}
 
 	svc.writeTerminalUsageLog(
-		context.Background(), task, BillingTypeBalance, 0.8, BillingStatusCharged,
+		context.Background(), task, BillingTypeBalance, 0.8, 0.16, amFloat64Ptr(0.5), BillingStatusCharged,
 		[]string{"https://fal.media/out.png"}, nil, []string{"1536x1024"},
 	)
 
@@ -703,7 +712,7 @@ func TestAsyncMediaMarkSucceededReloadsAlreadySucceededTaskAndRepairsUsageLog(t 
 	stale.CosURLs = nil
 	stale.FinalCost = 0
 
-	svc.markSucceeded(context.Background(), &stale, BillingTypeBalance, []string{"https://fal.media/out.png"}, []string{"1024x1024"})
+	svc.markSucceeded(context.Background(), &stale, 1, BillingTypeBalance, []string{"https://fal.media/out.png"}, []string{"1024x1024"})
 
 	require.Equal(t, AsyncMediaStatusSucceeded, stale.Status)
 	require.Equal(t, []string{"https://fal.media/out.png"}, stale.ImageURLs)

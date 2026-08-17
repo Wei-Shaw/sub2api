@@ -117,6 +117,22 @@ func (s *OpenAIGatewayService) ResolveUserGroupRateMultiplier(ctx context.Contex
 	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+// ResolveImageRateMultiplier resolves the effective downstream image multiplier
+// using the same precedence as OpenAI image usage billing.
+func (s *OpenAIGatewayService) ResolveImageRateMultiplier(ctx context.Context, userID int64, apiKey *APIKey) float64 {
+	multiplier := 1.0
+	if s != nil && s.cfg != nil {
+		multiplier = s.cfg.Default.RateMultiplier
+	}
+	if apiKey != nil && apiKey.GroupID != nil && apiKey.Group != nil {
+		multiplier = apiKey.Group.RateMultiplier
+		if s != nil {
+			multiplier = s.ResolveUserGroupRateMultiplier(ctx, userID, *apiKey.GroupID, multiplier)
+		}
+	}
+	return resolveImageRateMultiplier(apiKey, multiplier)
+}
+
 // openAIUsagePricingAt 返回本次用量记录使用的定价时刻：优先请求级 PricingAt
 // （与利润门 D 同源同刻），未装配时回退记录时刻（既有行为）。
 func openAIUsagePricingAt(input *OpenAIRecordUsageInput) time.Time {

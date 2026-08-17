@@ -120,6 +120,9 @@ type TerminalUsageLogInput struct {
 	TotalCost      float64
 	ActualCost     float64
 	RateMultiplier float64
+	// AccountRateMultiplier is the selected upstream account cost multiplier.
+	// nil denotes historical rows and is interpreted as 1.0 by aggregations.
+	AccountRateMultiplier *float64
 
 	BillingType int8  // 0=balance / 1=subscription
 	RequestType int16 // RequestTypeSync 等

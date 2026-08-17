@@ -388,10 +388,7 @@ func (h *FalGatewayHandler) buildSubmitInput(
 		billingType = service.BillingTypeSubscription
 	}
 
-	rateMultiplier := 1.0
-	if account.RateMultiplier != nil && *account.RateMultiplier > 0 {
-		rateMultiplier = *account.RateMultiplier
-	}
+	rateMultiplier := h.imagesService.ResolveImageRateMultiplier(c.Request.Context(), subject.UserID, apiKey)
 
 	return &service.AsyncMediaSubmitInput{
 		Account:           account,
@@ -406,6 +403,7 @@ func (h *FalGatewayHandler) buildSubmitInput(
 		Input:             input,
 		BillingType:       billingType,
 		RateMultiplier:    rateMultiplier,
+		RateMultiplierSet: true,
 		ClientIP:          c.ClientIP(),
 		UserAgent:         c.GetHeader("User-Agent"),
 		InboundEndpoint:   falInboundEndpoint(c),
