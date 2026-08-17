@@ -15,18 +15,22 @@ import (
 )
 
 const (
-	schedulerBucketSetKey          = "sched:buckets"
-	schedulerOutboxWatermarkKey    = "sched:outbox:watermark"
-	schedulerAccountPrefix         = "sched:acc:"
-	schedulerAccountMetaPrefix     = "sched:meta:"
-	schedulerAccountLastUsedPrefix = "sched:acc:last_used:"
-	schedulerActivePrefix          = "sched:active:"
-	schedulerReadyPrefix           = "sched:ready:"
-	schedulerVersionPrefix         = "sched:ver:"
-	schedulerEpochPrefix           = "sched:epoch:"
-	schedulerRetiredPrefix         = "sched:retired:"
-	schedulerSnapshotPrefix        = "sched:"
-	schedulerLockPrefix            = "sched:lock:"
+	schedulerBucketSetKey       = "sched:buckets"
+	schedulerOutboxWatermarkKey = "sched:outbox:watermark"
+	schedulerAccountPrefix      = "sched:acc:"
+	// schedulerAccountMetaPrefix is schema-versioned because metadata is read
+	// before the selected account is hydrated. Bump the namespace whenever a
+	// projection change affects pre-hydration scheduling behavior.
+	schedulerAccountMetaPrefix       = "sched:meta:v2:"
+	schedulerLegacyAccountMetaPrefix = "sched:meta:"
+	schedulerAccountLastUsedPrefix   = "sched:acc:last_used:"
+	schedulerActivePrefix            = "sched:active:"
+	schedulerReadyPrefix             = "sched:ready:"
+	schedulerVersionPrefix           = "sched:ver:"
+	schedulerEpochPrefix             = "sched:epoch:"
+	schedulerRetiredPrefix           = "sched:retired:"
+	schedulerSnapshotPrefix          = "sched:"
+	schedulerLockPrefix              = "sched:lock:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
 	defaultSchedulerSnapshotWriteChunkSize = 256
@@ -604,7 +608,12 @@ func (c *schedulerCache) DeleteAccount(ctx context.Context, accountID int64) err
 		return nil
 	}
 	id := strconv.FormatInt(accountID, 10)
-	return c.rdb.Del(ctx, schedulerAccountKey(id), schedulerAccountMetaKey(id), schedulerLastUsedKey(id)).Err()
+	return c.rdb.Del(ctx,
+		schedulerAccountKey(id),
+		schedulerAccountMetaKey(id),
+		schedulerLegacyAccountMetaKey(id),
+		schedulerLastUsedKey(id),
+	).Err()
 }
 
 func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error {
@@ -636,7 +645,12 @@ func (c *schedulerCache) UpdateLastUsed(ctx context.Context, updates map[int64]t
 				"error", err,
 			)
 			idText := strconv.FormatInt(id, 10)
-			pipe.Del(ctx, schedulerAccountKey(idText), schedulerAccountMetaKey(idText), schedulerLastUsedKey(idText))
+			pipe.Del(ctx,
+				schedulerAccountKey(idText),
+				schedulerAccountMetaKey(idText),
+				schedulerLegacyAccountMetaKey(idText),
+				schedulerLastUsedKey(idText),
+			)
 			queued++
 			continue
 		}
@@ -718,6 +732,10 @@ func schedulerAccountKey(id string) string {
 
 func schedulerAccountMetaKey(id string) string {
 	return schedulerAccountMetaPrefix + id
+}
+
+func schedulerLegacyAccountMetaKey(id string) string {
+	return schedulerLegacyAccountMetaPrefix + id
 }
 
 func schedulerLastUsedKey(id string) string {
@@ -809,6 +827,7 @@ func (c *schedulerCache) writeAccountIDs(ctx context.Context, accounts []service
 		id := strconv.FormatInt(account.ID, 10)
 		pipe.Set(ctx, schedulerAccountKey(id), fullPayload, 0)
 		pipe.Set(ctx, schedulerAccountMetaKey(id), metaPayload, 0)
+		pipe.Del(ctx, schedulerLegacyAccountMetaKey(id))
 		// Keep the hot LastUsedAt side key untouched: a lagging snapshot rebuild
 		// must not overwrite a newer scheduler update.
 		accountIDs = append(accountIDs, account.ID)
@@ -954,7 +973,17 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	if len(credentials) == 0 {
 		return nil
 	}
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type"}
+	keys := []string{
+		"model_mapping",
+		"compact_model_mapping",
+		"api_key",
+		"project_id",
+		"oauth_type",
+		"plan_type",
+		"account_scheduling_threshold",
+		"subscription_tier",
+		"team_id",
+	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -1000,6 +1029,16 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
+		"openai_passthrough",
+		"openai_oauth_passthrough",
+		"openai_compact_mode",
+		"openai_compact_supported",
+		"privacy_mode",
+		"session_window_utilization",
+		"passive_usage_7d_utilization",
+		"passive_usage_7d_reset",
+		"grok_sched_utilization",
+		"grok_sched_reset_at",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",

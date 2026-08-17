@@ -75,6 +75,8 @@ func TestSchedulerCacheUpdateLastUsedClearsUnencodablePayload(t *testing.T) {
 	cache := newSchedulerCacheUnit(t)
 	account := service.Account{ID: 114, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
 	require.NoError(t, cache.SetAccount(ctx, &account))
+	legacyKey := schedulerLegacyAccountMetaKey(strconv.FormatInt(account.ID, 10))
+	require.NoError(t, cache.rdb.Set(ctx, legacyKey, `{}`, 0).Err())
 
 	invalidTime := time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
 	require.NoError(t, cache.UpdateLastUsed(ctx, map[int64]time.Time{account.ID: invalidTime}))
@@ -82,6 +84,7 @@ func TestSchedulerCacheUpdateLastUsedClearsUnencodablePayload(t *testing.T) {
 	cached, err := cache.GetAccount(ctx, account.ID)
 	require.NoError(t, err)
 	require.Nil(t, cached)
+	require.EqualValues(t, 0, cache.rdb.Exists(ctx, legacyKey).Val())
 }
 
 func TestSchedulerCacheSnapshotAccountIDReusePreservesPayloadAndMembers(t *testing.T) {
@@ -367,6 +370,130 @@ func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 		require.Equal(t, "billing_forbidden", reason)
 		require.NotNil(t, got.Extra["grok_billing_snapshot"])
 	})
+}
+
+func TestBuildSchedulerMetadataAccount_KeepsPreHydrationSchedulingFields(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+
+	t.Run("anthropic threshold override and windows", func(t *testing.T) {
+		windowEnd := now.Add(2 * time.Hour)
+		account := service.Account{
+			ID:               90,
+			Platform:         service.PlatformAnthropic,
+			Type:             service.AccountTypeOAuth,
+			Status:           service.StatusActive,
+			Schedulable:      true,
+			SessionWindowEnd: &windowEnd,
+			Credentials: map[string]any{
+				"account_scheduling_threshold": 80,
+				"access_token":                 "must-not-enter-metadata",
+			},
+			Extra: map[string]any{
+				"session_window_utilization":   0.85,
+				"passive_usage_7d_utilization": 0.90,
+				"passive_usage_7d_reset":       now.Add(7 * 24 * time.Hour).Format(time.RFC3339),
+				"unrelated":                    "drop-me",
+			},
+		}
+
+		got := buildSchedulerMetadataAccount(account)
+		decision := service.EvaluateAccountSchedulingThreshold(&got, map[string]int{
+			service.PlatformAnthropic: 95,
+		}, now)
+
+		require.True(t, decision.ShouldPause)
+		require.Equal(t, 80, decision.ThresholdPercent)
+		require.Equal(t, "7d", decision.Window)
+		require.Empty(t, got.GetCredential("access_token"))
+		require.NotContains(t, got.Extra, "unrelated")
+	})
+
+	t.Run("grok threshold and scheduling identity", func(t *testing.T) {
+		account := service.Account{
+			ID:          91,
+			Platform:    service.PlatformGrok,
+			Type:        service.AccountTypeOAuth,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{
+				"account_scheduling_threshold": 80,
+				"subscription_tier":            "free",
+				"team_id":                      "team-a",
+				"refresh_token":                "must-not-enter-metadata",
+			},
+			Extra: map[string]any{
+				"grok_sched_utilization": 90.0,
+				"grok_sched_reset_at":    now.Add(time.Hour).Format(time.RFC3339),
+			},
+		}
+
+		got := buildSchedulerMetadataAccount(account)
+		decision := service.EvaluateAccountSchedulingThreshold(&got, map[string]int{
+			service.PlatformGrok: 95,
+		}, now)
+
+		require.True(t, decision.ShouldPause)
+		require.Equal(t, 80, decision.ThresholdPercent)
+		require.Equal(t, "quota", decision.Window)
+		require.Equal(t, "free", got.GetCredential("subscription_tier"))
+		require.Equal(t, "team-a", got.GetCredential("team_id"))
+		require.Empty(t, got.GetCredential("refresh_token"))
+	})
+
+	t.Run("openai privacy passthrough and compact routing", func(t *testing.T) {
+		account := service.Account{
+			ID:       92,
+			Platform: service.PlatformOpenAI,
+			Type:     service.AccountTypeOAuth,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{"known-model": "known-model"},
+			},
+			Extra: map[string]any{
+				"privacy_mode":             service.PrivacyModeTrainingOff,
+				"openai_passthrough":       true,
+				"openai_compact_mode":      service.OpenAICompactModeForceOn,
+				"openai_compact_supported": true,
+			},
+		}
+
+		got := buildSchedulerMetadataAccount(account)
+		supported, known := got.OpenAICompactSupportKnown()
+
+		require.True(t, got.IsPrivacySet())
+		require.True(t, got.IsOpenAIPassthroughEnabled())
+		require.True(t, got.IsModelSupported("unmapped-upstream-model"))
+		require.True(t, known)
+		require.True(t, supported)
+	})
+}
+
+func TestSchedulerMetadataSchemaVersionRejectsAndCleansLegacyPayload(t *testing.T) {
+	ctx := context.Background()
+	cache := newSchedulerCacheUnit(t)
+	account := service.Account{ID: 93, Platform: service.PlatformGrok, Type: service.AccountTypeOAuth}
+	bucket := service.SchedulerBucket{GroupID: 93, Platform: service.PlatformGrok, Mode: service.SchedulerModeSingle}
+	token, err := cache.CaptureBucketWriteToken(ctx, bucket)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetSnapshot(ctx, bucket, token, []service.Account{account}))
+
+	id := strconv.FormatInt(account.ID, 10)
+	metadata, err := cache.rdb.Get(ctx, schedulerAccountMetaKey(id)).Bytes()
+	require.NoError(t, err)
+	require.NoError(t, cache.rdb.Del(ctx, schedulerAccountMetaKey(id)).Err())
+	require.NoError(t, cache.rdb.Set(ctx, schedulerLegacyAccountMetaKey(id), metadata, 0).Err())
+
+	snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.False(t, hit, "legacy metadata must force a database rebuild")
+	require.Nil(t, snapshot)
+
+	require.NoError(t, cache.SetAccount(ctx, &account))
+	require.EqualValues(t, 0, cache.rdb.Exists(ctx, schedulerLegacyAccountMetaKey(id)).Val())
+	require.EqualValues(t, 1, cache.rdb.Exists(ctx, schedulerAccountMetaKey(id)).Val())
+
+	require.NoError(t, cache.rdb.Set(ctx, schedulerLegacyAccountMetaKey(id), metadata, 0).Err())
+	require.NoError(t, cache.DeleteAccount(ctx, account.ID))
+	require.EqualValues(t, 0, cache.rdb.Exists(ctx, schedulerLegacyAccountMetaKey(id)).Val())
 }
 
 func TestBuildSchedulerMetadataAccount_KeepsSlimGroupMembership(t *testing.T) {
