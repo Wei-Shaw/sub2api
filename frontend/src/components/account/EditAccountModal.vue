@@ -2989,7 +2989,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue' (feat(opencode): 支持 OpenCode Go 官方用量窗口查询与自动刷新)
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
