@@ -107,7 +107,10 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"fal","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"atlascloud","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
-		{"platform":"apiz","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
+		{"platform":"apiz","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"kimi","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"zhipu","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"deepseek","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null}
 	]}`
 	c, w := putReq(t, body)
 	h.UpdateUserPlatformQuotas(c)
@@ -119,7 +122,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		t.Fatalf("UpsertForUser should be called once, got %d", len(repo.upsertCalls))
 	}
 	// upsert 记录数 = 请求体中给出的平台数（未给出的平台不落库）。
-	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != 5 {
+	if repo.upsertCalls[0].userID != 42 || len(repo.upsertCalls[0].records) != len(service.AllowedQuotaPlatforms) {
 		t.Errorf("unexpected upsert call: %+v", repo.upsertCalls[0])
 	}
 	// 缓存失效：按全部允许平台统一失效（含 kimi/zhipu/deepseek）。
