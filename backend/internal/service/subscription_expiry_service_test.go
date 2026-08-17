@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"testing"
 	"time"
 
@@ -116,8 +118,9 @@ func (r *subscriptionExpiryRepoStub) BatchUpdateExpiredStatus(context.Context) (
 REDACTED
 
 type subscriptionExpirySettingRepoStub struct {
-	values map[string]string
-	err    error
+	values   map[string]string
+	err      error
+	multiErr error
 REDACTED
 
 func (r *subscriptionExpirySettingRepoStub) Get(context.Context, string) (*Setting, error) {
@@ -139,8 +142,17 @@ func (r *subscriptionExpirySettingRepoStub) Set(context.Context, string, string)
 	return nil
 REDACTED
 
-func (r *subscriptionExpirySettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
-	return nil, nil
+func (r *subscriptionExpirySettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	if r.multiErr != nil {
+		return nil, r.multiErr
+REDACTED
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := r.values[key]; ok {
+			values[key] = value
+	REDACTED
+REDACTED
+	return values, nil
 REDACTED
 
 func (r *subscriptionExpirySettingRepoStub) SetMultiple(context.Context, map[string]string) error {
@@ -181,4 +193,45 @@ func TestSubscriptionExpiryService_ExpiryReminderSettingReadErrorFailsClosed(t *
 	svc.SetSettingRepository(&subscriptionExpirySettingRepoStub{err: errors.New("db down")REDACTED)
 
 	require.False(t, svc.expiryReminderEnabled(context.Background()))
+REDACTED
+
+func TestSubscriptionExpiryService_MissingSMTPSkipsReminderScanAndLogsOncePerInterval(t *testing.T) {
+	repo := &subscriptionExpiryRepoStub{REDACTED
+	settingRepo := &subscriptionExpirySettingRepoStub{values: map[string]string{REDACTEDREDACTED
+	emailService := NewEmailService(settingRepo, nil)
+	svc := NewSubscriptionExpiryService(repo, time.Minute)
+	svc.SetSettingRepository(settingRepo)
+	svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, emailService))
+
+	var logs bytes.Buffer
+	previousWriter := log.Writer()
+	previousFlags := log.Flags()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(previousWriter)
+		log.SetFlags(previousFlags)
+REDACTED)
+
+	svc.sendExpiryReminders(context.Background())
+	svc.sendExpiryReminders(context.Background())
+
+	require.Zero(t, repo.listCalls)
+	require.Equal(t, 1, bytes.Count(logs.Bytes(), []byte("SMTP is not configured")))
+REDACTED
+
+func TestSubscriptionExpiryService_SMTPConfigReadErrorSkipsReminderScan(t *testing.T) {
+	repo := &subscriptionExpiryRepoStub{REDACTED
+	settingRepo := &subscriptionExpirySettingRepoStub{
+		values:   map[string]string{REDACTED,
+		multiErr: errors.New("db down"),
+REDACTED
+	emailService := NewEmailService(settingRepo, nil)
+	svc := NewSubscriptionExpiryService(repo, time.Minute)
+	svc.SetSettingRepository(settingRepo)
+	svc.SetNotificationEmailService(NewNotificationEmailService(settingRepo, emailService))
+
+	svc.sendExpiryReminders(context.Background())
+
+	require.Zero(t, repo.listCalls)
 REDACTED
