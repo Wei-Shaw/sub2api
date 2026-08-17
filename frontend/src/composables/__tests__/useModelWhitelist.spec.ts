@@ -38,9 +38,12 @@ describe('useModelWhitelist', () => {
 
   it('Claude 模型列表包含新发布的 Claude 模型', () => {
     expect(getModelsByPlatform('claude')).toContain('claude-fable-5')
-    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5')
     expect(getModelsByPlatform('claude')).toContain('claude-opus-4-8')
-    expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-6-thinking')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-sonnet-4-6')
+    expect(getModelsByPlatform('antigravity')).toContain('gemini-3.7-flash-tiered')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-fable-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-4-8')
   })
 
   it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {

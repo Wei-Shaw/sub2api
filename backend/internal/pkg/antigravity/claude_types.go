@@ -154,7 +154,6 @@ type modelDef struct {
 // Antigravity 支持的 Claude 模型
 // 须覆盖 domain.DefaultAntigravityModelMapping 中的客户端可见 ID（#3701）。
 var claudeModels = []modelDef{
-	{ID: "claude-fable-5", DisplayName: "Claude Fable 5", CreatedAt: "2026-06-09T00:00:00Z"},
 	{ID: "claude-opus-4-5-thinking", DisplayName: "Claude Opus 4.5 Thinking", CreatedAt: "2025-11-01T00:00:00Z"},
 	{ID: "claude-opus-4-5-20251101", DisplayName: "Claude Opus 4.5 (20251101)", CreatedAt: "2025-11-01T00:00:00Z"},
 	{ID: "claude-sonnet-4-5", DisplayName: "Claude Sonnet 4.5", CreatedAt: "2025-09-29T00:00:00Z"},
@@ -162,8 +161,6 @@ var claudeModels = []modelDef{
 	{ID: "claude-sonnet-4-5-20250929", DisplayName: "Claude Sonnet 4.5 (20250929)", CreatedAt: "2025-09-29T00:00:00Z"},
 	{ID: "claude-opus-4-6", DisplayName: "Claude Opus 4.6", CreatedAt: "2026-02-05T00:00:00Z"},
 	{ID: "claude-opus-4-6-thinking", DisplayName: "Claude Opus 4.6 Thinking", CreatedAt: "2026-02-05T00:00:00Z"},
-	{ID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", CreatedAt: "2026-04-17T00:00:00Z"},
-	{ID: "claude-opus-4-8", DisplayName: "Claude Opus 4.8", CreatedAt: "2026-05-29T00:00:00Z"},
 	{ID: "claude-sonnet-4-6", DisplayName: "Claude Sonnet 4.6", CreatedAt: "2026-02-17T00:00:00Z"},
 	{ID: "claude-haiku-4-5", DisplayName: "Claude Haiku 4.5", CreatedAt: "2025-10-01T00:00:00Z"},
 	{ID: "claude-haiku-4-5-20251001", DisplayName: "Claude Haiku 4.5 (20251001)", CreatedAt: "2025-10-01T00:00:00Z"},
@@ -179,6 +176,7 @@ var geminiModels = []modelDef{
 	{ID: "gemini-2.5-flash-thinking", DisplayName: "Gemini 2.5 Flash Thinking", CreatedAt: "2025-01-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-2.5-pro", DisplayName: "Gemini 2.5 Pro", CreatedAt: "2025-01-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3-flash", DisplayName: "Gemini 3 Flash", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "gemini-3-flash-agent", DisplayName: "Gemini 3 Flash Agent", CreatedAt: "2026-08-01T00:00:00Z"},
 	{ID: "gemini-3-flash-preview", DisplayName: "Gemini 3 Flash Preview", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "gemini-3-pro-low", DisplayName: "Gemini 3 Pro Low", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "gemini-3-pro-high", DisplayName: "Gemini 3 Pro High", CreatedAt: "2025-06-01T00:00:00Z", IsReasoning: true},
@@ -190,11 +188,16 @@ var geminiModels = []modelDef{
 	{ID: "gemini-pro-agent", DisplayName: "Gemini Pro Agent", CreatedAt: "2026-02-19T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.1-flash-image", DisplayName: "Gemini 3.1 Flash Image", CreatedAt: "2026-02-19T00:00:00Z"},
 	{ID: "gemini-3.1-flash-image-preview", DisplayName: "Gemini 3.1 Flash Image Preview", CreatedAt: "2026-02-19T00:00:00Z"},
+	{ID: "gemini-3.1-flash-lite", DisplayName: "Gemini 3.1 Flash Lite", CreatedAt: "2026-08-01T00:00:00Z"},
+	{ID: "gemini-3.5-flash-low", DisplayName: "Gemini 3.5 Flash Low", CreatedAt: "2026-08-01T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-3.5-flash-extra-low", DisplayName: "Gemini 3.5 Flash Extra Low", CreatedAt: "2026-08-01T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash", DisplayName: "Gemini 3.6 Flash", CreatedAt: "2026-07-21T00:00:00Z"},
 	{ID: "gemini-3.6-flash-high", DisplayName: "Gemini 3.6 Flash High", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash-low", DisplayName: "Gemini 3.6 Flash Low", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash-medium", DisplayName: "Gemini 3.6 Flash Medium", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3.6-flash-tiered", DisplayName: "Gemini 3.6 Flash", CreatedAt: "2026-07-21T00:00:00Z", IsReasoning: true},
+	{ID: "gemini-3.7-flash", DisplayName: "Gemini 3.7 Flash", CreatedAt: "2026-08-14T00:00:00Z"},
+	{ID: "gemini-3.7-flash-tiered", DisplayName: "Gemini 3.7 Flash", CreatedAt: "2026-08-14T00:00:00Z", IsReasoning: true},
 	{ID: "gemini-3-pro-image", DisplayName: "Gemini 3 Pro Image", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "gemini-3-pro-image-preview", DisplayName: "Gemini 3 Pro Image Preview", CreatedAt: "2025-06-01T00:00:00Z"},
 }
@@ -203,6 +206,7 @@ var geminiModels = []modelDef{
 var otherModels = []modelDef{
 	{ID: "gpt-oss-120b-medium", DisplayName: "GPT OSS 120B Medium", CreatedAt: "2025-06-01T00:00:00Z"},
 	{ID: "tab_flash_lite_preview", DisplayName: "Tab Flash Lite Preview", CreatedAt: "2025-06-01T00:00:00Z"},
+	{ID: "tab_jump_flash_lite_preview", DisplayName: "Tab Jump Flash Lite Preview", CreatedAt: "2026-08-01T00:00:00Z"},
 }
 
 // ========== Claude API 格式 (/v1/models) ==========

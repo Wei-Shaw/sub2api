@@ -218,6 +218,7 @@ func TestGetModelPricing_UnknownGeminiVariantsFallBackByTier(t *testing.T) {
 	newestFlashTier := []string{
 		"gemini-3.6-flash-tiered",
 		"gemini-3.6-flash",
+		"gemini-3.7-flash-tiered",
 		"gemini-4-flash-lite",
 		"gemini-4.2-flash-thinking-exp",
 	}

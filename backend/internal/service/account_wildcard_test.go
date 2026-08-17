@@ -552,7 +552,7 @@ func TestAccountGetModelMapping_AntigravityMergesMissingDefaultKeys(t *testing.T
 	raw := make(map[string]any, len(domain.DefaultAntigravityModelMapping))
 	for from, to := range domain.DefaultAntigravityModelMapping {
 		switch from {
-		case "claude-opus-4-8", "gemini-2.5-pro":
+		case "gemini-3.7-flash-tiered", "gemini-2.5-pro":
 			continue
 		default:
 			raw[from] = to
@@ -573,8 +573,8 @@ func TestAccountGetModelMapping_AntigravityMergesMissingDefaultKeys(t *testing.T
 	if mapping["claude-sonnet-4-5"] != "claude-sonnet-4-5" {
 		t.Fatalf("expected existing key preserved, got: %q", mapping["claude-sonnet-4-5"])
 	}
-	if mapping["claude-opus-4-8"] != "claude-opus-4-8" {
-		t.Fatalf("expected missing default key merged, got: %q", mapping["claude-opus-4-8"])
+	if mapping["gemini-3.7-flash-tiered"] != "gemini-3.7-flash-tiered" {
+		t.Fatalf("expected missing default key merged, got: %q", mapping["gemini-3.7-flash-tiered"])
 	}
 	if mapping["gemini-2.5-pro"] != "gemini-2.5-pro" {
 		t.Fatalf("expected gemini-2.5-pro default merged, got: %q", mapping["gemini-2.5-pro"])

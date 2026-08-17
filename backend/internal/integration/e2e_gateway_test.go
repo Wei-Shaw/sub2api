@@ -695,10 +695,10 @@ func TestClaudeMessagesWithGeminiModel(t *testing.T) {
 	// 测试通过 Claude 端点调用 Gemini 模型
 	geminiViaClaude := []string{
 		"gemini-3-flash",       // 直接支持
-		"gemini-3-pro-low",     // 直接支持
-		"gemini-3-pro-high",    // 直接支持
-		"gemini-3-pro",         // 前缀映射 -> gemini-3-pro-high
-		"gemini-3-pro-preview", // 前缀映射 -> gemini-3-pro-high
+		"gemini-3-pro-low",     // 映射到 gemini-3.1-pro-low
+		"gemini-3-pro-high",    // 映射到 gemini-pro-agent
+		"gemini-3-pro",         // 无精确映射则调度失败/空
+		"gemini-3-pro-preview", // 映射到 gemini-pro-agent
 	}
 
 	for i, model := range geminiViaClaude {

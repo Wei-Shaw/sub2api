@@ -16,23 +16,34 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 	}
 
 	requiredIDs := []string{
-		"claude-fable-5",
-		"claude-opus-4-8",
 		"claude-opus-4-6-thinking",
+		"claude-sonnet-4-6",
 		"gemini-2.5-flash-image",
 		"gemini-2.5-flash-image-preview",
 		"gemini-2.5-pro",
 		"gemini-3.1-flash-image",
 		"gemini-3.1-flash-image-preview",
+		"gemini-3.1-flash-lite",
+		"gemini-3-flash-agent",
 		"gemini-3-pro-image", // legacy compatibility
 		"gemini-pro-agent",
 		"gpt-oss-120b-medium",
 		"tab_flash_lite_preview",
+		"tab_jump_flash_lite_preview",
+		"gemini-3.5-flash-low",
 		"gemini-3.6-flash",
 		"gemini-3.6-flash-high",
 		"gemini-3.6-flash-low",
 		"gemini-3.6-flash-medium",
 		"gemini-3.6-flash-tiered",
+		"gemini-3.7-flash-tiered",
+	}
+
+	retiredIDs := []string{"claude-fable-5", "claude-opus-4-7", "claude-opus-4-8"}
+	for _, id := range retiredIDs {
+		if _, ok := byID[id]; ok {
+			t.Fatalf("retired model %q must not appear in DefaultModels", id)
+		}
 	}
 
 	for _, id := range requiredIDs {

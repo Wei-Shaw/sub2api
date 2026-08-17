@@ -108,12 +108,12 @@ func TestIsModelRateLimited(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name: "antigravity platform - gemini-3-pro-preview mapped to gemini-3-pro-high",
+			name: "antigravity platform - gemini-3-pro-preview mapped to gemini-pro-agent",
 			account: &Account{
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"gemini-3-pro-high": map[string]any{
+						"gemini-pro-agent": map[string]any{
 							"rate_limit_reset_at": future,
 						},
 					},
