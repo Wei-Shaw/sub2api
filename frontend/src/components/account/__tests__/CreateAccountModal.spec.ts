@@ -165,9 +165,12 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createAccountMock).toHaveBeenCalledTimes(1)
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra).not.toHaveProperty(
+      'openai_apikey_responses_keep_tool_call_namespaces'
+    )
   })
 
-  // namespace 摊平是仅 OAuth 的兼容开关：API Key 走 chat completions 回退桥时由桥自行摊平
+  // namespace 摊平是仅 OAuth 的兼容开关；API Key 使用独立的调用 namespace 保留开关。
   it('shows the Codex namespace flatten toggle only for OpenAI OAuth accounts', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
@@ -175,11 +178,34 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(wrapper.find('[data-testid="create-openai-flatten-namespaces-toggle"]').exists()).toBe(
       true
     )
+    expect(wrapper.find('[data-testid="create-openai-apikey-keep-tool-call-namespaces-toggle"]').exists()).toBe(
+      false
+    )
 
     await selectButtonByText(wrapper, 'API Key')
     expect(wrapper.find('[data-testid="create-openai-flatten-namespaces-toggle"]').exists()).toBe(
       false
     )
+    expect(wrapper.find('[data-testid="create-openai-apikey-keep-tool-call-namespaces-toggle"]').exists()).toBe(
+      true
+    )
+  })
+
+  it('submits the API key tool-call namespace preservation toggle only when enabled', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI compatible')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+
+    await wrapper.get('[data-testid="create-openai-apikey-keep-tool-call-namespaces-toggle"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(
+      createAccountMock.mock.calls[0]?.[0]?.extra?.openai_apikey_responses_keep_tool_call_namespaces
+    ).toBe(true)
   })
 
   it('enables upstream billing probes by default for new OpenAI API key accounts', async () => {

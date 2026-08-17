@@ -126,6 +126,54 @@ func TestOpenAIGatewayService_OAuthFlattenFlagRestoresLegacyBehavior(t *testing.
 	)
 }
 
+// API Key 账号默认按标准 Responses API 清理 namespace；指向支持 Codex namespace 的
+// 兼容上游时，账号开关仅保留工具调用项，普通消息上的残留字段仍应清理。
+func TestOpenAIGatewayService_APIKeyKeepToolCallNamespacesFlag(t *testing.T) {
+	body := []byte(codexNamespaceRequestBody)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Extra["openai_apikey_responses_keep_tool_call_namespaces"] = true
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, account, body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+
+	namespaceTool := gjson.GetBytes(forwarded, `tools.#(type=="namespace")`)
+	require.True(t, namespaceTool.Exists(), "namespace 声明必须原样转发")
+	require.Equal(t, "collaboration", gjson.GetBytes(forwarded, "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.1.namespace").Exists())
+}
+
+func TestOpenAIGatewayService_APIKeyKeepToolCallNamespacesFlagStillStripsCompact(t *testing.T) {
+	body := []byte(codexNamespaceRequestBody)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+	c.Request.URL.Path = "/v1/responses/compact"
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Extra["openai_apikey_responses_keep_tool_call_namespaces"] = true
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, account, body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+	require.False(t, gjson.GetBytes(forwarded, "input.0.namespace").Exists())
+	require.False(t, gjson.GetBytes(forwarded, "input.1.namespace").Exists())
+}
+
 // handler 的 failover 在同一个 *gin.Context 上重试下一个账号；保留 namespace 的账号
 // 不得沿用上一个账号登记的摊平名映射做回程还原。
 func TestOpenAIGatewayService_ForwardClearsStaleNamespaceNames(t *testing.T) {

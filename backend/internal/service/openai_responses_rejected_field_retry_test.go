@@ -134,6 +134,29 @@ func TestOpenAIGatewayService_APIKeyStripsAllIndexedNamespacesBeforeFirstForward
 	require.False(t, gjson.GetBytes(upstream.bodies[0], "input.1.namespace").Exists())
 }
 
+func TestOpenAIGatewayService_APIKeyKeepToolCallNamespacesRetriesNamespaceRejection(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"function_call","name":"first","namespace":"collaboration","arguments":"{}"}]}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace","type":"invalid_request_error"}}`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0}}}`),
+	}}
+	account := newOpenAIRejectedFieldTestAccount()
+	account.Extra["openai_apikey_responses_keep_tool_call_namespaces"] = true
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(),
+		newOpenAIRejectedFieldTestContext(body),
+		account,
+		body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "collaboration", gjson.GetBytes(upstream.bodies[0], "input.0.namespace").String())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.namespace").Exists())
+}
+
 func TestOpenAIGatewayService_OpenAIHTTPStripsInputNamespacesBeforeFirstForward(t *testing.T) {
 	accounts := []struct {
 		name    string

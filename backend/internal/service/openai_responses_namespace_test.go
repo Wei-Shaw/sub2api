@@ -65,6 +65,11 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	apiKeyKeepToolCalls := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_apikey_responses_keep_tool_call_namespaces": true},
+	}
 	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
 	flattenOAuth := &Account{
 		Platform: PlatformOpenAI,
@@ -92,8 +97,10 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 		// WSv2 + compact 是唯一「不摊平但仍必须清理」的组合，钉住 compact 判定本身，
 		// 使其不会被误当成可由 shouldFlatten 推导出的冗余分支。
 		{name: "oauth_compact_wsv2_strips", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, compactPath: true, want: false},
-		// API Key 出口是标准 Responses API，不认识该字段。
+		// API Key 默认按标准 Responses API 处理，不保留该字段。
 		{name: "apikey_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "apikey_keep_tool_calls_enabled", account: apiKeyKeepToolCalls, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "apikey_keep_tool_calls_enabled_compact_strips", account: apiKeyKeepToolCalls, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
 		{name: "setup_token_strips", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 	}

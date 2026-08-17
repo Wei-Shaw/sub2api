@@ -2075,6 +2075,21 @@ func (a *Account) IsOpenAIResponsesFlattenNamespacesEnabled() bool {
 	return ok && enabled
 }
 
+// IsOpenAIAPIKeyResponsesKeepToolCallNamespacesEnabled returns whether an
+// OpenAI API Key account should preserve namespace on direct Responses tool
+// call history items. The default is false because the public Responses API
+// may reject the field; enable it only for a compatible upstream that supports
+// Codex namespace tool calls.
+//
+// Field: accounts.extra.openai_apikey_responses_keep_tool_call_namespaces.
+func (a *Account) IsOpenAIAPIKeyResponsesKeepToolCallNamespacesEnabled() bool {
+	if a == nil || !a.IsOpenAIApiKey() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_apikey_responses_keep_tool_call_namespaces"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIWSAllowStoreRecoveryEnabled 返回账号级 store 恢复开关。
 // 字段：accounts.extra.openai_ws_allow_store_recovery。
 func (a *Account) IsOpenAIWSAllowStoreRecoveryEnabled() bool {
