@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -297,7 +298,7 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 		BillingMode: BillingModeToken,
 		Intervals: []PricingInterval{
 			{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(2e-6), OutputPrice: testPtrFloat64(8e-6)},
-			{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(4e-6), OutputPrice: testPtrFloat64(16e-6)},
+			{MinTokens: 128000, MaxTokens: nil, TierLabel: "long-context", InputPrice: testPtrFloat64(4e-6), OutputPrice: testPtrFloat64(16e-6)},
 		},
 	}})
 
@@ -320,6 +321,32 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	require.NotNil(t, iv2)
 	require.InDelta(t, 4e-6, iv2.InputPricePerToken, 1e-12)
 	require.InDelta(t, 16e-6, iv2.OutputPricePerToken, 1e-12)
+
+	_, shortTier := r.GetIntervalPricingWithTier(resolved, 50000)
+	require.NotNil(t, shortTier)
+	require.Equal(t, "(0,128000]", *shortTier)
+
+	_, longTier := r.GetIntervalPricingWithTier(resolved, 200000)
+	require.NotNil(t, longTier)
+	require.Equal(t, "long-context (128000,+inf)", *longTier)
+	longLabelTier := tokenIntervalBillingTier(&PricingInterval{
+		MinTokens: 128000,
+		TierLabel: strings.Repeat("长", 60),
+	})
+	require.LessOrEqual(t, len([]rune(longLabelTier)), 50)
+	require.True(t, strings.HasSuffix(longLabelTier, "(128000,+inf)"))
+
+	_, noTier := r.GetIntervalPricingWithTier(resolved, 0)
+	require.Nil(t, noTier)
+
+	cost, err := r.billingService.CalculateCostUnified(CostInput{
+		Ctx: context.Background(), Model: "claude-sonnet-4", GroupID: groupIDPtr(),
+		Tokens: UsageTokens{InputTokens: 200000, OutputTokens: 1}, RateMultiplier: 1, Resolver: r,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cost.BillingTier)
+	require.Equal(t, "long-context (128000,+inf)", *cost.BillingTier)
+	require.False(t, cost.LongContextBillingApplied, "explicit intervals must not be reported as built-in multiplier billing")
 }
 
 func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {

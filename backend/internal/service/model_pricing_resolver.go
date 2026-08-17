@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 )
@@ -318,19 +319,54 @@ func filterValidIntervals(intervals []PricingInterval) []PricingInterval {
 	return valid
 }
 
-// GetIntervalPricing 根据 context token 数获取区间定价。
+// GetIntervalPricingWithTier 根据 context token 数获取区间定价及其对账档位。
 // 如果有区间列表，找到匹配区间并构造 ModelPricing；否则直接返回 BasePricing。
-func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, totalContextTokens int) *ModelPricing {
+func (r *ModelPricingResolver) GetIntervalPricingWithTier(resolved *ResolvedPricing, totalContextTokens int) (*ModelPricing, *string) {
 	if len(resolved.Intervals) == 0 {
-		return resolved.BasePricing
+		return resolved.BasePricing, nil
 	}
 
 	iv := FindMatchingInterval(resolved.Intervals, totalContextTokens)
 	if iv == nil {
-		return resolved.BasePricing
+		return resolved.BasePricing, nil
 	}
 
-	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing)
+	tier := tokenIntervalBillingTier(iv)
+	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing), &tier
+}
+
+// GetIntervalPricing 保留只读取价格的调用方式。
+func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, totalContextTokens int) *ModelPricing {
+	pricing, _ := r.GetIntervalPricingWithTier(resolved, totalContextTokens)
+	return pricing
+}
+
+// tokenIntervalBillingTier 生成可持久化的区间快照。即使管理员没有填写
+// tier_label，也能从历史 usage log 直接判断请求命中了哪一档。
+func tokenIntervalBillingTier(iv *PricingInterval) string {
+	if iv == nil {
+		return ""
+	}
+
+	rangeLabel := fmt.Sprintf("(%d,+inf)", iv.MinTokens)
+	if iv.MaxTokens != nil {
+		rangeLabel = fmt.Sprintf("(%d,%d]", iv.MinTokens, *iv.MaxTokens)
+	}
+
+	label := strings.TrimSpace(iv.TierLabel)
+	if label == "" {
+		return rangeLabel
+	}
+	labelRunes := []rune(label)
+	rangeRunes := []rune(rangeLabel)
+	maxLabelRunes := 50 - len(rangeRunes) - 1 // usage_logs.billing_tier is VARCHAR(50)
+	if maxLabelRunes <= 0 {
+		return string(rangeRunes[:min(len(rangeRunes), 50)])
+	}
+	if len(labelRunes) > maxLabelRunes {
+		labelRunes = labelRunes[:maxLabelRunes]
+	}
+	return string(labelRunes) + " " + rangeLabel
 }
 
 // intervalToModelPricing 将区间定价转换为 ModelPricing
