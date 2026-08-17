@@ -1002,6 +1002,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_responses_supported",
 		"codex_fingerprint_mode",
 		"codex_fingerprint_seed",
+		"openai_device_id",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",
