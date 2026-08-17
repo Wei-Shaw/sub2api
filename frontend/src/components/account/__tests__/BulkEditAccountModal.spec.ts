@@ -345,7 +345,7 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
-  it('OpenAI OAuth 批量编辑应显式提交默认 session 指纹模式', async () => {
+  it('OpenAI OAuth 批量编辑应显式提交默认 off 指纹模式', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['oauth']
@@ -358,7 +358,7 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        codex_fingerprint_mode: 'session'
+        codex_fingerprint_mode: 'off'
       }
     })
   })

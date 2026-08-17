@@ -1536,7 +1536,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const enableCodexFingerprintMode = ref(false)
-const codexFingerprintMode = ref<CodexFingerprintMode>('session')
+const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
@@ -1830,7 +1830,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
-    // 批量更新使用 JSONB merge；默认 session 也必须显式写入，才能覆盖旧模式。
+    // 批量更新使用 JSONB merge；off 也必须显式写入，才能覆盖账号已有的收敛模式。
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
@@ -2080,7 +2080,7 @@ watch(
       enableCodexCLIOnly.value = false
       enableCodexCLIOnlyAppServer.value = false
       enableCodexFingerprintMode.value = false
-      codexFingerprintMode.value = 'session'
+      codexFingerprintMode.value = 'off'
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

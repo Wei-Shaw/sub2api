@@ -1167,7 +1167,7 @@ export default {
         addRule: '新增规则',
         saveHint: '保存时随系统设置一起提交（点击页面底部「保存」按钮）。',
         serviceTier: 'service_tier 匹配',
-        tierAll: '全部 tier',
+        tierAll: '全部 tier 值',
         tierPriority: 'priority（fast）',
         tierFlex: 'flex',
         action: '处理方式',
@@ -1190,13 +1190,22 @@ export default {
         errorMessage: '错误消息',
         errorMessagePlaceholder: '拦截时返回的自定义错误消息',
         errorMessageHint: '留空则使用默认错误消息。',
-        modelWhitelist: '模型白名单',
-        modelWhitelistHint: '留空表示对所有模型生效；支持精确匹配与通配符（如 gpt-5.5*）。',
-        modelPatternPlaceholder: '例如: gpt-5.5 或 gpt-5.5*',
-        addModelPattern: '添加模型规则',
-        fallbackAction: '未匹配模型处理方式',
-        fallbackActionHint: '当请求模型不在白名单中时的处理方式。',
-        fallbackErrorMessagePlaceholder: '未匹配模型被拦截时返回的自定义错误消息'
+        modelWhitelist: '目标模型',
+        modelWhitelistHint: '列表内模型使用“处理方式”，列表外模型使用“其他模型处理方式”。留空时“处理方式”应用于全部模型。支持精确匹配与前缀通配符（如 gpt-5.6*）。',
+        modelPatternPlaceholder: '例如: gpt-5.6-sol 或 gpt-5.6*',
+        addModelPattern: '添加目标模型',
+        fallbackAction: '其他模型处理方式',
+        fallbackActionHint: '仅应用于目标列表之外的模型。',
+        fallbackErrorMessagePlaceholder: '其他模型被拦截时返回的自定义错误消息',
+        summaryTargetModels: '目标模型',
+        summaryAllModels: '全部模型',
+        summaryOtherModels: '其他模型',
+        summaryAction: {
+          pass: '透传',
+          filter: '过滤',
+          block: '拦截',
+          force_priority: '强制 priority'
+        }
       },
       wechatConnect: {
         title: '微信登录',

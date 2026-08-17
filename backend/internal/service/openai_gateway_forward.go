@@ -427,10 +427,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					markDecodedModified()
 				}
 			}
-			// 将 fpIDs 存入 gin context，供 buildUpstreamRequest 中头改写使用
-			if c != nil && fpIDs != nil {
-				c.Set("codex_fingerprint_ids", fpIDs)
-			}
+			// 将 fpIDs 存入 gin context，供 buildUpstreamRequest 中头改写使用。
+			// 无条件覆写（含 nil）：failover 从收敛账号切到 off 账号时，上一
+			// 账号的 IDs 不得残留（stageCodexFingerprintIDs 注释）。
+			stageCodexFingerprintIDs(c, fpIDs)
 		}
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
@@ -1094,6 +1094,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			}
 		}
 	}
+	// 客户端回带的 x-codex-turn-state 若已知由其他账号铸造（failover 换号），
+	// 剥离后再出站——异账号 blob 与本账号的（指纹收敛后）出站身份自相矛盾。
+	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
 	if account.Type == AccountTypeOAuth {
 		compatMessagesBridge := isOpenAICompatMessagesBridgeContext(c) || isOpenAICompatMessagesBridgeBody(body)
 		// 清除客户端透传的 session 头，后续用隔离后的值重新设置，防止跨用户会话碰撞。
@@ -1144,13 +1147,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	// 指纹收敛：使用 Forward() 中预计算的收敛 ID 改写出站头，与请求体使用同一份 IDs。
-	if account.Type == AccountTypeOAuth && c != nil {
-		if fpIDs, ok := c.Get("codex_fingerprint_ids"); ok {
-			if ids, ok := fpIDs.(*codexFingerprintIDs); ok {
-				applyCodexFingerprintHeaders(req.Header, ids)
-			}
-		}
-	}
+	applyStagedCodexFingerprintHeaders(c, account, req.Header)
 
 	// 终态收口：强制统一 OAuth 出站身份（User-Agent / originator / version 同源自洽）。
 	// 客户端自报身份不参与构造，浏览器型 UA 也因此不会再到达上游（原浏览器 UA 兜底已被吸收）。
@@ -1165,6 +1162,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
+	// x-codex-beta-features：按真实 Codex 的会话级行为补注（在账号级覆写之后，
+	// 保证不被覆盖丢失）。
+	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
 
