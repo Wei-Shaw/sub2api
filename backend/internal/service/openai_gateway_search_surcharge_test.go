@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +38,7 @@ REDACTED
 		UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED,
 		"",
 		boolPtr(false),
+		time.Time{REDACTED,
 	)
 REDACTED
 	require.NotNil(t, cost)
@@ -67,6 +69,7 @@ REDACTED
 		UsageTokens{REDACTED,
 		"",
 		boolPtr(false),
+		time.Time{REDACTED,
 	)
 REDACTED
 	require.NotNil(t, cost)
@@ -112,6 +115,7 @@ REDACTED
 		UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED,
 		"",
 		boolPtr(false),
+		time.Time{REDACTED,
 	)
 REDACTED
 	require.Nil(t, cost)

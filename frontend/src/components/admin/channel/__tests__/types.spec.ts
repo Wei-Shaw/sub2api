@@ -1,5 +1,14 @@
 import { describe, expect, it REDACTED from 'vitest'
-import { validateIntervals, type IntervalFormEntry REDACTED from '../types'
+import {
+  apiTimePricingToForm,
+  createDefaultTimePricingForm,
+  formTimePricingToAPI,
+  validateIntervals,
+  validateTimePricing,
+  type IntervalFormEntry,
+  type TimePricingFormEntry,
+  type TimePricingPeriodFormEntry,
+REDACTED from '../types'
 
 function makeInterval(over: Partial<IntervalFormEntry>): IntervalFormEntry {
   return {
@@ -79,5 +88,69 @@ describe('validateIntervals', () => {
       ]
       expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
     REDACTED)
+  REDACTED)
+REDACTED)
+
+describe('time pricing', () => {
+  it('uses a disabled Shanghai default', () => {
+    const form = createDefaultTimePricingForm()
+    expect(form).toEqual({ timezone: 'Asia/Shanghai', periods: [] REDACTED)
+    expect(formTimePricingToAPI(form)).toBeNull()
+  REDACTED)
+
+  it('round-trips and formats multiplier', () => {
+    const form = apiTimePricingToForm({
+      timezone: 'Asia/Shanghai',
+      periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 REDACTED],
+    REDACTED)
+    expect(form.periods[0]).toEqual({
+      start_time: '09:00:00',
+      end_time: '12:00:00',
+      multiplier: '2.00',
+    REDACTED)
+    expect(formTimePricingToAPI(form)).toEqual({
+      timezone: 'Asia/Shanghai',
+      periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: 2 REDACTED],
+    REDACTED)
+  REDACTED)
+
+  it.each([
+    ['separated', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' REDACTED, { start_time: '14:00:00', end_time: '18:00:00', multiplier: '2.00' REDACTED], null],
+    ['adjacent', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' REDACTED, { start_time: '12:00:00', end_time: '14:00:00', multiplier: '1.50' REDACTED], null],
+    ['midnight split', [{ start_time: '22:00:00', end_time: '00:00:00', multiplier: '2.00' REDACTED, { start_time: '00:00:00', end_time: '02:00:00', multiplier: '2.00' REDACTED], null],
+    ['overlap by one second', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' REDACTED, { start_time: '11:59:59', end_time: '14:00:00', multiplier: '2.00' REDACTED], 'overlap'],
+    ['cross midnight', [{ start_time: '22:00:00', end_time: '02:00:00', multiplier: '2.00' REDACTED], 'range'],
+    ['equal midnight', [{ start_time: '00:00:00', end_time: '00:00:00', multiplier: '2.00' REDACTED], 'range'],
+    ['missing seconds', [{ start_time: '09:00', end_time: '12:00', multiplier: '2.00' REDACTED], 'format'],
+    ['zero', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '0.00' REDACTED], 'multiplier'],
+    ['three decimals', [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '1.001' REDACTED], 'multiplier'],
+  ])('%s', (_name, periods, errorKey) => {
+    const result = validateTimePricing({
+      timezone: 'Asia/Shanghai',
+      periods: periods as TimePricingPeriodFormEntry[],
+    REDACTED, t)
+    if (errorKey === null) expect(result).toBeNull()
+    else expect(result).toContain(String(errorKey))
+  REDACTED)
+
+  it('rejects non-IANA timezone', () => {
+    expect(validateTimePricing({
+      timezone: 'UTC+8',
+      periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' REDACTED],
+    REDACTED, t)).toContain('timezone')
+  REDACTED)
+
+  it.each([
+    ['missing', undefined],
+    ['blank', '   '],
+  ])('rejects a %s timezone without throwing during conversion', (_name, timezone) => {
+    const form = {
+      timezone,
+      periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: '2.00' REDACTED],
+    REDACTED as unknown as TimePricingFormEntry
+
+    expect(validateTimePricing(form, t)).toContain('timezone')
+    expect(() => formTimePricingToAPI(form)).not.toThrow()
+    expect(formTimePricingToAPI(form)?.timezone).toBe('')
   REDACTED)
 REDACTED)

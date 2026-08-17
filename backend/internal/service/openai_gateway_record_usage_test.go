@@ -504,6 +504,71 @@ REDACTED
 	require.InDelta(t, expectedActual, userRepo.lastAmount, 1e-12)
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_TimePricingUsesPricingAt(t *testing.T) {
+	groupID := int64(16)
+	requestStart := time.Date(2024, time.January, 2, 2, 0, 0, 0, time.UTC) // 上海 10:00
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverWithTimeForTest(t, groupID, "gpt-5.1", &ChannelTimePricing{
+		Timezone: "Asia/Shanghai",
+		Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2REDACTEDREDACTED,
+REDACTED)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_time_pricing_request_start",
+			Model:     "gpt-5.1",
+			Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500REDACTED,
+	REDACTED,
+		APIKey: &APIKey{ID: 1006, GroupID: i64p(groupID), Group: &Group{
+			ID: groupID, RateMultiplier: 0.8, SubscriptionType: SubscriptionTypeSubscription,
+REDACTED
+		User:      &User{ID: 2006REDACTED,
+		Account:   &Account{ID: 3006REDACTED,
+		PricingAt: requestStart,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	baseCost := 1000*3e-6 + 500*15e-6
+	require.InDelta(t, baseCost*2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, baseCost*2*0.8, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.8, usageRepo.lastLog.RateMultiplier, 1e-12)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_TimePricingUsesExplicitPricingAt(t *testing.T) {
+	groupID := int64(17)
+	pricingAt := time.Date(2024, time.January, 2, 0, 0, 0, 0, time.UTC) // 上海 08:00
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAITokenImageChannelPricingResolverWithTimeForTest(t, groupID, "gpt-5.1", &ChannelTimePricing{
+		Timezone: "Asia/Shanghai",
+		Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 2REDACTEDREDACTED,
+REDACTED)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_time_pricing_explicit",
+			Model:     "gpt-5.1",
+			Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500REDACTED,
+	REDACTED,
+		APIKey: &APIKey{ID: 1007, GroupID: i64p(groupID), Group: &Group{
+			ID: groupID, RateMultiplier: 0.8, SubscriptionType: SubscriptionTypeSubscription,
+REDACTED
+		User:      &User{ID: 2007REDACTED,
+		Account:   &Account{ID: 3007REDACTED,
+		PricingAt: pricingAt,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	baseCost := 1000*3e-6 + 500*15e-6
+	require.InDelta(t, baseCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, baseCost*0.8, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.8, usageRepo.lastLog.RateMultiplier, 1e-12)
+REDACTED
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
@@ -2640,6 +2705,20 @@ REDACTED
 	return NewModelPricingResolver(cs, NewBillingService(&config.Config{REDACTED, nil))
 REDACTED
 
+func newOpenAITokenImageChannelPricingResolverWithTimeForTest(
+	t *testing.T,
+	groupID int64,
+	model string,
+	timePricing *ChannelTimePricing,
+) *ModelPricingResolver {
+REDACTED
+	resolver := newOpenAITokenImageChannelPricingResolverForTest(t, groupID, model)
+	cached, ok := resolver.channelService.cache.Load().(*channelCache)
+	require.True(t, ok)
+	cached.pricingByGroupModel[channelModelKey{groupID: groupID, model: modelREDACTED].TimePricing = timePricing
+	return resolver
+REDACTED
+
 type openAIMediaPriceGroupRepoStub struct {
 	GroupRepository
 	group *Group
@@ -2668,6 +2747,7 @@ REDACTED
 		"gemini-image",
 		0.15,
 		1.0,
+		time.Time{REDACTED,
 		nil,
 	)
 
@@ -2707,6 +2787,7 @@ REDACTED
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{REDACTED,
 		nil,
 	)
 
@@ -2739,6 +2820,7 @@ REDACTED
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{REDACTED,
 		nil,
 	)
 
@@ -2802,6 +2884,7 @@ REDACTED
 		"gemini-image",
 		1.0,
 		1.0,
+		time.Time{REDACTED,
 		nil,
 	)
 

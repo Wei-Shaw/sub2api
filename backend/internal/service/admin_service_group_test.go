@@ -4,8 +4,10 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -154,6 +156,61 @@ REDACTED
 
 func (s *groupRepoStubForAdmin) UpdateSortOrders(_ context.Context, _ []GroupSortOrderUpdate) error {
 	return nil
+REDACTED
+
+func TestAdminService_CreateGroup_RejectsTimePricing(t *testing.T) {
+	repo := &groupRepoStubForAdmin{createID: 51REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "time-pricing-group",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1,
+		ModelPricing: []ChannelModelPricing{{
+			Platform:    PlatformOpenAI,
+			Models:      []string{"gpt-5"REDACTED,
+			BillingMode: BillingModeToken,
+			TimePricing: validTimePricingForTest(),
+REDACTED
+REDACTED)
+
+REDACTED
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
+	require.Equal(t, "GROUP_MODEL_TIME_PRICING_UNSUPPORTED", appErr.Reason)
+	require.Nil(t, repo.created)
+REDACTED
+
+func TestAdminService_UpdateGroup_RejectsTimePricing(t *testing.T) {
+	existing := &Group{ID: 1, Name: "existing", Platform: PlatformOpenAI, Status: StatusActiveREDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	pricing := []ChannelModelPricing{{
+		Platform:    PlatformOpenAI,
+		Models:      []string{"gpt-5"REDACTED,
+		BillingMode: BillingModeToken,
+		TimePricing: validTimePricingForTest(),
+REDACTEDREDACTED
+
+	_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{ModelPricing: &pricingREDACTED)
+
+REDACTED
+	appErr := infraerrors.FromError(err)
+	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
+	require.Equal(t, "GROUP_MODEL_TIME_PRICING_UNSUPPORTED", appErr.Reason)
+	require.Nil(t, repo.updated)
+REDACTED
+
+func TestNormalizeGroupModelPricing_NormalizesEmptyTimePricing(t *testing.T) {
+	pricing, err := normalizeGroupModelPricing(PlatformOpenAI, []ChannelModelPricing{{
+		Models:      []string{"gpt-5"REDACTED,
+		BillingMode: BillingModeToken,
+		TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai"REDACTED,
+REDACTEDREDACTED)
+
+REDACTED
+	require.Len(t, pricing, 1)
+	require.Nil(t, pricing[0].TimePricing)
 REDACTED
 
 type compositeRouteRepoStubForAdmin struct {
