@@ -72,3 +72,17 @@ func TestResolveGrokTextResponsesModelID(t *testing.T) {
 	require.Equal(t, "grok-4.3", ResolveGrokTextResponsesModelID("grok", "grok-4.3"))
 	require.Equal(t, "grok-4.20-multi-agent-0309", ResolveGrokTextResponsesModelID("grok-4.20-multi-agent"))
 }
+
+func TestSupportsXHighReasoningEffort(t *testing.T) {
+	t.Parallel()
+	require.True(t, SupportsXHighReasoningEffort("grok-4.6"))
+	require.True(t, SupportsXHighReasoningEffort("grok-4.6-latest"))
+	require.True(t, SupportsXHighReasoningEffort("xai/grok-4.6"))
+	require.True(t, SupportsXHighReasoningEffort("grok-4.20-multi-agent"))
+	require.True(t, SupportsXHighReasoningEffort("grok-4.20-multi-agent-0309"))
+	require.False(t, SupportsXHighReasoningEffort("grok-4.5"))
+	require.False(t, SupportsXHighReasoningEffort("grok-4.5-latest"))
+	require.False(t, SupportsXHighReasoningEffort("grok-4.3"))
+	require.False(t, SupportsXHighReasoningEffort("grok-4.20-0309-reasoning"))
+	require.False(t, SupportsXHighReasoningEffort("grok"))
+}

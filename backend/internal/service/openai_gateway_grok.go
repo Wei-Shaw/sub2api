@@ -564,7 +564,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		if !value.Exists() {
 			continue
 		}
-		normalized, keep := normalizeGrokReasoningEffortValue(value.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(value.String(), upstreamModel)
 		if !supportsEffort || !keep {
 			out, err = sjson.DeleteBytes(out, field)
 		} else {
@@ -575,7 +575,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		}
 	}
 	if camel := gjson.GetBytes(out, "reasoningEffort"); camel.Exists() {
-		normalized, keep := normalizeGrokReasoningEffortValue(camel.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(camel.String(), upstreamModel)
 		out, err = sjson.DeleteBytes(out, "reasoningEffort")
 		if err != nil {
 			return nil, fmt.Errorf("remove Grok reasoningEffort: %w", err)
@@ -601,7 +601,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoningEffort").String())
 	}
-	normalized, keep := normalizeGrokReasoningEffortValue(raw)
+	normalized, keep := normalizeGrokReasoningEffortValue(raw, upstreamModel)
 	keep = keep && grokSupportsReasoningEffort(upstreamModel)
 	out := body
 	var err error
@@ -621,7 +621,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	return out, err
 }
 
-func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
+func normalizeGrokReasoningEffortValue(raw, upstreamModel string) (string, bool) {
 	value := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(raw)))
 	switch value {
 	case "none", "low", "medium", "high":
@@ -629,6 +629,12 @@ func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
 	case "minimal":
 		return "low", true
 	case "xhigh", "extrahigh", "max", "ultra":
+		// Codex / Anthropic "max"/"ultra" are the top client tier. On models
+		// that document xhigh, keep that official level; otherwise collapse
+		// to high so grok-4.5 and earlier do not see an unknown value.
+		if xai.SupportsXHighReasoningEffort(upstreamModel) {
+			return "xhigh", true
+		}
 		return "high", true
 	default:
 		return "", false
@@ -641,7 +647,8 @@ func grokSupportsReasoningEffort(model string) bool {
 	case xai.DefaultTextModel, "grok-4.5-latest", "grok-4.6", "grok-4.6-latest",
 		"grok-4.3", "grok-4.3-latest",
 		"grok-3-mini", "grok-3-mini-fast", "grok-4.20-0309-reasoning",
-		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309":
+		"grok-4.20-reasoning", "grok-4.20-multi-agent-0309",
+		"grok-4.20-multi-agent", "grok-4.20-multi-agent-latest":
 		return true
 	default:
 		return false
