@@ -63,6 +63,72 @@ func TestOpenAIGatewayService_APIKeyPassthrough_StripsInvalidInputItemIDs(t *tes
 	require.Equal(t, "item_unconstrained", gjson.GetBytes(forwarded, "input.5.id").String())
 }
 
+// TestOpenAIGatewayService_APIKeyPassthrough_StripsInvalidReasoningItemIDs
+// verifies that reasoning items with a non-rs id (e.g. item_*) are stripped
+// before forwarding. OpenAI upstream requires reasoning ids to begin with
+// "rs" and rejects item_* with 400:
+// "Expected an ID that begins with 'rs'." (#5410)
+func TestOpenAIGatewayService_APIKeyPassthrough_StripsInvalidReasoningItemIDs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"resp_test","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`,
+		)),
+	}}
+	svc := newOpenAIImageGenerationControlTestService(upstream)
+	c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+	account := newOpenAIImageGenerationControlTestAccount()
+	account.Extra = map[string]any{"openai_passthrough": true}
+
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"stream":false,
+		"input":[
+			{"type":"reasoning","id":"item_bad_reasoning","summary":[]},
+			{"type":"reasoning","id":"rs_valid","summary":[]},
+			{"type":"message","id":"msg_valid","role":"user","content":[{"type":"input_text","text":"continue"}]}
+		]
+	}`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+
+	forwarded := upstream.lastBody
+	require.False(t, gjson.GetBytes(forwarded, "input.0.id").Exists(),
+		"item_* id should be stripped from reasoning")
+	require.Equal(t, "rs_valid", gjson.GetBytes(forwarded, "input.1.id").String(),
+		"valid rs* id must be preserved")
+	require.Equal(t, "msg_valid", gjson.GetBytes(forwarded, "input.2.id").String())
+}
+
+func TestShouldStripOpenAIResponsesInputItemID_Reasoning(t *testing.T) {
+	cases := []struct {
+		name     string
+		itemType string
+		id       string
+		want     bool
+	}{
+		{"reasoning item_* id", "reasoning", "item_bad_reasoning", true},
+		{"reasoning rs id", "reasoning", "rs_abc123", false},
+		{"reasoning empty id", "reasoning", "", false},
+		{"message msg id", "message", "msg_abc", false},
+		{"message item id", "message", "item_x", true},
+		{"function_call fc id", "function_call", "fc_abc", false},
+		{"function_call item id", "function_call", "item_x", true},
+		{"unconstrained type", "web_search_call", "ws_001", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, shouldStripOpenAIResponsesInputItemID(tc.itemType, tc.id))
+		})
+	}
+}
+
 func TestSanitizeOpenAIResponsesInputItemIDs_AllocationGrowthIsLinear(t *testing.T) {
 	makeBody := func(itemCount int) []byte {
 		items := make([]string, itemCount)
