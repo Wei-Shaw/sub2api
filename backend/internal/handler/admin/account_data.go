@@ -443,6 +443,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			GroupIDs:             nil,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
+			PreserveCodexSeed:    true,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
 		}
 

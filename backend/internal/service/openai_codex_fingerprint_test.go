@@ -152,6 +152,73 @@ func TestBuildAccountForCreate_ReplacesCopiedCodexFingerprintSeed(t *testing.T) 
 	assert.NotEqual(t, first.getCodexFingerprintSeed(), second.getCodexFingerprintSeed())
 }
 
+func TestBuildAccountForCreate_PreservesRestoredCodexFingerprintSeed(t *testing.T) {
+	input := &CreateAccountInput{
+		Platform:          PlatformOpenAI,
+		Type:              AccountTypeOAuth,
+		PreserveCodexSeed: true,
+	}
+	restored, err := buildAccountForCreate(input, map[string]any{
+		codexFingerprintModeExtraKey: "device",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, testCodexFingerprintSeedA, restored.getCodexFingerprintSeed())
+
+	repaired, err := buildAccountForCreate(input, map[string]any{
+		codexFingerprintModeExtraKey: "device",
+		codexFingerprintSeedExtraKey: "invalid",
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, repaired.getCodexFingerprintSeed())
+	assert.NotEqual(t, "invalid", repaired.getCodexFingerprintSeed())
+}
+
+type codexFingerprintAccountRepo struct {
+	AccountRepository
+	account *Account
+}
+
+func (r *codexFingerprintAccountRepo) Create(_ context.Context, account *Account) error {
+	account.ID = 1
+	r.account = account
+	return nil
+}
+
+func (r *codexFingerprintAccountRepo) GetByID(_ context.Context, _ int64) (*Account, error) {
+	return r.account, nil
+}
+
+func (r *codexFingerprintAccountRepo) Update(_ context.Context, account *Account) error {
+	r.account = account
+	return nil
+}
+
+func TestAccountServiceOwnsCodexFingerprintSeed(t *testing.T) {
+	repo := &codexFingerprintAccountRepo{}
+	svc := NewAccountService(repo, nil)
+	created, err := svc.Create(context.Background(), CreateAccountRequest{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			codexFingerprintModeExtraKey: "device",
+			codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, created.getCodexFingerprintSeed())
+	require.NotEqual(t, testCodexFingerprintSeedA, created.getCodexFingerprintSeed())
+
+	seed := created.getCodexFingerprintSeed()
+	updatedExtra := map[string]any{
+		codexFingerprintModeExtraKey: "session",
+		codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+	}
+	updated, err := svc.Update(context.Background(), created.ID, UpdateAccountRequest{Extra: &updatedExtra})
+	require.NoError(t, err)
+	require.Equal(t, seed, updated.getCodexFingerprintSeed())
+}
+
 // --- resolveConvergedThreadID ---
 
 func TestResolveConvergedThreadID_PerClientSession(t *testing.T) {

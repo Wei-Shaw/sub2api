@@ -240,6 +240,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
 	}
+	initializeCodexFingerprintSeed(account, true)
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	} else {
@@ -328,6 +329,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
 	}
 
+	existingCodexFingerprintSeed := account.getCodexFingerprintSeed()
 	if req.Extra != nil {
 		extra := make(map[string]any, len(*req.Extra))
 		for key, value := range *req.Extra {
@@ -336,8 +338,13 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
+		delete(extra, codexFingerprintSeedExtraKey)
+		if existingCodexFingerprintSeed != "" {
+			extra[codexFingerprintSeedExtraKey] = existingCodexFingerprintSeed
+		}
 		account.Extra = extra
 	}
+	initializeCodexFingerprintSeed(account, false)
 
 	if req.ProxyID != nil {
 		account.ProxyID = req.ProxyID

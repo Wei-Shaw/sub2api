@@ -128,6 +128,76 @@ func TestCRSSyncOpenAILongContextBilling(t *testing.T) {
 	}
 }
 
+func TestCRSSyncOwnsCodexFingerprintSeedLocally(t *testing.T) {
+	t.Run("create ignores source seed and generates local seed", func(t *testing.T) {
+		repo := newCRSLongContextAccountRepo()
+		result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+			collection:  "openaiOAuthAccounts",
+			credentials: map[string]any{"access_token": "oauth-token"},
+			extra: map[string]any{
+				codexFingerprintModeExtraKey: "device",
+				codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+			},
+		})
+
+		require.Equal(t, "created", result.Items[0].Action)
+		stored := repo.accounts["crs-openai-1"]
+		require.NotEmpty(t, stored.getCodexFingerprintSeed())
+		require.NotEqual(t, testCodexFingerprintSeedA, stored.getCodexFingerprintSeed())
+	})
+
+	t.Run("update preserves existing local seed", func(t *testing.T) {
+		existing := &Account{
+			ID:       41,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"crs_account_id":             "crs-openai-1",
+				codexFingerprintModeExtraKey: "device",
+				codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+			},
+		}
+		repo := newCRSLongContextAccountRepo(existing)
+		result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+			collection:  "openaiOAuthAccounts",
+			credentials: map[string]any{"access_token": "oauth-token"},
+			extra: map[string]any{
+				codexFingerprintModeExtraKey: " session ",
+				codexFingerprintSeedExtraKey: testCodexFingerprintSeedA,
+			},
+		})
+
+		require.Equal(t, "updated", result.Items[0].Action)
+		stored := repo.accounts["crs-openai-1"]
+		require.Equal(t, testCodexFingerprintSeedB, stored.getCodexFingerprintSeed())
+	})
+
+	t.Run("update preserves local mode when source omits it", func(t *testing.T) {
+		existing := &Account{
+			ID:       41,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"crs_account_id":             "crs-openai-1",
+				codexFingerprintModeExtraKey: "device",
+				codexFingerprintSeedExtraKey: testCodexFingerprintSeedB,
+				"openai_device_id":           "local-device-id",
+			},
+		}
+		repo := newCRSLongContextAccountRepo(existing)
+		result := runCRSOpenAILongContextSync(t, repo, crsOpenAILongContextSource{
+			collection:  "openaiOAuthAccounts",
+			credentials: map[string]any{"access_token": "oauth-token"},
+		})
+
+		require.Equal(t, "updated", result.Items[0].Action)
+		stored := repo.accounts["crs-openai-1"]
+		require.Equal(t, codexFingerprintDevice, stored.GetCodexFingerprintMode())
+		require.Equal(t, testCodexFingerprintSeedB, stored.getCodexFingerprintSeed())
+		require.Equal(t, "local-device-id", stored.GetOpenAIDeviceID())
+	})
+}
+
 func runCRSOpenAILongContextSync(t *testing.T, repo AccountRepository, source crsOpenAILongContextSource) *SyncFromCRSResult {
 	t.Helper()
 	account := map[string]any{

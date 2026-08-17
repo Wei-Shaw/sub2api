@@ -297,6 +297,10 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 					"platform":    service.PlatformOpenAI,
 					"type":        service.AccountTypeOAuth,
 					"credentials": map[string]any{"token": "x"},
+					"extra": map[string]any{
+						"codex_fingerprint_mode": "device",
+						"codex_fingerprint_seed": "11111111-1111-4111-8111-111111111111",
+					},
 					"proxy_key":   "socks5|1.2.3.4|1080|u|p",
 					"concurrency": 3,
 					"priority":    50,
@@ -316,4 +320,6 @@ func TestImportDataReusesProxyAndSkipsDefaultGroup(t *testing.T) {
 	require.Len(t, adminSvc.createdProxies, 0)
 	require.Len(t, adminSvc.createdAccounts, 1)
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
+	require.True(t, adminSvc.createdAccounts[0].PreserveCodexSeed)
+	require.Equal(t, "11111111-1111-4111-8111-111111111111", adminSvc.createdAccounts[0].Extra["codex_fingerprint_seed"])
 }

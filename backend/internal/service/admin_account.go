@@ -418,7 +418,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
-	initializeCodexFingerprintSeed(account, true)
+	initializeCodexFingerprintSeed(account, !input.PreserveCodexSeed)
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
 			return nil, ErrUpstreamBillingProbeAccountInvalid

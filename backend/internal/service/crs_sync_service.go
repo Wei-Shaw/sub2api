@@ -628,6 +628,9 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				extra[k] = v
 			}
 		}
+		// The convergence seed is owned by this deployment. CRS data may carry a
+		// seed from another deployment, but it must not overwrite the local identity.
+		delete(extra, codexFingerprintSeedExtraKey)
 		extra["crs_account_id"] = src.ID
 		extra["crs_kind"] = src.Kind
 		extra["crs_synced_at"] = now
@@ -647,6 +650,19 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		var existingExtra map[string]any
 		if existing != nil {
 			existingExtra = existing.Extra
+			if _, sourceSetsMode := extra[codexFingerprintModeExtraKey]; !sourceSetsMode {
+				if mode, ok := existing.Extra[codexFingerprintModeExtraKey]; ok {
+					extra[codexFingerprintModeExtraKey] = mode
+				}
+			}
+			if _, sourceSetsDeviceID := extra["openai_device_id"]; !sourceSetsDeviceID {
+				if deviceID, ok := existing.Extra["openai_device_id"]; ok {
+					extra["openai_device_id"] = deviceID
+				}
+			}
+			if seed := existing.getCodexFingerprintSeed(); seed != "" {
+				extra[codexFingerprintSeedExtraKey] = seed
+			}
 		}
 		extra, err = mergeCRSOpenAILongContextBillingExtra(existingExtra, extra)
 		if err != nil {
@@ -681,6 +697,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				Status:      status,
 				Schedulable: src.Schedulable,
 			}
+			initializeCodexFingerprintSeed(account, true)
 			if err := s.accountRepo.Create(ctx, account); err != nil {
 				item.Action = "failed"
 				item.Error = "create failed: " + err.Error()
@@ -710,6 +727,7 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 		existing.Priority = priority
 		existing.Status = status
 		existing.Schedulable = src.Schedulable
+		initializeCodexFingerprintSeed(existing, false)
 
 		if err := s.accountRepo.Update(ctx, existing); err != nil {
 			item.Action = "failed"

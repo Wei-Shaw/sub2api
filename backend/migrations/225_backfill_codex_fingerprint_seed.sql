@@ -10,5 +10,10 @@ SET extra = jsonb_set(
 )
 WHERE platform = 'openai'
   AND type = 'oauth'
-  AND extra->>'codex_fingerprint_mode' IN ('device', 'session', 'full')
-  AND NULLIF(BTRIM(extra->>'codex_fingerprint_seed'), '') IS NULL;
+  AND BTRIM(extra->>'codex_fingerprint_mode') IN ('device', 'session', 'full')
+  AND NOT (
+      COALESCE(extra->>'codex_fingerprint_seed', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      OR COALESCE(extra->>'codex_fingerprint_seed', '') ~* '^[0-9a-f]{32}$'
+      OR COALESCE(extra->>'codex_fingerprint_seed', '') ~* '^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      OR COALESCE(extra->>'codex_fingerprint_seed', '') ~* '^\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}$'
+  );
