@@ -213,11 +213,25 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		c.Set("openai_passthrough", true)
 	}
 
+	var requestCompressionScope *openAIRequestCompressionScope
+	if s.isOpenAIRequestCompressionEnabled() {
+		requestCompressionScope = ensureOpenAIRequestCompressionScope(c)
+	}
 	agentTaskRecoveryTried := false
 	var resp *http.Response
 	for {
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
+		upstreamReq, buildErr := s.buildUpstreamRequestOpenAIPassthroughWithOptions(
+			upstreamCtx,
+			c,
+			account,
+			body,
+			token,
+			openAIUpstreamRequestBuildOptions{
+				AllowRequestCompression: true,
+				CompressionScope:        requestCompressionScope,
+			},
+		)
 		releaseUpstreamCtx()
 		if buildErr != nil {
 			return nil, buildErr
@@ -225,6 +239,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 		upstreamStart := time.Now()
 		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if isOpenAIRequestZstdCompressed(upstreamReq, account) {
+			releaseOpenAIRequestReplayReferences(upstreamReq, resp)
+		}
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
@@ -247,6 +264,21 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
 			}
 			continue
+		}
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(probeBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		upstreamCode := extractUpstreamErrorCode(probeBody)
+		shouldFallbackCompression := shouldFallbackOpenAIRequestCompression(resp.StatusCode, upstreamCode, upstreamMsg)
+		if isOpenAIRequestZstdCompressed(upstreamReq, account) &&
+			s.isOpenAIRequestCompressionFallbackEnabled() &&
+			shouldFallbackCompression {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if requestCompressionScope != nil && requestCompressionScope.TryConsumeFallback() {
+				logOpenAIRequestCompressionFallback(ctx, "passthrough", account, resp.StatusCode, upstreamCode)
+				continue
+			}
 		}
 
 		// 透传模式默认保持原样代理；容量错误以及 API-key 上游的瞬时
@@ -369,6 +401,24 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
+	return s.buildUpstreamRequestOpenAIPassthroughWithOptions(
+		ctx,
+		c,
+		account,
+		body,
+		token,
+		openAIUpstreamRequestBuildOptions{},
+	)
+}
+
+func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthroughWithOptions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	opts openAIUpstreamRequestBuildOptions,
+) (*http.Request, error) {
 	targetURL := openaiPlatformAPIURL
 	switch account.Type {
 	case AccountTypeOAuth:
@@ -385,7 +435,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	wire := openAIRequestWireBody{Body: body}
+	if opts.AllowRequestCompression {
+		wire = s.prepareOpenAIRequestWireBody(ctx, account, targetURL, body, opts)
+	}
+	var req *http.Request
+	var err error
+	if wire.Compressed {
+		req, err = newOpenAIRequestWithWireBody(ctx, http.MethodPost, targetURL, wire.Body)
+	} else {
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(wire.Body))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -501,6 +561,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http_passthrough", req.Header, body, "not_applicable")
+	applyOpenAIRequestWireHeaders(req, wire)
 
 	return req, nil
 }
@@ -1280,6 +1341,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
 				clientDisconnected = true
+				releaseOpenAIRequestCompressionPayload(c)
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				return false
 			}
@@ -1437,8 +1499,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				clientDisconnected = true
+				releaseOpenAIRequestCompressionPayload(c)
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
+				if !clientOutputStarted {
+					releaseOpenAIRequestCompressionPayload(c)
+				}
 				clientOutputStarted = true
 				flushPending = true
 				if line == "" {

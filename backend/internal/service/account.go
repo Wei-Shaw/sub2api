@@ -85,7 +85,10 @@ type Account struct {
 
 type OpenAIEndpointCapability string
 
-const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+const (
+	openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
+	openAIRequestCompressionExtraKey   = "openai_request_compression"
+)
 
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
@@ -1247,6 +1250,25 @@ func (a *Account) IsOpenAILongContextBillingEnabled() bool {
 	}
 	enabled, ok := a.Extra[openAILongContextBillingEnabledKey].(bool)
 	return ok && enabled
+}
+
+// GetOpenAIRequestCompressionOverride returns the optional account-level
+// request-compression setting. Missing values inherit the global setting;
+// malformed persisted values fail closed and opt the account out.
+// The global configuration remains the hard gate.
+func (a *Account) GetOpenAIRequestCompressionOverride() *bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return nil
+	}
+	raw, exists := a.Extra[openAIRequestCompressionExtraKey]
+	if !exists {
+		return nil
+	}
+	enabled, ok := raw.(bool)
+	if !ok {
+		enabled = false
+	}
+	return &enabled
 }
 
 func (a *Account) IsAnthropic() bool {

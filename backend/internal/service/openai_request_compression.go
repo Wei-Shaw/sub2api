@@ -1,0 +1,557 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"io"
+	"net/http"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/gin-gonic/gin"
+	"github.com/klauspost/compress/zstd"
+	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
+)
+
+const (
+	openAIRequestCompressionScopeContextKey    = "openai_request_compression_scope"
+	openAIRequestCompressionProfile            = "zstd-v1-level3"
+	openAIRequestCompressionMaxConcurrency     = 4
+	openAIRequestCompressionMetricsLogInterval = time.Minute
+)
+
+const (
+	openAIRequestCompressionSkipCallsite         = "callsite_out_of_scope"
+	openAIRequestCompressionSkipConfig           = "config_disabled"
+	openAIRequestCompressionSkipAccount          = "account_override_disabled"
+	openAIRequestCompressionSkipNotOAuth         = "account_not_openai_oauth"
+	openAIRequestCompressionSkipEndpoint         = "endpoint_not_codex_responses"
+	openAIRequestCompressionSkipNotStreaming     = "final_body_not_streaming"
+	openAIRequestCompressionSkipForcedIdentity   = "fallback_uncompressed"
+	openAIRequestCompressionSkipEncoderInitError = "encoder_init_error"
+)
+
+type openAIUpstreamRequestBuildOptions struct {
+	AllowRequestCompression bool
+	CompressionScope        *openAIRequestCompressionScope
+}
+
+type openAIRequestWireBody struct {
+	Body                  []byte
+	Compressed            bool
+	ManageContentEncoding bool
+	Reused                bool
+	SkipReason            string
+}
+
+type openAICompressedEntry struct {
+	profile string
+	digest  [sha256.Size]byte
+	body    []byte
+}
+
+type openAIRequestCompressionScope struct {
+	mu sync.Mutex
+
+	fallbackConsumed  bool
+	forceUncompressed bool
+	entry             *openAICompressedEntry
+}
+
+func newOpenAIRequestCompressionScope() *openAIRequestCompressionScope {
+	return &openAIRequestCompressionScope{}
+}
+
+func ensureOpenAIRequestCompressionScope(c *gin.Context) *openAIRequestCompressionScope {
+	if c == nil {
+		return newOpenAIRequestCompressionScope()
+	}
+	if value, ok := c.Get(openAIRequestCompressionScopeContextKey); ok {
+		if scope, ok := value.(*openAIRequestCompressionScope); ok && scope != nil {
+			return scope
+		}
+	}
+	scope := newOpenAIRequestCompressionScope()
+	c.Set(openAIRequestCompressionScopeContextKey, scope)
+	return scope
+}
+
+func releaseOpenAIRequestCompressionPayload(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	value, ok := c.Get(openAIRequestCompressionScopeContextKey)
+	if !ok {
+		return
+	}
+	if scope, ok := value.(*openAIRequestCompressionScope); ok && scope != nil {
+		scope.ReleasePayload()
+	}
+}
+
+func (s *openAIRequestCompressionScope) IsForceUncompressed() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.forceUncompressed
+}
+
+func (s *openAIRequestCompressionScope) TryConsumeFallback() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fallbackConsumed {
+		return false
+	}
+	s.fallbackConsumed = true
+	s.forceUncompressed = true
+	s.entry = nil
+	openAIRequestCompressionStats.fallbackUncompressedTotal.Add(1)
+	return true
+}
+
+func (s *openAIRequestCompressionScope) ReleasePayload() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.entry = nil
+	s.mu.Unlock()
+}
+
+func (s *openAIRequestCompressionScope) compressedBody(
+	body []byte,
+	encoder *zstd.Encoder,
+) (compressed []byte, reused bool) {
+	digest := sha256.Sum256(body)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.forceUncompressed {
+		return nil, false
+	}
+	if s.entry != nil && s.entry.profile == openAIRequestCompressionProfile && s.entry.digest == digest {
+		return s.entry.body, true
+	}
+
+	// The result is immutable. Never reuse an older entry's backing array: an
+	// already-built request or its GetBody closure may still reference it.
+	compressed = encoder.EncodeAll(body, nil)
+	s.entry = &openAICompressedEntry{
+		profile: openAIRequestCompressionProfile,
+		digest:  digest,
+		body:    compressed,
+	}
+	return compressed, false
+}
+
+var openAIRequestCompressionEncoder struct {
+	once    sync.Once
+	encoder *zstd.Encoder
+	err     error
+}
+
+var openAIRequestCompressionEncoderWarning sync.Once
+
+var openAIRequestCompressionMetricsLastLogAt atomic.Int64
+
+func getOpenAIRequestCompressionEncoder() (*zstd.Encoder, error) {
+	openAIRequestCompressionEncoder.once.Do(func() {
+		concurrency := runtime.GOMAXPROCS(0)
+		if concurrency < 1 {
+			concurrency = 1
+		}
+		if concurrency > openAIRequestCompressionMaxConcurrency {
+			concurrency = openAIRequestCompressionMaxConcurrency
+		}
+		openAIRequestCompressionEncoder.encoder, openAIRequestCompressionEncoder.err = zstd.NewWriter(
+			nil,
+			zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(3)),
+			zstd.WithEncoderConcurrency(concurrency),
+		)
+	})
+	return openAIRequestCompressionEncoder.encoder, openAIRequestCompressionEncoder.err
+}
+
+func (s *OpenAIGatewayService) prepareOpenAIRequestWireBody(
+	ctx context.Context,
+	account *Account,
+	targetURL string,
+	body []byte,
+	options openAIUpstreamRequestBuildOptions,
+) openAIRequestWireBody {
+	wire := openAIRequestWireBody{
+		Body: body,
+		ManageContentEncoding: options.AllowRequestCompression &&
+			account != nil && account.IsOpenAIOAuth() && targetURL == chatgptCodexURL,
+	}
+	skip := func(reason string) openAIRequestWireBody {
+		wire.SkipReason = reason
+		logger.FromContext(ctx).Debug("openai request compression skipped", zap.String("skip_reason", reason))
+		return wire
+	}
+
+	if !options.AllowRequestCompression {
+		return skip(openAIRequestCompressionSkipCallsite)
+	}
+	if !s.isOpenAIRequestCompressionEnabled() {
+		return skip(openAIRequestCompressionSkipConfig)
+	}
+	openAIRequestCompressionStats.evaluatedAttemptsTotal.Add(1)
+	skipEnabled := func(reason string) openAIRequestWireBody {
+		recordOpenAIRequestCompressionSkip(reason)
+		wire = skip(reason)
+		maybeLogOpenAIRequestCompressionMetrics()
+		return wire
+	}
+	if account == nil || !account.IsOpenAIOAuth() {
+		return skipEnabled(openAIRequestCompressionSkipNotOAuth)
+	}
+	if override := account.GetOpenAIRequestCompressionOverride(); override != nil && !*override {
+		return skipEnabled(openAIRequestCompressionSkipAccount)
+	}
+	if targetURL != chatgptCodexURL {
+		return skipEnabled(openAIRequestCompressionSkipEndpoint)
+	}
+	stream := gjson.GetBytes(body, "stream")
+	if stream.Type != gjson.True {
+		return skipEnabled(openAIRequestCompressionSkipNotStreaming)
+	}
+	scope := options.CompressionScope
+	if scope == nil {
+		scope = newOpenAIRequestCompressionScope()
+	}
+	if scope.IsForceUncompressed() {
+		return skipEnabled(openAIRequestCompressionSkipForcedIdentity)
+	}
+	encoder, err := getOpenAIRequestCompressionEncoder()
+	if err != nil {
+		openAIRequestCompressionStats.compressionErrorsTotal.Add(1)
+		openAIRequestCompressionEncoderWarning.Do(func() {
+			logger.FromContext(ctx).Warn("openai request compression encoder initialization failed", zap.Error(err))
+		})
+		return skipEnabled(openAIRequestCompressionSkipEncoderInitError)
+	}
+
+	startedAt := time.Now()
+	compressed, reused := scope.compressedBody(body, encoder)
+	if compressed == nil {
+		return skipEnabled(openAIRequestCompressionSkipForcedIdentity)
+	}
+	duration := time.Since(startedAt)
+	wire.Body = compressed
+	wire.Compressed = true
+	wire.Reused = reused
+	openAIRequestCompressionStats.compressedAttemptsTotal.Add(1)
+	openAIRequestCompressionStats.preCompressionBytesTotal.Add(uint64(len(body)))
+	openAIRequestCompressionStats.postCompressionBytesTotal.Add(uint64(len(compressed)))
+	if reused {
+		openAIRequestCompressionStats.cacheHitsTotal.Add(1)
+	} else {
+		openAIRequestCompressionStats.compressionOperationsTotal.Add(1)
+		openAIRequestCompressionStats.compressionDurationNsTotal.Add(uint64(duration.Nanoseconds()))
+	}
+
+	ratio := float64(0)
+	savings := float64(0)
+	if len(compressed) > 0 {
+		ratio = float64(len(body)) / float64(len(compressed))
+	}
+	if len(body) > 0 {
+		savings = (1 - float64(len(compressed))/float64(len(body))) * 100
+	}
+	logger.FromContext(ctx).Debug("openai request body compressed",
+		zap.Int64("account_id", account.ID),
+		zap.Int("pre_compression_bytes", len(body)),
+		zap.Int("post_compression_bytes", len(compressed)),
+		zap.Float64("compression_ratio", ratio),
+		zap.Float64("savings_percent", savings),
+		zap.Int64("compression_duration_us", duration.Microseconds()),
+		zap.Bool("reused", reused),
+	)
+	maybeLogOpenAIRequestCompressionMetrics()
+	return wire
+}
+
+func applyOpenAIRequestWireHeaders(req *http.Request, wire openAIRequestWireBody) {
+	if req == nil {
+		return
+	}
+	if !wire.ManageContentEncoding && !wire.Compressed {
+		return
+	}
+	req.Header.Del("Content-Encoding")
+	if wire.Compressed {
+		req.Header.Set("Content-Encoding", "zstd")
+		req.Header.Set("Content-Type", "application/json")
+	}
+}
+
+func isOpenAIRequestZstdCompressed(req *http.Request, account *Account) bool {
+	return req != nil && req.URL != nil && account != nil && account.IsOpenAIOAuth() &&
+		req.URL.String() == chatgptCodexURL && req.Header.Get("Content-Encoding") == "zstd"
+}
+
+type openAIReleaseOnCloseReader struct {
+	mu     sync.Mutex
+	reader *bytes.Reader
+}
+
+func (r *openAIReleaseOnCloseReader) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reader == nil {
+		return 0, io.EOF
+	}
+	return r.reader.Read(p)
+}
+
+func (r *openAIReleaseOnCloseReader) Close() error {
+	r.mu.Lock()
+	r.reader = nil
+	r.mu.Unlock()
+	return nil
+}
+
+func newOpenAIRequestWithWireBody(
+	ctx context.Context,
+	method string,
+	targetURL string,
+	body []byte,
+) (*http.Request, error) {
+	reader := bytes.NewReader(body)
+	req, err := http.NewRequestWithContext(ctx, method, targetURL, reader)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) == 0 {
+		return req, nil
+	}
+	req.Body = &openAIReleaseOnCloseReader{reader: reader}
+	// Preserve replayability during Client.Do redirects/retries, while ensuring
+	// each temporary reader drops its large backing slice when closed.
+	req.GetBody = func() (io.ReadCloser, error) {
+		return &openAIReleaseOnCloseReader{reader: bytes.NewReader(body)}, nil
+	}
+	return req, nil
+}
+
+// releaseOpenAIRequestReplayReferences is called immediately after Do returns.
+// Redirects/replays have completed by then, so keeping GetBody would only make
+// a long-lived streaming response retain the request payload.
+func releaseOpenAIRequestReplayReferences(req *http.Request, resp *http.Response) {
+	if req != nil {
+		req.GetBody = nil
+	}
+	if resp != nil && resp.Request != nil {
+		resp.Request.GetBody = nil
+	}
+}
+
+func (s *OpenAIGatewayService) isOpenAIRequestCompressionFallbackEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIRequestCompression.FallbackUncompressed
+}
+
+func (s *OpenAIGatewayService) isOpenAIRequestCompressionEnabled() bool {
+	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIRequestCompression.Enabled
+}
+
+var openAIRequestCompressionBusinessErrorCodes = map[string]struct{}{
+	"invalid_encrypted_content": {},
+	"unknown_parameter":         {},
+	"unsupported_parameter":     {},
+}
+
+var openAIRequestCompressionErrorCodes = map[string]struct{}{
+	"content_encoding_error":       {},
+	"invalid_content_encoding":     {},
+	"unsupported_content_encoding": {},
+	"zstd_decode_error":            {},
+	"zstd_decompression_error":     {},
+}
+
+var openAIRequestCompressionErrorPhrases = []string{
+	"unsupported content-encoding: zstd",
+	"unsupported content encoding: zstd",
+	"unsupported content-encoding 'zstd'",
+	"unsupported content encoding 'zstd'",
+	"content-encoding zstd is not supported",
+	"content encoding zstd is not supported",
+	"failed to decompress zstd request body",
+	"failed to decode zstd request body",
+	"invalid zstd frame",
+	"zstd decompression failed",
+}
+
+func normalizeOpenAIRequestCompressionErrorCode(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	code = strings.NewReplacer("-", "_", " ", "_").Replace(code)
+	return code
+}
+
+func shouldFallbackOpenAIRequestCompression(statusCode int, code, message string) bool {
+	if statusCode == http.StatusUnsupportedMediaType {
+		return true
+	}
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	code = normalizeOpenAIRequestCompressionErrorCode(code)
+	if _, blocked := openAIRequestCompressionBusinessErrorCodes[code]; blocked {
+		return false
+	}
+	if _, allowed := openAIRequestCompressionErrorCodes[code]; allowed {
+		return true
+	}
+	message = strings.ToLower(strings.TrimSpace(message))
+	for _, phrase := range openAIRequestCompressionErrorPhrases {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+type OpenAIRequestCompressionMetricsSnapshot struct {
+	EvaluatedAttemptsTotal      uint64
+	CompressedAttemptsTotal     uint64
+	CompressionOperationsTotal  uint64
+	CompressionCacheHitsTotal   uint64
+	FallbackUncompressedTotal   uint64
+	CompressionErrorsTotal      uint64
+	PreCompressionBytesTotal    uint64
+	PostCompressionBytesTotal   uint64
+	CompressionDurationNsTotal  uint64
+	SkipNotOAuthTotal           uint64
+	SkipAccountOverrideTotal    uint64
+	SkipEndpointTotal           uint64
+	SkipNotStreamingTotal       uint64
+	SkipForcedUncompressedTotal uint64
+}
+
+var openAIRequestCompressionStats struct {
+	evaluatedAttemptsTotal      atomic.Uint64
+	compressedAttemptsTotal     atomic.Uint64
+	compressionOperationsTotal  atomic.Uint64
+	cacheHitsTotal              atomic.Uint64
+	fallbackUncompressedTotal   atomic.Uint64
+	compressionErrorsTotal      atomic.Uint64
+	preCompressionBytesTotal    atomic.Uint64
+	postCompressionBytesTotal   atomic.Uint64
+	compressionDurationNsTotal  atomic.Uint64
+	skipNotOAuthTotal           atomic.Uint64
+	skipAccountOverrideTotal    atomic.Uint64
+	skipEndpointTotal           atomic.Uint64
+	skipNotStreamingTotal       atomic.Uint64
+	skipForcedUncompressedTotal atomic.Uint64
+}
+
+func SnapshotOpenAIRequestCompressionMetrics() OpenAIRequestCompressionMetricsSnapshot {
+	return OpenAIRequestCompressionMetricsSnapshot{
+		EvaluatedAttemptsTotal:      openAIRequestCompressionStats.evaluatedAttemptsTotal.Load(),
+		CompressedAttemptsTotal:     openAIRequestCompressionStats.compressedAttemptsTotal.Load(),
+		CompressionOperationsTotal:  openAIRequestCompressionStats.compressionOperationsTotal.Load(),
+		CompressionCacheHitsTotal:   openAIRequestCompressionStats.cacheHitsTotal.Load(),
+		FallbackUncompressedTotal:   openAIRequestCompressionStats.fallbackUncompressedTotal.Load(),
+		CompressionErrorsTotal:      openAIRequestCompressionStats.compressionErrorsTotal.Load(),
+		PreCompressionBytesTotal:    openAIRequestCompressionStats.preCompressionBytesTotal.Load(),
+		PostCompressionBytesTotal:   openAIRequestCompressionStats.postCompressionBytesTotal.Load(),
+		CompressionDurationNsTotal:  openAIRequestCompressionStats.compressionDurationNsTotal.Load(),
+		SkipNotOAuthTotal:           openAIRequestCompressionStats.skipNotOAuthTotal.Load(),
+		SkipAccountOverrideTotal:    openAIRequestCompressionStats.skipAccountOverrideTotal.Load(),
+		SkipEndpointTotal:           openAIRequestCompressionStats.skipEndpointTotal.Load(),
+		SkipNotStreamingTotal:       openAIRequestCompressionStats.skipNotStreamingTotal.Load(),
+		SkipForcedUncompressedTotal: openAIRequestCompressionStats.skipForcedUncompressedTotal.Load(),
+	}
+}
+
+func recordOpenAIRequestCompressionSkip(reason string) {
+	switch reason {
+	case openAIRequestCompressionSkipNotOAuth:
+		openAIRequestCompressionStats.skipNotOAuthTotal.Add(1)
+	case openAIRequestCompressionSkipAccount:
+		openAIRequestCompressionStats.skipAccountOverrideTotal.Add(1)
+	case openAIRequestCompressionSkipEndpoint:
+		openAIRequestCompressionStats.skipEndpointTotal.Add(1)
+	case openAIRequestCompressionSkipNotStreaming:
+		openAIRequestCompressionStats.skipNotStreamingTotal.Add(1)
+	case openAIRequestCompressionSkipForcedIdentity:
+		openAIRequestCompressionStats.skipForcedUncompressedTotal.Add(1)
+	}
+}
+
+func claimOpenAIRequestCompressionMetricsLog(lastLogAt *atomic.Int64, now time.Time) bool {
+	if lastLogAt == nil {
+		return false
+	}
+	nowUnixNano := now.UnixNano()
+	lastUnixNano := lastLogAt.Load()
+	if lastUnixNano != 0 && nowUnixNano-lastUnixNano < openAIRequestCompressionMetricsLogInterval.Nanoseconds() {
+		return false
+	}
+	return lastLogAt.CompareAndSwap(lastUnixNano, nowUnixNano)
+}
+
+func maybeLogOpenAIRequestCompressionMetrics() {
+	if !claimOpenAIRequestCompressionMetricsLog(&openAIRequestCompressionMetricsLastLogAt, time.Now()) {
+		return
+	}
+	logOpenAIRequestCompressionMetrics(logger.L(), SnapshotOpenAIRequestCompressionMetrics())
+}
+
+func logOpenAIRequestCompressionMetrics(log *zap.Logger, metrics OpenAIRequestCompressionMetricsSnapshot) {
+	if log == nil {
+		return
+	}
+	ratio := float64(0)
+	savings := float64(0)
+	if metrics.PostCompressionBytesTotal > 0 {
+		ratio = float64(metrics.PreCompressionBytesTotal) / float64(metrics.PostCompressionBytesTotal)
+	}
+	if metrics.PreCompressionBytesTotal > 0 {
+		savings = (1 - float64(metrics.PostCompressionBytesTotal)/float64(metrics.PreCompressionBytesTotal)) * 100
+	}
+	log.Info("openai.request_compression_metrics",
+		zap.String("component", "service.openai_gateway.request_compression"),
+		zap.String("profile", openAIRequestCompressionProfile),
+		zap.Uint64("evaluated_attempts_total", metrics.EvaluatedAttemptsTotal),
+		zap.Uint64("compressed_attempts_total", metrics.CompressedAttemptsTotal),
+		zap.Uint64("compression_operations_total", metrics.CompressionOperationsTotal),
+		zap.Uint64("compression_cache_hits_total", metrics.CompressionCacheHitsTotal),
+		zap.Uint64("fallback_uncompressed_total", metrics.FallbackUncompressedTotal),
+		zap.Uint64("compression_errors_total", metrics.CompressionErrorsTotal),
+		zap.Uint64("pre_compression_bytes_total", metrics.PreCompressionBytesTotal),
+		zap.Uint64("post_compression_bytes_total", metrics.PostCompressionBytesTotal),
+		zap.Uint64("compression_duration_us_total", metrics.CompressionDurationNsTotal/uint64(time.Microsecond)),
+		zap.Float64("compression_ratio", ratio),
+		zap.Float64("savings_percent", savings),
+		zap.Uint64("skip_not_oauth_total", metrics.SkipNotOAuthTotal),
+		zap.Uint64("skip_account_override_total", metrics.SkipAccountOverrideTotal),
+		zap.Uint64("skip_endpoint_total", metrics.SkipEndpointTotal),
+		zap.Uint64("skip_not_streaming_total", metrics.SkipNotStreamingTotal),
+		zap.Uint64("skip_forced_uncompressed_total", metrics.SkipForcedUncompressedTotal),
+	)
+}
+
+func logOpenAIRequestCompressionFallback(ctx context.Context, flow string, account *Account, statusCode int, upstreamCode string) {
+	accountID := int64(0)
+	if account != nil {
+		accountID = account.ID
+	}
+	logger.FromContext(ctx).Info("openai.request_compression_fallback",
+		zap.String("flow", flow),
+		zap.Int64("account_id", accountID),
+		zap.Int("status_code", statusCode),
+		zap.String("upstream_error_code", normalizeOpenAIRequestCompressionErrorCode(upstreamCode)),
+		zap.Bool("fallback_uncompressed", true),
+	)
+}

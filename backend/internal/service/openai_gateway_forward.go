@@ -814,6 +814,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	httpInvalidEncryptedContentRetryTried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := newOpenAIResponsesRejectedFieldRetryState(body)
+	var requestCompressionScope *openAIRequestCompressionScope
+	if s.isOpenAIRequestCompressionEnabled() {
+		requestCompressionScope = ensureOpenAIRequestCompressionScope(c)
+	}
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -823,7 +827,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				upstreamCtx, releaseUpstreamCtx, startTime.Add(firstOutputTimeout),
 			)
 		}
-		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
+		upstreamReq, err := s.buildUpstreamRequestWithOptions(
+			upstreamCtx,
+			c,
+			account,
+			body,
+			token,
+			reqStream,
+			promptCacheKey,
+			isCodexCLI,
+			openAIUpstreamRequestBuildOptions{
+				AllowRequestCompression: true,
+				CompressionScope:        requestCompressionScope,
+			},
+		)
 		if headerGuard == nil {
 			releaseUpstreamCtx()
 		}
@@ -843,6 +860,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Send request
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if isOpenAIRequestZstdCompressed(upstreamReq, account) {
+			releaseOpenAIRequestReplayReferences(upstreamReq, resp)
+		}
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		if headerGuard != nil && headerGuard.stopHeaderWait() {
 			if resp != nil && resp.Body != nil {
@@ -886,6 +906,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					return nil, fmt.Errorf("agent identity task recovery failed: %w", err)
 				}
 				continue
+			}
+			if isOpenAIRequestZstdCompressed(upstreamReq, account) &&
+				s.isOpenAIRequestCompressionFallbackEnabled() &&
+				shouldFallbackOpenAIRequestCompression(resp.StatusCode, upstreamCode, upstreamMsg) {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				if requestCompressionScope != nil && requestCompressionScope.TryConsumeFallback() {
+					logOpenAIRequestCompressionFallback(ctx, "converted", account, resp.StatusCode, upstreamCode)
+					continue
+				}
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -1035,6 +1066,20 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+	return s.buildUpstreamRequestWithOptions(
+		ctx,
+		c,
+		account,
+		body,
+		token,
+		isStream,
+		promptCacheKey,
+		isCodexCLI,
+		openAIUpstreamRequestBuildOptions{},
+	)
+}
+
+func (s *OpenAIGatewayService) buildUpstreamRequestWithOptions(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool, opts openAIUpstreamRequestBuildOptions) (*http.Request, error) {
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {
@@ -1058,7 +1103,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
+	wire := openAIRequestWireBody{Body: body}
+	if opts.AllowRequestCompression {
+		wire = s.prepareOpenAIRequestWireBody(ctx, account, targetURL, body, opts)
+	}
+	var req *http.Request
+	var err error
+	if wire.Compressed {
+		req, err = newOpenAIRequestWithWireBody(ctx, http.MethodPost, targetURL, wire.Body)
+	} else {
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(wire.Body))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1167,6 +1222,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
+	applyOpenAIRequestWireHeaders(req, wire)
 
 	return req, nil
 }

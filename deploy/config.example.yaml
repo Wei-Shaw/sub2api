@@ -321,6 +321,15 @@ gateway:
   # Use this to avoid compact failures when newer models are not yet supported by the compact endpoint.
   # 当 compact 端点暂未支持更新模型时，可通过这里降级规避失败。
   openai_compact_model: "gpt-5.4"
+  # Compress eligible OpenAI OAuth HTTP /responses requests sent to the official ChatGPT Codex backend.
+  # 压缩发往官方 ChatGPT Codex Backend 的符合条件的 OpenAI OAuth HTTP /responses 请求。
+  openai_request_compression:
+    # Hard global gate. When false, account-level settings cannot enable compression.
+    # 硬总闸；为 false 时，账号级配置不能开启压缩。
+    enabled: false
+    # Retry once without compression only for explicit zstd compatibility errors.
+    # 仅当上游明确报告 zstd 兼容性错误时，允许一次未压缩重试。
+    fallback_uncompressed: true
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600

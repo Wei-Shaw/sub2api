@@ -187,39 +187,6 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		return nil, fmt.Errorf("prepare http bridge body: %w", err)
 	}
 
-	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
-	var upstreamReq *http.Request
-	if account.Platform == PlatformGrok {
-		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
-		grokIntentSourceBody := body
-		body, err = patchGrokResponsesBody(body, upstreamModel)
-		if err != nil {
-			releaseUpstreamCtx()
-			return nil, err
-		}
-		grokMixedCacheIntentBody := append([]byte(nil), body...)
-		body, err = applyGrokResponsesCacheIdentity(body, grokIntentSourceBody, grokCacheIdentity, account.IsGrokOAuth())
-		if err != nil {
-			releaseUpstreamCtx()
-			return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
-		}
-		body, err = applyGrokFreeRequestToolCacheRoute(c, body, grokMixedCacheIntentBody, account, grokCacheIdentity)
-		if err != nil {
-			releaseUpstreamCtx()
-			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
-		}
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg, s.settingService)
-	} else {
-		upstreamReq, err = s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
-	}
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, err
-	}
-	if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
-		upstreamReq.Header.Set(responsesLiteHeader, "true")
-	}
-
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -229,21 +196,92 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		c.Set("openai_ws_http_bridge", true)
 	}
 
-	turnStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		if turn == 1 {
-			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+	if account.Platform == PlatformGrok {
+		upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
+		grokIntentSourceBody := body
+		body, err = patchGrokResponsesBody(body, upstreamModel)
+		if err != nil {
+			return nil, err
 		}
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
-		return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
+		grokMixedCacheIntentBody := append([]byte(nil), body...)
+		body, err = applyGrokResponsesCacheIdentity(body, grokIntentSourceBody, grokCacheIdentity, account.IsGrokOAuth())
+		if err != nil {
+			return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
+		}
+		body, err = applyGrokFreeRequestToolCacheRoute(c, body, grokMixedCacheIntentBody, account, grokCacheIdentity)
+		if err != nil {
+			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
+		}
 	}
-	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode >= 400 {
+	var turnStart time.Time
+	var requestCompressionScope *openAIRequestCompressionScope
+	if account.Platform != PlatformGrok && s.isOpenAIRequestCompressionEnabled() {
+		requestCompressionScope = ensureOpenAIRequestCompressionScope(c)
+	}
+	var resp *http.Response
+	for {
+		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+		var upstreamReq *http.Request
+		if account.Platform == PlatformGrok {
+			upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg, s.settingService)
+		} else {
+			upstreamReq, err = s.buildUpstreamRequestOpenAIPassthroughWithOptions(
+				upstreamCtx,
+				c,
+				account,
+				body,
+				token,
+				openAIUpstreamRequestBuildOptions{
+					AllowRequestCompression: true,
+					CompressionScope:        requestCompressionScope,
+				},
+			)
+		}
+		releaseUpstreamCtx()
+		if err != nil {
+			return nil, err
+		}
+		if account.Platform != PlatformGrok && isOpenAIResponsesLiteWebSocketPayload(payload) {
+			upstreamReq.Header.Set(responsesLiteHeader, "true")
+		}
+
+		if turnStart.IsZero() {
+			turnStart = time.Now()
+		}
+		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		if isOpenAIRequestZstdCompressed(upstreamReq, account) {
+			releaseOpenAIRequestReplayReferences(upstreamReq, resp)
+		}
+		if err != nil {
+			if turn == 1 {
+				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
+			}
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(http.StatusBadGateway, "Upstream request failed"))
+			return nil, fmt.Errorf("upstream http bridge request failed: %s", safeErr)
+		}
+
+		if resp.StatusCode < 400 {
+			break
+		}
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
+		_ = resp.Body.Close()
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+		upstreamCode := extractUpstreamErrorCode(respBody)
+		shouldFallbackCompression := shouldFallbackOpenAIRequestCompression(resp.StatusCode, upstreamCode, upstreamMsg)
+		if account.Platform != PlatformGrok &&
+			isOpenAIRequestZstdCompressed(upstreamReq, account) &&
+			s.isOpenAIRequestCompressionFallbackEnabled() &&
+			shouldFallbackCompression {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if requestCompressionScope != nil && requestCompressionScope.TryConsumeFallback() {
+				logOpenAIRequestCompressionFallback(ctx, "ws_http_bridge", account, resp.StatusCode, upstreamCode)
+				continue
+			}
+		}
 		if upstreamMsg == "" {
 			upstreamMsg = http.StatusText(resp.StatusCode)
 		}
@@ -264,6 +302,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		_ = writeClientMessage(buildOpenAIWSHTTPBridgeErrorEvent(resp.StatusCode, upstreamMsg))
 		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if account.Platform == PlatformGrok {
 		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.Header, resp.StatusCode)
 	}
@@ -439,6 +478,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			if err := writeClientMessage(clientMessage); err != nil {
 				if isOpenAIWSClientDisconnectError(err) {
 					clientDisconnected = true
+					if requestCompressionScope != nil {
+						requestCompressionScope.ReleasePayload()
+					}
 					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
 					logOpenAIWSModeInfo(
 						"ingress_ws_http_bridge_client_disconnected_drain account_id=%d turn=%d close_status=%s close_reason=%s",
@@ -455,6 +497,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 					)
 				}
 			} else {
+				if !wroteDownstream && requestCompressionScope != nil {
+					requestCompressionScope.ReleasePayload()
+				}
 				wroteDownstream = true
 			}
 		}
