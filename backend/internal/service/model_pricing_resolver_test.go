@@ -114,6 +114,29 @@ func TestGetIntervalPricing_NoMatch_FallsBackToBase(t *testing.T) {
 	require.Equal(t, basePricing, result)
 }
 
+func TestGetIntervalPricingWithTier(t *testing.T) {
+	bs := newTestBillingServiceForResolver()
+	r := NewModelPricingResolver(&ChannelService{}, bs)
+
+	resolved := &ResolvedPricing{
+		Mode:                   BillingModeToken,
+		BasePricing:            &ModelPricing{InputPricePerToken: 5e-6},
+		SupportsCacheBreakdown: true,
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(128000), TierLabel: "short-context", InputPrice: testPtrFloat64(1e-6)},
+			{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(3e-6)},
+		},
+	}
+
+	pricing1, tier1 := r.GetIntervalPricingWithTier(resolved, 50000)
+	require.NotNil(t, pricing1)
+	require.Equal(t, "short-context", tier1)
+
+	pricing2, tier2 := r.GetIntervalPricingWithTier(resolved, 200000)
+	require.NotNil(t, pricing2)
+	require.Equal(t, "(128000,+inf)", tier2)
+}
+
 func TestGPT56ExplicitZeroCacheWritePriceIsPreserved(t *testing.T) {
 	bs := &BillingService{}
 	resolver := NewModelPricingResolver(nil, bs)

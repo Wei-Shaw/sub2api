@@ -1743,3 +1743,39 @@ func TestComputeTokenBreakdown_NonExplicitZeroImagePrice_FallsBackToOutput(t *te
 	// textOutputTokens = 200 - 50 = 150
 	require.InDelta(t, 150*15e-6, bd.OutputCost, 1e-12)
 }
+
+func TestCalculateTokenCost_RecordsBillingTier(t *testing.T) {
+	svc := newTestBillingService()
+	resolver := NewModelPricingResolver(&ChannelService{}, svc)
+
+	resolved := &ResolvedPricing{
+		Mode:                   BillingModeToken,
+		BasePricing:            &ModelPricing{InputPricePerToken: 5e-6, OutputPricePerToken: 15e-6},
+		SupportsCacheBreakdown: true,
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: testPtrInt(128000), TierLabel: "short-context", InputPrice: testPtrFloat64(1e-6), OutputPrice: testPtrFloat64(2e-6)},
+			{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(3e-6), OutputPrice: testPtrFloat64(6e-6)},
+		},
+	}
+
+	// 1. Matched labeled tier
+	cost1, err := svc.calculateTokenCost(resolved, CostInput{
+		Model:          "gpt-4o",
+		Tokens:         UsageTokens{InputTokens: 50000, OutputTokens: 1000},
+		RateMultiplier: 1.0,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "short-context", cost1.BillingTier)
+
+	// 2. Matched unlabeled tier (auto formatted)
+	cost2, err := svc.calculateTokenCost(resolved, CostInput{
+		Model:          "gpt-4o",
+		Tokens:         UsageTokens{InputTokens: 200000, OutputTokens: 1000},
+		RateMultiplier: 1.0,
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "(128000,+inf)", cost2.BillingTier)
+}
+

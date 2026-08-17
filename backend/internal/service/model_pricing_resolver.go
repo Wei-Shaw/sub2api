@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 )
@@ -321,16 +322,38 @@ func filterValidIntervals(intervals []PricingInterval) []PricingInterval {
 // GetIntervalPricing 根据 context token 数获取区间定价。
 // 如果有区间列表，找到匹配区间并构造 ModelPricing；否则直接返回 BasePricing。
 func (r *ModelPricingResolver) GetIntervalPricing(resolved *ResolvedPricing, totalContextTokens int) *ModelPricing {
+	pricing, _ := r.GetIntervalPricingWithTier(resolved, totalContextTokens)
+	return pricing
+}
+
+// GetIntervalPricingWithTier 根据 context token 数获取区间定价及命中的档位标签。
+func (r *ModelPricingResolver) GetIntervalPricingWithTier(resolved *ResolvedPricing, totalContextTokens int) (*ModelPricing, string) {
 	if len(resolved.Intervals) == 0 {
-		return resolved.BasePricing
+		return resolved.BasePricing, ""
 	}
 
 	iv := FindMatchingInterval(resolved.Intervals, totalContextTokens)
 	if iv == nil {
-		return resolved.BasePricing
+		return resolved.BasePricing, ""
 	}
 
-	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing)
+	tier := iv.TierLabel
+	if tier == "" {
+		tier = FormatIntervalTier(iv)
+	}
+
+	return intervalToModelPricing(iv, resolved.SupportsCacheBreakdown, resolved.channelPricing), tier
+}
+
+// FormatIntervalTier 格式化区间为字符串标签（如 "(0,272000]" 或 "(272000,+inf)"）
+func FormatIntervalTier(iv *PricingInterval) string {
+	if iv == nil {
+		return ""
+	}
+	if iv.MaxTokens == nil {
+		return fmt.Sprintf("(%d,+inf)", iv.MinTokens)
+	}
+	return fmt.Sprintf("(%d,%d]", iv.MinTokens, *iv.MaxTokens)
 }
 
 // intervalToModelPricing 将区间定价转换为 ModelPricing

@@ -1261,6 +1261,9 @@ func (s *GatewayService) buildRecordUsageLog(
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
+		if cost.BillingTier != "" {
+			usageLog.BillingTier = &cost.BillingTier
+		}
 	}
 
 	return usageLog
