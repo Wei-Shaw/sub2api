@@ -44,8 +44,11 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	)
 
 	// Read request body
+	bodyReadMetadata := newRequestBodyReadLogContext(c.Request)
+	bodyReadStartedAt := time.Now()
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		logRequestBodyReadFailure(reqLog, bodyReadMetadata, err, bodyReadStartedAt)
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.responsesErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return

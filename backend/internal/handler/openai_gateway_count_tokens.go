@@ -17,8 +17,12 @@ import (
 // The route middleware already authenticates the API key and resolves the
 // group; this handler intentionally does not select an account or check billing.
 func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
+	reqLog := requestLogger(c, "handler.openai_gateway.grok_count_tokens")
+	bodyReadMetadata := newRequestBodyReadLogContext(c.Request)
+	bodyReadStartedAt := time.Now()
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		logRequestBodyReadFailure(reqLog, bodyReadMetadata, err, bodyReadStartedAt)
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
@@ -34,7 +38,7 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
-		logRequestBodyParseFailure(requestLogger(c, "handler.openai_gateway.grok_count_tokens"), body, err)
+		logRequestBodyParseFailure(reqLog, body, err)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
@@ -45,7 +49,7 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 
 	estimated, err := service.EstimateGrokCountTokens(parsedReq.Body.Bytes())
 	if err != nil {
-		requestLogger(c, "handler.openai_gateway.grok_count_tokens").Warn("grok_count_tokens.local_estimate_failed", zap.Error(err))
+		reqLog.Warn("grok_count_tokens.local_estimate_failed", zap.Error(err))
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
@@ -88,8 +92,11 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
+	bodyReadMetadata := newRequestBodyReadLogContext(c.Request)
+	bodyReadStartedAt := time.Now()
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		logRequestBodyReadFailure(reqLog, bodyReadMetadata, err, bodyReadStartedAt)
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
