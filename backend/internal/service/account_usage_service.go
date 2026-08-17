@@ -459,6 +459,10 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return usage, err
 	}
 
+	if account.Platform == PlatformFal {
+		return s.getLocalWindowUsage(ctx, account)
+	}
+
 	// 只有oauth类型账号可以通过API获取usage（有profile scope）
 	if account.CanGetUsage() {
 		var apiResp *ClaudeUsageResponse
@@ -624,6 +628,8 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 			var usageErr error
 			if supportsAnthropicPassiveUsage(account) {
 				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
+			} else if account.Platform == PlatformFal {
+				usage, usageErr = s.getLocalWindowUsage(gctx, account)
 			} else {
 				usage, usageErr = s.getUsageForAccount(gctx, account, force)
 			}
@@ -663,6 +669,30 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 	}
 
 	return s.getPassiveUsageForAccount(ctx, account)
+}
+
+func (s *AccountUsageService) getLocalWindowUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	if account == nil {
+		return nil, ErrAccountNotFound
+	}
+	if s.usageLogRepo == nil {
+		return nil, fmt.Errorf("usage log repository not initialized")
+	}
+
+	stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, account.GetCurrentWindowStartTime())
+	if err != nil {
+		return nil, fmt.Errorf("get local window stats failed: %w", err)
+	}
+
+	now := time.Now()
+	return &UsageInfo{
+		Source:    "local",
+		UpdatedAt: &now,
+		FiveHour: &UsageProgress{
+			Utilization: 0,
+			WindowStats: windowStatsFromAccountStats(stats),
+		},
+	}, nil
 }
 
 func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {

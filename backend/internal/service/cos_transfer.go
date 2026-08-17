@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 	"net/url"
@@ -274,25 +275,31 @@ func (s *COSImageTransferService) transferOneVideo(ctx context.Context, store Ba
 //
 // 返回与输入等长的 cos url 列表：成功项为 COS 地址，失败（重试耗尽）项为空字符串，
 // 调用方据此回退使用原始 fal url。第二个返回值表示是否全部成功。
-//
-// 转存未启用或未配置时，返回全空切片 + allOK=false（不视为错误）。
 func (s *COSImageTransferService) TransferImages(ctx context.Context, urls []string) ([]string, bool) {
+	out, _, allOK := s.TransferImagesWithSizes(ctx, urls)
+	return out, allOK
+}
+
+// TransferImagesWithSizes 转存图片，同时从已下载的实际图片文件中解析每张图的宽高。
+// sizes 与 urls 等长；尺寸解析失败不会影响转存结果。
+func (s *COSImageTransferService) TransferImagesWithSizes(ctx context.Context, urls []string) ([]string, []string, bool) {
 	out := make([]string, len(urls))
+	sizes := make([]string, len(urls))
 	if len(urls) == 0 {
-		return out, true
+		return out, sizes, true
 	}
 
 	cfg, err := s.loadConfig(ctx)
 	if err != nil || cfg == nil || !cfg.Enabled || !cfg.IsConfigured() {
 		logger.LegacyPrintf("service.cos_transfer", "[COS] transfer disabled or not configured: enabled=%v, configured=%v, err=%v", cfg != nil && cfg.Enabled, cfg != nil && cfg.IsConfigured(), err)
-		return out, false
+		return out, sizes, false
 	}
 	logger.LegacyPrintf("service.cos_transfer", "[COS] transfer enabled, processing %d images", len(urls))
 
 	store, err := s.getOrCreateStore(ctx, cfg)
 	if err != nil {
 		logger.LegacyPrintf("service.cos_transfer", "[COS] get store failed: %v", err)
-		return out, false
+		return out, sizes, false
 	}
 
 	allOK := true
@@ -302,18 +309,46 @@ func (s *COSImageTransferService) TransferImages(ctx context.Context, urls []str
 			allOK = false
 			continue
 		}
-		cosURL, transferErr := s.transferOne(ctx, store, cfg, rawURL)
+		cosURL, imageSize, transferErr := s.transferOne(ctx, store, cfg, rawURL)
+		sizes[i] = imageSize
 		if transferErr != nil {
 			logger.LegacyPrintf("service.cos_transfer", "[COS] transfer failed after retries url=%s err=%v", rawURL, transferErr)
-			out[i] = "" // 回退：留空，调用方使用原始 url
+			out[i] = ""
 			allOK = false
 			continue
 		}
-		logger.LegacyPrintf("service.cos_transfer", "[COS] transfer succeeded: %s -> %s", rawURL, cosURL)
+		logger.LegacyPrintf("service.cos_transfer", "[COS] transfer succeeded: %s -> %s size=%s", rawURL, cosURL, imageSize)
 		out[i] = cosURL
 	}
 	logger.LegacyPrintf("service.cos_transfer", "[COS] transfer completed: %d/%d succeeded", len(urls)-countEmpty(out), len(urls))
-	return out, allOK
+	return out, sizes, allOK
+}
+
+// DetectImageSizes 下载上游图片并读取文件头中的实际宽高，不依赖 COS 配置。
+func (s *COSImageTransferService) DetectImageSizes(ctx context.Context, urls []string) []string {
+	sizes := make([]string, len(urls))
+	if s == nil {
+		return sizes
+	}
+	for i, rawURL := range urls {
+		rawURL = strings.TrimSpace(rawURL)
+		if rawURL == "" {
+			continue
+		}
+		data, _, err := s.download(ctx, rawURL)
+		if err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] detect image size download failed: url=%s err=%v", rawURL, err)
+			continue
+		}
+		size, err := decodeDownloadedImageSize(data)
+		if err != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] detect image size decode failed: url=%s err=%v", rawURL, err)
+			continue
+		}
+		sizes[i] = size
+		logger.LegacyPrintf("service.cos_transfer", "[COS] detected image size: url=%s size=%s", rawURL, size)
+	}
+	return sizes
 }
 
 // countEmpty 统计空字符串数量
@@ -328,12 +363,13 @@ func countEmpty(strs []string) int {
 }
 
 // transferOne 下载单张图片并上传到 COS，最多重试 cosTransferMaxAttempts 次。
-func (s *COSImageTransferService) transferOne(ctx context.Context, store BackupObjectStore, cfg *COSImageConfig, srcURL string) (string, error) {
+func (s *COSImageTransferService) transferOne(ctx context.Context, store BackupObjectStore, cfg *COSImageConfig, srcURL string) (string, string, error) {
 	var lastErr error
+	imageSize := ""
 	for attempt := 1; attempt <= cosTransferMaxAttempts; attempt++ {
 		if ctx.Err() != nil {
 			logger.LegacyPrintf("service.cos_transfer", "[COS] transfer cancelled: %v", ctx.Err())
-			return "", ctx.Err()
+			return "", imageSize, ctx.Err()
 		}
 		logger.LegacyPrintf("service.cos_transfer", "[COS] downloading image (attempt %d/%d): %s", attempt, cosTransferMaxAttempts, srcURL)
 		data, contentType, err := s.download(ctx, srcURL)
@@ -343,23 +379,42 @@ func (s *COSImageTransferService) transferOne(ctx context.Context, store BackupO
 			continue
 		}
 		logger.LegacyPrintf("service.cos_transfer", "[COS] download succeeded: size=%d bytes, content-type=%s", len(data), contentType)
+		if detected, detectErr := decodeDownloadedImageSize(data); detectErr != nil {
+			logger.LegacyPrintf("service.cos_transfer", "[COS] image size decode failed: url=%s err=%v", srcURL, detectErr)
+		} else {
+			imageSize = detected
+		}
 
 		key := s.buildKey(cfg, srcURL, contentType)
 		logger.LegacyPrintf("service.cos_transfer", "[COS] uploading to COS (attempt %d): key=%s", attempt, key)
-		if _, err := store.Upload(ctx, key, strings.NewReader(string(data)), contentType); err != nil {
+		if _, err := store.Upload(ctx, key, bytes.NewReader(data), contentType); err != nil {
 			logger.LegacyPrintf("service.cos_transfer", "[COS] upload failed (attempt %d): %v", attempt, err)
 			lastErr = err
 			continue
 		}
 		cosURL := s.buildPublicURL(cfg, key)
 		logger.LegacyPrintf("service.cos_transfer", "[COS] upload succeeded: %s", cosURL)
-		return cosURL, nil
+		return cosURL, imageSize, nil
 	}
 	if lastErr == nil {
 		lastErr = fmt.Errorf("transfer failed")
 	}
 	logger.LegacyPrintf("service.cos_transfer", "[COS] all transfer attempts failed: %v", lastErr)
-	return "", lastErr
+	return "", imageSize, lastErr
+}
+
+func decodeDownloadedImageSize(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty image data")
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("decode image config: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 {
+		return "", fmt.Errorf("invalid image dimensions: %dx%d", cfg.Width, cfg.Height)
+	}
+	return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height), nil
 }
 
 // FetchAsBase64 下载单张图片并返回其 base64 编码（标准编码，不含 data URL 前缀），

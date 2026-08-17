@@ -64,15 +64,25 @@ func ResponsesImageStatusRequestIDFromContext(ctx context.Context) string {
 }
 
 func (s *OpenAIGatewayService) BeginResponsesImageStatus(ctx context.Context, requestID string) {
-	s.setResponsesImageStatusBestEffort(ctx, &ResponsesImageStatus{
-		RequestID: strings.TrimSpace(requestID),
-		Status:    ResponsesImageStatusAccepted,
-		Progress:  0,
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		return
+	}
+	s.patchResponsesImageStatusBestEffort(ctx, requestID, func(status *ResponsesImageStatus) {
+		if status.Status == ResponsesImageStatusSucceeded {
+			return
+		}
+		status.Status = ResponsesImageStatusAccepted
+		status.Progress = 0
+		status.Error = nil
 	})
 }
 
 func (s *OpenAIGatewayService) MarkResponsesImageStatusRunning(ctx context.Context, requestID string) {
 	s.patchResponsesImageStatusBestEffort(ctx, requestID, func(status *ResponsesImageStatus) {
+		if status.Status == ResponsesImageStatusSucceeded {
+			return
+		}
 		status.Status = ResponsesImageStatusRunning
 		status.Progress = max(status.Progress, 25)
 		status.Error = nil
@@ -147,6 +157,9 @@ func (s *OpenAIGatewayService) FailResponsesImageStatus(ctx context.Context, req
 		message = "image generation failed"
 	}
 	s.patchResponsesImageStatusBestEffort(ctx, requestID, func(status *ResponsesImageStatus) {
+		if status.Status == ResponsesImageStatusSucceeded {
+			return
+		}
 		status.Status = ResponsesImageStatusFailed
 		status.Progress = 100
 		status.Error = &ResponsesImageStatusError{Message: message}

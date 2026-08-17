@@ -11,7 +11,11 @@ import (
 )
 
 // Minimal UsageLogRepository stub for batch usage tests (HEAD lacks geminiUsageLogRepoStub).
-type usageBatchLogRepoStub struct{}
+type usageBatchLogRepoStub struct {
+	windowStats     *usagestats.AccountStats
+	windowAccountID int64
+	windowStart     time.Time
+}
 
 var _ UsageLogRepository = (*usageBatchLogRepoStub)(nil)
 
@@ -43,7 +47,12 @@ func (r *usageBatchLogRepoStub) ListByAccountAndTimeRange(context.Context, int64
 func (r *usageBatchLogRepoStub) ListByModelAndTimeRange(context.Context, string, time.Time, time.Time) ([]UsageLog, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (r *usageBatchLogRepoStub) GetAccountWindowStats(context.Context, int64, time.Time) (*usagestats.AccountStats, error) {
+func (r *usageBatchLogRepoStub) GetAccountWindowStats(_ context.Context, accountID int64, start time.Time) (*usagestats.AccountStats, error) {
+	r.windowAccountID = accountID
+	r.windowStart = start
+	if r.windowStats != nil {
+		return r.windowStats, nil
+	}
 	return &usagestats.AccountStats{}, nil
 }
 func (r *usageBatchLogRepoStub) GetAccountTodayStats(context.Context, int64) (*usagestats.AccountStats, error) {
@@ -187,5 +196,79 @@ func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 
 	if !strings.Contains(strings.ToLower(errorsByAccount[7003]), "does not support usage query") {
 		t.Fatalf("expected API key account error to be preserved, got %q", errorsByAccount[7003])
+	}
+}
+
+func TestAccountUsageService_GetUsage_FalUsesLocalWindowStats(t *testing.T) {
+	t.Parallel()
+
+	windowStart := time.Now().Add(-30 * time.Minute).UTC().Truncate(time.Second)
+	windowEnd := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
+	repo := &stubOpenAIAccountRepo{accounts: []Account{{
+		ID:                 7101,
+		Platform:           PlatformFal,
+		Type:               AccountTypeAPIKey,
+		SessionWindowStart: &windowStart,
+		SessionWindowEnd:   &windowEnd,
+	}}}
+	usageRepo := &usageBatchLogRepoStub{windowStats: &usagestats.AccountStats{
+		Requests:     1,
+		Tokens:       0,
+		Cost:         0.42,
+		StandardCost: 0.42,
+		UserCost:     0.42,
+	}}
+	svc := &AccountUsageService{
+		accountRepo:  repo,
+		usageLogRepo: usageRepo,
+		cache:        NewUsageCache(),
+	}
+
+	usage, err := svc.GetUsage(context.Background(), 7101)
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if usage == nil || usage.Source != "local" || usage.FiveHour == nil || usage.FiveHour.WindowStats == nil {
+		t.Fatalf("expected local five_hour window stats, got %#v", usage)
+	}
+	if usage.FiveHour.WindowStats.Cost != 0.42 || usage.FiveHour.WindowStats.UserCost != 0.42 {
+		t.Fatalf("expected fal cost to be populated from usage logs, got %#v", usage.FiveHour.WindowStats)
+	}
+	if usageRepo.windowAccountID != 7101 || !usageRepo.windowStart.Equal(windowStart) {
+		t.Fatalf("unexpected window query account=%d start=%s", usageRepo.windowAccountID, usageRepo.windowStart)
+	}
+}
+
+func TestAccountUsageService_GetUsageBatch_FalUsesLocalWindowStats(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubOpenAIAccountRepo{accounts: []Account{{
+		ID:       7201,
+		Platform: PlatformFal,
+		Type:     AccountTypeAPIKey,
+	}}}
+	svc := &AccountUsageService{
+		accountRepo: repo,
+		usageLogRepo: &usageBatchLogRepoStub{windowStats: &usagestats.AccountStats{
+			Requests: 2,
+			Cost:     1.25,
+			UserCost: 1.25,
+		}},
+		cache: NewUsageCache(),
+	}
+
+	usageByAccount, errorsByAccount, err := svc.GetUsageBatch(context.Background(), []int64{7201}, false)
+	if err != nil {
+		t.Fatalf("GetUsageBatch() error = %v", err)
+	}
+	if errorsByAccount[7201] != "" {
+		t.Fatalf("expected no fal batch usage error, got %q", errorsByAccount[7201])
+	}
+	usage := usageByAccount[7201]
+	if usage == nil || usage.Source != "local" || usage.FiveHour == nil || usage.FiveHour.WindowStats == nil {
+		t.Fatalf("expected fal local usage, got %#v", usage)
+	}
+	if usage.FiveHour.WindowStats.Requests != 2 || usage.FiveHour.WindowStats.Cost != 1.25 {
+		t.Fatalf("unexpected fal batch window stats: %#v", usage.FiveHour.WindowStats)
 	}
 }

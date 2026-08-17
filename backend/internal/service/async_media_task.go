@@ -124,10 +124,14 @@ type TerminalUsageLogInput struct {
 	BillingType int8  // 0=balance / 1=subscription
 	RequestType int16 // RequestTypeSync 等
 
-	ImageCount   int
-	ImageSize    string
-	ImageQuality string
-	BillingTier  string // size_tier
+	ImageCount         int
+	ImageSize          string
+	ImageInputSize     string
+	ImageQuality       string
+	ImageOutputSize    string
+	ImageSizeSource    string
+	ImageSizeBreakdown map[string]int
+	BillingTier        string // size_tier
 
 	TaskID        int64
 	ImageURLs     []string
@@ -163,6 +167,6 @@ type AsyncMediaTaskRepository interface {
 	// ListUnfinished 扫描未终结（pending/running）的任务，供 reconciler 兜底处理。
 	ListUnfinished(ctx context.Context, limit int) ([]*AsyncMediaTask, error)
 	// InsertTerminalUsageLog 在任务终态追加写一条 usage_log（charged/refunded）。
-	// 使用 ON CONFLICT (request_id, api_key_id) DO NOTHING 保证幂等，返回是否实际写入。
+	// 成功终态可覆盖同 request/API key 的 0 费用占位/超时记录；返回是否实际写入或更新。
 	InsertTerminalUsageLog(ctx context.Context, in *TerminalUsageLogInput) (bool, error)
 }

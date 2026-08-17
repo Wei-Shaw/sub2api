@@ -100,3 +100,35 @@ func TestResponsesImageStatusIgnoresCanceledContext(t *testing.T) {
 	require.Equal(t, []string{"https://upstream.example/canceled.png"}, store.status.URLs)
 	require.Equal(t, []string{"completed after disconnect"}, store.status.Texts)
 }
+
+func TestResponsesImageStatusFailureDoesNotOverwriteSucceeded(t *testing.T) {
+	store := &responsesImageStatusStoreStub{}
+	svc := &OpenAIGatewayService{responsesImageStatusStore: store}
+	ctx := WithResponsesImageStatusRequestID(context.Background(), "img-success")
+
+	svc.BeginResponsesImageStatus(ctx, "img-success")
+	svc.SucceedResponsesImageStatus(ctx, &OpenAIForwardResult{ImageOutputURLs: []string{"https://img/out.png"}})
+	svc.FailResponsesImageStatus(ctx, "img-success", "Image generation timed out; task is still processing")
+	svc.BeginResponsesImageStatus(ctx, "img-success")
+	svc.MarkResponsesImageStatusRunning(ctx, "img-success")
+
+	require.Equal(t, ResponsesImageStatusSucceeded, store.status.Status)
+	require.Equal(t, 100, store.status.Progress)
+	require.Nil(t, store.status.Error)
+	require.Equal(t, []string{"https://img/out.png"}, store.status.URLs)
+}
+
+func TestResponsesImageStatusSucceededCanOverwriteTimeoutFailed(t *testing.T) {
+	store := &responsesImageStatusStoreStub{}
+	svc := &OpenAIGatewayService{responsesImageStatusStore: store}
+	ctx := WithResponsesImageStatusRequestID(context.Background(), "img-timeout")
+
+	svc.BeginResponsesImageStatus(ctx, "img-timeout")
+	svc.FailResponsesImageStatus(ctx, "img-timeout", "Image generation timed out; task is still processing")
+	svc.SucceedResponsesImageStatus(ctx, &OpenAIForwardResult{ImageOutputURLs: []string{"https://img/out.png"}})
+
+	require.Equal(t, ResponsesImageStatusSucceeded, store.status.Status)
+	require.Equal(t, 100, store.status.Progress)
+	require.Nil(t, store.status.Error)
+	require.Equal(t, []string{"https://img/out.png"}, store.status.URLs)
+}

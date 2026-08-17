@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -284,17 +286,23 @@ type falTestServer struct {
 	statusCode  int      // status 接口返回的 HTTP code（非 200 表示上游错误）
 	queueStatus string   // status 接口返回的 fal status 字段
 	images      []string // result 接口返回的图片
+	imageWidth  int
+	imageHeight int
+	submitPath  string
 	statusHits  int32
 }
 
 func newFalTestServer(t *testing.T) *falTestServer {
 	t.Helper()
-	fs := &falTestServer{statusCode: http.StatusOK, queueStatus: fal.StatusCompleted, images: []string{"https://fal.media/out-1.png"}}
+	fs := &falTestServer{
+		statusCode: http.StatusOK, queueStatus: fal.StatusCompleted,
+		images: []string{"https://fal.media/out-1.png"}, imageWidth: 1536, imageHeight: 1024,
+	}
 	fs.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		path := req.URL.Path
 		switch {
 		case req.Method == http.MethodPost && !strings.Contains(path, "/requests/"):
-			// submit
+			fs.submitPath = path
 			reqID := "req-test-1"
 			base := fs.URL + path + "/requests/" + reqID
 			writeJSON(w, http.StatusOK, fal.SubmitResponse{
@@ -312,13 +320,15 @@ func newFalTestServer(t *testing.T) *falTestServer {
 				return
 			}
 			writeJSON(w, http.StatusOK, fal.StatusResponse{Status: fs.queueStatus, RequestID: "req-test-1"})
+		case req.Method == http.MethodGet && strings.HasSuffix(path, "/generated.png"):
+			w.Header().Set("Content-Type", "image/png")
+			_ = png.Encode(w, image.NewRGBA(image.Rect(0, 0, 3, 2)))
 		case req.Method == http.MethodPut && strings.HasSuffix(path, "/cancel"):
 			w.WriteHeader(http.StatusOK)
 		case req.Method == http.MethodGet:
-			// result
 			resp := fal.Response{}
 			for _, u := range fs.images {
-				resp.Images = append(resp.Images, fal.Image{URL: u})
+				resp.Images = append(resp.Images, fal.Image{URL: u, Width: fs.imageWidth, Height: fs.imageHeight})
 			}
 			writeJSON(w, http.StatusOK, resp)
 		default:
@@ -347,6 +357,7 @@ func newImageBillingResolver(t *testing.T, groupID int64, model string, price1K 
 				BillingMode: BillingModeImage,
 				Intervals: []PricingInterval{
 					{TierLabel: ImageBillingSize1K, PerRequestPrice: testPtrFloat64(price1K)},
+					{TierLabel: ImageBillingSize2K, PerRequestPrice: testPtrFloat64(price1K)},
 				},
 			},
 		},
@@ -443,13 +454,43 @@ func TestAsyncMedia_SubmitAndSucceed_RefundsDelta(t *testing.T) {
 	// 终态写一条 charged usage_log
 	require.Equal(t, 1, taskRepo.usageLogCount())
 	require.Equal(t, BillingStatusCharged, taskRepo.lastUsageLog().BillingStatus)
+	usage := taskRepo.lastUsageLog()
+	require.Equal(t, "1024x1024", usage.ImageInputSize)
+	require.Equal(t, "1536x1024", usage.ImageOutputSize)
+}
+
+func TestAsyncMediaDetectsOutputSizeWhenFalMetadataMissing(t *testing.T) {
+	fs := newFalTestServer(t)
+	defer fs.Close()
+	fs.images = []string{fs.URL + "/generated.png"}
+	fs.imageWidth = 0
+	fs.imageHeight = 0
+
+	groupID := int64(1)
+	resolver := newImageBillingResolver(t, groupID, domain.FalSlugTextToImage, 0.05)
+	userRepo := &fakeUserRepo{balance: 100}
+	taskRepo := newFakeTaskRepo()
+	cos, _ := newCOSServiceForTest(t, &fakeObjectStore{})
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, cos)
+	svc.SetPollInterval(time.Millisecond)
+
+	in := newSubmitInput(newFalAccount(fs.URL), groupID, 1)
+	in.Input.Size = "auto"
+	task, err := svc.SubmitAsync(context.Background(), in)
+	require.NoError(t, err)
+	_, err = svc.WaitForTerminal(context.Background(), task, in)
+	require.NoError(t, err)
+	require.Equal(t, "auto", taskRepo.lastUsageLog().ImageInputSize)
+
+	require.Equal(t, 1, taskRepo.usageLogCount())
+	require.Equal(t, "3x2", taskRepo.lastUsageLog().ImageOutputSize)
 }
 
 func TestAsyncMediaWriteTerminalUsageLogPersistsImageRequestParameters(t *testing.T) {
 	taskRepo := newFakeTaskRepo()
 	svc := &AsyncMediaService{taskRepo: taskRepo}
 	accountID := int64(7)
-	size := "3840x2160"
+	size := "auto"
 	quality := "high"
 	task := &AsyncMediaTask{
 		ID:                41,
@@ -464,11 +505,20 @@ func TestAsyncMediaWriteTerminalUsageLogPersistsImageRequestParameters(t *testin
 		RateMultiplier:    1,
 	}
 
-	svc.writeTerminalUsageLog(context.Background(), task, BillingTypeBalance, 0.8, BillingStatusCharged, nil, nil)
+	svc.writeTerminalUsageLog(
+		context.Background(), task, BillingTypeBalance, 0.8, BillingStatusCharged,
+		[]string{"https://fal.media/out.png"}, nil, []string{"1536x1024"},
+	)
 
 	require.Equal(t, 1, taskRepo.usageLogCount())
-	require.Equal(t, size, taskRepo.lastUsageLog().ImageSize)
-	require.Equal(t, quality, taskRepo.lastUsageLog().ImageQuality)
+	usage := taskRepo.lastUsageLog()
+	require.Equal(t, 1, usage.ImageCount)
+	require.Equal(t, ImageBillingSize2K, usage.ImageSize)
+	require.Equal(t, "auto", usage.ImageInputSize)
+	require.Equal(t, "1536x1024", usage.ImageOutputSize)
+	require.Equal(t, ImageSizeSourceDefault, usage.ImageSizeSource)
+	require.Equal(t, map[string]int{ImageBillingSize1K: 1}, usage.ImageSizeBreakdown)
+	require.Equal(t, quality, usage.ImageQuality)
 }
 
 func TestAsyncMedia_UpstreamFailure_RefundsFull(t *testing.T) {
@@ -620,4 +670,95 @@ func TestAsyncMedia_PricingMissing_RejectsSubmit(t *testing.T) {
 	require.InDelta(t, 100.0, userRepo.balance, 1e-9)
 	require.Equal(t, 0, userRepo.refundCount())
 	require.Equal(t, 0, taskRepo.usageLogCount())
+}
+
+func TestAsyncMediaMarkSucceededReloadsAlreadySucceededTaskAndRepairsUsageLog(t *testing.T) {
+	taskRepo := newFakeTaskRepo()
+	svc := &AsyncMediaService{taskRepo: taskRepo}
+	accountID := int64(7)
+	size := "1024x1024"
+	quality := "auto"
+	stored := &AsyncMediaTask{
+		ID:                77,
+		UserID:            22,
+		APIKeyID:          11,
+		AccountID:         &accountID,
+		InternalRequestID: "req-already-succeeded",
+		RequestedModel:    "gpt-image-2",
+		UpstreamModel:     amStrPtr("openai/gpt-image-2"),
+		ImageSize:         &size,
+		Quality:           &quality,
+		NumImages:         1,
+		Status:            AsyncMediaStatusSucceeded,
+		HeldCost:          0.2,
+		FinalCost:         0.2,
+		RateMultiplier:    1,
+		ImageURLs:         []string{"https://fal.media/out.png"},
+		CosURLs:           []string{"https://img.example/out.png"},
+	}
+	taskRepo.byID[stored.ID] = stored
+	stale := *stored
+	stale.Status = AsyncMediaStatusRunning
+	stale.ImageURLs = nil
+	stale.CosURLs = nil
+	stale.FinalCost = 0
+
+	svc.markSucceeded(context.Background(), &stale, BillingTypeBalance, []string{"https://fal.media/out.png"}, []string{"1024x1024"})
+
+	require.Equal(t, AsyncMediaStatusSucceeded, stale.Status)
+	require.Equal(t, []string{"https://fal.media/out.png"}, stale.ImageURLs)
+	require.Equal(t, []string{"https://img.example/out.png"}, stale.CosURLs)
+	require.InDelta(t, 0.2, stale.FinalCost, 1e-9)
+	require.Equal(t, 1, taskRepo.usageLogCount())
+	require.Equal(t, BillingStatusCharged, taskRepo.lastUsageLog().BillingStatus)
+	require.Equal(t, ImageBillingSize1K, taskRepo.lastUsageLog().ImageSize)
+}
+
+func TestResolveFalUpstreamModelUsesEditEndpointForImagesEdits(t *testing.T) {
+	account := &Account{
+		Platform: PlatformFal,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-image-2":      "openai/gpt-image-2",
+				"gpt-image-2-edit": "openai/gpt-image-2/edit",
+			},
+		},
+	}
+
+	require.Equal(t, "openai/gpt-image-2", resolveFalUpstreamModel(account, "gpt-image-2", false))
+	require.Equal(t, "openai/gpt-image-2/edit", resolveFalUpstreamModel(account, "gpt-image-2", true))
+}
+
+func TestResolveFalUpstreamModelAppendsEditToCustomBaseEndpoint(t *testing.T) {
+	account := &Account{
+		Platform: PlatformFal,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"custom-image": "custom-org/custom-image-model",
+			},
+		},
+	}
+
+	require.Equal(t, "custom-org/custom-image-model/edit", resolveFalUpstreamModel(account, "custom-image", true))
+	require.Equal(t, domain.FalSlugImageEdit, resolveFalUpstreamModel(nil, "gpt-image-2", true))
+}
+
+func TestAsyncMediaEditSubmitsToFalEditEndpoint(t *testing.T) {
+	fs := newFalTestServer(t)
+	defer fs.Close()
+
+	groupID := int64(1)
+	resolver := newImageBillingResolver(t, groupID, domain.FalSlugImageEdit, 0.05)
+	userRepo := &fakeUserRepo{balance: 100}
+	taskRepo := newFakeTaskRepo()
+	svc := NewAsyncMediaService(taskRepo, userRepo, nil, newTestBillingService(), resolver, nil)
+
+	in := newSubmitInput(newFalAccount(fs.URL), groupID, 1)
+	in.Input.IsEdit = true
+	in.Input.ImageURLs = []string{"data:image/png;base64,aW1hZ2U="}
+
+	task, err := svc.SubmitAsync(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, domain.FalSlugImageEdit, amDerefStr(task.UpstreamModel))
+	require.Equal(t, "/openai/gpt-image-2/edit", fs.submitPath)
 }

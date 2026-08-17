@@ -300,8 +300,10 @@ func (h *FalGatewayHandler) runPseudoSync(
 	finalTask, err := h.asyncMedia.WaitForTerminal(waitCtx, task, submitInput)
 	if err != nil {
 		if errors.Is(err, service.ErrAsyncMediaPending) {
-			// 伪同步超时：任务不退费、不终结，由 reconciler 兜底；返回错误并附带 request_id。
+			// 伪同步超时或客户端断开：任务不退费、不终结。这里接管 image status，
+			// 用 detached context 继续轮询到 fal 终态，避免前端刷新把状态误写成 failed。
 			reqLog.Info("fal.images.pseudo_sync_timeout", zap.Int64("task_id", task.ID))
+			h.continuePseudoSyncImageStatus(c.Request.Context(), task, submitInput, reqLog)
 			c.JSON(http.StatusGatewayTimeout, gin.H{
 				"error": gin.H{
 					"type":       "timeout_error",
@@ -309,7 +311,7 @@ func (h *FalGatewayHandler) runPseudoSync(
 					"request_id": derefStringPtr(task.UpstreamRequestID),
 				},
 			})
-			return false
+			return true
 		}
 		reqLog.Warn("fal.images.wait_failed", zap.Int64("task_id", task.ID), zap.Error(err))
 		h.jsonError(c, http.StatusBadGateway, "api_error", "Image generation failed")
@@ -327,6 +329,47 @@ func (h *FalGatewayHandler) runPseudoSync(
 
 	onSuccess(finalTask)
 	return true
+}
+
+func (h *FalGatewayHandler) continuePseudoSyncImageStatus(parentCtx context.Context, task *service.AsyncMediaTask, submitInput *service.AsyncMediaSubmitInput, reqLog *zap.Logger) {
+	if h == nil || h.asyncMedia == nil || h.imagesService == nil || task == nil || submitInput == nil {
+		return
+	}
+	requestID := service.ResponsesImageStatusRequestIDFromContext(parentCtx)
+	if requestID == "" {
+		return
+	}
+	deadline := time.Now().Add(h.asyncMedia.FailTimeout() + time.Minute)
+	if task.FailDeadlineAt != nil && task.FailDeadlineAt.After(time.Now()) {
+		deadline = task.FailDeadlineAt.Add(time.Minute)
+	}
+	go func() {
+		ctx, cancel := context.WithDeadline(context.Background(), deadline)
+		defer cancel()
+		ctx = service.WithResponsesImageStatusRequestID(ctx, requestID)
+		finalTask, err := h.asyncMedia.WaitForTerminal(ctx, task, submitInput)
+		if err != nil {
+			message := "image generation failed"
+			if errors.Is(err, service.ErrAsyncMediaPending) {
+				message = "image generation timed out"
+			}
+			reqLog.Warn("fal.images.background_wait_failed", zap.Int64("task_id", task.ID), zap.String("request_id", requestID), zap.Error(err))
+			h.imagesService.FailResponsesImageStatus(ctx, requestID, message)
+			return
+		}
+		if finalTask == nil || finalTask.Status != service.AsyncMediaStatusSucceeded {
+			message := "image generation failed"
+			if finalTask != nil && finalTask.ErrorReason != nil && strings.TrimSpace(*finalTask.ErrorReason) != "" {
+				message = strings.TrimSpace(*finalTask.ErrorReason)
+			}
+			h.imagesService.FailResponsesImageStatus(ctx, requestID, message)
+			return
+		}
+		result := &service.OpenAIForwardResult{ImageOutputURLs: finalTask.ImageURLs, ImageOutputCosURLs: finalTask.CosURLs}
+		h.imagesService.MarkResponsesImageStatusUpstreamDone(ctx, result)
+		h.imagesService.SucceedResponsesImageStatus(ctx, result)
+		reqLog.Info("fal.images.background_wait_succeeded", zap.Int64("task_id", finalTask.ID), zap.String("request_id", requestID), zap.Strings("image_urls", finalTask.ResultURLs()))
+	}()
 }
 
 // buildSubmitInput 组装异步任务提交入参（账号由调用方预选）。
