@@ -571,6 +571,9 @@ export default {
         responsesMode: 'Responses API support',
         responsesModeDesc:
           'Only applies to the OpenAI API Key text forwarding path. Auto follows probe results; force modes override probing.',
+        responsesImageGeneration: 'Responses image generation',
+        responsesImageGenerationDesc:
+          'Controls whether this account is selected for /responses image-generation requests. Enabled by default; disabling it only excludes image intent and does not affect normal text or compact requests.',
         responsesModeAuto: 'Auto',
         responsesModeForceResponses: 'Force Responses',
         responsesModeForceChatCompletions: 'Force Chat Completions',

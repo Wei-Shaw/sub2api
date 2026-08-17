@@ -653,6 +653,34 @@ func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {
 
 		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
 	})
+
+	t.Run("responses 生图能力：缺省开启", func(t *testing.T) {
+		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponsesImageGeneration))
+	})
+
+	t.Run("responses 生图能力：显式关闭仅排除生图请求", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra:    map[string]any{OpenAIResponsesImageGenerationEnabledExtraKey: false},
+		}
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponsesImageGeneration))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses))
+		require.True(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+	})
+
+	t.Run("responses 生图能力：APIKey 的 Responses 探测失败仍然排除", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				OpenAIResponsesImageGenerationEnabledExtraKey: true,
+				"openai_responses_supported":                  false,
+			},
+		}
+		require.False(t, account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponsesImageGeneration))
+	})
 }
 
 func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {

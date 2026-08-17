@@ -1551,6 +1551,7 @@ export interface OpenAICompactState {
 export interface OpenAIResponsesState {
   openai_responses_mode?: OpenAIResponsesMode
   openai_responses_supported?: boolean
+  openai_responses_image_generation_enabled?: boolean
 }
 
 export interface CreateAccountRequest {

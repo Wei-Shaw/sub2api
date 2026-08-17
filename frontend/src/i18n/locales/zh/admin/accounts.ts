@@ -645,6 +645,9 @@ export default {
         responsesMode: 'Responses API 支持',
         responsesModeDesc:
           '仅对 OpenAI API Key 的文本转发链路生效。自动跟随探测结果，强制模式会覆盖自动探测。',
+        responsesImageGeneration: 'Responses 生图支持',
+        responsesImageGenerationDesc:
+          '控制本账号是否参与 /responses 生图请求的调度。默认开启；关闭后仅排除生图意图请求，不影响普通文本和 compact 请求。',
         responsesModeAuto: '自动',
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',

@@ -119,12 +119,22 @@ const (
 	// OpenAIEndpointCapabilityResponses 表示上游确实提供 /v1/responses 端点。
 	// 与其他能力不同：支持状态来自 accounts.extra 的自动探测标记
 	// （openai_responses_supported / openai_responses_mode），而非
-	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
-	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
+	// credentials["openai_capabilities"] 配置集。用于需要原生 Responses 的
+	// 生图或 compact 调度，避免把请求调度到会在 forward 阶段被降级为 Chat
+	// Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// Explicit image-generation intent on /v1/responses has a separate account
+	// capability, so text/compact Responses traffic can remain enabled when an
+	// upstream cannot handle image generation.
+	OpenAIEndpointCapabilityResponsesImageGeneration OpenAIEndpointCapability = "responses_image_generation"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+
+// OpenAIResponsesImageGenerationEnabledExtraKey stores the per-account
+// /responses image-generation eligibility override. Missing values mean true
+// for backwards compatibility with existing accounts.
+const OpenAIResponsesImageGenerationEnabledExtraKey = "openai_responses_image_generation_enabled"
 
 // GrokMediaEligibleExtraKey is an optional per-account override stored in
 // accounts.extra. true forces media routing on, false disables it, and an
@@ -1850,6 +1860,33 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
 		// 配置集校验。
 		capability = OpenAIEndpointCapabilityChatCompletions
+	case OpenAIEndpointCapabilityResponsesImageGeneration:
+		if !a.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityResponses) {
+			return false
+		}
+		if value, ok := a.Extra[OpenAIResponsesImageGenerationEnabledExtraKey]; ok && value != nil {
+			switch parsed := value.(type) {
+			case bool:
+				return parsed
+			case string:
+				if boolValue, err := strconv.ParseBool(strings.TrimSpace(parsed)); err == nil {
+					return boolValue
+				}
+			case json.Number:
+				if numberValue, err := strconv.ParseFloat(parsed.String(), 64); err == nil {
+					return numberValue != 0
+				}
+			case float64:
+				return parsed != 0
+			case float32:
+				return parsed != 0
+			case int:
+				return parsed != 0
+			case int64:
+				return parsed != 0
+			}
+		}
+		return true
 	case OpenAIEndpointCapabilityAlphaSearch:
 		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
 		// chatgpt.com/backend-api/codex/alpha/search，API key 走
