@@ -1,7 +1,7 @@
 package service
 
 // 请求级定价与利润门回归：请求级 pricingAt 定价上下文、门复用（failover 阈值稳定）、
-// 生图意图跳门、U 使用账号倍率且与探测新鲜度解耦、
+// Responses 文本能力利润门、U 使用账号倍率且与探测新鲜度解耦、
 // 用量记录定价时刻取值。
 
 import (
@@ -109,8 +109,9 @@ func TestProfitControl_UsesAccountRateInsteadOfProbeSnapshot(t *testing.T) {
 	require.Equal(t, openAIProfitFilterReasonThreshold, reason)
 }
 
-// 显式生图意图（requiredCapability=Responses）在唯一调度入口跳门（图片边界不装门）。
-func TestProfitControl_ResponsesImageIntentSkipsGateAtScheduler(t *testing.T) {
+// Responses 是端点能力，不代表媒体请求；原生远程压缩同样要求该能力，
+// 因此唯一文本调度入口必须照常安装利润门。
+func TestProfitControl_ResponsesCapabilityUsesTextGateAtScheduler(t *testing.T) {
 	now := time.Now()
 	expensive := upstreamCostTestAccount(51, UpstreamBillingProbeStatusOK, 0.8, now.Add(-time.Minute), 30*time.Minute)
 	expensive.Status = StatusActive
@@ -129,12 +130,8 @@ func TestProfitControl_ResponsesImageIntentSkipsGateAtScheduler(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoAvailableAccounts, "文本能力必须过利润门")
 
 	selection, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "", "gpt-test", nil, OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, true)
-	require.NoError(t, err, "生图意图不装门，保持既有调度")
-	require.NotNil(t, selection)
-	require.Equal(t, expensive.ID, selection.Account.ID)
-	if selection.ReleaseFunc != nil {
-		selection.ReleaseFunc()
-	}
+	require.ErrorIs(t, err, ErrNoAvailableAccounts, "Responses 文本能力不得绕过利润门")
+	require.Nil(t, selection)
 }
 
 // 账号倍率缺失一律视为非法保守拒绝；手工或同步维护了倍率的任意账号类型都按

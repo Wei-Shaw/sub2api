@@ -145,6 +145,34 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 	}
 }
 
+func TestIsOpenAIResponsesCompactPathUsesLegacyEndpointShape(t *testing.T) {
+	legacyPaths := []string{
+		"/v1/responses/compact",
+		"/v1/responses/compact/detail",
+		"/responses/compact/",
+	}
+	for _, path := range legacyPaths {
+		t.Run("legacy_"+path, func(t *testing.T) {
+			c := newResponsesSuffixTestContext(t, path)
+			require.True(t, IsOpenAIResponsesCompactPath(c))
+		})
+	}
+
+	nonLegacyPaths := []string{
+		"/v1/responses",
+		"/openai/v1/responses",
+		"/responses",
+		"/backend-api/codex/responses",
+		"/v1/responses/resp_123/cancel",
+	}
+	for _, path := range nonLegacyPaths {
+		t.Run("non_legacy_"+path, func(t *testing.T) {
+			c := newResponsesSuffixTestContext(t, path)
+			require.False(t, IsOpenAIResponsesCompactPath(c))
+		})
+	}
+}
+
 func TestAppendOpenAIResponsesRequestPathSuffixRefusesUnsafeSuffix(t *testing.T) {
 	// 调用方漏了校验时，拼接函数本身也不得把不合规片段带进上游 URL。
 	require.Equal(t, chatgptCodexURL, appendOpenAIResponsesRequestPathSuffix(chatgptCodexURL, "/../../x"))

@@ -5,10 +5,57 @@
 
 import { apiClient } from '../client'
 
-export type Provider = 'openai' | 'anthropic' | 'gemini' | 'grok'
+export type Provider =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'grok'
+  | 'antigravity'
+  | 'kimi'
+  | 'zhipu'
+  | 'deepseek'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'
+/**
+ * probe = LLM 探活（默认）；quota = 仅查关联账号用量（零 LLM 成本）；
+ * quota_probe = 探活 + 配额快照挂主模型行。
+ */
+export type CheckMode = 'probe' | 'quota' | 'quota_probe'
+
+/** 配额快照中的单个用量窗口（与后端 domain.MonitorQuotaTier 一致）。 */
+export interface MonitorQuotaTier {
+  /** 5h | 7d | 7d-sonnet | 7d-fable | 30d | daily | weekly | total */
+  window: string
+  /** 同窗口多档时的机器标识（gemini shared/pro/flash、grok requests/tokens、antigravity 模型名） */
+  label?: string
+  used_percent: number
+  used?: number
+  limit?: number
+  /** RFC3339；空表示无重置时间 */
+  reset_at?: string
+}
+
+export interface MonitorBalance {
+  currency: string
+  balance: number
+}
+
+/** 归一化配额快照（与后端 domain.MonitorQuotaSnapshot 一致）。 */
+export interface MonitorQuotaSnapshot {
+  /** usage | cn_quota | cn_balance */
+  source: string
+  success: boolean
+  tiers?: MonitorQuotaTier[]
+  balance?: number | null
+  balances?: MonitorBalance[]
+  currency?: string
+  plan_level?: string
+  /** 401/403 鉴权失败标记（推导为 failed 状态） */
+  credential_invalid?: boolean
+  error?: string
+  fetched_at: string
+}
 
 export interface ChannelMonitor {
   id: number
@@ -47,6 +94,12 @@ export interface ChannelMonitor {
   extra_headers: Record<string, string>
   body_override_mode: BodyOverrideMode
   body_override: Record<string, unknown> | null
+  /** 检测模式：probe（默认）/ quota / quota_probe */
+  check_mode: CheckMode
+  /** 配额模式关联的账号 ID；探活模式为 null */
+  account_id: number | null
+  /** 主模型最近一次配额快照（配额模式；无历史时为 null） */
+  latest_quota?: MonitorQuotaSnapshot | null
 }
 
 export interface ExtraModelStatus {
@@ -75,8 +128,14 @@ export interface CreateParams {
   name: string
   provider: Provider
   api_mode?: APIMode
+  /** 探活模式必填（base origin）；quota 模式可留空 */
   endpoint: string
+  /** 探活模式必填；quota 模式可留空 */
   api_key: string
+  /** 缺省 probe；antigravity 仅支持 quota */
+  check_mode?: CheckMode
+  /** 配额模式必填：数据源账号（provider 需与账号平台一致） */
+  account_id?: number | null
   primary_model: string
   extra_models?: string[]
   group_name?: string
@@ -101,6 +160,8 @@ export interface CheckResult {
   ping_latency_ms: number | null
   message: string
   checked_at: string
+  /** 配额模式（quota / quota_probe 主模型行）附带的配额快照 */
+  quota?: MonitorQuotaSnapshot | null
 }
 
 export interface RunNowResponse {
@@ -115,6 +176,8 @@ export interface HistoryItem {
   ping_latency_ms: number | null
   message: string
   checked_at: string
+  /** 配额快照（配额模式行；探活行为空） */
+  quota?: MonitorQuotaSnapshot | null
 }
 
 export interface HistoryParams {
