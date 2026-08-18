@@ -430,7 +430,7 @@ REDACTED
 	if err := json.Unmarshal(payload, &wire); err != nil {
 		return nil, false, err
 REDACTED
-	if wire.Type == "response.completed" || wire.Type == "response.incomplete" || wire.Type == "response.failed" {
+	if isResponsesClientToolTerminalEvent(wire.Type) {
 		restored, changed, err := RestoreResponsesClientToolPayload(payload, r.adapter)
 		if err != nil {
 			return nil, false, err
@@ -463,6 +463,15 @@ REDACTED
 		result = append(result, encoded)
 REDACTED
 	return result, true, nil
+REDACTED
+
+func isResponsesClientToolTerminalEvent(typ string) bool {
+	switch strings.TrimSpace(typ) {
+	case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 func (r *ResponsesClientToolStreamRestorer) clientToolEventPayload(payload []byte) bool {
