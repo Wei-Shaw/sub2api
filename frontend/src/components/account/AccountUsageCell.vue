@@ -422,6 +422,21 @@
       </div>
     </template>
 
+    <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
+    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek'">
+      <div class="space-y-1">
+        <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
+             余额端点、coding 探测也不适用）才回落到占位符。 -->
+        <div
+          v-if="!cnQuotaCellVisible && !cnBalanceCellVisible"
+          class="text-xs text-gray-400"
+          :title="t('admin.accounts.cnProviders.noBalanceEndpoint')"
+        >-</div>
+        <CNProviderQuotaCell :account="account" />
+        <CNProviderBalanceCell :account="account" />
+      </div>
+    </template>
+
     <!-- Gemini platform: show quota + local usage window -->
     <template v-else-if="account.platform === 'gemini'">
       <!-- Auth Type + Tier Badge (first line) -->
@@ -625,7 +640,10 @@ import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
+import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
+import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
+import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn } from './credentialsBuilder'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -690,6 +708,15 @@ let visibilityObserver: IntersectionObserver | null = null
 const showUsageWindows = computed(() => {
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
+  // CN providers: apikey 账号也有滚动用量窗口（coding plan）或余额（payg），
+  // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
+  if (
+    props.account.platform === 'kimi' ||
+    props.account.platform === 'zhipu' ||
+    props.account.platform === 'deepseek'
+  ) {
+    return true
+  }
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
@@ -711,6 +738,15 @@ const shouldFetchUsage = computed(() => {
   }
   return false
 })
+
+// CN 供应商子单元格可见性（与 CNProviderQuotaCell / CNProviderBalanceCell 共用
+// credentialsBuilder 的单一实现）：都不可见时显示 `-` 占位符。
+const cnAccountMode = computed(() => {
+  const mode = props.account.credentials?.account_mode
+  return typeof mode === 'string' ? mode : ''
+})
+const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account.platform, cnAccountMode.value))
+const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account.platform, cnAccountMode.value))
 
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
