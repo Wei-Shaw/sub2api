@@ -69,7 +69,7 @@ REDACTED
 	require.False(t, second.CreatedAt.IsZero())
 REDACTED
 
-func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
+func TestOpsServiceRecordErrorBatch_DoesNotFallbackToSingleInsertsWhenBatchFails(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -94,7 +94,7 @@ REDACTED
 REDACTED)
 REDACTED
 	require.Equal(t, 1, batchCalls)
-	require.Equal(t, 2, singleCalls)
+	require.Zero(t, singleCalls)
 REDACTED
 
 func TestOpsServiceRecordErrorPersistsExplicitAccountAuthStatusZero(t *testing.T) {
