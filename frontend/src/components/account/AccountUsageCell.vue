@@ -365,6 +365,7 @@
             label="24h"
             :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint', { limit: formatCompactNumber(grokFreeTokenBar.limit) REDACTED)"
             :utilization="grokFreeTokenBar.utilization"
+            :window-stats="grokFreeQuotaUsage"
             :show-now-when-idle="true"
             color="emerald"
           />
@@ -378,6 +379,7 @@
             label="7d"
             :utilization="grokWeeklyBillingBar.utilization"
             :resets-at="grokWeeklyBillingBar.resetsAt"
+            :window-stats="grokWeeklyBillingBar.windowStats"
             :show-now-when-idle="true"
             color="indigo"
           />
@@ -386,6 +388,7 @@
             label="30d"
             :utilization="grokMonthlyBillingBar.utilization"
             :resets-at="grokMonthlyBillingBar.resetsAt"
+            :window-stats="grokMonthlyBillingBar.windowStats"
             :show-now-when-idle="true"
             color="indigo"
           />
@@ -1108,9 +1111,16 @@ REDACTED)
 interface GrokQuotaBarInfo {
   utilization: number
   resetsAt: string | null
+  windowStats?: WindowStats | null
 REDACTED
 
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
+const grokLocalUsage7d = computed(() => (
+  usageInfo.value?.grok_local_usage_7d || usageInfo.value?.seven_day?.window_stats || null
+))
+const grokLocalUsageMonthly = computed(() => (
+  usageInfo.value?.grok_local_usage_monthly || usageInfo.value?.thirty_day?.window_stats || null
+))
 const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   const billing = grokBilling.value
   if (billing?.period_type?.toLowerCase() !== 'weekly' || billing.usage_percent == null) {
@@ -1118,7 +1128,8 @@ const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
   REDACTED
   return {
     utilization: Math.min(100, Math.max(0, billing.usage_percent)),
-    resetsAt: billing.period_end || null
+    resetsAt: billing.period_end || null,
+    windowStats: grokLocalUsage7d.value
   REDACTED
 REDACTED)
 // Monthly used/limit % from billing probe (used_percent or derived from cents).
@@ -1142,7 +1153,8 @@ const grokMonthlyBillingBar = computed((): GrokQuotaBarInfo | null => {
   REDACTED
   return {
     utilization: Math.min(100, Math.max(0, utilization)),
-    resetsAt: billing.billing_period_end || billing.period_end || null
+    resetsAt: billing.billing_period_end || billing.period_end || null,
+    windowStats: grokLocalUsageMonthly.value
   REDACTED
 REDACTED)
 const formatGrokMoney = (value?: number | null) => {
