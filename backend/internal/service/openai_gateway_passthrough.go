@@ -258,6 +258,11 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	// Capture quota state as soon as the upstream headers arrive. Waiting for the
+	// body would leave the account schedulable throughout a long streaming response.
+	if !account.IsShadow() {
+		s.UpdateCodexUsageSnapshotFromHeaders(ctx, account, resp.Header)
+	}
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
@@ -294,13 +299,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageOutputSizes = result.imageOutputSizes
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, responseID)
-
-	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
-	if !account.IsShadow() {
-		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
-		}
-	}
 
 	if usage == nil {
 		usage = &OpenAIUsage{}
