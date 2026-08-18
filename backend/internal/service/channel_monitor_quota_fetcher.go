@@ -19,10 +19,12 @@ import (
 // 渠道监控「配额模式」的配额抓取器。
 //
 // 不直接对接上游，而是把账号侧现成的用量服务归一成 domain.MonitorQuotaSnapshot：
-//   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsage
-//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsage
-//   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalance
-//     （zhipu payg 无公开余额端点，QueryBalance 会返回该错误，原样透出）
+//   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsageForAccount
+//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsageForAccount
+//   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalanceForAccount
+//     （zhipu payg 无公开余额端点，探测会返回该错误，原样透出）
+// 数据源统一接受已加载的 *Account：fetchUncached 路由前 GetByID 一次并传下去，
+// 下游服务不再各自重载（每次 GetByID 含 proxies/groups 联查）。
 //
 // Fetch 永不返回 error：所有失败都降级为 Success=false 的快照照常入库，
 // 由 deriveQuotaCheckResult 推导为 failed/error 状态。
@@ -33,18 +35,19 @@ import (
 // 抓取由 singleflight 合并为一次上游查询。
 
 // monitorUsageSource 海外平台账号用量查询（AccountUsageService 天然满足）。
+// 传已加载的 *Account：fetchUncached 只 GetByID 一次，下游不再重复加载。
 type monitorUsageSource interface {
-	GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error)
+	GetUsageForAccount(ctx context.Context, account *Account, force ...bool) (*UsageInfo, error)
 REDACTED
 
 // monitorCNQuotaSource 国产 coding plan 滚动窗口额度探测（CNProviderQuotaService 天然满足）。
 type monitorCNQuotaSource interface {
-	QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error)
+	QueryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error)
 REDACTED
 
 // monitorCNBalanceSource 国产 payg 余额探测（CNProviderBalanceService 天然满足）。
 type monitorCNBalanceSource interface {
-	QueryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error)
+	QueryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error)
 REDACTED
 
 // monitorAccountSource 账号加载（AccountRepository 天然满足）。
@@ -191,23 +194,26 @@ REDACTED
 		return quotaErrorSnapshot("usage", "linked account not found", now)
 REDACTED
 
+	// 账号只在路由前加载这一次；已加载的 account 直接传给数据源
+	// （GetUsageForAccount / QueryUsageForAccount / QueryBalanceForAccount），
+	// 下游服务不再各自 GetByID（每次含 proxies/groups 联查）。
 	switch account.Platform {
 	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek:
 		if account.IsCodingPlan() {
-			return f.fetchCNQuota(ctx, accountID, now)
+			return f.fetchCNQuota(ctx, account, now)
 	REDACTED
-		return f.fetchCNBalance(ctx, accountID, now)
+		return f.fetchCNBalance(ctx, account, now)
 	default:
-		return f.fetchUsage(ctx, accountID, now)
+		return f.fetchUsage(ctx, account, now)
 REDACTED
 REDACTED
 
-// fetchUsage 海外平台：AccountUsageService.GetUsage → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchUsage(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchUsage 海外平台：AccountUsageService.GetUsageForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchUsage(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.usage == nil {
 		return quotaErrorSnapshot("usage", "usage service is not configured", now)
 REDACTED
-	usage, err := f.usage.GetUsage(ctx, accountID)
+	usage, err := f.usage.GetUsageForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{
@@ -336,12 +342,12 @@ REDACTED
 	return names
 REDACTED
 
-// fetchCNQuota 国产 coding plan：CNProviderQuotaService.QueryUsage → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchCNQuota 国产 coding plan：CNProviderQuotaService.QueryUsageForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.cnQuota == nil {
 		return quotaErrorSnapshot("cn_quota", "cn quota service is not configured", now)
 REDACTED
-	result, err := f.cnQuota.QueryUsage(ctx, accountID)
+	result, err := f.cnQuota.QueryUsageForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{
@@ -381,12 +387,12 @@ REDACTED
 	return snapshot
 REDACTED
 
-// fetchCNBalance 国产 payg：CNProviderBalanceService.QueryBalance → 快照。
-func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+// fetchCNBalance 国产 payg：CNProviderBalanceService.QueryBalanceForAccount → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, account *Account, now time.Time) *domain.MonitorQuotaSnapshot {
 	if f.cnBalance == nil {
 		return quotaErrorSnapshot("cn_balance", "cn balance service is not configured", now)
 REDACTED
-	result, err := f.cnBalance.QueryBalance(ctx, accountID)
+	result, err := f.cnBalance.QueryBalanceForAccount(ctx, account)
 	if err != nil {
 		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
 		return &domain.MonitorQuotaSnapshot{

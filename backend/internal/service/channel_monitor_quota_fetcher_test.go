@@ -20,18 +20,20 @@ import (
 type stubMonitorUsageSource struct {
 	usage *UsageInfo
 	err   error
-	// block 非 nil 时 GetUsage 阻塞在该 channel 上，用于并发/singleflight 测试。
+	// block 非 nil 时 GetUsageForAccount 阻塞在该 channel 上，用于并发/singleflight 测试。
 	block chan struct{REDACTED
 
-	mu      sync.Mutex
-	calls   int
-	lastCtx context.Context
+	mu          sync.Mutex
+	calls       int
+	lastCtx     context.Context
+	lastAccount *Account
 REDACTED
 
-func (s *stubMonitorUsageSource) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
+func (s *stubMonitorUsageSource) GetUsageForAccount(ctx context.Context, account *Account, force ...bool) (*UsageInfo, error) {
 	s.mu.Lock()
 	s.calls++
 	s.lastCtx = ctx
+	s.lastAccount = account
 	s.mu.Unlock()
 	if s.block != nil {
 		<-s.block
@@ -45,25 +47,35 @@ func (s *stubMonitorUsageSource) getCalls() int {
 	return s.calls
 REDACTED
 
-type stubMonitorCNQuotaSource struct {
-	result *CNProviderQuotaProbeResult
-	err    error
-	calls  int
+func (s *stubMonitorUsageSource) getLastAccount() *Account {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastAccount
 REDACTED
 
-func (s *stubMonitorCNQuotaSource) QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error) {
+type stubMonitorCNQuotaSource struct {
+	result      *CNProviderQuotaProbeResult
+	err         error
+	calls       int
+	lastAccount *Account
+REDACTED
+
+func (s *stubMonitorCNQuotaSource) QueryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	s.calls++
+	s.lastAccount = account
 	return s.result, s.err
 REDACTED
 
 type stubMonitorCNBalanceSource struct {
-	result *CNProviderBalanceResult
-	err    error
-	calls  int
+	result      *CNProviderBalanceResult
+	err         error
+	calls       int
+	lastAccount *Account
 REDACTED
 
-func (s *stubMonitorCNBalanceSource) QueryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error) {
+func (s *stubMonitorCNBalanceSource) QueryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error) {
 	s.calls++
+	s.lastAccount = account
 	return s.result, s.err
 REDACTED
 
@@ -190,6 +202,49 @@ REDACTED
 	require.Equal(t, "USD", snapshot.Balances[1].Currency)
 	require.False(t, snapshot.BalanceLow)
 	require.Empty(t, snapshot.Error)
+REDACTED
+
+// P2-6：fetchUncached 只 GetByID 一次，已加载的 account 指针直传数据源，
+// 三条路由都不能让下游重载账号。
+func TestQuotaFetcher_LoadsAccountOnceAndPassesItThrough(t *testing.T) {
+	t.Run("overseas usage", func(t *testing.T) {
+		fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+		acc := &Account{ID: 21, Platform: domain.PlatformAnthropicREDACTED
+		accounts.accounts[21] = acc
+		usage.usage = &UsageInfo{REDACTED
+
+		fetcher.Fetch(context.Background(), 21)
+
+		require.Equal(t, 1, accounts.calls)
+		require.Same(t, acc, usage.getLastAccount())
+		require.Equal(t, 1, usage.getCalls())
+REDACTED)
+
+	t.Run("cn coding plan", func(t *testing.T) {
+		fetcher, _, cnQuota, _, accounts := newQuotaFetcherTestSetup(t)
+		acc := &Account{ID: 22, Platform: domain.PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCodingREDACTEDREDACTED
+		accounts.accounts[22] = acc
+		cnQuota.result = &CNProviderQuotaProbeResult{Success: trueREDACTED
+
+		fetcher.Fetch(context.Background(), 22)
+
+		require.Equal(t, 1, accounts.calls)
+		require.Same(t, acc, cnQuota.lastAccount)
+		require.Equal(t, 1, cnQuota.calls)
+REDACTED)
+
+	t.Run("cn payg", func(t *testing.T) {
+		fetcher, _, _, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+		acc := &Account{ID: 23, Platform: domain.PlatformDeepseek, Credentials: map[string]any{"account_mode": AccountModePayGREDACTEDREDACTED
+		accounts.accounts[23] = acc
+		cnBalance.result = &CNProviderBalanceResult{Success: true, Available: true, Balance: 1, Currency: "CNY"REDACTED
+
+		fetcher.Fetch(context.Background(), 23)
+
+		require.Equal(t, 1, accounts.calls)
+		require.Same(t, acc, cnBalance.lastAccount)
+		require.Equal(t, 1, cnBalance.calls)
+REDACTED)
 REDACTED
 
 // --- 失败路径（Fetch 永不返回 error） ---
