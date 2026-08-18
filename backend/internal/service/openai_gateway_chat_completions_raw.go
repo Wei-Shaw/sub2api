@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -216,7 +218,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	var result *OpenAIForwardResult
 	var forwardErr error
 	if clientStream {
-		result, forwardErr = s.streamRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
+		result, forwardErr = s.streamRawChatCompletions(c, resp, account, upstreamBody, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime, len(body))
 	} else {
 		result, forwardErr = s.bufferRawChatCompletions(c, resp, account, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
@@ -249,6 +251,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
 	account *Account,
+	requestBody []byte,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
@@ -266,6 +269,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
+	var outputText strings.Builder
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
@@ -315,6 +319,13 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
 				}
+				// Accumulate deltas for local estimate when upstream omits usage.
+				if !usageOnlyChunk {
+					var chunk apicompat.ChatCompletionsChunk
+					if err := json.Unmarshal([]byte(payload), &chunk); err == nil {
+						appendCCStreamOutputText(&outputText, &chunk)
+					}
+				}
 				if firstTokenMs == nil && !usageOnlyChunk {
 					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
@@ -363,6 +374,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 			}
 		}
 	}
+
+	usage = resolveCCStreamUsage(
+		usage,
+		requestBody,
+		outputText.String(),
+		billingModel,
+		"openai chat_completions raw",
+		requestID,
+	)
 
 	return &OpenAIForwardResult{
 		RequestID:                     requestID,

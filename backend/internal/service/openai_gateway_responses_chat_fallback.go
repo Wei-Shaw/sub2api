@@ -112,7 +112,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(c, resp, chatBody, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -158,6 +158,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
+	requestBody []byte,
 	originalModel string,
 	customTools map[string]bool,
 	toolSearch bool,
@@ -206,11 +207,19 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	scan := s.scanCCStream(resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
 		writeEvents(apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state))
 	})
+	usage := resolveCCStreamUsage(
+		scan.Usage,
+		requestBody,
+		scan.OutputText.String(),
+		billingModel,
+		"openai responses chat fallback",
+		requestID,
+	)
 
 	if scan.Err != nil {
 		return &OpenAIForwardResult{
 			RequestID:       requestID,
-			Usage:           scan.Usage,
+			Usage:           usage,
 			Model:           originalModel,
 			BillingModel:    billingModel,
 			UpstreamModel:   upstreamModel,
@@ -220,6 +229,23 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			Duration:        time.Since(startTime),
 			FirstTokenMs:    scan.FirstTokenMs,
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
+	}
+
+	// Inject estimated usage into finalize so response.completed also reports tokens.
+	if openAIUsageIsEmpty(scan.Usage) && !openAIUsageIsEmpty(usage) {
+		state.Usage = &apicompat.ResponsesUsage{
+			InputTokens:  usage.InputTokens,
+			OutputTokens: usage.OutputTokens,
+			TotalTokens:  usage.InputTokens + usage.OutputTokens,
+		}
+		if usage.CacheReadInputTokens > 0 {
+			state.Usage.InputTokensDetails = &apicompat.ResponsesInputTokensDetails{
+				CachedTokens: usage.CacheReadInputTokens,
+			}
+		}
+		if usage.CacheCreationInputTokens > 0 {
+			state.Usage.CacheCreationInputTokens = usage.CacheCreationInputTokens
+		}
 	}
 
 	writeEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
@@ -238,7 +264,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 
 	return &OpenAIForwardResult{
 		RequestID:       requestID,
-		Usage:           scan.Usage,
+		Usage:           usage,
 		Model:           originalModel,
 		BillingModel:    billingModel,
 		UpstreamModel:   upstreamModel,
