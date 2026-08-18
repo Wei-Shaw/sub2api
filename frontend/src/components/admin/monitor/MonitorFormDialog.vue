@@ -56,13 +56,24 @@
         <label class="input-label">
           {{ t('admin.channelMonitor.form.linkedAccount') REDACTEDREDACTED <span class="text-red-500">*</span>
         </label>
-        <Select
-          v-model="accountSelectValue"
-          :options="accountOptions"
-          :placeholder="t('admin.channelMonitor.form.linkedAccountPlaceholder')"
-        />
+        <div data-testid="monitor-linked-account">
+          <Select
+            v-model="accountSelectValue"
+            :options="accountOptions"
+            :placeholder="t('admin.channelMonitor.form.linkedAccountPlaceholder')"
+            remote
+            :loading="accountsLoading"
+            @search="onAccountSearch"
+          />
+        </div>
         <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.linkedAccountHint') REDACTEDREDACTED</p>
-        <p v-if="accountOptions.length === 0 && !accountsLoading" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+        <p v-if="form.provider === PROVIDER_OPENAI" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.channelMonitor.form.openAIQuotaProbeHint') REDACTEDREDACTED
+        </p>
+        <p v-if="accountHydrationFailed" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          {{ t('admin.channelMonitor.form.linkedAccountMissing') REDACTEDREDACTED
+        </p>
+        <p v-if="accountOptions.length === 0 && !accountsLoading && !accountSearchQuery" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
           {{ t('admin.channelMonitor.form.linkedAccountEmpty') REDACTEDREDACTED
         </p>
       </div>
@@ -524,13 +535,27 @@ REDACTED
 
 const linkedAccounts = ref<LinkedAccount[]>([])
 const accountsLoading = ref(false)
+// 当前搜索词（用于空态文案区分「平台无账号」与「搜索无命中」）。
+const accountSearchQuery = ref('')
+// 已绑定账号回填失败（getById 失败或平台失配）时提示用户重新选择。
+const accountHydrationFailed = ref(false)
+// 固定选项：已绑定/已选中但不在当前结果页里的账号，保证搜索后 label 仍可见。
+const pinnedAccount = ref<LinkedAccount | null>(null)
+let accountSearchSeq = 0
+let accountSearchAbort: AbortController | null = null
+const hydrationAttempted = new Set<number>()
 
-const accountOptions = computed(() =>
-  linkedAccounts.value.map((a) => ({
+const accountOptions = computed(() => {
+  const opts = linkedAccounts.value.map((a) => ({
     value: String(a.id),
     label: `${a.nameREDACTED (#${a.idREDACTED)`,
-  REDACTED)),
-)
+  REDACTED))
+  const pinned = pinnedAccount.value
+  if (pinned && !linkedAccounts.value.some((a) => a.id === pinned.id)) {
+    opts.unshift({ value: String(pinned.id), label: `${pinned.nameREDACTED (#${pinned.idREDACTED)` REDACTED)
+  REDACTED
+  return opts
+REDACTED)
 
 // Select 组件绑定 string，与 number | null 互转。
 const accountSelectValue = computed<string>({
@@ -538,37 +563,95 @@ const accountSelectValue = computed<string>({
   set: (raw: string) => {
     if (raw === '') {
       form.account_id = null
+      pinnedAccount.value = null
+      accountHydrationFailed.value = false
       return
     REDACTED
     const id = Number(raw)
-    if (Number.isFinite(id)) form.account_id = id
+    if (Number.isFinite(id)) {
+      form.account_id = id
+      pinnedAccount.value = linkedAccounts.value.find((a) => a.id === id) ?? pinnedAccount.value
+    REDACTED
   REDACTED,
 REDACTED)
 
-// 拉取当前 provider 平台的账号（大分页一次取齐，客户端不再过滤）。
+// 服务端搜索当前 provider 平台的账号（支持关键字，避免大分页截断取不齐）。
+// seq + abort 防止快速切换 provider / 连续输入时乱序响应覆盖新结果。
 // 失败不阻塞表单：下拉为空 + 空态提示。
-async function loadLinkedAccounts() {
+async function loadLinkedAccounts(search = '') {
   if (!usesQuotaMode.value || !props.show) return
+  accountSearchQuery.value = search
+  const seq = ++accountSearchSeq
+  accountSearchAbort?.abort()
+  const controller = new AbortController()
+  accountSearchAbort = controller
   accountsLoading.value = true
   try {
-    const res = await adminAPI.accounts.list(1, 200, { platform: form.provider REDACTED)
+    const res = await adminAPI.accounts.list(
+      1,
+      50,
+      { platform: form.provider, ...(search ? { search REDACTED : {REDACTED) REDACTED,
+      { signal: controller.signal REDACTED,
+    )
+    if (seq !== accountSearchSeq) return
     linkedAccounts.value = (res.items || []).map((a) => ({ id: a.id, name: a.name REDACTED))
-    // 关联账号必须与 provider 同平台：平台切换后原选择失效，自动清掉。
-    if (form.account_id != null && !linkedAccounts.value.some((a) => a.id === form.account_id)) {
-      form.account_id = null
-    REDACTED
+    await ensureSelectedAccountHydrated()
   REDACTED catch (err: unknown) {
+    if (controller.signal.aborted) return
     console.warn('load linked accounts failed', err)
-    linkedAccounts.value = []
+    if (!search) linkedAccounts.value = []
   REDACTED finally {
-    accountsLoading.value = false
+    if (seq === accountSearchSeq) accountsLoading.value = false
   REDACTED
+REDACTED
+
+// 编辑已有 quota 监控时，已绑定账号可能不在搜索结果第一页：用 getById
+// 回填为固定选项，绑定不因分页截断而丢失。仅当账号确实无法加载或平台
+// 失配时才清空绑定（带可见提示），否则绑定只在用户显式切换 provider 时清空。
+async function ensureSelectedAccountHydrated() {
+  const id = form.account_id
+  if (id == null || !usesQuotaMode.value) return
+  if (linkedAccounts.value.some((a) => a.id === id) || pinnedAccount.value?.id === id) return
+  if (hydrationAttempted.has(id)) return
+  hydrationAttempted.add(id)
+  try {
+    const account = await adminAPI.accounts.getById(id)
+    if (form.account_id !== id) return
+    if (String(account.platform) !== form.provider) {
+      form.account_id = null
+      pinnedAccount.value = null
+      accountHydrationFailed.value = true
+      return
+    REDACTED
+    pinnedAccount.value = { id: account.id, name: account.name REDACTED
+  REDACTED catch {
+    if (form.account_id === id) {
+      form.account_id = null
+      pinnedAccount.value = null
+      accountHydrationFailed.value = true
+    REDACTED
+  REDACTED
+REDACTED
+
+function onAccountSearch(query: string) {
+  void loadLinkedAccounts(query)
 REDACTED
 
 watch(
   () => [props.show, form.provider, form.check_mode] as const,
-  ([show]) => {
-    if (!show) return
+  ([show, provider], prev) => {
+    const [prevShow, prevProvider] = prev ?? []
+    if (!show) {
+      accountSearchAbort?.abort()
+      return
+    REDACTED
+    // 弹窗重开 / provider 真正变化时重置回填状态（check_mode 变化不重置，
+    // 避免 probe↔quota 切换时无谓地重拉列表）。
+    if (show !== prevShow || provider !== prevProvider) {
+      hydrationAttempted.clear()
+      accountHydrationFailed.value = false
+      pinnedAccount.value = null
+    REDACTED
     void loadLinkedAccounts()
   REDACTED,
   { immediate: true REDACTED,
@@ -584,7 +667,10 @@ function selectProvider(provider: Provider) {
   const clearPrevDefaultEndpoint =
     !!PROVIDER_DEFAULT_ENDPOINTS[previousProvider] && form.endpoint === PROVIDER_DEFAULT_ENDPOINTS[previousProvider]
   form.provider = provider
+  // 关联账号与平台绑定：切换 provider 时显式清空（这是唯一主动清空的入口）。
   form.account_id = null
+  pinnedAccount.value = null
+  accountHydrationFailed.value = false
   // antigravity 仅配额模式：切到它时强制 quota（checkModeOptions 同步禁用其余项）。
   if (provider === PROVIDER_ANTIGRAVITY && form.check_mode !== CHECK_MODE_QUOTA) {
     form.check_mode = CHECK_MODE_QUOTA
@@ -628,6 +714,8 @@ function resetForm() {
   form.api_mode = API_MODE_CHAT_COMPLETIONS
   form.check_mode = CHECK_MODE_PROBE
   form.account_id = null
+  pinnedAccount.value = null
+  accountHydrationFailed.value = false
   form.endpoint = ''
   form.api_key = ''
   form.primary_model = ''
