@@ -9,7 +9,7 @@
 -- 修复：把约束与代码平台列表（PlatformKimi/PlatformZhipu/PlatformDeepseek）对齐。
 -- DROP ... IF EXISTS 保证可重入；新约束是旧约束的超集，存量行（仅 5 平台）瞬时校验通过。
 -- sub2api-managed-update: reviewed-compatible
-ALTER TABLE user_platform_quotas
+ALTER TABLE IF EXISTS user_platform_quotas
     DROP CONSTRAINT IF EXISTS user_platform_quotas_platform_check;
 
 -- sub2api-managed-update: reviewed-compatible
