@@ -96,11 +96,26 @@ func TestBuildCodexUsageExtraUpdates_UsesSnapshotUpdatedAt(t *testing.T) {
 	if got := updates["codex_usage_updated_at"]; got != "2026-02-16T10:00:00Z" {
 		t.Fatalf("codex_usage_updated_at = %v, want %s", got, "2026-02-16T10:00:00Z")
 	}
+	if got := updates[OpenAICodexUsageObservedAtUnixNanoExtraKey]; got != time.Date(2026, 2, 16, 10, 0, 0, 0, time.UTC).UnixNano() {
+		t.Fatalf("%s = %v, want snapshot observation time", OpenAICodexUsageObservedAtUnixNanoExtraKey, got)
+	}
 	if got := updates["codex_5h_reset_at"]; got != "2026-02-16T11:00:00Z" {
 		t.Fatalf("codex_5h_reset_at = %v, want %s", got, "2026-02-16T11:00:00Z")
 	}
 	if got := updates["codex_7d_reset_at"]; got != "2026-02-17T10:00:00Z" {
 		t.Fatalf("codex_7d_reset_at = %v, want %s", got, "2026-02-17T10:00:00Z")
+	}
+}
+
+func TestBuildCodexUsageExtraUpdates_PreservesObservationNanoseconds(t *testing.T) {
+	snapshot := &OpenAICodexUsageSnapshot{
+		UpdatedAt: "2026-02-16T10:00:00.123456789Z",
+	}
+	want := time.Date(2026, 2, 16, 10, 0, 0, 123456789, time.UTC).UnixNano()
+
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Time{})
+	if got := updates[OpenAICodexUsageObservedAtUnixNanoExtraKey]; got != want {
+		t.Fatalf("%s = %v, want %d", OpenAICodexUsageObservedAtUnixNanoExtraKey, got, want)
 	}
 }
 

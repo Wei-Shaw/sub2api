@@ -285,6 +285,29 @@ func TestUpdateExtraNilProbeRemovesKeyInsteadOfWritingJSONNull(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpdateExtraCodexSnapshotUsesMonotonicObservationGuard(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	const observedAt = int64(1771236000123456789)
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = CASE WHEN .*codex_usage_observed_at_unix_nano.* <= \$3::numeric THEN .* ELSE .* END, updated_at = NOW\(\) WHERE id = \$2`).
+		WithArgs(sqlmock.AnyArg(), int64(29), observedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+
+	err = repo.UpdateExtra(context.Background(), 29, map[string]any{
+		"codex_5h_used_percent":                            95.0,
+		"codex_usage_updated_at":                           "2026-02-16T10:00:00Z",
+		service.OpenAICodexUsageObservedAtUnixNanoExtraKey: observedAt,
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBulkUpdateNilProbeRemovesKeyInsteadOfWritingJSONNull(t *testing.T) {
 	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
 	repo := newAccountRepositoryWithSQL(nil, exec, nil)

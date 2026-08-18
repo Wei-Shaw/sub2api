@@ -1521,6 +1521,40 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 	s.Require().Equal(100.0, cacheRecorder.setAccounts[0].Extra["codex_7d_used_percent"])
 }
 
+func (s *AccountRepoSuite) TestUpdateExtra_OlderCodexSnapshotCannotOverwriteNewerObservation() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-extra-codex-monotonic",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Extra:    map[string]any{},
+	})
+	const newer = int64(1771236000200000000)
+	const older = int64(1771236000100000000)
+
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"codex_5h_used_percent":                            95.0,
+		service.OpenAICodexUsageObservedAtUnixNanoExtraKey: newer,
+	}))
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
+		"codex_5h_used_percent":                            94.0,
+		service.OpenAICodexUsageObservedAtUnixNanoExtraKey: older,
+	}))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(95.0, got.Extra["codex_5h_used_percent"])
+
+	var storedObservedAt string
+	s.Require().NoError(scanSingleRow(
+		s.ctx,
+		s.repo.sql,
+		"SELECT extra ->> $1 FROM accounts WHERE id = $2",
+		[]any{service.OpenAICodexUsageObservedAtUnixNanoExtraKey, account.ID},
+		&storedObservedAt,
+	))
+	s.Require().Equal("1771236000200000000", storedObservedAt)
+}
+
 func (s *AccountRepoSuite) TestUpdateExtra_SchedulerRelevantStillEnqueuesOutbox() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:     "acc-extra-mixed",
