@@ -739,6 +739,27 @@ REDACTED
 	if settings.CooldownSeconds > 7200 {
 		settings.CooldownSeconds = 7200
 REDACTED
+	if settings.Strategy != "same_account_retry" {
+		settings.Strategy = "cooldown"
+REDACTED
+	if settings.RetryIntervalMs < 100 {
+		settings.RetryIntervalMs = 500
+REDACTED
+	if settings.RetryIntervalMs > 60000 {
+		settings.RetryIntervalMs = 60000
+REDACTED
+	if settings.RetryMaxDurationSeconds < 1 {
+		settings.RetryMaxDurationSeconds = 120
+REDACTED
+	if settings.RetryMaxDurationSeconds > 600 {
+		settings.RetryMaxDurationSeconds = 600
+REDACTED
+	if settings.MaxAccountSwitches < 0 {
+		settings.MaxAccountSwitches = 0
+REDACTED
+	if settings.MaxAccountSwitches > 10 {
+		settings.MaxAccountSwitches = 10
+REDACTED
 
 	return &settings, nil
 REDACTED
@@ -748,12 +769,28 @@ func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, se
 	if settings == nil {
 		return fmt.Errorf("settings cannot be nil")
 REDACTED
+	if settings.Strategy == "" { settings.Strategy = "cooldown" REDACTED
+	if settings.RetryIntervalMs == 0 { settings.RetryIntervalMs = 500 REDACTED
+	if settings.RetryMaxDurationSeconds == 0 { settings.RetryMaxDurationSeconds = 120 REDACTED
+	if settings.MaxAccountSwitches < 0 { settings.MaxAccountSwitches = 0 REDACTED
 
 	if settings.CooldownSeconds < 1 || settings.CooldownSeconds > 7200 {
 		if settings.Enabled {
 			return fmt.Errorf("cooldown_seconds must be between 1-7200")
 	REDACTED
 		settings.CooldownSeconds = 5
+REDACTED
+	if settings.Strategy != "cooldown" && settings.Strategy != "same_account_retry" {
+		return fmt.Errorf("strategy must be cooldown or same_account_retry")
+REDACTED
+	if settings.RetryIntervalMs < 100 || settings.RetryIntervalMs > 60000 {
+		return fmt.Errorf("retry_interval_ms must be between 100-60000")
+REDACTED
+	if settings.RetryMaxDurationSeconds < 1 || settings.RetryMaxDurationSeconds > 600 {
+		return fmt.Errorf("retry_max_duration_seconds must be between 1-600")
+REDACTED
+	if settings.MaxAccountSwitches < 0 || settings.MaxAccountSwitches > 10 {
+		return fmt.Errorf("max_account_switches must be between 0-10")
 REDACTED
 
 	data, err := json.Marshal(settings)
