@@ -567,25 +567,57 @@ REDACTED
 REDACTED
 
 func TestGeminiToolConfig_IncludeServerSideToolInvocations(t *testing.T) {
-	t.Run("serialize and deserialize toolConfig with includeServerSideToolInvocations", func(t *testing.T) {
-		trueVal := true
-		cfg := GeminiToolConfig{
-			FunctionCallingConfig: &GeminiFunctionCallingConfig{
-				Mode: "VALIDATED",
-		REDACTED,
-			IncludeServerSideToolInvocations: &trueVal,
-	REDACTED
-
-		data, err := json.Marshal(cfg)
-	REDACTED
-		require.Contains(t, string(data), `"includeServerSideToolInvocations":true`)
-
-		var decoded GeminiToolConfig
-		err = json.Unmarshal(data, &decoded)
-	REDACTED
-		require.NotNil(t, decoded.IncludeServerSideToolInvocations)
-		require.True(t, *decoded.IncludeServerSideToolInvocations)
-		require.Equal(t, "VALIDATED", decoded.FunctionCallingConfig.Mode)
-REDACTED)
+	functionTool := ClaudeTool{
+		Name:        "get_weather",
+		Description: "Get weather information",
+		InputSchema: map[string]any{"type": "object"REDACTED,
+REDACTED
+	webSearchTool := ClaudeTool{
+		Type: "web_search_20250305",
+		Name: "web_search",
 REDACTED
 
+	transform := func(t *testing.T, tools []ClaudeTool) (V1InternalRequest, string) {
+	REDACTED
+		body, err := TransformClaudeToGeminiWithOptions(&ClaudeRequest{
+			Model: "claude-3-5-sonnet-latest",
+			Messages: []ClaudeMessage{
+				{
+					Role:    "user",
+					Content: json.RawMessage(`[{"type":"text","text":"hello"REDACTED]`),
+			REDACTED,
+		REDACTED,
+			Tools: tools,
+	REDACTED, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+	REDACTED
+
+		var req V1InternalRequest
+		require.NoError(t, json.Unmarshal(body, &req))
+		return req, string(body)
+REDACTED
+
+	t.Run("mixed builtin and function tools enable server-side tool invocations", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{functionTool, webSearchToolREDACTED)
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.NotNil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.True(t, *req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.Contains(t, raw, `"includeServerSideToolInvocations":true`)
+REDACTED)
+
+	t.Run("function tools only leave the flag unset", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{functionToolREDACTED)
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.Nil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.NotContains(t, raw, "includeServerSideToolInvocations")
+REDACTED)
+
+	t.Run("web search only leaves the flag unset", func(t *testing.T) {
+		req, raw := transform(t, []ClaudeTool{webSearchToolREDACTED)
+
+		require.NotNil(t, req.Request.ToolConfig)
+		require.Nil(t, req.Request.ToolConfig.IncludeServerSideToolInvocations)
+		require.NotContains(t, raw, "includeServerSideToolInvocations")
+REDACTED)
+REDACTED
