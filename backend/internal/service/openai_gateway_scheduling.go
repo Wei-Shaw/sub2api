@@ -335,10 +335,18 @@ func isOpenAICompatibleAccountEligibleForRequest(ctx context.Context, account *A
 // profit veto so earlier failures retain their actual reason.
 func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) bool {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
-	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+	schedulable := false
+	if account != nil {
+		if requireCompact {
+			schedulable = account.IsSchedulableForCompactModelWithContext(ctx, requestedModel)
+		} else {
+			schedulable = account.IsSchedulableForModelWithContext(ctx, requestedModel)
+		}
+	}
+	if account == nil || account.Platform != platform || !account.IsOpenAICompatible() || !schedulable {
 		return false
 	}
-	if account.IsOpenAI() {
+	if account.IsOpenAI() && !requireCompact {
 		if paused, reason := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
 			// Debug level: this fires per-candidate on the scheduling hot path, so Info
 			// would amplify into log spam once several accounts cross the threshold.
@@ -351,7 +359,7 @@ func isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx context.Context
 			return false
 		}
 	}
-	if account.IsGrok() {
+	if account.IsGrok() && !requireCompact {
 		if paused, reason := shouldAutoPauseGrokAccountByQuota(account); paused {
 			slog.Debug("grok_account_auto_paused_by_quota",
 				"account_id", account.ID,
@@ -1342,6 +1350,27 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	return accounts, nil
 }
 
+// listOpenAIAccountCandidates returns the normal transient-aware pool unless a
+// legacy /responses/compact request is being scheduled. Compact must be able to
+// inspect accounts temporarily blocked by the ordinary quota window, so it
+// queries the persistent active+schedulable pool directly from the repository.
+func (s *OpenAIGatewayService) listOpenAIAccountCandidates(ctx context.Context, groupID *int64, platform string, requireCompact bool) ([]Account, error) {
+	if !requireCompact {
+		return s.listSchedulableAccounts(ctx, groupID, platform)
+	}
+	if s == nil || s.accountRepo == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	platform = NormalizeOpenAICompatiblePlatform(platform)
+	queryGroupID := groupID
+	includeGrouped := false
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		queryGroupID = nil
+		includeGrouped = true
+	}
+	return s.accountRepo.ListModelAvailabilityCandidates(ctx, queryGroupID, []string{platform}, includeGrouped)
+}
+
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
@@ -1367,7 +1396,13 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 
 	fresh := account
-	if s.schedulerSnapshot != nil {
+	if requireCompact && s.accountRepo != nil {
+		current, err := s.accountRepo.GetByID(ctx, account.ID)
+		if err != nil || current == nil {
+			return nil
+		}
+		fresh = current
+	} else if s.schedulerSnapshot != nil {
 		current, err := s.getSchedulableAccount(ctx, account.ID)
 		if err != nil || current == nil {
 			return nil
@@ -1381,7 +1416,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if !parentHealthyForShadow(fresh, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
+	if !requireCompact && s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, fresh) {
@@ -1452,7 +1487,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if !parentHealthyForShadow(latest, s.parentAccountLookup(ctx)) {
 		return nil
 	}
-	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+	if !requireCompact && s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
 		return nil
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, latest) {

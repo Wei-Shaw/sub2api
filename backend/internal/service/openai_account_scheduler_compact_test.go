@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -129,6 +130,47 @@ func newOpenAICompactionSchedulerTestService(accounts []Account, advanced bool) 
 		svc.rateLimitService = newOpenAIAdvancedSchedulerRateLimitService("true")
 	}
 	return svc
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactUsesPersistentCandidates(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	now := time.Now()
+	resetAt := now.Add(time.Hour)
+	account := Account{
+		ID:               71070,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
+		Schedulable:      true,
+		Concurrency:      1,
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			"openai_compact_supported":   true,
+			"openai_responses_supported": true,
+			"codex_7d_used_percent":      100.0,
+			"codex_7d_reset_at":          resetAt.Format(time.RFC3339),
+			"codex_usage_updated_at":     now.Format(time.RFC3339),
+		},
+	}
+	svc := newOpenAICompactionSchedulerTestService([]Account{account}, true)
+	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9})
+	groupID := int64(91070)
+
+	normalSelection, _, normalErr := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", "", "gpt-5.6-sol", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, false,
+	)
+	require.Error(t, normalErr)
+	require.Nil(t, normalSelection)
+
+	compactSelection, compactErr := selectOpenAICompactionSchedulerTestAccount(t, svc, groupID, true)
+	require.NoError(t, compactErr)
+	require.NotNil(t, compactSelection)
+	require.NotNil(t, compactSelection.Account)
+	require.Equal(t, account.ID, compactSelection.Account.ID)
+	if compactSelection.ReleaseFunc != nil {
+		compactSelection.ReleaseFunc()
+	}
 }
 
 func selectOpenAICompactionSchedulerTestAccount(t *testing.T, svc *OpenAIGatewayService, groupID int64, requireCompact bool) (*AccountSelectionResult, error) {
