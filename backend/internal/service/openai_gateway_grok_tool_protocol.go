@@ -15,12 +15,12 @@ import (
 
 const grokResponsesClientToolMappingContextKey = "grok_responses_client_tool_mapping"
 
-func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+func adaptResponsesClientToolsForFunctionUpstream(body []byte, upstream string) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	var requestBody map[string]any
 	if err := decoder.Decode(&requestBody); err != nil {
-		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode Grok Responses client tools: %w", err)
+		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode %s Responses client tools: %w", upstream, err)
 	}
 
 	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
@@ -32,13 +32,21 @@ func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClie
 	}
 	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
 	if err != nil {
-		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode Grok Responses client tools: %w", err)
+		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("encode %s Responses client tools: %w", upstream, err)
 	}
 	return rebuilt, mapping, nil
 }
 
-func hasGrokResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
+func adaptGrokResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	return adaptResponsesClientToolsForFunctionUpstream(body, "Grok")
+}
+
+func hasResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
 	return len(mapping.CustomTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
+}
+
+func hasGrokResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
+	return hasResponsesClientToolMapping(mapping)
 }
 
 func setGrokResponsesClientToolMapping(c *gin.Context, mapping apicompat.ResponsesClientToolMapping) {
@@ -97,7 +105,7 @@ func (b *grokResponsesClientToolStreamBody) Close() error {
 	return sourceErr
 }
 
-func newGrokResponsesClientToolStreamBody(
+func newResponsesClientToolStreamBody(
 	source io.ReadCloser,
 	mapping apicompat.ResponsesClientToolMapping,
 	maxLineSize int,
@@ -106,6 +114,14 @@ func newGrokResponsesClientToolStreamBody(
 	body := &grokResponsesClientToolStreamBody{PipeReader: reader, source: source}
 	go transformGrokResponsesClientToolStream(source, writer, mapping, maxLineSize)
 	return body
+}
+
+func newGrokResponsesClientToolStreamBody(
+	source io.ReadCloser,
+	mapping apicompat.ResponsesClientToolMapping,
+	maxLineSize int,
+) io.ReadCloser {
+	return newResponsesClientToolStreamBody(source, mapping, maxLineSize)
 }
 
 func transformGrokResponsesClientToolStream(
