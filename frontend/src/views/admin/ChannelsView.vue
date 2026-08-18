@@ -762,7 +762,10 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+// composite 分组仅覆盖主平台（与后端 isConcreteRequestPlatform / composite-routes target_platform 一致），
+// 不含国产供应商平台。
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -801,7 +804,9 @@ function togglePlatform(platform: GroupPlatform) {
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform || g.platform === 'composite')
+  return allGroups.value.filter(
+    g => g.platform === platform || (g.platform === 'composite' && compositePlatforms.includes(platform))
+  )
 }
 
 // ── Group helpers ──
@@ -1183,7 +1188,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
     if (p === 'composite') {
-      platformOrder.forEach(platform => activePlatforms.add(platform))
+      compositePlatforms.forEach(platform => activePlatforms.add(platform))
     } else if (p) {
       activePlatforms.add(p)
     }
@@ -1202,7 +1207,8 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     const groupIds = (channel.group_ids || []).filter(gid => {
       const groupPlatform = groupPlatformMap.get(gid)
-      return groupPlatform === platform || groupPlatform === 'composite'
+      return groupPlatform === platform ||
+        (groupPlatform === 'composite' && compositePlatforms.includes(platform))
     })
     const mapping = (channel.model_mapping || {})[platform] || {}
     const pricing = (channel.model_pricing || [])
