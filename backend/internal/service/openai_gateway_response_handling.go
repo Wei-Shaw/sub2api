@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openaiusage"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1150,6 +1151,20 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	outputTokens := value.Get("output_tokens").Int()
 	if outputTokens == 0 {
 		outputTokens = value.Get("completion_tokens").Int()
+	}
+	totalTokens, totalOK := openaiusage.JSONNumberInt64(value.Get("total_tokens"))
+	reasoningResult := value.Get("output_tokens_details.reasoning_tokens")
+	if !reasoningResult.Exists() {
+		reasoningResult = value.Get("completion_tokens_details.reasoning_tokens")
+	}
+	reasoningTokens, reasoningOK := openaiusage.JSONNumberInt64(reasoningResult)
+	if totalOK && reasoningOK {
+		adjusted := openaiusage.OutputTokensWithMissingReasoning(
+			inputTokens, outputTokens, totalTokens, reasoningTokens,
+		)
+		if int64(int(adjusted)) == adjusted {
+			outputTokens = adjusted
+		}
 	}
 	cacheReadTokens := openAICacheReadTokensFromUsage(value)
 	cacheCreationTokens := openAICacheCreationTokensFromUsage(value)

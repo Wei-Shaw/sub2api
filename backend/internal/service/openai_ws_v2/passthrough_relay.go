@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openaiusage"
 	coderws "github.com/coder/websocket"
 	"github.com/tidwall/gjson"
 )
@@ -947,6 +948,20 @@ func parseUsageAndAccumulate(
 		}
 		// 解析失败时不做部分字段累加，避免计费 usage 出现“半有效”状态。
 		return Usage{}
+	}
+	totalTokens, totalOK := openaiusage.JSONNumberInt64(usageResult.Get("total_tokens"))
+	reasoningResult := usageResult.Get("output_tokens_details.reasoning_tokens")
+	if !reasoningResult.Exists() {
+		reasoningResult = usageResult.Get("completion_tokens_details.reasoning_tokens")
+	}
+	reasoningTokens, reasoningOK := openaiusage.JSONNumberInt64(reasoningResult)
+	if totalOK && reasoningOK {
+		adjusted := openaiusage.OutputTokensWithMissingReasoning(
+			int64(inputTokens), int64(outputTokens), totalTokens, reasoningTokens,
+		)
+		if int64(int(adjusted)) == adjusted {
+			outputTokens = int(adjusted)
+		}
 	}
 	parsedUsage := Usage{
 		InputTokens:              inputTokens,

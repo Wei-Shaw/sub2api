@@ -341,6 +341,43 @@ func TestParseUsageAndAccumulateAcceptsChatUsageAliases(t *testing.T) {
 	require.Equal(t, got, state.usage)
 }
 
+func TestParseUsageAndAccumulateReasoningTokenParity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		usage string
+		want  int
+	}{
+		{"additive chat completions", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":5}}`, 25},
+		{"already inclusive responses output", `{"input_tokens":10,"output_tokens":25,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":5}}`, 25},
+		{"absent total", `{"prompt_tokens":10,"completion_tokens":20,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"inconsistent total", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":25,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"negative values", `{"prompt_tokens":-1,"completion_tokens":20,"total_tokens":24,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"total numeric string", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":"35","completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"total boolean", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":true,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"total null", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":null,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"total fractional", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35.5,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"total oversized", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":9223372036854775808,"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+		{"reasoning numeric string", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":"5"}}`, 20},
+		{"reasoning boolean", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":true}}`, 20},
+		{"reasoning null", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":null}}`, 20},
+		{"reasoning fractional", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":5.5}}`, 20},
+		{"reasoning oversized", `{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":9223372036854775808}}`, 20},
+		{"selected reasoning alias wins", `{"input_tokens":10,"output_tokens":20,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":3},"completion_tokens_details":{"reasoning_tokens":5}}`, 23},
+		{"malformed selected alias does not fall through", `{"input_tokens":10,"output_tokens":20,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":"3"},"completion_tokens_details":{"reasoning_tokens":5}}`, 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			state := &relayState{}
+			message := []byte(`{"type":"response.done","response":{"usage":` + tt.usage + `}}`)
+			got := parseUsageAndAccumulate(state, message, "response.done", nil)
+			require.Equal(t, tt.want, got.OutputTokens)
+			require.Equal(t, tt.want, state.usage.OutputTokens)
+		})
+	}
+}
+
 func TestOpenAICacheCreationTokensFromUsageNestedZeroWins(t *testing.T) {
 	t.Parallel()
 

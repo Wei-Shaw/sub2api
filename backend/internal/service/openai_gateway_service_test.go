@@ -506,6 +506,41 @@ func TestExtractOpenAIUsage_ReadsClineDataEnvelope(t *testing.T) {
 	require.Equal(t, 4, usage.CacheReadInputTokens)
 }
 
+func TestExtractOpenAIUsage_AddsOnlyMissingReasoningTokens(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"additive chat completions", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":5}}}`, 25},
+		{"already inclusive responses output", `{"usage":{"input_tokens":10,"output_tokens":25,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":5}}}`, 25},
+		{"absent total", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"inconsistent total", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":25,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"negative values", `{"usage":{"prompt_tokens":-1,"completion_tokens":20,"total_tokens":24,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"total numeric string", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":"35","completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"total boolean", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":true,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"total null", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":null,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"total fractional", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35.5,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"total oversized", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":9223372036854775808,"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+		{"reasoning numeric string", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":"5"}}}`, 20},
+		{"reasoning boolean", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":true}}}`, 20},
+		{"reasoning null", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":null}}}`, 20},
+		{"reasoning fractional", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":5.5}}}`, 20},
+		{"reasoning oversized", `{"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":35,"completion_tokens_details":{"reasoning_tokens":9223372036854775808}}}`, 20},
+		{"selected reasoning alias wins", `{"usage":{"input_tokens":10,"output_tokens":20,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":3},"completion_tokens_details":{"reasoning_tokens":5}}}`, 23},
+		{"malformed selected alias does not fall through", `{"usage":{"input_tokens":10,"output_tokens":20,"total_tokens":35,"output_tokens_details":{"reasoning_tokens":"3"},"completion_tokens_details":{"reasoning_tokens":5}}}`, 20},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			usage, ok := extractOpenAIUsageFromJSONBytes([]byte(tt.body))
+			require.True(t, ok)
+			require.Equal(t, tt.want, usage.OutputTokens)
+		})
+	}
+}
+
 func TestExtractOpenAIUsage_ReadsWrappedResponsesDataEnvelope(t *testing.T) {
 	body := []byte(`{"data":{"response":{"usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16,"input_tokens_details":{"cached_tokens":2}}}}}`)
 
