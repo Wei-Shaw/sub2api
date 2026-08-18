@@ -372,6 +372,7 @@ export default {
     announcements: {
       title: '公告管理',
       description: '创建公告并按条件投放',
+      createFirstAnnouncement: '还没有公告，创建您的第一条公告。',
       createAnnouncement: '创建公告',
       editAnnouncement: '编辑公告',
       deleteAnnouncement: '删除公告',
