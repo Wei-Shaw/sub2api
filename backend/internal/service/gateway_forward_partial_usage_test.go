@@ -8,11 +8,36 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type gatewayForwardErrorPolicyRepoStub struct {
+	AccountRepository
+	tempCalls           int
+	modelRateLimitCalls []gatewayForwardModelRateLimitCall
+REDACTED
+
+type gatewayForwardModelRateLimitCall struct {
+	accountID int64
+	scope     string
+REDACTED
+
+func (r *gatewayForwardErrorPolicyRepoStub) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
+	r.tempCalls++
+	return nil
+REDACTED
+
+func (r *gatewayForwardErrorPolicyRepoStub) SetModelRateLimit(_ context.Context, id int64, scope string, _ time.Time, _ ...string) error {
+	r.modelRateLimitCalls = append(r.modelRateLimitCalls, gatewayForwardModelRateLimitCall{
+		accountID: id,
+		scope:     scope,
+REDACTED)
+	return nil
+REDACTED
 
 // 本文件覆盖 issue #5148：流式转发中途出错（缺失 terminal 事件、读错误等）时，
 // 已观测到的上游 usage 不得随错误一起被丢弃，Forward 必须把部分结果与错误一同
@@ -181,6 +206,95 @@ REDACTED
 	var failoverErr *UpstreamFailoverError
 	require.True(t, errors.As(err, &failoverErr))
 	require.Nil(t, result, "failover 错误必须保持 result=nil，防止重试成功后双重计费")
+REDACTED
+
+func TestGatewayService_Forward_PreOutputSSEOverloadedErrorUsesSemantic529(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","stream":true,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+REDACTED
+
+	const errorJSON = `{"type":"error","error":{"details":null,"type":"overloaded_error","message":"Overloaded"REDACTED,"request_id":"req_01"REDACTED`
+	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader("event: error\ndata: " + errorJSON + "\n\n")),
+REDACTEDREDACTED
+	repo := &gatewayForwardErrorPolicyRepoStub{REDACTED
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     NewRateLimitService(repo, nil, cfg, nil, nil),
+		deferredService:      &DeferredService{REDACTED,
+REDACTED
+	account := newAnthropicOAuthAccountForPartialUsageTest()
+	account.Credentials["temp_unschedulable_enabled"] = true
+	account.Credentials["temp_unschedulable_rules"] = []any{map[string]any{
+		"error_code":       float64(529),
+		"keywords":         []any{"Overloaded"REDACTED,
+		"duration_minutes": float64(10),
+REDACTEDREDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, parsed)
+REDACTED
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, 529, failoverErr.StatusCode)
+	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
+	require.Len(t, repo.modelRateLimitCalls, 1, "synthetic 529 must participate in temp-unschedulable rules")
+	require.Equal(t, account.ID, repo.modelRateLimitCalls[0].accountID)
+	require.Equal(t, parsed.Model, repo.modelRateLimitCalls[0].scope)
+	require.Empty(t, rec.Body.String(), "pre-output overload must remain eligible for account failover")
+REDACTED
+
+func TestGatewayService_Forward_PostOutputSSEOverloadedErrorKeepsExistingStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{"model":"claude-3-5-sonnet-latest","stream":true,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+REDACTED
+
+	const errorJSON = `{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"REDACTEDREDACTED`
+	fixture := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1REDACTEDREDACTEDREDACTED\n\n" +
+		"event: error\ndata: " + errorJSON + "\n\n"
+	upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(fixture)),
+REDACTEDREDACTED
+	repo := &gatewayForwardErrorPolicyRepoStub{REDACTED
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     NewRateLimitService(repo, nil, cfg, nil, nil),
+		deferredService:      &DeferredService{REDACTED,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, newAnthropicOAuthAccountForPartialUsageTest(), parsed)
+REDACTED
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusForbidden, failoverErr.StatusCode)
+	require.JSONEq(t, errorJSON, string(failoverErr.ResponseBody))
+	require.Zero(t, repo.tempCalls)
+	require.Contains(t, rec.Body.String(), "message_start")
 REDACTED
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamMissingTerminalPreservesPartialUsage(t *testing.T) {
