@@ -1168,6 +1168,94 @@ REDACTED)
     expect(wrapper.text()).toContain('30d|8|4400000')
   REDACTED)
 
+  it('Grok paid hides zero prepaid and hides used/limit when monthly limit is 0', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'SuperGrok',
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 20,
+        prepaid_balance: 0,
+        monthly_limit: 0,
+        monthly_used: 3.5,
+        plan: 'SuperGrok'
+      REDACTED
+    REDACTED)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4413, platform: 'grok', type: 'oauth', extra: {REDACTED REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokPrepaid')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokUsed')
+    expect(wrapper.text()).not.toContain('3.5/0')
+  REDACTED)
+
+  it('Grok paid shows used/limit without prepaid, and prepaid without a zero monthly limit', async () => {
+    getUsage.mockResolvedValueOnce({
+      subscription_tier: 'SuperGrok',
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 20,
+        monthly_limit: 25,
+        monthly_used: 3.5,
+        plan: 'SuperGrok'
+      REDACTED
+    REDACTED)
+
+    const usedOnly = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4414, platform: 'grok', type: 'oauth', extra: {REDACTED REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+    await flushPromises()
+    expect(usedOnly.text()).not.toContain('admin.accounts.usageWindow.grokPrepaid')
+    expect(usedOnly.text()).toContain('admin.accounts.usageWindow.grokUsed')
+    expect(usedOnly.text()).toContain('3.50/25.0')
+
+    getUsage.mockResolvedValueOnce({
+      subscription_tier: 'SuperGrok Heavy',
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 20,
+        prepaid_balance: 12.5,
+        monthly_limit: 0,
+        monthly_used: 8,
+        plan: 'SuperGrok Heavy'
+      REDACTED
+    REDACTED)
+    const prepaidOnly = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4415, platform: 'grok', type: 'oauth', extra: {REDACTED REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+    await flushPromises()
+    expect(prepaidOnly.text()).toContain('admin.accounts.usageWindow.grokPrepaid')
+    expect(prepaidOnly.text()).toContain('$12.5')
+    expect(prepaidOnly.text()).not.toContain('admin.accounts.usageWindow.grokUsed')
+    expect(prepaidOnly.text()).not.toContain('8.00/0')
+  REDACTED)
+
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {
 		const wrapper = mount(AccountUsageCell, {
 		  props: {
