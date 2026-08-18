@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // antigravityFailingWriter 模拟客户端断开连接的 gin.ResponseWriter
@@ -285,6 +286,42 @@ func TestResolveAntigravityProjectID(t *testing.T) {
 	}
 }
 
+func TestNormalizeGeminiRequestForAntigravity(t *testing.T) {
+	t.Run("normalizes captured native request", func(t *testing.T) {
+		body := []byte(`{
+			"contents":[{"parts":[{"text":"AI"}]}],
+			"tools":[{"google_search":{}}]
+		}`)
+
+		normalized, err := normalizeGeminiRequestForAntigravity(body)
+		require.NoError(t, err)
+		require.Equal(t, "user", gjson.GetBytes(normalized, "contents.0.role").String())
+		require.True(t, gjson.GetBytes(normalized, "tools.0.googleSearch").Exists())
+		require.False(t, gjson.GetBytes(normalized, "tools.0.google_search").Exists())
+	})
+
+	t.Run("adds missing role without tools", func(t *testing.T) {
+		body := []byte(`{"contents":[{"parts":[{"text":"hello"}]}]}`)
+
+		normalized, err := normalizeGeminiRequestForAntigravity(body)
+		require.NoError(t, err)
+		require.Equal(t, "user", gjson.GetBytes(normalized, "contents.0.role").String())
+	})
+
+	t.Run("preserves explicit roles", func(t *testing.T) {
+		body := []byte(`{
+			"contents":[
+				{"role":"user","parts":[{"text":"hello"}]},
+				{"role":"model","parts":[{"text":"hi"}]}
+			]
+		}`)
+
+		normalized, err := normalizeGeminiRequestForAntigravity(body)
+		require.NoError(t, err)
+		require.Equal(t, body, normalized)
+	})
+}
+
 func TestAntigravityGatewayService_ForwardGemini_UsesConfiguredProjectFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	writer := httptest.NewRecorder()
@@ -338,6 +375,57 @@ func TestAntigravityGatewayService_ForwardGemini_UsesConfiguredProjectFallback(t
 	var wrapped map[string]any
 	require.NoError(t, json.Unmarshal(upstream.requestBodies[0], &wrapped))
 	require.Equal(t, "configured-project", wrapped["project"])
+}
+
+func TestAntigravityGatewayService_ForwardGemini_NormalizesCapturedNativeRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body := []byte(`{
+		"contents":[{"parts":[{"text":"AI"}]}],
+		"tools":[{"google_search":{}}]
+	}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/antigravity/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body))
+
+	upstreamBody := []byte("data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1}}}\n\n")
+	upstream := &queuedHTTPUpstreamStub{
+		responses: []*http.Response{{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(bytes.NewReader(upstreamBody)),
+		}},
+	}
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream:   upstream,
+	}
+
+	account := &Account{
+		ID:          103,
+		Name:        "acc-google-search",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project-google-search",
+			"model_mapping": map[string]any{
+				"gemini-2.5-flash": "gemini-2.5-flash",
+			},
+		},
+	}
+
+	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", false, body, false)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.requestBodies, 1)
+
+	require.Equal(t, "user", gjson.GetBytes(upstream.requestBodies[0], "request.contents.0.role").String())
+	require.True(t, gjson.GetBytes(upstream.requestBodies[0], "request.tools.0.googleSearch").Exists())
+	require.False(t, gjson.GetBytes(upstream.requestBodies[0], "request.tools.0.google_search").Exists())
 }
 
 func TestAntigravityGatewayService_ForwardGemini_MissingProjectReturnsLocalError(t *testing.T) {

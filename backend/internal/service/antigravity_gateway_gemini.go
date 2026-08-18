@@ -122,6 +122,9 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	if err != nil {
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
 	}
+	if injectedBody, err = normalizeGeminiRequestForAntigravity(injectedBody); err != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid request body")
+	}
 
 	// 清理 Schema
 	if cleanedBody, err := cleanGeminiRequest(injectedBody); err == nil {
