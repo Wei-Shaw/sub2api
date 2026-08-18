@@ -1317,9 +1317,9 @@ REDACTED
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to start registration transaction: %v", err)
 		return ErrServiceUnavailable
 REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
 	execCtx := dbent.NewTxContext(ctx, tx)
 	if err := commitUser(execCtx); err != nil {
-		_ = tx.Rollback()
 		return err
 REDACTED
 	if err := tx.Commit(); err != nil {

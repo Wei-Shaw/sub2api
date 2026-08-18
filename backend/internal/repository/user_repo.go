@@ -82,13 +82,19 @@ REDACTED
 		txClient = existingTx.Client()
 REDACTED else {
 		tx, err := r.client.Tx(ctx)
-		if err != nil {
+		switch {
+		case errors.Is(err, dbent.ErrTxStarted):
+			// r.client 本身已是事务绑定 client（client 注入式事务，如集成测试
+			// 夹具 tx.Client()）：直接复用，提交/回滚由 client 的持有方负责。
+			txClient = r.client
+		case err != nil:
 			return err
+		default:
+			ownedTx = tx
+			defer func() { _ = ownedTx.Rollback() REDACTED()
+			txClient = tx.Client()
+			txCtx = dbent.NewTxContext(ctx, tx)
 	REDACTED
-		ownedTx = tx
-		defer func() { _ = ownedTx.Rollback() REDACTED()
-		txClient = tx.Client()
-		txCtx = dbent.NewTxContext(ctx, tx)
 REDACTED
 
 	lockKeys := []string{normalizedEmailUniquenessLockKey(userIn.Email)REDACTED
