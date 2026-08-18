@@ -965,7 +965,9 @@ func decodeUpstreamBillingProbeSnapshot(extra map[string]any) *UpstreamBillingPr
 
 // IsUpstreamBillingProbeIdentity reports whether an account identity may opt
 // in to the upstream billing probe. `/v1/sub2api/billing` is a key-scoped
-// sub2api convention shared by the five supported API-key platforms.
+// sub2api convention shared by the supported API-key platforms (including the
+// CN providers, whose official-domain accounts are short-circuited to
+// "unsupported" by upstreamBillingProbeTargetIsOfficialAPI).
 // Non-sub2api upstreams return 404 and the snapshot records "unsupported".
 // Only AccountTypeAPIKey is in scope. OAuth/Bedrock hold no static API key to
 // present at all; AccountTypeUpstream (antigravity relay accounts) does carry
@@ -978,7 +980,8 @@ func IsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 		return false
 	}
 	switch platform {
-	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok:
+	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
+		PlatformKimi, PlatformZhipu, PlatformDeepseek:
 		return true
 	default:
 		return false
@@ -1002,6 +1005,9 @@ func isUpstreamBillingProbeAccount(account *Account) bool {
 // ollama.com is a first-class configuration here (Ollama Cloud accounts are
 // platform openai/anthropic with base_url https://ollama.com/v1), and it is
 // an official provider API just like the rest, so it belongs on this list.
+// CN provider domains (moonshot.cn / kimi.com / bigmodel.cn / deepseek.com)
+// serve the same role: official APIs that can never host /v1/sub2api/billing,
+// so their accounts short-circuit to "unsupported" without a request.
 var upstreamBillingProbeOfficialAPIDomains = []string{
 	"anthropic.com",
 	"googleapis.com",
@@ -1009,6 +1015,10 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"grok.com",
 	"openai.com",
 	"ollama.com",
+	"moonshot.cn",
+	"kimi.com",
+	"bigmodel.cn",
+	"deepseek.com",
 }
 
 func upstreamBillingProbeTargetIsOfficialAPI(baseURL string) bool {
