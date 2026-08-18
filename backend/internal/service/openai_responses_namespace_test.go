@@ -65,6 +65,21 @@ func TestShouldFlattenOpenAIResponsesNamespaces(t *testing.T) {
 func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	explicitOfficialAPIKey := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://api.openai.com/v1"},
+	}
+	customAPIKey := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://compat.example/v1"},
+	}
+	lookalikeAPIKey := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://api.openai.com.evil.example/v1"},
+	}
 	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
 	flattenOAuth := &Account{
 		Platform: PlatformOpenAI,
@@ -92,8 +107,14 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 		// WSv2 + compact 是唯一「不摊平但仍必须清理」的组合，钉住 compact 判定本身，
 		// 使其不会被误当成可由 shouldFlatten 推导出的冗余分支。
 		{name: "oauth_compact_wsv2_strips", account: oauth, transport: OpenAIUpstreamTransportResponsesWebsocketV2, compactPath: true, want: false},
-		// API Key 出口是标准 Responses API，不认识该字段。
-		{name: "apikey_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		// The official Platform API defines namespace tool calls and requires the
+		// namespace to be round-tripped with historical calls.
+		{name: "apikey_official_default_keeps", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "apikey_explicit_official_keeps", account: explicitOfficialAPIKey, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "apikey_official_compact_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
+		// Custom OpenAI-compatible endpoints keep the conservative legacy behavior.
+		{name: "apikey_custom_strips", account: customAPIKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "apikey_lookalike_host_strips", account: lookalikeAPIKey, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "setup_token_strips", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 		{name: "nil_account", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
 	}
@@ -102,6 +123,36 @@ func TestShouldKeepOpenAIResponsesToolCallNamespaces(t *testing.T) {
 			require.Equal(t, tt.want, shouldKeepOpenAIResponsesToolCallNamespaces(
 				tt.account, tt.transport, tt.passthroughEnabled, tt.compactPath,
 			))
+		})
+	}
+}
+
+func TestIsOfficialOpenAIPlatformAPIKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		baseURL string
+		want    bool
+	}{
+		{name: "default", want: true},
+		{name: "origin", baseURL: "https://api.openai.com", want: true},
+		{name: "version path", baseURL: "https://api.openai.com/v1", want: true},
+		{name: "responses path", baseURL: "https://api.openai.com/v1/responses", want: true},
+		{name: "host case and standard port", baseURL: "https://API.OPENAI.COM:443/v1", want: true},
+		{name: "insecure scheme", baseURL: "http://api.openai.com/v1", want: false},
+		{name: "nonstandard port", baseURL: "https://api.openai.com:8443/v1", want: false},
+		{name: "lookalike host", baseURL: "https://api.openai.com.evil.example/v1", want: false},
+		{name: "userinfo spoof", baseURL: "https://api.openai.com@evil.example/v1", want: false},
+		{name: "malformed", baseURL: "https://api.openai.com/%zz", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": tt.baseURL},
+			}
+			require.Equal(t, tt.want, isOfficialOpenAIPlatformAPIKey(account))
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
@@ -77,9 +78,11 @@ func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenA
 //     故 OAuth 非 compact 请求必须保留。
 //   - compact 端点的 schema 不含该字段，携带即 400 `Unknown parameter:
 //     input[N].namespace`（issue #4761 正文），故 compact 一律清理。
-//   - API Key 出口是标准 Responses API（api.openai.com 或自定义 base_url），同样
-//     不认识该字段，维持全量清理；否则只能退化成
-//     openai_responses_rejected_field_retry 的逐项删除，6 次上限根本盖不住长历史。
+//   - The public OpenAI Responses API defines namespace tools and requires
+//     historical calls to round-trip their namespace. Official api.openai.com
+//     API-key traffic therefore keeps tool-call namespaces on non-compact
+//     requests. Custom OpenAI-compatible base URLs retain the conservative
+//     cleanup because their schemas vary.
 //   - 摊平模式下调用项已被改写成平名，残留 namespace 指向的声明已不存在，一律清理。
 func shouldKeepOpenAIResponsesToolCallNamespaces(
 	account *Account,
@@ -87,13 +90,34 @@ func shouldKeepOpenAIResponsesToolCallNamespaces(
 	passthroughEnabled bool,
 	compactPath bool,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || compactPath {
 		return false
 	}
-	if compactPath {
+	if account.IsOpenAIApiKey() {
+		return isOfficialOpenAIPlatformAPIKey(account)
+	}
+	if !account.IsOpenAIOAuth() {
 		return false
 	}
 	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
+}
+
+func isOfficialOpenAIPlatformAPIKey(account *Account) bool {
+	if account == nil || !account.IsOpenAIApiKey() {
+		return false
+	}
+	base, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	if err != nil || base.User != nil {
+		return false
+	}
+	official, err := url.Parse(openaiPlatformAPIURL)
+	if err != nil {
+		return false
+	}
+	port := base.Port()
+	return strings.EqualFold(base.Scheme, official.Scheme) &&
+		strings.EqualFold(base.Hostname(), official.Hostname()) &&
+		(port == "" || port == "443")
 }
 
 // openAIResponsesToolCallItemTypes 是携带 namespace 的调用项类型集合。与
