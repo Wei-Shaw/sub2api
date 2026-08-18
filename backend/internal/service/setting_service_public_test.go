@@ -116,6 +116,29 @@ REDACTED &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
 REDACTED
 REDACTED
 
+func TestSettingService_ChannelMonitorShowQuotaFailsClosed(t *testing.T) {
+	// 缺省（迁移插入 'false' / 老库无行）一律不展示。
+	missingRuntime := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
+	require.False(t, missingRuntime.ShowQuota)
+	missingPublic, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED).
+		GetPublicSettings(context.Background())
+REDACTED
+	require.False(t, missingPublic.ChannelMonitorShowQuota)
+
+	// 仅字面 "true" 视为开启；其余值（含异常值）fail-closed。
+	runtime := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+		SettingKeyChannelMonitorShowQuota: "true",
+REDACTEDREDACTED, &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
+	require.True(t, runtime.ShowQuota)
+
+	for _, value := range []string{"false", "TRUE", "1", "yes", "on", "garbage"REDACTED {
+		rt := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyChannelMonitorShowQuota: value,
+REDACTED &config.Config{REDACTED).GetChannelMonitorRuntime(context.Background())
+		require.False(t, rt.ShowQuota, "value=%q", value)
+REDACTED
+REDACTED
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

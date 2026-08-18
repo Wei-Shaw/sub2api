@@ -100,6 +100,11 @@ REDACTED
 // Fetch 抓取账号的最新配额快照。永不返回 error：失败降级为
 // Success=false 快照（Error 带摘要），保证检测历史的时间线连续。
 func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64) *domain.MonitorQuotaSnapshot {
+	if f == nil {
+		// fail-closed：fetcher 未注入（存量测试构造）时不 panic，降级为错误快照。
+		return quotaErrorSnapshot("usage", "quota fetcher is not configured", time.Now())
+REDACTED
+
 	now := time.Now()
 
 	if cached, ok := f.cachedSnapshot(accountID, now); ok {
@@ -171,11 +176,11 @@ REDACTED
 	REDACTED
 REDACTED
 	snapshot := &domain.MonitorQuotaSnapshot{
-		Source:          "usage",
-		Success:         true,
-		PlanLevel:       usage.SubscriptionTier,
-		Tiers:           usageQuotaTiers(usage),
-		FetchedAt:       now,
+		Source:    "usage",
+		Success:   true,
+		PlanLevel: usage.SubscriptionTier,
+		Tiers:     usageQuotaTiers(usage),
+		FetchedAt: now,
 REDACTED
 	if snapshot.PlanLevel == "" {
 		snapshot.PlanLevel = usage.SubscriptionTierRaw

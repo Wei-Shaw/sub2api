@@ -9,6 +9,7 @@ func TestApplyMonitorUpdate_ProviderOnlySwitchToGrokUsesDefaultModel(t *testing.
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderOpenAI,
 		APIMode:         MonitorAPIModeResponses,
+		Endpoint:        "https://api.openai.com/v1",
 		PrimaryModel:    "gpt-5",
 		IntervalSeconds: 60,
 REDACTED
@@ -31,6 +32,7 @@ func TestApplyMonitorUpdate_SwitchToGrokPreservesExplicitModel(t *testing.T) {
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderOpenAI,
 		APIMode:         MonitorAPIModeChatCompletions,
+		Endpoint:        "https://api.openai.com/v1",
 		PrimaryModel:    "gpt-5",
 		IntervalSeconds: 60,
 REDACTED
@@ -52,6 +54,7 @@ func TestApplyMonitorUpdate_SameGrokProviderDoesNotResetExistingModel(t *testing
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderGrok,
 		APIMode:         MonitorAPIModeChatCompletions,
+		Endpoint:        "https://api.x.ai",
 		PrimaryModel:    "grok-4.3",
 		IntervalSeconds: 60,
 REDACTED
