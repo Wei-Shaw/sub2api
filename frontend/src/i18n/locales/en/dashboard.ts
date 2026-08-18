@@ -92,6 +92,8 @@ export default {
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',
+    allPlatforms: 'All',
+    filterGroupsByPlatform: 'Filter groups by platform',
     created: 'Created',
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',

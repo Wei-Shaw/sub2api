@@ -113,3 +113,44 @@ describe('Select dropdown viewport constraints', () => {
     expect(dropdown?.style.maxWidth).toBe('0px')
   })
 })
+
+describe('Select custom option filtering', () => {
+  it('combines a custom filter with search without losing the selected label', async () => {
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: 'claude',
+        searchable: true,
+        options: [
+          { value: 'gpt', label: 'GPT Standard', platform: 'openai' },
+          { value: 'gpt-mini', label: 'GPT Mini', platform: 'openai' },
+          { value: 'claude', label: 'Claude Standard', platform: 'anthropic' },
+        ],
+        filterOption: (option) => option.platform === 'openai',
+      },
+      slots: {
+        'after-search': '<div data-test="filter-header">Platform filters</div>',
+      },
+    })
+    unmountWrapper = () => wrapper.unmount()
+
+    expect(wrapper.get('.select-value').text()).toBe('Claude Standard')
+
+    await wrapper.get('button').trigger('click')
+    await nextTick()
+
+    expect(document.body.querySelector('[data-test="filter-header"]')?.textContent).toBe(
+      'Platform filters'
+    )
+
+    const searchInput = document.body.querySelector<HTMLInputElement>('.select-search-input')
+    expect(searchInput).not.toBeNull()
+    searchInput!.value = 'mini'
+    searchInput!.dispatchEvent(new Event('input'))
+    await nextTick()
+
+    const labels = Array.from(document.body.querySelectorAll('.select-option-label')).map(
+      (element) => element.textContent
+    )
+    expect(labels).toEqual(['GPT Mini'])
+  })
+})

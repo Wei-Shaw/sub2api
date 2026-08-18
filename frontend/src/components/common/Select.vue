@@ -73,6 +73,8 @@
             />
           </div>
 
+          <slot name="after-search" :search-query="searchQuery" />
+
           <!-- Options list -->
           <div class="select-options" ref="optionsListRef">
             <div
@@ -154,6 +156,7 @@ interface Props {
   id?: string
   ariaLabel?: string
   ariaDescribedby?: string
+  filterOption?: (option: SelectOption | Record<string, unknown>) => boolean
 }
 
 interface Emits {
@@ -276,6 +279,10 @@ const hasValue = computed(
 
 const filteredOptions = computed(() => {
   let opts = props.options as any[]
+  const filterOption = props.filterOption
+  if (filterOption) {
+    opts = opts.filter(filterOption)
+  }
   if (isSearchable.value && searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     opts = opts.filter((opt) => {

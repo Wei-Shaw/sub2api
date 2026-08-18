@@ -92,6 +92,8 @@ export default {
     noGroup: '无分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
+    allPlatforms: '全部',
+    filterGroupsByPlatform: '按平台筛选分组',
     created: '创建时间',
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
