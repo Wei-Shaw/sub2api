@@ -26,6 +26,9 @@ import {
   STATUS_DEGRADED,
   STATUS_FAILED,
   STATUS_ERROR,
+  CHECK_MODE_PROBE,
+  CHECK_MODE_QUOTA,
+  CHECK_MODE_QUOTA_PROBE,
 REDACTED from '@/constants/channelMonitor'
 
 const NEUTRAL_BADGE = 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-300'
@@ -96,6 +99,22 @@ export function useChannelMonitorFormat() {
         return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
       case PROVIDER_DEEPSEEK:
         return 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300'
+      default:
+        return NEUTRAL_BADGE
+    REDACTED
+  REDACTED
+
+  /**
+   * Tailwind class for the check-mode badge shown next to the provider badge
+   * in the admin monitor list. Quota-bearing modes = blue (数据源是账号配额),
+   * plain probe = neutral grey.
+   */
+  function checkModeBadgeClass(m: CheckMode | string): string {
+    switch (m) {
+      case CHECK_MODE_QUOTA:
+      case CHECK_MODE_QUOTA_PROBE:
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+      case CHECK_MODE_PROBE:
       default:
         return NEUTRAL_BADGE
     REDACTED
@@ -182,6 +201,7 @@ export function useChannelMonitorFormat() {
     providerLabel,
     checkModeLabel,
     providerBadgeClass,
+    checkModeBadgeClass,
     providerPickerClass,
     formatLatency,
     formatPercent,
