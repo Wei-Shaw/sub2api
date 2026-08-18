@@ -536,6 +536,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				windowCostOK := s.isAccountSchedulableForWindowCost(ctx, account, true)
 				rpmOK := s.isAccountSchedulableForRPM(ctx, account, true)
 				schedulable := s.isAccountSchedulableForSelection(account)
+				stickyResetEscape := shouldEscapeStickyForQuotaReset(account, accounts, platform, requestedModel, cfg)
 
 				slog.Debug("sticky.layer1_5_no_routing_checks",
 					"account_id", accountID,
@@ -551,7 +552,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"rpm_ok", rpmOK,
 				)
 
-				if !clearSticky && platformOK && profitOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && !stickyResetEscape && platformOK && profitOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -715,6 +716,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			// 2. （可选）use-it-or-lose-it：优先选用会话窗口最早重置的账号
 			if cfg.PreferSoonestReset {
 				candidates = filterBySoonestReset(candidates)
+			} else if strings.EqualFold(cfg.ResetPriorityMode, "lexicographic") {
+				candidates = filterByQuotaReset(candidates, platform, requestedModel, cfg.ResetWindowMode, cfg.ResetDataMaxAge)
 			}
 			// 3. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
@@ -1582,6 +1585,79 @@ func filterBySoonestReset(accounts []accountWithLoad) []accountWithLoad {
 	return result
 }
 
+// filterByQuotaReset applies the provider-neutral reset policy. Unknown or
+// stale samples are ignored; when at least one valid sample exists, only the
+// best day/quota/hour rank remains. This runs after health/model/load
+// admission, so a quota signal can never resurrect an unusable account.
+func filterByQuotaReset(accounts []accountWithLoad, platform, model, mode string, maxAge time.Duration) []accountWithLoad {
+	if len(accounts) <= 1 {
+		return accounts
+	}
+	now := time.Now()
+	valid := make(map[int64]AccountQuotaResetSnapshot, len(accounts))
+	for _, item := range accounts {
+		snapshot := resolveAccountQuotaResetWithMaxAge(item.account, platform, model, mode, now, maxAge)
+		if snapshot.ResetAt == nil {
+			continue
+		}
+		valid[item.account.ID] = snapshot
+	}
+	if len(valid) == 0 {
+		return accounts
+	}
+	hasBest := false
+	var best AccountQuotaResetSnapshot
+	for _, snapshot := range valid {
+		if !hasBest || compareQuotaResetSnapshots(snapshot, best, now) < 0 {
+			hasBest, best = true, snapshot
+		}
+	}
+	result := make([]accountWithLoad, 0, 1)
+	for _, item := range accounts {
+		if snapshot, ok := valid[item.account.ID]; ok && compareQuotaResetSnapshots(snapshot, best, now) == 0 {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func preferAccountByQuotaReset(candidate, selected *Account, platform, model string, cfg config.GatewaySchedulingConfig) (bool, bool) {
+	if candidate == nil || selected == nil || !strings.EqualFold(cfg.ResetPriorityMode, "lexicographic") {
+		return false, false
+	}
+	now := time.Now()
+	candidateReset := resolveAccountQuotaResetWithMaxAge(candidate, platform, model, cfg.ResetWindowMode, now, cfg.ResetDataMaxAge)
+	selectedReset := resolveAccountQuotaResetWithMaxAge(selected, platform, model, cfg.ResetWindowMode, now, cfg.ResetDataMaxAge)
+	comparison := compareQuotaResetSnapshots(candidateReset, selectedReset, now)
+	return comparison < 0, comparison != 0
+}
+
+func shouldEscapeStickyForQuotaReset(sticky *Account, candidates []Account, platform, model string, cfg config.GatewaySchedulingConfig) bool {
+	if sticky == nil || !cfg.StickyResetEscapeEnabled || cfg.StickyResetEscapeThreshold <= 0 {
+		return false
+	}
+	now := time.Now()
+	stickyReset := resolveAccountQuotaResetWithMaxAge(sticky, platform, model, cfg.ResetWindowMode, now, cfg.ResetDataMaxAge)
+	if stickyReset.RemainingSeconds == nil {
+		return false
+	}
+	for i := range candidates {
+		candidate := &candidates[i]
+		if candidate.ID == sticky.ID || !candidate.IsSchedulable() || (model != "" && !candidate.IsModelSupported(model)) {
+			continue
+		}
+		candidateReset := resolveAccountQuotaResetWithMaxAge(candidate, platform, model, cfg.ResetWindowMode, now, cfg.ResetDataMaxAge)
+		if candidateReset.RemainingSeconds == nil {
+			continue
+		}
+		if time.Duration(*stickyReset.RemainingSeconds-*candidateReset.RemainingSeconds)*time.Second >= cfg.StickyResetEscapeThreshold {
+			slog.Info("quota_reset_sticky_escape", "sticky_account_id", sticky.ID, "candidate_account_id", candidate.ID, "platform", platform, "model", model)
+			return true
+		}
+	}
+	return false
+}
+
 // selectByLRU 从集合中选择最久未用的账号
 // 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
 func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad {
@@ -1925,6 +2001,12 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if acc.Priority < selected.Priority {
 				selected = acc
 			} else if acc.Priority == selected.Priority {
+				if prefer, decided := preferAccountByQuotaReset(acc, selected, platform, requestedModel, s.schedulingConfig()); decided {
+					if prefer {
+						selected = acc
+					}
+					continue
+				}
 				switch {
 				case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 					selected = acc
@@ -2042,6 +2124,12 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if acc.Priority < selected.Priority {
 			selected = acc
 		} else if acc.Priority == selected.Priority {
+			if prefer, decided := preferAccountByQuotaReset(acc, selected, platform, requestedModel, s.schedulingConfig()); decided {
+				if prefer {
+					selected = acc
+				}
+				continue
+			}
 			switch {
 			case acc.LastUsedAt == nil && selected.LastUsedAt != nil:
 				selected = acc

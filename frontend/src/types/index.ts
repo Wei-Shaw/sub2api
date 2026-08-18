@@ -1139,10 +1139,16 @@ export interface Account {
   load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
   scheduler_score?: {
+    available?: boolean
     base_score: number
     sticky_score?: number
     sticky_score_infinity?: boolean
     sticky_weighted_enabled: boolean
+    reset_window?: string
+    reset_at?: string | null
+    reset_remaining_seconds?: number | null
+    reset_data_source?: string
+    reset_stale?: boolean
   } | null
   scheduler_scores?: AccountSchedulerGroupScore[] | null
   priority: number
@@ -1236,6 +1242,7 @@ export interface Account {
 }
 
 export interface AccountSchedulerGroupScore {
+  available?: boolean
   group_id?: number | null
   group_name?: string
   group_priority?: number | null
@@ -1243,6 +1250,11 @@ export interface AccountSchedulerGroupScore {
   sticky_score?: number
   sticky_score_infinity?: boolean
   sticky_weighted_enabled: boolean
+  reset_window?: string
+  reset_at?: string | null
+  reset_remaining_seconds?: number | null
+  reset_data_source?: string
+  reset_stale?: boolean
 }
 
 // Account Usage types

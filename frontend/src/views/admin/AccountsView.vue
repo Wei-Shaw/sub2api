@@ -393,13 +393,16 @@
                 v-for="score in getSchedulerScoreRows(row)"
                 :key="String(score.group_id)"
                 class="flex items-center gap-1 whitespace-nowrap text-gray-700 dark:text-gray-300"
-                :title="`${formatSchedulerScoreGroup(score)} / ${formatSchedulerScore(score.base_score)} / ${formatStickySchedulerScore(score)}`"
+                :title="schedulerScoreTitle(score)"
               >
                 <span class="max-w-[4.75rem] truncate text-gray-500 dark:text-dark-400">{{ formatSchedulerScoreGroup(score) }}</span>
                 <span class="text-gray-300 dark:text-gray-600">/</span>
-                <span>{{ formatSchedulerScore(score.base_score) }}</span>
+                <span v-if="score.available !== false">{{ formatSchedulerScore(score.base_score) }}</span>
+                <span v-else class="text-gray-500">unavailable</span>
                 <span class="text-gray-300 dark:text-gray-600">/</span>
                 <span class="text-primary-700 dark:text-primary-300">{{ formatStickySchedulerScore(score) }}</span>
+                <span class="text-gray-300 dark:text-gray-600">/</span>
+                <span>{{ formatResetDiagnostic(score) }}</span>
               </div>
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
@@ -917,6 +920,24 @@ const formatStickySchedulerScore = (score: AccountSchedulerGroupScore): string =
   if (!score) return '-'
   if (score.sticky_score_infinity) return '+∞'
   return formatSchedulerScore(score.sticky_score)
+}
+
+const formatResetDiagnostic = (score: AccountSchedulerGroupScore): string => {
+  const window = score?.reset_window || 'none'
+  const seconds = Number(score?.reset_remaining_seconds)
+  if (!Number.isFinite(seconds) || seconds < 0) return `${window}/-`
+  const days = Math.floor(seconds / 86400)
+  const hours = Math.floor((seconds % 86400) / 3600)
+  if (days > 0) return `${window}/${days}d${hours}h`
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return `${window}/${hours}h${minutes}m`
+}
+
+const schedulerScoreTitle = (score: AccountSchedulerGroupScore): string => {
+  const resetAt = score?.reset_at ? formatDateTime(score.reset_at) : '-'
+  const source = score?.reset_data_source || 'unavailable'
+  const stale = score?.reset_stale ? 'stale' : 'fresh'
+  return `${formatSchedulerScoreGroup(score)} / ${formatSchedulerScore(score.base_score)} / ${formatStickySchedulerScore(score)} / reset=${formatResetDiagnostic(score)} / at=${resetAt} / source=${source} / ${stale}`
 }
 
 const getSchedulerScoreRows = (account: Account): AccountSchedulerGroupScore[] => {

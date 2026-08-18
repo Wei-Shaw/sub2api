@@ -56,7 +56,7 @@ api.sub2api.com {
 		# 故障转移
 		fail_duration 30s
 		max_fails 3
-		unhealthy_status 500 502 503 504
+		unhealthy_status 502 504
 	}
 
 	# =========================================================================
