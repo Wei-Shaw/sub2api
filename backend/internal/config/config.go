@@ -1726,6 +1726,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if err := viper.BindEnv("server.enable_server_timing", "ENABLE_SERVER_TIMING"); err != nil {
 		return nil, fmt.Errorf("bind ENABLE_SERVER_TIMING: %w", err)
 	}
+	if err := viper.BindEnv("server.port", "SERVER_PORT", "PORT"); err != nil {
+		return nil, fmt.Errorf("bind server.port: %w", err)
+	}
 
 	// 默认值
 	setDefaults()
@@ -3664,6 +3667,7 @@ func GetServerAddress() string {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
+	_ = v.BindEnv("server.port", "SERVER_PORT", "PORT")
 
 	// Try to read config file (ignore errors if not found)
 	_ = v.ReadInConfig()

@@ -461,7 +461,22 @@ rm -rf data/ postgres_data/ redis_data/
 
 ---
 
-### Method 3: Apple container (macOS)
+### Method 3: Railway
+
+Railway can run the root `Dockerfile` directly. Use this layout:
+
+1. Add PostgreSQL and Redis services to the Railway project.
+2. Attach a persistent volume at `/app/data` so `config.yaml` and runtime state survive redeploys.
+3. Set the app service environment from Railway's connection strings:
+   - `DATABASE_URL`
+   - `REDIS_URL`
+4. Leave the port alone. Railway injects `PORT`, and this build now honors it automatically.
+
+On first boot, the app auto-initializes from Railway environment variables when it sees a Railway runtime plus database and Redis connection values. If you want to keep the old manual setup flow, set `AUTO_SETUP=false` and provide your own config file.
+
+---
+
+### Method 4: Apple container (macOS)
 
 Apple-silicon Macs running macOS 26 can run the full Sub2API, PostgreSQL, and Redis stack with Apple `container` 1.1.0 or newer:
 
@@ -477,7 +492,7 @@ This is an operator-managed local workflow; Docker Compose remains the recommend
 
 ---
 
-### Method 4: Build from Source
+### Method 5: Build from Source
 
 Build and run from source code for development or customization.
 

@@ -434,6 +434,14 @@ func (r ChannelMonitorRuntime) PassiveAggregationAllowed() bool {
 	return r.Enabled && r.Mode == ChannelMonitorModeV2
 }
 
+// ChannelMonitorDingTalkRuntime is the private notification configuration used
+// by the runner. Webhook and secret are intentionally absent from public DTOs.
+type ChannelMonitorDingTalkRuntime struct {
+	Enabled bool
+	Webhook string
+	Secret  string
+}
+
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
 // the settings store. Fail-open: on error returns Enabled=true, Mode=v1, default interval.
 func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime {
@@ -464,6 +472,27 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
+	}
+}
+
+// GetChannelMonitorDingTalkRuntime reads the current DingTalk robot settings.
+// Notification delivery fails closed when settings cannot be loaded.
+func (s *SettingService) GetChannelMonitorDingTalkRuntime(ctx context.Context) ChannelMonitorDingTalkRuntime {
+	if s == nil || s.settingRepo == nil {
+		return ChannelMonitorDingTalkRuntime{}
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyChannelMonitorDingTalkEnabled,
+		SettingKeyChannelMonitorDingTalkWebhook,
+		SettingKeyChannelMonitorDingTalkSecret,
+	})
+	if err != nil {
+		return ChannelMonitorDingTalkRuntime{}
+	}
+	return ChannelMonitorDingTalkRuntime{
+		Enabled: vals[SettingKeyChannelMonitorDingTalkEnabled] == "true",
+		Webhook: strings.TrimSpace(vals[SettingKeyChannelMonitorDingTalkWebhook]),
+		Secret:  strings.TrimSpace(vals[SettingKeyChannelMonitorDingTalkSecret]),
 	}
 }
 

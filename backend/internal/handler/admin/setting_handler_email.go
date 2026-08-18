@@ -76,6 +76,51 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	response.Success(c, gin.H{"message": "SMTP connection successful"})
 }
 
+// TestChannelMonitorDingTalk sends a test alert without persisting settings.
+// POST /api/v1/admin/settings/test-channel-monitor-dingtalk
+type TestChannelMonitorDingTalkRequest struct {
+	Webhook      string `json:"channel_monitor_dingtalk_webhook"`
+	Secret       string `json:"channel_monitor_dingtalk_secret"`
+	WebhookClear bool   `json:"channel_monitor_dingtalk_webhook_clear"`
+	SecretClear  bool   `json:"channel_monitor_dingtalk_secret_clear"`
+}
+
+func (h *SettingHandler) TestChannelMonitorDingTalk(c *gin.Context) {
+	var req TestChannelMonitorDingTalkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	stored := h.settingService.GetChannelMonitorDingTalkRuntime(c.Request.Context())
+	webhook := strings.TrimSpace(req.Webhook)
+	secret := strings.TrimSpace(req.Secret)
+	if req.WebhookClear {
+		webhook = ""
+	} else if webhook == "" {
+		webhook = stored.Webhook
+	}
+	if req.SecretClear {
+		secret = ""
+	} else if secret == "" {
+		secret = stored.Secret
+	}
+	if webhook == "" {
+		response.BadRequest(c, "DingTalk webhook is required")
+		return
+	}
+	if h.channelMonitorDingTalkTest == nil {
+		response.BadRequest(c, "DingTalk test is unavailable")
+		return
+	}
+	if err := h.channelMonitorDingTalkTest(c.Request.Context(), webhook, secret); err != nil {
+		response.BadRequest(c, "DingTalk test failed: "+err.Error())
+		return
+	}
+
+	response.Success(c, gin.H{"message": "DingTalk test alert sent successfully"})
+}
+
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
 	Email        string `json:"email" binding:"required,email"`

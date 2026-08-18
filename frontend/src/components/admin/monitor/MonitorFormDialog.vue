@@ -332,7 +332,7 @@ const templateSelectValue = computed<string>({
   get: () => (form.template_id == null ? '' : String(form.template_id)),
   set: (raw: string) => {
     if (raw === '') {
-      form.template_id = null
+      clearRequestSnapshot()
       return
     }
     const id = Number(raw)

@@ -573,6 +573,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ChannelMonitorDefaultIntervalSeconds != after.ChannelMonitorDefaultIntervalSeconds {
 		changed = append(changed, "channel_monitor_default_interval_seconds")
 	}
+	if before.ChannelMonitorDingTalkEnabled != after.ChannelMonitorDingTalkEnabled {
+		changed = append(changed, "channel_monitor_dingtalk_enabled")
+	}
+	if req.ChannelMonitorDingTalkWebhook != "" || req.ChannelMonitorDingTalkWebhookClear {
+		changed = append(changed, "channel_monitor_dingtalk_webhook")
+	}
+	if req.ChannelMonitorDingTalkSecret != "" || req.ChannelMonitorDingTalkSecretClear {
+		changed = append(changed, "channel_monitor_dingtalk_secret")
+	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}

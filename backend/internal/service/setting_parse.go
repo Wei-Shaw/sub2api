@@ -189,6 +189,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyChannelMonitorEnabled:                "true",
 		SettingKeyChannelMonitorMode:                   ChannelMonitorModeV1,
 		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
+		SettingKeyChannelMonitorDingTalkEnabled:        "false",
+		SettingKeyChannelMonitorDingTalkWebhook:        "",
+		SettingKeyChannelMonitorDingTalkSecret:         "",
 		SettingKeyChannelMonitorHideThroughput:         "true",
 
 		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
@@ -795,6 +798,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
 		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
 	)
+	result.ChannelMonitorDingTalkEnabled = settings[SettingKeyChannelMonitorDingTalkEnabled] == "true"
+	result.ChannelMonitorDingTalkWebhook = strings.TrimSpace(settings[SettingKeyChannelMonitorDingTalkWebhook])
+	result.ChannelMonitorDingTalkWebhookConfigured = result.ChannelMonitorDingTalkWebhook != ""
+	result.ChannelMonitorDingTalkSecret = strings.TrimSpace(settings[SettingKeyChannelMonitorDingTalkSecret])
+	result.ChannelMonitorDingTalkSecretConfigured = result.ChannelMonitorDingTalkSecret != ""
+
 	// 默认隐藏吞吐（迁移 206 的隐私默认）：未配置时必须与 setting_public.go 的
 	// 公开读取路径给出同一个值，否则管理端看到“未隐藏”而用户端实际已隐藏。
 	result.ChannelMonitorHideThroughput = !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput])
