@@ -240,6 +240,11 @@ REDACTED
 		REDACTED
 	REDACTED
 
+		if policy == ErrorPolicySkipped && account.IsCustomErrorCodesEnabled() {
+			return nil, s.writeGeminiCustomCodeSkippedError(c, account, resp.StatusCode, requestID, evBody, func() {
+				_ = s.writeChatCompletionsError(c, http.StatusInternalServerError, "api_error", geminiCustomCodeSkippedClientMessage)
+		REDACTED)
+	REDACTED
 		return nil, s.writeGeminiChatCompletionsMappedError(c, account, resp.StatusCode, requestID, evBody)
 REDACTED
 
@@ -856,8 +861,13 @@ REDACTED
 		if errType == "upstream_error" {
 			errType = "invalid_request_error"
 	REDACTED
+		// 400 是确定性的请求错误：回传上游 message（已脱敏），客户端据此定位非法字段。
 		if errMsg == "Upstream request failed" {
-			errMsg = "Invalid request"
+			if upstreamMsg != "" {
+				errMsg = upstreamMsg
+		REDACTED else {
+				errMsg = "Invalid request"
+		REDACTED
 	REDACTED
 	case http.StatusNotFound:
 		statusCode = http.StatusNotFound
