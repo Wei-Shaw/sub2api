@@ -348,6 +348,53 @@ describe('admin AccountsView — 账号行展示', () => {
     wrapper.unmount()
   })
 
+  it('原生 compaction v2 徽标不受 legacy compact 模式影响', async () => {
+    listAccounts.mockResolvedValue({
+      items: [
+        {
+          id: 104,
+          name: 'native-v2-unsupported',
+          platform: 'openai',
+          type: 'apikey',
+          extra: {
+            openai_compact_mode: 'force_on',
+            openai_compact_supported: true,
+            openai_native_compaction_v2_supported: false,
+            openai_native_compaction_v2_checked_at: '2026-08-17T00:00:00Z',
+          },
+        },
+        {
+          id: 105,
+          name: 'native-v2-supported',
+          platform: 'openai',
+          type: 'oauth',
+          extra: {
+            openai_compact_mode: 'force_off',
+            openai_compact_supported: false,
+            openai_native_compaction_v2_supported: true,
+          },
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mountViewWithRow()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.accounts.openai.nativeCompactionV2Unsupported')
+    expect(wrapper.text()).toContain('admin.accounts.openai.nativeCompactionV2Supported')
+    const titles = wrapper.findAll('[title]').map((element) => element.attributes('title'))
+    expect(titles.some((title) =>
+      title.includes('admin.accounts.openai.nativeCompactionV2Unsupported') &&
+      title.includes('admin.accounts.openai.nativeCompactionV2LastChecked')
+    )).toBe(true)
+
+    wrapper.unmount()
+  })
+
   it('prefers persisted Grok JWT tier over lagging billing/quota snapshots', async () => {
     const grokAccounts = [
       {

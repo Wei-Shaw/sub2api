@@ -77,8 +77,9 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuthSuccessPersi
 	require.Equal(t, "compaction_trigger", inputItems[len(inputItems)-1].Get("type").String())
 
 	updates := <-updateCalls
-	require.Equal(t, true, updates["openai_compact_supported"])
-	require.Equal(t, http.StatusOK, updates["openai_compact_last_status"])
+	require.Equal(t, true, updates[openAINativeCompactionV2SupportedKey])
+	require.Equal(t, http.StatusOK, updates[openAINativeCompactionV2LastStatusKey])
+	require.NotContains(t, updates, "openai_compact_supported")
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
 }
 
@@ -121,8 +122,8 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactOAuth404MarksUnsu
 	require.Error(t, err)
 
 	updates := <-updateCalls
-	require.Equal(t, false, updates["openai_compact_supported"])
-	require.Equal(t, http.StatusNotFound, updates["openai_compact_last_status"])
+	require.Equal(t, false, updates[openAINativeCompactionV2SupportedKey])
+	require.Equal(t, http.StatusNotFound, updates[openAINativeCompactionV2LastStatusKey])
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
 }
 
@@ -174,7 +175,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyUsesNativeR
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String(),
 		"原生 v2 探测不应用 compact_model_mapping")
 	updates := <-updateCalls
-	require.Equal(t, true, updates["openai_compact_supported"])
+	require.Equal(t, true, updates[openAINativeCompactionV2SupportedKey])
 }
 
 func TestAccountTestService_TestAccountConnection_OpenAICompactAPIKeyDefaultBaseURLUsesResponsesPath(t *testing.T) {
@@ -261,7 +262,7 @@ func TestAccountTestService_TestAccountConnection_OpenAICompact2xxWithoutItemMar
 	require.Error(t, err)
 
 	updates := <-updateCalls
-	require.Equal(t, false, updates["openai_compact_supported"])
+	require.Equal(t, false, updates[openAINativeCompactionV2SupportedKey])
 	require.Contains(t, rec.Body.String(), `"type":"error"`)
 }
 

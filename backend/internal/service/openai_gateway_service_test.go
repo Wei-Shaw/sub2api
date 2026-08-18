@@ -1741,6 +1741,8 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set("session-id", "native-failover-session")
+	c.Set("api_key", &APIKey{ID: 71})
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -1752,7 +1754,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 			`data: {"type":"response.failed","response":{"id":"resp_1","error":{"code":"server_is_overloaded","message":"Please retry later."}}}`,
 			"",
 		}, "\n"))),
-		Header: http.Header{"X-Request-Id": []string{"rid-overloaded-failed"}},
+		Header: http.Header{
+			"X-Request-Id":       []string{"rid-overloaded-failed"},
+			"X-Codex-Turn-State": []string{"discarded-native-state"},
+		},
 	}
 
 	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
@@ -1767,6 +1772,8 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	require.True(t, failoverErr.RequestScopedTransient)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+	_, provenanceRecorded := svc.openaiCodexTurnStateOrigins.Load("71\x00native-failover-session")
+	require.False(t, provenanceRecorded, "未提交的 native streaming attempt 不得污染 turn-state 溯源")
 }
 
 func TestOpenAIStreamingResponseFailedBeforeOutputRateLimitUsesPoolRetryPolicy(t *testing.T) {
@@ -2117,6 +2124,8 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set("session-id", "native-success-session")
+	c.Set("api_key", &APIKey{ID: 72})
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -2130,10 +2139,14 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 			`data: {"type":"response.completed","response":{"id":"resp_sdk_parse","status":"completed","output":null,"usage":{"input_tokens":1,"output_tokens":1}}}`,
 			"",
 		}, "\n"))),
-		Header: http.Header{"X-Request-Id": []string{"rid-sdk-parse"}},
+		Header: http.Header{
+			"X-Request-Id":       []string{"rid-sdk-parse"},
+			"X-Codex-Turn-State": []string{"committed-native-state"},
+		},
 	}
 
-	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -2144,6 +2157,11 @@ func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
 	require.True(t, output.IsArray())
 	require.Len(t, output.Array(), 1)
 	require.Equal(t, "pong", gjson.GetBytes(terminalPayload, "response.output.0.content.0.text").String())
+	rawOrigin, provenanceRecorded := svc.openaiCodexTurnStateOrigins.Load("72\x00native-success-session")
+	require.True(t, provenanceRecorded)
+	origin, originValid := rawOrigin.(openAICodexTurnStateOrigin)
+	require.True(t, originValid)
+	require.Equal(t, account.ID, origin.accountID)
 }
 
 func TestOpenAIStreamingNormalizesTerminalOutputToEmptyArray(t *testing.T) {
@@ -2379,6 +2397,8 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set("session-id", "passthrough-failover-session")
+	c.Set("api_key", &APIKey{ID: 73})
 
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
@@ -2390,7 +2410,10 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 			`data: {"type":"response.failed","error":{"message":"upstream processing failed"}}`,
 			"",
 		}, "\n"))),
-		Header: http.Header{"X-Request-Id": []string{"rid-passthrough-failed"}},
+		Header: http.Header{
+			"X-Request-Id":       []string{"rid-passthrough-failed"},
+			"X-Codex-Turn-State": []string{"discarded-passthrough-state"},
+		},
 	}
 
 	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "", "")
@@ -2401,6 +2424,8 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	require.Contains(t, string(failoverErr.ResponseBody), "upstream processing failed")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+	_, provenanceRecorded := svc.openaiCodexTurnStateOrigins.Load("73\x00passthrough-failover-session")
+	require.False(t, provenanceRecorded, "未提交的 passthrough attempt 不得污染 turn-state 溯源")
 }
 
 func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputAppliesPassthroughRule(t *testing.T) {
@@ -2551,12 +2576,16 @@ func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set("session-id", "passthrough-success-session")
+	c.Set("api_key", &APIKey{ID: 74})
 
 	pr, pw := io.Pipe()
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       pr,
-		Header:     http.Header{},
+		Header: http.Header{
+			"X-Codex-Turn-State": []string{"committed-passthrough-state"},
+		},
 	}
 
 	go func() {
@@ -2564,7 +2593,8 @@ func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t 
 		_, _ = pw.Write([]byte("data: {\"type\":\"response.done\",\"response\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"input_tokens_details\":{\"cached_tokens\":1}}}}\n\n"))
 	}()
 
-	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "", "")
+	account := &Account{ID: 1}
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "", "")
 	_ = pr.Close()
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -2572,6 +2602,11 @@ func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t 
 	require.Equal(t, 2, result.usage.InputTokens)
 	require.Equal(t, 3, result.usage.OutputTokens)
 	require.Equal(t, 1, result.usage.CacheReadInputTokens)
+	rawOrigin, provenanceRecorded := svc.openaiCodexTurnStateOrigins.Load("74\x00passthrough-success-session")
+	require.True(t, provenanceRecorded)
+	origin, originValid := rawOrigin.(openAICodexTurnStateOrigin)
+	require.True(t, originValid)
+	require.Equal(t, account.ID, origin.accountID)
 }
 
 func TestOpenAIStreamingPassthroughResponseIncompleteWithoutDoneMarkerStillSucceeds(t *testing.T) {

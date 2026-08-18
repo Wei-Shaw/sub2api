@@ -695,7 +695,7 @@ export default {
         codexImageToolBadgeBlock: '客户端图片工具已移除',
         compactMode: 'Compact 模式',
         compactModeDesc:
-          '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',
+          '控制 legacy /responses/compact 调度。自动模式沿用已有 legacy 能力记录，未知账号保持允许；强制开启始终允许，强制关闭始终排除。',
         compactModeAuto: '自动',
         compactModeForceOn: '强制开启',
         compactModeForceOff: '强制关闭',
@@ -707,9 +707,13 @@ export default {
         compactAuto: 'Compact Auto',
         compactUnknown: 'Compact Auto',
         compactLastChecked: '最近探测',
+        nativeCompactionV2Supported: '支持原生 v2',
+        nativeCompactionV2Unsupported: '不支持原生 v2',
+        nativeCompactionV2Unknown: '原生 v2 未探测',
+        nativeCompactionV2LastChecked: '最近原生 v2 探测',
         testMode: '测试模式',
         testModeDefault: '常规请求',
-        testModeCompact: 'Compact 探测',
+        testModeCompact: '原生 Compaction v2 探测',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       },
       grok: {

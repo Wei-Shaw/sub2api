@@ -235,11 +235,33 @@ func openAIResponsesRequiredCapability(imageIntent bool, platform string) servic
 	return service.OpenAIEndpointCapabilityChatCompletions
 }
 
+type openAICompactionRoute uint8
+
+const (
+	openAICompactionRouteNone openAICompactionRoute = iota
+	openAICompactionRouteNativeV2
+	openAICompactionRouteLegacy
+)
+
+func openAICompactionRouteForRequest(nativeV2 bool, legacyCompact bool) openAICompactionRoute {
+	if nativeV2 {
+		return openAICompactionRouteNativeV2
+	}
+	if legacyCompact {
+		return openAICompactionRouteLegacy
+	}
+	return openAICompactionRouteNone
+}
+
 // openAIResponsesRequiredCapabilityForRequest returns the endpoint capability
-// required by an image or Responses request. needsResponses includes both the
-// legacy /responses/compact endpoint and native remote compaction v2.
-func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponses bool, platform string) service.OpenAIEndpointCapability {
-	if needsResponses && platform == service.PlatformOpenAI {
+// required by an image or compaction request. Native v2 uses its independent
+// probe result; legacy /responses/compact only requires ordinary Responses and
+// applies its legacy compact eligibility separately.
+func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, compactionRoute openAICompactionRoute, platform string) service.OpenAIEndpointCapability {
+	if platform == service.PlatformOpenAI && compactionRoute == openAICompactionRouteNativeV2 {
+		return service.OpenAIEndpointCapabilityResponsesCompactionV2
+	}
+	if platform == service.PlatformOpenAI && compactionRoute == openAICompactionRouteLegacy {
 		return service.OpenAIEndpointCapabilityResponses
 	}
 	return openAIResponsesRequiredCapability(imageIntent, platform)
@@ -524,8 +546,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
 	// 复用前置权限与并发阶段在未修改 body 上确认的显式生图意图，避免大 tools 请求重复扫描。
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
-	needsResponses := nativeV2 || legacyCompact
-	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
+	compactionRoute := openAICompactionRouteForRequest(nativeV2, legacyCompact)
+	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, compactionRoute, requestPlatform)
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的
 	// D 与计费高峰因子，选号、槽位终检与全部 failover 重入共用同一门与阈值。

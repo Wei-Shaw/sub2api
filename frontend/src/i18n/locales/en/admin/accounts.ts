@@ -625,7 +625,7 @@ export default {
         codexImageToolBadgeBlock: 'Client image tools stripped',
         compactMode: 'Compact mode',
         compactModeDesc:
-          'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
+          'Controls legacy /responses/compact routing. Auto uses any existing legacy capability record; unknown accounts remain allowed. Force On always allows and Force Off always excludes.',
         compactModeAuto: 'Auto',
         compactModeForceOn: 'Force On',
         compactModeForceOff: 'Force Off',
@@ -637,9 +637,13 @@ export default {
         compactAuto: 'Compact Auto',
         compactUnknown: 'Compact Auto',
         compactLastChecked: 'Last compact probe',
+        nativeCompactionV2Supported: 'Native v2 supported',
+        nativeCompactionV2Unsupported: 'Native v2 unsupported',
+        nativeCompactionV2Unknown: 'Native v2 untested',
+        nativeCompactionV2LastChecked: 'Last native v2 probe',
         testMode: 'Test mode',
         testModeDefault: 'Default request',
-        testModeCompact: 'Compact probe',
+        testModeCompact: 'Native compaction v2 probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       grok: {

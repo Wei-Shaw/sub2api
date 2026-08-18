@@ -69,7 +69,7 @@ func openAICompactProbeFoundCompactionItem(body []byte) bool {
 	return responsesOutputHasCompactionItem(body)
 }
 
-func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
+func shouldMarkOpenAINativeCompactionV2Unsupported(status int, body []byte) bool {
 	switch status {
 	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
 		return true
@@ -92,26 +92,27 @@ func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
 	return false
 }
 
-// buildOpenAICompactProbeExtraUpdates 计算探测结果的账号 extra 更新。
+// buildOpenAICompactProbeExtraUpdates 计算 native remote compaction v2 探测
+// 结果的账号 extra 更新。字段与 legacy /responses/compact 的 mode/能力记录
+// 完全独立，避免 v2 探测结果改变 legacy 路由。
 // compactionFound 是 v2 契约判据：HTTP 2xx 但响应无 compaction item 时同样
 // 记为不支持（链路把 compaction_trigger 吞掉的形态，等价 codex 的 "got 0
-// items" fatal，#5478/#5648）。极端场景（上游链只支持 legacy unary compact）
-// 可用账号级 openai_compact_mode=force_on 人工覆盖。
+// items" fatal，#5478/#5648）。
 func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probeErr error, compactionFound bool, now time.Time) map[string]any {
 	updates := map[string]any{
-		"openai_compact_checked_at":  now.Format(time.RFC3339),
-		"openai_compact_last_status": nil,
+		openAINativeCompactionV2CheckedAtKey:  now.Format(time.RFC3339),
+		openAINativeCompactionV2LastStatusKey: nil,
 	}
 
 	if resp != nil {
-		updates["openai_compact_last_status"] = resp.StatusCode
+		updates[openAINativeCompactionV2LastStatusKey] = resp.StatusCode
 	}
 
 	switch {
 	case probeErr != nil:
-		updates["openai_compact_last_error"] = truncateString(sanitizeUpstreamErrorMessage(probeErr.Error()), 2048)
+		updates[openAINativeCompactionV2LastErrorKey] = truncateString(sanitizeUpstreamErrorMessage(probeErr.Error()), 2048)
 	case resp == nil:
-		updates["openai_compact_last_error"] = "compact probe failed"
+		updates[openAINativeCompactionV2LastErrorKey] = "compact probe failed"
 	default:
 		errMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 		if errMsg == "" && len(body) > 0 {
@@ -123,16 +124,16 @@ func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probe
 		errMsg = truncateString(sanitizeUpstreamErrorMessage(errMsg), 2048)
 		switch {
 		case resp.StatusCode >= 200 && resp.StatusCode < 300 && compactionFound:
-			updates["openai_compact_supported"] = true
-			updates["openai_compact_last_error"] = ""
+			updates[openAINativeCompactionV2SupportedKey] = true
+			updates[openAINativeCompactionV2LastErrorKey] = ""
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			updates["openai_compact_supported"] = false
-			updates["openai_compact_last_error"] = "upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported)"
+			updates[openAINativeCompactionV2SupportedKey] = false
+			updates[openAINativeCompactionV2LastErrorKey] = "upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported)"
 		default:
-			if shouldMarkOpenAICompactUnsupported(resp.StatusCode, body) {
-				updates["openai_compact_supported"] = false
+			if shouldMarkOpenAINativeCompactionV2Unsupported(resp.StatusCode, body) {
+				updates[openAINativeCompactionV2SupportedKey] = false
 			}
-			updates["openai_compact_last_error"] = errMsg
+			updates[openAINativeCompactionV2LastErrorKey] = errMsg
 		}
 	}
 

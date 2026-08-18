@@ -103,6 +103,10 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityResponsesCompactionV2 表示上游不仅支持
+	// /v1/responses，还经探测确认支持原生 remote compaction v2。未知状态保留
+	// 兼容性、允许调度；明确不支持时排除。
+	OpenAIEndpointCapabilityResponsesCompactionV2 OpenAIEndpointCapability = "responses_compaction_v2"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -527,12 +531,18 @@ func parseTempUnschedInt(value any) int {
 }
 
 const (
-	// OpenAICompactModeAuto follows compact-probe results when deciding compact eligibility.
+	// OpenAICompactModeAuto follows legacy compact capability records when deciding
+	// /responses/compact eligibility.
 	OpenAICompactModeAuto = "auto"
-	// OpenAICompactModeForceOn always treats the account as compact-supported.
+	// OpenAICompactModeForceOn always treats the account as legacy compact-supported.
 	OpenAICompactModeForceOn = "force_on"
-	// OpenAICompactModeForceOff always treats the account as compact-unsupported.
+	// OpenAICompactModeForceOff always treats the account as legacy compact-unsupported.
 	OpenAICompactModeForceOff = "force_off"
+
+	openAINativeCompactionV2SupportedKey  = "openai_native_compaction_v2_supported"
+	openAINativeCompactionV2CheckedAtKey  = "openai_native_compaction_v2_checked_at"
+	openAINativeCompactionV2LastStatusKey = "openai_native_compaction_v2_last_status"
+	openAINativeCompactionV2LastErrorKey  = "openai_native_compaction_v2_last_error"
 )
 
 func normalizeOpenAICompactMode(mode string) string {
@@ -916,6 +926,30 @@ func (a *Account) AllowsOpenAICompact() bool {
 		return true
 	}
 	return supported
+}
+
+// OpenAINativeCompactionV2SupportKnown reports the independently probed native
+// remote compaction v2 capability. Legacy /responses/compact mode and probe
+// fields intentionally do not affect this result.
+func (a *Account) OpenAINativeCompactionV2SupportKnown() (supported bool, known bool) {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false, false
+	}
+	supported, ok := a.Extra[openAINativeCompactionV2SupportedKey].(bool)
+	if !ok {
+		return false, false
+	}
+	return supported, true
+}
+
+// AllowsOpenAINativeCompactionV2 keeps unprobed accounts eligible for backward
+// compatibility and excludes only accounts explicitly confirmed unsupported.
+func (a *Account) AllowsOpenAINativeCompactionV2() bool {
+	if a == nil || !a.IsOpenAI() {
+		return false
+	}
+	supported, known := a.OpenAINativeCompactionV2SupportKnown()
+	return !known || supported
 }
 
 // GetCompactModelMapping returns compact-only model remapping configuration.
@@ -1675,12 +1709,15 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 			a.Type == AccountTypeOAuth &&
 			!a.IsOpenAIPersonalAccessToken() &&
 			!a.IsOpenAIAgentIdentity()
-	case OpenAIEndpointCapabilityResponses:
+	case OpenAIEndpointCapabilityResponses, OpenAIEndpointCapabilityResponsesCompactionV2:
 		// Responses 支持状态由 accounts.extra 的自动探测标记决定，而非
 		// credentials 能力集。已探测确认不支持 /v1/responses 的 APIKey 上游
 		// 必须排除——否则会在 forward 阶段被静默降级为 Chat Completions，
 		// 无法完成生图（#4417）。未探测/OAuth 账号保留旧行为（不排除）。
 		if a.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(a.Extra) {
+			return false
+		}
+		if capability == OpenAIEndpointCapabilityResponsesCompactionV2 && !a.AllowsOpenAINativeCompactionV2() {
 			return false
 		}
 		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions

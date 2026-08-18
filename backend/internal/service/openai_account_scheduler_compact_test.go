@@ -133,6 +133,10 @@ func newOpenAICompactionSchedulerTestService(accounts []Account, advanced bool) 
 
 func selectOpenAICompactionSchedulerTestAccount(t *testing.T, svc *OpenAIGatewayService, groupID int64, requireCompact bool) (*AccountSelectionResult, error) {
 	t.Helper()
+	requiredCapability := OpenAIEndpointCapabilityResponsesCompactionV2
+	if requireCompact {
+		requiredCapability = OpenAIEndpointCapabilityResponses
+	}
 	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
 		context.Background(),
 		&groupID,
@@ -141,7 +145,7 @@ func selectOpenAICompactionSchedulerTestAccount(t *testing.T, svc *OpenAIGateway
 		"gpt-5.6-sol",
 		nil,
 		OpenAIUpstreamTransportAny,
-		OpenAIEndpointCapabilityResponses,
+		requiredCapability,
 		requireCompact,
 		false,
 		false,
@@ -170,6 +174,48 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionIgnores
 			require.NoError(t, err)
 			require.NotNil(t, selection)
 			require.Equal(t, int64(71012), selection.Account.ID)
+		})
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionUsesNativeProbe(t *testing.T) {
+	for _, advanced := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy_scheduler", true: "advanced_scheduler"}[advanced], func(t *testing.T) {
+			resetOpenAIAdvancedSchedulerSettingCacheForTest()
+			svc := newOpenAICompactionSchedulerTestService([]Account{
+				{
+					ID:          71017,
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Priority:    10,
+					Extra: map[string]any{
+						openAINativeCompactionV2SupportedKey: false,
+						"openai_compact_supported":           true,
+						"openai_responses_supported":         true,
+					},
+				},
+				{
+					ID:          71018,
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Extra: map[string]any{
+						openAINativeCompactionV2SupportedKey: true,
+						"openai_compact_supported":           false,
+						"openai_responses_supported":         true,
+					},
+				},
+			}, advanced)
+
+			selection, err := selectOpenAICompactionSchedulerTestAccount(t, svc, 91011, false)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.Equal(t, int64(71018), selection.Account.ID)
 		})
 	}
 }

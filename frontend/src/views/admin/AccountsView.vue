@@ -274,15 +274,15 @@
                 </span>
               </div>
               <div
-                v-if="getOpenAICompactMeta(row)"
+                v-if="getOpenAINativeCompactionV2Meta(row)"
                 :class="[
                   'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
-                  getOpenAICompactMeta(row)?.className
+                  getOpenAINativeCompactionV2Meta(row)?.className
                 ]"
-                :title="getOpenAICompactTitle(row)"
+                :title="getOpenAINativeCompactionV2Title(row)"
               >
-                <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
-                <span>{{ getOpenAICompactMeta(row)?.label }}</span>
+                <span :class="['h-1.5 w-1.5 rounded-full', getOpenAINativeCompactionV2Meta(row)?.dotClass]" />
+                <span>{{ getOpenAINativeCompactionV2Meta(row)?.label }}</span>
               </div>
             </div>
           </template>
@@ -1639,51 +1639,48 @@ function accountHomepageUrl(row: Account): string {
   return baseUrl ? new URL(baseUrl).origin : ''
 }
 
-type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
+type OpenAINativeCompactionV2BadgeState = 'supported' | 'unsupported' | 'unknown'
 
-function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
+function getOpenAINativeCompactionV2State(row: any): OpenAINativeCompactionV2BadgeState | null {
   if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
   const extra = row.extra as Record<string, unknown> | undefined
-  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
-  if (mode === 'force_on') return 'active'
-  if (mode === 'force_off') return 'blocked'
-  if (typeof extra?.openai_compact_supported === 'boolean') {
-    return extra.openai_compact_supported ? 'active' : 'blocked'
+  if (typeof extra?.openai_native_compaction_v2_supported === 'boolean') {
+    return extra.openai_native_compaction_v2_supported ? 'supported' : 'unsupported'
   }
-  return 'auto'
+  return 'unknown'
 }
 
-function getOpenAICompactMeta(row: any): { label: string; className: string; dotClass: string } | null {
-  const state = getOpenAICompactState(row)
+function getOpenAINativeCompactionV2Meta(row: any): { label: string; className: string; dotClass: string } | null {
+  const state = getOpenAINativeCompactionV2State(row)
   if (!state) return null
   switch (state) {
-    case 'active':
+    case 'supported':
       return {
-        label: t('admin.accounts.openai.compactSupported'),
+        label: t('admin.accounts.openai.nativeCompactionV2Supported'),
         className: 'text-emerald-600 dark:text-emerald-300',
         dotClass: 'bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.14)]'
       }
-    case 'blocked':
+    case 'unsupported':
       return {
-        label: t('admin.accounts.openai.compactUnsupported'),
+        label: t('admin.accounts.openai.nativeCompactionV2Unsupported'),
         className: 'text-rose-600 dark:text-rose-300',
         dotClass: 'bg-rose-500 shadow-[0_0_0_2px_rgba(244,63,94,0.14)]'
       }
-    case 'auto':
+    case 'unknown':
       return {
-        label: t('admin.accounts.openai.compactAuto'),
+        label: t('admin.accounts.openai.nativeCompactionV2Unknown'),
         className: 'text-slate-500 dark:text-slate-400',
         dotClass: 'bg-slate-300 dark:bg-slate-500'
       }
   }
 }
 
-function getOpenAICompactTitle(row: any): string {
+function getOpenAINativeCompactionV2Title(row: any): string {
   const extra = row.extra as Record<string, unknown> | undefined
-  const checkedAt = typeof extra?.openai_compact_checked_at === 'string' ? extra.openai_compact_checked_at : ''
-  const label = getOpenAICompactMeta(row)?.label || ''
+  const checkedAt = typeof extra?.openai_native_compaction_v2_checked_at === 'string' ? extra.openai_native_compaction_v2_checked_at : ''
+  const label = getOpenAINativeCompactionV2Meta(row)?.label || ''
   if (!checkedAt) return label
-  return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
+  return `${label} | ${t('admin.accounts.openai.nativeCompactionV2LastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
 function getAntigravityTierClass(row: any): string {

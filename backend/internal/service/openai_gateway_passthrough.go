@@ -262,13 +262,6 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
-	// x-codex-turn-state 溯源：下游回传由 writeOpenAIPassthroughResponseHeaders
-	// 在各 handler 的写头点强制放行，铸造账号在此统一记录，供出站守卫剥离
-	// failover 换号后的跨账号回带（openai_codex_turn_state.go）。
-	if extractOpenAICodexTurnState(resp.Header) != "" {
-		s.noteOpenAICodexTurnStateProvenance(c, account)
-	}
-
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	responseID := ""
@@ -285,7 +278,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
-		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
+		result, err := s.handleNonStreamingResponsePassthrough(openaiNonStreamingPassthroughInput{
+			response:      resp,
+			client:        c,
+			account:       account,
+			originalModel: reqModel,
+			mappedModel:   upstreamPassthroughModel,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -813,6 +812,15 @@ type openaiNonStreamingResultPassthrough struct {
 	imageOutputSizes []string
 }
 
+type openaiNonStreamingPassthroughInput struct {
+	response      *http.Response
+	client        *gin.Context
+	account       *Account
+	body          []byte
+	originalModel string
+	mappedModel   string
+}
+
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	if localStarted {
 		return true
@@ -1240,6 +1248,14 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	turnStateProvenanceRecorded := false
+	noteTurnStateProvenanceCommitted := func() {
+		if turnStateProvenanceRecorded {
+			return
+		}
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, resp.Header)
+		turnStateProvenanceRecorded = true
+	}
 
 	// SSE headers
 	c.Header("Content-Type", "text/event-stream")
@@ -1287,6 +1303,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 				return false
 			}
+			noteTurnStateProvenanceCommitted()
 		}
 		pendingLines = pendingLines[:0]
 		return true
@@ -1380,6 +1397,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 								"message": errMsg,
 							},
 						})
+						noteTurnStateProvenanceCommitted()
 						return resultWithUsage(), fmt.Errorf("upstream response failed: passthrough rule matched message=%s", errMsg)
 					}
 					if openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
@@ -1443,6 +1461,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
+				noteTurnStateProvenanceCommitted()
 				clientOutputStarted = true
 				flushPending = true
 				if line == "" {
@@ -1509,13 +1528,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	return resultWithUsage(), nil
 }
 
-func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
-	ctx context.Context,
-	resp *http.Response,
-	c *gin.Context,
-	originalModel string,
-	mappedModel string,
-) (*openaiNonStreamingResultPassthrough, error) {
+func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(input openaiNonStreamingPassthroughInput) (*openaiNonStreamingResultPassthrough, error) {
+	resp := input.response
+	c := input.client
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -1535,7 +1550,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
 	if isEventStreamResponse(resp.Header) {
-		return s.handlePassthroughSSEToJSON(resp, c, body, originalModel, mappedModel)
+		input.body = body
+		return s.handlePassthroughSSEToJSON(input)
 	}
 
 	usage := &OpenAIUsage{}
@@ -1551,22 +1567,22 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
 
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
 	}
-	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	if input.originalModel != "" && input.mappedModel != "" && input.originalModel != input.mappedModel {
+		body = s.replaceModelInResponseBody(body, input.mappedModel, input.originalModel)
 	}
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
 	}
+	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
+	s.noteStagedOpenAICodexTurnStateCommitted(c, input.account, resp.Header)
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
@@ -1580,7 +1596,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 // response for the passthrough path. It mirrors handleSSEToJSON while
 // preserving passthrough payloads, except compact-only model remapping may
 // rewrite model fields back to the original requested model.
-func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
+func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(input openaiNonStreamingPassthroughInput) (*openaiNonStreamingResultPassthrough, error) {
+	resp := input.response
+	c := input.client
+	body := input.body
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -1600,8 +1619,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		}
 		finalResponse = supplementCompactionItemFromSSE(c, finalResponse, bodyText)
 		body = finalResponse
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+		if input.originalModel != "" && input.mappedModel != "" && input.originalModel != input.mappedModel {
+			body = s.replaceModelInResponseBody(body, input.mappedModel, input.originalModel)
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
@@ -1620,8 +1639,8 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
-		if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
-			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		if input.originalModel != "" && input.mappedModel != "" && input.originalModel != input.mappedModel {
+			bodyText = s.replaceModelInSSEBody(bodyText, input.mappedModel, input.originalModel)
 		}
 		body = []byte(bodyText)
 	}
@@ -1638,6 +1657,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
 	}
+	s.noteStagedOpenAICodexTurnStateCommitted(c, input.account, resp.Header)
 
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,

@@ -46,17 +46,26 @@ func openAICodexTurnStateSeed(c *gin.Context) string {
 // 可能残留的上一 failover attempt 的值——否则换号后旧账号的 blob 会粘到
 // 新账号的响应上，这正是本文件要防止的跨账号矛盾。
 func (s *OpenAIGatewayService) relayOpenAICodexTurnState(c *gin.Context, account *Account, upstream http.Header) {
-	if c == nil || c.Writer == nil {
+	if !writeOpenAICodexTurnState(c, upstream) {
 		return
+	}
+	s.noteOpenAICodexTurnStateProvenance(c, account)
+}
+
+// writeOpenAICodexTurnState 只把上游状态写入待提交的下游响应头，不记录溯源。
+// 流式响应在首次 body 写出前仍可能 failover，必须由真正的提交点另行记录。
+func writeOpenAICodexTurnState(c *gin.Context, upstream http.Header) bool {
+	if c == nil || c.Writer == nil {
+		return false
 	}
 	canonical := http.CanonicalHeaderKey(openAICodexTurnStateHeader)
 	state := extractOpenAICodexTurnState(upstream)
 	if state == "" {
 		c.Writer.Header().Del(canonical)
-		return
+		return false
 	}
 	c.Writer.Header().Set(canonical, state)
-	s.noteOpenAICodexTurnStateProvenance(c, account)
+	return true
 }
 
 // stageOpenAICodexTurnState 将上游 turn-state 暂存到延迟提交的响应头集合

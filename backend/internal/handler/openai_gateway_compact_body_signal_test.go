@@ -74,8 +74,8 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2StaysOnResponses(t *test
 			nativeV2 := isBareOpenAIResponsesPath(c) && isOpenAIRemoteCompactionV2Request(normalized)
 			require.False(t, legacyCompact)
 			require.True(t, nativeV2)
-			require.Equal(t, service.OpenAIEndpointCapabilityResponses,
-				openAIResponsesRequiredCapabilityForRequest(false, nativeV2 || legacyCompact, service.PlatformOpenAI))
+			require.Equal(t, service.OpenAIEndpointCapabilityResponsesCompactionV2,
+				openAIResponsesRequiredCapabilityForRequest(false, openAICompactionRouteForRequest(nativeV2, legacyCompact), service.PlatformOpenAI))
 
 			reqStream, streamOK := parseOpenAICompatibleStream(normalized)
 			require.True(t, streamOK)
@@ -109,8 +109,8 @@ func TestNormalizeOpenAIResponsesCompactRequest_RemoteV2PathAliasesStayOnRespons
 			nativeV2 := isBareOpenAIResponsesPath(c) && isOpenAIRemoteCompactionV2Request(normalized)
 			require.False(t, legacyCompact)
 			require.True(t, nativeV2)
-			require.Equal(t, service.OpenAIEndpointCapabilityResponses,
-				openAIResponsesRequiredCapabilityForRequest(false, nativeV2 || legacyCompact, service.PlatformOpenAI))
+			require.Equal(t, service.OpenAIEndpointCapabilityResponsesCompactionV2,
+				openAIResponsesRequiredCapabilityForRequest(false, openAICompactionRouteForRequest(nativeV2, legacyCompact), service.PlatformOpenAI))
 		})
 	}
 }
@@ -137,7 +137,7 @@ func TestOpenAIResponsesCompactionRoutingFlags(t *testing.T) {
 			wantNativeBefore:    true,
 			wantLegacyAfter:     false,
 			wantNativeAfter:     true,
-			wantCapabilityAfter: service.OpenAIEndpointCapabilityResponses,
+			wantCapabilityAfter: service.OpenAIEndpointCapabilityResponsesCompactionV2,
 			wantPathAfter:       "/v1/responses",
 			wantBodyUnchanged:   true,
 		},
@@ -226,7 +226,7 @@ func TestOpenAIResponsesCompactionRoutingFlags(t *testing.T) {
 			require.Equal(t, tt.wantLegacyAfter, legacyAfter)
 			require.Equal(t, tt.wantNativeAfter, nativeAfter)
 			require.Equal(t, tt.wantCapabilityAfter,
-				openAIResponsesRequiredCapabilityForRequest(false, nativeAfter || legacyAfter, service.PlatformOpenAI))
+				openAIResponsesRequiredCapabilityForRequest(false, openAICompactionRouteForRequest(nativeAfter, legacyAfter), service.PlatformOpenAI))
 			if tt.wantBodyUnchanged {
 				require.Equal(t, tt.body, normalized)
 			}

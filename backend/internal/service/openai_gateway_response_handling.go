@@ -70,7 +70,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	if guardFirstOutput {
 		stageOpenAICodexTurnState(&attemptResponseHeaders, resp.Header)
 	} else {
-		s.relayOpenAICodexTurnState(c, account, resp.Header)
+		writeOpenAICodexTurnState(c, resp.Header)
 	}
 
 	// Set SSE response headers
@@ -84,6 +84,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		v := resp.Header.Get("x-request-id")
 		c.Header("x-request-id", v)
 	}
+	attemptResponseHeadersApplied := !guardFirstOutput
+	turnStateProvenanceRecorded := false
 	applyAttemptResponseHeaders := func() {
 		if !guardFirstOutput || len(attemptResponseHeaders) == 0 || c.Writer.Written() {
 			return
@@ -93,15 +95,24 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				c.Writer.Header().Add(key, value)
 			}
 		}
-		// 暂存头此刻才真正写给客户端：turn-state 溯源在这里记录（见
-		// noteStagedOpenAICodexTurnStateCommitted 的 failover 说明）。
-		s.noteStagedOpenAICodexTurnStateCommitted(c, account, attemptResponseHeaders)
+		attemptResponseHeadersApplied = true
 		// These headers describe this gateway's SSE stream and are stable across
 		// account attempts. Keep them authoritative over upstream values.
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
+	}
+	noteTurnStateProvenanceCommitted := func() {
+		if turnStateProvenanceRecorded || !attemptResponseHeadersApplied {
+			return
+		}
+		turnStateHeaders := resp.Header
+		if guardFirstOutput {
+			turnStateHeaders = attemptResponseHeaders
+		}
+		s.noteStagedOpenAICodexTurnStateCommitted(c, account, turnStateHeaders)
+		turnStateProvenanceRecorded = true
 	}
 
 	w := c.Writer
@@ -148,6 +159,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 		}
 		flusher.Flush()
+		noteTurnStateProvenanceCommitted()
 		return nil
 	}
 

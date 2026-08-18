@@ -1413,6 +1413,10 @@ export interface OpenAICompactState {
   openai_compact_checked_at?: string
   openai_compact_last_status?: number
   openai_compact_last_error?: string
+  openai_native_compaction_v2_supported?: boolean
+  openai_native_compaction_v2_checked_at?: string
+  openai_native_compaction_v2_last_status?: number
+  openai_native_compaction_v2_last_error?: string
 }
 
 export interface OpenAIResponsesState {
