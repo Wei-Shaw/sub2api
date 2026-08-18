@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // ChannelMonitorHistoryCreate is the builder for creating a ChannelMonitorHistory entity.
@@ -80,6 +81,12 @@ func (_c *ChannelMonitorHistoryCreate) SetNillableMessage(v *string) *ChannelMon
 	if v != nil {
 		_c.SetMessage(*v)
 REDACTED
+	return _c
+REDACTED
+
+// SetQuota sets the "quota" field.
+func (_c *ChannelMonitorHistoryCreate) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetQuota(v)
 	return _c
 REDACTED
 
@@ -225,6 +232,10 @@ REDACTED
 	if value, ok := _c.mutation.Message(); ok {
 		_spec.SetField(channelmonitorhistory.FieldMessage, field.TypeString, value)
 		_node.Message = value
+REDACTED
+	if value, ok := _c.mutation.Quota(); ok {
+		_spec.SetField(channelmonitorhistory.FieldQuota, field.TypeJSON, value)
+		_node.Quota = value
 REDACTED
 	if value, ok := _c.mutation.CheckedAt(); ok {
 		_spec.SetField(channelmonitorhistory.FieldCheckedAt, field.TypeTime, value)
@@ -401,6 +412,24 @@ func (u *ChannelMonitorHistoryUpsert) ClearMessage() *ChannelMonitorHistoryUpser
 	return u
 REDACTED
 
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsert) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldQuota, v)
+	return u
+REDACTED
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateQuota() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldQuota)
+	return u
+REDACTED
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsert) ClearQuota() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldQuota)
+	return u
+REDACTED
+
 // SetCheckedAt sets the "checked_at" field.
 func (u *ChannelMonitorHistoryUpsert) SetCheckedAt(v time.Time) *ChannelMonitorHistoryUpsert {
 	u.Set(channelmonitorhistory.FieldCheckedAt, v)
@@ -569,6 +598,27 @@ REDACTED
 func (u *ChannelMonitorHistoryUpsertOne) ClearMessage() *ChannelMonitorHistoryUpsertOne {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearMessage()
+REDACTED)
+REDACTED
+
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetQuota(v)
+REDACTED)
+REDACTED
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateQuota() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateQuota()
+REDACTED)
+REDACTED
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearQuota() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearQuota()
 REDACTED)
 REDACTED
 
@@ -906,6 +956,27 @@ REDACTED
 func (u *ChannelMonitorHistoryUpsertBulk) ClearMessage() *ChannelMonitorHistoryUpsertBulk {
 	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
 		s.ClearMessage()
+REDACTED)
+REDACTED
+
+// SetQuota sets the "quota" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetQuota(v *domain.MonitorQuotaSnapshot) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetQuota(v)
+REDACTED)
+REDACTED
+
+// UpdateQuota sets the "quota" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateQuota() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateQuota()
+REDACTED)
+REDACTED
+
+// ClearQuota clears the value of the "quota" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearQuota() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearQuota()
 REDACTED)
 REDACTED
 

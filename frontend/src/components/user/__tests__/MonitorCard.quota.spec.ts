@@ -1,0 +1,91 @@
+import { mount REDACTED from '@vue/test-utils'
+import { describe, expect, it, vi REDACTED from 'vitest'
+
+import type { UserMonitorView REDACTED from '@/api/channelMonitor'
+import MonitorCard from '../monitor/MonitorCard.vue'
+
+const { isQuotaVisible REDACTED = vi.hoisted(() => ({
+  isQuotaVisible: vi.fn(() => false),
+REDACTED))
+
+vi.mock('@/utils/featureFlags', () => ({
+  isChannelMonitorQuotaVisible: () => isQuotaVisible(),
+REDACTED))
+
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({ t: (key: string) => key, te: () => true REDACTED),
+  REDACTED
+REDACTED)
+
+function makeItem(overrides: Partial<UserMonitorView> = {REDACTED): UserMonitorView {
+  return {
+    id: 1,
+    name: 'claude-main',
+    provider: 'kimi',
+    group_name: '',
+    primary_model: 'quota',
+    primary_status: 'operational',
+    primary_latency_ms: null,
+    primary_ping_latency_ms: null,
+    availability_7d: 100,
+    extra_models: [],
+    timeline: [],
+    ...overrides,
+  REDACTED
+REDACTED
+
+function mountCard(item: UserMonitorView) {
+  return mount(MonitorCard, {
+    props: {
+      item,
+      window: '7d',
+      availabilityValue: 100,
+      countdownSeconds: 0,
+    REDACTED,
+    global: {
+      stubs: {
+        MonitorMetricPair: true,
+        MonitorAvailabilityRow: true,
+        MonitorTimeline: true,
+      REDACTED,
+    REDACTED,
+  REDACTED)
+REDACTED
+
+describe('MonitorCard quota snapshot visibility', () => {
+  it('hides the quota block when the system switch is off even if data exists', () => {
+    isQuotaVisible.mockReturnValue(false)
+    const wrapper = mountCard(
+      makeItem({
+        latest_quota: { source: 'cn_quota', success: true, fetched_at: '2026-08-18T00:00:00Z' REDACTED,
+      REDACTED),
+    )
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+  REDACTED)
+
+  it('renders the quota block when the switch is on and a snapshot exists', () => {
+    isQuotaVisible.mockReturnValue(true)
+    const wrapper = mountCard(
+      makeItem({
+        latest_quota: {
+          source: 'cn_quota',
+          success: true,
+          plan_level: 'kimi-plus',
+          tiers: [{ window: 'daily', label: 'requests', used_percent: 60 REDACTED],
+          fetched_at: '2026-08-18T00:00:00Z',
+        REDACTED,
+      REDACTED),
+    )
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('kimi-plus')
+  REDACTED)
+
+  it('never renders the quota block without a snapshot', () => {
+    isQuotaVisible.mockReturnValue(true)
+    const wrapper = mountCard(makeItem())
+    expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
+  REDACTED)
+REDACTED)
