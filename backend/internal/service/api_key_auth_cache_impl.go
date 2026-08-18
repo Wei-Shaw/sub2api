@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 19 // v19: group search/audio/video_model_prices billing fields (force refresh of pre-fix snapshots)
+const apiKeyAuthSnapshotVersion = 20 // v20: group long_context_pricing_enabled (force refresh of pre-fix snapshots)
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -428,6 +428,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ProfitControlEnabled:            apiKey.Group.ProfitControlEnabled,
 			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
+			LongContextPricingEnabled:       apiKey.Group.LongContextPricingEnabled,
 		}
 	}
 	return snapshot
@@ -523,6 +524,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ProfitControlEnabled:            snapshot.Group.ProfitControlEnabled,
 			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
+			LongContextPricingEnabled:       snapshot.Group.LongContextPricingEnabled,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)
