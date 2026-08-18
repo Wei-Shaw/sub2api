@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -179,6 +180,13 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 				ResponseHeaders:        resp.Header.Clone(),
 				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 			}
+		}
+		if isGrokModelInputDeserializeError(resp.StatusCode, respBody) {
+			slog.Error("grok_modelinput_422",
+				"account_id", account.ID,
+				"model", upstreamModel,
+				"input", summarizeGrokResponsesInputForLog(patchedBody),
+			)
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
 	}
@@ -772,41 +780,186 @@ func grokResponsesToolDedupKey(tool gjson.Result) string {
 	return "json:" + normalizeCompatSeedJSON(json.RawMessage(tool.Raw))
 }
 
-// sanitizeGrokReasoningNullContent 删除 Responses input 对象上的显式 JSON null。
-// xAI 的 untagged enum ModelInput 拒收这些字段，返回 422。
-// 旧实现只扫 reasoning.content；生产仍有 1MB grok-4.6 请求 422，说明其它 item type / 其它 null 字段也会踩中。
+// sanitizeGrokReasoningNullContent 清洗 Responses input，避免 xAI untagged enum ModelInput 422。
+// 生产 0.1.177-modelinput-hotfix 只删顶层 null 后，~251KB grok-4.6 请求仍 422。
 func sanitizeGrokReasoningNullContent(body []byte) ([]byte, error) {
-	return stripExplicitNullsFromGrokResponsesInput(body)
+	return sanitizeGrokResponsesModelInput(body)
 }
 
-func stripExplicitNullsFromGrokResponsesInput(body []byte) ([]byte, error) {
+var grokResponsesSupportedInputTypes = map[string]struct{}{
+	"message":                {},
+	"reasoning":              {},
+	"function_call":          {},
+	"function_call_output":   {},
+	"web_search_call":        {},
+	"file_search_call":       {},
+	"code_execution_call":    {},
+	"code_interpreter_call":  {},
+	"mcp_call":               {},
+	"mcp_list_tools":         {},
+	"mcp_approval_request":   {},
+	"mcp_approval_response":  {},
+	"image_generation_call":  {},
+	"computer_call":          {},
+	"computer_call_output":   {},
+	"local_shell_call":       {},
+	"local_shell_call_output": {},
+	"shell_call":             {},
+	"shell_call_output":      {},
+}
+
+func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 	input := gjson.GetBytes(body, "input")
 	if !input.Exists() || !input.IsArray() {
 		return body, nil
 	}
 
-	items := input.Array()
-	var paths []string
-	for i := range items {
-		item := items[i]
+	rawItems := input.Array()
+	filtered := make([]json.RawMessage, 0, len(rawItems))
+	changed := false
+	for _, item := range rawItems {
 		if !item.IsObject() {
+			filtered = append(filtered, json.RawMessage(item.Raw))
 			continue
 		}
-		item.ForEach(func(key, value gjson.Result) bool {
-			if value.Type == gjson.Null {
-				paths = append(paths, fmt.Sprintf("input.%d.%s", i, key.String()))
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType != "" {
+			if _, ok := grokResponsesSupportedInputTypes[itemType]; !ok {
+				changed = true
+				continue
 			}
-			return true
-		})
-	}
-	for _, path := range paths {
-		next, err := sjson.DeleteBytes(body, path)
+		}
+		sanitized, itemChanged, err := stripExplicitNullsFromJSONValue(item.Value())
 		if err != nil {
 			return nil, err
 		}
-		body = next
+		if itemChanged {
+			changed = true
+		}
+		encoded, err := json.Marshal(sanitized)
+		if err != nil {
+			return nil, err
+		}
+		filtered = append(filtered, encoded)
 	}
-	return body, nil
+	if !changed {
+		return body, nil
+	}
+	encoded, err := json.Marshal(filtered)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(body, "input", encoded)
+}
+
+func stripExplicitNullsFromJSONValue(value any) (any, bool, error) {
+	switch typed := value.(type) {
+	case map[string]any:
+		changed := false
+		for key, child := range typed {
+			if child == nil {
+				delete(typed, key)
+				changed = true
+				continue
+			}
+			next, childChanged, err := stripExplicitNullsFromJSONValue(child)
+			if err != nil {
+				return nil, false, err
+			}
+			if childChanged {
+				typed[key] = next
+				changed = true
+			}
+		}
+		return typed, changed, nil
+	case []any:
+		changed := false
+		for i, child := range typed {
+			if child == nil {
+				continue
+			}
+			next, childChanged, err := stripExplicitNullsFromJSONValue(child)
+			if err != nil {
+				return nil, false, err
+			}
+			if childChanged {
+				typed[i] = next
+				changed = true
+			}
+		}
+		return typed, changed, nil
+	default:
+		return value, false, nil
+	}
+}
+
+func summarizeGrokResponsesInputForLog(body []byte) string {
+	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return "input=missing"
+	}
+	if !input.IsArray() {
+		return "input_type=" + input.Type.String()
+	}
+	items := input.Array()
+	typeCounts := make(map[string]int, 8)
+	nullPaths := make([]string, 0, 8)
+	for i, item := range items {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "" {
+			itemType = "<empty>"
+		}
+		typeCounts[itemType]++
+		collectJSONNullPaths(fmt.Sprintf("input.%d", i), item, &nullPaths, 16)
+	}
+	parts := make([]string, 0, len(typeCounts)+2)
+	parts = append(parts, fmt.Sprintf("items=%d", len(items)))
+	for _, itemType := range sortedStringKeys(typeCounts) {
+		parts = append(parts, fmt.Sprintf("%s=%d", itemType, typeCounts[itemType]))
+	}
+	if len(nullPaths) > 0 {
+		parts = append(parts, "nulls="+strings.Join(nullPaths, ","))
+	}
+	return strings.Join(parts, " ")
+}
+
+func collectJSONNullPaths(prefix string, value gjson.Result, out *[]string, limit int) {
+	if out == nil || len(*out) >= limit {
+		return
+	}
+	switch {
+	case value.Type == gjson.Null:
+		*out = append(*out, prefix)
+	case value.IsObject():
+		value.ForEach(func(key, child gjson.Result) bool {
+			collectJSONNullPaths(prefix+"."+key.String(), child, out, limit)
+			return len(*out) < limit
+		})
+	case value.IsArray():
+		for i, child := range value.Array() {
+			collectJSONNullPaths(fmt.Sprintf("%s.%d", prefix, i), child, out, limit)
+			if len(*out) >= limit {
+				return
+			}
+		}
+	}
+}
+
+func sortedStringKeys(values map[string]int) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isGrokModelInputDeserializeError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusUnprocessableEntity {
+		return false
+	}
+	msg := strings.ToLower(extractUpstreamErrorMessage(body))
+	return strings.Contains(msg, "untagged enum modelinput") || strings.Contains(msg, "did not match any variant of untagged enum")
 }
 
 var grokResponsesSupportedToolTypes = map[string]struct{}{

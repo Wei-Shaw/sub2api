@@ -3356,6 +3356,50 @@ func TestPatchGrokResponsesBody_StripsExplicitNullsOnNonReasoningItems(t *testin
 	require.Equal(t, "ok", items[2].Get("output").String())
 }
 
+func TestPatchGrokResponsesBody_StripsNestedNullsAndDropsUnknownItems(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model": "grok-latest",
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi","extra":null}]},
+			{"type":"item_reference","id":"msg_1"},
+			{"type":"custom_tool_call","call_id":"call_1","name":"lookup","input":"{}"},
+			{"type":"function_call","call_id":"call_2","name":"lookup","arguments":"{}","status":null}
+		]
+	}`)
+
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, json.Valid(patched))
+
+	items := gjson.GetBytes(patched, "input").Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "message", items[0].Get("type").String())
+	require.False(t, items[0].Get("content.0.extra").Exists(), "nested extra: null should be stripped")
+	require.Equal(t, "hi", items[0].Get("content.0.text").String())
+	require.Equal(t, "function_call", items[1].Get("type").String())
+	require.False(t, items[1].Get("status").Exists())
+}
+
+func TestSummarizeGrokResponsesInputForLog(t *testing.T) {
+	t.Parallel()
+
+	summary := summarizeGrokResponsesInputForLog([]byte(`{
+		"input": [
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hi","extra":null}]},
+			{"type":"item_reference","id":"msg_1"},
+			{"type":"reasoning","content":null}
+		]
+	}`))
+	require.Contains(t, summary, "items=3")
+	require.Contains(t, summary, "item_reference=1")
+	require.Contains(t, summary, "message=1")
+	require.Contains(t, summary, "reasoning=1")
+	require.Contains(t, summary, "input.0.content.0.extra")
+	require.Contains(t, summary, "input.2.content")
+}
+
 func TestPatchGrokResponsesBody_KeepsReasoningContentNonNull(t *testing.T) {
 	t.Parallel()
 
