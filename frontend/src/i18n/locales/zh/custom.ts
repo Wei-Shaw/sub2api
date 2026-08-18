@@ -2571,6 +2571,8 @@ decodeSizeOnRspHint: '开启后上游不返回 size 字段或返回 size=auto �
         hint: '仅影响 /v1/models 展示结果，不影响白名单模型调用和账号调度。',
         loading: '正在加载模型列表...',
         empty: '暂无可展示模型',
+        manualPlaceholder: '输入模型 ID，例如 openai/gpt-image-2',
+        addModel: '添加模型',
         selectedSummary: '已选 {selected} / {total}',
         selectAll: '全选',
         invertSelection: '反选'

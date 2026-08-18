@@ -856,6 +856,27 @@
             v-if="createModelsListState.enabled"
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
+            <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
+              <input
+                v-model="createModelsListState.draft"
+                type="text"
+                class="input min-w-0 flex-1"
+                :disabled="createModelsListLoading"
+                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                @keydown.enter.prevent="addModelsListDraft(createModelsListState)"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
+                :disabled="createModelsListLoading || !createModelsListState.draft.trim()"
+                :title="t('admin.groups.modelsList.addModel')"
+                :aria-label="t('admin.groups.modelsList.addModel')"
+                @click="addModelsListDraft(createModelsListState)"
+              >
+                <Icon name="plus" size="md" />
+              </button>
+            </div>
             <div
               v-if="!createModelsListLoading && createModelsListState.items.length > 0"
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
@@ -2735,6 +2756,27 @@
             v-if="editModelsListState.enabled"
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
+            <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
+              <input
+                v-model="editModelsListState.draft"
+                type="text"
+                class="input min-w-0 flex-1"
+                :disabled="editModelsListLoading"
+                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                @keydown.enter.prevent="addModelsListDraft(editModelsListState)"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
+                :disabled="editModelsListLoading || !editModelsListState.draft.trim()"
+                :title="t('admin.groups.modelsList.addModel')"
+                :aria-label="t('admin.groups.modelsList.addModel')"
+                @click="addModelsListDraft(editModelsListState)"
+              >
+                <Icon name="plus" size="md" />
+              </button>
+            </div>
             <div
               v-if="!editModelsListLoading && editModelsListState.items.length > 0"
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
@@ -4772,6 +4814,7 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import {
+  addModelsListItems,
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
   invertModelsListSelection,
@@ -5657,6 +5700,7 @@ const resetModelsListState = (
 ) => {
   const fresh = createInitialModelsListState(config);
   state.enabled = fresh.enabled;
+  state.draft = fresh.draft;
   state.savedModels = fresh.savedModels;
   state.items = fresh.items;
 };
@@ -5687,6 +5731,11 @@ const loadModelsListCandidates = async (
       loadingRef.value = false;
     }
   }
+};
+
+const addModelsListDraft = (state: typeof createModelsListState) => {
+  addModelsListItems(state, state.draft);
+  state.draft = "";
 };
 
 const moveCreateModelsListItem = (fromIndex: number, toIndex: number) => {

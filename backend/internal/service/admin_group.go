@@ -79,12 +79,12 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 	}
 	for _, acc := range accounts {
 		if platform == PlatformComposite {
-			// composite 分组下的账号可以是 concrete 5 家（openai/anthropic/gemini/antigravity/grok）
+			// composite 分组下的账号可以是 concrete 平台
 			// 或 fal（媒体旁路）——都要纳入模型候选统计。
 			if !canBeCompositeMemberPlatform(acc.Platform) {
 				continue
 			}
-		} else if acc.Platform != platform {
+		} else if acc.Platform != platform && !(platform == PlatformOpenAI && acc.Platform == PlatformFal) {
 			continue
 		}
 		for model := range acc.GetModelMapping() {
