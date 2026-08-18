@@ -76,6 +76,29 @@ func SetCodexCanonicalUserAgentResolver(resolver func() string) {
 	codexCanonicalUAResolver = resolver
 REDACTED
 
+// CodexCanonicalUserAgent 返回当前生效的规范 Codex User-Agent。
+// 取值走与推理相同的解析链：面板 UA 指纹 + 面板/自动同步版本号 + 编译期兜底。
+// 供无账号句柄的出站路径（OAuth 换 Token / 刷新）使用。
+func CodexCanonicalUserAgent() string {
+	return resolveCodexOutboundIdentity("").userAgent
+REDACTED
+
+// ApplyCodexCanonicalIdentity 为无账号句柄的出站请求写入与推理同源的身份三元组。
+func ApplyCodexCanonicalIdentity(h http.Header) {
+	if h == nil {
+		return
+REDACTED
+	identity := resolveCodexOutboundIdentity("")
+	h.Set("user-agent", identity.userAgent)
+	h.Set("originator", identity.originator)
+	h.Set("version", identity.version)
+REDACTED
+
+// CodexCanonicalClientVersion 返回当前生效的 Codex 客户端版本号。
+func CodexCanonicalClientVersion() string {
+	return resolveCodexOutboundIdentity("").version
+REDACTED
+
 // codexCanonicalUserAgent 返回出站规范 User-Agent。
 func codexCanonicalUserAgent() string {
 	codexCanonicalUAMu.RLock()
@@ -210,6 +233,6 @@ REDACTED
 	h.Set("user-agent", pairedUA)
 	h.Set("originator", originator)
 	if v := strings.TrimSpace(h.Get("version")); v != "" && CompareVersions(v, codexUpstreamMinVersion) < 0 {
-		h.Set("version", codexCLIVersion)
+		h.Set("version", resolveCodexOutboundIdentity("").version)
 REDACTED
 REDACTED

@@ -322,3 +322,26 @@ func TestBuildCodexCLIUserAgent(t *testing.T) {
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent("bogus version"))
 	require.Equal(t, codexCLIUserAgent, buildCodexCLIUserAgent(""))
 REDACTED
+
+func TestCodexCanonicalUserAgentFollowsResolver(t *testing.T) {
+	SetCodexCanonicalUserAgentResolver(func() string {
+		return "codex_cli_rs/0.200.1" + codexCLIUserAgentSuffix
+REDACTED)
+	t.Cleanup(func() { SetCodexCanonicalUserAgentResolver(nil) REDACTED)
+
+	require.Equal(t, "codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix, CodexCanonicalUserAgent())
+	require.Equal(t, "0.200.1", CodexCanonicalClientVersion())
+
+	h := make(http.Header)
+	ApplyCodexCanonicalIdentity(h)
+	require.Equal(t, "codex_cli_rs", h.Get("originator"))
+	require.Equal(t, "codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix, h.Get("user-agent"))
+	require.Equal(t, "0.200.1", h.Get("version"))
+REDACTED
+
+func TestCodexCanonicalUserAgentFallsBackWithoutResolver(t *testing.T) {
+	SetCodexCanonicalUserAgentResolver(nil)
+
+	require.Equal(t, codexCLIUserAgent, CodexCanonicalUserAgent())
+	require.Equal(t, codexCLIVersion, CodexCanonicalClientVersion())
+REDACTED

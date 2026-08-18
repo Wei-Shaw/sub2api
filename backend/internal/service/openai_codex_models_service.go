@@ -18,7 +18,6 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"golang.org/x/net/http2"
 	"golang.org/x/sync/singleflight"
 )
@@ -243,7 +242,7 @@ REDACTED
 
 	clientVersion = strings.TrimSpace(clientVersion)
 	if clientVersion == "" {
-		clientVersion = openAICodexProbeVersion
+		clientVersion = CodexCanonicalClientVersion()
 REDACTED
 
 	requestEndpoint := chatgptCodexModelsURL
@@ -305,9 +304,14 @@ REDACTED else {
 		setOpenAIChatGPTAccountHeaders(headers, credAccount)
 REDACTED
 	headers.Set("Accept", "application/json")
-	headers.Set("Originator", openai.CodexDefaultOriginator)
-	headers.Set("Version", clientVersion)
-	headers.Set("User-Agent", codexCLIUserAgent)
+	overrideUA := ""
+	if !useAPIKeyUpstream {
+		overrideUA = credAccount.GetOpenAIUserAgent()
+REDACTED
+	identity := resolveCodexOutboundIdentity(overrideUA)
+	headers.Set("Originator", identity.originator)
+	headers.Set("User-Agent", identity.userAgent)
+	headers.Set("Version", identity.version)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
