@@ -45,10 +45,12 @@ const (
 	monitorChallengeMin = 1
 	monitorChallengeMax = 50
 
-	// providerOpenAIPath OpenAI Chat Completions 路径。
+	// providerOpenAIPath OpenAI Chat Completions 路径（Kimi / DeepSeek 同为 OpenAI 兼容）。
 	providerOpenAIPath = "/v1/chat/completions"
 	// providerGrokPath Grok OpenAI-compatible Chat Completions 路径。
 	providerGrokPath = "/v1/chat/completions"
+	// providerZhipuPath 智谱 OpenAI 兼容 Chat Completions 路径（前缀与官方不同）。
+	providerZhipuPath = "/api/paas/v4/chat/completions"
 	// providerOpenAIResponsesPath OpenAI Responses API 路径。
 	providerOpenAIResponsesPath = "/v1/responses"
 	// providerAnthropicPath Anthropic Messages 路径。
@@ -56,11 +58,36 @@ const (
 	// providerGeminiPathTemplate Gemini generateContent 路径模板（含 model 占位）。
 	providerGeminiPathTemplate = "/v1beta/models/%s:generateContent"
 
-	// MonitorProviderOpenAI / Anthropic / Gemini / Grok provider 字符串常量（也是 ent enum 的实际值）。
-	MonitorProviderOpenAI    = "openai"
-	MonitorProviderAnthropic = "anthropic"
-	MonitorProviderGemini    = "gemini"
-	MonitorProviderGrok      = "grok"
+	// MonitorProviderOpenAI 等 provider 字符串常量（也是 ent enum 的实际值）。
+	// 后 4 个 provider（antigravity/kimi/zhipu/deepseek）为配额模式引入：
+	// antigravity 无探活 adapter（仅配额），其余 3 个复用 OpenAI 兼容探活。
+	MonitorProviderOpenAI     = "openai"
+	MonitorProviderAnthropic  = "anthropic"
+	MonitorProviderGemini     = "gemini"
+	MonitorProviderGrok       = "grok"
+	MonitorProviderAntigravity = "antigravity"
+	MonitorProviderKimi       = "kimi"
+	MonitorProviderZhipu      = "zhipu"
+	MonitorProviderDeepseek   = "deepseek"
+
+	// MonitorCheckMode 检测模式（channel_monitors.check_mode）。
+	//   probe       - LLM 探活（默认，原有行为）
+	//   quota       - 仅查关联账号用量/余额，零 LLM 成本
+	//   quota_probe - 探活 + 配额并存（配额快照挂到主模型历史行）
+	MonitorCheckModeProbe     = "probe"
+	MonitorCheckModeQuota     = "quota"
+	MonitorCheckModeQuotaProbe = "quota_probe"
+
+	// MonitorDefaultQuotaModel 是 quota 模式监控未显式指定模型时占位的虚拟模型名
+	// （primary_model 列 NotEmpty，用 "quota" 让历史行/时间线机制无需特判）。
+	MonitorDefaultQuotaModel = "quota"
+
+	// monitorQuotaFetchCacheTTL 配额快照缓存时长。多个监控可能关联同一账号，
+	// 而 interval 最小 15s 且国产配额服务无缓存，TTL 防止打爆上游配额端点。
+	monitorQuotaFetchCacheTTL = 5 * time.Minute
+	// monitorQuotaDegradedUsedPercent 任一用量窗口使用率超过该阈值时，
+	// 配额检查状态记为 degraded（对齐账号页展示阈值）。
+	monitorQuotaDegradedUsedPercent = 90.0
 
 	// MonitorDefaultGrokModel 是新增 Grok 监控未显式指定模型时使用的轻量测活模型。
 	MonitorDefaultGrokModel = "grok-4.5"
@@ -118,7 +145,16 @@ var (
 		"CHANNEL_MONITOR_NOT_FOUND", "channel monitor not found",
 	)
 	ErrChannelMonitorInvalidProvider = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok",
+		"CHANNEL_MONITOR_INVALID_PROVIDER", "provider must be one of openai/anthropic/gemini/grok/antigravity/kimi/zhipu/deepseek",
+	)
+	ErrChannelMonitorInvalidCheckMode = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_INVALID_CHECK_MODE", "check_mode must be one of probe/quota/quota_probe; antigravity only supports quota",
+	)
+	ErrChannelMonitorAccountRequired = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_ACCOUNT_REQUIRED", "account_id is required for quota-based check_mode",
+	)
+	ErrChannelMonitorProviderIncompatible = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_PROVIDER_INCOMPATIBLE", "monitor provider must match the linked account platform",
 	)
 	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",

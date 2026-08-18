@@ -20,11 +20,17 @@ import "time"
 //   - "7d-sonnet"  Claude 7 天 Sonnet 独立额度
 //   - "7d-fable"   Claude 7 天 Fable 独立额度
 //   - "weekly"     周窗口（Kimi/Zhipu coding plan）
+//   - "daily"      日窗口（Gemini 日配额 / Grok 日请求）
 //   - "30d"        30 天窗口（Grok 月度）
-//   - "total"      无窗口语义的总量额度（Gemini/Antigravity 等）
+//   - "total"      无窗口语义的总量额度（Antigravity per-model 等）
+//
+// 同一 Window 可能出现多条（Gemini 多档日配额、Antigravity per-model、
+// Grok requests/tokens），用 Label 区分：Label 是机器 token（requests/tokens/
+// shared/pro/flash 或模型名），前端已知 token 走 i18n，未知原样展示。
 type MonitorQuotaTier struct {
 	Window      string  `json:"window"`
-	UsedPercent float64 `json:"used_percent"` // 0-100；仅有绝对值时按 used/limit 计算
+	Label       string  `json:"label,omitempty"`
+	UsedPercent float64 `json:"used_percent"` // 0-100+；仅有绝对值时按 used/limit 计算
 	Used        float64 `json:"used,omitempty"`
 	Limit       float64 `json:"limit,omitempty"`
 	ResetAt     string  `json:"reset_at,omitempty"` // RFC3339；未知时留空
@@ -44,8 +50,11 @@ type MonitorQuotaSnapshot struct {
 	Balances  []MonitorBalance   `json:"balances,omitempty"`          // 多币种余额（如 DeepSeek CNY+USD）
 	Currency  string             `json:"currency,omitempty"`          // 主余额币种
 	PlanLevel string             `json:"plan_level,omitempty"`        // 套餐等级（如智谱 level）
-	Error     string             `json:"error,omitempty"`             // Success=false 时的错误摘要
-	FetchedAt time.Time          `json:"fetched_at"`
+	// CredentialInvalid 上游 401/403 鉴权失败（区别于网络/解析错误），
+	// 检测状态据此推导 failed 而非 error。
+	CredentialInvalid bool      `json:"credential_invalid,omitempty"`
+	Error             string    `json:"error,omitempty"` // Success=false 时的错误摘要
+	FetchedAt         time.Time `json:"fetched_at"`
 REDACTED
 
 // MonitorBalance 单币种余额条目。

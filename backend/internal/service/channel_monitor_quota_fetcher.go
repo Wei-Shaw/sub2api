@@ -1,0 +1,429 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+)
+
+// 渠道监控「配额模式」的配额抓取器。
+//
+// 不直接对接上游，而是把账号侧现成的用量服务归一成 domain.MonitorQuotaSnapshot：
+//   - 海外 5 家（anthropic/openai/gemini/antigravity/grok）→ AccountUsageService.GetUsage
+//   - 国产 coding plan（kimi/zhipu/deepseek）→ CNProviderQuotaService.QueryUsage
+//   - 国产 payg（kimi/deepseek）→ CNProviderBalanceService.QueryBalance
+//     （zhipu payg 无公开余额端点，QueryBalance 会返回该错误，原样透出）
+//
+// Fetch 永不返回 error：所有失败都降级为 Success=false 的快照照常入库，
+// 由 deriveQuotaCheckResult 推导为 failed/error 状态。
+//
+// 多个监控可能关联同一账号，而 interval 最小 15s 且国产配额服务自身无缓存，
+// 所以成功快照统一带 monitorQuotaFetchCacheTTL 缓存，防止打爆上游配额端点。
+
+// monitorUsageSource 海外平台账号用量查询（AccountUsageService 天然满足）。
+type monitorUsageSource interface {
+	GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error)
+REDACTED
+
+// monitorCNQuotaSource 国产 coding plan 滚动窗口额度探测（CNProviderQuotaService 天然满足）。
+type monitorCNQuotaSource interface {
+	QueryUsage(ctx context.Context, accountID int64) (*CNProviderQuotaProbeResult, error)
+REDACTED
+
+// monitorCNBalanceSource 国产 payg 余额探测（CNProviderBalanceService 天然满足）。
+type monitorCNBalanceSource interface {
+	QueryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error)
+REDACTED
+
+// monitorAccountSource 账号加载（AccountRepository 天然满足）。
+type monitorAccountSource interface {
+	GetByID(ctx context.Context, id int64) (*Account, error)
+REDACTED
+
+// ChannelMonitorQuotaFetcher 配额抓取器（带成功快照 TTL 缓存）。
+type ChannelMonitorQuotaFetcher struct {
+	usage     monitorUsageSource
+	cnQuota   monitorCNQuotaSource
+	cnBalance monitorCNBalanceSource
+	accounts  monitorAccountSource
+
+	mu    sync.Mutex
+	cache map[int64]monitorQuotaCacheEntry
+REDACTED
+
+type monitorQuotaCacheEntry struct {
+	snapshot *domain.MonitorQuotaSnapshot
+	expiry   time.Time
+REDACTED
+
+// NewChannelMonitorQuotaFetcher 构造配额抓取器。
+func NewChannelMonitorQuotaFetcher(
+	usage monitorUsageSource,
+	cnQuota monitorCNQuotaSource,
+	cnBalance monitorCNBalanceSource,
+	accounts monitorAccountSource,
+) *ChannelMonitorQuotaFetcher {
+	return &ChannelMonitorQuotaFetcher{
+		usage:     usage,
+		cnQuota:   cnQuota,
+		cnBalance: cnBalance,
+		accounts:  accounts,
+		cache:     make(map[int64]monitorQuotaCacheEntry),
+REDACTED
+REDACTED
+
+// LoadAccount 加载账号（不走缓存）。供 Create/Update 时校验
+// provider 与 account.platform 一致；账号不存在时返回错误。
+func (f *ChannelMonitorQuotaFetcher) LoadAccount(ctx context.Context, id int64) (*Account, error) {
+	if f == nil || f.accounts == nil {
+		return nil, fmt.Errorf("quota fetcher is not configured")
+REDACTED
+	return f.accounts.GetByID(ctx, id)
+REDACTED
+
+// Fetch 抓取账号的最新配额快照。永不返回 error：失败降级为
+// Success=false 快照（Error 带摘要），保证检测历史的时间线连续。
+func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64) *domain.MonitorQuotaSnapshot {
+	now := time.Now()
+
+	if cached, ok := f.cachedSnapshot(accountID, now); ok {
+		return cached
+REDACTED
+
+	snapshot := f.fetchUncached(ctx, accountID, now)
+	if snapshot.Success {
+		f.storeSnapshot(accountID, snapshot, now.Add(monitorQuotaFetchCacheTTL))
+REDACTED
+	return snapshot
+REDACTED
+
+func (f *ChannelMonitorQuotaFetcher) cachedSnapshot(accountID int64, now time.Time) (*domain.MonitorQuotaSnapshot, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entry, ok := f.cache[accountID]
+	if !ok || now.After(entry.expiry) {
+		return nil, false
+REDACTED
+	return entry.snapshot, true
+REDACTED
+
+func (f *ChannelMonitorQuotaFetcher) storeSnapshot(accountID int64, snapshot *domain.MonitorQuotaSnapshot, expiry time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cache[accountID] = monitorQuotaCacheEntry{snapshot: snapshot, expiry: expiryREDACTED
+REDACTED
+
+func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+	if f == nil {
+		return quotaErrorSnapshot("usage", "quota fetcher is not configured", now)
+REDACTED
+
+	account, err := f.LoadAccount(ctx, accountID)
+	if err != nil || account == nil {
+		// FK ON DELETE SET NULL 后 account_id 可能为空/失效；显式报「账号未关联」，
+		// 推导为 degraded（配置问题，不是渠道故障）。
+		slog.Warn("channel_monitor: load linked account failed",
+			"account_id", accountID, "error", err)
+		return quotaErrorSnapshot("usage", "linked account not found", now)
+REDACTED
+
+	switch account.Platform {
+	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek:
+		if account.IsCodingPlan() {
+			return f.fetchCNQuota(ctx, accountID, now)
+	REDACTED
+		return f.fetchCNBalance(ctx, accountID, now)
+	default:
+		return f.fetchUsage(ctx, accountID, now)
+REDACTED
+REDACTED
+
+// fetchUsage 海外平台：AccountUsageService.GetUsage → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchUsage(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+	if f.usage == nil {
+		return quotaErrorSnapshot("usage", "usage service is not configured", now)
+REDACTED
+	usage, err := f.usage.GetUsage(ctx, accountID)
+	if err != nil {
+		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
+		return &domain.MonitorQuotaSnapshot{
+			Source:            "usage",
+			Success:           false,
+			CredentialInvalid: isCredentialErrorMessage(msg),
+			Error:             msg,
+			FetchedAt:         now,
+	REDACTED
+REDACTED
+	snapshot := &domain.MonitorQuotaSnapshot{
+		Source:          "usage",
+		Success:         true,
+		PlanLevel:       usage.SubscriptionTier,
+		Tiers:           usageQuotaTiers(usage),
+		FetchedAt:       now,
+REDACTED
+	if snapshot.PlanLevel == "" {
+		snapshot.PlanLevel = usage.SubscriptionTierRaw
+REDACTED
+	return snapshot
+REDACTED
+
+// usageQuotaTiers 把 UsageInfo 的各平台窗口归一为 tier 列表（无数据的窗口跳过）。
+func usageQuotaTiers(usage *UsageInfo) []domain.MonitorQuotaTier {
+	if usage == nil {
+		return nil
+REDACTED
+	tiers := make([]domain.MonitorQuotaTier, 0, 8)
+	appendProgressTier(&tiers, "5h", "", usage.FiveHour)
+	appendProgressTier(&tiers, "7d", "", usage.SevenDay)
+	appendProgressTier(&tiers, "7d-sonnet", "", usage.SevenDaySonnet)
+	appendProgressTier(&tiers, "7d-fable", "", usage.SevenDayFable)
+	appendProgressTier(&tiers, "30d", "", usage.ThirtyDay)
+	// Gemini 多档日配额：同 Window 不同 Label。
+	appendProgressTier(&tiers, "daily", "shared", usage.GeminiSharedDaily)
+	appendProgressTier(&tiers, "daily", "pro", usage.GeminiProDaily)
+	appendProgressTier(&tiers, "daily", "flash", usage.GeminiFlashDaily)
+	// Grok requests/tokens 两个日窗口 + 月度计费窗口。
+	appendQuotaWindowTier(&tiers, "daily", "requests", usage.GrokRequestQuota)
+	appendQuotaWindowTier(&tiers, "daily", "tokens", usage.GrokTokenQuota)
+	// Antigravity per-model 总量额度，Label = 模型名（按名排序保证输出稳定）。
+	for _, model := range sortedQuotaModelNames(usage.AntigravityQuota) {
+		q := usage.AntigravityQuota[model]
+		if q == nil {
+			continue
+	REDACTED
+		tiers = append(tiers, domain.MonitorQuotaTier{
+			Window:      "total",
+			Label:       model,
+			UsedPercent: float64(q.Utilization),
+			ResetAt:     q.ResetTime,
+	REDACTED)
+REDACTED
+	if len(tiers) == 0 {
+		return nil
+REDACTED
+	return tiers
+REDACTED
+
+func appendProgressTier(tiers *[]domain.MonitorQuotaTier, window, label string, p *UsageProgress) {
+	if p == nil {
+		return
+REDACTED
+	tier := domain.MonitorQuotaTier{
+		Window:      window,
+		Label:       label,
+		UsedPercent: p.Utilization,
+REDACTED
+	if p.ResetsAt != nil {
+		tier.ResetAt = p.ResetsAt.UTC().Format(time.RFC3339)
+REDACTED
+	if p.LimitRequests > 0 {
+		tier.Used = float64(p.UsedRequests)
+		tier.Limit = float64(p.LimitRequests)
+REDACTED
+	*tiers = append(*tiers, tier)
+REDACTED
+
+func appendQuotaWindowTier(tiers *[]domain.MonitorQuotaTier, window, label string, q *xai.QuotaWindow) {
+	if q == nil || q.Limit == nil || *q.Limit <= 0 {
+		return
+REDACTED
+	used := *q.Limit
+	if q.Remaining != nil {
+		used = *q.Limit - *q.Remaining
+		if used < 0 {
+			used = 0
+	REDACTED
+REDACTED
+	tier := domain.MonitorQuotaTier{
+		Window:      window,
+		Label:       label,
+		Used:        float64(used),
+		Limit:       float64(*q.Limit),
+		UsedPercent: float64(used) / float64(*q.Limit) * 100,
+REDACTED
+	if q.ResetAt != "" {
+		tier.ResetAt = q.ResetAt
+REDACTED else if q.ResetUnix != nil && *q.ResetUnix > 0 {
+		tier.ResetAt = time.Unix(*q.ResetUnix, 0).UTC().Format(time.RFC3339)
+REDACTED
+	*tiers = append(*tiers, tier)
+REDACTED
+
+func sortedQuotaModelNames(quotas map[string]*AntigravityModelQuota) []string {
+	names := make([]string, 0, len(quotas))
+	for name := range quotas {
+		names = append(names, name)
+REDACTED
+	sort.Strings(names)
+	return names
+REDACTED
+
+// fetchCNQuota 国产 coding plan：CNProviderQuotaService.QueryUsage → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNQuota(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+	if f.cnQuota == nil {
+		return quotaErrorSnapshot("cn_quota", "cn quota service is not configured", now)
+REDACTED
+	result, err := f.cnQuota.QueryUsage(ctx, accountID)
+	if err != nil {
+		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
+		return &domain.MonitorQuotaSnapshot{
+			Source:            "cn_quota",
+			Success:           false,
+			CredentialInvalid: isCredentialErrorMessage(msg),
+			Error:             msg,
+			FetchedAt:         now,
+	REDACTED
+REDACTED
+	snapshot := &domain.MonitorQuotaSnapshot{
+		Source:    "cn_quota",
+		Success:   result.Success,
+		PlanLevel: result.PlanLevel,
+		Error:     result.Error,
+		FetchedAt: now,
+REDACTED
+	if !result.Success && !result.CredentialValid {
+		snapshot.CredentialInvalid = true
+REDACTED
+	if len(result.Tiers) > 0 {
+		snapshot.Tiers = make([]domain.MonitorQuotaTier, 0, len(result.Tiers))
+		for _, t := range result.Tiers {
+			snapshot.Tiers = append(snapshot.Tiers, domain.MonitorQuotaTier{
+				Window:      t.Window,
+				UsedPercent: t.UsedPercent,
+				ResetAt:     t.ResetAt,
+		REDACTED)
+	REDACTED
+REDACTED
+	if !snapshot.Success {
+		snapshot.Error = firstNonEmpty(snapshot.Error, "cn quota probe failed")
+REDACTED
+	return snapshot
+REDACTED
+
+// fetchCNBalance 国产 payg：CNProviderBalanceService.QueryBalance → 快照。
+func (f *ChannelMonitorQuotaFetcher) fetchCNBalance(ctx context.Context, accountID int64, now time.Time) *domain.MonitorQuotaSnapshot {
+	if f.cnBalance == nil {
+		return quotaErrorSnapshot("cn_balance", "cn balance service is not configured", now)
+REDACTED
+	result, err := f.cnBalance.QueryBalance(ctx, accountID)
+	if err != nil {
+		msg := truncateMessage(sanitizeErrorMessage(err.Error()))
+		return &domain.MonitorQuotaSnapshot{
+			Source:            "cn_balance",
+			Success:           false,
+			CredentialInvalid: isCredentialErrorMessage(msg),
+			Error:             msg,
+			FetchedAt:         now,
+	REDACTED
+REDACTED
+	snapshot := &domain.MonitorQuotaSnapshot{
+		Source:    "cn_balance",
+		Success:   result.Success,
+		Currency:  result.Currency,
+		Error:     result.Error,
+		FetchedAt: now,
+REDACTED
+	if result.Success {
+		balance := result.Balance
+		snapshot.Balance = &balance
+REDACTED else if result.StatusCode == 401 || result.StatusCode == 403 {
+		snapshot.CredentialInvalid = true
+REDACTED
+	if len(result.Balances) > 0 {
+		snapshot.Balances = make([]domain.MonitorBalance, 0, len(result.Balances))
+		for _, b := range result.Balances {
+			snapshot.Balances = append(snapshot.Balances, domain.MonitorBalance{
+				Currency: b.Currency,
+				Balance:  b.Balance,
+		REDACTED)
+	REDACTED
+REDACTED
+	if !snapshot.Success {
+		snapshot.Error = firstNonEmpty(snapshot.Error, "cn balance probe failed")
+REDACTED
+	return snapshot
+REDACTED
+
+// quotaErrorSnapshot 构造统一错误快照。
+func quotaErrorSnapshot(source, message string, now time.Time) *domain.MonitorQuotaSnapshot {
+	return &domain.MonitorQuotaSnapshot{
+		Source:    source,
+		Success:   false,
+		Error:     truncateMessage(sanitizeErrorMessage(message)),
+		FetchedAt: now,
+REDACTED
+REDACTED
+
+// isCredentialErrorMessage 上游 401/403 鉴权失败的启发式识别
+// （海外 GetUsage 的错误没有结构化状态码，只能看文本）。
+func isCredentialErrorMessage(msg string) bool {
+	msg = strings.ToLower(msg)
+	return strings.Contains(msg, "401") ||
+		strings.Contains(msg, "403") ||
+		strings.Contains(msg, "unauthorized") ||
+		strings.Contains(msg, "forbidden") ||
+		strings.Contains(msg, "invalid_api_key") ||
+		strings.Contains(msg, "authentication")
+REDACTED
+
+// deriveQuotaCheckResult 把配额快照推导为检测状态（复用既有 status 枚举，
+// 时间线/可用率机制自动生效）：
+//   - 查询成功且无告警        → operational
+//   - 任一窗口使用率 >= 阈值或余额耗尽 → degraded
+//   - 账号未关联（配置问题）    → degraded
+//   - 凭据失效（401/403）     → failed
+//   - 网络/解析等其他错误      → error
+func deriveQuotaCheckResult(snapshot *domain.MonitorQuotaSnapshot, model string, checkedAt time.Time) *CheckResult {
+	res := &CheckResult{Model: model, CheckedAt: checkedAtREDACTED
+	if snapshot == nil {
+		res.Status = MonitorStatusError
+		res.Message = "quota snapshot missing"
+		return res
+REDACTED
+
+	switch {
+	case !snapshot.Success && snapshot.CredentialInvalid:
+		res.Status = MonitorStatusFailed
+		res.Message = snapshot.Error
+	case !snapshot.Success && strings.Contains(snapshot.Error, "linked account not found"):
+		res.Status = MonitorStatusDegraded
+		res.Message = snapshot.Error
+	case !snapshot.Success:
+		res.Status = MonitorStatusError
+		res.Message = snapshot.Error
+	default:
+		if hint := quotaDegradedHint(snapshot); hint != "" {
+			res.Status = MonitorStatusDegraded
+			res.Message = hint
+	REDACTED else {
+			res.Status = MonitorStatusOperational
+	REDACTED
+REDACTED
+	return res
+REDACTED
+
+// quotaDegradedHint 生成 degraded 的 message（指出触发告警的窗口/余额）；
+// 空串表示无告警。
+func quotaDegradedHint(snapshot *domain.MonitorQuotaSnapshot) string {
+	for _, tier := range snapshot.Tiers {
+		if tier.UsedPercent >= monitorQuotaDegradedUsedPercent {
+			name := tier.Window
+			if tier.Label != "" {
+				name = tier.Label + "/" + tier.Window
+		REDACTED
+			return fmt.Sprintf("quota high: %s at %s%%", name, strconv.FormatFloat(tier.UsedPercent, 'f', 1, 64))
+	REDACTED
+REDACTED
+	if snapshot.Balance != nil && *snapshot.Balance <= 0 {
+		return fmt.Sprintf("balance depleted (%s)", firstNonEmpty(snapshot.Currency, "?"))
+REDACTED
+	return ""
+REDACTED
