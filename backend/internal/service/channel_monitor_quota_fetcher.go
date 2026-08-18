@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"golang.org/x/sync/singleflight"
@@ -58,6 +59,8 @@ type ChannelMonitorQuotaFetcher struct {
 	cnQuota   monitorCNQuotaSource
 	cnBalance monitorCNBalanceSource
 	accounts  monitorAccountSource
+	// balanceThreshold cn_balance 余额告警阈值（与账号停调共用配置，见 monitorBalanceThreshold）。
+	balanceThreshold float64
 
 	mu     sync.Mutex
 	cache  map[int64]monitorQuotaCacheEntry
@@ -76,8 +79,12 @@ func NewChannelMonitorQuotaFetcher(
 	cnQuota *CNProviderQuotaService,
 	cnBalance *CNProviderBalanceService,
 	accounts AccountRepository,
+	cfg *config.Config,
 ) *ChannelMonitorQuotaFetcher {
-	f := &ChannelMonitorQuotaFetcher{cache: make(map[int64]monitorQuotaCacheEntry)REDACTED
+	f := &ChannelMonitorQuotaFetcher{
+		cache:            make(map[int64]monitorQuotaCacheEntry),
+		balanceThreshold: monitorBalanceThreshold(cfg),
+REDACTED
 	if usage != nil {
 		f.usage = usage
 REDACTED
@@ -91,6 +98,17 @@ REDACTED
 		f.accounts = accounts
 REDACTED
 	return f
+REDACTED
+
+// monitorBalanceThreshold 余额告警阈值，与账号停调（CNProviderBalanceCheckService）
+// 共用 gateway.cn_providers.balance_threshold，保证监控 degraded 与调度器停调
+// 口径一致（任一币种达标即健康）。未配置/非正值时回退 viper 默认 0.5（config.go），
+// 避免 0 阈值下「余额=0 也不告警」相对旧 `<=0` 判定的回归。
+func monitorBalanceThreshold(cfg *config.Config) float64 {
+	if cfg != nil && cfg.Gateway.CNProviders.BalanceThreshold > 0 {
+		return cfg.Gateway.CNProviders.BalanceThreshold
+REDACTED
+	return 0.5
 REDACTED
 
 // LoadAccount 加载账号（不走缓存）。供 Create/Update 时校验
@@ -341,7 +359,10 @@ REDACTED
 		Error:     result.Error,
 		FetchedAt: now,
 REDACTED
-	if !result.Success && !result.CredentialValid {
+	// 只有 401/403 判凭据失效（与 fetchCNBalance 口径一致）：CN quota 服务的
+	// CredentialValid 仅在成功路径置 true，若按 `!Success && !CredentialValid`
+	// 推导，500/429/智谱业务错误全会被误判为 failed。
+	if !result.Success && (result.StatusCode == 401 || result.StatusCode == 403) {
 		snapshot.CredentialInvalid = true
 REDACTED
 	if len(result.Tiers) > 0 {
@@ -386,6 +407,10 @@ REDACTED
 	if result.Success {
 		balance := result.Balance
 		snapshot.Balance = &balance
+		// 与账号停调（checkOne）同口径：上游标记不可用或全部币种低于阈值
+		// 才告警，任一币种达标即健康（余额 5 元/阈值 10 元的账号调度器已
+		// 停调，监控不能仍绿灯）。
+		snapshot.BalanceLow = !result.Available || allCNBalancesBelowThreshold(result, f.balanceThreshold)
 REDACTED else if result.StatusCode == 401 || result.StatusCode == 403 {
 		snapshot.CredentialInvalid = true
 REDACTED
@@ -454,7 +479,7 @@ REDACTED
 // deriveQuotaCheckResult 把配额快照推导为检测状态（复用既有 status 枚举，
 // 时间线/可用率机制自动生效）：
 //   - 查询成功且无告警        → operational
-//   - 任一窗口使用率 >= 阈值或余额耗尽 → degraded
+//   - 任一窗口使用率 >= 阈值或余额低于阈值/不可用 → degraded
 //   - 账号未关联（配置问题）    → degraded
 //   - 凭据失效（401/403）     → failed
 //   - 网络/解析等其他错误      → error
@@ -499,8 +524,11 @@ func quotaDegradedHint(snapshot *domain.MonitorQuotaSnapshot) string {
 			return fmt.Sprintf("quota high: %s at %s%%", name, strconv.FormatFloat(tier.UsedPercent, 'f', 1, 64))
 	REDACTED
 REDACTED
-	if snapshot.Balance != nil && *snapshot.Balance <= 0 {
-		return fmt.Sprintf("balance depleted (%s)", firstNonEmpty(snapshot.Currency, "?"))
+	if snapshot.BalanceLow {
+		if snapshot.Balance != nil {
+			return fmt.Sprintf("balance low: %s %s", strconv.FormatFloat(*snapshot.Balance, 'f', -1, 64), firstNonEmpty(snapshot.Currency, "?"))
+	REDACTED
+		return fmt.Sprintf("balance low (%s)", firstNonEmpty(snapshot.Currency, "?"))
 REDACTED
 	return ""
 REDACTED
