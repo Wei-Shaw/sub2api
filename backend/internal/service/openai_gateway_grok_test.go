@@ -176,6 +176,29 @@ func TestPatchGrokResponsesBodyNormalizesReasoningEffortAliases(t *testing.T) {
 	}
 }
 
+func TestPatchGrokResponsesBodyPreservesXHighForGrok46(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		body          string
+		upstreamModel string
+		path          string
+	}{
+		{name: "nested", body: `{"input":"hi","reasoning":{"effort":"xhigh"}}`, upstreamModel: "grok-4.6", path: "reasoning.effort"},
+		{name: "flat latest", body: `{"input":"hi","reasoning_effort":"xhigh"}`, upstreamModel: "grok-4.6-latest", path: "reasoning_effort"},
+		{name: "camel provider prefix", body: `{"input":"hi","reasoningEffort":"xhigh"}`, upstreamModel: "xai/grok-4.6", path: "reasoning_effort"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			patched, err := patchGrokResponsesBody([]byte(tt.body), tt.upstreamModel)
+			require.NoError(t, err)
+			require.Equal(t, "xhigh", gjson.GetBytes(patched, tt.path).String(), string(patched))
+			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+		})
+	}
+}
+
 func TestPatchGrokResponsesBodyAddsDefaultFunctionParameters(t *testing.T) {
 	patched, err := patchGrokResponsesBody(
 		[]byte(`{"input":"hi","tools":[{"type":"function","name":"lookup"},{"type":"function","name":"wait","parameters":null}]}`),
@@ -197,6 +220,10 @@ func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"high"}`), "grok-composer-2.5-fast")
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(patched, "reasoning_effort").Exists())
+
+	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"xhigh"}`), "grok-4.6")
+	require.NoError(t, err)
+	require.Equal(t, "xhigh", gjson.GetBytes(patched, "reasoning_effort").String())
 }
 
 func TestPatchGrokResponsesBodyDropsNestedUnsupportedFields(t *testing.T) {
