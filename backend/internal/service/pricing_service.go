@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/modelcatalog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -119,6 +120,7 @@ type LiteLLMModelPricing struct {
 	LongContextInputTokenThreshold      int     `json:"long_context_input_token_threshold,omitempty"`
 	LongContextInputCostMultiplier      float64 `json:"long_context_input_cost_multiplier,omitempty"`
 	LongContextOutputCostMultiplier     float64 `json:"long_context_output_cost_multiplier,omitempty"`
+	LongContextThresholdInclusive       bool    `json:"long_context_threshold_inclusive,omitempty"`
 	SupportsServiceTier                 bool    `json:"supports_service_tier"`
 	LiteLLMProvider                     string  `json:"litellm_provider"`
 	Mode                                string  `json:"mode"`
@@ -418,6 +420,7 @@ func (s *PricingService) downloadPricingData() error {
 		return fmt.Errorf("parse pricing data: %w", err)
 	}
 	data = s.mergeFallbackPricingData(data)
+	data = mergeCatalogPricingData(data)
 
 	// 保存到本地文件
 	pricingFile := s.getPricingFilePath()
@@ -557,6 +560,7 @@ func (s *PricingService) loadPricingData(filePath string) error {
 		return fmt.Errorf("parse pricing data: %w", err)
 	}
 	pricingData = s.mergeFallbackPricingData(pricingData)
+	pricingData = mergeCatalogPricingData(pricingData)
 
 	// 计算哈希
 	hash := sha256.Sum256(data)
@@ -832,6 +836,9 @@ func normalizeModelNameForPricing(model string) string {
 // behavior, not the published token rate, so this keeps -high/-low/-medium and
 // -tiered requests on the same price card as gemini-3.6-flash.
 func normalizeGeminiThinkingTierAlias(model string) string {
+	if card := modelcatalog.SharedRateCardID(model); card != "" {
+		return card
+	}
 	const baseModel = "gemini-3.6-flash"
 	for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
 		if model == baseModel+tier {
@@ -839,6 +846,27 @@ func normalizeGeminiThinkingTierAlias(model string) string {
 		}
 	}
 	return model
+}
+
+func mergeCatalogPricingData(data map[string]*LiteLLMModelPricing) map[string]*LiteLLMModelPricing {
+	if data == nil {
+		data = make(map[string]*LiteLLMModelPricing)
+	}
+	for _, entry := range modelcatalog.Default().Entries() {
+		if entry == nil || entry.Price == nil || !entry.IsCanonical() {
+			continue
+		}
+		if existing, ok := data[entry.ID]; ok {
+			if entry.LockPrice {
+				overlayLiteLLMFromCatalog(existing, entry.Price)
+			}
+			continue
+		}
+		if entry.LockPrice {
+			data[entry.ID] = tokenRatesToLiteLLMPricing(entry.Rates())
+		}
+	}
+	return data
 }
 
 func lastSegment(model string) string {

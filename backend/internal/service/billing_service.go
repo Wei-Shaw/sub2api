@@ -214,6 +214,7 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 
 	// 初始化硬编码回退价格（当动态价格不可用时使用）
 	s.initFallbackPricing()
+	s.applyCatalogFallbackPricing()
 
 	return s
 }
@@ -664,6 +665,9 @@ func (s *BillingService) initFallbackPricing() {
 // getFallbackPricing 根据模型系列获取回退价格
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
+	if pricing := s.lookupExactFallbackPricing(modelLower); pricing != nil {
+		return pricing
+	}
 
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
@@ -976,6 +980,7 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 				LongContextInputThreshold:          litellmPricing.LongContextInputTokenThreshold,
 				LongContextInputMultiplier:         litellmPricing.LongContextInputCostMultiplier,
 				LongContextOutputMultiplier:        litellmPricing.LongContextOutputCostMultiplier,
+				LongContextThresholdInclusive:      litellmPricing.LongContextThresholdInclusive,
 				ImageInputPricePerToken:            litellmPricing.InputCostPerImageToken,
 				ImageOutputPricePerToken:           litellmPricing.OutputCostPerImageToken,
 			}), nil

@@ -35,3 +35,10 @@ The file contains JSON data with model pricing information including:
 - Model capabilities
 
 Last updated: 2025-08-10
+
+## Fork-owned catalog
+
+Runtime fallback prices and thinking-tier aliases for this fork live in
+`backend/internal/modelcatalog/data/catalog.json`. Locked catalog fields overlay
+this LiteLLM mirror; unlocked catalog cards only fill missing models. See
+`docs/MODEL_CATALOG_AND_CHANNEL_STOREFRONT.md`.
