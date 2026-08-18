@@ -138,13 +138,41 @@ func stripBinaryPayloads(value any, depth int) any {
 		}
 		return result
 	case string:
-		if looksLikeMediaPayload(typed) {
+		// Only opaque binary blobs are dropped here. A bare string outside a
+		// known binary key is audited as-is: a plain http(s) URL (e.g. a tool's
+		// exfil/target URL) is a primary cyber-abuse signal and must reach the
+		// scanner, unlike a data: URI or a long base64 body.
+		if looksLikeBinaryBlob(typed) {
 			return "[binary omitted]"
 		}
 		return typed
 	default:
 		return value
 	}
+}
+
+// looksLikeBinaryBlob reports whether a bare string value is an opaque binary
+// blob that would bloat the audited payload: a data: URI for image/video/audio,
+// or a long base64 body. Plain http(s) URLs are deliberately NOT treated as
+// blobs — they carry auditable intent. Media URLs under an explicit binary key
+// are still stripped by the key check in stripBinaryPayloads, not here.
+func looksLikeBinaryBlob(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "data:image/") || strings.HasPrefix(lower, "data:video/") ||
+		strings.HasPrefix(lower, "data:audio/") {
+		return true
+	}
+	if len(trimmed) >= 256 {
+		for _, r := range trimmed {
+			alphaNumeric := (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+			if !alphaNumeric && r != '+' && r != '/' && r != '=' {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // looksLikeMediaPayloadValue reports whether an arbitrary decoded value (not just

