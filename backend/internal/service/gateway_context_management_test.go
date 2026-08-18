@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -648,6 +649,51 @@ REDACTED
 	outBody := readUpstreamBodyForTest(t, req)
 	require.False(t, gjson.GetBytes(outBody, "context_management").Exists(),
 		"count_tokens API-key + 客户端未带 beta token → body strip")
+REDACTED
+
+func TestBuildCountTokensRequest_StripsCacheControlOnlyFromLiteralDeferredTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"claude-haiku-4-5","messages":[],"tools":[{"name":"deferred","custom":{"defer_loading":trueREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"ordinary","custom":{"defer_loading":falseREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"string","custom":{"defer_loading":"true"REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"number","custom":{"defer_loading":1REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"name":"object","custom":{"defer_loading":{REDACTEDREDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED]REDACTED`)
+
+	tests := []struct {
+		name      string
+		account   *Account
+		token     string
+		tokenType string
+REDACTED{
+		{
+			name:      "generic API key",
+			account:   &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKeyREDACTED,
+			token:     "sk-ant-test",
+			tokenType: "apikey",
+	REDACTED,
+		{
+			name:      "recognized Claude Code OAuth without mimicry",
+			account:   &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED,
+			token:     "oauth-token",
+			tokenType: "oauth",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+			svc := &GatewayService{cfg: &config.Config{REDACTEDREDACTED
+
+			req, wireBody, err := svc.buildCountTokensRequest(
+				context.Background(), c, tt.account, body,
+				tt.token, tt.tokenType, "claude-haiku-4-5", false,
+			)
+		REDACTED
+			require.False(t, gjson.GetBytes(wireBody, "tools.0.cache_control").Exists())
+			for idx := 1; idx < 5; idx++ {
+				require.Equal(t, "ephemeral", gjson.GetBytes(wireBody, fmt.Sprintf("tools.%d.cache_control.type", idx)).String())
+		REDACTED
+			require.JSONEq(t, string(wireBody), string(readUpstreamBodyForTest(t, req)))
+	REDACTED)
+REDACTED
 REDACTED
 
 // count_tokens passthrough preserve 测试
