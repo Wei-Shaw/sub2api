@@ -156,6 +156,13 @@ REDACTED
 				Mode: "VALIDATED",
 		REDACTED,
 	REDACTED
+		// 内置工具（googleSearch）与函数调用混用时，上游要求显式开启
+		// includeServerSideToolInvocations，否则返回 400（issue #5709）。
+		// 与 raw 透传路的 enableMixedGeminiToolInvocations 注入保持同一语义。
+		if hasMixedToolInvocations(tools) {
+			enabled := true
+			innerRequest.ToolConfig.IncludeServerSideToolInvocations = &enabled
+	REDACTED
 REDACTED
 
 	if systemInstruction != nil {
@@ -701,6 +708,21 @@ REDACTED
 	default:
 		return false
 REDACTED
+REDACTED
+
+// hasMixedToolInvocations 判断构建后的工具声明是否同时包含函数声明与内置工具
+// （googleSearch）。仅在两者并存时需要开启 includeServerSideToolInvocations。
+func hasMixedToolInvocations(declarations []GeminiToolDeclaration) bool {
+	hasFunc, hasBuiltin := false, false
+	for _, d := range declarations {
+		if len(d.FunctionDeclarations) > 0 {
+			hasFunc = true
+	REDACTED
+		if d.GoogleSearch != nil {
+			hasBuiltin = true
+	REDACTED
+REDACTED
+	return hasFunc && hasBuiltin
 REDACTED
 
 // buildTools 构建 tools

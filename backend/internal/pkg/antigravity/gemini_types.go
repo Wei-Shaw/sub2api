@@ -112,7 +112,8 @@ REDACTED
 
 // GeminiToolConfig Gemini 工具配置
 type GeminiToolConfig struct {
-	FunctionCallingConfig *GeminiFunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	FunctionCallingConfig            *GeminiFunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	IncludeServerSideToolInvocations *bool                        `json:"includeServerSideToolInvocations,omitempty"`
 REDACTED
 
 // GeminiFunctionCallingConfig 函数调用配置
