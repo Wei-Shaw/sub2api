@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,84 @@ import (
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+const openAIResponsesClientToolMappingContextKey = "openai_responses_client_tool_mapping"
+
+func hasOpenAIResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMapping) bool {
+	return len(mapping.CustomTools) > 0 || mapping.ToolSearch || len(mapping.NamespaceTools) > 0
+REDACTED
+
+func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	if !needsOpenAIResponsesClientToolAdaptation(body) {
+		return body, apicompat.ResponsesClientToolMapping{REDACTED, nil
+REDACTED
+
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	var requestBody map[string]any
+	if err := decoder.Decode(&requestBody); err != nil {
+		return body, apicompat.ResponsesClientToolMapping{REDACTED, fmt.Errorf("decode OpenAI Responses client tools: %w", err)
+REDACTED
+	var trailingValue any
+	if err := decoder.Decode(&trailingValue); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("multiple JSON values")
+	REDACTED
+		return body, apicompat.ResponsesClientToolMapping{REDACTED, fmt.Errorf("decode OpenAI Responses client tools trailing data: %w", err)
+REDACTED
+	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
+	if err != nil || !changed {
+		return body, mapping, err
+REDACTED
+	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
+	if err != nil {
+		return body, apicompat.ResponsesClientToolMapping{REDACTED, fmt.Errorf("encode OpenAI Responses client tools: %w", err)
+REDACTED
+	return rebuilt, mapping, nil
+REDACTED
+
+func needsOpenAIResponsesClientToolAdaptation(body []byte) bool {
+	needsAdaptation := false
+	var visit func(gjson.Result) bool
+	visit = func(value gjson.Result) bool {
+		if value.IsObject() {
+			switch strings.TrimSpace(value.Get("type").String()) {
+			case "custom", "custom_tool_call", "custom_tool_call_output",
+				"tool_search", "tool_search_call", "tool_search_output":
+				needsAdaptation = true
+				return false
+		REDACTED
+	REDACTED
+		if value.IsObject() || value.IsArray() {
+			value.ForEach(func(_, child gjson.Result) bool {
+				return visit(child)
+		REDACTED)
+	REDACTED
+		return !needsAdaptation
+REDACTED
+	visit(gjson.ParseBytes(body))
+	return needsAdaptation
+REDACTED
+
+func openAIResponsesClientToolMapping(c *gin.Context) (apicompat.ResponsesClientToolMapping, bool) {
+	if c == nil {
+		return apicompat.ResponsesClientToolMapping{REDACTED, false
+REDACTED
+	value, ok := c.Get(openAIResponsesClientToolMappingContextKey)
+	mapping, typed := value.(apicompat.ResponsesClientToolMapping)
+	return mapping, ok && typed && hasOpenAIResponsesClientToolMapping(mapping)
+REDACTED
+
+// clearOpenAIResponsesClientToolMapping removes mapping state from the prior
+// forwarding attempt. Forward retries accounts on the same Gin context.
+func clearOpenAIResponsesClientToolMapping(c *gin.Context) {
+	if c == nil {
+		return
+REDACTED
+	if _, exists := c.Get(openAIResponsesClientToolMappingContextKey); exists {
+		c.Set(openAIResponsesClientToolMappingContextKey, apicompat.ResponsesClientToolMapping{REDACTED)
+REDACTED
+REDACTED
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	ctx context.Context,
@@ -102,6 +181,16 @@ REDACTED
 		REDACTED
 			stageCodexFingerprintIDs(c, fpIDs)
 	REDACTED
+REDACTED
+
+	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
+		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
+		if adaptErr != nil {
+			return nil, adaptErr
+	REDACTED
+		body = adaptedBody
+		c.Set(openAIResponsesClientToolMappingContextKey, mapping)
 REDACTED
 
 	sanitizedBody, sanitized, err := sanitizeEmptyBase64InputImagesInOpenAIBody(body)
@@ -258,6 +347,13 @@ REDACTED
 		return nil, s.handleErrorResponsePassthrough(ctx, resp, c, account, body, probeBody)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
+	if mapping, ok := openAIResponsesClientToolMapping(c); ok && isEventStreamResponse(resp.Header) {
+		maxLineSize := defaultMaxLineSize
+		if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+			maxLineSize = s.cfg.Gateway.MaxLineSize
+	REDACTED
+		resp.Body = newGrokResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+REDACTED
 
 	serviceTier := extractOpenAIServiceTierFromBody(body)
 
@@ -1562,6 +1658,12 @@ REDACTED
 	body, err = restoreOpenAIResponsesNamespacePayload(c, body)
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI passthrough namespace response: %w", err)
+REDACTED
+	if mapping, ok := openAIResponsesClientToolMapping(c); ok && json.Valid(body) {
+		body, _, err = apicompat.RestoreResponsesClientToolPayload(body, mapping)
+		if err != nil {
+			return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
+	REDACTED
 REDACTED
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
