@@ -72,7 +72,7 @@ describe('AccountUsageCell', () => {
     })
   })
 
-  it('renders eligible Ollama Cloud state inside the unified usage cell', () => {
+  it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {
         account: makeAccount({
@@ -101,7 +101,8 @@ describe('AccountUsageCell', () => {
         stubs: {
           OllamaCloudUsageCell: {
             props: ['account'],
-            template: '<div data-test="embedded-ollama">{{ account.ollama_cloud_usage.snapshot.data.five_hour.used_percent }}</div>'
+            emits: ['updated'],
+            template: '<button data-test="embedded-ollama" @click="$emit(\'updated\', { ...account.ollama_cloud_usage, auto_refresh_enabled: false })">{{ account.ollama_cloud_usage.snapshot.data.five_hour.used_percent }}</button>'
           },
           UsageProgressBar: true,
           AccountQuotaInfo: true
@@ -111,6 +112,12 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.get('[data-test="embedded-ollama"]').text()).toBe('12')
     expect(getUsage).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="embedded-ollama"]').trigger('click')
+
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.id).toBe(9001)
+    expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {

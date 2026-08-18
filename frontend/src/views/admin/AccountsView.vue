@@ -2517,16 +2517,20 @@ onMounted(async () => {
 
   load()
   if (!isUsageViewer.value) {
-    try {
-      const [p, g] = await Promise.all([
-        adminAPI.proxies.getAll(),
-        adminAPI.groups.getAll(),
-        loadUpstreamBillingProbeGlobalState()
-      ])
-      proxies.value = p
-      groups.value = g
-    } catch (error) {
-      console.error('Failed to load account admin dependencies:', error)
+    const [proxiesResult, groupsResult] = await Promise.allSettled([
+      adminAPI.proxies.getAll(),
+      adminAPI.groups.getAll(),
+      loadUpstreamBillingProbeGlobalState()
+    ])
+    if (proxiesResult.status === 'fulfilled') {
+      proxies.value = proxiesResult.value
+    } else {
+      console.error('Failed to load proxies:', proxiesResult.reason)
+    }
+    if (groupsResult.status === 'fulfilled') {
+      groups.value = groupsResult.value
+    } else {
+      console.error('Failed to load groups:', groupsResult.reason)
     }
   }
   window.addEventListener('scroll', handleScroll, true)

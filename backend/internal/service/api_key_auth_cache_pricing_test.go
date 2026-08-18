@@ -9,49 +9,43 @@ import (
 )
 
 func TestAPIKeyAuthSnapshotGroupPricingRoundtrip(t *testing.T) {
-	groupID := int64(71)
-	inputPrice := 1.25e-6
+	groupID := int64(50)
+	inputPrice := 1e-6
+	outputPrice := 2e-6
 	apiKey := &APIKey{
-		ID:      81,
-		UserID:  41,
-		GroupID: &groupID,
-		Status:  StatusActive,
-		User:    &User{ID: 41, Status: StatusActive},
+		ID: 82, UserID: 40, GroupID: &groupID, Key: "sk-pricing-roundtrip", Status: StatusActive,
+		User: &User{ID: 40, Status: StatusActive},
 		Group: &Group{
-			ID:                        groupID,
-			Name:                      "priced-group",
-			Platform:                  PlatformOpenAI,
-			Status:                    StatusActive,
+			ID: groupID, Name: "pricing-roundtrip", Platform: PlatformAnthropic, Status: StatusActive,
 			LongContextPricingEnabled: true,
 			ModelPricing: []ChannelModelPricing{{
-				Platform:    PlatformOpenAI,
-				Models:      []string{"gpt-5.4"},
-				BillingMode: BillingModeToken,
-				InputPrice:  &inputPrice,
+				Models: []string{"claude-sonnet-*"}, BillingMode: BillingModeToken,
+				InputPrice: &inputPrice, OutputPrice: &outputPrice,
 			}},
 		},
 	}
-
 	svc := &APIKeyService{}
-	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
-	require.NotNil(t, snapshot)
-	require.Equal(t, apiKeyAuthSnapshotVersion, snapshot.Version)
 
-	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: snapshot})
+	payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), apiKey)})
 	require.NoError(t, err)
-	var restored APIKeyAuthCacheEntry
-	require.NoError(t, json.Unmarshal(payload, &restored))
+	var cached APIKeyAuthCacheEntry
+	require.NoError(t, json.Unmarshal(payload, &cached))
 
-	materialized, used, err := svc.applyAuthCacheEntry("sk-pricing", &restored)
+	materialized, used, err := svc.applyAuthCacheEntry(apiKey.Key, &cached)
 	require.NoError(t, err)
 	require.True(t, used)
 	require.NotNil(t, materialized.Group)
 	require.True(t, materialized.Group.LongContextPricingEnabled)
-	require.Len(t, materialized.Group.ModelPricing, 1)
-	require.Equal(t, []string{"gpt-5.4"}, materialized.Group.ModelPricing[0].Models)
-	require.NotNil(t, materialized.Group.ModelPricing[0].InputPrice)
-	require.InDelta(t, inputPrice, *materialized.Group.ModelPricing[0].InputPrice, 1e-12)
+	require.Equal(t, apiKey.Group.ModelPricing, materialized.Group.ModelPricing)
+	require.NotNil(t, matchGroupModelPricing(materialized.Group, "claude-sonnet-4"))
 
-	matched := matchGroupModelPricing(materialized.Group, "gpt-5.4")
-	require.NotNil(t, matched, "materialized auth group must retain group-level pricing")
+	billing := &BillingService{fallbackPrices: map[string]*ModelPricing{
+		"claude-sonnet-4": {InputPricePerToken: 3e-6, OutputPricePerToken: 15e-6},
+	}}
+	resolver := NewModelPricingResolver(nil, billing)
+	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", Group: materialized.Group})
+	require.Equal(t, PricingSourceGroup, resolved.Source)
+	require.True(t, resolved.longContextPricingEnabled)
+	require.InDelta(t, inputPrice, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, outputPrice, resolved.BasePricing.OutputPricePerToken, 1e-12)
 }
