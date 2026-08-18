@@ -65,19 +65,27 @@ type monitorQuotaCacheEntry struct {
 REDACTED
 
 // NewChannelMonitorQuotaFetcher 构造配额抓取器。
+// 参数取具体服务类型以便 wire 直连；单元测试在同包内用 struct 字面量注入 stub。
 func NewChannelMonitorQuotaFetcher(
-	usage monitorUsageSource,
-	cnQuota monitorCNQuotaSource,
-	cnBalance monitorCNBalanceSource,
-	accounts monitorAccountSource,
+	usage *AccountUsageService,
+	cnQuota *CNProviderQuotaService,
+	cnBalance *CNProviderBalanceService,
+	accounts AccountRepository,
 ) *ChannelMonitorQuotaFetcher {
-	return &ChannelMonitorQuotaFetcher{
-		usage:     usage,
-		cnQuota:   cnQuota,
-		cnBalance: cnBalance,
-		accounts:  accounts,
-		cache:     make(map[int64]monitorQuotaCacheEntry),
+	f := &ChannelMonitorQuotaFetcher{cache: make(map[int64]monitorQuotaCacheEntry)REDACTED
+	if usage != nil {
+		f.usage = usage
 REDACTED
+	if cnQuota != nil {
+		f.cnQuota = cnQuota
+REDACTED
+	if cnBalance != nil {
+		f.cnBalance = cnBalance
+REDACTED
+	if accounts != nil {
+		f.accounts = accounts
+REDACTED
+	return f
 REDACTED
 
 // LoadAccount 加载账号（不走缓存）。供 Create/Update 时校验
