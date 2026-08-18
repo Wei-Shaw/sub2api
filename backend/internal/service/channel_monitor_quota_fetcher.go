@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"golang.org/x/sync/singleflight"
 )
 
 // 渠道监控「配额模式」的配额抓取器。
@@ -26,7 +27,9 @@ import (
 // 由 deriveQuotaCheckResult 推导为 failed/error 状态。
 //
 // 多个监控可能关联同一账号，而 interval 最小 15s 且国产配额服务自身无缓存，
-// 所以成功快照统一带 monitorQuotaFetchCacheTTL 缓存，防止打爆上游配额端点。
+// 所以快照统一带 TTL 缓存（成功 monitorQuotaFetchCacheTTL、失败
+// monitorQuotaErrorCacheTTL 负缓存），防止打爆上游配额端点；同账号的并发
+// 抓取由 singleflight 合并为一次上游查询。
 
 // monitorUsageSource 海外平台账号用量查询（AccountUsageService 天然满足）。
 type monitorUsageSource interface {
@@ -48,15 +51,17 @@ type monitorAccountSource interface {
 	GetByID(ctx context.Context, id int64) (*Account, error)
 REDACTED
 
-// ChannelMonitorQuotaFetcher 配额抓取器（带成功快照 TTL 缓存）。
+// ChannelMonitorQuotaFetcher 配额抓取器（成功/失败快照均带 TTL 缓存，
+// 同账号并发抓取由 singleflight 合并）。
 type ChannelMonitorQuotaFetcher struct {
 	usage     monitorUsageSource
 	cnQuota   monitorCNQuotaSource
 	cnBalance monitorCNBalanceSource
 	accounts  monitorAccountSource
 
-	mu    sync.Mutex
-	cache map[int64]monitorQuotaCacheEntry
+	mu     sync.Mutex
+	cache  map[int64]monitorQuotaCacheEntry
+	flight singleflight.Group
 REDACTED
 
 type monitorQuotaCacheEntry struct {
@@ -111,11 +116,31 @@ REDACTED
 		return cached
 REDACTED
 
-	snapshot := f.fetchUncached(ctx, accountID, now)
-	if snapshot.Success {
-		f.storeSnapshot(accountID, snapshot, now.Add(monitorQuotaFetchCacheTTL))
+	// singleflight 合并同账号并发抓取；脱离调用方 ctx（仿 CN 配额服务），
+	// 避免某个监控的取消波及共享同一账号的其他监控。
+	key := "monitor-quota:" + strconv.FormatInt(accountID, 10)
+	ch := f.flight.DoChan(key, func() (any, error) {
+		fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
+		defer cancel()
+		snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
+		// 失败也进短 TTL 负缓存：凭据失效/故障期间不必每次调度都打上游。
+		ttl := monitorQuotaFetchCacheTTL
+		if !snapshot.Success {
+			ttl = monitorQuotaErrorCacheTTL
+	REDACTED
+		f.storeSnapshot(accountID, snapshot, time.Now().Add(ttl))
+		return snapshot, nil
+REDACTED)
+	select {
+	case <-ctx.Done():
+		return quotaErrorSnapshot("usage", "context canceled", now)
+	case res := <-ch:
+		snapshot, ok := res.Val.(*domain.MonitorQuotaSnapshot)
+		if res.Err != nil || !ok || snapshot == nil {
+			return quotaErrorSnapshot("usage", "quota fetch failed", now)
+	REDACTED
+		return snapshot
 REDACTED
-	return snapshot
 REDACTED
 
 func (f *ChannelMonitorQuotaFetcher) cachedSnapshot(accountID int64, now time.Time) (*domain.MonitorQuotaSnapshot, bool) {
@@ -172,6 +197,20 @@ REDACTED
 			Success:           false,
 			CredentialInvalid: isCredentialErrorMessage(msg),
 			Error:             msg,
+			FetchedAt:         now,
+	REDACTED
+REDACTED
+	if usage == nil {
+		return quotaErrorSnapshot("usage", "usage service returned no data", now)
+REDACTED
+	// openai/gemini/antigravity/grok 的失败多走「值通道」（err==nil 但错误
+	// 降级在 UsageInfo 字段里），必须显式识别，否则会被误判为 operational。
+	if failed, credInvalid, msg := usageFailureInfo(usage); failed {
+		return &domain.MonitorQuotaSnapshot{
+			Source:            "usage",
+			Success:           false,
+			CredentialInvalid: credInvalid,
+			Error:             truncateMessage(sanitizeErrorMessage(msg)),
 			FetchedAt:         now,
 	REDACTED
 REDACTED
@@ -385,6 +424,31 @@ func isCredentialErrorMessage(msg string) bool {
 		strings.Contains(msg, "forbidden") ||
 		strings.Contains(msg, "invalid_api_key") ||
 		strings.Contains(msg, "authentication")
+REDACTED
+
+// usageFailureInfo 识别 GetUsage 经「值通道」返回的失败：antigravity/grok
+// 等平台 err==nil 但把错误降级在 UsageInfo 字段里（Error/ErrorCode/状态标记）。
+// 返回 failed=false 表示可用；credentialInvalid 表示凭据失效（401/403 语义，
+// 推导为 failed 状态）；msg 为失败摘要。
+//
+// grok 的 ErrorCode=quota_unknown 是「尚未观测到计费快照/限流头」的已知未知态，
+// 不是失败（严格按 ErrorCode 判会把健康 grok 账号永久判 error），显式豁免。
+func usageFailureInfo(usage *UsageInfo) (failed, credentialInvalid bool, msg string) {
+	if usage == nil {
+		return false, false, ""
+REDACTED
+	if usage.ErrorCode == "quota_unknown" {
+		return false, false, ""
+REDACTED
+	failed = usage.Error != "" || usage.NeedsReauth || usage.IsBanned ||
+		usage.IsForbidden || usage.ErrorCode != ""
+	if !failed {
+		return false, false, ""
+REDACTED
+	credentialInvalid = usage.NeedsReauth || usage.IsBanned || usage.IsForbidden ||
+		usage.ErrorCode == errorCodeUnauthenticated || usage.ErrorCode == errorCodeForbidden
+	msg = firstNonEmpty(usage.Error, usage.ForbiddenReason, usage.ErrorCode, "usage fetch failed")
+	return failed, credentialInvalid, msg
 REDACTED
 
 // deriveQuotaCheckResult 把配额快照推导为检测状态（复用既有 status 枚举，

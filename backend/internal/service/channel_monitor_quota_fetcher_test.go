@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,16 +17,31 @@ import (
 // --- fetcher 依赖 stub ---
 
 type stubMonitorUsageSource struct {
-	usage   *UsageInfo
-	err     error
+	usage *UsageInfo
+	err   error
+	// block 非 nil 时 GetUsage 阻塞在该 channel 上，用于并发/singleflight 测试。
+	block chan struct{REDACTED
+
+	mu      sync.Mutex
 	calls   int
 	lastCtx context.Context
 REDACTED
 
 func (s *stubMonitorUsageSource) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
+	s.mu.Lock()
 	s.calls++
 	s.lastCtx = ctx
+	s.mu.Unlock()
+	if s.block != nil {
+		<-s.block
+REDACTED
 	return s.usage, s.err
+REDACTED
+
+func (s *stubMonitorUsageSource) getCalls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
 REDACTED
 
 type stubMonitorCNQuotaSource struct {
@@ -110,7 +126,7 @@ REDACTED
 	require.NotEmpty(t, fiveHour.ResetAt)
 
 	require.Equal(t, "7d", snapshot.Tiers[1].Window)
-	require.Equal(t, 1, usage.calls)
+	require.Equal(t, 1, usage.getCalls())
 	require.Equal(t, 0, cnQuota.calls)
 REDACTED
 
@@ -182,7 +198,7 @@ func TestQuotaFetcher_AccountMissingYieldsLinkedAccountSnapshot(t *testing.T) {
 
 	require.False(t, snapshot.Success)
 	require.Equal(t, "linked account not found", snapshot.Error)
-	require.Equal(t, 0, usage.calls) // 未走到数据源
+	require.Equal(t, 0, usage.getCalls()) // 未走到数据源
 REDACTED
 
 func TestQuotaFetcher_UsageAuthErrorMarksCredentialInvalid(t *testing.T) {
@@ -195,6 +211,71 @@ func TestQuotaFetcher_UsageAuthErrorMarksCredentialInvalid(t *testing.T) {
 	require.False(t, snapshot.Success)
 	require.True(t, snapshot.CredentialInvalid)
 	require.Contains(t, snapshot.Error, "401")
+REDACTED
+
+// 值通道失败：antigravity/grok 等平台 err==nil 但错误降级在 UsageInfo 字段里，
+// 必须识别为失败快照，否则会被误判为 operational。
+func TestQuotaFetcher_UsageValueChannelFailureYieldsFailureSnapshot(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+
+	// 凭据失效（401 语义）→ failed。
+	accounts.accounts[3] = &Account{ID: 3, Platform: domain.PlatformAnthropicREDACTED
+	usage.usage = &UsageInfo{Error: "usage API error: HTTP 401", ErrorCode: errorCodeUnauthenticated, NeedsReauth: trueREDACTED
+	snapshot := fetcher.Fetch(context.Background(), 3)
+	require.False(t, snapshot.Success)
+	require.True(t, snapshot.CredentialInvalid)
+	require.Contains(t, snapshot.Error, "401")
+	require.Equal(t, MonitorStatusFailed, deriveQuotaCheckResult(snapshot, "quota", time.Now()).Status)
+
+	// 限流等非凭据失败 → error（而非 operational）。
+	accounts.accounts[13] = &Account{ID: 13, Platform: domain.PlatformAnthropicREDACTED
+	usage.usage = &UsageInfo{Error: "usage API error: HTTP 429", ErrorCode: errorCodeRateLimitedREDACTED
+	snapshot = fetcher.Fetch(context.Background(), 13)
+	require.False(t, snapshot.Success)
+	require.False(t, snapshot.CredentialInvalid)
+	require.Contains(t, snapshot.Error, "429")
+	require.Equal(t, MonitorStatusError, deriveQuotaCheckResult(snapshot, "quota", time.Now()).Status)
+
+	// grok 已知未知态（尚未观测到计费/限流头）不算失败。
+	accounts.accounts[14] = &Account{ID: 14, Platform: domain.PlatformGrokREDACTED
+	usage.usage = &UsageInfo{ErrorCode: "quota_unknown", Error: "Grok quota is unknown until billing is probed"REDACTED
+	snapshot = fetcher.Fetch(context.Background(), 14)
+	require.True(t, snapshot.Success)
+	require.Empty(t, snapshot.Error)
+	require.Empty(t, snapshot.Tiers)
+	require.Equal(t, MonitorStatusOperational, deriveQuotaCheckResult(snapshot, "quota", time.Now()).Status)
+REDACTED
+
+func TestUsageFailureInfo_ClassificationMatrix(t *testing.T) {
+	cases := []struct {
+		name              string
+		usage             *UsageInfo
+		failed            bool
+		credentialInvalid bool
+		msg               string
+REDACTED{
+		{name: "nil usage", usage: nilREDACTED,
+		{name: "healthy empty", usage: &UsageInfo{REDACTEDREDACTED,
+		{name: "error text only", usage: &UsageInfo{Error: "boom"REDACTED, failed: true, msg: "boom"REDACTED,
+		{name: "needs reauth", usage: &UsageInfo{NeedsReauth: trueREDACTED, failed: true, credentialInvalid: true, msg: "usage fetch failed"REDACTED,
+		{name: "banned", usage: &UsageInfo{IsBanned: trueREDACTED, failed: true, credentialInvalid: true, msg: "usage fetch failed"REDACTED,
+		{name: "forbidden with reason", usage: &UsageInfo{IsForbidden: true, ForbiddenReason: "usage limited"REDACTED, failed: true, credentialInvalid: true, msg: "usage limited"REDACTED,
+		{name: "error code unauthenticated", usage: &UsageInfo{ErrorCode: errorCodeUnauthenticatedREDACTED, failed: true, credentialInvalid: true, msg: errorCodeUnauthenticatedREDACTED,
+		{name: "error code forbidden", usage: &UsageInfo{ErrorCode: errorCodeForbiddenREDACTED, failed: true, credentialInvalid: true, msg: errorCodeForbiddenREDACTED,
+		{name: "error code rate limited", usage: &UsageInfo{ErrorCode: errorCodeRateLimitedREDACTED, failed: true, msg: errorCodeRateLimitedREDACTED,
+		{name: "error code network error", usage: &UsageInfo{ErrorCode: errorCodeNetworkErrorREDACTED, failed: true, msg: errorCodeNetworkErrorREDACTED,
+		{name: "grok quota unknown exempted", usage: &UsageInfo{ErrorCode: "quota_unknown", Error: "Grok quota is unknown until billing is probed"REDACTEDREDACTED,
+REDACTED
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			failed, credentialInvalid, msg := usageFailureInfo(tc.usage)
+			require.Equal(t, tc.failed, failed)
+			require.Equal(t, tc.credentialInvalid, credentialInvalid)
+			if tc.msg != "" {
+				require.Equal(t, tc.msg, msg)
+		REDACTED
+	REDACTED)
+REDACTED
 REDACTED
 
 func TestQuotaFetcher_CNQuotaCredentialInvalidFlagPropagates(t *testing.T) {
@@ -251,7 +332,7 @@ func TestQuotaFetcher_CachesSuccessSnapshotPerAccount(t *testing.T) {
 		snapshot := fetcher.Fetch(context.Background(), 8)
 		require.True(t, snapshot.Success)
 REDACTED
-	require.Equal(t, 1, usage.calls, "success snapshots should be served from cache")
+	require.Equal(t, 1, usage.getCalls(), "success snapshots should be served from cache")
 
 	// 缓存过期后重新拉取。
 	fetcher.mu.Lock()
@@ -261,18 +342,63 @@ REDACTED
 	fetcher.mu.Unlock()
 
 	_ = fetcher.Fetch(context.Background(), 8)
-	require.Equal(t, 2, usage.calls)
+	require.Equal(t, 2, usage.getCalls())
 REDACTED
 
-func TestQuotaFetcher_DoesNotCacheFailures(t *testing.T) {
+func TestQuotaFetcher_CachesFailureSnapshotWithShortTTL(t *testing.T) {
 	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
 	accounts.accounts[4] = &Account{ID: 4, Platform: domain.PlatformOpenAIREDACTED
 	usage.err = errors.New("boom")
 
-	_ = fetcher.Fetch(context.Background(), 4)
-	_ = fetcher.Fetch(context.Background(), 4)
+	for i := 0; i < 2; i++ {
+		snapshot := fetcher.Fetch(context.Background(), 4)
+		require.False(t, snapshot.Success)
+REDACTED
+	require.Equal(t, 1, usage.getCalls(), "failure snapshots should be served from the short negative cache")
 
-	require.Equal(t, 2, usage.calls, "failed snapshots must not be cached")
+	// 失败快照的 TTL 是负缓存时长（而非成功 TTL）。
+	fetcher.mu.Lock()
+	entry := fetcher.cache[4]
+	require.WithinDuration(t, entry.snapshot.FetchedAt.Add(monitorQuotaErrorCacheTTL), entry.expiry, time.Second)
+	entry.expiry = time.Now().Add(-time.Second)
+	fetcher.cache[4] = entry
+	fetcher.mu.Unlock()
+
+	_ = fetcher.Fetch(context.Background(), 4)
+	require.Equal(t, 2, usage.getCalls(), "expired negative cache should refetch")
+REDACTED
+
+func TestQuotaFetcher_ConcurrentFetchesShareSingleFlight(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[12] = &Account{ID: 12, Platform: domain.PlatformOpenAIREDACTED
+	usage.usage = &UsageInfo{FiveHour: &UsageProgress{Utilization: 10REDACTEDREDACTED
+	usage.block = make(chan struct{REDACTED)
+
+	var wg sync.WaitGroup
+	snapshots := make([]*domain.MonitorQuotaSnapshot, 5)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			snapshots[idx] = fetcher.Fetch(context.Background(), 12)
+	REDACTED(i)
+REDACTED
+
+	// 上游被 block 卡住时，5 个并发 Fetch 应只产生 1 次真实查询。
+	require.Eventually(t, func() bool { return usage.getCalls() == 1 REDACTED,
+		5*time.Second, 10*time.Millisecond)
+	close(usage.block)
+	wg.Wait()
+
+	for _, snapshot := range snapshots {
+		require.NotNil(t, snapshot)
+		require.True(t, snapshot.Success)
+REDACTED
+	require.Equal(t, 1, usage.getCalls())
+
+	// 成功快照已缓存：再取一次仍不打上游。
+	_ = fetcher.Fetch(context.Background(), 12)
+	require.Equal(t, 1, usage.getCalls())
 REDACTED
 
 // --- UsageInfo → tiers 归一 ---

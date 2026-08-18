@@ -85,6 +85,12 @@ const (
 	// monitorQuotaFetchCacheTTL 配额快照缓存时长。多个监控可能关联同一账号，
 	// 而 interval 最小 15s 且国产配额服务无缓存，TTL 防止打爆上游配额端点。
 	monitorQuotaFetchCacheTTL = 5 * time.Minute
+	// monitorQuotaErrorCacheTTL 失败快照的负缓存时长：失败也短缓存，避免
+	// 故障/凭据失效期间每次调度（最小 15s）都带真实凭据打上游；到期自动重试。
+	monitorQuotaErrorCacheTTL = 60 * time.Second
+	// monitorQuotaFetchTimeout singleflight 内单次配额抓取的总超时
+	// （脱离调用方 ctx，防止某个监控的取消波及共享同一账号的其他监控）。
+	monitorQuotaFetchTimeout = 45 * time.Second
 	// monitorQuotaDegradedUsedPercent 任一用量窗口使用率超过该阈值时，
 	// 配额检查状态记为 degraded（对齐账号页展示阈值）。
 	monitorQuotaDegradedUsedPercent = 90.0
