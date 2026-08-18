@@ -822,14 +822,14 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 			filtered = append(filtered, json.RawMessage(item.Raw))
 			continue
 		}
-		itemType := strings.TrimSpace(item.Get("type").String())
-		if itemType != "" {
-			if _, ok := grokResponsesSupportedInputTypes[itemType]; !ok {
-				changed = true
-				continue
-			}
+		converted, convertedChanged, keep := convertGrokUnsupportedResponsesInputItem(item)
+		if convertedChanged {
+			changed = true
 		}
-		sanitized, itemChanged, err := stripExplicitNullsFromJSONValue(item.Value())
+		if !keep {
+			continue
+		}
+		sanitized, itemChanged, err := stripExplicitNullsFromJSONValue(converted)
 		if err != nil {
 			return nil, err
 		}
@@ -850,6 +850,158 @@ func sanitizeGrokResponsesModelInput(body []byte) ([]byte, error) {
 		return nil, err
 	}
 	return sjson.SetRawBytes(body, "input", encoded)
+}
+
+// convertGrokUnsupportedResponsesInputItem lowers Codex-only history into the
+// xAI ModelInput variants. CLIProxyAPI does the same for custom_tool_call*;
+// dropping those items breaks the next tool turn (model can talk, cannot call).
+func convertGrokUnsupportedResponsesInputItem(item gjson.Result) (any, bool, bool) {
+	itemType := strings.TrimSpace(item.Get("type").String())
+	switch itemType {
+	case "custom_tool_call":
+		name := strings.TrimSpace(item.Get("name").String())
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if name == "" || callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": grokCustomToolCallArguments(item.Get("input")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "custom_tool_call_output":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":    "function_call_output",
+			"call_id": callID,
+			"output":  grokCustomToolCallOutput(item.Get("output")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "tool_search_call":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      "tool_search",
+			"arguments": grokToolSearchCallArguments(item),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "tool_search_output":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" {
+			return nil, true, false
+		}
+		converted := map[string]any{
+			"type":    "function_call_output",
+			"call_id": callID,
+			"output":  grokCustomToolCallOutput(item.Get("output")),
+		}
+		if id := strings.TrimSpace(item.Get("id").String()); id != "" {
+			converted["id"] = id
+		}
+		return converted, true, true
+	case "item_reference":
+		// xAI has no store/item_reference. Keep the id as a short user note so
+		// later function_call_output items still have conversation context.
+		id := strings.TrimSpace(item.Get("id").String())
+		if id == "" {
+			return nil, true, false
+		}
+		return map[string]any{
+			"type": "message",
+			"role": "user",
+			"content": []any{
+				map[string]any{
+					"type": "input_text",
+					"text": "[item_reference " + id + "]",
+				},
+			},
+		}, true, true
+	default:
+		if itemType != "" {
+			if _, ok := grokResponsesSupportedInputTypes[itemType]; !ok {
+				return nil, true, false
+			}
+		}
+		return item.Value(), false, true
+	}
+}
+
+func grokCustomToolCallArguments(input gjson.Result) string {
+	if !input.Exists() || input.Type == gjson.Null {
+		return "{}"
+	}
+	if input.Type == gjson.String {
+		text := input.String()
+		trimmed := strings.TrimSpace(text)
+		if gjson.Valid(trimmed) {
+			parsed := gjson.Parse(trimmed)
+			if parsed.IsObject() {
+				return parsed.Raw
+			}
+		}
+		encoded, err := json.Marshal(map[string]string{"input": text})
+		if err != nil {
+			return "{}"
+		}
+		return string(encoded)
+	}
+	if input.IsObject() {
+		return input.Raw
+	}
+	encoded, err := json.Marshal(map[string]any{"input": input.Value()})
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func grokCustomToolCallOutput(output gjson.Result) string {
+	if !output.Exists() || output.Type == gjson.Null {
+		return ""
+	}
+	if output.Type == gjson.String {
+		return output.String()
+	}
+	return output.Raw
+}
+
+func grokToolSearchCallArguments(item gjson.Result) string {
+	args := item.Get("arguments")
+	if args.Exists() && args.Type != gjson.Null {
+		if args.Type == gjson.String {
+			text := strings.TrimSpace(args.String())
+			if text != "" {
+				return text
+			}
+		} else if args.IsObject() {
+			return args.Raw
+		}
+	}
+	if query := strings.TrimSpace(item.Get("query").String()); query != "" {
+		encoded, err := json.Marshal(map[string]string{"query": query})
+		if err == nil {
+			return string(encoded)
+		}
+	}
+	return "{}"
 }
 
 func stripExplicitNullsFromJSONValue(value any) (any, bool, error) {
