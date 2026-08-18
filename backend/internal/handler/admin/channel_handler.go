@@ -568,9 +568,12 @@ REDACTED
 var platformToLiteLLMProvider = map[string]string{
 	service.PlatformAnthropic:   "anthropic",
 	service.PlatformOpenAI:      "openai",
-	service.PlatformGemini:      "google",
+	service.PlatformGemini:      "gemini",
 	service.PlatformAntigravity: "anthropic",
 	service.PlatformGrok:        "xai",
+	service.PlatformKimi:        "moonshot",
+	service.PlatformZhipu:       "zhipu",
+	service.PlatformDeepseek:    "deepseek",
 REDACTED
 
 // SyncPricingModels 返回 LiteLLM 定价目录中指定平台的最新模型列表
