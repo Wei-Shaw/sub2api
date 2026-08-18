@@ -72,6 +72,10 @@ REDACTED
 	if s == nil || account == nil {
 		return false
 REDACTED
+	// Team 联动熔断必须先于 model-not-found 与账户级临时不可调度规则的早退。
+	if s.rateLimitService != nil {
+		s.rateLimitService.maybeHandleOpenAITeamLinkedError(stateCtx, account, statusCode, responseBody)
+REDACTED
 	stateCtx = withTempUnschedulableModel(stateCtx, canonicalModel)
 	if s.rateLimitService != nil && len(canonicalModel) > 0 && s.rateLimitService.HandleUpstreamModelNotFound(stateCtx, account, canonicalModel[0], statusCode, responseBody) {
 		return true
