@@ -61,21 +61,21 @@ const (
 	// MonitorProviderOpenAI 等 provider 字符串常量（也是 ent enum 的实际值）。
 	// 后 4 个 provider（antigravity/kimi/zhipu/deepseek）为配额模式引入：
 	// antigravity 无探活 adapter（仅配额），其余 3 个复用 OpenAI 兼容探活。
-	MonitorProviderOpenAI     = "openai"
-	MonitorProviderAnthropic  = "anthropic"
-	MonitorProviderGemini     = "gemini"
-	MonitorProviderGrok       = "grok"
+	MonitorProviderOpenAI      = "openai"
+	MonitorProviderAnthropic   = "anthropic"
+	MonitorProviderGemini      = "gemini"
+	MonitorProviderGrok        = "grok"
 	MonitorProviderAntigravity = "antigravity"
-	MonitorProviderKimi       = "kimi"
-	MonitorProviderZhipu      = "zhipu"
-	MonitorProviderDeepseek   = "deepseek"
+	MonitorProviderKimi        = "kimi"
+	MonitorProviderZhipu       = "zhipu"
+	MonitorProviderDeepseek    = "deepseek"
 
 	// MonitorCheckMode 检测模式（channel_monitors.check_mode）。
 	//   probe       - LLM 探活（默认，原有行为）
 	//   quota       - 仅查关联账号用量/余额，零 LLM 成本
 	//   quota_probe - 探活 + 配额并存（配额快照挂到主模型历史行）
-	MonitorCheckModeProbe     = "probe"
-	MonitorCheckModeQuota     = "quota"
+	MonitorCheckModeProbe      = "probe"
+	MonitorCheckModeQuota      = "quota"
 	MonitorCheckModeQuotaProbe = "quota_probe"
 
 	// MonitorDefaultQuotaModel 是 quota 模式监控未显式指定模型时占位的虚拟模型名

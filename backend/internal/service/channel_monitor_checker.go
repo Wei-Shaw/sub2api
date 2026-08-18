@@ -271,13 +271,6 @@ REDACTED
 	return adapter, MonitorAPIModeChatCompletions, ok
 REDACTED
 
-// isSupportedProvider 校验 provider 字符串是否在探活 adapter 表中。
-// 注意：完整的 provider 合法性（含仅配额模式的 antigravity）走 validate.go 的 monitorProviders。
-func isSupportedProvider(p string) bool {
-	_, ok := providerAdapters[p]
-	return ok
-REDACTED
-
 // callProvider 通过 providerAdapters 分发到具体实现。
 // opts 承载用户的自定义 headers / body 覆盖（可为 nil）。
 //

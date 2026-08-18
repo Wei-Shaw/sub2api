@@ -51,8 +51,8 @@ type ChannelMonitor struct {
 
 	// 配额模式（check_mode = quota / quota_probe）：
 	// 关联已有账号复用账号侧用量服务，Endpoint/APIKey 可为空（quota 模式）。
-	CheckMode string  // probe（默认）/ quota / quota_probe；空串按 probe 处理
-	AccountID *int64  // 关联账号 ID；账号删除后被 DB 置空（监控保留并报「账号未关联」）
+	CheckMode string // probe（默认）/ quota / quota_probe；空串按 probe 处理
+	AccountID *int64 // 关联账号 ID；账号删除后被 DB 置空（监控保留并报「账号未关联」）
 
 	// 请求自定义快照（来自模板拷贝 or 用户手填，运行时直接读取）
 	TemplateID       *int64            // 仅用于 UI 分组 + 一键应用，运行时不用

@@ -46,10 +46,10 @@ type MonitorQuotaSnapshot struct {
 	Source    string             `json:"source"`
 	Success   bool               `json:"success"`
 	Tiers     []MonitorQuotaTier `json:"tiers,omitempty"`
-	Balance   *float64           `json:"balance,omitempty"`           // cn_balance 主余额
-	Balances  []MonitorBalance   `json:"balances,omitempty"`          // 多币种余额（如 DeepSeek CNY+USD）
-	Currency  string             `json:"currency,omitempty"`          // 主余额币种
-	PlanLevel string             `json:"plan_level,omitempty"`        // 套餐等级（如智谱 level）
+	Balance   *float64           `json:"balance,omitempty"`    // cn_balance 主余额
+	Balances  []MonitorBalance   `json:"balances,omitempty"`   // 多币种余额（如 DeepSeek CNY+USD）
+	Currency  string             `json:"currency,omitempty"`   // 主余额币种
+	PlanLevel string             `json:"plan_level,omitempty"` // 套餐等级（如智谱 level）
 	// CredentialInvalid 上游 401/403 鉴权失败（区别于网络/解析错误），
 	// 检测状态据此推导 failed 而非 error。
 	CredentialInvalid bool      `json:"credential_invalid,omitempty"`
