@@ -83,15 +83,24 @@ func CodexCanonicalUserAgent() string {
 	return resolveCodexOutboundIdentity("").userAgent
 REDACTED
 
-// ApplyCodexCanonicalIdentity 为无账号句柄的出站请求写入与推理同源的身份三元组。
-func ApplyCodexCanonicalIdentity(h http.Header) {
+// CodexCanonicalAuthIdentity 返回凭据面（auth.openai.com：换 Token / 刷新 / whoami）
+// 出站请求的身份对：规范 User-Agent 与配套 originator，与推理解析链同源。
+// 凭据面不发 version 头——真实 Codex 客户端在该面只携带 originator 与 User-Agent
+// （codex-rs login/default_client.rs 的 default_headers()），version 门槛
+// （issue #3901）只存在于 /backend-api/codex 推理面。
+func CodexCanonicalAuthIdentity() (userAgent, originator string) {
+	identity := resolveCodexOutboundIdentity("")
+	return identity.userAgent, identity.originator
+REDACTED
+
+// ApplyCodexCanonicalAuthIdentity 为凭据面出站请求写入身份对（不含 version）。
+func ApplyCodexCanonicalAuthIdentity(h http.Header) {
 	if h == nil {
 		return
 REDACTED
-	identity := resolveCodexOutboundIdentity("")
-	h.Set("user-agent", identity.userAgent)
-	h.Set("originator", identity.originator)
-	h.Set("version", identity.version)
+	userAgent, originator := CodexCanonicalAuthIdentity()
+	h.Set("user-agent", userAgent)
+	h.Set("originator", originator)
 REDACTED
 
 // CodexCanonicalClientVersion 返回当前生效的 Codex 客户端版本号。

@@ -333,10 +333,11 @@ REDACTED)
 	require.Equal(t, "0.200.1", CodexCanonicalClientVersion())
 
 	h := make(http.Header)
-	ApplyCodexCanonicalIdentity(h)
+	ApplyCodexCanonicalAuthIdentity(h)
 	require.Equal(t, "codex_cli_rs", h.Get("originator"))
 	require.Equal(t, "codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix, h.Get("user-agent"))
-	require.Equal(t, "0.200.1", h.Get("version"))
+	// 凭据面不发 version 头（真实客户端在 auth.openai.com 只带 originator + UA）。
+	require.Empty(t, h.Get("version"))
 REDACTED
 
 func TestCodexCanonicalUserAgentFallsBackWithoutResolver(t *testing.T) {

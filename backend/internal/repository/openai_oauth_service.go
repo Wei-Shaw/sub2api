@@ -46,9 +46,11 @@ REDACTED
 
 	var tokenResp openai.TokenResponse
 
+	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", service.CodexCanonicalUserAgent()).
+		SetHeader("User-Agent", authUA).
+		SetHeader("originator", authOriginator).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -94,9 +96,11 @@ REDACTED
 
 	var tokenResp openai.TokenResponse
 
+	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
 	resp, err := client.R().
 		SetContext(ctx).
-		SetHeader("User-Agent", service.CodexCanonicalUserAgent()).
+		SetHeader("User-Agent", authUA).
+		SetHeader("originator", authOriginator).
 		SetFormDataFromValues(formData).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)

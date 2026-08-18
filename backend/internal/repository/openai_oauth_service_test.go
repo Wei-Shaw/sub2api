@@ -78,8 +78,14 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_DefaultRedirectURI() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED
-		if got := r.Header.Get("User-Agent"); got != service.CodexCanonicalUserAgent() {
+		wantUA, wantOriginator := service.CodexCanonicalAuthIdentity()
+		if got := r.Header.Get("User-Agent"); got != wantUA {
 			errCh <- "user-agent mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		if got := r.Header.Get("originator"); got != wantOriginator {
+			errCh <- "originator mismatch"
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED
@@ -127,8 +133,14 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FormFields() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED
-		if got := r.Header.Get("User-Agent"); got != service.CodexCanonicalUserAgent() {
+		wantUA, wantOriginator := service.CodexCanonicalAuthIdentity()
+		if got := r.Header.Get("User-Agent"); got != wantUA {
 			errCh <- "user-agent mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		if got := r.Header.Get("originator"); got != wantOriginator {
+			errCh <- "originator mismatch"
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED

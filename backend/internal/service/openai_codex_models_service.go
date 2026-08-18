@@ -311,7 +311,15 @@ REDACTED
 	identity := resolveCodexOutboundIdentity(overrideUA)
 	headers.Set("Originator", identity.originator)
 	headers.Set("User-Agent", identity.userAgent)
-	headers.Set("Version", identity.version)
+	// Version 头优先与 client_version 查询参数同源：客户端自报版本合法且不低于上游
+	// 门槛时原样使用；否则回退规范版本，避免陈旧 version 触发上游 404（issue #3901）。
+	// client_version 查询参数本身始终按客户端原值透传（内容协商语义，契约见
+	// TestFetchCodexModelsManifestPassthrough）。
+	headerVersion := NormalizeCodexClientVersion(clientVersion)
+	if headerVersion == "" || CompareVersions(headerVersion, codexUpstreamMinVersion) < 0 {
+		headerVersion = identity.version
+REDACTED
+	headers.Set("Version", headerVersion)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
