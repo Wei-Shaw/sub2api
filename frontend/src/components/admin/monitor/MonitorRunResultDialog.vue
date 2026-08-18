@@ -12,7 +12,7 @@
         class="flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
       >
         <div class="flex flex-col">
-          <span class="font-medium text-gray-900 dark:text-white">{{ r.model REDACTEDREDACTED</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatMonitorModel(r.model) REDACTEDREDACTED</span>
           <span v-if="r.message" class="text-xs text-gray-500 dark:text-gray-400">{{ r.message REDACTEDREDACTED</span>
           <MonitorQuotaView :snapshot="r.quota" class="mt-1" />
         </div>
@@ -54,5 +54,5 @@ defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
-const { statusLabel, statusBadgeClass, formatLatency REDACTED = useChannelMonitorFormat()
+const { statusLabel, statusBadgeClass, formatLatency, formatMonitorModel REDACTED = useChannelMonitorFormat()
 </script>

@@ -79,6 +79,21 @@ export function useChannelMonitorFormat() {
     return m || '-'
   REDACTED
 
+  /**
+   * Display label for a monitor's primary model. Pure-quota monitors carry the
+   * literal placeholder "quota" (the probe target is an account, not a model),
+   * which must not leak into the UI as a fake model name — render the
+   * localized mode label instead. quota_probe keeps a real model name.
+   */
+  const QUOTA_MODEL_PLACEHOLDER = 'quota'
+
+  function formatMonitorModel(model: string): string {
+    if (model === QUOTA_MODEL_PLACEHOLDER) {
+      return t('monitorCommon.checkMode.quota')
+    REDACTED
+    return model
+  REDACTED
+
   function providerBadgeClass(p: Provider | string): string {
     switch (p) {
       case PROVIDER_OPENAI:
@@ -200,6 +215,7 @@ export function useChannelMonitorFormat() {
     statusBadgeClass,
     providerLabel,
     checkModeLabel,
+    formatMonitorModel,
     providerBadgeClass,
     checkModeBadgeClass,
     providerPickerClass,
