@@ -9,11 +9,77 @@ import (
 // 渠道监控参数校验与归一化辅助函数。
 // 校验失败一律返回 channel_monitor_const.go 中预定义的 Err* 错误，错误信息不含具体 IP/hostname，避免泄露内网拓扑。
 
+// monitorProviders 渠道监控支持的全部 provider（与迁移 226 的 CHECK 约束一致）。
+// 不再以 adapter 表为唯一来源：antigravity 没有探活 adapter，但支持配额模式。
+//
+//nolint:gochecknoglobals // 静态查表，初始化后不变。
+var monitorProviders = map[string]struct{}{
+	MonitorProviderOpenAI:      {},
+	MonitorProviderAnthropic:   {},
+	MonitorProviderGemini:      {},
+	MonitorProviderGrok:        {},
+	MonitorProviderAntigravity: {},
+	MonitorProviderKimi:        {},
+	MonitorProviderZhipu:       {},
+	MonitorProviderDeepseek:    {},
+}
+
+// probeCapableProviders 支持探活（probe / quota_probe）的 provider。
+// antigravity 上游无 Chat/Responses 可打（仅 IDE 代理形态），只允许配额模式。
+//
+//nolint:gochecknoglobals // 静态查表，初始化后不变。
+var probeCapableProviders = map[string]struct{}{
+	MonitorProviderOpenAI:    {},
+	MonitorProviderAnthropic: {},
+	MonitorProviderGemini:    {},
+	MonitorProviderGrok:      {},
+	MonitorProviderKimi:      {},
+	MonitorProviderZhipu:     {},
+	MonitorProviderDeepseek:  {},
+}
+
 // validateProvider 校验 provider 字符串。
-// 唯一来源于 providerAdapters：新增 provider 只需要在 channel_monitor_checker.go 注册 adapter。
 func validateProvider(p string) error {
-	if !isSupportedProvider(p) {
+	if _, ok := monitorProviders[p]; !ok {
 		return ErrChannelMonitorInvalidProvider
+	}
+	return nil
+}
+
+// providerSupportsProbe 该 provider 是否注册了探活 adapter（antigravity 为 false）。
+func providerSupportsProbe(p string) bool {
+	_, ok := probeCapableProviders[p]
+	return ok
+}
+
+// defaultCheckMode 空串归一为 probe，保证存量数据与旧客户端兼容。
+func defaultCheckMode(checkMode string) string {
+	if strings.TrimSpace(checkMode) == "" {
+		return MonitorCheckModeProbe
+	}
+	return strings.TrimSpace(checkMode)
+}
+
+// monitorCheckModeUsesQuota 该模式是否需要关联账号查配额。
+func monitorCheckModeUsesQuota(checkMode string) bool {
+	return checkMode == MonitorCheckModeQuota || checkMode == MonitorCheckModeQuotaProbe
+}
+
+// validateCheckMode 校验 check_mode 与 provider 的组合矩阵：
+//
+//	provider                | probe | quota | quota_probe
+//	------------------------+-------+-------+------------
+//	openai/anthropic/...    |  Y    |  Y    |  Y
+//	antigravity（无 adapter）|  N    |  Y    |  N
+func validateCheckMode(provider, checkMode string) error {
+	checkMode = defaultCheckMode(checkMode)
+	switch checkMode {
+	case MonitorCheckModeProbe, MonitorCheckModeQuota, MonitorCheckModeQuotaProbe:
+	default:
+		return ErrChannelMonitorInvalidCheckMode
+	}
+	if checkMode != MonitorCheckModeQuota && !providerSupportsProbe(provider) {
+		return ErrChannelMonitorInvalidCheckMode
 	}
 	return nil
 }
@@ -124,12 +190,17 @@ func normalizeModels(in []string) []string {
 	return out
 }
 
-// normalizeMonitorPrimaryModel applies the Grok health-check default while
-// preserving the existing required-model behavior for every other provider.
-func normalizeMonitorPrimaryModel(provider, model string) string {
+// normalizeMonitorPrimaryModel applies provider/check_mode defaults while
+// preserving the existing required-model behavior:
+//   - Grok 探活默认轻量测活模型
+//   - quota 模式占位 "quota"（primary_model 列 NotEmpty；历史行/时间线机制无需特判）
+func normalizeMonitorPrimaryModel(provider, checkMode, model string) string {
 	model = strings.TrimSpace(model)
 	if model == "" && provider == MonitorProviderGrok {
 		return MonitorDefaultGrokModel
+	}
+	if model == "" && monitorCheckModeUsesQuota(defaultCheckMode(checkMode)) {
+		return MonitorDefaultQuotaModel
 	}
 	return model
 }
