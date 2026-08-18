@@ -348,8 +348,8 @@ REDACTED))
 	if _, err := s.FetchCodexModelsManifest(context.Background(), newCodexModelsTestAccount(), "", ""); err != nil {
 		t.Fatalf("FetchCodexModelsManifest returned error: %v", err)
 REDACTED
-	if gotClientVersion != openAICodexProbeVersion {
-		t.Errorf("default client_version: got %q, want %q", gotClientVersion, openAICodexProbeVersion)
+	if gotClientVersion != CodexCanonicalClientVersion() {
+		t.Errorf("default client_version: got %q, want %q", gotClientVersion, CodexCanonicalClientVersion())
 REDACTED
 REDACTED
 
@@ -452,9 +452,9 @@ REDACTED
 		t.Errorf("originator header: got %q", gotRequest.Header.Get("Originator"))
 REDACTED
 	if gotRequest.Header.Get("Version") != "0.144.0" {
-		t.Errorf("version header: got %q", gotRequest.Header.Get("Version"))
+		t.Errorf("version header must match the client_version query param: got %q", gotRequest.Header.Get("Version"))
 REDACTED
-	if gotRequest.Header.Get("User-Agent") != codexCLIUserAgent {
+	if gotRequest.Header.Get("User-Agent") != CodexCanonicalUserAgent() {
 		t.Errorf("user-agent header: got %q", gotRequest.Header.Get("User-Agent"))
 REDACTED
 	if gotRequest.Header.Get("chatgpt-account-id") != "" {

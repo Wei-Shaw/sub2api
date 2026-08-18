@@ -10,6 +10,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
@@ -77,6 +78,17 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_DefaultRedirectURI() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED
+		wantUA, wantOriginator := service.CodexCanonicalAuthIdentity()
+		if got := r.Header.Get("User-Agent"); got != wantUA {
+			errCh <- "user-agent mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		if got := r.Header.Get("originator"); got != wantOriginator {
+			errCh <- "originator mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600REDACTED`)
@@ -118,6 +130,17 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FormFields() {
 	REDACTED
 		if got := r.PostForm.Get("scope"); got != openai.RefreshScopes {
 			errCh <- "scope mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		wantUA, wantOriginator := service.CodexCanonicalAuthIdentity()
+		if got := r.Header.Get("User-Agent"); got != wantUA {
+			errCh <- "user-agent mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		if got := r.Header.Get("originator"); got != wantOriginator {
+			errCh <- "originator mismatch"
 			w.WriteHeader(http.StatusBadRequest)
 			return
 	REDACTED
