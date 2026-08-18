@@ -249,6 +249,11 @@ import {
   PROVIDER_OPENAI,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
+  PROVIDER_ANTIGRAVITY,
+  PROVIDER_KIMI,
+  PROVIDER_ZHIPU,
+  PROVIDER_DEEPSEEK,
+  PROVIDERS,
   API_MODE_CHAT_COMPLETIONS,
   API_MODE_RESPONSES,
 REDACTED from '@/constants/channelMonitor'
@@ -269,6 +274,10 @@ const providerTabs = computed<{ value: Provider; label: string REDACTED[]>(() =>
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') REDACTED,
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') REDACTED,
   { value: PROVIDER_GROK, label: t('monitorCommon.providers.grok') REDACTED,
+  { value: PROVIDER_ANTIGRAVITY, label: t('monitorCommon.providers.antigravity') REDACTED,
+  { value: PROVIDER_KIMI, label: t('monitorCommon.providers.kimi') REDACTED,
+  { value: PROVIDER_ZHIPU, label: t('monitorCommon.providers.zhipu') REDACTED,
+  { value: PROVIDER_DEEPSEEK, label: t('monitorCommon.providers.deepseek') REDACTED,
 ])
 
 const activeProvider = ref<Provider>(PROVIDER_ANTHROPIC)
@@ -280,12 +289,7 @@ const templatesForActiveProvider = computed(() =>
 )
 
 const countByProvider = computed<Record<Provider, number>>(() => {
-  const out: Record<Provider, number> = {
-    anthropic: 0,
-    openai: 0,
-    gemini: 0,
-    grok: 0,
-  REDACTED
+  const out = Object.fromEntries(PROVIDERS.map((p) => [p, 0])) as Record<Provider, number>
   for (const t of templates.value) out[t.provider]++
   return out
 REDACTED)
