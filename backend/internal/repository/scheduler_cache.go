@@ -1000,6 +1000,8 @@ REDACTED
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
+		"codex_fingerprint_mode",
+		"codex_fingerprint_seed",
 		"codex_5h_used_percent",
 		"codex_7d_used_percent",
 		"codex_5h_reset_at",

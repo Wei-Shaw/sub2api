@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -30,20 +31,30 @@ func stageCodexFingerprintIDs(c *gin.Context, ids *codexFingerprintIDs) {
 REDACTED
 REDACTED
 
-// applyStagedCodexFingerprintHeaders 读取 context 暂存的收敛 ID 并改写出站头。
-// 非透传与透传两个请求构造器共用本函数，防止应用语义漂移。仅 OAuth 账号
-// 生效（stale 键在账号类型混合 failover 下由该门挡住）。
-func applyStagedCodexFingerprintHeaders(c *gin.Context, account *Account, h http.Header) {
+func stagedCodexFingerprintIDs(c *gin.Context, account *Account) *codexFingerprintIDs {
 	if c == nil || account == nil || account.Type != AccountTypeOAuth {
-		return
+		return nil
 REDACTED
 	value, ok := c.Get(codexFingerprintIDsContextKey)
 	if !ok {
-		return
+		return nil
 REDACTED
-	if ids, ok := value.(*codexFingerprintIDs); ok {
-		applyCodexFingerprintHeaders(h, ids)
+	ids, ok := value.(*codexFingerprintIDs)
+	if !ok || ids == nil || ids.accountID != account.ID {
+		return nil
 REDACTED
+	return ids
+REDACTED
+
+// applyStagedCodexFingerprintHeaders 读取 context 暂存的收敛 ID 并改写出站头。
+// 非透传与透传两个请求构造器共用本函数，防止应用语义漂移。仅解析该
+// snapshot 的 OAuth 账号可读取，避免 stale context 跨账号 failover 泄漏。
+func applyStagedCodexFingerprintHeaders(c *gin.Context, account *Account, h http.Header) {
+	applyCodexFingerprintHeaders(h, stagedCodexFingerprintIDs(c, account))
+REDACTED
+
+func applyStagedCodexFingerprintClientMetadata(c *gin.Context, account *Account, reqBody map[string]any) bool {
+	return applyCodexFingerprintClientMetadata(reqBody, stagedCodexFingerprintIDs(c, account))
 REDACTED
 
 // codexFingerprintMode 控制 OAuth 账号出站请求的设备指纹收敛强度。
@@ -68,7 +79,117 @@ const (
 	codexFingerprintFull codexFingerprintMode = "full"
 )
 
-const codexFingerprintModeExtraKey = "codex_fingerprint_mode"
+const (
+	codexFingerprintModeExtraKey = "codex_fingerprint_mode"
+	codexFingerprintSeedExtraKey = "codex_fingerprint_seed"
+)
+
+func canonicalCodexFingerprintSeed(value any) (string, bool) {
+	raw, ok := value.(string)
+	if !ok {
+		return "", false
+REDACTED
+	trimmed := strings.TrimSpace(raw)
+	parsed, err := uuid.Parse(trimmed)
+	if err != nil || parsed == uuid.Nil || trimmed != parsed.String() {
+		return "", false
+REDACTED
+	return trimmed, true
+REDACTED
+
+func newCodexFingerprintSeed() string {
+	return uuid.NewString()
+REDACTED
+
+func stripCodexFingerprintSeed(extra map[string]any) map[string]any {
+	if extra == nil {
+		return nil
+REDACTED
+	stripped := maps.Clone(extra)
+	delete(stripped, codexFingerprintSeedExtraKey)
+	return stripped
+REDACTED
+
+func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
+	if extra == nil {
+		return codexFingerprintOff
+REDACTED
+	raw, _ := extra[codexFingerprintModeExtraKey].(string)
+	switch codexFingerprintMode(strings.TrimSpace(raw)) {
+	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+		return codexFingerprintMode(strings.TrimSpace(raw))
+	default:
+		return codexFingerprintOff
+REDACTED
+REDACTED
+
+func codexFingerprintModeRequiresSeed(mode codexFingerprintMode) bool {
+	switch mode {
+	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func codexFingerprintSeed(extra map[string]any) (string, bool) {
+	if extra == nil {
+		return "", false
+REDACTED
+	return canonicalCodexFingerprintSeed(extra[codexFingerprintSeedExtraKey])
+REDACTED
+
+func prepareCodexFingerprintExtraForCreate(platform, accountType string, extra map[string]any) map[string]any {
+	prepared := stripCodexFingerprintSeed(extra)
+	if platform != PlatformOpenAI || accountType != AccountTypeOAuth || !codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+		return prepared
+REDACTED
+	if prepared == nil {
+		prepared = make(map[string]any, 1)
+REDACTED
+	prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
+	return prepared
+REDACTED
+
+func prepareCodexFingerprintExtraForUpdate(account *Account, extra map[string]any) map[string]any {
+	prepared := stripCodexFingerprintSeed(extra)
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return prepared
+REDACTED
+	if seed, ok := codexFingerprintSeed(account.Extra); ok {
+		if prepared == nil {
+			prepared = make(map[string]any, 1)
+	REDACTED
+		prepared[codexFingerprintSeedExtraKey] = seed
+		return prepared
+REDACTED
+	if codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(prepared)) {
+		if prepared == nil {
+			prepared = make(map[string]any, 1)
+	REDACTED
+		prepared[codexFingerprintSeedExtraKey] = newCodexFingerprintSeed()
+REDACTED
+	return prepared
+REDACTED
+
+func sanitizedCodexFingerprintExtraUpdates(updates map[string]any) map[string]any {
+	if updates == nil {
+		return nil
+REDACTED
+	sanitized := maps.Clone(updates)
+	delete(sanitized, codexFingerprintSeedExtraKey)
+	return sanitized
+REDACTED
+
+// ShouldEnsureCodexFingerprintSeedForExtraUpdates reports whether a JSONB key-level
+// extra update is enabling Codex fingerprint convergence and therefore must atomically
+// preserve or create the system-managed per-account seed in the repository update.
+func ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates map[string]any) bool {
+	if updates == nil {
+		return false
+REDACTED
+	return codexFingerprintModeRequiresSeed(codexFingerprintModeFromExtra(updates))
+REDACTED
 
 // GetCodexFingerprintMode 从账号 extra JSON 读取指纹收敛模式。
 //
@@ -85,13 +206,7 @@ func (a *Account) GetCodexFingerprintMode() codexFingerprintMode {
 	if a == nil || !a.IsOpenAIOAuth() {
 		return codexFingerprintOff
 REDACTED
-	raw := strings.TrimSpace(a.GetExtraString(codexFingerprintModeExtraKey))
-	switch codexFingerprintMode(raw) {
-	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
-		return codexFingerprintMode(raw)
-	default:
-		return codexFingerprintOff
-REDACTED
+	return codexFingerprintModeFromExtra(a.Extra)
 REDACTED
 
 // deriveStableUUIDv4 从种子确定性派生一个 UUIDv4 格式的字符串。
@@ -110,45 +225,53 @@ func deriveStableUUIDv4(seed string) string {
 REDACTED
 
 // resolveConvergedInstallationID 返回账号级恒定的 installation_id。
-// 优先使用管理员配置的真实 device_id，无则从 accountID 确定性派生。
-func resolveConvergedInstallationID(account *Account) string {
+// 优先使用管理员配置的真实 device_id，无则从系统管理的账号随机种子确定性派生。
+func resolveConvergedInstallationID(account *Account, seed string) string {
 	if account == nil {
 		return ""
 REDACTED
 	if deviceID := account.GetOpenAIDeviceID(); deviceID != "" {
 		return deviceID
 REDACTED
-	return deriveStableUUIDv4(fmt.Sprintf("sub2api:codex-install-id:v1:%d", account.ID))
+	if seed == "" {
+		return ""
+REDACTED
+	return deriveStableUUIDv4("sub2api:codex-install-id:v2:" + seed)
 REDACTED
 
 // resolveConvergedSessionID 返回账号级恒定的 session_id。
-func resolveConvergedSessionID(account *Account) string {
-	if account == nil {
+func resolveConvergedSessionID(seed string) string {
+	if seed == "" {
 		return ""
 REDACTED
-	return deriveStableUUIDv4(fmt.Sprintf("sub2api:codex-session-id:v1:%d", account.ID))
+	return deriveStableUUIDv4("sub2api:codex-session-id:v2:" + seed)
 REDACTED
 
 // resolveConvergedThreadID 按客户端原始 session-id 确定性派生 thread_id。
 // 每个真实 Codex 会话（不同客户端启动实例）获得一个独立线程，
 // 模拟正常用户 spawn 子代理或开多窗口的模式。
-func resolveConvergedThreadID(account *Account, clientSessionID string) string {
-	if account == nil || clientSessionID == "" {
+func resolveConvergedThreadID(seed, clientSessionID string) string {
+	if seed == "" || clientSessionID == "" {
 		return ""
 REDACTED
-	return deriveStableUUIDv4(fmt.Sprintf("sub2api:codex-thread-id:v1:%d:%s", account.ID, clientSessionID))
+	return deriveStableUUIDv4("sub2api:codex-thread-id:v2:" + seed + ":" + clientSessionID)
 REDACTED
 
 // codexFingerprintIDs 收敛后的完整 ID 集合。
 // 由 resolveCodexFingerprintIDs 一次性生成，同一个实例在头改写和体改写之间共享，
-// 确保所有载体中的 turn_id 等随机字段一致。
+// 确保所有载体中的 turn_id 等随机字段一致。体改写时还会补记原始
+// client_metadata.session_id，用于识别 root prompt_cache_key 的默认值。
 type codexFingerprintIDs struct {
-	mode           codexFingerprintMode
-	installationID string
-	sessionID      string
-	threadID       string
-	turnID         string
-	windowID       string
+	accountID                     int64
+	mode                          codexFingerprintMode
+	installationID                string
+	sessionID                     string
+	threadID                      string
+	turnID                        string
+	windowID                      string
+	turnStartedAtUnixMs           int64
+	originalBodySessionID         string
+	originalBodySessionIDCaptured bool
 REDACTED
 
 // resolveCodexFingerprintIDs 按收敛模式计算出站 ID 集合。
@@ -157,13 +280,21 @@ REDACTED
 // 返回 nil 表示 off 模式，不需要改写。
 // 注意：包含随机生成的 turn_id，调用方必须只调用一次并共享结果给头改写和体改写。
 func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode codexFingerprintMode) *codexFingerprintIDs {
-	if mode == codexFingerprintOff {
+	if account == nil || mode == codexFingerprintOff {
+		return nil
+REDACTED
+	seed, ok := codexFingerprintSeed(account.Extra)
+	if !ok {
 		return nil
 REDACTED
 
-	ids := &codexFingerprintIDs{mode: modeREDACTED
+	ids := &codexFingerprintIDs{
+		accountID:           account.ID,
+		mode:                mode,
+		turnStartedAtUnixMs: time.Now().UnixMilli(),
+REDACTED
 
-	ids.installationID = resolveConvergedInstallationID(account)
+	ids.installationID = resolveConvergedInstallationID(account, seed)
 	if ids.installationID == "" {
 		return nil
 REDACTED
@@ -173,8 +304,8 @@ REDACTED
 		return ids
 
 	case codexFingerprintSession:
-		ids.sessionID = resolveConvergedSessionID(account)
-		ids.threadID = resolveConvergedThreadID(account, clientSessionID)
+		ids.sessionID = resolveConvergedSessionID(seed)
+		ids.threadID = resolveConvergedThreadID(seed, clientSessionID)
 		if ids.threadID == "" {
 			ids.threadID = ids.sessionID
 	REDACTED
@@ -183,7 +314,7 @@ REDACTED
 		return ids
 
 	case codexFingerprintFull:
-		ids.sessionID = resolveConvergedSessionID(account)
+		ids.sessionID = resolveConvergedSessionID(seed)
 		ids.threadID = ids.sessionID
 		ids.turnID = uuid.Must(uuid.NewV7()).String()
 		ids.windowID = ids.threadID + ":0"
@@ -252,20 +383,21 @@ REDACTED
 		"thread_id":               ids.threadID,
 		"turn_id":                 ids.turnID,
 		"window_id":               ids.windowID,
-		"turn_started_at_unix_ms": time.Now().UnixMilli(),
+		"turn_started_at_unix_ms": ids.turnStartedAtUnixMs,
 REDACTED)
 REDACTED
 
 // rewriteCodexTurnMetadataFields 解析 x-codex-turn-metadata 头中的 JSON，
-// 替换指定字段后回写。保留未指定字段原样（如 sandbox、thread_source 等）。
+// 替换指定字段后回写。合法对象保留未指定字段（如 sandbox、thread_source）；
+// 非法/非对象值重建为最小合法 metadata，避免 flat 与 embedded identity 分裂。
 func rewriteCodexTurnMetadataFields(h http.Header, fields map[string]any) {
 	raw := strings.TrimSpace(h.Get("x-codex-turn-metadata"))
 	if raw == "" {
 		return
 REDACTED
 	var metadata map[string]any
-	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-		return
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		metadata = make(map[string]any, len(fields))
 REDACTED
 	for k, v := range fields {
 		metadata[k] = v
@@ -284,16 +416,21 @@ func applyCodexFingerprintClientMetadata(reqBody map[string]any, ids *codexFinge
 		return false
 REDACTED
 
+	captureCodexFingerprintOriginalBodySessionID(ids, reqBody["client_metadata"])
 	existing, _ := reqBody["client_metadata"].(map[string]any)
 	if existing == nil {
 		existing = make(map[string]any)
 REDACTED
 
-	if !applyCodexFingerprintToClientMetadataMap(existing, ids) {
-		return false
+	modified := false
+	if applyCodexFingerprintToClientMetadataMap(existing, ids) {
+		reqBody["client_metadata"] = existing
+		modified = true
 REDACTED
-	reqBody["client_metadata"] = existing
-	return true
+	if applyCodexFingerprintPromptCacheKey(reqBody, ids) {
+		modified = true
+REDACTED
+	return modified
 REDACTED
 
 // applyCodexFingerprintToClientMetadataMap 是 client_metadata 改写的共享核心，
@@ -330,8 +467,61 @@ REDACTED
 		"thread_id":               ids.threadID,
 		"turn_id":                 ids.turnID,
 		"window_id":               ids.windowID,
-		"turn_started_at_unix_ms": time.Now().UnixMilli(),
+		"turn_started_at_unix_ms": ids.turnStartedAtUnixMs,
 REDACTED)
+	return true
+REDACTED
+
+func captureCodexFingerprintOriginalBodySessionID(ids *codexFingerprintIDs, clientMetadata any) {
+	if ids == nil || ids.originalBodySessionIDCaptured {
+		return
+REDACTED
+	ids.originalBodySessionIDCaptured = true
+	if clientMetadata == nil {
+		return
+REDACTED
+	switch metadata := clientMetadata.(type) {
+	case map[string]any:
+		if sessionID, ok := metadata["session_id"].(string); ok {
+			ids.originalBodySessionID = strings.TrimSpace(sessionID)
+	REDACTED
+	case map[string]string:
+		ids.originalBodySessionID = strings.TrimSpace(metadata["session_id"])
+REDACTED
+REDACTED
+
+func captureCodexFingerprintOriginalBodySessionIDRaw(ids *codexFingerprintIDs, value gjson.Result) {
+	if ids == nil || ids.originalBodySessionIDCaptured {
+		return
+REDACTED
+	ids.originalBodySessionIDCaptured = true
+	if value.Exists() && value.Type == gjson.String {
+		ids.originalBodySessionID = strings.TrimSpace(value.String())
+REDACTED
+REDACTED
+
+func shouldRewriteCodexFingerprintPromptCacheKey(ids *codexFingerprintIDs, promptCacheKey string) bool {
+	if ids == nil || !ids.originalBodySessionIDCaptured || ids.originalBodySessionID == "" || ids.sessionID == "" {
+		return false
+REDACTED
+	if ids.mode != codexFingerprintSession && ids.mode != codexFingerprintFull {
+		return false
+REDACTED
+	return promptCacheKey == ids.originalBodySessionID
+REDACTED
+
+func applyCodexFingerprintPromptCacheKey(reqBody map[string]any, ids *codexFingerprintIDs) bool {
+	if reqBody == nil {
+		return false
+REDACTED
+	promptCacheKey, ok := reqBody["prompt_cache_key"].(string)
+	if !ok || strings.TrimSpace(promptCacheKey) == "" || !shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey) {
+		return false
+REDACTED
+	if promptCacheKey == ids.sessionID {
+		return false
+REDACTED
+	reqBody["prompt_cache_key"] = ids.sessionID
 	return true
 REDACTED
 
@@ -339,50 +529,68 @@ REDACTED
 // 供透传路径使用——透传是热路径，禁止对可能高达数十 MB 的 body 做全量
 // Unmarshal（见 forwardOpenAIPassthrough 的轻量提取注释）。实现为：gjson 提取
 // client_metadata 小对象单独解码，经共享核心改写后 sjson 一次性拼回，body
-// 其余字节原样保留。语义与 applyCodexFingerprintClientMetadata 逐点一致
-// （含"非对象值整体替换为收敛集合"的行为）。
+// 其余字节原样保留；root prompt_cache_key 仅在可证明是 body session 默认值时
+// 做标量改写。语义与 applyCodexFingerprintClientMetadata 逐点一致（含
+// "非对象值整体替换为收敛集合"的行为）。
 func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintIDs) ([]byte, bool, error) {
 	if len(body) == 0 || ids == nil {
 		return body, false, nil
 REDACTED
 	// 非 JSON 对象的 body（数组/标量/畸形）没有 client_metadata 语义，
 	// sjson 在这类根上写字段会改写整体结构，直接放行保持原样。
-	if !gjson.ParseBytes(body).IsObject() {
+	root := gjson.ParseBytes(body)
+	if !root.IsObject() {
+		captureCodexFingerprintOriginalBodySessionIDRaw(ids, gjson.Result{REDACTED)
 		return body, false, nil
 REDACTED
 
 	existing := map[string]any{REDACTED
 	if cm := gjson.GetBytes(body, "client_metadata"); cm.IsObject() {
+		captureCodexFingerprintOriginalBodySessionIDRaw(ids, gjson.GetBytes(body, "client_metadata.session_id"))
 		if err := json.Unmarshal([]byte(cm.Raw), &existing); err != nil {
 			return body, false, fmt.Errorf("decode client_metadata for fingerprint: %w", err)
 	REDACTED
+REDACTED else {
+		captureCodexFingerprintOriginalBodySessionIDRaw(ids, gjson.Result{REDACTED)
 REDACTED
 
-	if !applyCodexFingerprintToClientMetadataMap(existing, ids) {
-		return body, false, nil
+	next := body
+	modified := false
+	if applyCodexFingerprintToClientMetadataMap(existing, ids) {
+		raw, err := json.Marshal(existing)
+		if err != nil {
+			return body, false, fmt.Errorf("encode converged client_metadata: %w", err)
+	REDACTED
+		var setErr error
+		next, setErr = sjson.SetRawBytes(body, "client_metadata", raw)
+		if setErr != nil {
+			return body, false, fmt.Errorf("splice converged client_metadata: %w", setErr)
+	REDACTED
+		modified = true
 REDACTED
-
-	raw, err := json.Marshal(existing)
-	if err != nil {
-		return body, false, fmt.Errorf("encode converged client_metadata: %w", err)
+	promptCacheKey := gjson.GetBytes(body, "prompt_cache_key")
+	if promptCacheKey.Exists() && promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" && shouldRewriteCodexFingerprintPromptCacheKey(ids, promptCacheKey.String()) {
+		rewritten, err := sjson.SetBytes(next, "prompt_cache_key", ids.sessionID)
+		if err != nil {
+			return body, false, fmt.Errorf("splice converged prompt_cache_key: %w", err)
+	REDACTED
+		next = rewritten
+		modified = true
 REDACTED
-	next, err := sjson.SetRawBytes(body, "client_metadata", raw)
-	if err != nil {
-		return body, false, fmt.Errorf("splice converged client_metadata: %w", err)
-REDACTED
-	return next, true, nil
+	return next, modified, nil
 REDACTED
 
 // rewriteClientMetadataEmbeddedTurnMetadata 改写 client_metadata 中内嵌的
-// x-codex-turn-metadata JSON 字符串里的指定字段。
+// x-codex-turn-metadata JSON 字符串里的指定字段。非法/非对象值会重建，
+// 避免 flat client_metadata 与 embedded metadata 暴露两套身份。
 func rewriteClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fields map[string]any) {
 	raw, ok := clientMetadata["x-codex-turn-metadata"].(string)
 	if !ok || raw == "" {
 		return
 REDACTED
 	var metadata map[string]any
-	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-		return
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil || metadata == nil {
+		metadata = make(map[string]any, len(fields))
 REDACTED
 	for k, v := range fields {
 		metadata[k] = v
