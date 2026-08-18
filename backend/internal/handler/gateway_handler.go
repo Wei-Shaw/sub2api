@@ -844,6 +844,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 转发请求 - 根据账号平台分流
 			c.Set("parsed_request", attemptParsedReq)
+
+			// 跨平台协议转换：anthropic/gemini 分组选中了启用混合调度的 openai 账号。
+			// ForwardAsAnthropic 内部完成 Anthropic Messages ↔ OpenAI（Responses 或
+			// ChatCompletions 回退）的双向转换并写入 HTTP 响应，与 anthropic 透传路径
+			// 完全分离，因此走独立的 usage/failover 短路，不复用下面的 ForwardResult 逻辑。
+			if account.Platform == service.PlatformOpenAI && account.IsMixedSchedulingEnabled() {
+				if h.forwardAsOpenAICompatInAnthropicGroup(c, reqLog, account, currentAPIKey, currentSubscription, attemptBody, reqModel, fs, sessionKey, sessionBoundAccountID, pricingAt, streamStarted) {
+					return
+				}
+				// 转换失败但允许 failover（未写入字节）：继续外层循环尝试下一个账号
+				continue
+			}
+
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
@@ -2441,6 +2454,167 @@ func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, 
 		}
 	}()
 	task(ctx)
+}
+
+// forwardAsOpenAICompatInAnthropicGroup 在 anthropic/gemini 分组中选中了启用混合调度的
+// openai 账号时，走 OpenAI 兼容协议转换路径（ForwardAsAnthropic）转发请求。
+//
+// 返回 true 表示请求已终结（响应已写入或错误已回传），调用方应 return；
+// 返回 false 表示该账号失败且尚未向客户端写入内容，调用方可 failover 到下一个账号。
+//
+// 与 anthropic 透传路径完全分离：ForwardAsAnthropic 自行写入 HTTP 响应并产出
+// *OpenAIForwardResult，因此计费走 OpenAI usage 管道，不参与 anthropic 的 ForwardResult 逻辑。
+func (h *GatewayHandler) forwardAsOpenAICompatInAnthropicGroup(
+	c *gin.Context,
+	reqLog *zap.Logger,
+	account *service.Account,
+	currentAPIKey *service.APIKey,
+	subscription *service.UserSubscription,
+	body []byte,
+	reqModel string,
+	fs *FailoverState,
+	sessionKey string,
+	sessionBoundAccountID int64,
+	pricingAt time.Time,
+	streamStarted bool,
+) bool {
+	// 计费/配额按实际服务账号的平台（openai）归属，覆盖分组平台。
+	// QuotaPlatform 优先读 ResolvedTargetPlatform，注入后计费自动落到 openai 桶。
+	ctx := service.WithResolvedTargetPlatform(c.Request.Context(), service.PlatformOpenAI)
+	c.Request = c.Request.WithContext(ctx)
+
+	forwardStart := time.Now()
+	writerSizeBeforeForward := c.Writer.Size()
+
+	defaultMappedModel := ""
+	if currentAPIKey.Group != nil {
+		defaultMappedModel = currentAPIKey.Group.ResolveMessagesDispatchModel(reqModel)
+	}
+
+	// OpenAI 缓存键从 anthropic metadata 会话派生，与 OpenAI 分组的 /v1/messages 入口保持一致。
+	promptCacheKey := service.ExtractClientSessionID(c)
+
+	result, err := func() (*service.OpenAIForwardResult, error) {
+		return h.openAIGatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, promptCacheKey, defaultMappedModel)
+	}()
+
+	forwardDurationMs := time.Since(forwardStart).Milliseconds()
+	upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
+	responseLatencyMs := forwardDurationMs
+	if upstreamLatencyMs > 0 && forwardDurationMs > upstreamLatencyMs {
+		responseLatencyMs = forwardDurationMs - upstreamLatencyMs
+	}
+	service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+	if err == nil && result != nil && result.FirstTokenMs != nil {
+		service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+	}
+
+	if err != nil {
+		var failoverErr *service.UpstreamFailoverError
+		if errors.As(err, &failoverErr) {
+			// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
+			if c.Writer.Size() != writerSizeBeforeForward {
+				h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
+				return true
+			}
+			if failoverErr.ShouldReportAccountScheduleFailure() {
+				h.openAIGatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), false, nil)
+			}
+			if !failoverErr.ShouldRetryNextAccount() {
+				h.handleFailoverExhausted(c, failoverErr, account.Platform, streamStarted)
+				return true
+			}
+			action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+			switch action {
+			case FailoverContinue:
+				// 允许外层循环 failover 到下一个账号
+				return false
+			case FailoverExhausted:
+				h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
+				return true
+			case FailoverCanceled:
+				failoverClientGone(c)
+				return true
+			}
+		}
+		// 非可重试错误：提交部分 usage（若上游已计量），写错误响应，终结请求
+		upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+		if !upstreamErrorAlreadyCommunicated {
+			h.ensureForwardErrorResponse(c, streamStarted)
+		}
+		reqLog.Error("gateway.openai_compat_forward_failed",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_platform", account.Platform),
+			zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
+			zap.Error(err),
+		)
+		h.submitOpenAICompatUsage(c, result, currentAPIKey, account, subscription, reqModel, pricingAt, body)
+		return true
+	}
+
+	if result != nil {
+		h.openAIGatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, result.FirstTokenMs)
+	} else {
+		h.openAIGatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, nil)
+	}
+
+	// 绑定粘性会话（与 anthropic 透传成功路径一致）
+	if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
+		if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+			reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		}
+	}
+
+	h.submitOpenAICompatUsage(c, result, currentAPIKey, account, subscription, reqModel, pricingAt, body)
+	return true
+}
+
+// submitOpenAICompatUsage 通过 OpenAI usage 管道提交协议转换路径的用量记录。
+func (h *GatewayHandler) submitOpenAICompatUsage(
+	c *gin.Context,
+	result *service.OpenAIForwardResult,
+	apiKey *service.APIKey,
+	account *service.Account,
+	subscription *service.UserSubscription,
+	reqModel string,
+	pricingAt time.Time,
+	body []byte,
+) {
+	if result == nil {
+		return
+	}
+	userAgent := c.GetHeader("User-Agent")
+	clientIP := ip.GetClientIP(c)
+	requestPayloadHash := service.HashUsageRequestPayload(body)
+	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
+	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	sessionID := service.ExtractClientSessionID(c)
+
+	h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
+		if err := h.openAIGatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+			Result:             result,
+			APIKey:             apiKey,
+			User:               apiKey.User,
+			Account:            account,
+			Subscription:       subscription,
+			InboundEndpoint:    inboundEndpoint,
+			UpstreamEndpoint:   upstreamEndpoint,
+			UserAgent:          userAgent,
+			IPAddress:          clientIP,
+			RequestPayloadHash: requestPayloadHash,
+			APIKeyService:      h.apiKeyService,
+			QuotaPlatform:      quotaPlatform,
+			SessionID:          sessionID,
+			PricingAt:          pricingAt,
+		}); err != nil {
+			logger.L().With(
+				zap.String("component", "handler.gateway.openai_compat"),
+				zap.String("model", reqModel),
+				zap.Int64("account_id", account.ID),
+			).Error("gateway.openai_compat_record_usage_failed", zap.Error(err))
+		}
+	})
 }
 
 // getUserMsgQueueMode 获取当前请求的 UMQ 模式

@@ -609,11 +609,12 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 		}
 		accountGroupIDs := s.normalizeGroupIDs(account.GroupIDs)
 		switch account.Platform {
-		case PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformGrok:
+		case PlatformAnthropic, PlatformGemini, PlatformGrok:
 			addPlatformGroups(account.Platform, accountGroupIDs)
-		case PlatformAntigravity:
-			// 批量更新可能刚关闭 mixed_scheduling，仍需清理两个兼容平台的旧快照。
-			addPlatformGroups(PlatformAntigravity, accountGroupIDs)
+		case PlatformAntigravity, PlatformOpenAI:
+			// antigravity/openai 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+			// 批量更新可能刚切换该开关，仍需清理两个兼容平台的旧快照。
+			addPlatformGroups(account.Platform, accountGroupIDs)
 			addPlatformGroups(PlatformAnthropic, accountGroupIDs)
 			addPlatformGroups(PlatformGemini, accountGroupIDs)
 		default:
@@ -817,7 +818,9 @@ func (s *SchedulerSnapshotService) rebuildByAccount(ctx context.Context, account
 	}
 
 	buckets := s.bucketsForPlatform(account.Platform, groupIDs, seen)
-	if account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled() {
+	if account.IsMixedSchedulingEnabled() {
+		// 启用混合调度的 antigravity/openai 账号参与 anthropic/gemini 调度池，
+		// 账号变更时必须同步刷新这两个兼容平台的快照，避免池内容过期。
 		buckets = append(buckets, s.bucketsForPlatform(PlatformAnthropic, groupIDs, seen)...)
 		buckets = append(buckets, s.bucketsForPlatform(PlatformGemini, groupIDs, seen)...)
 	}
@@ -1464,7 +1467,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	}
 
 	if useMixed {
-		platforms := []string{bucket.Platform, PlatformAntigravity}
+		platforms := mixedSchedulingEligiblePlatforms(bucket.Platform)
 		var accounts []Account
 		var err error
 		if groupID > 0 {
@@ -1479,7 +1482,7 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		}
 		filtered := make([]Account, 0, len(accounts))
 		for _, acc := range accounts {
-			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			if !isMixedSchedulingCandidate(&acc, bucket.Platform) {
 				continue
 			}
 			filtered = append(filtered, acc)

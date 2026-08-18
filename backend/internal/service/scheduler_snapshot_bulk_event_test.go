@@ -108,7 +108,12 @@ func TestSchedulerBulkAccountEventScopesOpenAIRebuildToFreshPlatform(t *testing.
 	err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{1}, []int64{11}), make(map[batchSeenKey]struct{}))
 
 	require.NoError(t, err)
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{11, 12}, PlatformOpenAI), cache.capturedBuckets())
+	// OpenAI 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+	// 批量事件需保守刷新兼容平台快照（与 antigravity 对称）。
+	require.ElementsMatch(t,
+		schedulerBucketsForTest([]int64{11, 12}, PlatformAnthropic, PlatformGemini, PlatformOpenAI),
+		cache.capturedBuckets(),
+	)
 	set, deleted := cache.accountWrites()
 	require.Equal(t, []int64{1}, set)
 	require.Empty(t, deleted)
@@ -122,7 +127,12 @@ func TestSchedulerBulkAccountEventRebuildsOpenAIUngroupedBucket(t *testing.T) {
 	err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{6}, nil), make(map[batchSeenKey]struct{}))
 
 	require.NoError(t, err)
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{0}, PlatformOpenAI), cache.capturedBuckets())
+	// OpenAI 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+	// ungrouped 快照（group 0）也需保守刷新兼容平台（与 antigravity 对称）。
+	require.ElementsMatch(t,
+		schedulerBucketsForTest([]int64{0}, PlatformAnthropic, PlatformGemini, PlatformOpenAI),
+		cache.capturedBuckets(),
+	)
 }
 
 func TestSchedulerBulkAccountEventKeepsGroupedAndUngroupedBuckets(t *testing.T) {
@@ -136,7 +146,12 @@ func TestSchedulerBulkAccountEventKeepsGroupedAndUngroupedBuckets(t *testing.T) 
 	err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{7, 8}, nil), make(map[batchSeenKey]struct{}))
 
 	require.NoError(t, err)
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{0, 51}, PlatformOpenAI), cache.capturedBuckets())
+	// OpenAI 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+	// 批量事件需保守刷新兼容平台快照（与 antigravity 对称）。
+	require.ElementsMatch(t,
+		schedulerBucketsForTest([]int64{0, 51}, PlatformAnthropic, PlatformGemini, PlatformOpenAI),
+		cache.capturedBuckets(),
+	)
 }
 
 func TestSchedulerBulkAccountEventDoesNotCrossCurrentGroupsBetweenPlatforms(t *testing.T) {
@@ -150,8 +165,10 @@ func TestSchedulerBulkAccountEventDoesNotCrossCurrentGroupsBetweenPlatforms(t *t
 	err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{9, 10}, []int64{63}), make(map[batchSeenKey]struct{}))
 
 	require.NoError(t, err)
+	// OpenAI 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+	// 需保守刷新这两个兼容平台的快照；Grok 不参与混合调度，仅刷自身平台。
 	want := append(
-		schedulerBucketsForTest([]int64{61, 63}, PlatformOpenAI),
+		schedulerBucketsForTest([]int64{61, 63}, PlatformAnthropic, PlatformGemini, PlatformOpenAI),
 		schedulerBucketsForTest([]int64{62, 63}, PlatformGrok)...,
 	)
 	require.ElementsMatch(t, want, cache.capturedBuckets())
@@ -165,7 +182,12 @@ func TestSchedulerBulkAccountEventUsesGroupZeroInSimpleMode(t *testing.T) {
 	err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{11}, []int64{72}), make(map[batchSeenKey]struct{}))
 
 	require.NoError(t, err)
-	require.ElementsMatch(t, schedulerBucketsForTest([]int64{0}, PlatformOpenAI), cache.capturedBuckets())
+	// OpenAI 账号可能通过 mixed_scheduling 参与 anthropic/gemini 调度池，
+	// 批量事件需保守刷新兼容平台快照以清理关闭 mixed_scheduling 后的旧数据（与 antigravity 对称）。
+	require.ElementsMatch(t,
+		schedulerBucketsForTest([]int64{0}, PlatformAnthropic, PlatformGemini, PlatformOpenAI),
+		cache.capturedBuckets(),
+	)
 }
 
 func TestSchedulerBulkAccountEventConservativelyExpandsAntigravityPlatforms(t *testing.T) {

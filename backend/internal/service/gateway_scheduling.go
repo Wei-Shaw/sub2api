@@ -957,6 +957,29 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 	return PlatformAnthropic, false, nil
 }
 
+// mixedSchedulingEligiblePlatforms 返回在混合调度模式下应查询的平台列表。
+// anthropic/gemini 请求会同时查询 antigravity 和 openai 账号池——后者通过
+// extra.mixed_scheduling 开启跨平台协议转换（详见 IsMixedSchedulingEnabled）。
+// 返回值始终包含请求平台本身。
+func mixedSchedulingEligiblePlatforms(platform string) []string {
+	if platform == PlatformAnthropic || platform == PlatformGemini {
+		return []string{platform, PlatformAntigravity, PlatformOpenAI}
+	}
+	return []string{platform}
+}
+
+// isMixedSchedulingCandidate 判断异平台账号是否满足混合调度参与条件。
+// 同平台账号始终参与；antigravity/openai 账号需显式启用 mixed_scheduling。
+func isMixedSchedulingCandidate(account *Account, platform string) bool {
+	if account == nil {
+		return false
+	}
+	if account.Platform == platform {
+		return true
+	}
+	return account.IsMixedSchedulingEnabled()
+}
+
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
@@ -986,7 +1009,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	}
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	if useMixed {
-		platforms := []string{platform, PlatformAntigravity}
+		platforms := mixedSchedulingEligiblePlatforms(platform)
 		var accounts []Account
 		var err error
 		if groupID != nil {
@@ -1005,7 +1028,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 		}
 		filtered := make([]Account, 0, len(accounts))
 		for _, acc := range accounts {
-			if acc.Platform == PlatformAntigravity && !acc.IsMixedSchedulingEnabled() {
+			if !isMixedSchedulingCandidate(&acc, platform) {
 				continue
 			}
 			filtered = append(filtered, acc)
@@ -1084,10 +1107,7 @@ func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform 
 		return false
 	}
 	if useMixed {
-		if account.Platform == platform {
-			return true
-		}
-		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
+		return isMixedSchedulingCandidate(account, platform)
 	}
 	return account.Platform == platform
 }
