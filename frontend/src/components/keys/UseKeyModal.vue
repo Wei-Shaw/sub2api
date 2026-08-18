@@ -715,7 +715,7 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content
-  const configContent = `model_provider = "OpenAI"
+  const configContent = `model_provider = "sub2api"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
@@ -723,8 +723,8 @@ disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
-[model_providers.OpenAI]
-name = "OpenAI"
+[model_providers.sub2api]
+name = "Sub2API"
 base_url = "${baseUrl}"
 wire_api = "responses"
 ${generateCodexProviderAuthConfig()}
@@ -978,7 +978,7 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content with WebSocket v2
-  const configContent = `model_provider = "OpenAI"
+  const configContent = `model_provider = "sub2api"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
 model_reasoning_effort = "xhigh"
@@ -986,8 +986,8 @@ disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
 
-[model_providers.OpenAI]
-name = "OpenAI"
+[model_providers.sub2api]
+name = "Sub2API"
 base_url = "${baseUrl}"
 wire_api = "responses"
 supports_websockets = true

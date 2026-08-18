@@ -272,6 +272,120 @@ func TestForwardAlphaSearchAPIKeyMapsModelAndPassesThroughError(t *testing.T) {
 	require.True(t, gjson.GetBytes(upstream.lastBody, "commands.search_query").IsArray())
 }
 
+func TestAccountAlphaSearchResponsesFallbackRequiresAPIKeyOptIn(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    bool
+	}{
+		{name: "nil account", account: nil},
+		{
+			name: "API key default off",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+			},
+		},
+		{
+			name: "API key wrong value type",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra:    map[string]any{"openai_alpha_search_responses_fallback": "true"},
+			},
+		},
+		{
+			name: "OAuth ignores API key capability",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeOAuth,
+				Extra:    map[string]any{"openai_alpha_search_responses_fallback": true},
+			},
+		},
+		{
+			name: "API key explicitly enabled",
+			account: &Account{
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Extra:    map[string]any{"openai_alpha_search_responses_fallback": true},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.account.IsOpenAIAlphaSearchResponsesFallbackEnabled())
+		})
+	}
+}
+
+func TestForwardAlphaSearchAPIKeyBridgesToResponsesWebSearchWhenEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"id":"search-session",
+		"model":"client-search-model",
+		"commands":{"search_query":[{"q":"example query"}]},
+		"settings":{"search_context_size":"medium"}
+	}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("Version", "client-version")
+	c.Request.Header.Set("Originator", "standalone-search-client")
+	c.Request.Header.Set("User-Agent", "standalone-search-client/version")
+	c.Request.Header.Set("X-Codex-Turn-Metadata", `{"turn_id":"client-turn"}`)
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"req-search"}},
+		Body:       io.NopCloser(strings.NewReader(alphaSearchResponsesSSE("search result"))),
+	}}
+	service := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := &Account{
+		ID:          47,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "test-api-key",
+			"base_url": "https://compat.example/v1",
+			"model_mapping": map[string]any{
+				"client-search-model": "upstream-search-model",
+			},
+		},
+		Extra: map[string]any{
+			"openai_alpha_search_responses_fallback": true,
+		},
+	}
+
+	result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.WebSearchCalls)
+	require.Equal(t, "/v1/responses", result.UpstreamEndpoint)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.JSONEq(t, `{"output":"search result","results":[{"type":"text_result","ref_id":"turn0search0","url":"https://example.com/news","title":"Example News"}]}`, recorder.Body.String())
+	require.Equal(t, "https://compat.example/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "compat.example", upstream.lastReq.Host)
+	require.Equal(t, "Bearer test-api-key", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Content-Type"))
+	require.Empty(t, upstream.lastReq.Header.Get("ChatGPT-Account-ID"))
+	require.Equal(t, "text/event-stream", upstream.lastReq.Header.Get("Accept"))
+	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
+	require.Empty(t, upstream.lastReq.Header.Get("Version"))
+	require.Empty(t, upstream.lastReq.Header.Get("Originator"))
+	require.Empty(t, upstream.lastReq.Header.Get("User-Agent"))
+	require.Empty(t, upstream.lastReq.Header.Get("X-Codex-Turn-Metadata"))
+	require.Empty(t, upstream.lastReq.Header.Get("Session_ID"))
+	require.Empty(t, upstream.lastReq.Header.Get("Conversation_ID"))
+	require.Equal(t, "upstream-search-model", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "web_search", gjson.GetBytes(upstream.lastBody, "tools.0.type").String())
+	require.Equal(t, "medium", gjson.GetBytes(upstream.lastBody, "tools.0.search_context_size").String())
+}
+
 func TestForwardAlphaSearchReturnsFailoverBeforeWriting(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{}}`)

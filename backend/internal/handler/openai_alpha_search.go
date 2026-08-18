@@ -250,7 +250,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	sessionID := service.ExtractClientSessionID(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
 	inboundEndpoint := GetInboundEndpoint(c)
-	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+	upstreamEndpoint := resolveOpenAIUpstreamEndpoint(c, account, result)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {

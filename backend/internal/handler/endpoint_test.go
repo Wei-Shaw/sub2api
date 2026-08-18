@@ -219,6 +219,12 @@ func TestResolveOpenAIUpstreamEndpointPrefersForwardResult(t *testing.T) {
 			result:  &service.OpenAIForwardResult{},
 			want:    EndpointResponses,
 		},
+		{
+			name:    "standalone search bridge reports responses",
+			account: &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey},
+			result:  &service.OpenAIForwardResult{UpstreamEndpoint: EndpointResponses},
+			want:    EndpointResponses,
+		},
 	}
 
 	for _, tt := range tests {
