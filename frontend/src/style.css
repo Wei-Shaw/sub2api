@@ -9,6 +9,11 @@
 
   html {
     @apply scroll-smooth antialiased;
+    color-scheme: light;
+  REDACTED
+
+  .dark {
+    color-scheme: dark;
   REDACTED
 
   body {
