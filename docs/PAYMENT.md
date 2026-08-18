@@ -25,6 +25,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 | **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
 | **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
 | **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
+| **Infini** | Crypto (USDT, etc.) | Crypto acquiring: fiat-priced orders settled on-chain through a hosted checkout |
 
 > Alipay/WeChat Pay direct and EasyPay can both exist as backend provider instances, but the frontend always exposes only two visible buttons: `Alipay` and `WeChat Pay`. Admins choose exactly one source for each visible method: direct or EasyPay. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
 
@@ -154,6 +155,30 @@ International payment platform supporting multiple payment methods and currencie
 | **Publishable Key** | Stripe publishable key (`pk_live_...` or `pk_test_...`) | Yes |
 | **Webhook Secret** | Stripe Webhook signing secret (`whsec_...`) | Yes |
 
+### Infini (Crypto)
+
+Crypto acquiring: orders are priced in fiat and paid on-chain through Infini's hosted checkout. After an order is created the user is redirected to the returned `checkout_url`, and the result arrives over a webhook.
+
+| Parameter | Description | Required |
+|-----------|-------------|----------|
+| **Key ID** | Merchant public key generated on the Infini developer page | Yes |
+| **Secret Key** | The private key paired with the Key ID, shown only once | Yes |
+| **Webhook Secret** | Secret used to verify webhook signatures; reuse the Secret Key when the console does not issue a separate one | Yes |
+| **API Base URL** | `https://openapi.infini.money` for production, `https://openapi-sandbox.infini.money` for sandbox | Yes |
+| **Currency** | Order pricing currency, USD by default. One of USD/EUR/GBP/SGD/JPY/AUD/HKD — **CNY is not supported** | Yes |
+| **Forward payer email** | On by default. Lets Infini email a refund claim link on under- or overpayments; turn it off to keep the email in-house | Yes |
+
+> **Server clock**: Infini rejects requests whose timestamp drifts more than ±300 seconds from its own with a 401. Keep NTP enabled on the server.
+
+> **No refunds or cancellations**: Infini exposes no merchant-initiated refund API, so leave the instance's refund switch off. Short, excess and late payments are settled by Infini emailing a claim link to the payer.
+
+> **How payment anomalies are handled**:
+> - **Late payment in full** (confirmed on-chain after the order expired): credited automatically within 24 hours, recorded as an `ORDER_RECOVERED` audit log.
+> - **Underpayment** (only part of the amount arrived before expiry): not credited. The order stays `EXPIRED` with a `PAYMENT_PARTIAL_PAID` audit log for manual follow-up. Such orders never become `FAILED` and cannot be settled with the admin "retry recharge" action.
+> - **Overpayment**: credited at the order amount; the surplus goes through Infini's refund claim flow.
+
+> **Currency and crediting**: with the "recharge CNY exchange rate" setting enabled, only USD and CNY channels can be credited and every other currency is rejected at order creation. An Infini instance used alongside that setting must be configured as USD, which credits 1:1.
+
 ---
 
 ## Provider Instance Management
@@ -195,8 +220,21 @@ When adding a provider, the system auto-generates callback URLs from your site d
 | **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **Infini** | `https://your-domain.com/api/v1/payment/webhook/infini` |
 
 > Replace `your-domain.com` with your actual domain. For EasyPay / Alipay / WeChat Pay, the callback URL is auto-filled when adding the provider — no manual configuration needed.
+
+### Infini Webhook Setup
+
+1. Log in to the Infini merchant console
+2. Open the webhook configuration on the developer page
+3. Enter the callback URL `https://your-domain.com/api/v1/payment/webhook/infini`
+4. Subscribe to `order.completed`, `order.expired` and `order.late_payment`
+5. Copy the webhook secret into the provider configuration
+
+> Infini has no webhook management API, so this URL cannot be provisioned automatically — configure it by hand in the console.
+>
+> A merchant account holds a **single** webhook URL, so one account can serve only one Sub2API deployment. Use separate merchant accounts for multiple instances: callbacks locate the instance by looking up the order via `client_reference`, the same mechanism EasyPay multi-instance uses.
 
 ### Stripe Webhook Setup
 
@@ -231,7 +269,8 @@ User selects amount and payment method
   ├─ EasyPay     → QR code / H5 redirect
   ├─ Alipay      → Desktop QR payload (Face-to-Face preferred, Website Pay fallback) / mobile Alipay redirect
   ├─ WeChat Pay  → Desktop Native QR / non-WeChat H5 / in-WeChat JSAPI
-  └─ Stripe      → Payment Element (card/Alipay/WeChat/etc.)
+  ├─ Stripe      → Payment Element (card/Alipay/WeChat/etc.)
+  └─ Infini      → Redirect to the Infini hosted checkout, paid on-chain
        │
        ▼
   Webhook callback verified → Order PAID

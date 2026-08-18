@@ -244,6 +244,14 @@ func TestIsSensitiveProviderConfigField(t *testing.T) {
 		{payment.TypeAirwallex, "accountId", false},
 		{payment.TypeAirwallex, "currency", false},
 
+		// Infini
+		{payment.TypeInfini, "secretKey", true},
+		{payment.TypeInfini, "webhookSecret", true},
+		{payment.TypeInfini, "keyId", false},
+		{payment.TypeInfini, "apiBase", false},
+		{payment.TypeInfini, "currency", false},
+		{payment.TypeInfini, "forwardPayerEmail", false},
+
 		// Unknown provider: never sensitive
 		{"unknown", "secretKey", false},
 	}

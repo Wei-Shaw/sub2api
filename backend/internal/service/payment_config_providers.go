@@ -116,6 +116,7 @@ var providerSensitiveConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
 	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
+	payment.TypeInfini:    {"secretkey": {}, "webhooksecret": {}},
 }
 
 // providerPendingOrderProtectedConfigFields lists config keys that cannot be
@@ -128,6 +129,7 @@ var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
 	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
 	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
 	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
+	payment.TypeInfini:    {"keyid": {}, "secretkey": {}, "webhooksecret": {}, "apibase": {}, "currency": {}},
 }
 
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
@@ -177,8 +179,14 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 		).Count(ctx)
 }
 
+func errProviderRefundUnsupported(providerKey string) error {
+	return infraerrors.BadRequest("PROVIDER_REFUND_UNSUPPORTED",
+		fmt.Sprintf("provider %s does not support merchant-initiated refunds", providerKey))
+}
+
 var validProviderKeys = map[string]bool{
 	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
+	payment.TypeInfini: true,
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
@@ -190,6 +198,9 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 		if err := validateEasyPayCustomMethods(req.Config, typesStr); err != nil {
 			return nil, err
 		}
+	}
+	if req.RefundEnabled && !payment.ProviderSupportsRefund(req.ProviderKey) {
+		return nil, errProviderRefundUnsupported(req.ProviderKey)
 	}
 	if err := s.validateVisibleMethodEnablementConflicts(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
 		return nil, err
@@ -421,6 +432,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetLimits(*req.Limits)
 	}
 	if req.RefundEnabled != nil {
+		if *req.RefundEnabled && !payment.ProviderSupportsRefund(current.ProviderKey) {
+			return nil, errProviderRefundUnsupported(current.ProviderKey)
+		}
 		u.SetRefundEnabled(*req.RefundEnabled)
 		// Cascade: turning off refund_enabled also disables allow_user_refund
 		if !*req.RefundEnabled {
@@ -455,12 +469,17 @@ func (s *PaymentConfigService) GetUserRefundEligibleInstanceIDs(ctx context.Cont
 		Where(
 			paymentproviderinstance.RefundEnabledEQ(true),
 			paymentproviderinstance.AllowUserRefundEQ(true),
-		).Select(paymentproviderinstance.FieldID).All(ctx)
+		).Select(paymentproviderinstance.FieldID, paymentproviderinstance.FieldProviderKey).All(ctx)
 	if err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(instances))
 	for _, inst := range instances {
+		// A provider without a refund API never becomes user-refundable, however
+		// the instance flags are stored.
+		if !payment.ProviderSupportsRefund(inst.ProviderKey) {
+			continue
+		}
 		ids = append(ids, strconv.FormatInt(int64(inst.ID), 10))
 	}
 	return ids, nil

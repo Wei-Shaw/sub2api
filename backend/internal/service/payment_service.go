@@ -40,6 +40,9 @@ const (
 	// defaultMaxPendingOrders and defaultOrderTimeoutMin are defined in
 	// payment_config_service.go alongside other payment configuration defaults.
 	paymentGraceMinutes = 5
+	// infiniLatePaymentGrace widens the recovery window for Infini, whose
+	// on-chain confirmations routinely land long after the order expires.
+	infiniLatePaymentGrace = 24 * time.Hour
 
 	defaultPageSize    = 20
 	maxPageSize        = 100

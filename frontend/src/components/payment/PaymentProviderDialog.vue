@@ -418,6 +418,7 @@ const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : 
 const providerWebhookHintMap: Record<string, string> = {
   stripe: 'admin.settings.payment.stripeWebhookHint',
   airwallex: 'admin.settings.payment.airwallexWebhookHint',
+  infini: 'admin.settings.payment.infiniWebhookHint',
 }
 
 const providerWebhookUrl = computed(() => {
@@ -473,6 +474,9 @@ const resolvedFields = computed(() => {
   return fields.map(f => ({
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
+    options: f.options?.map(opt =>
+      typeof opt.labelKey === 'string' ? { ...opt, label: t(opt.labelKey) } : opt,
+    ),
   }))
 })
 

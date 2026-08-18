@@ -38,6 +38,9 @@ type paymentFulfillmentLease struct {
 
 func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payment.PaymentNotification, pk string) error {
 	if n.Status != payment.NotificationStatusSuccess {
+		if strings.TrimSpace(n.Anomaly) != "" {
+			return s.recordPaymentAnomaly(ctx, n, pk)
+		}
 		return nil
 	}
 	// Look up order by out_trade_no (the external order ID we sent to the provider)
@@ -150,7 +153,7 @@ func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentTyp
 func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
 	previousStatus := o.Status
 	now := time.Now()
-	grace := now.Add(-paymentGraceMinutes * time.Minute)
+	grace := now.Add(-paymentRecoveryGrace(pk))
 	c, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
 		paymentorder.Or(
@@ -166,7 +169,7 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 		return fmt.Errorf("update to PAID: %w", err)
 	}
 	if c == 0 {
-		return s.alreadyProcessed(ctx, o)
+		return s.alreadyProcessed(ctx, o, pk)
 	}
 	if previousStatus == OrderStatusCancelled || previousStatus == OrderStatusExpired {
 		slog.Info("order recovered from webhook payment success",
@@ -186,7 +189,50 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 	return s.executeFulfillment(ctx, o.ID)
 }
 
-func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder) error {
+// paymentRecoveryGrace is how long after expiry a success notification may
+// still settle the order.
+func paymentRecoveryGrace(providerKey string) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(providerKey), payment.TypeInfini) {
+		return infiniLatePaymentGrace
+	}
+	return paymentGraceMinutes * time.Minute
+}
+
+// recordPaymentAnomaly leaves an audit trail for an upstream payment that
+// cannot be fulfilled (e.g. an underpaid crypto order). The order status is
+// left untouched: FAILED would expose it to the admin recharge-retry action,
+// which credits balance for money we never fully received.
+func (s *PaymentService) recordPaymentAnomaly(ctx context.Context, n *payment.PaymentNotification, pk string) error {
+	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return fmt.Errorf("%w: out_trade_no=%s", ErrOrderNotFound, n.OrderID)
+		}
+		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
+	}
+	detail := map[string]any{
+		"anomaly":     n.Anomaly,
+		"tradeNo":     n.TradeNo,
+		"orderAmount": order.PayAmount,
+		"status":      order.Status,
+	}
+	for _, key := range []string{"amount_confirming", "amount_confirmed", "exception_tags", "status", "currency"} {
+		if value := strings.TrimSpace(n.Metadata[key]); value != "" {
+			detail["provider_"+key] = value
+		}
+	}
+	slog.Warn("[Payment] upstream payment anomaly, order not credited",
+		"orderID", order.ID,
+		"provider", pk,
+		"anomaly", n.Anomaly,
+		"outTradeNo", n.OrderID,
+		"tradeNo", n.TradeNo,
+	)
+	s.writeAuditLog(ctx, order.ID, "PAYMENT_"+strings.ToUpper(n.Anomaly), pk, detail)
+	return nil
+}
+
+func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder, pk string) error {
 	cur, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
 	if err != nil {
 		return nil
@@ -201,10 +247,17 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 			"orderID", o.ID,
 			"status", cur.Status,
 			"updatedAt", cur.UpdatedAt,
+			"provider", pk,
+			"grace", paymentRecoveryGrace(pk),
 		)
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
+		operator := strings.TrimSpace(pk)
+		if operator == "" {
+			operator = "system"
+		}
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", operator, map[string]any{
 			"status":    cur.Status,
 			"updatedAt": cur.UpdatedAt,
+			"grace":     paymentRecoveryGrace(pk).String(),
 			"reason":    "payment arrived after expiry grace period",
 		})
 		return nil

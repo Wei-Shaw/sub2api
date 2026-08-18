@@ -305,6 +305,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
 	}
+	if providerKey == payment.TypeInfini {
+		if keyID := strings.TrimSpace(sel.Config["keyId"]); keyID != "" {
+			snapshot["merchant_id"] = keyID
+		}
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
 
 	if len(snapshot) == 1 {
 		return nil
@@ -447,6 +453,8 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		ReturnURL:   providerReturnURL,
 	}, sel, outTradeNo, payAmountStr, subject)
 	providerReq.AlipayMobilePrecreate = shouldUseAlipayMobilePrecreate(req, cfg, sel)
+	providerReq.PayerEmail = providerPayerEmail(order, sel)
+	providerReq.ExpiresIn = providerExpiresInSeconds(order, time.Now())
 	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	finishProviderCall()
@@ -522,6 +530,44 @@ func buildProviderCreatePaymentRequest(req CreateOrderRequest, sel *payment.Inst
 		IsMobile:           req.IsMobile,
 		InstanceSubMethods: selectedInstanceSupportedTypes(sel),
 	}
+}
+
+// providerPayerEmail returns the payer email to forward upstream. Providers use
+// it for payer-driven recovery flows; the instance can switch forwarding off.
+func providerPayerEmail(order *dbent.PaymentOrder, sel *payment.InstanceSelection) string {
+	if order == nil || sel == nil || !instanceForwardsPayerEmail(sel.Config) {
+		return ""
+	}
+	return strings.TrimSpace(order.UserEmail)
+}
+
+// instanceForwardsPayerEmail defaults to true; only an explicit false disables
+// forwarding.
+func instanceForwardsPayerEmail(config map[string]string) bool {
+	for key, value := range config {
+		if !strings.EqualFold(key, "forwardPayerEmail") {
+			continue
+		}
+		enabled, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err != nil {
+			return true
+		}
+		return enabled
+	}
+	return true
+}
+
+// providerExpiresInSeconds is the order's remaining validity in seconds, or 0
+// when the order carries no usable expiry.
+func providerExpiresInSeconds(order *dbent.PaymentOrder, now time.Time) int {
+	if order == nil || order.ExpiresAt.IsZero() {
+		return 0
+	}
+	remaining := int(order.ExpiresAt.Sub(now).Seconds())
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }
 
 func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {

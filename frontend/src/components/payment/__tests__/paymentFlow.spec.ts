@@ -74,6 +74,25 @@ describe('getVisibleMethods', () => {
 })
 
 describe('decidePaymentLaunch', () => {
+  it.each([[false], [true]])('routes Infini checkout through the redirect flow (mobile=%s)', (isMobile) => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://checkout.infini.money/pay/xyz',
+      currency: 'USD',
+      resume_token: 'resume-infini',
+    }), {
+      visibleMethod: 'infini',
+      orderType: 'balance',
+      isMobile,
+    })
+
+    // Infini returns only a checkout URL: no client secret, no QR payload, so
+    // both desktop (popup) and mobile (full-page) land on redirect_waiting.
+    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.paymentState.payUrl).toBe('https://checkout.infini.money/pay/xyz')
+    expect(decision.paymentState.paymentType).toBe('infini')
+    expect(decision.paymentState.currency).toBe('USD')
+  })
+
   it('uses Stripe popup waiting flow for desktop Alipay client secret', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       client_secret: 'cs_test',

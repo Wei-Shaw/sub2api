@@ -220,6 +220,20 @@ func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey str
 		if actual := strings.TrimSpace(metadata["status"]); actual != "" && !strings.EqualFold(actual, "SUCCEEDED") {
 			return fmt.Errorf("airwallex status mismatch: expected SUCCEEDED, got %s", actual)
 		}
+	case payment.TypeInfini:
+		// Only the currency is cross-checked. Infini webhooks carry no merchant
+		// identity, and a late payment settles an order whose upstream status is
+		// no longer "paid" — the provider already gates that on the confirmed
+		// on-chain amount.
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+			if actual == "" {
+				return fmt.Errorf("infini notification missing currency")
+			}
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("infini currency mismatch: expected %s, got %s", expected, actual)
+			}
+		}
 	}
 
 	return nil

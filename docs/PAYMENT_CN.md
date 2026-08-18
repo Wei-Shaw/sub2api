@@ -25,6 +25,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | 桌面二维码扫码、移动端支付宝跳转或当面付唤起 | 直接对接支付宝开放平台；移动端默认 WAP，也可选择当面付二维码唤起支付宝 |
 | **微信官方** | Native 扫码、H5、公众号/JSAPI 支付 | 直接对接微信支付 APIv3，按终端环境自动分流 |
 | **Stripe** | 银行卡、支付宝、微信支付、Link 等 | 国际支付，支持多币种 |
+| **Infini** | 加密货币（USDT 等） | 加密货币收单，法币计价、链上收款，托管收银台 |
 
 > 支付宝官方 / 微信官方与易支付可以同时作为后台服务商实例存在，但前台始终只展示 `支付宝`、`微信支付` 两个可见按钮。管理员需要分别为这两个按钮选择唯一支付来源：官方或易支付。官方渠道直接对接 API，资金直达商户账户，手续费更低；易支付通过第三方平台聚合，接入门槛更低。
 
@@ -162,6 +163,30 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **Publishable Key** | Stripe 可公开密钥（`pk_live_...` 或 `pk_test_...`） | 是 |
 | **Webhook Secret** | Stripe Webhook 签名密钥（`whsec_...`） | 是 |
 
+### Infini（加密货币）
+
+加密货币收单：订单以法币计价，用户在 Infini 托管收银台选择链和币种完成链上支付。下单后前台跳转到 `checkout_url`，支付结果通过 Webhook 回传。
+
+| 参数 | 说明 | 必填 |
+|------|------|------|
+| **Key ID** | Infini 开发者页面生成的商户公钥 | 是 |
+| **Secret Key** | 与 Key ID 配对的私钥，仅在生成时展示一次 | 是 |
+| **Webhook 密钥** | Webhook 验签密钥；后台未单独提供时填与 Secret Key 相同的值 | 是 |
+| **API 基础地址** | 生产 `https://openapi.infini.money`，沙箱 `https://openapi-sandbox.infini.money` | 是 |
+| **币种** | 订单计价币种，默认 USD。可选 USD/EUR/GBP/SGD/JPY/AUD/HKD，**不支持 CNY** | 是 |
+| **向服务商透传付款人邮箱** | 默认开启。少付或多付时 Infini 会向该邮箱发送退款认领链接；关闭则不外发邮箱 | 是 |
+
+> **服务器时钟**：Infini 要求请求时间与其服务器偏差在 ±300 秒内，超出会返回 401。请确保服务器已启用 NTP 校时。
+
+> **不支持退款与取消**：Infini 没有商户主动退款接口，实例的「退款」开关请保持关闭。少付、多付、晚付产生的款项由 Infini 向付款人邮箱发送认领链接处理。
+
+> **异常支付的处理口径**：
+> - **全额晚付**（订单过期后链上才确认到账）：24 小时内自动补充值，订单记 `ORDER_RECOVERED` 审计日志。
+> - **少付**（过期时只收到部分金额）：不入账，订单保持 `EXPIRED` 并记 `PAYMENT_PARTIAL_PAID` 审计日志，需人工跟进。这类订单**不会**变成 `FAILED`，也不能用管理后台的「重试充值」处理。
+> - **多付**：按订单金额正常入账，超出部分走 Infini 的认领退款流程。
+
+> **币种与入账**：启用「充值 CNY 换算汇率」后，只有 USD 和 CNY 通道能入账，其余币种在下单阶段直接拒单。Infini 实例若要配合该开关使用，币种必须选 USD（1:1 入账）。
+
 ---
 
 ## 服务商实例管理
@@ -203,8 +228,21 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **微信官方** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **Infini** | `https://your-domain.com/api/v1/payment/webhook/infini` |
 
 > 将 `your-domain.com` 替换为你的实际域名。EasyPay / 支付宝 / 微信的回调地址在添加服务商时自动填入，无需手动配置。
+
+### Infini Webhook 设置
+
+1. 登录 Infini 商户后台
+2. 进入开发者页面的 Webhook 配置
+3. 填写回调地址 `https://your-domain.com/api/v1/payment/webhook/infini`
+4. 订阅事件：`order.completed`、`order.expired`、`order.late_payment`
+5. 将 Webhook 密钥填入服务商配置
+
+> Infini 没有 Webhook 管理 API，回调地址无法由系统自动下发，必须手工在其后台配置。
+>
+> 一个 Infini 商户号只能配置**一个** Webhook 地址，因此一个商户号只能对接一个 Sub2API 部署。需要多实例时请使用多个商户号——回调通过订单号 `client_reference` 反查订单来定位实例，与易支付多实例的机制相同。
 
 ### Stripe Webhook 设置
 
@@ -239,7 +277,8 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
   ├─ EasyPay    → 扫码 / H5 跳转
   ├─ 支付宝官方  → 桌面扫码单（当面付优先，电脑网站支付回退）/ 移动端 WAP 或当面付唤起 + 动态二维码备用页
   ├─ 微信官方    → 桌面 Native 扫码 / 非微信 H5 / 微信内 JSAPI
-  └─ Stripe     → Payment Element（银行卡/支付宝/微信等）
+  ├─ Stripe     → Payment Element（银行卡/支付宝/微信等）
+  └─ Infini     → 跳转 Infini 托管收银台，链上支付
        │
        ▼
   支付回调验签 → 订单 PAID

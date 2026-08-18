@@ -630,7 +630,7 @@ func TestAlreadyProcessedRecoversStaleRechargingLease(t *testing.T) {
 		subscriptionSvc: NewSubscriptionService(groupRepo, userSubRepoNoop{}, nil, nil, nil),
 	}
 
-	require.NoError(t, svc.alreadyProcessed(ctx, order))
+	require.NoError(t, svc.alreadyProcessed(ctx, order, payment.TypeEasyPay))
 	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)

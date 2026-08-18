@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  INFINI_CURRENCIES,
+  INFINI_CURRENCY_OPTIONS,
+  METHOD_ORDER,
   PAYMENT_CURRENCY_OPTIONS,
+  PROVIDER_CALLBACK_PATHS,
   PROVIDER_CONFIG_FIELDS,
+  PROVIDER_SUPPORTED_TYPES,
+  PROVIDER_TOGGLE_OPTIONS,
+  providerSupportsRefund,
+  WEBHOOK_PATHS,
   isBuiltInAlipayMethod,
   isBuiltInWxpayMethod,
   parseEasyPayCustomMethods,
@@ -45,6 +53,62 @@ describe('PROVIDER_CONFIG_FIELDS.airwallex', () => {
 
   it('explains that apiBase must match the Airwallex key environment', () => {
     expect(findField('airwallex', 'apiBase')?.hintKey).toBe('admin.settings.payment.field_airwallexApiBaseHint')
+  })
+})
+
+describe('PROVIDER_CONFIG_FIELDS.infini', () => {
+  it('offers only the currencies Infini prices orders in, defaulting to USD', () => {
+    const currency = findField('infini', 'currency')
+
+    expect(currency?.defaultValue).toBe('USD')
+    expect(currency?.options).toBe(INFINI_CURRENCY_OPTIONS)
+    // Infini rejects CNY, so the shared default must not leak into this list.
+    expect(INFINI_CURRENCY_OPTIONS.map(option => option.value)).toEqual(INFINI_CURRENCIES)
+    expect(INFINI_CURRENCY_OPTIONS.map(option => option.value)).not.toContain('CNY')
+    expect(INFINI_CURRENCY_OPTIONS.every(option => PAYMENT_CURRENCY_OPTIONS.includes(option))).toBe(true)
+  })
+
+  it('marks only the two secrets as sensitive', () => {
+    const sensitive = (PROVIDER_CONFIG_FIELDS.infini || [])
+      .filter(field => field.sensitive)
+      .map(field => field.key)
+
+    // Must stay in sync with providerSensitiveConfigFields in
+    // backend/internal/service/payment_config_providers.go.
+    expect(sensitive).toEqual(['secretKey', 'webhookSecret'])
+  })
+
+  it('requires every credential the backend constructor validates', () => {
+    for (const key of ['keyId', 'secretKey', 'webhookSecret', 'apiBase']) {
+      expect(findField('infini', key)).toBeDefined()
+      expect(findField('infini', key)?.optional).toBeFalsy()
+    }
+    expect(findField('infini', 'apiBase')?.defaultValue).toBe('https://openapi.infini.money')
+  })
+
+  it('defaults payer email forwarding on and renders it as a toggle', () => {
+    const forward = findField('infini', 'forwardPayerEmail')
+
+    expect(forward?.defaultValue).toBe('true')
+    expect(forward?.options).toBe(PROVIDER_TOGGLE_OPTIONS)
+    expect(PROVIDER_TOGGLE_OPTIONS.map(option => option.value)).toEqual(['true', 'false'])
+    expect(PROVIDER_TOGGLE_OPTIONS.every(option => typeof option.labelKey === 'string')).toBe(true)
+  })
+
+  it('declares that Infini cannot refund', () => {
+    // Mirrors payment.ProviderSupportsRefund in the Go backend; Infini exposes
+    // no merchant-initiated refund API.
+    expect(providerSupportsRefund('infini')).toBe(false)
+    expect(providerSupportsRefund('stripe')).toBe(true)
+    expect(providerSupportsRefund('airwallex')).toBe(true)
+    expect(providerSupportsRefund('easypay')).toBe(true)
+  })
+
+  it('wires the webhook path and leaves callback URLs to the Infini console', () => {
+    expect(WEBHOOK_PATHS.infini).toBe('/api/v1/payment/webhook/infini')
+    expect(PROVIDER_CALLBACK_PATHS.infini).toBeUndefined()
+    expect(PROVIDER_SUPPORTED_TYPES.infini).toEqual(['infini'])
+    expect(METHOD_ORDER).toContain('infini')
   })
 })
 

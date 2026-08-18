@@ -18,6 +18,8 @@ export interface ConfigFieldDef {
 export interface TypeOption {
   value: string
   label: string
+  /** i18n key used in place of `label` when the option text needs translating. */
+  labelKey?: string
   [key: string]: unknown
 }
 
@@ -42,13 +44,22 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
   airwallex: ['airwallex'],
+  infini: ['infini'],
+}
+
+/** Provider keys with no merchant-initiated refund API. Mirrors
+ * payment.ProviderSupportsRefund in backend/internal/payment/types.go. */
+export const PROVIDERS_WITHOUT_REFUND: readonly string[] = ['infini']
+
+export function providerSupportsRefund(providerKey: string): boolean {
+  return !PROVIDERS_WITHOUT_REFUND.includes(providerKey)
 }
 
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
-export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
+export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex', 'infini'] as const
 
 export function isBuiltInAlipayMethod(type: string): boolean {
   return type === 'alipay' || type === 'alipay_direct'
@@ -81,6 +92,19 @@ export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'NZD', label: 'NZD' },
 ]
 
+/** Currencies Infini prices orders in; it accepts no CNY. */
+export const INFINI_CURRENCIES = ['USD', 'EUR', 'GBP', 'SGD', 'JPY', 'AUD', 'HKD']
+
+export const INFINI_CURRENCY_OPTIONS: TypeOption[] = INFINI_CURRENCIES.map(
+  code => PAYMENT_CURRENCY_OPTIONS.find(option => option.value === code) ?? { value: code, label: code },
+)
+
+/** On/off options for switch-style provider config fields. */
+export const PROVIDER_TOGGLE_OPTIONS: TypeOption[] = [
+  { value: 'true', label: 'true', labelKey: 'admin.settings.payment.toggleEnabled' },
+  { value: 'false', label: 'false', labelKey: 'admin.settings.payment.toggleDisabled' },
+]
+
 // 与后端当前集成的 stripe-go v85.0.0 的 stripe.APIVersion 保持一致。
 export const STRIPE_SDK_API_VERSION = '2026-03-25.dahlia'
 
@@ -110,6 +134,7 @@ export const WEBHOOK_PATHS: Record<string, string> = {
   wxpay: '/api/v1/payment/webhook/wxpay',
   stripe: '/api/v1/payment/webhook/stripe',
   airwallex: '/api/v1/payment/webhook/airwallex',
+  infini: '/api/v1/payment/webhook/infini',
 }
 
 export const RETURN_PATH = '/payment/result'
@@ -121,6 +146,7 @@ export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
   wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
   // stripe: 不需要回调 URL 配置，Webhook 单独配置。
   // airwallex: 不需要回调 URL 配置，Webhook 在空中云汇后台配置。
+  // infini: 不需要回调 URL 配置，Webhook 在 Infini 商户后台配置。
 }
 
 /** Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately). */
@@ -160,6 +186,14 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'countryCode', label: '', sensitive: false, defaultValue: 'CN' },
     { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
     { key: 'accountId', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_accountIdHint' },
+  ],
+  infini: [
+    { key: 'keyId', label: '', sensitive: false },
+    { key: 'secretKey', label: '', sensitive: true },
+    { key: 'webhookSecret', label: '', sensitive: true, hintKey: 'admin.settings.payment.field_infiniWebhookSecretHint' },
+    { key: 'apiBase', label: '', sensitive: false, defaultValue: 'https://openapi.infini.money', hintKey: 'admin.settings.payment.field_infiniApiBaseHint' },
+    { key: 'currency', label: '', sensitive: false, defaultValue: 'USD', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: INFINI_CURRENCY_OPTIONS },
+    { key: 'forwardPayerEmail', label: '', sensitive: false, defaultValue: 'true', hintKey: 'admin.settings.payment.field_forwardPayerEmailHint', options: PROVIDER_TOGGLE_OPTIONS },
   ],
 }
 

@@ -2,7 +2,10 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -18,6 +21,7 @@ const (
 	TypeLink         PaymentType = "link"
 	TypeEasyPay      PaymentType = "easypay"
 	TypeAirwallex    PaymentType = "airwallex"
+	TypeInfini       PaymentType = "infini"
 )
 
 // Order status constants shared across payment and service layers.
@@ -61,6 +65,12 @@ const (
 	NotificationStatusPaid    = "paid"
 )
 
+// Notification anomaly kinds. An anomaly is a non-success notification that
+// still requires an audit trail, without triggering fulfillment.
+const (
+	NotificationAnomalyPartialPaid = "partial_paid"
+)
+
 // Provider-level status constants returned by provider implementations
 // to the service layer (lowercase, distinct from OrderStatus uppercase constants).
 const (
@@ -86,6 +96,8 @@ func GetBasePaymentType(t string) string {
 		return TypeEasyPay
 	case t == TypeAirwallex:
 		return TypeAirwallex
+	case t == TypeInfini:
+		return TypeInfini
 	case t == TypeStripe || t == TypeCard || t == TypeLink:
 		return TypeStripe
 	case len(t) >= len(TypeAlipay) && t[:len(TypeAlipay)] == TypeAlipay:
@@ -95,6 +107,13 @@ func GetBasePaymentType(t string) string {
 	default:
 		return t
 	}
+}
+
+// ProviderSupportsRefund reports whether a provider key can process
+// merchant-initiated refunds. Infini has no refund API: short and excess
+// payments are settled by emailing a claim link to the payer.
+func ProviderSupportsRefund(providerKey string) bool {
+	return !strings.EqualFold(strings.TrimSpace(providerKey), TypeInfini)
 }
 
 // CreatePaymentRequest holds the parameters for creating a new payment.
@@ -112,6 +131,12 @@ type CreatePaymentRequest struct {
 	// alipay.trade.precreate instead of alipay.trade.wap.pay.
 	AlipayMobilePrecreate bool
 	InstanceSubMethods    string // Comma-separated sub-methods from instance supported_types (for Stripe)
+	// PayerEmail carries the payer's email to providers that use it for payment
+	// recovery. Empty when the instance disables forwarding.
+	PayerEmail string
+	// ExpiresIn is the remaining order validity in seconds. Zero leaves the
+	// expiry to the provider's own default.
+	ExpiresIn int
 }
 
 // CreatePaymentResultType describes the shape of the create-payment result.
@@ -175,6 +200,9 @@ type PaymentNotification struct {
 	Status   string // "success" or "failed"
 	RawData  string // Raw notification body for audit
 	Metadata map[string]string
+	// Anomaly names a non-success condition that must be recorded against the
+	// order (see NotificationAnomaly* constants). Empty for ordinary failures.
+	Anomaly string
 }
 
 // RefundRequest contains the parameters for requesting a refund.

@@ -48,6 +48,29 @@ describe('PaymentMethodSelector', () => {
     expect(wrapper.text()).not.toContain('payment.methods.ldc')
   })
 
+  it('gives Infini its own icon and selected style, ordered after the built-ins', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'infini',
+        methods: [
+          { type: 'infini', display_name: '', fee_rate: 0, available: true },
+          { type: 'alipay', display_name: '', fee_rate: 0, available: true },
+        ],
+      },
+    })
+
+    const buttons = wrapper.findAll('button')
+    // METHOD_ORDER puts the crypto entry last.
+    expect(buttons[0].attributes('title')).toBe('alipay')
+    expect(buttons[1].attributes('title')).toBe('infini')
+
+    expect(buttons[1].classes()).toContain('border-[#2BD4A4]')
+    expect(buttons[1].classes()).not.toContain('border-primary-500')
+
+    const icons = wrapper.findAll('img')
+    expect(icons.some(icon => icon.attributes('src')?.includes('infini'))).toBe(true)
+  })
+
   it('uses the generic selected style for custom methods that contain built-in names', () => {
     const wrapper = mount(PaymentMethodSelector, {
       props: {

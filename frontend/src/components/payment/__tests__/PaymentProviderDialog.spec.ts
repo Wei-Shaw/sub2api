@@ -21,6 +21,11 @@ const messages: Record<string, string> = {
   'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
+  'admin.settings.payment.infiniWebhookHint': 'Configure this URL in the Infini merchant console.',
+  'admin.settings.payment.field_forwardPayerEmail': 'Forward payer email',
+  'admin.settings.payment.field_forwardPayerEmailHint': 'Infini emails a refund claim link to the payer.',
+  'admin.settings.payment.toggleEnabled': 'On',
+  'admin.settings.payment.toggleDisabled': 'Off',
 }
 
 vi.mock('vue-i18n', () => ({
@@ -71,6 +76,7 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
         { value: 'airwallex', label: 'Airwallex' },
+        { value: 'infini', label: 'Infini' },
       ],
       allPaymentTypes: [
         { value: 'alipay', label: 'Alipay' },
@@ -137,6 +143,59 @@ describe('PaymentProviderDialog payment guide', () => {
     expect(wrapper.text()).toContain(messages['admin.settings.payment.stripeWebhookHint'])
     expect(wrapper.text()).toContain(`Use Stripe API version ${STRIPE_SDK_API_VERSION}.`)
     expect(wrapper.text()).toContain('/api/v1/payment/webhook/stripe')
+  })
+
+  it('shows Infini webhook guidance with the webhook URL', async () => {
+    const wrapper = mountDialog()
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('infini')
+    await nextTick()
+
+    expect(wrapper.text()).toContain(messages['admin.settings.payment.infiniWebhookHint'])
+    expect(wrapper.text()).toContain('/api/v1/payment/webhook/infini')
+  })
+
+  it('prefills Infini defaults and translates the payer-email toggle options', async () => {
+    const wrapper = mountDialog()
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('infini')
+    await nextTick()
+
+    const payload = (wrapper.vm as unknown as {
+      resolvedFields: { key: string; options?: { value: string; label: string }[] }[]
+      config: Record<string, string>
+    })
+    expect(payload.config.apiBase).toBe('https://openapi.infini.money')
+    expect(payload.config.currency).toBe('USD')
+    expect(payload.config.forwardPayerEmail).toBe('true')
+
+    const toggle = payload.resolvedFields.find(field => field.key === 'forwardPayerEmail')
+    expect(toggle?.options?.map(option => option.label)).toEqual(['On', 'Off'])
+    expect(wrapper.text()).toContain(messages['admin.settings.payment.field_forwardPayerEmailHint'])
+  })
+
+  it('keeps blank Infini secrets out of the payload so stored values survive an edit', async () => {
+    const provider = providerFactory({
+      provider_key: 'infini',
+      name: 'Infini',
+      supported_types: ['infini'],
+      config: {
+        keyId: 'pk_live_1',
+        apiBase: 'https://openapi.infini.money',
+        currency: 'USD',
+        forwardPayerEmail: 'true',
+      },
+    })
+    const wrapper = mountDialog({ editing: provider })
+
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    await wrapper.find('form').trigger('submit.prevent')
+
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    expect(payload.config.keyId).toBe('pk_live_1')
+    expect(payload.config).not.toHaveProperty('secretKey')
+    expect(payload.config).not.toHaveProperty('webhookSecret')
   })
 
   it('emits an empty Airwallex accountId when the admin clears it', async () => {
