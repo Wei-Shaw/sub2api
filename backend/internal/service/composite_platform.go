@@ -106,6 +106,12 @@ REDACTED
 			return PlatformGemini, true
 		case "xai", "x-ai", "grok":
 			return PlatformGrok, true
+		case "kimi", "moonshot":
+			return PlatformKimi, true
+		case "zhipu", "glm", "bigmodel":
+			return PlatformZhipu, true
+		case "deepseek":
+			return PlatformDeepseek, true
 	REDACTED
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")
@@ -133,6 +139,13 @@ REDACTED
 		return PlatformGemini, true
 	case normalized == "grok" || strings.HasPrefix(normalized, "grok-"):
 		return PlatformGrok, true
+	case strings.HasPrefix(normalized, "kimi-"),
+		strings.HasPrefix(normalized, "moonshot-"):
+		return PlatformKimi, true
+	case strings.HasPrefix(normalized, "glm-"):
+		return PlatformZhipu, true
+	case strings.HasPrefix(normalized, "deepseek-"):
+		return PlatformDeepseek, true
 	default:
 		return "", false
 REDACTED
@@ -179,7 +192,8 @@ REDACTED
 
 func isConcreteRequestPlatform(platform string) bool {
 	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok:
+	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
+		PlatformKimi, PlatformZhipu, PlatformDeepseek:
 		return true
 	default:
 		return false

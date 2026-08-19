@@ -22,19 +22,41 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, platform)
 REDACTED
 
-func TestOpenAICompatibleTextTargetAllowsCompositeGrokModel(t *testing.T) {
+func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, path := range []string{"/v1/messages", "/v1/chat/completions"REDACTED {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest("POST", path, nil)
-		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
-
-		require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, "grok-4.3"), "path=%s", path)
-		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
-		require.True(t, ok, "path=%s", path)
-		require.Equal(t, service.PlatformGrok, platform, "path=%s", path)
+	providers := []struct {
+		model    string
+		platform string
+REDACTED{
+		{model: "grok-4.3", platform: service.PlatformGrokREDACTED,
+		{model: "kimi-k2-thinking", platform: service.PlatformKimiREDACTED,
+		{model: "glm-5.2", platform: service.PlatformZhipuREDACTED,
+		{model: "deepseek-v3.2", platform: service.PlatformDeepseekREDACTED,
 REDACTED
+	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"REDACTED {
+		for _, provider := range providers {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", path, nil)
+			apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
+
+			require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, provider.model), "path=%s model=%s", path, provider.model)
+			platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+			require.True(t, ok, "path=%s model=%s", path, provider.model)
+			require.Equal(t, provider.platform, platform, "path=%s model=%s", path, provider.model)
+	REDACTED
+REDACTED
+REDACTED
+
+func TestResponsesWebSocketCompositePlatformGuardAllowsOpenAICompatibleProviders(t *testing.T) {
+	for _, platform := range []string{
+		service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi,
+		service.PlatformZhipu, service.PlatformDeepseek,
+REDACTED {
+		require.True(t, isOpenAICompatibleTextPlatform(platform), "platform=%s", platform)
+REDACTED
+	require.False(t, isOpenAICompatibleTextPlatform(service.PlatformAnthropic))
+	require.False(t, isOpenAICompatibleTextPlatform(service.PlatformGemini))
 REDACTED
 
 func TestCompositeTargetPlatformAllowedRejectsWrongOrUnknownModel(t *testing.T) {
