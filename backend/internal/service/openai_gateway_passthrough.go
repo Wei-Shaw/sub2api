@@ -484,6 +484,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	// DeepSeek 原生 Responses 端点为无状态实现（见 normalizeDeepSeekResponsesRequestBody）。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
 
+	// 出口兜底：见 applyChatGPTInternalEgressStrip。透传路径虽已在
+	// normalizeOpenAIPassthroughOAuthBody 清理过，但其后还有多处 body 重建
+	// （工具适配、指纹改写、模型改写），这里做最终保证。
+	body = applyChatGPTInternalEgressStrip(ctx, account, body, openAIEgressPassthrough)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err

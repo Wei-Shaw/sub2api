@@ -1073,6 +1073,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// previous_response_id，避免携带状态字段被上游拒绝。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
 
+	// 出口兜底：ChatGPT internal 不支持的顶层字段在此做最后一次清理，防止
+	// 上游任一转换分支遗漏或在清理后重建 body 导致 invalid_parameter 400。
+	body = applyChatGPTInternalEgressStrip(ctx, account, body, openAIEgressForward)
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
