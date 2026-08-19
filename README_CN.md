@@ -234,7 +234,7 @@ Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），�
 - `pass`：保留客户端传入的 `service_tier`；`fast` 会规范为上游使用的 `priority`。
 - `filter`：移除 `service_tier`，按普通优先级请求。
 - `block`：拒绝匹配的 Fast/Flex 请求。
-- `force_priority`：将匹配请求强制设置为 `priority`。这种方式可以让请求实际使用 Fast，但 Codex UI 仍可能不显示 Fast 状态。
+- `force_priority`：将匹配请求强制设置为 `priority`。对 OpenAI 账号，即使客户端省略 `service_tier` 也会注入 `priority`；这会按 Priority/Fast 价格计费，启用前应确认定价和规则覆盖范围。非 OpenAI 平台不会执行缺省 tier 注入。这种方式可以让请求实际使用 Fast，但 Codex UI 仍可能不显示 Fast 状态。
 
 Codex 的 Fast 入口由客户端模型目录驱动。只有当前模型目录声明了 `additional_speed_tiers: ["fast"]` 和对应的 `service_tiers`，Codex 才会显示 `/fast`。通过 API Key 或自定义模型提供商连接 Sub2API 时，如果模型目录没有这些字段，即使后台配置了 `force_priority`，重启 Codex 后也不会出现 Speed 选项。
 

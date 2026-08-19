@@ -957,6 +957,9 @@ func (s *OpenAIGatewayService) evaluateOpenAIFastPolicy(ctx context.Context, acc
 // target tier, but only honor force_priority: filter/block/pass rules continue
 // to apply exclusively to requests that explicitly selected a tier.
 func (s *OpenAIGatewayService) shouldForceOpenAIFastPriorityForMissingTier(ctx context.Context, account *Account, model string) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
 	action, _ := s.evaluateOpenAIFastPolicy(ctx, account, model, OpenAIFastTierPriority)
 	return action == OpenAIFastPolicyActionForcePriority
 }
