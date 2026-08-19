@@ -1638,9 +1638,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputReturnsFailover(t *testing.T) 
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1680,9 +1681,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1731,9 +1733,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1773,9 +1776,10 @@ func TestOpenAIStreamingResponseFailedBeforeOutputRateLimitUsesPoolRetryPolicy(t
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1837,9 +1841,10 @@ func TestOpenAIStreamingResponseFailedRateLimitDoesNotBlockAccountScheduling(t *
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1934,9 +1939,10 @@ func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputPassesThrough(t *
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -1972,9 +1978,10 @@ func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputAppliesPassthroug
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2026,9 +2033,10 @@ func TestOpenAIStreamingPreambleOnlyMissingTerminalReturnsFailover(t *testing.T)
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			StreamDataIntervalTimeout: 0,
-			StreamKeepaliveInterval:   0,
-			MaxLineSize:               defaultMaxLineSize,
+			StreamDataIntervalTimeout:               0,
+			StreamKeepaliveInterval:                 0,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2065,8 +2073,9 @@ func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
 			StreamDataIntervalTimeout: 0,
 			// Keepalive is based on *downstream* idle time (last flush to client),
 			// not upstream event cadence. Interval is seconds (config unit).
-			StreamKeepaliveInterval: 1,
-			MaxLineSize:             defaultMaxLineSize,
+			StreamKeepaliveInterval:                 1,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2302,7 +2311,8 @@ func TestOpenAIStreamingPassthroughMissingTerminalEventReturnsIncompleteError(t 
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			MaxLineSize: defaultMaxLineSize,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2371,7 +2381,8 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			MaxLineSize: defaultMaxLineSize,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
@@ -2407,7 +2418,8 @@ func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputApplie
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			MaxLineSize: defaultMaxLineSize,
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
 		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}

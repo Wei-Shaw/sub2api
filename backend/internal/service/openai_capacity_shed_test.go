@@ -94,6 +94,8 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded"}}}`, "response.failed", false},
 		{`{"type":"response.created","response":{"id":"resp_1"}}`, "response.created", false},
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
+		{`{"type":"response.queued","response":{"id":"resp_1"}}`, "response.queued", false},
+		{`{"type":"keepalive","sequence_number":3}`, "keepalive", false},
 		{`{"type":"response.output_text.delta","delta":"hi"}`, "response.output_text.delta", true},
 		{`[DONE]`, "", true},
 	}
@@ -107,7 +109,10 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
-		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+		Gateway: config.GatewayConfig{
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
+		},
 	}
 	svc := &OpenAIGatewayService{cfg: cfg}
 
@@ -124,11 +129,17 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 			"event: response.in_progress",
 			`data: {"type":"response.in_progress","response":{"id":"resp_1"},"sequence_number":1}`,
 			"",
+			"event: response.queued",
+			`data: {"response":{"id":"resp_1"},"sequence_number":2}`,
+			"",
+			"event: keepalive",
+			`data: {"sequence_number":3}`,
+			"",
 			"event: error",
-			`data: {"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."},"sequence_number":2}`,
+			`data: {"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."},"sequence_number":4}`,
 			"",
 			"event: response.failed",
-			`data: {"type":"response.failed","response":{"id":"resp_1","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}},"sequence_number":3}`,
+			`data: {"response":{"id":"resp_1","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}},"sequence_number":5}`,
 			"",
 		}, "\n"))),
 		Header: http.Header{"X-Request-Id": []string{"rid-shed-error-then-failed"}},
@@ -140,6 +151,43 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 	require.ErrorAs(t, err, &failoverErr)
 	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.True(t, failoverErr.RequestScopedTransient)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamCapacityErrorEventImmediatelyFailsOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize:                             defaultMaxLineSize,
+			OpenAIResponsesFirstEventTimeoutSeconds: 2,
+		},
+	}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.queued",
+			`data: {"response":{"id":"resp_capacity"}}`,
+			"",
+			"event: error",
+			`data: {"error":{"code":"server_is_overloaded","message":"model capacity exhausted"}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-capacity-error"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{
+		ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Name: "acc",
+	}, time.Now(), "model", "model")
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Contains(t, string(failoverErr.ResponseBody), "model capacity exhausted")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }
