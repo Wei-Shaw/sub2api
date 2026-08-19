@@ -133,16 +133,15 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 
 	// 尽量使用事务保证范围内的一致性（允许在非 *sql.DB 的情况下退化为非事务执行）。
 	if db, ok := r.sql.(*sql.DB); ok {
+		// 三段刻意分开提交，避免 usage_group_rollup_state 的行锁笼罩慢查询：
+		// 该锁与 usage_logs 的 INSERT 触发器冲突，持锁多久写入就阻塞多久。
+		// 1) 短事务标记分组日桶失效——只写状态行，毫秒级。
+		if err := invalidateGroupUsageRollups(ctx, db, start); err != nil {
+			return err
+		}
+		// 2) 仪表盘桶重建，独立事务且不碰状态行，因此不阻塞写入。
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
-			return err
-		}
-		if err := lockGroupUsageRollupState(ctx, tx); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, start); err != nil {
-			_ = tx.Rollback()
 			return err
 		}
 		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
@@ -150,13 +149,31 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 			_ = tx.Rollback()
 			return err
 		}
-		if err := txRepo.syncGroupUsageRollupsInTx(ctx, service.GroupUsageTodayStart(r.now())); err != nil {
-			_ = tx.Rollback()
+		if err := tx.Commit(); err != nil {
 			return err
 		}
-		return tx.Commit()
+		// 3) 分组日桶按天分块重建，每天一个短事务。
+		// 步骤 1 已持久化失效标记，即使这里中断，后续周期同步也会补上。
+		return r.SyncGroupUsageRollups(ctx, service.GroupUsageTodayStart(r.now()))
 	}
 	return r.recomputeRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd)
+}
+
+// invalidateGroupUsageRollups 在独立短事务里把发布水位回退到受影响日期。
+func invalidateGroupUsageRollups(ctx context.Context, db *sql.DB, affectedAt time.Time) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := invalidateGroupUsageRollupsAt(ctx, tx, affectedAt); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *dashboardAggregationRepository) recomputeRangeInTx(ctx context.Context, hourStart, hourEnd, dayStart, dayEnd time.Time) error {

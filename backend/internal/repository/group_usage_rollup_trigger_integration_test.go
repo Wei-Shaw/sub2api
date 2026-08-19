@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,6 +193,124 @@ func TestCleanupUsageLogsArchivesWithoutRecomputingRollups(t *testing.T) {
 	require.InDelta(t, before[0].TotalCost, after[0].TotalCost, 0.0000001, "累计用量不得因归档缩水")
 	require.InDelta(t, 4, after[0].TodayCost, 0.0000001)
 	require.InDelta(t, 3, after[0].YesterdayCost, 0.0000001)
+}
+
+// 多天回填必须按天分块提交：每块结束就释放 usage_group_rollup_state 的行锁，
+// usage_logs 的写入才不会被整段重建挡住。这里用真实并发写入验证。
+func TestSyncGroupUsageRollupsChunksByDayAndReleasesLockBetweenDays(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	todayStart := time.Date(2026, 8, 13, 16, 0, 0, 0, time.UTC)
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 1, TIMESTAMPTZ '2026-08-10 12:00:00+08'),
+			(2, 1, 10, 2, TIMESTAMPTZ '2026-08-11 12:00:00+08'),
+			(3, 1, 10, 3, TIMESTAMPTZ '2026-08-12 12:00:00+08'),
+			(4, 1, 10, 4, TIMESTAMPTZ '2026-08-13 12:00:00+08'),
+			(5, 1, 10, 5, TIMESTAMPTZ '2026-08-14 12:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-10',
+			retained_from = TIMESTAMPTZ '2026-08-10 12:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	// 分块跑在真实连接池上，才能观察到块之间锁被释放。
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	repo := newDashboardAggregationRepositoryWithSQL(scopedDB)
+	require.NoError(t, repo.SyncGroupUsageRollups(ctx, todayStart))
+
+	var closedBefore string
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&closedBefore))
+	require.Equal(t, "2026-08-14", closedBefore, "水位应追平今日")
+
+	// 08-10 ~ 08-13 四天各一个桶；今日（08-14）走原始日志尾段，不应留桶。
+	rows, err := scopedDB.QueryContext(ctx, `
+		SELECT bucket_date::text, actual_cost
+		FROM usage_group_daily_rollups
+		WHERE group_id = 10
+		ORDER BY bucket_date
+	`)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	buckets := map[string]float64{}
+	for rows.Next() {
+		var date string
+		var cost float64
+		require.NoError(t, rows.Scan(&date, &cost))
+		buckets[date] = cost
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, map[string]float64{
+		"2026-08-10": 1, "2026-08-11": 2, "2026-08-12": 3, "2026-08-13": 4,
+	}, buckets)
+
+	usageRepo := newUsageLogRepositoryWithSQL(nil, scopedDB)
+	result, err := usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	require.InDelta(t, 15, result[0].TotalCost, 0.0000001)
+	require.InDelta(t, 5, result[0].TodayCost, 0.0000001)
+	require.InDelta(t, 4, result[0].YesterdayCost, 0.0000001)
+}
+
+// 分块把锁持有压到单日：即便有写入正持有状态行的 KEY SHARE，
+// 同步也只会卡在当前这一天，而非整段区间。
+func TestSyncGroupUsageRollupsResumesFromPersistedWatermark(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 1, TIMESTAMPTZ '2026-08-10 12:00:00+08'),
+			(2, 1, 10, 2, TIMESTAMPTZ '2026-08-11 12:00:00+08'),
+			(3, 1, 10, 3, TIMESTAMPTZ '2026-08-12 12:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-10',
+			retained_from = TIMESTAMPTZ '2026-08-10 12:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	repo := newDashboardAggregationRepositoryWithSQL(scopedDB)
+
+	// 先只追到 08-12，模拟上一轮被打断在中途。
+	require.NoError(t, repo.SyncGroupUsageRollups(ctx, time.Date(2026, 8, 11, 16, 0, 0, 0, time.UTC)))
+	var midWatermark string
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&midWatermark))
+	require.Equal(t, "2026-08-12", midWatermark, "中断点应已持久化")
+
+	// 下一轮从持久化水位续跑，不重复已发布的日子。
+	require.NoError(t, repo.SyncGroupUsageRollups(ctx, time.Date(2026, 8, 12, 16, 0, 0, 0, time.UTC)))
+	var finalWatermark string
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT closed_before::text FROM usage_group_rollup_state WHERE id = 1
+	`).Scan(&finalWatermark))
+	require.Equal(t, "2026-08-13", finalWatermark)
+
+	var total float64
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(actual_cost), 0) FROM usage_group_daily_rollups WHERE group_id = 10
+	`).Scan(&total))
+	require.InDelta(t, 6, total, 0.0000001, "续跑不得重复或漏算")
 }
 
 // 保留期清理后累计用量不缩水：原始日志已不在，日桶依旧全额计入。
@@ -641,6 +761,23 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 	require.NoError(t, tx.Commit())
 
 	return schema
+}
+
+// newGroupUsageRollupSchemaDB 返回 search_path 固定在测试 schema 的独立连接池。
+// 分块同步每天开一个新事务，必须有真实的 *sql.DB 才能观察到跨事务行为。
+func newGroupUsageRollupSchemaDB(t *testing.T, schema string) *sql.DB {
+	t.Helper()
+
+	separator := "?"
+	if strings.Contains(integrationDSN, "?") {
+		separator = "&"
+	}
+	scopedDSN := integrationDSN + separator + "options=" + url.QueryEscape("-c search_path="+schema)
+	db, err := sql.Open("postgres", scopedDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	require.NoError(t, db.PingContext(context.Background()))
+	return db
 }
 
 func beginGroupUsageRollupTriggerTestTx(t *testing.T, ctx context.Context, schema string) *sql.Tx {
