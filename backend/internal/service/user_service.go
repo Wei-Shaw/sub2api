@@ -74,7 +74,14 @@ type UserListFilters struct {
 	// bound to this group (api_keys.group_id). 0 = no filter. Covers all three
 	// group types since it matches the key's group directly, not allowed_groups.
 	APIKeyGroupID int64
-	Attributes    map[int64]string // Custom attribute filters: attributeID -> value
+	// TagIDs filters administrative user-profile tags. TagMatch is "any" (default) or "all".
+	TagIDs   []int64
+	TagMatch string
+	// UserIDs/FilterByUserIDs are populated by the segmentation service after resolving tags.
+	// FilterByUserIDs=true with an empty slice means no user can match.
+	UserIDs         []int64
+	FilterByUserIDs bool
+	Attributes      map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).

@@ -23,6 +23,8 @@ type User struct {
 	Concurrency    int
 	Status         string
 	AllowedGroups  []int64
+	HiddenGroupIDs []int64 // 用户侧隐藏的模型分组 ID；不改变分组授权或 API Key 绑定
+	Tags           []UserTag
 	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
 	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
 	// value expected in JWT claims and refresh-token state.

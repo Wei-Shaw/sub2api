@@ -527,6 +527,12 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	if filters.Role != "" {
 		q = q.Where(dbuser.RoleEQ(filters.Role))
 	}
+	if filters.FilterByUserIDs {
+		if len(filters.UserIDs) == 0 {
+			return []service.User{}, paginationResultFromTotal(0, params), nil
+		}
+		q = q.Where(dbuser.IDIn(filters.UserIDs...))
+	}
 	if filters.Search != "" {
 		q = q.Where(
 			dbuser.Or(

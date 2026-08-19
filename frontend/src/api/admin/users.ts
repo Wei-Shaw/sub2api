@@ -4,7 +4,13 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey } from '@/types'
+import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey, UserTag } from '@/types'
+
+export type TagMatch = 'any' | 'all'
+export interface UserTagInput { name: string; color?: string; description?: string }
+export interface BatchUserTagsRequest { user_ids: number[]; tag_ids: number[]; mode: 'add' | 'remove' | 'replace' }
+export interface BatchHiddenGroupsRequest { user_ids: number[]; group_ids: number[] }
+export interface BatchAffectedResponse { affected: number }
 
 export interface AdminBindAuthIdentityChannelRequest {
   channel: string
@@ -72,6 +78,8 @@ export async function list(
     search?: string
     group_name?: string         // fuzzy filter by allowed group name
     api_key_group_id?: number   // filter users by the group their API keys are bound to
+    tag_ids?: number[]
+    tag_match?: TagMatch
     attributes?: Record<number, string>  // attributeId -> value
     include_subscriptions?: boolean
     sort_by?: string
@@ -90,6 +98,8 @@ export async function list(
     search: filters?.search,
     group_name: filters?.group_name,
     api_key_group_id: filters?.api_key_group_id,
+    tag_ids: filters?.tag_ids?.join(','),
+    tag_match: filters?.tag_match,
     include_subscriptions: filters?.include_subscriptions,
     sort_by: filters?.sort_by,
     sort_order: filters?.sort_order
@@ -193,6 +203,30 @@ export async function updateBalance(
  */
 export async function updateConcurrency(id: number, concurrency: number): Promise<AdminUser> {
   return update(id, { concurrency })
+}
+
+export async function listTags(): Promise<UserTag[]> {
+  const { data } = await apiClient.get<UserTag[]>('/admin/users/tags')
+  return data
+}
+export async function createTag(input: UserTagInput): Promise<UserTag> {
+  const { data } = await apiClient.post<UserTag>('/admin/users/tags', input)
+  return data
+}
+export async function updateTag(tagId: number, input: UserTagInput): Promise<UserTag> {
+  const { data } = await apiClient.put<UserTag>(`/admin/users/tags/${tagId}`, input)
+  return data
+}
+export async function deleteTag(tagId: number): Promise<void> {
+  await apiClient.delete(`/admin/users/tags/${tagId}`)
+}
+export async function batchUpdateTags(request: BatchUserTagsRequest): Promise<BatchAffectedResponse> {
+  const { data } = await apiClient.post<BatchAffectedResponse>('/admin/users/batch-tags', request)
+  return data
+}
+export async function batchUpdateHiddenGroups(request: BatchHiddenGroupsRequest): Promise<BatchAffectedResponse> {
+  const { data } = await apiClient.post<BatchAffectedResponse>('/admin/users/batch-hidden-groups', request)
+  return data
 }
 
 /** Overwrite concurrency and/or RPM limits for multiple users in one request. */
@@ -408,6 +442,12 @@ export const usersAPI = {
   updateBalance,
   updateConcurrency,
   batchUpdateLimits,
+  listTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  batchUpdateTags,
+  batchUpdateHiddenGroups,
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,

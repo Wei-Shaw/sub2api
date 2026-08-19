@@ -101,7 +101,18 @@ export interface User {
   deleted_at?: string | null
 }
 
+export interface UserTag {
+  id: number
+  name: string
+  color: string
+  description: string
+  created_at: string
+  updated_at: string
+}
+
 export interface AdminUser extends User {
+  tags?: UserTag[]
+  hidden_group_ids?: number[]
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null

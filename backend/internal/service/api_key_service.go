@@ -288,6 +288,7 @@ type APIKeyService struct {
 	groupRepo                 GroupRepository
 	userSubRepo               UserSubscriptionRepository
 	userGroupRateRepo         UserGroupRateRepository
+	userSegmentation          *UserSegmentationService
 	cache                     APIKeyCache
 	rateLimitCacheInvalid     RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
 	concurrencyService        *ConcurrencyService
@@ -369,6 +370,10 @@ func (s *APIKeyService) SetConcurrencyService(concurrencyService *ConcurrencySer
 	s.concurrencyService = concurrencyService
 }
 
+func (s *APIKeyService) SetUserSegmentationService(segmentation *UserSegmentationService) {
+	s.userSegmentation = segmentation
+}
+
 func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
 	if apiKey == nil {
 		return
@@ -444,17 +449,33 @@ func (s *APIKeyService) incrementAPIKeyErrorCount(ctx context.Context, userID in
 	_ = s.cache.IncrementCreateAttemptCount(ctx, userID)
 }
 
-// canUserBindGroup 检查用户是否可以绑定指定分组
-// 对于订阅类型分组：检查用户是否有有效订阅
-// 对于标准类型分组：使用原有的 AllowedGroups 和 IsExclusive 逻辑
+// canUserBindGroup 检查用户是否可以绑定指定模型分组。
+// 管理员为用户隐藏的分组对该用户不可见、不可新绑定；已有 Key 的分组绑定不会被自动迁移。
 func (s *APIKeyService) canUserBindGroup(ctx context.Context, user *User, group *Group) bool {
-	// 订阅类型分组：需要有效订阅
+	if user == nil || group == nil || s.isGroupHiddenForUser(ctx, user.ID, group.ID) {
+		return false
+	}
 	if group.IsSubscriptionType() {
 		_, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, user.ID, group.ID)
-		return err == nil // 有有效订阅则允许
+		return err == nil
 	}
-	// 标准类型分组：使用原有逻辑
 	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+func (s *APIKeyService) isGroupHiddenForUser(ctx context.Context, userID, groupID int64) bool {
+	if s.userSegmentation == nil || userID <= 0 || groupID <= 0 {
+		return false
+	}
+	hidden, err := s.userSegmentation.HiddenGroupsByUserIDs(ctx, []int64{userID})
+	if err != nil {
+		return true // 可见性数据失败时保守拒绝，避免隐藏设置失效。
+	}
+	for _, id := range hidden[userID] {
+		if id == groupID {
+			return true
+		}
+	}
+	return false
 }
 
 // Create 创建API Key
@@ -1042,9 +1063,23 @@ func (s *APIKeyService) GetAvailableGroups(ctx context.Context, userID int64) ([
 		subscribedGroupIDs[sub.GroupID] = true
 	}
 
-	// 过滤出用户有权限的分组
+	hiddenGroupIDs := make(map[int64]struct{})
+	if s.userSegmentation != nil {
+		hiddenByUser, err := s.userSegmentation.HiddenGroupsByUserIDs(ctx, []int64{userID})
+		if err != nil {
+			return nil, fmt.Errorf("list hidden model groups: %w", err)
+		}
+		for _, groupID := range hiddenByUser[userID] {
+			hiddenGroupIDs[groupID] = struct{}{}
+		}
+	}
+
+	// 过滤出用户有权限且未被管理员隐藏的模型分组。
 	availableGroups := make([]Group, 0)
 	for _, group := range allGroups {
+		if _, hidden := hiddenGroupIDs[group.ID]; hidden {
+			continue
+		}
 		if s.canUserBindGroupInternal(user, &group, subscribedGroupIDs) {
 			availableGroups = append(availableGroups, group)
 		}
@@ -1085,6 +1120,21 @@ func (s *APIKeyService) GetUserAllowedGroupIDSet(ctx context.Context, userID int
 		allowed[id] = struct{}{}
 	}
 	return allowed, nil
+}
+
+func (s *APIKeyService) GetUserHiddenGroupIDSet(ctx context.Context, userID int64) (map[int64]struct{}, error) {
+	hidden := make(map[int64]struct{})
+	if s.userSegmentation == nil {
+		return hidden, nil
+	}
+	byUser, err := s.userSegmentation.HiddenGroupsByUserIDs(ctx, []int64{userID})
+	if err != nil {
+		return nil, fmt.Errorf("get hidden model groups: %w", err)
+	}
+	for _, id := range byUser[userID] {
+		hidden[id] = struct{}{}
+	}
+	return hidden, nil
 }
 
 // GetUserGroupRates 获取用户的专属分组倍率配置

@@ -13,6 +13,8 @@ vi.mock('@/api/client', () => ({
 import {
   batchUpdateLimits,
   bindUserAuthIdentity,
+  batchUpdateTags,
+  batchUpdateHiddenGroups,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -130,6 +132,20 @@ describe('admin users api auth identity binding', () => {
   it('keeps bind auth identity request and response types aligned with the backend contract', () => {
     expect(requestContractExact).toBe(true)
     expect(responseContractExact).toBe(true)
+  })
+
+  it('posts batch tag updates with explicit mode and ids', async () => {
+    const request = { user_ids: [4, 7], tag_ids: [2, 3], mode: 'add' as const }
+    post.mockResolvedValue({ data: { affected: 4 } })
+    await batchUpdateTags(request)
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-tags', request)
+  })
+
+  it('posts batch hidden model-group visibility updates without changing key bindings', async () => {
+    const request = { user_ids: [4, 7], group_ids: [10] }
+    post.mockResolvedValue({ data: { affected: 2 } })
+    await batchUpdateHiddenGroups(request)
+    expect(post).toHaveBeenCalledWith('/admin/users/batch-hidden-groups', request)
   })
 
   it('posts batch limit updates once with only the supplied limit fields', async () => {

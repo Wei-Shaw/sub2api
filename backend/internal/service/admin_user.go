@@ -20,6 +20,17 @@ import (
 
 // User management implementations
 func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error) {
+	if len(filters.TagIDs) > 0 {
+		if s.userSegmentation == nil || s.userSegmentation.repo == nil {
+			return nil, 0, fmt.Errorf("user segmentation service is unavailable")
+		}
+		userIDs, err := s.userSegmentation.repo.FilterUserIDs(ctx, cleanPositiveIDs(filters.TagIDs), filters.TagMatch)
+		if err != nil {
+			return nil, 0, fmt.Errorf("filter users by tags: %w", err)
+		}
+		filters.UserIDs = userIDs
+		filters.FilterByUserIDs = true
+	}
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
 	users, result, err := s.userRepo.ListWithFilters(ctx, params, filters)
 	if err != nil {
@@ -37,6 +48,24 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 			for i := range users {
 				users[i].LastUsedAt = lastUsedByUserID[users[i].ID]
 			}
+		}
+	}
+	if s.userSegmentation != nil && len(users) > 0 {
+		userIDs := make([]int64, 0, len(users))
+		for i := range users {
+			userIDs = append(userIDs, users[i].ID)
+		}
+		tagsByUser, err := s.userSegmentation.TagsByUserIDs(ctx, userIDs)
+		if err != nil {
+			return nil, 0, fmt.Errorf("load user tags: %w", err)
+		}
+		hiddenGroupsByUser, err := s.userSegmentation.HiddenGroupsByUserIDs(ctx, userIDs)
+		if err != nil {
+			return nil, 0, fmt.Errorf("load hidden model groups: %w", err)
+		}
+		for i := range users {
+			users[i].Tags = tagsByUser[users[i].ID]
+			users[i].HiddenGroupIDs = hiddenGroupsByUser[users[i].ID]
 		}
 	}
 	// 批量加载用户专属分组倍率
@@ -88,6 +117,18 @@ func (s *adminServiceImpl) GetUser(ctx context.Context, id int64) (*User, error)
 		logger.LegacyPrintf("service.admin", "failed to load user last_used_at: user_id=%d err=%v", id, latestErr)
 	} else {
 		user.LastUsedAt = lastUsedAt
+	}
+	if s.userSegmentation != nil {
+		tagsByUser, err := s.userSegmentation.TagsByUserIDs(ctx, []int64{id})
+		if err != nil {
+			return nil, fmt.Errorf("load user tags: %w", err)
+		}
+		hiddenByUser, err := s.userSegmentation.HiddenGroupsByUserIDs(ctx, []int64{id})
+		if err != nil {
+			return nil, fmt.Errorf("load hidden model groups: %w", err)
+		}
+		user.Tags = tagsByUser[id]
+		user.HiddenGroupIDs = hiddenByUser[id]
 	}
 	// 加载用户专属分组倍率
 	if s.userGroupRateRepo != nil {

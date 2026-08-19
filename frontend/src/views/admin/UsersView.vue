@@ -61,7 +61,18 @@
               />
             </div>
 
-            <!-- API Key Group Filter (visible when enabled) -->
+            <!-- User profile tag filter (multi-select; ANY/ALL) -->
+             <div v-if="visibleFilters.has('tags')" class="flex w-full items-center gap-2 sm:w-auto">
+               <select v-model="filters.tags" multiple class="input min-w-44 py-1" :aria-label="t('admin.users.tagFilter')" @change="applyFilter">
+                 <option v-for="tag in allTags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+               </select>
+               <Select v-model="filters.tagMatch" :options="[
+                 { value: 'any', label: t('admin.users.tagMatchAny') },
+                 { value: 'all', label: t('admin.users.tagMatchAll') }
+               ]" @change="applyFilter" />
+             </div>
+
+             <!-- API Key Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('apiKeyGroup')" class="w-full sm:w-44">
               <Select
                 v-model="filters.apiKeyGroup"
@@ -242,6 +253,8 @@
               </button>
             </div>
 
+            <button v-if="selectedCount > 0" class="btn btn-secondary" @click="showBulkTagsModal = true">{{ t('admin.users.bulkTags.action') }}</button>
+            <button v-if="selectedCount > 0" class="btn btn-secondary" @click="showBulkHiddenGroupsModal = true">{{ t('admin.users.bulkHiddenGroups.action') }}</button>
             <button
               v-if="selectedCount > 0"
               class="btn btn-secondary flex-1 md:flex-initial"
@@ -323,6 +336,10 @@
                 {{ getAttributeValue(row.id, def.id) }}
               </span>
             </div>
+          </template>
+
+          <template #cell-tags="{ row }">
+            <div class="flex flex-wrap gap-1"><span v-for="tag in row.tags || []" :key="tag.id" class="badge text-xs" :style="{ backgroundColor: tag.color, color: '#fff' }">{{ tag.name }}</span><span v-if="!(row.tags || []).length" class="text-xs text-gray-400">-</span></div>
           </template>
 
           <template #cell-role="{ value }">
@@ -756,6 +773,18 @@
       @close="showBulkEditModal = false"
       @success="handleBulkLimitsSuccess"
     />
+    <BulkEditUserTagsModal
+      :show="showBulkTagsModal"
+      :selected-ids="selectedIds"
+      @close="showBulkTagsModal = false"
+      @success="handleBulkSegmentationSuccess"
+    />
+    <BulkEditUserHiddenGroupsModal
+      :show="showBulkHiddenGroupsModal"
+      :selected-ids="selectedIds"
+      @close="showBulkHiddenGroupsModal = false"
+      @success="handleBulkSegmentationSuccess"
+    />
     <UserPlatformQuotaModal
       :show="showPlatformQuotaModal"
       :user="platformQuotaUser"
@@ -804,6 +833,8 @@ import UserPlatformQuotaCell from '@/components/user/UserPlatformQuotaCell.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
+import BulkEditUserTagsModal from '@/components/admin/user/BulkEditUserTagsModal.vue'
+import BulkEditUserHiddenGroupsModal from '@/components/admin/user/BulkEditUserHiddenGroupsModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
@@ -865,6 +896,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'id', label: t('admin.users.columns.id'), sortable: true },
   { key: 'username', label: t('admin.users.columns.username'), sortable: true },
   { key: 'notes', label: t('admin.users.columns.notes'), sortable: false },
+  { key: 'tags', label: t('admin.users.columns.tags'), sortable: false },
   // Dynamic attribute columns
   ...attributeColumns.value,
   { key: 'role', label: t('admin.users.columns.role'), sortable: true },
@@ -1055,6 +1087,16 @@ const loadAllGroups = async () => {
 
 // Groups for the API Key group filter — includes disabled groups so admins can
 // filter users whose keys are still bound to a now-disabled group.
+const allTags = ref<NonNullable<AdminUser['tags']>[number][]>([])
+const loadAllTags = async () => {
+  if (allTags.value.length > 0) return
+  try {
+    allTags.value = await adminAPI.users.listTags()
+  } catch (e) {
+    console.error('Failed to load user tags:', e)
+  }
+}
+
 const allGroupsForApiKeyFilter = ref<AdminGroup[]>([])
 const loadAllGroupsForApiKeyFilter = async () => {
   if (allGroupsForApiKeyFilter.value.length > 0) return
@@ -1064,12 +1106,14 @@ const loadAllGroupsForApiKeyFilter = async () => {
     console.error('Failed to load groups for API key filter:', e)
   }
 }
-// Resolve user's accessible groups: exclusive groups first, then public groups
+// Resolve the model groups visible to this user. This is separate from
+// user-profile tags and from allowed_groups (exclusive-group authorization).
 const getUserGroups = (user: AdminUser) => {
   const exclusive: AdminGroup[] = []
   const publicGroups: AdminGroup[] = []
+  const hidden = new Set(user.hidden_group_ids || [])
   for (const g of allGroups.value) {
-    if (g.status !== 'active' || g.subscription_type !== 'standard') continue
+    if (g.status !== 'active' || g.subscription_type !== 'standard' || hidden.has(g.id)) continue
     if (g.is_exclusive) {
       if (user.allowed_groups?.includes(g.id)) {
         exclusive.push(g)
@@ -1110,7 +1154,9 @@ const filters = reactive({
   role: '',
   status: '',
   group: '',  // group name for fuzzy match, '' = all
-  apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
+  apiKeyGroup: null as number | null,
+  tags: [] as number[],
+  tagMatch: 'any' as 'any' | 'all'
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
@@ -1140,7 +1186,8 @@ const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
   { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
   { key: 'group', name: t('admin.users.authorizedGroupFilter'), type: 'select' as const },
-  { key: 'apiKeyGroup', name: t('admin.users.apiKeyGroupFilter'), type: 'select' as const }
+  { key: 'apiKeyGroup', name: t('admin.users.apiKeyGroupFilter'), type: 'select' as const },
+  { key: 'tags', name: t('admin.users.tagFilter'), type: 'select' as const }
 ])
 
 // Load saved filters from localStorage
@@ -1160,6 +1207,8 @@ const loadSavedFilters = () => {
       if (parsed.status) filters.status = parsed.status
       if (parsed.group) filters.group = parsed.group
       if (typeof parsed.apiKeyGroup === 'number') filters.apiKeyGroup = parsed.apiKeyGroup
+      if (Array.isArray(parsed.tags)) filters.tags = parsed.tags.filter((id: unknown): id is number => typeof id === 'number')
+      if (parsed.tagMatch === 'all') filters.tagMatch = 'all'
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
       }
@@ -1180,6 +1229,8 @@ const saveFiltersToStorage = () => {
       status: filters.status,
       group: filters.group,
       apiKeyGroup: filters.apiKeyGroup,
+      tags: filters.tags,
+      tagMatch: filters.tagMatch,
       attributes: activeAttributeFilters
     }
     localStorage.setItem(FILTER_VALUES_KEY, JSON.stringify(values))
@@ -1321,6 +1372,8 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkTagsModal = ref(false)
+const showBulkHiddenGroupsModal = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
@@ -1583,6 +1636,8 @@ const loadUsers = async () => {
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         api_key_group_id: filters.apiKeyGroup ?? undefined,
+         tag_ids: filters.tags.length > 0 ? filters.tags : undefined,
+         tag_match: filters.tags.length > 0 ? filters.tagMatch : undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         // 始终请求 subscriptions：列隐藏时仍需用于 UserPlatformQuotaModal 的 active-subscription 警示 banner
         include_subscriptions: true,
@@ -1629,6 +1684,7 @@ const handleBulkLimitsSuccess = async () => {
   clearSelection()
   await loadUsers()
 }
+const handleBulkSegmentationSuccess = handleBulkLimitsSuccess
 
 let searchTimeout: ReturnType<typeof setTimeout>
 const handleSearch = () => {
@@ -1674,10 +1730,12 @@ const toggleBuiltInFilter = (key: string) => {
     if (key === 'status') filters.status = ''
     if (key === 'group') filters.group = ''
     if (key === 'apiKeyGroup') filters.apiKeyGroup = null
+    if (key === 'tags') filters.tags = []
   } else {
     visibleFilters.add(key)
     if (key === 'group') loadAllGroups()
     if (key === 'apiKeyGroup') loadAllGroupsForApiKeyFilter()
+    if (key === 'tags') loadAllTags()
   }
   saveFiltersToStorage()
   pagination.page = 1
@@ -1842,6 +1900,7 @@ onMounted(async () => {
   if (visibleFilters.has('apiKeyGroup')) {
     loadAllGroupsForApiKeyFilter()
   }
+  if (visibleFilters.has('tags')) loadAllTags()
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, true)
 })

@@ -292,6 +292,12 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	users := admin.Group("/users")
 	{
 		users.GET("", h.Admin.User.List)
+		users.GET("/tags", h.Admin.User.ListTags)
+		users.POST("/tags", h.Admin.User.CreateTag)
+		users.PUT("/tags/:tag_id", h.Admin.User.UpdateTag)
+		users.DELETE("/tags/:tag_id", h.Admin.User.DeleteTag)
+		users.POST("/batch-tags", h.Admin.User.BatchUpdateTags)
+		users.POST("/batch-hidden-groups", h.Admin.User.BatchReplaceHiddenGroups)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("/:id/auth-identities", h.Admin.User.BindAuthIdentity)
 		users.POST("", h.Admin.User.Create)

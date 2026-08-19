@@ -106,11 +106,17 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 
 	// allowedExclusive == nil 表示匿名；登录用户恒为非 nil（可能为空集合）。
 	var allowedExclusive map[int64]struct{}
+	var hiddenGroups map[int64]struct{}
 	var userRates map[int64]float64
 	if authed {
 		allowedExclusive, err = h.apiKeyService.GetUserAllowedGroupIDSet(c.Request.Context(), subject.UserID)
 		if err != nil {
 			// 可见性数据拿不到时不能静默降级成匿名视图（会错漏专属分组），直接报错。
+			response.ErrorFrom(c, err)
+			return
+		}
+		hiddenGroups, err = h.apiKeyService.GetUserHiddenGroupIDSet(c.Request.Context(), subject.UserID)
+		if err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -122,7 +128,7 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		}
 	}
 
-	visible := filterPlazaVisibleGroups(groups, allowedExclusive)
+	visible := filterPlazaVisibleGroups(groups, allowedExclusive, hiddenGroups)
 
 	out := make([]modelPlazaGroup, 0, len(visible))
 	for i := range visible {
@@ -139,9 +145,17 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 func filterPlazaVisibleGroups(
 	groups []service.PlazaGroup,
 	allowedExclusive map[int64]struct{},
+	hiddenGroups ...map[int64]struct{},
 ) []service.PlazaGroup {
+	var hidden map[int64]struct{}
+	if len(hiddenGroups) > 0 {
+		hidden = hiddenGroups[0]
+	}
 	visible := make([]service.PlazaGroup, 0, len(groups))
 	for _, g := range groups {
+		if _, hiddenForUser := hidden[g.ID]; hiddenForUser {
+			continue
+		}
 		if g.IsExclusive {
 			if allowedExclusive == nil {
 				continue

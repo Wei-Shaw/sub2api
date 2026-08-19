@@ -22,6 +22,22 @@ func (s *listUsersFilterStub) ListUsers(_ context.Context, _, _ int, filters ser
 	return []service.User{}, 0, nil
 }
 
+func TestAdminUserList_ParsesTagIDsAndMatchMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &listUsersFilterStub{AdminService: newStubAdminService()}
+	r := gin.New()
+	h := NewUserHandler(stub, nil, nil, nil, nil, nil, nil)
+	r.GET("/admin/users", h.List)
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/admin/users?tag_ids=7,2,7,bad,-1&tag_match=all", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, []int64{7, 2}, stub.captured.TagIDs)
+	require.Equal(t, "all", stub.captured.TagMatch)
+}
+
 func TestAdminUserList_ParsesAPIKeyGroupID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cases := []struct {

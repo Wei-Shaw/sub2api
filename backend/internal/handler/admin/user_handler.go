@@ -34,6 +34,7 @@ type UserHandler struct {
 	totpService           *service.TotpService                // 角色提升为管理员的 step-up 门控
 	userService           *service.UserService
 	settingService        *service.SettingService // step-up 功能开关
+	segmentationService   *service.UserSegmentationService
 }
 
 // NewUserHandler creates a new admin user handler
@@ -55,6 +56,10 @@ func NewUserHandler(
 		userService:           userService,
 		settingService:        settingService,
 	}
+}
+
+func (h *UserHandler) SetSegmentationService(segmentation *service.UserSegmentationService) {
+	h.segmentationService = segmentation
 }
 
 // CreateUserRequest represents admin create user request
@@ -111,6 +116,23 @@ type BindUserAuthIdentityChannelRequest struct {
 	Metadata       map[string]any `json:"metadata"`
 }
 
+type UserTagRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
+}
+
+type BatchUpdateUserTagsRequest struct {
+	UserIDs []int64 `json:"user_ids" binding:"required"`
+	TagIDs  []int64 `json:"tag_ids"`
+	Mode    string  `json:"mode" binding:"required,oneof=add remove replace"`
+}
+
+type BatchUpdateHiddenGroupsRequest struct {
+	UserIDs  []int64 `json:"user_ids" binding:"required"`
+	GroupIDs []int64 `json:"group_ids"`
+}
+
 // List handles listing all users with pagination
 // GET /api/v1/admin/users
 // Query params:
@@ -135,7 +157,12 @@ func (h *UserHandler) List(c *gin.Context) {
 		Role:       c.Query("role"),
 		Search:     search,
 		GroupName:  strings.TrimSpace(c.Query("group_name")),
+		TagIDs:     parsePositiveIDList(c.Query("tag_ids")),
+		TagMatch:   strings.ToLower(strings.TrimSpace(c.DefaultQuery("tag_match", "any"))),
 		Attributes: parseAttributeFilters(c),
+	}
+	if filters.TagMatch != "all" {
+		filters.TagMatch = "any"
 	}
 	if raw := strings.TrimSpace(c.Query("api_key_group_id")); raw != "" {
 		if id, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && id > 0 {
@@ -180,6 +207,24 @@ func (h *UserHandler) List(c *gin.Context) {
 	}
 
 	response.Paginated(c, out, total, page, pageSize)
+}
+
+func parsePositiveIDList(raw string) []int64 {
+	parts := strings.Split(raw, ",")
+	seen := make(map[int64]struct{}, len(parts))
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // parseAttributeFilters extracts attribute filters from query params
@@ -674,6 +719,171 @@ func (h *UserHandler) BatchUpdateLimits(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"affected": affected})
+}
+
+func (h *UserHandler) ListTags(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	tags, err := h.segmentationService.ListTags(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, tags)
+}
+
+func (h *UserHandler) CreateTag(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	var req UserTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	tag, err := h.segmentationService.CreateTag(c.Request.Context(), req.Name, req.Color, req.Description)
+	if err != nil {
+		if errors.Is(err, service.ErrUserTagExists) {
+			response.Error(c, 409, "user tag already exists")
+		} else {
+			response.BadRequest(c, err.Error())
+		}
+		return
+	}
+	response.Created(c, tag)
+}
+
+func (h *UserHandler) UpdateTag(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("tag_id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid tag ID")
+		return
+	}
+	var req UserTagRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	tag, err := h.segmentationService.UpdateTag(c.Request.Context(), id, req.Name, req.Color, req.Description)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrUserTagNotFound):
+			response.NotFound(c, "user tag not found")
+		case errors.Is(err, service.ErrUserTagExists):
+			response.Error(c, 409, "user tag already exists")
+		default:
+			response.BadRequest(c, err.Error())
+		}
+		return
+	}
+	response.Success(c, tag)
+}
+
+func (h *UserHandler) DeleteTag(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("tag_id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid tag ID")
+		return
+	}
+	if err := h.segmentationService.DeleteTag(c.Request.Context(), id); err != nil {
+		if errors.Is(err, service.ErrUserTagNotFound) {
+			response.NotFound(c, "user tag not found")
+		} else {
+			response.ErrorFrom(c, err)
+		}
+		return
+	}
+	response.Success(c, gin.H{"message": "User tag deleted successfully"})
+}
+
+func (h *UserHandler) BatchUpdateTags(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	var req BatchUpdateUserTagsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.UserIDs) == 0 || len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids must contain between 1 and 500 users")
+		return
+	}
+	if req.Mode != "replace" && len(req.TagIDs) == 0 {
+		response.BadRequest(c, "tag_ids is required for add/remove mode")
+		return
+	}
+	affected, err := h.segmentationService.BatchUpdateTags(c.Request.Context(), req.UserIDs, req.TagIDs, req.Mode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"affected": affected})
+}
+
+func (h *UserHandler) BatchReplaceHiddenGroups(c *gin.Context) {
+	if h.segmentationService == nil {
+		response.Error(c, 503, "user segmentation service not available")
+		return
+	}
+	var req BatchUpdateHiddenGroupsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.UserIDs) == 0 || len(req.UserIDs) > 500 {
+		response.BadRequest(c, "user_ids must contain between 1 and 500 users")
+		return
+	}
+	if len(req.GroupIDs) > 500 {
+		response.BadRequest(c, "group_ids cannot exceed 500")
+		return
+	}
+	for _, groupID := range parsePositiveIDs(req.GroupIDs) {
+		group, err := h.adminService.GetGroup(c.Request.Context(), groupID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		if group == nil || group.Status != service.StatusActive || group.SubscriptionType != service.SubscriptionTypeStandard {
+			response.BadRequest(c, "only active standard model groups can be hidden")
+			return
+		}
+	}
+	affected, err := h.segmentationService.BatchReplaceHiddenGroups(c.Request.Context(), req.UserIDs, req.GroupIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"affected": affected})
+}
+
+func parsePositiveIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // GetUserPlatformQuotas GET /admin/users/:id/platform-quotas
