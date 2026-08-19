@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
@@ -226,4 +228,144 @@ func forceChatResponsesFallbackAccount() *Account {
 		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
 REDACTED
 	return account
+REDACTED
+
+// reasoningRecordingCache 记录 reasoning 缓存写入、并按需响应回查。
+type reasoningRecordingCache struct {
+	stubGatewayCache
+	mu      sync.Mutex
+	sets    map[string]string
+	getResp map[string]string
+REDACTED
+
+func (c *reasoningRecordingCache) SetReasoningContent(_ context.Context, itemID string, content string, _ time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sets == nil {
+		c.sets = make(map[string]string)
+REDACTED
+	c.sets[itemID] = content
+	return nil
+REDACTED
+
+func (c *reasoningRecordingCache) GetReasoningContent(_ context.Context, itemID string) (string, error) {
+	if v, ok := c.getResp[itemID]; ok {
+		return v, nil
+REDACTED
+	return "", ErrReasoningContentNotFound
+REDACTED
+
+func (c *reasoningRecordingCache) snapshotSets() map[string]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]string, len(c.sets))
+	for k, v := range c.sets {
+		out[k] = v
+REDACTED
+	return out
+REDACTED
+
+// 流式响应里的 reasoning_content 应按 reasoning item id 写入缓存，供后续轮次
+// 客户端不回传明文 summary 时回注（DeepSeek thinking mode 400 修复的写入侧）。
+func TestForwardResponses_ChatFallbackCachesStreamedReasoning(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-reasoner","input":"hello","stream":trueREDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"role":"assistant"REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"reasoning_content":"think "REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"reasoning_content":"first"REDACTED,"finish_reason":nullREDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[{"index":0,"delta":{"content":"answer"REDACTED,"finish_reason":"stop"REDACTED]REDACTED`,
+		"",
+		`data: {"id":"chatcmpl_rc","object":"chat.completion.chunk","model":"deepseek-reasoner","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":3,"total_tokens":7REDACTEDREDACTED`,
+		"",
+		"data: [DONE]",
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_reasoning_cache_stream"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+REDACTEDREDACTED
+	cache := &reasoningRecordingCache{REDACTED
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+		cache:        cache,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+REDACTED
+	require.NotNil(t, result)
+
+	sets := cache.snapshotSets()
+	require.Len(t, sets, 1, "应恰好缓存一个 reasoning item")
+	for itemID, content := range sets {
+		require.NotEmpty(t, itemID)
+		require.Equal(t, "think first", content)
+REDACTED
+REDACTED
+
+// 请求侧：encrypted-only reasoning item（无明文 summary）经缓存回查补回
+// reasoning_content；带明文 summary 的 item 顺手回写缓存（自愈）。
+func TestForwardResponses_ChatFallbackRestoresReasoningFromCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"deepseek-reasoner",
+		"stream":false,
+		"input":[
+			{"type":"reasoning","id":"item_plain","summary":[{"type":"summary_text","text":"plain thinking"REDACTED]REDACTED,
+			{"type":"function_call","call_id":"call_0","name":"get_value","arguments":"{REDACTED"REDACTED,
+			{"type":"function_call_output","call_id":"call_0","output":"ok"REDACTED,
+			{"type":"reasoning","id":"item_enc1","summary":[],"encrypted_content":"opaque"REDACTED,
+			{"type":"function_call","call_id":"call_1","name":"get_value","arguments":"{REDACTED"REDACTED,
+			{"type":"function_call_output","call_id":"call_1","output":"ok"REDACTED,
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"go on"REDACTED]REDACTED
+		]
+REDACTED`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid_reasoning_cache_restore"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_restore","object":"chat.completion","model":"deepseek-reasoner","choices":[{"index":0,"message":{"role":"assistant","content":"ok"REDACTED,"finish_reason":"stop"REDACTED],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5REDACTEDREDACTED`,
+		)),
+REDACTEDREDACTED
+	cache := &reasoningRecordingCache{
+		getResp: map[string]string{"item_enc1": "cached thinking"REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+		cache:        cache,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+REDACTED
+	require.NotNil(t, result)
+
+	// 明文 summary 的 assistant 工具调用消息：reasoning_content 来自 summary 本身。
+	require.Equal(t, "plain thinking", gjson.GetBytes(upstream.lastBody, "messages.0.reasoning_content").String())
+	require.Equal(t, "call_0", gjson.GetBytes(upstream.lastBody, "messages.0.tool_calls.0.id").String())
+	require.Equal(t, "tool", gjson.GetBytes(upstream.lastBody, "messages.1.role").String())
+	// encrypted-only 的 assistant 工具调用消息：reasoning_content 来自缓存回查。
+	require.Equal(t, "cached thinking", gjson.GetBytes(upstream.lastBody, "messages.2.reasoning_content").String())
+	require.Equal(t, "call_1", gjson.GetBytes(upstream.lastBody, "messages.2.tool_calls.0.id").String())
+	require.Equal(t, "tool", gjson.GetBytes(upstream.lastBody, "messages.3.role").String())
+
+	// 明文 summary 的 item 被回写进缓存（自愈）。
+	require.Equal(t, "plain thinking", cache.snapshotSets()["item_plain"])
 REDACTED
