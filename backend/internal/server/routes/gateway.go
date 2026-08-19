@@ -170,6 +170,10 @@ REDACTED
 			REDACTED)
 				return
 		REDACTED
+			if service.IsOpenAIResponsesInputTokensRequestPath(c) && isOpenAIResponsesCompatibleGatewayPlatform(c) {
+				h.OpenAIGateway.ResponsesInputTokens(c)
+				return
+		REDACTED
 			next(c)
 	REDACTED
 REDACTED
