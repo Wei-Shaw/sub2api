@@ -105,20 +105,25 @@ REDACTED
 REDACTED
 
 type openAIWSToolCallReplayCollector struct {
-	items []json.RawMessage
-	seen  map[string]struct{REDACTED
+	items    []json.RawMessage
+	seen     map[string]struct{REDACTED
+	allItems []json.RawMessage
+	allSeen  map[string]struct{REDACTED
 REDACTED
 
 func (c *openAIWSToolCallReplayCollector) AddEvent(eventType string, message []byte) {
 	switch strings.TrimSpace(eventType) {
 	case "response.output_item.done":
-		c.addItem(gjson.GetBytes(message, "item"))
+		item := gjson.GetBytes(message, "item")
+		c.addAllItem(item)
+		c.addItem(item)
 	case "response.completed", "response.done":
 		output := gjson.GetBytes(message, "response.output")
 		if !output.IsArray() {
 			return
 	REDACTED
 		for _, item := range output.Array() {
+			c.addAllItem(item)
 			c.addItem(item)
 	REDACTED
 REDACTED
@@ -126,6 +131,35 @@ REDACTED
 
 func (c *openAIWSToolCallReplayCollector) Items() []json.RawMessage {
 	return cloneOpenAIWSRawMessages(c.items)
+REDACTED
+
+func (c *openAIWSToolCallReplayCollector) AllItems() []json.RawMessage {
+	return cloneOpenAIWSRawMessages(c.allItems)
+REDACTED
+
+func (c *openAIWSToolCallReplayCollector) addAllItem(item gjson.Result) {
+	if !item.Exists() || item.Type != gjson.JSON {
+		return
+REDACTED
+	raw := strings.TrimSpace(item.Raw)
+	if raw == "" || !strings.HasPrefix(raw, "{") || strings.TrimSpace(item.Get("type").String()) == "" {
+		return
+REDACTED
+	key := strings.TrimSpace(item.Get("id").String())
+	if key == "" {
+		key = strings.TrimSpace(item.Get("call_id").String())
+REDACTED
+	if key == "" {
+		key = raw
+REDACTED
+	if c.allSeen == nil {
+		c.allSeen = make(map[string]struct{REDACTED)
+REDACTED
+	if _, ok := c.allSeen[key]; ok {
+		return
+REDACTED
+	c.allSeen[key] = struct{REDACTED{REDACTED
+	c.allItems = append(c.allItems, json.RawMessage(raw))
 REDACTED
 
 func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
@@ -303,10 +337,10 @@ REDACTED
 		if account.Platform == PlatformGrok {
 			shouldFailover = s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody)
 			s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, resolveGrokWSUpstreamModel(account, body, originalModel)), account, resp.StatusCode, resp.Header, respBody)
-			if turn == 1 && shouldFailover {
+			if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
 				return nil, newOpenAIUpstreamFailoverError(resp.StatusCode, resp.Header, respBody, upstreamMsg, false)
 		REDACTED
-	REDACTED else if turn == 1 && shouldFailover {
+	REDACTED else if shouldFailover && (turn == 1 || resp.StatusCode == http.StatusTooManyRequests) {
 			return nil, s.handleFailoverErrorResponsePassthrough(ctx, resp, c, account, body, respBody)
 	REDACTED
 		if account.Platform != PlatformGrok && (shouldFailover || shouldCooldownOpenAITransientUpstreamError(resp.StatusCode, respBody)) {
@@ -374,6 +408,7 @@ REDACTED
 			result.wsReplayInput = replayInput
 			result.wsReplayInputExists = true
 	REDACTED
+		result.wsAccountFailoverReplayInput = replayCollector.AllItems()
 		if imageCount > 0 {
 			result.ImageCount = imageCount
 			result.ImageSize = imageSizeTier
@@ -482,7 +517,7 @@ REDACTED
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
 				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 		REDACTED
-			if turn == 1 && !wroteDownstream && shouldFailover {
+			if !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
 				if account.Platform == PlatformGrok {
 					return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
 			REDACTED

@@ -452,17 +452,10 @@ func TestProxyOpenAIWSHTTPBridgeTurnSSEErrorFailoverSafety(t *testing.T) {
 			)
 
 			var failoverErr *UpstreamFailoverError
-			if turn == 1 {
-				require.Nil(t, result)
-				require.ErrorAs(t, err, &failoverErr)
-				require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
-				require.Empty(t, writes)
-		REDACTED else {
-				require.NotNil(t, result)
-			REDACTED
-				require.False(t, errors.As(err, &failoverErr))
-				require.Len(t, writes, 1)
-		REDACTED
+			require.Nil(t, result)
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+			require.Empty(t, writes)
 	REDACTED)
 REDACTED
 REDACTED
