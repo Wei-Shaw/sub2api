@@ -5,17 +5,14 @@ import (
 	"time"
 )
 
-// computeDashboardHealthScore computes a 0-100 health score from the metrics returned by the dashboard overview.
+// computeDashboardHealthScoreWithThresholds computes a 0-100 health score from
+// the metrics returned by the dashboard overview.
 //
 // Design goals:
 // - Backend-owned scoring (UI only displays).
 // - Layered scoring: Business Health (70%) + Infrastructure Health (30%)
 // - Avoids double-counting (e.g., DB failure affects both infra and business metrics)
 // - Conservative + stable: penalize clear degradations; avoid overreacting to missing/idle data.
-func computeDashboardHealthScore(now time.Time, overview *OpsDashboardOverview) int {
-	return computeDashboardHealthScoreWithThresholds(now, overview, defaultOpsMetricThresholds())
-}
-
 func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) int {
 	if overview == nil {
 		return 0

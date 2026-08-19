@@ -12,7 +12,11 @@ import (
 func TestComputeDashboardHealthScore_IdleReturns100(t *testing.T) {
 	t.Parallel()
 
-	score := computeDashboardHealthScore(time.Now().UTC(), &OpsDashboardOverview{})
+	score := computeDashboardHealthScoreWithThresholds(
+		time.Now().UTC(),
+		&OpsDashboardOverview{},
+		defaultOpsMetricThresholds(),
+	)
 	require.Equal(t, 100, score)
 }
 
@@ -50,7 +54,11 @@ func TestComputeDashboardHealthScore_DegradesOnBadSignals(t *testing.T) {
 		},
 	}
 
-	score := computeDashboardHealthScore(time.Now().UTC(), ov)
+	score := computeDashboardHealthScoreWithThresholds(
+		time.Now().UTC(),
+		ov,
+		defaultOpsMetricThresholds(),
+	)
 	require.Less(t, score, 80)
 	require.GreaterOrEqual(t, score, 0)
 }
@@ -264,7 +272,11 @@ func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score := computeDashboardHealthScore(time.Now().UTC(), tt.overview)
+			score := computeDashboardHealthScoreWithThresholds(
+				time.Now().UTC(),
+				tt.overview,
+				defaultOpsMetricThresholds(),
+			)
 			require.GreaterOrEqual(t, score, tt.wantMin, "score should be >= %d", tt.wantMin)
 			require.LessOrEqual(t, score, tt.wantMax, "score should be <= %d", tt.wantMax)
 			require.GreaterOrEqual(t, score, 0, "score must be >= 0")
