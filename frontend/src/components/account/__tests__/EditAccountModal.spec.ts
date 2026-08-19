@@ -343,6 +343,37 @@ describe('EditAccountModal', () => {
     REDACTED)
   REDACTED)
 
+  it('preserves adaptive GLM endpoints on submit', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      api_base_urls: {
+        chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      REDACTED
+    REDACTED
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false REDACTED)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'coding',
+      api_protocol: 'adaptive',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      api_base_urls: {
+        chat_completions: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        anthropic: 'https://open.bigmodel.cn/api/anthropic'
+      REDACTED
+    REDACTED)
+  REDACTED)
+
   it('preserves model mappings when editing the whitelist', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = {

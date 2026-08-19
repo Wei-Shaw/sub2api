@@ -49,6 +49,43 @@ REDACTED
 	require.Equal(t, true, updates[openai_compat.ExtraKeyResponsesSupported])
 REDACTED
 
+func TestProbeOpenAIAPIKeyResponsesSupportAdaptiveCNProviders(t *testing.T) {
+	tests := []struct {
+		name          string
+		id            int64
+		platform      string
+		wantSupport   bool
+		wantForceMode bool
+REDACTED{
+		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, wantSupport: true, wantForceMode: trueREDACTED,
+		{name: "kimi adaptive falls back to chat", id: 202, platform: PlatformKimi, wantSupport: falseREDACTED,
+		{name: "zhipu adaptive falls back to chat", id: 203, platform: PlatformZhipu, wantSupport: falseREDACTED,
+REDACTED
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalls := make(chan map[string]any, 1)
+			account := Account{
+				ID: tc.id, Platform: tc.platform, Type: AccountTypeAPIKey,
+		REDACTED"api_key": "sk-test", "api_protocol": APIProtocolAdaptiveREDACTED,
+		REDACTED
+			repo := &snapshotUpdateAccountRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{accountREDACTEDREDACTED,
+				updateExtraCalls:      updateCalls,
+		REDACTED
+			svc := &AccountTestService{accountRepo: repoREDACTED
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			updates := <-updateCalls
+			require.Equal(t, tc.wantSupport, updates[openai_compat.ExtraKeyResponsesSupported])
+			if tc.wantForceMode {
+				require.Equal(t, string(openai_compat.ResponsesSupportModeForceResponses), updates[openai_compat.ExtraKeyResponsesMode])
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestDecideResponsesProbeSupport(t *testing.T) {
 	fnCall := []byte(`{"output":[{"type":"reasoning"REDACTED,{"type":"function_call","name":"probe_ping"REDACTED]REDACTED`)
 	reasoningOnly := []byte(`{"output":[{"type":"reasoning"REDACTED]REDACTED`)

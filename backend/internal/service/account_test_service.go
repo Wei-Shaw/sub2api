@@ -285,7 +285,8 @@ REDACTED
 REDACTED
 
 	// Route to platform-specific test method
-	if account.IsCNProvider() && account.GetAPIProtocol() == APIProtocolChatCompletions {
+	if account.IsCNProvider() &&
+		(account.GetAPIProtocol() == APIProtocolChatCompletions || account.IsAdaptiveAPIProtocol()) {
 		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
 REDACTED
 

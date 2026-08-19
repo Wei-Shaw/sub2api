@@ -41,7 +41,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// thinking / tool_use / cache 语义，适配 Claude Code 等原生客户端。
 	// 必须先于 ShouldUseResponsesAPI 分流：Anthropic 协议账号经 probe 落标
 	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
-	if account.IsAnthropicProtocol() {
+	if account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() {
 		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
 REDACTED
 
