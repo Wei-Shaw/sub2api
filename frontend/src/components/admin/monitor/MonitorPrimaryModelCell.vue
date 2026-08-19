@@ -1,7 +1,8 @@
 <template>
-  <div class="flex items-center gap-2">
-    <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
-    <HelpTooltip>
+  <div class="flex flex-col gap-0.5">
+    <div class="flex items-center gap-2">
+      <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
+      <HelpTooltip>
       <template #trigger>
         <span
           class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -52,7 +53,10 @@
           </table>
         </div>
       </div>
-    </HelpTooltip>
+      </HelpTooltip>
+    </div>
+    <!-- 配额模式监控：主模型行内联展示最新用量/余额快照（管理端不受用户端开关限制） -->
+    <MonitorQuotaView :snapshot="row.latest_quota" />
   </div>
 </template>
 
@@ -60,6 +64,7 @@
 import { useI18n } from 'vue-i18n'
 import type { ChannelMonitor } from '@/api/admin/channelMonitor'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 
 defineProps<{

@@ -43,6 +43,12 @@ type openAIInputTokensCountPrepared struct {
 // locally. Grok does not expose a compatible token-counting endpoint, so this
 // path deliberately avoids account selection, credentials, and upstream calls.
 func EstimateGrokCountTokens(body []byte) (int, error) {
+	return estimateAnthropicCountTokensLocally(body)
+}
+
+// estimateAnthropicCountTokensLocally 走 Anthropic→Responses→tiktoken 链本地估算
+// count_tokens，不发任何上游请求（上游无兼容端点的平台使用）。
+func estimateAnthropicCountTokensLocally(body []byte) (int, error) {
 	var anthropicReq apicompat.AnthropicRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
 		return 0, fmt.Errorf("parse anthropic count_tokens request: %w", err)
@@ -64,7 +70,7 @@ func EstimateGrokCountTokens(body []byte) (int, error) {
 		ToolChoice:   responsesReq.ToolChoice,
 	})
 	if err != nil {
-		return 0, fmt.Errorf("estimate grok input tokens: %w", err)
+		return 0, fmt.Errorf("estimate input tokens: %w", err)
 	}
 	if estimated < openAIInputTokensFallbackMinimum {
 		estimated = openAIInputTokensFallbackMinimum
@@ -84,6 +90,29 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	if account == nil {
 		writeAnthropicCountTokensError(c, http.StatusServiceUnavailable, "api_error", "No available OpenAI accounts")
 		return fmt.Errorf("count_tokens: missing account")
+	}
+
+	// 国产供应商（全部协议，含 anthropic）：一律本地估算，不发上游请求。
+	// 依据（2026-08 核实）：三家的 Anthropic 兼容层均未提供
+	// /v1/messages/count_tokens——DeepSeek 官方 anthropic_api 文档无此端点
+	// （且注明 anthropic-version 头被忽略），聚合网关 OpenModel 明确标注
+	// count_tokens 为 "Anthropic only"，Kimi/智谱亦无任何文档承诺。转发上游
+	// 只会常态 404，且错误还会流入账号处置逻辑误伤整账号调度；Claude Code
+	// 高频调用此端点，本地 tiktoken 估算是与 Grok 一致的既有方案。
+	if account.IsCNProvider() {
+		estimated, err := estimateAnthropicCountTokensLocally(body)
+		if err != nil {
+			writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return fmt.Errorf("count_tokens: estimate cn provider input tokens: %w", err)
+		}
+		logger.L().Debug("openai count_tokens: cn provider local estimate",
+			zap.Int64("account_id", account.ID),
+			zap.Int("estimated_input_tokens", estimated),
+		)
+		c.JSON(http.StatusOK, gin.H{
+			"input_tokens": estimated,
+		})
+		return nil
 	}
 
 	prepared, err := prepareOpenAIInputTokensCountRequest(body, account, defaultMappedModel)

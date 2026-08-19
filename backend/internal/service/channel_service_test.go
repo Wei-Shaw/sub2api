@@ -5,8 +5,10 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -2458,6 +2460,66 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func validTimePricingForTest() *ChannelTimePricing {
+	return &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{
+		{StartTime: "09:00", EndTime: "12:00", Multiplier: 2},
+	}}
+}
+
+func TestValidatePricingTimePricing(t *testing.T) {
+	token := []ChannelModelPricing{{BillingMode: BillingModeToken, TimePricing: validTimePricingForTest()}}
+	require.NoError(t, validatePricingTimePricing(token))
+
+	implicitToken := []ChannelModelPricing{{TimePricing: validTimePricingForTest()}}
+	require.NoError(t, validatePricingTimePricing(implicitToken))
+
+	image := []ChannelModelPricing{{BillingMode: BillingModeImage, TimePricing: validTimePricingForTest()}}
+	modeErr := infraerrors.FromError(validatePricingTimePricing(image))
+	require.Equal(t, int32(http.StatusBadRequest), modeErr.Code)
+	require.Equal(t, "TIME_PRICING_UNSUPPORTED_MODE", modeErr.Reason)
+
+	invalid := []ChannelModelPricing{{
+		Platform:    PlatformOpenAI,
+		Models:      []string{"gpt-5"},
+		BillingMode: BillingModeToken,
+		TimePricing: &ChannelTimePricing{Timezone: "UTC+8", Periods: validTimePricingForTest().Periods},
+	}}
+	invalidErr := infraerrors.FromError(validatePricingTimePricing(invalid))
+	require.Equal(t, int32(http.StatusBadRequest), invalidErr.Code)
+	require.Equal(t, "INVALID_TIME_PRICING", invalidErr.Reason)
+	require.Contains(t, invalidErr.Message, "platform 'openai'")
+	require.Contains(t, invalidErr.Message, "models [gpt-5]")
+
+	invalidMultiplier := []ChannelModelPricing{{
+		Platform:    PlatformOpenAI,
+		Models:      []string{"gpt-5"},
+		BillingMode: BillingModeToken,
+		TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai", Periods: []ChannelTimePricingPeriod{{
+			StartTime: "09:00", EndTime: "12:00", Multiplier: 1e-12,
+		}}},
+	}}
+	invalidMultiplierRawErr := validatePricingTimePricing(invalidMultiplier)
+	require.Error(t, invalidMultiplierRawErr)
+	invalidMultiplierErr := infraerrors.FromError(invalidMultiplierRawErr)
+	require.Equal(t, int32(http.StatusBadRequest), invalidMultiplierErr.Code)
+	require.Equal(t, "INVALID_TIME_PRICING", invalidMultiplierErr.Reason)
+
+	empty := []ChannelModelPricing{{BillingMode: BillingModeToken, TimePricing: &ChannelTimePricing{Timezone: "Asia/Shanghai"}}}
+	require.NoError(t, validatePricingTimePricing(empty))
+	require.Nil(t, empty[0].TimePricing)
+}
+
+func TestValidateAccountStatsPricingRulesRejectsTimePricing(t *testing.T) {
+	rules := []AccountStatsPricingRule{{Pricing: []ChannelModelPricing{{
+		BillingMode: BillingModeToken,
+		TimePricing: validTimePricingForTest(),
+	}}}}
+
+	appErr := infraerrors.FromError(validateAccountStatsPricingRules(rules))
+	require.Equal(t, int32(http.StatusBadRequest), appErr.Code)
+	require.Equal(t, "ACCOUNT_STATS_TIME_PRICING_UNSUPPORTED", appErr.Reason)
 }
 
 // ---------------------------------------------------------------------------
