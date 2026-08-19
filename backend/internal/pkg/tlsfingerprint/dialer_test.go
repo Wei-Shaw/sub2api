@@ -16,7 +16,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -149,15 +148,6 @@ func TestJA3Fingerprint(t *testing.T) {
 		t.Logf("✓ JA3 contains expected extension list: %s", expectedExtensions)
 	} else {
 		t.Logf("Warning: JA3 extension list may differ")
-	}
-}
-
-func skipNetworkTest(t *testing.T) {
-	if testing.Short() {
-		t.Skip("跳过网络测试（short 模式）")
-	}
-	if os.Getenv("TLSFINGERPRINT_NETWORK_TESTS") != "1" {
-		t.Skip("跳过网络测试（需要设置 TLSFINGERPRINT_NETWORK_TESTS=1）")
 	}
 }
 

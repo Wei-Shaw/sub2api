@@ -1,5 +1,20 @@
 package tlsfingerprint
 
+import (
+	"os"
+	"testing"
+)
+
+func skipNetworkTest(t *testing.T) {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping external network test in short mode")
+	}
+	if os.Getenv("TLSFINGERPRINT_NETWORK_TESTS") != "1" {
+		t.Skip("skipping external network test: set TLSFINGERPRINT_NETWORK_TESTS=1 to enable")
+	}
+}
+
 // FingerprintResponse represents the response from tls.peet.ws/api/all.
 // 共享测试类型，供 unit 和 integration 测试文件使用。
 type FingerprintResponse struct {
