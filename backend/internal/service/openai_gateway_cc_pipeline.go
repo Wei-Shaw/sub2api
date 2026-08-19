@@ -281,13 +281,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
-			// A malformed chunk may contain the middle or the tail of a tool-call
-			// argument. Skipping it and finalizing the accumulated state would turn
-			// a truncated function call into a completed Responses item, which then
-			// poisons Codex's next-turn history. Treat the stream as incomplete so
-			// callers skip finalization and surface an upstream-stream error.
-			st.Err = fmt.Errorf("malformed chat stream chunk: %w", err)
-			break
+			continue
 	REDACTED
 		if st.FirstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
 			ms := int(time.Since(startTime).Milliseconds())

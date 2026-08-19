@@ -280,6 +280,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	var lastTurnReasoning string
 	mediaByCallID := make(toolOutputMediaByCallID)
 	invalidFunctionCallIDs := make(map[string]struct{REDACTED)
+	invalidEmptyFunctionCallOutputs := 0
 
 	reasoningForAssistant := func() string {
 		if pendingReasoning != "" {
@@ -342,6 +343,8 @@ REDACTED
 				// turn to self-heal instead of repeatedly replaying the poison.
 				if callID != "" {
 					invalidFunctionCallIDs[callID] = struct{REDACTED{REDACTED
+			REDACTED else {
+					invalidEmptyFunctionCallOutputs++
 			REDACTED
 				pendingReasoning = ""
 				continue
@@ -403,6 +406,11 @@ REDACTED
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
 			callID := rawString(item["call_id"])
+			if callID == "" && invalidEmptyFunctionCallOutputs > 0 {
+				invalidEmptyFunctionCallOutputs--
+				pendingReasoning = ""
+				continue
+		REDACTED
 			if _, skipped := invalidFunctionCallIDs[callID]; skipped {
 				pendingReasoning = ""
 				continue
@@ -1237,6 +1245,13 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
+		// Ordinary Responses function_call arguments must contain valid JSON.
+		// Do not mark a truncated non-streaming Chat tool call as completed;
+		// Codex would persist it and poison the next request in the same way as
+		// the streaming variant guarded by ValidateToolCallArguments.
+		if !json.Valid([]byte(arguments)) {
+			continue
+	REDACTED
 		if ns, ok := namespaceTools[toolCall.Function.Name]; ok {
 			outputs = append(outputs, ResponsesOutput{
 				Type:      "function_call",
@@ -1426,16 +1441,13 @@ REDACTED
 REDACTED
 
 // ValidateToolCallArguments checks the accumulated function-call arguments
-// before the stream is finalized. A tool call that ended because the upstream
-// hit its output limit, or whose SSE chunk was lost, must not be emitted as a
-// completed Responses item: Codex will persist it and replay it on the next
-// turn, where a Chat Completions provider rejects the whole request.
+// before the stream is finalized. A tool call whose argument stream was
+// truncated must not be emitted as a completed Responses item: Codex will
+// persist it and replay it on the next turn, where a Chat Completions provider
+// rejects the whole request.
 func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() error {
 	if state == nil {
 		return nil
-REDACTED
-	if state.FinishReason == "length" && len(state.ToolCalls) > 0 {
-		return fmt.Errorf("tool call stream ended at max output length")
 REDACTED
 	for idx, toolCall := range state.ToolCalls {
 		if toolCall == nil {

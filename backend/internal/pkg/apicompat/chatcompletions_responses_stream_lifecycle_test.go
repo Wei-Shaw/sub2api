@@ -243,7 +243,7 @@ REDACTED
 	require.ErrorContains(t, err, "invalid JSON")
 REDACTED
 
-func TestStream_ToolCallAtOutputLimitIsRejectedBeforeFinalize(t *testing.T) {
+func TestStream_ValidToolCallAtOutputLimitKeepsIncompleteResponse(t *testing.T) {
 	idx := 0
 	state := NewChatCompletionsToResponsesStreamState("deepseek-v4-flash")
 	chunk := &ChatCompletionsChunk{
@@ -269,7 +269,21 @@ REDACTED
 	ChatCompletionsChunkToResponsesEvents(chunk, state)
 	state.FinishReason = "length"
 
-	require.ErrorContains(t, state.ValidateToolCallArguments(), "max output length")
+	require.NoError(t, state.ValidateToolCallArguments())
+	events := FinalizeChatCompletionsResponsesStream(state)
+	var sawArgsDone, sawIncomplete bool
+	for _, event := range events {
+		switch event.Type {
+		case "response.function_call_arguments.done":
+			sawArgsDone = true
+			require.Equal(t, `{REDACTED`, event.Arguments)
+		case "response.completed":
+			require.NotNil(t, event.Response)
+			sawIncomplete = event.Response.Status == "incomplete"
+	REDACTED
+REDACTED
+	require.True(t, sawArgsDone)
+	require.True(t, sawIncomplete)
 REDACTED
 
 // TestStream_SSEWireComplete drives the full stream through SSE encoding and
