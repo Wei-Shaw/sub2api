@@ -170,6 +170,124 @@ REDACTED
 	require.Equal(t, "custom_tool_call", gjson.GetBytes(result.wsReplayInput[0], "type").String())
 REDACTED
 
+func TestOpenAIWSHTTPBridgeAPIKeyReusesClientToolMappingWhenFollowupOmitsTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstSSEBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_custom_first","model":"gpt-5.6-sol","output":[{"type":"function_call","id":"fc_custom_1","call_id":"call_custom_1","name":"exec","arguments":"{\"input\":\"pwd\"REDACTED"REDACTED],"usage":{"input_tokens":9,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+		"",
+REDACTED, "\n")
+	secondSSEBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_custom_second","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTEDREDACTED`,
+		"",
+REDACTED, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(firstSSEBody))REDACTED,
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED, Body: io.NopCloser(strings.NewReader(secondSSEBody))REDACTED,
+REDACTEDREDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = 1
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	svc := &OpenAIGatewayService{
+		cfg: cfg, httpUpstream: upstream, cache: &stubGatewayCache{REDACTED,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg), toolCorrector: NewCodexToolCorrector(),
+REDACTED
+	account := &Account{
+		ID: 9001, Name: "api-key-custom-followup", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+REDACTED"api_key": "sk-upstream"REDACTED, Extra: map[string]any{"responses_websockets_v2_enabled": trueREDACTED,
+		Concurrency: 1, Status: StatusActive, Schedulable: true,
+REDACTED
+
+	errCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			errCh <- err
+			return
+	REDACTED
+		defer func() { _ = conn.CloseNow() REDACTED()
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, err := conn.Read(readCtx)
+		cancelRead()
+		if err != nil {
+			errCh <- err
+			return
+	REDACTED
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+REDACTED))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+REDACTED
+	defer func() { _ = clientConn.CloseNow() REDACTED()
+
+	writeMessage := func(payload string) {
+		writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelWrite()
+		require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(payload)))
+REDACTED
+	readMessage := func() []byte {
+		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelRead()
+		messageType, event, readErr := clientConn.Read(readCtx)
+		require.NoError(t, readErr)
+		require.Equal(t, coderws.MessageText, messageType)
+		return event
+REDACTED
+
+	writeMessage(`{"type":"response.create","model":"gpt-5.6-sol","stream":true,"tools":[{"type":"custom","name":"exec"REDACTED],"input":"run pwd"REDACTED`)
+	firstEvent := readMessage()
+	require.Equal(t, "response.completed", gjson.GetBytes(firstEvent, "type").String())
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(firstEvent, "response.output.0.type").String())
+	require.Equal(t, "pwd", gjson.GetBytes(firstEvent, "response.output.0.input").String())
+
+	writeMessage(`{"type":"response.create","model":"gpt-5.6-sol","stream":true,"previous_response_id":"resp_custom_first","input":[{"type":"custom_tool_call_output","id":"ctco_client_output_1","call_id":"call_custom_1","output":"ok"REDACTED]REDACTED`)
+	secondEvent := readMessage()
+	require.Equal(t, "response.completed", gjson.GetBytes(secondEvent, "type").String())
+
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case proxyErr := <-errCh:
+		require.NoError(t, proxyErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for websocket bridge proxy to finish")
+REDACTED
+
+	require.Len(t, upstream.bodies, 2)
+	firstTools := gjson.GetBytes(upstream.bodies[0], "tools").Array()
+	require.Len(t, firstTools, 1)
+	require.Equal(t, "function", firstTools[0].Get("type").String())
+	secondTools := gjson.GetBytes(upstream.bodies[1], "tools").Array()
+	require.Len(t, secondTools, 1)
+	require.Equal(t, "function", secondTools[0].Get("type").String())
+	require.Equal(t, "exec", secondTools[0].Get("name").String())
+	secondInput := gjson.GetBytes(upstream.bodies[1], "input").Array()
+	require.Len(t, secondInput, 3)
+	require.Equal(t, "run pwd", secondInput[0].String())
+	require.Equal(t, "function_call", secondInput[1].Get("type").String())
+	require.Equal(t, "fc_custom_1", secondInput[1].Get("id").String())
+	require.JSONEq(t, `{"input":"pwd"REDACTED`, secondInput[1].Get("arguments").String())
+	require.False(t, secondInput[1].Get("input").Exists())
+	require.Equal(t, "function_call_output", secondInput[2].Get("type").String())
+	require.False(t, secondInput[2].Get("id").Exists())
+REDACTED
+
 func TestOpenAIWSHTTPBridgeDecisionKeepsSmallFramesOnWS(t *testing.T) {
 	svc := &OpenAIGatewayService{
 		cfg: &config.Config{
