@@ -289,9 +289,8 @@ func resolveCodexFingerprintIDs(account *Account, clientSessionID string, mode c
 	}
 
 	ids := &codexFingerprintIDs{
-		accountID:           account.ID,
-		mode:                mode,
-		turnStartedAtUnixMs: time.Now().UnixMilli(),
+		accountID: account.ID,
+		mode:      mode,
 	}
 
 	ids.installationID = resolveConvergedInstallationID(account, seed)

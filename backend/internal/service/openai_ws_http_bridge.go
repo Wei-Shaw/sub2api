@@ -450,11 +450,15 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				canonicalModel := canonicalOpenAIAccountSchedulingModel(account, originalModel)
 				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 			}
-			if turn == 1 && !wroteDownstream && shouldFailover {
-				if account.Platform == PlatformGrok {
+			// Grok response.failed 必须先写出并 reconcile 账号状态，再按语义
+			// 返回错误；turn-1 提前 failover 只适用于尚未写出的 error 事件。
+			if turn == 1 && !wroteDownstream && !clientDisconnected && shouldFailover {
+				if account.Platform == PlatformGrok && eventType == "error" {
 					return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
 				}
-				return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, resp.Header)
+				if account.Platform != PlatformGrok {
+					return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, resp.Header)
+				}
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
