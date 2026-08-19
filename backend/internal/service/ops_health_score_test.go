@@ -55,6 +55,41 @@ func TestComputeDashboardHealthScore_DegradesOnBadSignals(t *testing.T) {
 	require.GreaterOrEqual(t, score, 0)
 }
 
+func TestComputeDashboardHealthScore_UsesConfiguredThresholds(t *testing.T) {
+	t.Parallel()
+
+	ttftP99 := 24_060
+	ov := &OpsDashboardOverview{
+		RequestCountTotal: 118,
+		RequestCountSLA:   118,
+		SuccessCount:      115,
+		ErrorCountTotal:   3,
+		ErrorCountSLA:     3,
+		UpstreamErrorRate: 0.0254,
+		TTFT:              OpsPercentiles{P99: &ttftP99},
+		SystemMetrics: &OpsSystemMetricsSnapshot{
+			DBOK:               boolPtr(true),
+			RedisOK:            boolPtr(true),
+			CPUUsagePercent:    float64Ptr(1),
+			MemoryUsagePercent: float64Ptr(5),
+		},
+	}
+
+	defaultScore := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), ov, defaultOpsMetricThresholds())
+
+	reqErr := 20.0
+	upstreamErr := 20.0
+	ttftMax := 25_000.0
+	tunedScore := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), ov, &OpsMetricThresholds{
+		RequestErrorRatePercentMax:  &reqErr,
+		UpstreamErrorRatePercentMax: &upstreamErr,
+		TTFTp99MsMax:                &ttftMax,
+	})
+
+	require.Greater(t, tunedScore, defaultScore)
+	require.GreaterOrEqual(t, tunedScore, 90)
+}
+
 func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 	t.Parallel()
 
