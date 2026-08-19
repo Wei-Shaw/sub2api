@@ -336,6 +336,26 @@ func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id i
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
+// RefreshQuotaAndShorten atomically clears one quota window and shortens the
+// subscription to the newly purchased layer. The service validates the
+// eligibility rule before calling this method.
+func (r *userSubscriptionRepository) RefreshQuotaAndShorten(ctx context.Context, id int64, period string, newExpiresAt, newWindowStart time.Time) error {
+	client := clientFromContext(ctx, r.client)
+	query := client.UserSubscription.UpdateOneID(id).SetExpiresAt(newExpiresAt)
+	switch period {
+	case "daily":
+		query.SetDailyUsageUsd(0).SetDailyWindowStart(newWindowStart)
+	case "weekly":
+		query.SetWeeklyUsageUsd(0).SetWeeklyWindowStart(newWindowStart)
+	case "monthly":
+		query.SetMonthlyUsageUsd(0).SetMonthlyWindowStart(newWindowStart)
+	default:
+		return service.ErrInvalidInput
+	}
+	_, err := query.Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 // IncrementUsage 原子性地累加订阅用量。
 // 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
 // 此处仅负责记录实际消费，确保消费数据的完整性。

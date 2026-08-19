@@ -57,6 +57,7 @@ type BulkAssignSubscriptionRequest struct {
 
 // RestoreSubscriptionSnapshotRequest represents an exact subscription snapshot restore request.
 type RestoreSubscriptionSnapshotRequest struct {
+	SubscriptionID     int64      `json:"subscription_id"`
 	UserID             int64      `json:"user_id" binding:"required"`
 	GroupID            int64      `json:"group_id" binding:"required"`
 	StartsAt           time.Time  `json:"starts_at" binding:"required"`
@@ -215,6 +216,7 @@ func (h *SubscriptionHandler) RestoreSnapshot(c *gin.Context) {
 	}
 
 	subscription, err := h.subscriptionService.RestoreSubscriptionSnapshot(c.Request.Context(), service.RestoreSubscriptionSnapshotInput{
+		SubscriptionID:     req.SubscriptionID,
 		UserID:             req.UserID,
 		GroupID:            req.GroupID,
 		StartsAt:           req.StartsAt,
@@ -236,6 +238,35 @@ func (h *SubscriptionHandler) RestoreSnapshot(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+}
+
+// RefreshQuotaAndShorten resets an exhausted quota window and removes the
+// original full window from the merged subscription duration.
+// POST /api/v1/admin/subscriptions/:id/refresh-quota
+func (h *SubscriptionHandler) RefreshQuotaAndShorten(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	var req struct {
+		Period string `json:"period" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	payload := struct {
+		SubscriptionID int64  `json:"subscription_id"`
+		Period         string `json:"period"`
+	}{subscriptionID, req.Period}
+	executeAdminIdempotentJSON(c, "admin.subscriptions.refresh_quota", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		subscription, execErr := h.subscriptionService.RefreshQuotaAndShorten(ctx, subscriptionID, req.Period)
+		if execErr != nil {
+			return nil, execErr
+		}
+		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
+	})
 }
 
 // Extend handles adjusting a subscription (extend or shorten)

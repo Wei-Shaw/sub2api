@@ -55,6 +55,10 @@ type SubscriptionService struct {
 	maintenanceQueue *SubscriptionMaintenanceQueue
 }
 
+type quotaRefreshRepository interface {
+	RefreshQuotaAndShorten(ctx context.Context, id int64, period string, newExpiresAt, newWindowStart time.Time) error
+}
+
 // NewSubscriptionService 创建订阅服务
 func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, cfg *config.Config) *SubscriptionService {
 	svc := &SubscriptionService{
@@ -153,6 +157,7 @@ type AssignSubscriptionInput struct {
 
 // RestoreSubscriptionSnapshotInput restores an exact subscription snapshot for admin rollback.
 type RestoreSubscriptionSnapshotInput struct {
+	SubscriptionID     int64
 	UserID             int64
 	GroupID            int64
 	StartsAt           time.Time
@@ -210,7 +215,19 @@ func (s *SubscriptionService) RestoreSubscriptionSnapshot(ctx context.Context, i
 		sub.AssignedAt = now
 	}
 
-	if err := s.userSubRepo.Create(ctx, sub); err != nil {
+	if input.SubscriptionID > 0 {
+		existing, err := s.userSubRepo.GetByID(ctx, input.SubscriptionID)
+		if err != nil {
+			return nil, err
+		}
+		if existing.UserID != input.UserID || existing.GroupID != input.GroupID {
+			return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_RESTORE", "snapshot identity does not match subscription")
+		}
+		sub.ID = input.SubscriptionID
+		if err := s.userSubRepo.Update(ctx, sub); err != nil {
+			return nil, err
+		}
+	} else if err := s.userSubRepo.Create(ctx, sub); err != nil {
 		return nil, err
 	}
 
@@ -220,6 +237,77 @@ func (s *SubscriptionService) RestoreSubscriptionSnapshot(ctx context.Context, i
 	}
 
 	return sub, nil
+}
+
+// RefreshQuotaAndShorten validates and applies the renewal-layer quota refresh
+// as one upstream mutation. Only a quota-exhausted subscription with a
+// non-expired original window and a positive renewal remainder is eligible.
+func (s *SubscriptionService) RefreshQuotaAndShorten(ctx context.Context, subscriptionID int64, period string) (*UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_INPUT", "subscription_id is required")
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.Group == nil {
+		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "subscription group is missing")
+	}
+	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(time.Now()) {
+		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "subscription is not active")
+	}
+	var windowStart *time.Time
+	var usage, limit float64
+	var periodDays int
+	switch period {
+	case "daily":
+		windowStart, usage, periodDays = sub.DailyWindowStart, sub.DailyUsageUSD, 1
+		if sub.Group.DailyLimitUSD != nil {
+			limit = *sub.Group.DailyLimitUSD
+		}
+	case "weekly":
+		windowStart, usage, periodDays = sub.WeeklyWindowStart, sub.WeeklyUsageUSD, 7
+		if sub.Group.WeeklyLimitUSD != nil {
+			limit = *sub.Group.WeeklyLimitUSD
+		}
+	case "monthly":
+		windowStart, usage, periodDays = sub.MonthlyWindowStart, sub.MonthlyUsageUSD, 30
+		if sub.Group.MonthlyLimitUSD != nil {
+			limit = *sub.Group.MonthlyLimitUSD
+		}
+	default:
+		return nil, infraerrors.BadRequest("INVALID_INPUT", "period must be daily, weekly, or monthly")
+	}
+	if limit <= 0 || usage < limit || windowStart == nil {
+		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "subscription does not have an exhausted quota window")
+	}
+	now := time.Now()
+	oldRemaining := windowStart.AddDate(0, 0, periodDays).Sub(now)
+	if oldRemaining <= 0 {
+		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "the exhausted quota window has already ended")
+	}
+	totalRemaining := sub.ExpiresAt.Sub(now)
+	newRemaining := totalRemaining - oldRemaining
+	if newRemaining <= 0 {
+		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "no renewal time remains after the original layer")
+	}
+	newExpiresAt := sub.ExpiresAt.Add(-oldRemaining)
+	newWindowStart := startOfDay(now)
+	repo, ok := s.userSubRepo.(quotaRefreshRepository)
+	if !ok {
+		return nil, infraerrors.InternalServer("QUOTA_REFRESH_UNAVAILABLE", "quota refresh repository is unavailable")
+	}
+	if err := repo.RefreshQuotaAndShorten(ctx, sub.ID, period, newExpiresAt, newWindowStart); err != nil {
+		return nil, err
+	}
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
 }
 
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
