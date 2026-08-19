@@ -20,6 +20,194 @@ REDACTED
 	require.False(t, gjson.GetBytes(normalized, "store").Bool())
 REDACTED
 
+func TestNormalizeOpenAIPassthroughOAuthBody_NormalizesCompatibilityFields(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","prompt":"hello","commands":["unsupported"],"truncation":"auto","stop_sequences":["END"],"chat_template_kwargs":{"enable_thinking":trueREDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "hello", gjson.GetBytes(normalized, "input.0.content").String())
+	for _, field := range []string{"prompt", "commands", "truncation", "stop_sequences", "chat_template_kwargs"REDACTED {
+		require.False(t, gjson.GetBytes(normalized, field).Exists(), field)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIPassthroughOAuthBody_NormalizesReasoningMode(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-sol","input":"hello","reasoning":{"mode":"pro"REDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "max", gjson.GetBytes(normalized, "reasoning.effort").String())
+	require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
+REDACTED
+
+func TestNormalizeOpenAIOAuthResponsesCompatibilityBody_PreservesExplicitInput(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","input":"explicit","prompt":"legacy"REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIOAuthResponsesCompatibilityBody(body)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "explicit", gjson.GetBytes(normalized, "input").String())
+	require.False(t, gjson.GetBytes(normalized, "prompt").Exists())
+REDACTED
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_OnlyStripsOAuthFields(t *testing.T) {
+	body := []byte(`{"type":"response.create","prompt":"hello","commands":{REDACTED,"truncation":"auto","stop_sequences":["END"],"chat_template_kwargs":{"enable_thinking":trueREDACTEDREDACTED`)
+
+	oauthBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "hello", gjson.GetBytes(oauthBody, "input").String())
+	for _, field := range []string{"prompt", "commands", "truncation", "stop_sequences", "chat_template_kwargs"REDACTED {
+		require.False(t, gjson.GetBytes(oauthBody, field).Exists(), field)
+REDACTED
+
+	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED)
+REDACTED
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(apiKeyBody))
+REDACTED
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesNativeItemIDs(t *testing.T) {
+	body := []byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[` +
+		`{"type":"custom_tool_call","id":"fc_wrong_custom","call_id":"call_custom_1","name":"apply_patch","input":"patch"REDACTED,` +
+		`{"type":"custom_tool_call","id":"ctc_valid","call_id":"call_custom_2","name":"apply_patch","input":"patch"REDACTED,` +
+		`{"type":"tool_search_call","id":"fc_wrong_search","call_id":"call_search_1","arguments":{"query":"docs"REDACTEDREDACTED,` +
+		`{"type":"tool_search_call","id":"tsc_valid","call_id":"call_search_2","arguments":{"query":"docs"REDACTEDREDACTED]REDACTED`)
+
+	for _, oauth := range []bool{false, trueREDACTED {
+		accountType := AccountTypeAPIKey
+		if oauth {
+			accountType = AccountTypeOAuth
+	REDACTED
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountTypeREDACTED)
+	REDACTED
+		require.True(t, changed)
+		require.Equal(t, "response.create", gjson.GetBytes(normalized, "type").String())
+		require.False(t, gjson.GetBytes(normalized, "input.0.id").Exists())
+		require.Equal(t, "ctc_valid", gjson.GetBytes(normalized, "input.1.id").String())
+		require.False(t, gjson.GetBytes(normalized, "input.2.id").Exists())
+		require.Equal(t, "tsc_valid", gjson.GetBytes(normalized, "input.3.id").String())
+		// Native Responses call_id values are correlation keys, not item IDs.
+		require.Equal(t, "call_custom_1", gjson.GetBytes(normalized, "input.0.call_id").String())
+		require.Equal(t, "call_search_1", gjson.GetBytes(normalized, "input.2.call_id").String())
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesReasoningMode(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantEffort string
+REDACTED{
+		{name: "pro maps to max", body: `{"reasoning":{"mode":"pro"REDACTEDREDACTED`, wantEffort: "max"REDACTED,
+		{name: "explicit effort wins", body: `{"reasoning":{"mode":"pro","effort":"high"REDACTEDREDACTED`, wantEffort: "high"REDACTED,
+		{name: "other mode only removed", body: `{"reasoning":{"mode":"standard"REDACTEDREDACTED`REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesReasoningMode([]byte(tt.body))
+		REDACTED
+			require.True(t, changed)
+			require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
+			require.Equal(t, tt.wantEffort, gjson.GetBytes(normalized, "reasoning.effort").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_ReasoningModeAccountScope(t *testing.T) {
+	body := []byte(`{"type":"response.create","reasoning":{"mode":"pro"REDACTEDREDACTED`)
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupTokenREDACTED {
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountTypeREDACTED)
+	REDACTED
+		require.True(t, changed)
+		require.Equal(t, "max", gjson.GetBytes(normalized, "reasoning.effort").String())
+		require.False(t, gjson.GetBytes(normalized, "reasoning.mode").Exists())
+REDACTED
+	apiKeyBody, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKeyREDACTED)
+REDACTED
+	require.False(t, changed)
+	require.JSONEq(t, string(body), string(apiKeyBody))
+REDACTED
+
+func TestNormalizeOpenAIResponsesWebSocketCompatibilityBody_SanitizesToolSchemas(t *testing.T) {
+	body := []byte(`{"type":"response.create","tools":[{"type":"function","name":"search","parameters":{"type":null,"properties":{"q":{"type":"string","pattern":"^(?=.*foo).+$"REDACTEDREDACTEDREDACTEDREDACTED]REDACTED`)
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuthREDACTED {
+		normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{Platform: PlatformOpenAI, Type: accountTypeREDACTED)
+	REDACTED
+		require.True(t, changed)
+		require.Equal(t, "object", gjson.GetBytes(normalized, "tools.0.parameters.type").String())
+		require.False(t, gjson.GetBytes(normalized, "tools.0.parameters.properties.q.pattern").Exists())
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponseFormatSchemasBody_PreservesNonStrictOptionalFields(t *testing.T) {
+	body := []byte(`{"text":{"format":{"type":"json_schema","strict":false,"schema":{"properties":{"tags":{"items":{"type":"string"REDACTED,"uniqueItems":trueREDACTEDREDACTED,"minProperties":1,"maxProperties":4REDACTEDREDACTEDREDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIResponseFormatSchemasBody(body)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.type").String())
+	require.Equal(t, "array", gjson.GetBytes(normalized, "text.format.schema.properties.tags.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.minProperties").Exists())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.properties.tags.uniqueItems").Exists())
+	require.Equal(t, int64(4), gjson.GetBytes(normalized, "text.format.schema.maxProperties").Int())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.required").Exists())
+REDACTED
+
+func TestNormalizeOpenAIResponseFormatSchemasBody_DoesNotExpandStrictSchema(t *testing.T) {
+	body := []byte(`{"response_format":{"type":"json_schema","json_schema":{"strict":true,"schema":{"properties":{"name":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTEDREDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIResponseFormatSchemasBody(body)
+REDACTED
+	require.True(t, changed) // Safe type inference still applies.
+	require.Equal(t, "object", gjson.GetBytes(normalized, "response_format.json_schema.schema.type").String())
+	require.False(t, gjson.GetBytes(normalized, "response_format.json_schema.schema.required").Exists())
+	require.False(t, gjson.GetBytes(normalized, "response_format.json_schema.schema.additionalProperties").Exists())
+REDACTED
+
+func TestNormalizeOpenAIResponseFormatSchemasBody_TraversesNestedSchemaContainers(t *testing.T) {
+	body := []byte(`{
+		"text":{"format":{"type":"json_schema","schema":{
+			"$defs":{"entry":{"properties":{"name":{"type":"string"REDACTEDREDACTED,"minProperties":1,"maxProperties":3REDACTEDREDACTED,
+			"additionalProperties":{"items":{"type":"string"REDACTED,"uniqueItems":trueREDACTED,
+			"prefixItems":[{"properties":{"id":{"type":"string"REDACTEDREDACTED,"minProperties":1REDACTED],
+			"dependentSchemas":{"kind":{"properties":{"value":{"type":"string"REDACTEDREDACTED,"uniqueItems":trueREDACTEDREDACTED,
+			"not":{"items":{"type":"string"REDACTED,"minProperties":1REDACTED
+	REDACTEDREDACTEDREDACTED
+REDACTED`)
+
+	normalized, changed, err := normalizeOpenAIResponseFormatSchemasBody(body)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.$defs.entry.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.$defs.entry.minProperties").Exists())
+	require.Equal(t, int64(3), gjson.GetBytes(normalized, "text.format.schema.$defs.entry.maxProperties").Int())
+	require.Equal(t, "array", gjson.GetBytes(normalized, "text.format.schema.additionalProperties.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.additionalProperties.uniqueItems").Exists())
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.prefixItems.0.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.prefixItems.0.minProperties").Exists())
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.dependentSchemas.kind.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.dependentSchemas.kind.uniqueItems").Exists())
+	require.Equal(t, "array", gjson.GetBytes(normalized, "text.format.schema.not.type").String())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.not.minProperties").Exists())
+	require.False(t, gjson.GetBytes(normalized, "text.format.schema.required").Exists())
+REDACTED
+
+func TestNormalizeOpenAIResponseFormatSchemasBody_PreservesExistingTypeValues(t *testing.T) {
+	body := []byte(`{"text":{"format":{"type":"json_schema","schema":{"properties":{"union":{"type":["object","null"],"properties":{"name":{"type":"string"REDACTEDREDACTEDREDACTED,"custom":{"type":{"vendor":"shape"REDACTED,"properties":{"id":{"type":"string"REDACTEDREDACTEDREDACTED,"inferred":{"type":null,"items":{"type":"string"REDACTEDREDACTEDREDACTEDREDACTEDREDACTEDREDACTEDREDACTED`)
+
+	normalized, changed, err := normalizeOpenAIResponseFormatSchemasBody(body)
+REDACTED
+	require.True(t, changed)
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.type").String())
+	require.Equal(t, "object", gjson.GetBytes(normalized, "text.format.schema.properties.union.type.0").String())
+	require.Equal(t, "null", gjson.GetBytes(normalized, "text.format.schema.properties.union.type.1").String())
+	require.True(t, gjson.GetBytes(normalized, "text.format.schema.properties.custom.type").IsObject())
+	require.Equal(t, "array", gjson.GetBytes(normalized, "text.format.schema.properties.inferred.type").String())
+REDACTED
+
 func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.4","input":"hello","user":"user_123","metadata":{"user_id":"user_123"REDACTED,"stream":true,"store":trueREDACTED`)
 

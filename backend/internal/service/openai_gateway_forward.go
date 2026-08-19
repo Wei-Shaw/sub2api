@@ -23,6 +23,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearGrokResponsesClientToolMapping(c)
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
+	setCodexToolNameReverse(c, nil)
 	startTime := time.Now()
 	// 固定渠道映射后的请求级 canonical body；账号 normalize/strip 不得改写跨 failover hint。
 	canonicalImageIntentBody := body
@@ -57,6 +58,22 @@ REDACTED
 REDACTED
 	if toolSchemaSanitized {
 		body = sanitizedToolBody
+REDACTED
+	patternSanitizedBody, patternSanitized, patternErr := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	if patternErr != nil {
+		return nil, fmt.Errorf("sanitize OpenAI Responses tool schema patterns: %w", patternErr)
+REDACTED
+	if patternSanitized {
+		body = patternSanitizedBody
+REDACTED
+	if account.IsOpenAI() && account.IsOAuth() {
+		reasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningMode(body)
+		if reasoningErr != nil {
+			return nil, fmt.Errorf("normalize OpenAI Responses reasoning.mode: %w", reasoningErr)
+	REDACTED
+		if reasoningChanged {
+			body = reasoningBody
+	REDACTED
 REDACTED
 	if account.IsOpenAIOAuth() && isOpenAIResponsesLiteHeader(c.GetHeader(responsesLiteHeader)) {
 		liteBody, changed, liteErr := normalizeOpenAIResponsesLiteToolsPayload(body)
@@ -119,7 +136,7 @@ REDACTED
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 REDACTED
-	if account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey {
+	if account.Platform == PlatformOpenAI && (account.Type == AccountTypeAPIKey || account.Type == AccountTypeOAuth) {
 		sanitizedBody, changed, sanitizeErr := sanitizeOpenAIResponsesInputItemIDs(body)
 		if sanitizeErr != nil {
 			return nil, fmt.Errorf("sanitize OpenAI Responses input item IDs: %w", sanitizeErr)
@@ -325,6 +342,17 @@ REDACTED
 		markPatchSet("reasoning.effort", "none")
 		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
 REDACTED
+	if strings.TrimSpace(gjson.GetBytes(body, "text.format.type").String()) == "json_schema" ||
+		strings.TrimSpace(gjson.GetBytes(body, "response_format.type").String()) == "json_schema" {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if normalizeOpenAIResponseFormatSchemas(decoded) {
+			markDecodedModified()
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized Responses JSON schema compatibility")
+	REDACTED
+REDACTED
 
 	imageIntent = imageIntent || IsImageGenerationIntent(openAIResponsesEndpoint, reqModel, nil) || isOpenAIImageGenerationModel(upstreamModel)
 	if imageIntent && !imageGenerationAllowed {
@@ -415,6 +443,11 @@ REDACTED
 	REDACTED else {
 			codexResult = applyCodexOAuthTransform(decoded, isCodexCLI, isCompactRequest)
 	REDACTED
+		if codexResult.Error != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": codexResult.Error.Error()REDACTEDREDACTED)
+			return nil, codexResult.Error
+	REDACTED
+		setCodexToolNameReverse(c, codexResult.ToolNameReverse)
 		if codexResult.Modified {
 			markDecodedModified()
 	REDACTED
@@ -535,6 +568,29 @@ REDACTED
 					markPatchSet("service_tier", normTier)
 			REDACTED
 		REDACTED
+	REDACTED
+REDACTED
+
+	if account.Type == AccountTypeOAuth {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if input, ok := decoded["input"].([]any); ok && sanitizeOpenAIResponsesOrphanToolOutputs(
+			decoded,
+			input,
+			strings.TrimSpace(firstNonEmptyString(decoded["previous_response_id"])) != "",
+		) {
+			markDecodedModified()
+	REDACTED
+REDACTED
+	if reqBody != nil || openAIResponsesInputMayNeedTruncation(body) {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+	REDACTED
+		if truncateOpenAIResponsesInputText(decoded) {
+			markDecodedModified()
 	REDACTED
 REDACTED
 

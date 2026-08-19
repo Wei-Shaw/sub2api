@@ -566,6 +566,7 @@ REDACTED
 				streamEarlyErr = fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 				return
 		REDACTED
+			restoredData = restoreCodexToolNamesFromContext(c, restoredData)
 			if !bytes.Equal(restoredData, dataBytes) {
 				dataBytes = restoredData
 				data = string(restoredData)
@@ -1060,21 +1061,43 @@ func (s *OpenAIGatewayService) parseSSEUsage(data string, usage *OpenAIUsage) {
 REDACTED
 
 func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsage) {
-	if usage == nil || len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
+	if usage == nil || len(data) == 0 || bytes.Equal(bytes.TrimSpace(data), []byte("[DONE]")) {
 		return
 REDACTED
-	// 选择性解析：仅在数据中包含终止事件标识时才进入字段提取。
-	if len(data) < 72 {
+	parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data)
+	if !ok {
 		return
 REDACTED
-	eventType := gjson.GetBytes(data, "type").String()
-	if eventType != "response.completed" && eventType != "response.done" && eventType != "response.failed" &&
-		eventType != "response.incomplete" && eventType != "response.cancelled" && eventType != "response.canceled" {
+	if openAIStreamEventTypeIsTerminal(strings.TrimSpace(gjson.GetBytes(data, "type").String())) {
+		*usage = parsedUsage
 		return
+REDACTED
+	mergeOpenAIUsageNonZero(usage, parsedUsage)
 REDACTED
 
-	if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data); ok {
-		*usage = parsedUsage
+// Compatible Responses upstreams may report usage before the terminal event.
+// Retain those non-zero fields as a fallback; terminal usage remains authoritative.
+func mergeOpenAIUsageNonZero(dst *OpenAIUsage, src OpenAIUsage) {
+	if dst == nil {
+		return
+REDACTED
+	if src.InputTokens > 0 {
+		dst.InputTokens = src.InputTokens
+REDACTED
+	if src.ImageInputTokens > 0 {
+		dst.ImageInputTokens = src.ImageInputTokens
+REDACTED
+	if src.OutputTokens > 0 {
+		dst.OutputTokens = src.OutputTokens
+REDACTED
+	if src.CacheCreationInputTokens > 0 {
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+REDACTED
+	if src.CacheReadInputTokens > 0 {
+		dst.CacheReadInputTokens = src.CacheReadInputTokens
+REDACTED
+	if src.ImageOutputTokens > 0 {
+		dst.ImageOutputTokens = src.ImageOutputTokens
 REDACTED
 REDACTED
 
@@ -1310,6 +1333,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("restore OpenAI namespace response: %w", err)
 REDACTED
+	body = restoreCodexToolNamesFromContext(c, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	// Codex 协议要求 /responses/compact JSON 响应携带 x-codex-turn-state
 	// （codex-api/src/endpoint/compact.rs 从响应头捕获），显式回传。
@@ -1391,6 +1415,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if restoreErr != nil {
 			return nil, fmt.Errorf("restore OpenAI namespace response: %w", restoreErr)
 	REDACTED
+		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		body = restoredBody
 REDACTED else {
 		terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)

@@ -3391,10 +3391,10 @@ func TestParseSSEUsage_SelectiveParsing(t *testing.T) {
 	svc := &OpenAIGatewayService{REDACTED
 	usage := &OpenAIUsage{InputTokens: 9, OutputTokens: 8, CacheReadInputTokens: 7REDACTED
 
-	// 非 completed 事件，不应覆盖 usage
+	// 非终态事件中的显式 usage 作为兼容 fallback，非零字段会被合并。
 	svc.parseSSEUsage(`{"type":"response.in_progress","response":{"usage":{"input_tokens":1,"output_tokens":2REDACTEDREDACTEDREDACTED`, usage)
-	require.Equal(t, 9, usage.InputTokens)
-	require.Equal(t, 8, usage.OutputTokens)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
 	require.Equal(t, 7, usage.CacheReadInputTokens)
 
 	// completed 事件，应提取 usage
@@ -3419,6 +3419,43 @@ func TestParseSSEUsage_SelectiveParsing(t *testing.T) {
 	require.Equal(t, 21, usage.InputTokens)
 	require.Equal(t, 8, usage.OutputTokens)
 	require.Equal(t, 6, usage.CacheReadInputTokens)
+REDACTED
+
+func TestParseSSEUsage_NonTerminalUsageMergesNonZeroFields(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	usage := &OpenAIUsage{REDACTED
+
+	svc.parseSSEUsage(`{"type":"response.in_progress","usage":{"input_tokens":17,"output_tokens":1,"input_tokens_details":{"cached_tokens":4REDACTEDREDACTEDREDACTED`, usage)
+	svc.parseSSEUsage(`{"type":"response.output_text.done","usage":{"input_tokens":0,"output_tokens":5,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":3REDACTEDREDACTEDREDACTED`, usage)
+
+	require.Equal(t, 17, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 4, usage.CacheReadInputTokens)
+	require.Equal(t, 3, usage.CacheCreationInputTokens)
+REDACTED
+
+func TestParseSSEUsage_TerminalUsageReplacesFallback(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	usage := &OpenAIUsage{REDACTED
+
+	svc.parseSSEUsage(`{"type":"response.output_text.done","usage":{"input_tokens":17,"output_tokens":5,"input_tokens_details":{"cached_tokens":4REDACTEDREDACTEDREDACTED`, usage)
+	svc.parseSSEUsage(`{"type":"response.completed","response":{"usage":{"input_tokens":19,"output_tokens":7REDACTEDREDACTEDREDACTED`, usage)
+
+	require.Equal(t, 19, usage.InputTokens)
+	require.Equal(t, 7, usage.OutputTokens)
+	require.Zero(t, usage.CacheReadInputTokens)
+REDACTED
+
+func TestParseSSEUsage_TerminalWithoutUsageKeepsFallback(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	usage := &OpenAIUsage{REDACTED
+
+	svc.parseSSEUsage(`{"type":"response.in_progress","usage":{"input_tokens":17,"output_tokens":5REDACTEDREDACTED`, usage)
+	svc.parseSSEUsage(`{"type":"response.completed","response":{"id":"resp_1"REDACTEDREDACTED`, usage)
+	svc.parseSSEUsage("  [DONE]\n", usage)
+
+	require.Equal(t, 17, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
 REDACTED
 
 func TestExtractOpenAIUsageFromJSONBytes_AcceptsResponseAndChatUsageShapes(t *testing.T) {

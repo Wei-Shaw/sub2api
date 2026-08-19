@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestHasCompactionTriggerInInput_DetectsCompactSignal(t *testing.T) {
@@ -53,4 +54,23 @@ REDACTED
 func TestHasCompactionTriggerInInput_CompactTriggerOnly(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","input":[{"type":"compaction_trigger"REDACTED]REDACTED`)
 	require.True(t, HasCompactionTriggerInInput(body))
+REDACTED
+
+func TestNormalizeCompactionTriggerInputOrder_MovesAndCollapsesTriggers(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","input":[{"type":"compaction_trigger"REDACTED,{"type":"message","role":"user","content":"tail"REDACTED,{"type":"compaction_trigger"REDACTED]REDACTED`)
+	normalized, changed, err := NormalizeCompactionTriggerInputOrder(body)
+REDACTED
+	require.True(t, changed)
+	items := gjson.GetBytes(normalized, "input").Array()
+	require.Len(t, items, 2)
+	require.Equal(t, "message", items[0].Get("type").String())
+	require.Equal(t, "compaction_trigger", items[1].Get("type").String())
+REDACTED
+
+func TestNormalizeCompactionTriggerInputOrder_AlreadyFinalPreservesBytes(t *testing.T) {
+	body := []byte(`{"input":[{"type":"message"REDACTED,{"type":"compaction_trigger"REDACTED]REDACTED`)
+	normalized, changed, err := NormalizeCompactionTriggerInputOrder(body)
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, string(body), string(normalized))
 REDACTED

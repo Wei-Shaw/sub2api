@@ -9,6 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -277,6 +278,168 @@ REDACTED)
 	require.Zero(t, settings.getValueCalls, "ingress rejection must bypass monitoring settings reads")
 	require.Zero(t, repo.insertCalls, "ingress rejection must bypass inserts")
 	require.Zero(t, OpsErrorLogEnqueuedTotal(), "ingress rejection must not enter the error queue")
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_SkipsRecoveredUpstreamErrorOnSuccessfulRequest(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+			UpstreamStatusCode: http.StatusTooManyRequests,
+			Message:            "earlier attempt was rate limited",
+	REDACTEDREDACTED)
+		c.JSON(http.StatusOK, gin.H{"status": "completed"REDACTED)
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Zero(t, OpsErrorLogQueueLength())
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_CapturesSplitResponsesFailedSSE(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		setOpsRequestContext(c, "gpt-5.5", true)
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write([]byte("event: response."))
+		_, _ = c.Writer.Write([]byte("failed\n"))
+		_, _ = c.Writer.Write([]byte(`data: {"type":"response.failed","response":{"error":{"code":"rate_limit_exceeded","message":"Too many pending requests"REDACTEDREDACTEDREDACTED`))
+		_, _ = c.Writer.Write([]byte("\n\n"))
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusTooManyRequests, job.entry.StatusCode)
+	require.Equal(t, "rate_limit_error", job.entry.ErrorType)
+	require.Contains(t, job.entry.ErrorMessage, "Too many pending requests")
+REDACTED
+
+func TestOpsCaptureWriter_CapturesSplitDataOnlyTerminalMarkers(t *testing.T) {
+	tests := []struct {
+		name      string
+		prefix    string
+		suffix    string
+		wantType  string
+		wantCode  string
+		wantError string
+REDACTED{
+		{
+			name:      "response failed with space",
+			prefix:    `data: {"type":"response.`,
+			suffix:    `failed","response":{"error":{"code":"server_is_overloaded","message":"busy"REDACTEDREDACTEDREDACTED`,
+			wantType:  "overloaded_error",
+			wantCode:  "server_is_overloaded",
+			wantError: "busy",
+	REDACTED,
+		{
+			name:      "response failed without space",
+			prefix:    `data:{"type":"response.`,
+			suffix:    `failed","error":{"code":"rate_limit_exceeded","message":"slow down"REDACTEDREDACTED`,
+			wantType:  "rate_limit_error",
+			wantCode:  "rate_limit_exceeded",
+			wantError: "slow down",
+	REDACTED,
+		{
+			name:      "error with space",
+			prefix:    `data: {"type":"er`,
+			suffix:    `ror","error":{"type":"invalid_request_error","code":"invalid_request","message":"bad input"REDACTEDREDACTED`,
+			wantType:  "invalid_request_error",
+			wantCode:  "invalid_request",
+			wantError: "bad input",
+	REDACTED,
+		{
+			name:      "error without space",
+			prefix:    `data:{"type":"er`,
+			suffix:    `ror","error":{"type":"authentication_error","code":"authentication_failed","message":"sign in"REDACTEDREDACTED`,
+			wantType:  "authentication_error",
+			wantCode:  "authentication_failed",
+			wantError: "sign in",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			writer := &opsCaptureWriter{limit: opsCaptureWriterLimitREDACTED
+			writer.captureResponseChunk([]byte(tt.prefix), http.StatusOK)
+			require.Empty(t, writer.buf.Bytes(), "partial marker must remain in the bounded probe")
+			writer.captureResponseChunk([]byte(tt.suffix+"\n\n"), http.StatusOK)
+
+			parsed := parseOpsErrorResponse(writer.buf.Bytes())
+			require.True(t, writer.sseCapturing)
+			require.True(t, parsed.StreamFailure)
+			require.Equal(t, tt.wantType, parsed.ErrorType)
+			require.Equal(t, tt.wantCode, parsed.Code)
+			require.Equal(t, tt.wantError, parsed.Message)
+			require.LessOrEqual(t, len(writer.probe), opsTerminalSSEProbeSize)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_StreamFailureUsesTerminalErrorOverAttemptContext(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		service.SetOpsUpstreamError(c, http.StatusBadGateway, "Upstream transport error", "earlier attempt failed")
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.WriteString("event: er")
+		_, _ = c.Writer.WriteString("ror\n")
+		_, _ = c.Writer.WriteString(`data: {"type":"error","error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"input exceeds the context window"REDACTEDREDACTED`)
+		_, _ = c.Writer.WriteString("\n\n")
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, http.StatusBadRequest, job.entry.StatusCode)
+	require.Equal(t, "invalid_request_error", job.entry.ErrorType)
+	require.NotNil(t, job.entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusBadRequest, *job.entry.UpstreamStatusCode)
+	require.NotNil(t, job.entry.UpstreamErrorMessage)
+	require.Equal(t, "input exceeds the context window", *job.entry.UpstreamErrorMessage)
+REDACTED
+
+func TestOpsErrorLoggerMiddleware_PrefersContextRequestID(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Header("X-Request-Id", "response-header-id")
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "bad input"REDACTEDREDACTED)
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	request = request.WithContext(context.WithValue(request.Context(), ctxkey.RequestID, "context-request-id"))
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	job := <-opsErrorLogQueue
+	require.Equal(t, "context-request-id", job.entry.RequestID)
 REDACTED
 
 func TestNormalizeOpsPersistentUserAgentBoundsAndPreservesUTF8(t *testing.T) {

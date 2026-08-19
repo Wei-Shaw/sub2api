@@ -114,6 +114,270 @@ REDACTED
 	require.False(t, gjson.GetBytes(retryBody, "max_output_tokens").Exists())
 REDACTED
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRemovesExactIndexedStatus(t *testing.T) {
+	body := []byte(`{"input":[{"type":"message","status":"keep","content":"one"REDACTED,{"type":"reasoning","status":"remove","summary":[]REDACTED]REDACTED`)
+	responses := []struct {
+		name string
+		body []byte
+REDACTED{
+		{
+			name: "structured param",
+			body: []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[1].status'.","param":"input[1].status"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name: "message param",
+			body: []byte(`{"error":{"code":"unsupported_parameter","message":"Unsupported parameter: input[1].status."REDACTEDREDACTED`),
+	REDACTED,
+REDACTED
+	for _, tt := range responses {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, tt.body)
+		REDACTED
+			require.True(t, changed)
+			require.Equal(t, "keep", gjson.GetBytes(retryBody, "input.0.status").String())
+			require.False(t, gjson.GetBytes(retryBody, "input.1.status").Exists())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyNormalizesExactNullContent(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       []byte
+		wantChange bool
+		wantValue  string
+		wantExists bool
+REDACTED{
+		{
+			name:       "message becomes empty string",
+			body:       []byte(`{"input":[{"type":"message","role":"assistant","content":nullREDACTED]REDACTED`),
+			wantChange: true,
+			wantValue:  "",
+			wantExists: true,
+	REDACTED,
+		{
+			name:       "reasoning content is removed",
+			body:       []byte(`{"input":[{"type":"reasoning","content":null,"summary":[]REDACTED]REDACTED`),
+			wantChange: true,
+			wantExists: false,
+	REDACTED,
+		{
+			name:       "unknown item is unchanged",
+			body:       []byte(`{"input":[{"type":"future_item","content":nullREDACTED]REDACTED`),
+			wantChange: false,
+	REDACTED,
+		{
+			name:       "non null content is unchanged",
+			body:       []byte(`{"input":[{"type":"message","content":"keep"REDACTED]REDACTED`),
+			wantChange: false,
+	REDACTED,
+REDACTED
+	responseBody := []byte(`{"error":{"code":"invalid_type","message":"Invalid type for 'input[0].content': expected one of a string or a list of input items, but got null instead.","param":"input[0].content"REDACTEDREDACTED`)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, tt.body, responseBody)
+		REDACTED
+			require.Equal(t, tt.wantChange, changed)
+			if !tt.wantChange {
+				require.Nil(t, retryBody)
+				return
+		REDACTED
+			content := gjson.GetBytes(retryBody, "input.0.content")
+			require.Equal(t, tt.wantExists, content.Exists())
+			if tt.wantExists {
+				require.Equal(t, tt.wantValue, content.String())
+				require.Equal(t, gjson.String, content.Type)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsUnsafeIndexedMutations(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         []byte
+		responseBody []byte
+REDACTED{
+		{
+			name:         "nested status path",
+			body:         []byte(`{"input":[{"type":"message","content":{"status":"keep"REDACTEDREDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: input[0].content.status.","param":"input[0].content.status"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "status index out of bounds",
+			body:         []byte(`{"input":[{"type":"message","status":"keep"REDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: input[4].status.","param":"input[4].status"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "status path only mentioned",
+			body:         []byte(`{"input":[{"type":"message","status":"keep"REDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"invalid_request_error","message":"input[0].status must be completed","param":"input[0].status"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "content param and message disagree",
+			body:         []byte(`{"input":[{"type":"message","content":nullREDACTED,{"type":"message","content":nullREDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"invalid_type","message":"Invalid type for input[1].content: got null instead.","param":"input[0].content"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "content error only mentions null",
+			body:         []byte(`{"input":[{"type":"message","content":nullREDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"invalid_type","message":"content cannot be null","param":"input[0].content"REDACTEDREDACTED`),
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, tt.body, tt.responseBody)
+		REDACTED
+			require.False(t, changed)
+			require.Nil(t, retryBody)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIGatewayService_OAuthRetriesExactRejectedStatus(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","stream":true,"instructions":"test","input":[{"type":"message","role":"user","status":"completed","content":"hello"REDACTED]REDACTED`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].status'.","param":"input[0].status"REDACTEDREDACTED`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ok\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2REDACTEDREDACTEDREDACTED\n\ndata: [DONE]\n\n"),
+REDACTEDREDACTED
+	upstream.responses[1].Header.Set("Content-Type", "text/event-stream")
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), newOpenAIRejectedFieldTestContext(body), newOpenAIOAuthNamespaceTestAccount(), body,
+	)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, "completed", gjson.GetBytes(upstream.bodies[0], "input.0.status").String())
+	require.False(t, gjson.GetBytes(upstream.bodies[1], "input.0.status").Exists())
+REDACTED
+
+func TestOpenAIGatewayService_APIKeyRetriesExactRejectedNullMessageContent(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"message","role":"assistant","content":nullREDACTED,{"type":"message","role":"user","content":"continue"REDACTED]REDACTED`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusBadRequest, `{"error":{"code":"invalid_type","message":"Invalid type for 'input[0].content': expected one of a string or a list of input items, but got null instead.","param":"input[0].content"REDACTEDREDACTED`),
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, `{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`),
+REDACTEDREDACTED
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), newOpenAIRejectedFieldTestContext(body), newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+REDACTED
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Equal(t, gjson.Null, gjson.GetBytes(upstream.bodies[0], "input.0.content").Type)
+	require.Equal(t, gjson.String, gjson.GetBytes(upstream.bodies[1], "input.0.content").Type)
+	require.Equal(t, "continue", gjson.GetBytes(upstream.bodies[1], "input.1.content").String())
+REDACTED
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRemovesModelRejectedPromptCacheBreakpoint(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         []byte
+		responseBody []byte
+		removedPath  string
+		preserved    string
+		reason       string
+REDACTED{
+		{
+			name:         "top level",
+			body:         []byte(`{"model":"gpt-5.6-sol","prompt_cache_breakpoint":{"type":"message_start"REDACTED,"input":"hello"REDACTED`),
+			responseBody: []byte(`{"error":{"code":"invalid_parameter","message":"prompt_cache_breakpoint is not supported on this model","param":"prompt_cache_breakpoint"REDACTEDREDACTED`),
+			removedPath:  "prompt_cache_breakpoint",
+			preserved:    "input",
+			reason:       "prompt_cache_breakpoint parameter rejection",
+	REDACTED,
+		{
+			name:         "indexed path from message",
+			body:         []byte(`{"input":[{"type":"message","prompt_cache_breakpoint":{"type":"message_start"REDACTEDREDACTED,{"type":"message","prompt_cache_breakpoint":{"type":"message_end"REDACTEDREDACTED]REDACTED`),
+			responseBody: []byte(`{"error":{"code":"invalid_parameter","message":"input[1].prompt_cache_breakpoint is not supported on this model"REDACTEDREDACTED`),
+			removedPath:  "input.1.prompt_cache_breakpoint",
+			preserved:    "input.0.prompt_cache_breakpoint",
+			reason:       "indexed prompt_cache_breakpoint parameter rejection",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, reason, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, tt.body, tt.responseBody)
+
+		REDACTED
+			require.True(t, changed)
+			require.Equal(t, tt.reason, reason)
+			require.False(t, gjson.GetBytes(retryBody, tt.removedPath).Exists())
+			require.True(t, gjson.GetBytes(retryBody, tt.preserved).Exists())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyRejectsAmbiguousPromptCacheBreakpointErrors(t *testing.T) {
+	body := []byte(`{"prompt_cache_breakpoint":{"type":"message_start"REDACTED,"input":[{"type":"message","prompt_cache_breakpoint":{"type":"message_end"REDACTEDREDACTED]REDACTED`)
+	tests := []struct {
+		name         string
+		responseBody []byte
+REDACTED{
+		{
+			name:         "structured param disagrees",
+			responseBody: []byte(`{"error":{"code":"invalid_parameter","message":"input[0].prompt_cache_breakpoint is not supported on this model","param":"prompt_cache_breakpoint"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "index out of bounds",
+			responseBody: []byte(`{"error":{"code":"invalid_parameter","message":"input[4].prompt_cache_breakpoint is not supported on this model","param":"input[4].prompt_cache_breakpoint"REDACTEDREDACTED`),
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, tt.responseBody)
+
+		REDACTED
+			require.False(t, changed)
+			require.Nil(t, retryBody)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyAcceptsEitherCacheModelRejectionSignal(t *testing.T) {
+	tests := []struct {
+		name         string
+		responseBody []byte
+REDACTED{
+		{
+			name:         "invalid parameter code",
+			responseBody: []byte(`{"error":{"code":"invalid_parameter","message":"This optional cache hint cannot be used here","param":"prompt_cache_breakpoint"REDACTEDREDACTED`),
+	REDACTED,
+		{
+			name:         "model rejection message",
+			responseBody: []byte(`{"error":{"code":"invalid_request_error","message":"prompt_cache_breakpoint is not supported on this model","param":"prompt_cache_breakpoint"REDACTEDREDACTED`),
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, []byte(`{"prompt_cache_breakpoint":true,"input":"keep"REDACTED`), tt.responseBody)
+
+		REDACTED
+			require.True(t, changed)
+			require.False(t, gjson.GetBytes(retryBody, "prompt_cache_breakpoint").Exists())
+			require.Equal(t, "keep", gjson.GetBytes(retryBody, "input").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIResponsesRejectedFieldRetryStateAllowsPromptCacheBreakpointVariantOnce(t *testing.T) {
+	body := []byte(`{"input":[{"prompt_cache_breakpoint":{"type":"message_start"REDACTEDREDACTED]REDACTED`)
+	responseBody := []byte(`{"error":{"code":"invalid_parameter","message":"input[0].prompt_cache_breakpoint is not supported on this model","param":"input[0].prompt_cache_breakpoint"REDACTEDREDACTED`)
+	state := newOpenAIResponsesRejectedFieldRetryState(body)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+REDACTED
+	require.True(t, changed)
+	require.True(t, state.Allow(retryBody))
+	require.False(t, state.Allow(retryBody))
+REDACTED
+
 func TestOpenAIGatewayService_APIKeyStripsAllIndexedNamespacesBeforeFirstForward(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"type":"function_call","name":"first","namespace":"remove-first","arguments":"{REDACTED"REDACTED,{"type":"custom_tool_call","name":"second","namespace":"remove-second","input":"{REDACTED"REDACTED]REDACTED`)
 	upstream := &httpUpstreamRecorder{responses: []*http.Response{

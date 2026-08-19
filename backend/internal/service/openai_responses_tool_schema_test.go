@@ -201,6 +201,38 @@ REDACTED
 	require.NotEqual(t, string(original), string(sanitized))
 REDACTED
 
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_RemovesLookaroundOnly(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{"q":{"type":"string","pattern":"^(?=.*foo)[a-z]+$"REDACTED,"id":{"type":"string","pattern":"^[a-z]+$"REDACTED,"z":{"type":"string","pattern":"(?<!bad)ok"REDACTEDREDACTEDREDACTEDREDACTED]REDACTED`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.q.pattern").Exists())
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.z.pattern").Exists())
+	require.Equal(t, "^[a-z]+$", gjson.GetBytes(sanitized, "tools.0.parameters.properties.id.pattern").String())
+REDACTED
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DoesNotTouchUserInputPattern(t *testing.T) {
+	body := []byte(`{"input":{"pattern":"(?=keep)"REDACTED,"metadata":{"pattern":"(?!keep)"REDACTEDREDACTED`)
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+REDACTED
+	require.False(t, changed)
+	require.Equal(t, string(body), string(sanitized))
+REDACTED
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DoesNotTraverseInstanceData(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","parameters":{"type":"object","properties":{"config":{"type":"object","pattern":"(?=remove)","default":{"pattern":"(?=keep-default)"REDACTED,"examples":[{"pattern":"(?=keep-example)"REDACTED],"const":{"pattern":"(?=keep-const)"REDACTED,"enum":[{"pattern":"(?=keep-enum)"REDACTED]REDACTEDREDACTEDREDACTEDREDACTED]REDACTED`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+REDACTED
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.pattern").Exists())
+	require.Equal(t, "(?=keep-default)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.default.pattern").String())
+	require.Equal(t, "(?=keep-example)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.examples.0.pattern").String())
+	require.Equal(t, "(?=keep-const)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.const.pattern").String())
+	require.Equal(t, "(?=keep-enum)", gjson.GetBytes(sanitized, "tools.0.parameters.properties.config.enum.0.pattern").String())
+REDACTED
+
 func buildToolSchemaNullTypeBody(t *testing.T, hits int) []byte {
 REDACTED
 	tools := make([]any, 0, hits)

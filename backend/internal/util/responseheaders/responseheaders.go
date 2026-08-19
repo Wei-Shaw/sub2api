@@ -32,6 +32,9 @@ var defaultAllowed = map[string]struct{REDACTED{
 	"retry-after":                    {REDACTED,
 	"location":                       {REDACTED,
 	"www-authenticate":               {REDACTED,
+	// Codex uses this response header to avoid estimating reasoning tokens a
+	// second time when upstream usage already includes them.
+	"x-reasoning-included": {REDACTED,
 REDACTED
 
 // hopByHopHeaders 是跳过的 hop-by-hop 头部，这些头部由 HTTP 库自动处理

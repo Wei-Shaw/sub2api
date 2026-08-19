@@ -572,6 +572,7 @@ REDACTED
 					message = corrected
 			REDACTED
 		REDACTED
+			message = restoreCodexToolNamesFromContext(c, message)
 	REDACTED
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)

@@ -449,6 +449,7 @@ var openAIAlphaSearchUnsupportedBodyFields = [...]string{
 	// alpha/search 会对这些字段返回 Unknown parameter（例如 prompt_cache_key）。
 	"prompt_cache_key",
 	"prompt_cache_retention",
+	"store",
 REDACTED
 
 func sanitizeOpenAIAlphaSearchBody(body []byte) ([]byte, error) {

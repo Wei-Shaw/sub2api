@@ -28,6 +28,7 @@ type openAIWSClientFrameConn struct {
 	// The relay observes upstream payloads, while clients must keep seeing the
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
+	restoreToolNames     func([]byte) []byte
 REDACTED
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -639,6 +640,9 @@ REDACTED
 		if c.restoreResponseModel != nil {
 			payload = c.restoreResponseModel(payload)
 	REDACTED
+		if c.restoreToolNames != nil {
+			payload = c.restoreToolNames(payload)
+	REDACTED
 REDACTED
 	return c.conn.Write(ctx, msgType, payload)
 REDACTED
@@ -728,6 +732,21 @@ REDACTED
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
 	if capturedSessionModel != "" && capturedSessionModel != strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String()) {
 		firstClientMessage = s.ReplaceModelInBody(firstClientMessage, capturedSessionModel)
+REDACTED
+	if account.IsOpenAIOAuth() {
+		aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(firstClientMessage)
+		if aliasErr != nil {
+			return aliasErr
+	REDACTED
+		setCodexToolNameReverse(c, reverse)
+		if aliased {
+			firstClientMessage = aliasedBody
+	REDACTED
+REDACTED
+	if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(firstClientMessage, account); normalizeErr != nil {
+		return fmt.Errorf("normalize first websocket response.create: %w", normalizeErr)
+REDACTED else if compatibilityChanged {
+		firstClientMessage = normalized
 REDACTED
 	usageMeta := newOpenAIWSPassthroughUsageMeta(initialRequestModel, firstClientMessage)
 	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, capturedSessionModel, firstClientMessage)
@@ -929,6 +948,9 @@ REDACTED
 			requestModel, upstreamModel := usageMeta.turnModels("")
 			return replaceOpenAIWSMessageModel(payload, upstreamModel, requestModel)
 	REDACTED,
+		restoreToolNames: func(payload []byte) []byte {
+			return restoreCodexToolNamesFromContext(c, payload)
+	REDACTED,
 REDACTED
 	policyClientConn := &openAIWSPolicyEnforcingFrameConn{
 		inner: clientFrameConn,
@@ -957,6 +979,21 @@ REDACTED
 			REDACTED()
 		REDACTED
 			if isResponseCreate {
+				if account.IsOpenAIOAuth() {
+					aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(payload)
+					if aliasErr != nil {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, aliasErr.Error(), aliasErr)
+				REDACTED
+					setCodexToolNameReverse(c, reverse)
+					if aliased {
+						payload = aliasedBody
+				REDACTED
+			REDACTED
+				if normalized, compatibilityChanged, normalizeErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(payload, account); normalizeErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", normalizeErr)
+			REDACTED else if compatibilityChanged {
+					payload = normalized
+			REDACTED
 				if account.IsOpenAIOAuth() && isOpenAIResponsesLiteWebSocketPayload(payload) {
 					litePayload, _, liteErr := normalizeOpenAIResponsesLiteToolsPayload(payload)
 					if liteErr != nil {

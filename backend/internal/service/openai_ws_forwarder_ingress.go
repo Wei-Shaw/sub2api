@@ -220,6 +220,21 @@ REDACTED
 				normalized = capped
 		REDACTED
 	REDACTED
+		if compatibilityBody, compatibilityChanged, compatibilityErr := normalizeOpenAIResponsesWebSocketCompatibilityBody(normalized, account); compatibilityErr != nil {
+			return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", compatibilityErr)
+	REDACTED else if compatibilityChanged {
+			normalized = compatibilityBody
+	REDACTED
+		if account.IsOpenAIOAuth() && !forceHTTPBridge {
+			aliasedBody, reverse, aliased, aliasErr := aliasOpenAIOAuthReservedToolNamesBody(normalized)
+			if aliasErr != nil {
+				return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, aliasErr.Error(), aliasErr)
+		REDACTED
+			setCodexToolNameReverse(c, reverse)
+			if aliased {
+				normalized = aliasedBody
+		REDACTED
+	REDACTED
 
 		originalModel := strings.TrimSpace(values[1].String())
 		modelMissing := originalModel == ""
@@ -411,6 +426,7 @@ REDACTED
 	writeClientMessage := func(message []byte) error {
 		writeCtx, cancel := newOpenAIWSDownstreamWriteContext(ctx, hooks, s.openAIWSWriteTimeout())
 		defer cancel()
+		message = restoreCodexToolNamesFromContext(c, message)
 		return clientConn.Write(writeCtx, coderws.MessageText, message)
 REDACTED
 
