@@ -87,6 +87,9 @@ REDACTED))
 	require.True(t, liveEnabledForAPIKey(&service.APIKey{
 		Group: &service.Group{Platform: service.PlatformOpenAI, AllowLive: trueREDACTED,
 REDACTED))
+	require.True(t, liveEnabledForAPIKey(&service.APIKey{
+		Group: &service.Group{Platform: service.PlatformComposite, AllowLive: trueREDACTED,
+REDACTED))
 REDACTED
 
 func TestLiveAttestationErrorIsExplicit(t *testing.T) {
