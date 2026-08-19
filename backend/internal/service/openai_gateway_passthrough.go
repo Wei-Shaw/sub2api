@@ -83,6 +83,17 @@ REDACTED
 	return needsAdaptation
 REDACTED
 
+func shouldAdaptOpenAIResponsesClientTools(account *Account, c *gin.Context, body []byte) bool {
+	if account == nil || account.Type != AccountTypeAPIKey || isOpenAIResponsesCompactPath(c) ||
+		!needsOpenAIResponsesClientToolAdaptation(body) {
+		return false
+REDACTED
+	if account.Platform == PlatformOpenAI {
+		return true
+REDACTED
+	return account.Platform == PlatformDeepseek && account.GetAPIProtocol() == APIProtocolResponses
+REDACTED
+
 func openAIResponsesClientToolMapping(c *gin.Context) (apicompat.ResponsesClientToolMapping, bool) {
 	if c == nil {
 		return apicompat.ResponsesClientToolMapping{REDACTED, false
@@ -183,8 +194,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
-		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
+	if shouldAdaptOpenAIResponsesClientTools(account, c, body) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
 		if adaptErr != nil {
 			return nil, adaptErr
