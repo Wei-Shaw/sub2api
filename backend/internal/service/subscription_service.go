@@ -554,6 +554,15 @@ func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, i
 			}
 			s.maybeInvalidateAssignmentCaches(input.UserID, input.GroupID, false)
 			renewed, getErr := s.userSubRepo.GetByID(ctx, sub.ID)
+			if getErr != nil {
+				return nil, false, getErr
+			}
+			if renewed.Status == SubscriptionStatusActive && renewed.ExpiresAt.After(now) {
+				if err := s.userSubRepo.UpdateLimits(ctx, sub.ID, input.DailyLimitUSD, input.WeeklyLimitUSD, input.MonthlyLimitUSD); err != nil {
+					return nil, false, err
+				}
+				renewed, getErr = s.userSubRepo.GetByID(ctx, sub.ID)
+			}
 			return renewed, true, getErr
 		}
 		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
@@ -679,7 +688,7 @@ func (s *SubscriptionService) UpdateSubscriptionLimits(ctx context.Context, subs
 		sub.MonthlyLimitUSD = input.Monthly.Value
 	}
 
-	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+	if err := s.userSubRepo.UpdateLimits(ctx, sub.ID, sub.DailyLimitUSD, sub.WeeklyLimitUSD, sub.MonthlyLimitUSD); err != nil {
 		return nil, err
 	}
 	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {

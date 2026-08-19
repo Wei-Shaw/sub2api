@@ -165,6 +165,28 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, service.ErrSubscriptionAlreadyExists)
 }
 
+func (r *userSubscriptionRepository) UpdateLimits(ctx context.Context, subscriptionID int64, daily, weekly, monthly *float64) error {
+	client := clientFromContext(ctx, r.client)
+	builder := client.UserSubscription.UpdateOneID(subscriptionID)
+	if daily != nil {
+		builder.SetDailyLimitUsd(*daily)
+	} else {
+		builder.ClearDailyLimitUsd()
+	}
+	if weekly != nil {
+		builder.SetWeeklyLimitUsd(*weekly)
+	} else {
+		builder.ClearWeeklyLimitUsd()
+	}
+	if monthly != nil {
+		builder.SetMonthlyLimitUsd(*monthly)
+	} else {
+		builder.ClearMonthlyLimitUsd()
+	}
+	_, err := builder.Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 func applyUserSubscriptionLimitFields(builder *dbent.UserSubscriptionUpdateOne, sub *service.UserSubscription) *dbent.UserSubscriptionUpdateOne {
 	if sub.DailyLimitUSD != nil {
 		builder = builder.SetDailyLimitUsd(*sub.DailyLimitUSD)

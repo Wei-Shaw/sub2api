@@ -89,6 +89,10 @@ func (r *subscriptionExpiryRepoStub) UpdateNotes(context.Context, int64, string)
 	return nil
 }
 
+func (r *subscriptionExpiryRepoStub) UpdateLimits(context.Context, int64, *float64, *float64, *float64) error {
+	return nil
+}
+
 func (r *subscriptionExpiryRepoStub) ActivateWindows(context.Context, int64, time.Time, time.Time) error {
 	return nil
 }
