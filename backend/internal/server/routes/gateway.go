@@ -55,9 +55,6 @@ func RegisterGatewayRoutes(
 			return false
 	REDACTED
 REDACTED
-	isOpenAIGatewayPlatform := func(c *gin.Context) bool {
-		return getGroupPlatform(c) == service.PlatformOpenAI
-REDACTED
 	countTokensHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek:
@@ -69,9 +66,12 @@ REDACTED
 	REDACTED
 REDACTED
 	modelsHandler := func(c *gin.Context) {
-		if isOpenAIGatewayPlatform(c) && c.Query("client_version") != "" {
-			h.OpenAIGateway.CodexModels(c)
-			return
+		if c.Query("client_version") != "" {
+			switch getGroupPlatform(c) {
+			case service.PlatformOpenAI, service.PlatformComposite:
+				h.OpenAIGateway.CodexModels(c)
+				return
+		REDACTED
 	REDACTED
 		h.Gateway.Models(c)
 REDACTED
@@ -551,8 +551,10 @@ REDACTED
 			if decision.Matched {
 				c.Request = c.Request.WithContext(service.WithCompositeRouteDecision(c.Request.Context(), decision))
 				if upstreamModel := strings.TrimSpace(decision.UpstreamModel); upstreamModel != "" && upstreamModel != model && gjson.ValidBytes(body) {
-					if rewritten, rewriteErr := sjson.SetBytes(body, "model", upstreamModel); rewriteErr == nil {
-						body = rewritten
+					if _, modelPath := compositeJSONRequestModel(body); modelPath != "" {
+						if rewritten, rewriteErr := sjson.SetBytes(body, modelPath, upstreamModel); rewriteErr == nil {
+							body = rewritten
+					REDACTED
 				REDACTED
 			REDACTED
 		REDACTED
@@ -563,10 +565,23 @@ REDACTED
 REDACTED
 
 func compositeRequestModelFromBody(contentType string, body []byte) string {
-	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
+	if model, _ := compositeJSONRequestModel(body); model != "" {
 		return model
 REDACTED
 	return compositeMultipartModelFromBody(contentType, body)
+REDACTED
+
+func compositeJSONRequestModel(body []byte) (string, string) {
+	for _, path := range []string{"model", "session.model"REDACTED {
+		model := gjson.GetBytes(body, path)
+		if model.Type != gjson.String {
+			continue
+	REDACTED
+		if value := strings.TrimSpace(model.String()); value != "" {
+			return value, path
+	REDACTED
+REDACTED
+	return "", ""
 REDACTED
 
 func compositeMultipartModelFromBody(contentType string, body []byte) string {
@@ -587,14 +602,22 @@ REDACTED
 		if err != nil {
 			return ""
 	REDACTED
-		if part.FormName() != "model" || part.FileName() != "" {
+		fieldName := part.FormName()
+		if part.FileName() != "" || (fieldName != "model" && fieldName != "session") {
 			continue
 	REDACTED
 		data, err := io.ReadAll(part)
 		if err != nil {
 			return ""
 	REDACTED
-		return strings.TrimSpace(string(data))
+		switch fieldName {
+		case "model":
+			return strings.TrimSpace(string(data))
+		case "session":
+			if model, _ := compositeJSONRequestModel(data); model != "" {
+				return model
+		REDACTED
+	REDACTED
 REDACTED
 REDACTED
 
@@ -670,7 +693,10 @@ func compositeRouteEndpointForPath(path string) string {
 		return service.CompositeRouteEndpointCountTokens
 	case strings.Contains(path, "/messages"):
 		return service.CompositeRouteEndpointMessages
-	case strings.Contains(path, "/responses"):
+	case strings.Contains(path, "/responses"),
+		strings.Contains(path, "/alpha/search"),
+		strings.Contains(path, "/realtime/calls"),
+		strings.HasSuffix(strings.TrimRight(path, "/"), "/live"):
 		return service.CompositeRouteEndpointResponses
 	case strings.Contains(path, "/chat/completions"):
 		return service.CompositeRouteEndpointChatCompletions
