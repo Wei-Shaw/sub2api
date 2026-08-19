@@ -50,12 +50,16 @@ func billingSubKey(userID, groupID int64) string {
 }
 
 const (
-	subFieldStatus       = "status"
-	subFieldExpiresAt    = "expires_at"
-	subFieldDailyUsage   = "daily_usage"
-	subFieldWeeklyUsage  = "weekly_usage"
-	subFieldMonthlyUsage = "monthly_usage"
-	subFieldVersion      = "version"
+	subFieldStatus             = "status"
+	subFieldExpiresAt          = "expires_at"
+	subFieldDailyUsage         = "daily_usage"
+	subFieldWeeklyUsage        = "weekly_usage"
+	subFieldMonthlyUsage       = "monthly_usage"
+	subFieldDailyLimit         = "daily_limit_usd"
+	subFieldWeeklyLimit        = "weekly_limit_usd"
+	subFieldMonthlyLimit       = "monthly_limit_usd"
+	subFieldLimitSchemaVersion = "limit_schema_version"
+	subFieldVersion            = "version"
 )
 
 // billingRateLimitKey generates the Redis key for API key rate limit cache.
@@ -211,6 +215,12 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 	if monthlyStr, ok := data[subFieldMonthlyUsage]; ok {
 		result.MonthlyUsage, _ = strconv.ParseFloat(monthlyStr, 64)
 	}
+	result.DailyLimitUSD = parseOptionalFloat(data, subFieldDailyLimit)
+	result.WeeklyLimitUSD = parseOptionalFloat(data, subFieldWeeklyLimit)
+	result.MonthlyLimitUSD = parseOptionalFloat(data, subFieldMonthlyLimit)
+	if schemaVersion, ok := data[subFieldLimitSchemaVersion]; ok {
+		result.LimitSchemaVersion, _ = strconv.Atoi(schemaVersion)
+	}
 
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
@@ -227,19 +237,42 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	key := billingSubKey(userID, groupID)
 
 	fields := map[string]any{
-		subFieldStatus:       data.Status,
-		subFieldExpiresAt:    data.ExpiresAt.Unix(),
-		subFieldDailyUsage:   data.DailyUsage,
-		subFieldWeeklyUsage:  data.WeeklyUsage,
-		subFieldMonthlyUsage: data.MonthlyUsage,
-		subFieldVersion:      data.Version,
+		subFieldStatus:             data.Status,
+		subFieldExpiresAt:          data.ExpiresAt.Unix(),
+		subFieldDailyUsage:         data.DailyUsage,
+		subFieldWeeklyUsage:        data.WeeklyUsage,
+		subFieldMonthlyUsage:       data.MonthlyUsage,
+		subFieldLimitSchemaVersion: data.LimitSchemaVersion,
+		subFieldVersion:            data.Version,
+	}
+	if data.DailyLimitUSD != nil {
+		fields[subFieldDailyLimit] = *data.DailyLimitUSD
+	}
+	if data.WeeklyLimitUSD != nil {
+		fields[subFieldWeeklyLimit] = *data.WeeklyLimitUSD
+	}
+	if data.MonthlyLimitUSD != nil {
+		fields[subFieldMonthlyLimit] = *data.MonthlyLimitUSD
 	}
 
 	pipe := c.rdb.Pipeline()
+	pipe.HDel(ctx, key, subFieldDailyLimit, subFieldWeeklyLimit, subFieldMonthlyLimit)
 	pipe.HSet(ctx, key, fields)
 	pipe.Expire(ctx, key, jitteredTTL())
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+func parseOptionalFloat(data map[string]string, field string) *float64 {
+	raw, ok := data[field]
+	if !ok {
+		return nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil
+	}
+	return &value
 }
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {

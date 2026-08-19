@@ -38,6 +38,9 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetNillableDailyLimitUsd(sub.DailyLimitUSD).
+		SetNillableWeeklyLimitUsd(sub.WeeklyLimitUSD).
+		SetNillableMonthlyLimitUsd(sub.MonthlyLimitUSD).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -152,6 +155,7 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	builder = applyUserSubscriptionLimitFields(builder, sub)
 
 	updated, err := builder.Save(ctx)
 	if err == nil {
@@ -159,6 +163,25 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		return nil
 	}
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, service.ErrSubscriptionAlreadyExists)
+}
+
+func applyUserSubscriptionLimitFields(builder *dbent.UserSubscriptionUpdateOne, sub *service.UserSubscription) *dbent.UserSubscriptionUpdateOne {
+	if sub.DailyLimitUSD != nil {
+		builder = builder.SetDailyLimitUsd(*sub.DailyLimitUSD)
+	} else {
+		builder = builder.ClearDailyLimitUsd()
+	}
+	if sub.WeeklyLimitUSD != nil {
+		builder = builder.SetWeeklyLimitUsd(*sub.WeeklyLimitUSD)
+	} else {
+		builder = builder.ClearWeeklyLimitUsd()
+	}
+	if sub.MonthlyLimitUSD != nil {
+		builder = builder.SetMonthlyLimitUsd(*sub.MonthlyLimitUSD)
+	} else {
+		builder = builder.ClearMonthlyLimitUsd()
+	}
+	return builder
 }
 
 func (r *userSubscriptionRepository) Delete(ctx context.Context, id int64) error {
@@ -653,6 +676,9 @@ func userSubscriptionEntityToServiceWithStatusMapping(m *dbent.UserSubscription,
 		DailyUsageUSD:      m.DailyUsageUsd,
 		WeeklyUsageUSD:     m.WeeklyUsageUsd,
 		MonthlyUsageUSD:    m.MonthlyUsageUsd,
+		DailyLimitUSD:      m.DailyLimitUsd,
+		WeeklyLimitUSD:     m.WeeklyLimitUsd,
+		MonthlyLimitUSD:    m.MonthlyLimitUsd,
 		AssignedBy:         m.AssignedBy,
 		AssignedAt:         m.AssignedAt,
 		Notes:              derefString(m.Notes),

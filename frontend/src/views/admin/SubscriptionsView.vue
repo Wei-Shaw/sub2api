@@ -214,22 +214,22 @@
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
               <!-- Daily Usage -->
-              <div v-if="row.group?.daily_limit_usd" class="usage-row">
+              <div v-if="getEffectiveLimit(row, 'daily')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.daily') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.daily_usage_usd, row.group?.daily_limit_usd)"
+                      :class="getProgressClass(row.daily_usage_usd, getEffectiveLimit(row, 'daily'))"
                       :style="{
-                        width: getProgressWidth(row.daily_usage_usd, row.group?.daily_limit_usd)
+                        width: getProgressWidth(row.daily_usage_usd, getEffectiveLimit(row, 'daily'))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.daily_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.daily_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveLimit(row, 'daily')?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.daily_window_start">
@@ -251,22 +251,22 @@
               </div>
 
               <!-- Weekly Usage -->
-              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
+              <div v-if="getEffectiveLimit(row, 'weekly')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
+                      :class="getProgressClass(row.weekly_usage_usd, getEffectiveLimit(row, 'weekly'))"
                       :style="{
-                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
+                        width: getProgressWidth(row.weekly_usage_usd, getEffectiveLimit(row, 'weekly'))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveLimit(row, 'weekly')?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.weekly_window_start">
@@ -288,22 +288,22 @@
               </div>
 
               <!-- Monthly Usage -->
-              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
+              <div v-if="getEffectiveLimit(row, 'monthly')" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
+                      :class="getProgressClass(row.monthly_usage_usd, getEffectiveLimit(row, 'monthly'))"
                       :style="{
-                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
+                        width: getProgressWidth(row.monthly_usage_usd, getEffectiveLimit(row, 'monthly'))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
+                    ${{ getEffectiveLimit(row, 'monthly')?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="reset-info" v-if="row.monthly_window_start">
@@ -327,9 +327,7 @@
               <!-- No Limits - Unlimited badge -->
               <div
                 v-if="
-                  !row.group?.daily_limit_usd &&
-                  !row.group?.weekly_limit_usd &&
-                  !row.group?.monthly_limit_usd
+                  !hasAnyEffectiveLimit(row)
                 "
                 class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
@@ -391,6 +389,14 @@
               >
                 <Icon name="calendar" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
+              </button>
+              <button
+                v-if="row.status === 'active' || row.status === 'expired'"
+                @click="handleEditLimits(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400"
+              >
+                <Icon name="edit" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.editLimits') }}</span>
               </button>
               <button
                 v-if="row.status === 'active'"
@@ -540,6 +546,15 @@
           <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
           <p class="input-hint">{{ t('admin.subscriptions.validityHint') }}</p>
         </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.userLimits') }}</label>
+          <div class="grid grid-cols-3 gap-3">
+            <input v-model="assignForm.daily_limit_usd" type="number" min="0.0000000001" step="any" class="input" :placeholder="t('admin.subscriptions.daily')" />
+            <input v-model="assignForm.weekly_limit_usd" type="number" min="0.0000000001" step="any" class="input" :placeholder="t('admin.subscriptions.weekly')" />
+            <input v-model="assignForm.monthly_limit_usd" type="number" min="0.0000000001" step="any" class="input" :placeholder="t('admin.subscriptions.monthly')" />
+          </div>
+          <p class="input-hint">{{ t('admin.subscriptions.userLimitsHint') }}</p>
+        </div>
       </form>
       <template #footer>
         <div class="flex justify-end gap-3">
@@ -641,6 +656,47 @@
             class="btn btn-primary"
           >
             {{ submitting ? t('admin.subscriptions.adjusting') : t('admin.subscriptions.adjust') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :show="showLimitsModal"
+      :title="t('admin.subscriptions.editLimitsTitle')"
+      width="narrow"
+      @close="closeLimitsModal"
+    >
+      <form
+        v-if="editingSubscription"
+        id="subscription-limits-form"
+        class="space-y-4"
+        @submit.prevent="handleSaveLimits"
+      >
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('admin.subscriptions.editLimitsFor', { user: editingSubscription.user?.email || `#${editingSubscription.user_id}` }) }}
+        </p>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.dailyLimit') }}</label>
+          <input v-model="limitsForm.daily" type="number" min="0.0000000001" step="any" class="input" :placeholder="formatGroupLimit(editingSubscription, 'daily')" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.weeklyLimit') }}</label>
+          <input v-model="limitsForm.weekly" type="number" min="0.0000000001" step="any" class="input" :placeholder="formatGroupLimit(editingSubscription, 'weekly')" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.monthlyLimit') }}</label>
+          <input v-model="limitsForm.monthly" type="number" min="0.0000000001" step="any" class="input" :placeholder="formatGroupLimit(editingSubscription, 'monthly')" />
+        </div>
+        <p class="input-hint">{{ t('admin.subscriptions.clearLimitHint') }}</p>
+      </form>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeLimitsModal">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="submit" form="subscription-limits-form" class="btn btn-primary" :disabled="savingLimits">
+            {{ savingLimits ? t('common.saving') : t('common.save') }}
           </button>
         </div>
       </template>
@@ -788,6 +844,13 @@ import {
   isOneTimeDailyQuota,
   type RemainingDurationParts
 } from '@/utils/subscriptionQuota'
+import {
+  getEffectiveSubscriptionLimit,
+  hasAnyEffectiveSubscriptionLimit,
+  parseOptionalSubscriptionLimit,
+  type SubscriptionLimitInput,
+  type SubscriptionLimitWindow
+} from '@/utils/subscriptionLimits'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -806,6 +869,7 @@ const showGuideModal = ref(false)
 
 const guideActionRows = computed(() => [
   { action: t('admin.subscriptions.guide.actions.adjust'), desc: t('admin.subscriptions.guide.actions.adjustDesc') },
+  { action: t('admin.subscriptions.guide.actions.limits'), desc: t('admin.subscriptions.guide.actions.limitsDesc') },
   { action: t('admin.subscriptions.guide.actions.resetQuota'), desc: t('admin.subscriptions.guide.actions.resetQuotaDesc') },
   { action: t('admin.subscriptions.guide.actions.revoke'), desc: t('admin.subscriptions.guide.actions.revokeDesc') }
 ])
@@ -971,21 +1035,44 @@ const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showLimitsModal = ref(false)
 const submitting = ref(false)
+const savingLimits = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
+const editingSubscription = ref<UserSubscription | null>(null)
 
-const assignForm = reactive({
+const assignForm = reactive<{
+  user_id: number | null
+  group_id: number | null
+  validity_days: number
+  daily_limit_usd: SubscriptionLimitInput
+  weekly_limit_usd: SubscriptionLimitInput
+  monthly_limit_usd: SubscriptionLimitInput
+}>({
   user_id: null as number | null,
   group_id: null as number | null,
-  validity_days: 30
+  validity_days: 30,
+  daily_limit_usd: '',
+  weekly_limit_usd: '',
+  monthly_limit_usd: ''
 })
 
 const extendForm = reactive({
   days: 30
+})
+
+const limitsForm = reactive<{
+  daily: SubscriptionLimitInput
+  weekly: SubscriptionLimitInput
+  monthly: SubscriptionLimitInput
+}>({
+  daily: '',
+  weekly: '',
+  monthly: ''
 })
 
 // Group options for filter (all groups)
@@ -1193,6 +1280,9 @@ const closeAssignModal = () => {
   assignForm.user_id = null
   assignForm.group_id = null
   assignForm.validity_days = 30
+  assignForm.daily_limit_usd = ''
+  assignForm.weekly_limit_usd = ''
+  assignForm.monthly_limit_usd = ''
   // Clear user search state
   selectedUser.value = null
   userSearchKeyword.value = ''
@@ -1216,16 +1306,22 @@ const handleAssignSubscription = async () => {
 
   submitting.value = true
   try {
+    const dailyLimit = parseOptionalLimit(assignForm.daily_limit_usd)
+    const weeklyLimit = parseOptionalLimit(assignForm.weekly_limit_usd)
+    const monthlyLimit = parseOptionalLimit(assignForm.monthly_limit_usd)
     await adminAPI.subscriptions.assign({
       user_id: assignForm.user_id,
       group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
+      validity_days: assignForm.validity_days,
+      daily_limit_usd: dailyLimit ?? undefined,
+      weekly_limit_usd: weeklyLimit ?? undefined,
+      monthly_limit_usd: monthlyLimit ?? undefined
     })
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
   } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToAssign'))
+    appStore.showError(error.response?.data?.detail || error.message || t('admin.subscriptions.failedToAssign'))
     console.error('Error assigning subscription:', error)
   } finally {
     submitting.value = false
@@ -1236,6 +1332,46 @@ const handleExtend = (subscription: UserSubscription) => {
   extendingSubscription.value = subscription
   extendForm.days = 30
   showExtendModal.value = true
+}
+
+const handleEditLimits = (subscription: UserSubscription) => {
+  editingSubscription.value = subscription
+  limitsForm.daily = subscription.daily_limit_usd?.toString() ?? ''
+  limitsForm.weekly = subscription.weekly_limit_usd?.toString() ?? ''
+  limitsForm.monthly = subscription.monthly_limit_usd?.toString() ?? ''
+  showLimitsModal.value = true
+}
+
+const closeLimitsModal = () => {
+  showLimitsModal.value = false
+  editingSubscription.value = null
+}
+
+const parseOptionalLimit = (value: SubscriptionLimitInput): number | null => {
+  try {
+    return parseOptionalSubscriptionLimit(value)
+  } catch {
+    throw new Error(t('admin.subscriptions.invalidLimit'))
+  }
+}
+
+const handleSaveLimits = async () => {
+  if (!editingSubscription.value) return
+  savingLimits.value = true
+  try {
+    await adminAPI.subscriptions.updateLimits(editingSubscription.value.id, {
+      daily_limit_usd: parseOptionalLimit(limitsForm.daily),
+      weekly_limit_usd: parseOptionalLimit(limitsForm.weekly),
+      monthly_limit_usd: parseOptionalLimit(limitsForm.monthly)
+    })
+    appStore.showSuccess(t('admin.subscriptions.limitsUpdated'))
+    closeLimitsModal()
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || error.message || t('admin.subscriptions.failedToUpdateLimits'))
+  } finally {
+    savingLimits.value = false
+  }
 }
 
 const closeExtendModal = () => {
@@ -1378,6 +1514,24 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+const getEffectiveLimit = (
+  subscription: UserSubscription,
+  window: SubscriptionLimitWindow
+): number | null => getEffectiveSubscriptionLimit(subscription, window)
+
+const hasAnyEffectiveLimit = (subscription: UserSubscription): boolean =>
+  hasAnyEffectiveSubscriptionLimit(subscription)
+
+const formatGroupLimit = (
+  subscription: UserSubscription,
+  window: SubscriptionLimitWindow
+): string => {
+  const groupLimit = subscription.group?.[`${window}_limit_usd`]
+  return groupLimit != null && groupLimit > 0
+    ? t('admin.subscriptions.groupLimitPlaceholder', { limit: groupLimit })
+    : t('admin.subscriptions.unlimited')
 }
 
 const formatResetDuration = (parts: RemainingDurationParts): string => {

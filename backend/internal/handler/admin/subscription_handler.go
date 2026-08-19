@@ -40,23 +40,35 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *S
 
 // AssignSubscriptionRequest represents assign subscription request
 type AssignSubscriptionRequest struct {
-	UserID       int64  `json:"user_id" binding:"required"`
-	GroupID      int64  `json:"group_id" binding:"required"`
-	ValidityDays int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
-	Notes        string `json:"notes"`
+	UserID          int64              `json:"user_id" binding:"required"`
+	GroupID         int64              `json:"group_id" binding:"required"`
+	ValidityDays    int                `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
+	Notes           string             `json:"notes"`
+	DailyLimitUSD   optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD  optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD optionalLimitField `json:"monthly_limit_usd"`
 }
 
 // BulkAssignSubscriptionRequest represents bulk assign subscription request
 type BulkAssignSubscriptionRequest struct {
-	UserIDs      []int64 `json:"user_ids" binding:"required,min=1"`
-	GroupID      int64   `json:"group_id" binding:"required"`
-	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
-	Notes        string  `json:"notes"`
+	UserIDs         []int64            `json:"user_ids" binding:"required,min=1"`
+	GroupID         int64              `json:"group_id" binding:"required"`
+	ValidityDays    int                `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
+	Notes           string             `json:"notes"`
+	DailyLimitUSD   optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD  optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD optionalLimitField `json:"monthly_limit_usd"`
 }
 
 // AdjustSubscriptionRequest represents adjust subscription request (extend or shorten)
 type AdjustSubscriptionRequest struct {
 	Days int `json:"days" binding:"required,min=-36500,max=36500"` // negative to shorten, positive to extend
+}
+
+type UpdateSubscriptionLimitsRequest struct {
+	DailyLimitUSD   optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD  optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD optionalLimitField `json:"monthly_limit_usd"`
 }
 
 // List handles listing all subscriptions with pagination and filters
@@ -145,11 +157,14 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 	adminID := getAdminIDFromContext(c)
 
 	subscription, err := h.subscriptionService.AssignSubscription(c.Request.Context(), &service.AssignSubscriptionInput{
-		UserID:       req.UserID,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+		UserID:          req.UserID,
+		GroupID:         req.GroupID,
+		ValidityDays:    req.ValidityDays,
+		AssignedBy:      adminID,
+		Notes:           req.Notes,
+		DailyLimitUSD:   req.DailyLimitUSD.value,
+		WeeklyLimitUSD:  req.WeeklyLimitUSD.value,
+		MonthlyLimitUSD: req.MonthlyLimitUSD.value,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -172,11 +187,14 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	adminID := getAdminIDFromContext(c)
 
 	result, err := h.subscriptionService.BulkAssignSubscription(c.Request.Context(), &service.BulkAssignSubscriptionInput{
-		UserIDs:      req.UserIDs,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-		AssignedBy:   adminID,
-		Notes:        req.Notes,
+		UserIDs:         req.UserIDs,
+		GroupID:         req.GroupID,
+		ValidityDays:    req.ValidityDays,
+		AssignedBy:      adminID,
+		Notes:           req.Notes,
+		DailyLimitUSD:   req.DailyLimitUSD.value,
+		WeeklyLimitUSD:  req.WeeklyLimitUSD.value,
+		MonthlyLimitUSD: req.MonthlyLimitUSD.value,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -242,6 +260,43 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		return
 	}
 	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.Weekly, req.Monthly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
+// UpdateLimits updates per-user subscription limits.
+// PATCH /api/v1/admin/subscriptions/:id/limits
+// A null value clears the override and falls back to the group limit.
+func (h *SubscriptionHandler) UpdateLimits(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+
+	var req UpdateSubscriptionLimitsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	sub, err := h.subscriptionService.UpdateSubscriptionLimits(c.Request.Context(), subscriptionID, service.UpdateSubscriptionLimitsInput{
+		Daily: service.SubscriptionLimitUpdate{
+			Set:   req.DailyLimitUSD.set,
+			Value: req.DailyLimitUSD.value,
+		},
+		Weekly: service.SubscriptionLimitUpdate{
+			Set:   req.WeeklyLimitUSD.set,
+			Value: req.WeeklyLimitUSD.value,
+		},
+		Monthly: service.SubscriptionLimitUpdate{
+			Set:   req.MonthlyLimitUSD.set,
+			Value: req.MonthlyLimitUSD.value,
+		},
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
