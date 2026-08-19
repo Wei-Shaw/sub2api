@@ -80,6 +80,13 @@ export default {
           perRequestPrice: '单次价格'
         }
       },
+      timePricingValidation: {
+        timezone: '请选择有效的 IANA 时区',
+        format: '开始时间和结束时间必须使用 HH:mm:ss 格式',
+        range: '开始时间必须早于结束时间；跨午夜请拆分为两个时间段',
+        overlap: '时间段不能重叠',
+        multiplier: '倍率必须大于 0，且最多保留两位小数'
+      },
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',
@@ -93,7 +100,8 @@ export default {
       billingMode: {
         token: 'Token',
         perRequest: '按次',
-        image: '图片（按次）'
+        image: '图片（按次）',
+        video: '视频（按秒）'
       },
       form: {
         name: '名称',
@@ -121,12 +129,20 @@ export default {
         imageOutputPrice: '图片输出价格',
         pricePlaceholder: '默认',
         intervals: '上下文区间定价（可选）',
+        timePricing: '时间段定价（可选）',
+        timezone: '时区',
+        addTimePeriod: '添加时间段',
+        startTime: '开始时间',
+        endTime: '结束时间',
+        multiplier: '倍率',
+        removeTimePeriod: '删除时间段',
         minTokens: '最小',
         maxTokens: '最大',
         inclusive: '（含）',
         addInterval: '添加区间',
         requestTiers: '按次计费层级',
         imageTiers: '图片计费层级（按次）',
+        videoTiers: '视频分辨率层级（按秒）',
         addTier: '添加层级',
         noTiersYet: '暂无层级，点击添加配置按次计费价格',
         noPricingRules: '暂无定价规则，点击"添加"创建',
@@ -152,6 +168,7 @@ export default {
         restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表中的模型请求将被拒绝。',
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
+        defaultVideoPrice: '默认视频每秒价格（未命中层级时使用）',
         platformConfig: '平台配置',
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationHint: '⚠️ 开启后该渠道下所有 Anthropic 分组的账号将自动拦截 web_search 请求，请谨慎操作',
@@ -495,6 +512,7 @@ export default {
       deleteConfirm: '确定要删除监控「{name}」吗？此操作不可撤销。',
       nameRequired: '请输入监控名称',
       primaryModelRequired: '请输入主模型',
+      linkedAccountRequired: '请选择关联账号',
       columns: {
         name: '名称',
         provider: '供应商',
@@ -508,6 +526,19 @@ export default {
         name: '名称',
         namePlaceholder: '输入监控名称',
         provider: '平台',
+        checkMode: '检查方式',
+        checkModeProbe: '探活',
+        checkModeProbeHint: '向上游发送轻量 LLM 请求，检测可用性与延迟',
+        checkModeQuota: '配额',
+        checkModeQuotaHint: '只查询关联账号的用量滚动窗口/余额，不发送探活请求',
+        checkModeQuotaProbe: '探活 + 配额',
+        checkModeQuotaProbeHint: '探活的同时查询配额，用量快照附加在主模型结果上',
+        linkedAccount: '关联账号',
+        linkedAccountPlaceholder: '选择账号',
+        linkedAccountHint: '配额数据来自所选账号（复用账号管理侧的用量/余额查询）',
+        linkedAccountEmpty: '当前平台暂无账号，请先在账号管理中添加',
+        linkedAccountMissing: '关联账号已不存在或不可访问，请重新选择账号',
+        openAIQuotaProbeHint: '注意：OpenAI 平台的用量查询可能触发 Codex 探测请求，会消耗账号自身的额度（每 10 分钟最多触发一次）',
         apiMode: 'OpenAI 协议',
         apiModeChatCompletions: 'OpenAI Compatible',
         apiModeChatCompletionsHint: '使用 /v1/chat/completions，发送 messages；适合大多数兼容站。',

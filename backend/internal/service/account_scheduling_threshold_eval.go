@@ -53,11 +53,15 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	var winner *accountSchedulingThresholdCandidate
 	switch decision.Platform {
 	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account), threshold, now)
+		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
 	case PlatformAnthropic:
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
+	case PlatformKimi:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformKimi), threshold, now)
+	case PlatformZhipu:
+		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformZhipu), threshold, now)
 	default:
 		return decision
 	}
@@ -149,7 +153,7 @@ func lookupAccountSchedulingThreshold(thresholds map[string]int, platform string
 	return value, ok
 }
 
-func openAIThresholdCandidates(account *Account) []*accountSchedulingThresholdCandidate {
+func openAIThresholdCandidates(account *Account, now time.Time) []*accountSchedulingThresholdCandidate {
 	if account == nil {
 		return nil
 	}
@@ -157,8 +161,8 @@ func openAIThresholdCandidates(account *Account) []*accountSchedulingThresholdCa
 		return nil
 	}
 	return []*accountSchedulingThresholdCandidate{
-		openAIThresholdCandidate(account.Extra, "5h"),
-		openAIThresholdCandidate(account.Extra, "7d"),
+		openAIThresholdCandidate(account.Extra, "5h", now),
+		openAIThresholdCandidate(account.Extra, "7d", now),
 	}
 }
 
@@ -219,7 +223,7 @@ func firstStringValue(values map[string]any, keys ...string) string {
 	return ""
 }
 
-func openAIThresholdCandidate(extra map[string]any, window string) *accountSchedulingThresholdCandidate {
+func openAIThresholdCandidate(extra map[string]any, window string, now time.Time) *accountSchedulingThresholdCandidate {
 	if len(extra) == 0 {
 		return nil
 	}
@@ -241,6 +245,9 @@ func openAIThresholdCandidate(extra map[string]any, window string) *accountSched
 
 	usedPercent, ok := extra[usedPercentKey]
 	if !ok {
+		return nil
+	}
+	if openAIQuotaWindowReset(extra, window, now) || openAICodexSnapshotStaleForPause(extra, now) {
 		return nil
 	}
 	return &accountSchedulingThresholdCandidate{
@@ -297,6 +304,45 @@ func grokThresholdCandidates(account *Account) []*accountSchedulingThresholdCand
 			usedPercent: schedulingPercentValue(account.Extra["grok_sched_utilization"]),
 			until:       parseSchedulingResetAt(account.Extra["grok_sched_reset_at"]),
 		},
+	}
+}
+
+// cnProviderThresholdCandidates 读取国产供应商 Coding Plan 账号的 5h / weekly 滚动窗口
+// 用量快照（由 CNProviderQuotaService 写入 account.Extra，键形如
+// <provider>_5h_used_percent / <provider>_weekly_reset_at）。payg 账号无此快照，
+// 候选为空 → 不触发阈值停调（余额型走余额检测）。与 openai 的快照驱动停调一致：
+// 仅当用量超阈值且窗口尚未重置时才停调。
+func cnProviderThresholdCandidates(account *Account, provider string) []*accountSchedulingThresholdCandidate {
+	if account == nil || len(account.Extra) == 0 {
+		return nil
+	}
+	return []*accountSchedulingThresholdCandidate{
+		cnThresholdCandidate(account.Extra, provider, "5h"),
+		cnThresholdCandidate(account.Extra, provider, "weekly"),
+	}
+}
+
+func cnThresholdCandidate(extra map[string]any, provider, window string) *accountSchedulingThresholdCandidate {
+	var usedKey, resetKey string
+	switch window {
+	case "5h":
+		usedKey = cnExtraKey(provider, cnExtraSuffix5hUsed)
+		resetKey = cnExtraKey(provider, cnExtraSuffix5hReset)
+	case "weekly":
+		usedKey = cnExtraKey(provider, cnExtraSuffixWeeklyUsed)
+		resetKey = cnExtraKey(provider, cnExtraSuffixWeeklyReset)
+	default:
+		return nil
+	}
+	usedPercent, ok := extra[usedKey]
+	if !ok {
+		return nil
+	}
+	return &accountSchedulingThresholdCandidate{
+		window:      window,
+		scope:       provider,
+		usedPercent: schedulingPercentValue(usedPercent),
+		until:       parseSchedulingResetAt(extra[resetKey]),
 	}
 }
 

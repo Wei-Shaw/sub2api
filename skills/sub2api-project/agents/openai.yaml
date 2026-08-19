@@ -1,0 +1,7 @@
+interface:
+  display_name: "Sub2API Project"
+  short_description: "Work on Sub2API code and commits safely"
+  default_prompt: "Use $sub2api-project for repository changes, verification, and stable git commits in Sub2API."
+
+policy:
+  allow_implicit_invocation: true
