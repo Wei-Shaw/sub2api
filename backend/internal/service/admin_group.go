@@ -247,8 +247,6 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
-		return nil
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:

@@ -587,7 +587,7 @@ REDACTED
 		rebuildGroupIDs = append(rebuildGroupIDs, gid)
 REDACTED
 
-	// 缺失账户无法确定原平台，保留五平台重建以避免遗留旧快照。
+	// 缺失账户无法确定原平台，保留全平台重建以避免遗留旧快照。
 	if !allAccountsFound {
 		return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change", seen)
 REDACTED
@@ -837,7 +837,7 @@ REDACTED
 REDACTED
 
 func schedulerCanonicalBuckets(groupID int64) []SchedulerBucket {
-	buckets := make([]SchedulerBucket, 0, 12)
+	buckets := make([]SchedulerBucket, 0, 18)
 	for _, platform := range schedulerSnapshotPlatforms() {
 		buckets = append(buckets,
 			SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeSingleREDACTED,
@@ -855,7 +855,7 @@ func (s *SchedulerSnapshotService) rebuildByGroupIDs(ctx context.Context, groupI
 	if len(groupIDs) == 0 {
 		return nil
 REDACTED
-	buckets := make([]SchedulerBucket, 0, len(groupIDs)*12)
+	buckets := make([]SchedulerBucket, 0, len(groupIDs)*18)
 	for _, platform := range schedulerSnapshotPlatforms() {
 		buckets = append(buckets, s.bucketsForPlatform(platform, groupIDs, seen)...)
 REDACTED

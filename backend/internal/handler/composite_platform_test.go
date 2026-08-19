@@ -34,7 +34,7 @@ REDACTED{
 		{model: "glm-5.2", platform: service.PlatformZhipuREDACTED,
 		{model: "deepseek-v3.2", platform: service.PlatformDeepseekREDACTED,
 REDACTED
-	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses"REDACTED {
+	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses", "/v1/responses/input_tokens", "/v1/messages/count_tokens"REDACTED {
 		for _, provider := range providers {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest("POST", path, nil)
@@ -48,15 +48,17 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestResponsesWebSocketCompositePlatformGuardAllowsOpenAICompatibleProviders(t *testing.T) {
+// WS ingress 对 CN 账号既过不了 transport 过滤、HTTP 桥也没有 Responses 转换，
+// 放行只会把明确的策略拒绝换成 "no available account"，因此 WS 白名单保持 openai+grok。
+func TestResponsesWebSocketCompositePlatformGuardKeepsOpenAIAndGrokOnly(t *testing.T) {
+	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformOpenAI))
+	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformGrok))
 	for _, platform := range []string{
-		service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi,
-		service.PlatformZhipu, service.PlatformDeepseek,
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+		service.PlatformAnthropic, service.PlatformGemini,
 REDACTED {
-		require.True(t, isOpenAICompatibleTextPlatform(platform), "platform=%s", platform)
+		require.False(t, isResponsesWebSocketCompositePlatform(platform), "platform=%s", platform)
 REDACTED
-	require.False(t, isOpenAICompatibleTextPlatform(service.PlatformAnthropic))
-	require.False(t, isOpenAICompatibleTextPlatform(service.PlatformGemini))
 REDACTED
 
 func TestCompositeTargetPlatformAllowedRejectsWrongOrUnknownModel(t *testing.T) {

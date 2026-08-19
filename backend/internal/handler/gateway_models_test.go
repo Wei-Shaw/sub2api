@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -404,6 +405,56 @@ REDACTED)
 	require.Contains(t, ids, "grok-4.3")
 	require.NotContains(t, ids, "claude-sonnet-4-6")
 	require.NotContains(t, ids, "gemini-2.5-flash")
+REDACTED
+
+// CN 供应商没有静态默认模型列表：composite 下无映射的可调度 CN 账号不得把
+// defaultModelIDsForPlatform default 分支的 Claude 列表挂到 CN 平台名下。
+func TestGatewayModels_CompositeUnmappedCNAccountsContributeNoDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(35)
+	h := newGatewayModelsHandlerForTest(
+		&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{
+				groupID: {
+					{ID: 1, Platform: service.PlatformOpenAIREDACTED,
+					{ID: 2, Platform: service.PlatformKimiREDACTED,
+					{ID: 3, Platform: service.PlatformZhipuREDACTED,
+					{ID: 4, Platform: service.PlatformDeepseekREDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformCompositeREDACTED,
+REDACTED)
+
+	h.Models(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+
+	ids := modelIDsForTest(got.Data)
+	require.Contains(t, ids, "gpt-5.5")
+	require.NotContains(t, ids, "claude-sonnet-4-6")
+REDACTED
+
+// 独立 CN 分组沿用 default 分支的 Claude 默认列表（Claude Code 客户端请求的
+// 就是这些模型名并经账号 model_mapping 转换），composite 支持不得改变该回退。
+func TestDefaultModelIDsForPlatform_CNProvidersKeepClaudeDefaults(t *testing.T) {
+	want := make([]string, 0, len(claude.DefaultModels))
+	for _, model := range claude.DefaultModels {
+		want = append(want, model.ID)
+REDACTED
+	for _, platform := range []string{service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseekREDACTED {
+		require.Equal(t, want, defaultModelIDsForPlatform(platform), "platform=%s", platform)
+REDACTED
 REDACTED
 
 func TestGatewayModels_CustomModelsListKeepsConcreteModelAllowedByWildcardMapping(t *testing.T) {
