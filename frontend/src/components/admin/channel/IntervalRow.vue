@@ -42,7 +42,7 @@
           {{ mode === 'image' ? t('admin.channels.form.resolution') : t('admin.channels.form.tierLabel') }}
         </label>
         <input :value="interval.tier_label" @input="emitField('tier_label', ($event.target as HTMLInputElement).value)"
-          type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 4K' : ''" />
+          type="text" class="input mt-0.5 text-xs" :placeholder="mode === 'image' ? '1K / 2K / 1K-low / 2K-medium' : ''" />
       </div>
       <div class="w-20">
         <label class="text-xs text-gray-400">{{ t('admin.channels.form.minTokens') }}</label>

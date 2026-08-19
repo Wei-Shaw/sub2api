@@ -306,7 +306,9 @@ function addMediaTier() {
   const intervals = [...(props.entry.intervals || [])]
   const labels = props.entry.billing_mode === 'video'
     ? ['480p', '720p', '1080p']
-    : ['1K', '2K', '4K', 'HD']
+    : props.entry.models.some(model => model.replace(/^(xai|x-ai|grok)\//, '') === 'grok-imagine-image-2.0')
+      ? ['1K-low', '2K-low', '1K-medium', '2K-medium']
+      : ['1K', '2K', '4K', 'HD']
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
     input_price: null, output_price: null, cache_write_price: null,

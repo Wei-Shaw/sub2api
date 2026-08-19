@@ -59,6 +59,9 @@ type GrokMediaRequestInfo struct {
 	N               int
 	Size            string
 	SizeTier        string
+	ImageResolution string
+	ImageQuality    string
+	ImageQualitySet bool
 	Resolution      string
 	DurationSeconds int
 	InputImageURLs  []string
@@ -126,7 +129,14 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Model = strings.TrimSpace(info.Model)
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
-	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	rawResolution := strings.TrimSpace(info.Resolution)
+	if _, ok := ClassifyImageBillingTier(rawResolution); ok {
+		info.ImageResolution = rawResolution
+		info.SizeTier = NormalizeImageBillingTierOrDefault(rawResolution)
+	} else {
+		info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	}
+	info.ImageQuality = strings.TrimSpace(info.ImageQuality)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
@@ -143,6 +153,10 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
 	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
+	if quality := gjson.GetBytes(body, "quality"); quality.Exists() {
+		info.ImageQuality = strings.TrimSpace(quality.String())
+		info.ImageQualitySet = true
+	}
 	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
 		info.DurationSeconds = int(duration.Int())
 	}
@@ -257,6 +271,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Size = value
 		case "resolution":
 			info.Resolution = value
+		case "quality":
+			info.ImageQuality = value
+			info.ImageQualitySet = true
 		case "duration":
 			if duration, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = duration
@@ -740,8 +757,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
 		ImageCount:           usage.ImageCount,
+		ImageInputCount:      usage.ImageInputCount,
 		ImageSize:            usage.ImageSize,
 		ImageInputSize:       usage.ImageInputSize,
+		ImageQuality:         usage.ImageQuality,
 		ImageOutputSizes:     usage.ImageOutputSizes,
 		VideoCount:           usage.VideoCount,
 		VideoResolution:      usage.VideoResolution,
@@ -934,6 +953,12 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	if info.Size != "" {
 		payload["size"] = info.Size
 	}
+	if info.ImageResolution != "" {
+		payload["resolution"] = info.ImageResolution
+	}
+	if info.ImageQualitySet {
+		payload["quality"] = info.ImageQuality
+	}
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
@@ -1123,6 +1148,40 @@ func (r GrokMediaRequestInfo) HasInputImage() bool {
 	return len(r.InputImageURLs) > 0 || len(r.Uploads) > 0
 }
 
+const (
+	GrokImagineImageQualityLow    = "low"
+	GrokImagineImageQualityMedium = "medium"
+)
+
+func NormalizeGrokImagineImageQualityOrDefault(quality string) string {
+	switch strings.ToLower(strings.TrimSpace(quality)) {
+	case GrokImagineImageQualityLow:
+		return GrokImagineImageQualityLow
+	default:
+		return GrokImagineImageQualityMedium
+	}
+}
+
+// InputImageCount returns the number of distinct source and mask images sent
+// to Imagine. JSON edit normalization can mirror the first source in both
+// `image` and `images`, so URL references are de-duplicated for billing.
+func (r GrokMediaRequestInfo) InputImageCount() int {
+	seen := make(map[string]struct{}, len(r.InputImageURLs)+1)
+	for _, imageURL := range r.InputImageURLs {
+		if imageURL = strings.TrimSpace(imageURL); imageURL != "" {
+			seen[imageURL] = struct{}{}
+		}
+	}
+	if maskURL := strings.TrimSpace(r.MaskImageURL); maskURL != "" {
+		seen[maskURL] = struct{}{}
+	}
+	count := len(seen) + len(r.Uploads)
+	if r.MaskUpload != nil {
+		count++
+	}
+	return count
+}
+
 // NormalizeGrokMediaModelForEndpoint resolves the built-in upstream model alias
 // for a media endpoint before account-level model mapping and scheduling.
 func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
@@ -1148,8 +1207,10 @@ type grokMediaUsageMetadata struct {
 	Model                string
 	BillingModel         string
 	ImageCount           int
+	ImageInputCount      int
 	ImageSize            string
 	ImageInputSize       string
+	ImageQuality         string
 	ImageOutputSizes     []string
 	VideoCount           int
 	VideoResolution      string
@@ -1162,8 +1223,13 @@ func grokMediaUsageFromResponse(endpoint GrokMediaEndpoint, requestInfo GrokMedi
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
 		meta.ImageCount = countOpenAIResponseImageOutputsFromJSONBytes(responseBody)
+		meta.ImageInputCount = requestInfo.InputImageCount()
 		meta.ImageSize = requestInfo.SizeTier
-		meta.ImageInputSize = requestInfo.Size
+		meta.ImageInputSize = requestInfo.ImageResolution
+		if meta.ImageInputSize == "" {
+			meta.ImageInputSize = requestInfo.Size
+		}
+		meta.ImageQuality = NormalizeGrokImagineImageQualityOrDefault(requestInfo.ImageQuality)
 		meta.ImageOutputSizes = collectOpenAIResponseImageOutputSizesFromJSONBytes(responseBody)
 	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		// Async video: capture request_id + create-time pricing params only.

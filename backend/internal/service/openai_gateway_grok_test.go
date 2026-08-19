@@ -955,6 +955,40 @@ func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
 	require.True(t, info.HasInputImage())
 }
 
+func TestParseGrokImagineImage20RequestUsesResolutionQualityAndDistinctInputs(t *testing.T) {
+	body := []byte(`{
+		"model":"grok-imagine-image-2.0",
+		"resolution":"1k",
+		"quality":"low",
+		"image":{"url":"https://example.com/first.png"},
+		"images":[{"url":"https://example.com/first.png"},{"url":"https://example.com/second.png"}],
+		"mask":{"url":"https://example.com/mask.png"}
+	}`)
+
+	info := ParseGrokMediaRequest("application/json", body)
+	require.Equal(t, ImageBillingSize1K, info.SizeTier)
+	require.Equal(t, "1k", info.ImageResolution)
+	require.Equal(t, GrokImagineImageQualityLow, info.ImageQuality)
+	require.Equal(t, 3, info.InputImageCount())
+
+	meta := grokMediaUsageFromResponse(GrokMediaEndpointImagesEdits, info, []byte(`{"data":[{"url":"https://example.com/out.png"}]}`))
+	require.Equal(t, 1, meta.ImageCount)
+	require.Equal(t, 3, meta.ImageInputCount)
+	require.Equal(t, ImageBillingSize1K, meta.ImageSize)
+	require.Equal(t, GrokImagineImageQualityLow, meta.ImageQuality)
+}
+
+func TestParseGrokImagineImage20RequestDefaultsQualityWithoutInjectingIt(t *testing.T) {
+	body := []byte(`{"model":"grok-imagine-image-2.0","resolution":"2k"}`)
+
+	info := ParseGrokMediaRequest("application/json", body)
+	require.Empty(t, info.ImageQuality)
+	require.False(t, info.ImageQualitySet)
+
+	meta := grokMediaUsageFromResponse(GrokMediaEndpointImagesGenerations, info, []byte(`{"data":[{"url":"https://example.com/out.png"}]}`))
+	require.Equal(t, GrokImagineImageQualityMedium, meta.ImageQuality)
+}
+
 func TestNormalizeGrokMediaForwardBodyCanonicalizesImageURLAlias(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-imagine-video-1.5",
@@ -1023,7 +1057,9 @@ func TestCanonicalizeGrokMediaImageURLFieldsReplacesEmptyOfficialURL(t *testing.
 
 func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	body := []byte(`{
-		"model":"grok-imagine-image-quality",
+		"model":"grok-imagine-image-2.0",
+		"resolution":"2k",
+		"quality":"low",
 		"image":{"image_url":{"url":"https://example.com/first.png"}},
 		"images":["https://example.com/second.png"],
 		"mask":{"image_url":"https://example.com/mask.png"}
@@ -1032,6 +1068,8 @@ func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	out, contentType, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "application/json", contentType)
+	require.Equal(t, "2k", gjson.GetBytes(out, "resolution").String())
+	require.Equal(t, "low", gjson.GetBytes(out, "quality").String())
 	for _, path := range []string{"image", "images.0", "mask"} {
 		require.Equal(t, "image_url", gjson.GetBytes(out, path+".type").String())
 		require.NotEmpty(t, gjson.GetBytes(out, path+".url").String())

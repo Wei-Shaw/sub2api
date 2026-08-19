@@ -2358,6 +2358,48 @@ func TestOpenAIGatewayServiceRecordUsage_GroupImagePriceOverridesChannelImagePri
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_GrokImagineImage20UsesQualityTierAndInputPrice(t *testing.T) {
+	groupID := int64(1271)
+	medium2KPrice := 0.18
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAIImageChannelTierPricingResolverForTest(t, groupID, "grok-imagine-image-2.0", "2K-medium", medium2KPrice)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:       "resp_grok_image_20",
+			Model:           "grok-imagine-image-2.0",
+			BillingModel:    "grok-imagine-image-2.0",
+			ImageCount:      2,
+			ImageInputCount: 3,
+			ImageSize:       ImageBillingSize2K,
+			ImageInputSize:  "2k",
+			ImageQuality:    GrokImagineImageQualityMedium,
+			Duration:        time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      101271,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				Platform:             PlatformGrok,
+				RateMultiplier:       1,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  1,
+			},
+		},
+		User:    &User{ID: 201271},
+		Account: &Account{ID: 301271, Platform: PlatformGrok},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.36, usageRepo.lastLog.ImageOutputCost, 1e-12)
+	require.InDelta(t, 0.03, usageRepo.lastLog.ImageInputCost, 1e-12)
+	require.InDelta(t, 0.39, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.39, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_GroupVideoPriceOverridesChannelImagePrice(t *testing.T) {
 	groupID := int64(128)
 	channelPrice := 0.201
@@ -2676,6 +2718,24 @@ func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, mo
 	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}] = &ChannelModelPricing{
 		BillingMode:     BillingModeImage,
 		PerRequestPrice: &price,
+	}
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
+	cache.groupPlatform[groupID] = ""
+	cache.loadedAt = time.Now()
+	cs := &ChannelService{}
+	cs.cache.Store(cache)
+	return NewModelPricingResolver(cs, NewBillingService(&config.Config{}, nil))
+}
+
+func newOpenAIImageChannelTierPricingResolverForTest(t *testing.T, groupID int64, model string, tierLabel string, price float64) *ModelPricingResolver {
+	t.Helper()
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: model}] = &ChannelModelPricing{
+		BillingMode: BillingModeImage,
+		Intervals: []PricingInterval{{
+			TierLabel:       tierLabel,
+			PerRequestPrice: &price,
+		}},
 	}
 	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActive}
 	cache.groupPlatform[groupID] = ""

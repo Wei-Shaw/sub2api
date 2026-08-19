@@ -730,7 +730,8 @@ Sub2API supports both Grok subscription accounts through xAI OAuth and standard 
 - Codex CLI style Responses WebSocket ingress is accepted on the Responses targets and bridged to xAI HTTP/SSE Responses upstream
 - Text models: `grok-4.5`, `grok-4.3`, `grok-build-0.1`, `grok-composer-2.5-fast`, `grok-4.20-0309-reasoning`, `grok-4.20-0309-non-reasoning`, and `grok-4.20-multi-agent-0309`
 - Media targets for Grok groups: `/v1/images/generations`, `/images/generations`, `/v1/images/edits`, `/images/edits`, `/v1/videos/generations`, `/videos/generations`, `/v1/videos/edits`, `/videos/edits`, `/v1/videos/extensions`, `/videos/extensions`, `/v1/videos/{request_id}`, and `/videos/{request_id}`. Generation, editing, and extension requests require the group image-generation permission.
-- Media models: `grok-imagine`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
+- Media models: `grok-imagine`, `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image`, `grok-imagine-edit`, `grok-imagine-video`, and `grok-imagine-video-1.5`
+- `grok-imagine-image-2.0` accepts `resolution` (`1k` or `2k`) and `quality` (`low` or `medium`, default `medium`). Built-in billing follows xAI's rate card: image inputs `$0.01/image`; outputs are `$0.04` (1K low), `$0.06` (2K low or 1K medium), and `$0.08` (2K medium). Channel image pricing can override output rates with tiers `1K-low`, `2K-low`, `1K-medium`, and `2K-medium`.
 - JSON image-edit and video-generation requests accept image references in `image`, `images`, `reference_images`, and `mask` objects. Use `url` for xAI-compatible payloads; the legacy `image_url` field remains accepted and is normalized to `url` before forwarding.
 - Out of scope for this provider: TTS, transcription, browser automation, cookies, and Grok web scraping
 

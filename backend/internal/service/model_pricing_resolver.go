@@ -372,7 +372,7 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool, ch
 // GetRequestTierPrice 根据层级标签获取按次价格
 func (r *ModelPricingResolver) GetRequestTierPrice(resolved *ResolvedPricing, tierLabel string) float64 {
 	for _, tier := range resolved.RequestTiers {
-		if tier.TierLabel == tierLabel && tier.PerRequestPrice != nil {
+		if strings.EqualFold(strings.TrimSpace(tier.TierLabel), strings.TrimSpace(tierLabel)) && tier.PerRequestPrice != nil {
 			return *tier.PerRequestPrice
 		}
 	}

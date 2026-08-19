@@ -1042,6 +1042,31 @@ func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
 	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
 }
 
+func TestCalculateGrokImagineImage20CostUsesResolutionQualityAndInputs(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		name       string
+		size       string
+		quality    string
+		wantOutput float64
+	}{
+		{name: "1K low", size: "1K", quality: "low", wantOutput: 0.04},
+		{name: "2K low", size: "2K", quality: "low", wantOutput: 0.06},
+		{name: "1K medium", size: "1K", quality: "medium", wantOutput: 0.06},
+		{name: "2K default medium", size: "2K", quality: "", wantOutput: 0.08},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cost := svc.CalculateImageCostWithDetails("grok-imagine-image-2.0", tt.size, tt.quality, 1, 2, nil, 1.5)
+			require.InDelta(t, tt.wantOutput, cost.ImageOutputCost, 1e-10)
+			require.InDelta(t, 0.02, cost.ImageInputCost, 1e-10)
+			require.InDelta(t, tt.wantOutput+0.02, cost.TotalCost, 1e-10)
+			require.InDelta(t, (tt.wantOutput+0.02)*1.5, cost.ActualCost, 1e-10)
+		})
+	}
+}
+
 func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	svc := newTestBillingService()
 

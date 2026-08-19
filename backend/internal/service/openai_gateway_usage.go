@@ -697,13 +697,13 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCostWithDetails(billingModel, sizeTier, result.ImageQuality, result.ImageCount, result.ImageInputCount, groupConfig, multiplier)
 	}
 	if refreshed := s.apiKeyWithFreshGroupMediaPricing(ctx, apiKey); refreshed != apiKey {
 		apiKey = refreshed
 		groupConfig = imagePriceConfigFromAPIKey(apiKey)
 		if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
-			return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+			return s.billingService.CalculateImageCostWithDetails(billingModel, sizeTier, result.ImageQuality, result.ImageCount, result.ImageInputCount, groupConfig, multiplier)
 		}
 	}
 	if resolved != nil && resolved.Source == PricingSourceChannel &&
@@ -715,18 +715,36 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 			GroupID:        &gid,
 			Group:          apiKey.Group,
 			RequestCount:   result.ImageCount,
-			SizeTier:       sizeTier,
+			SizeTier:       grokImagineImagePricingTier(billingModel, sizeTier, result.ImageQuality),
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
 		})
 		if err == nil {
-			return cost
+			return addGrokImagineImage20InputCost(cost, billingModel, result.ImageInputCount, multiplier)
 		}
 		logger.LegacyPrintf("service.openai_gateway", "Calculate image channel cost failed: %v", err)
 	}
 
-	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCostWithDetails(billingModel, sizeTier, result.ImageQuality, result.ImageCount, result.ImageInputCount, groupConfig, multiplier)
+}
+
+func addGrokImagineImage20InputCost(cost *CostBreakdown, model string, inputImageCount int, rateMultiplier float64) *CostBreakdown {
+	if cost == nil || !isGrokImagineImage20Model(model) {
+		return cost
+	}
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
+	}
+	inputCost := 0.0
+	if inputImageCount > 0 {
+		inputCost = defaultGrokImagineImage20InputPrice * float64(inputImageCount)
+	}
+	cost.ImageOutputCost = cost.TotalCost
+	cost.ImageInputCost = inputCost
+	cost.TotalCost += inputCost
+	cost.ActualCost += inputCost * rateMultiplier
+	return cost
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
