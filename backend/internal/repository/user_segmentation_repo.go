@@ -27,7 +27,7 @@ func (r *userSegmentationRepository) List(ctx context.Context) ([]service.UserTa
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	tags := make([]service.UserTag, 0)
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (r *userSegmentationRepository) ListByUserIDs(ctx context.Context, userIDs 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var userID int64
@@ -148,7 +148,7 @@ func (r *userSegmentationRepository) ReplaceUserTags(ctx context.Context, userID
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_tag_assignments WHERE user_id = $1`, userID); err != nil {
 		return err
@@ -212,7 +212,7 @@ func (r *userSegmentationRepository) BatchReplaceTags(ctx context.Context, userI
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_tag_assignments WHERE user_id = ANY($1)`, pq.Array(userIDs)); err != nil {
 		return 0, err
 	}
@@ -256,7 +256,7 @@ func (r *userSegmentationRepository) FilterUserIDs(ctx context.Context, tagIDs [
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	userIDs := make([]int64, 0)
 	for rows.Next() {
@@ -290,7 +290,7 @@ func (r *userSegmentationRepository) ListHiddenGroupIDsByUserIDs(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var userID, groupID int64
@@ -311,7 +311,7 @@ func (r *userSegmentationRepository) ReplaceHiddenGroups(ctx context.Context, us
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_hidden_groups WHERE user_id = $1`, userID); err != nil {
 		return err
@@ -339,7 +339,7 @@ func (r *userSegmentationRepository) BatchReplaceHiddenGroups(ctx context.Contex
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_hidden_groups WHERE user_id = ANY($1)`, pq.Array(userIDs)); err != nil {
 		return 0, err
