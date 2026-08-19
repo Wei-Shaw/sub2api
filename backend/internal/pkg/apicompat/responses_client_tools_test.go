@@ -66,6 +66,166 @@ REDACTED
 	require.Equal(t, "team__send", namespaceCall["name"])
 REDACTED
 
+func TestAdaptResponsesClientTools_LowersDiscoveredToolSearchOutput(t *testing.T) {
+	requestJSON := `{
+		"tools":[{"type":"tool_search"REDACTED],
+		"input":[
+			{"type":"tool_search_call","id":"tsc_client","call_id":"call_search","arguments":{"query":"codex app"REDACTED,"execution":"client","status":"completed"REDACTED,
+			{"type":"tool_search_output","id":"tso_client","call_id":"call_search","execution":"client","status":"completed","tools":[
+				{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+				{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+			]REDACTED
+		]
+REDACTED`
+
+	adapt := func() map[string]any {
+		var req map[string]any
+		require.NoError(t, json.Unmarshal([]byte(requestJSON), &req))
+		_, changed, err := AdaptResponsesClientTools(req)
+	REDACTED
+		require.True(t, changed)
+		return req
+REDACTED
+
+	first := adapt()
+	second := adapt()
+	firstInput := requireResponsesClientToolValue[[]any](t, first["input"])
+	secondInput := requireResponsesClientToolValue[[]any](t, second["input"])
+
+	call := requireResponsesClientToolValue[map[string]any](t, firstInput[0])
+	require.Equal(t, "function_call", call["type"])
+	require.Equal(t, toolSearchProxyName, call["name"])
+	require.JSONEq(t, `{"query":"codex app"REDACTED`, requireResponsesClientToolValue[string](t, call["arguments"]))
+	require.NotContains(t, call, "execution")
+
+	output := requireResponsesClientToolValue[map[string]any](t, firstInput[1])
+	require.Equal(t, map[string]any{
+		"type":    "function_call_output",
+		"call_id": "call_search",
+		"output":  output["output"],
+REDACTED, output)
+	outputText := requireResponsesClientToolValue[string](t, output["output"])
+	require.JSONEq(t, `[
+		{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","description":"Load workspace dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+		{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","description":"Spawn an agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+	]`, outputText)
+	secondOutput := requireResponsesClientToolValue[map[string]any](t, secondInput[1])
+	require.Equal(t, outputText, secondOutput["output"], "tool discovery output encoding must be deterministic")
+REDACTED
+
+func TestAdaptResponsesClientTools_ToolSearchOutputEdgeCases(t *testing.T) {
+	unencodableOutput := make(chan struct{REDACTED)
+	tests := []struct {
+		name             string
+		item             map[string]any
+		wantOutput       any
+		wantOutputExists bool
+		wantPrivateKeys  []string
+		wantExactOutput  bool
+REDACTED{
+		{
+			name:             "absent tools and output remains visibly malformed",
+			item:             map[string]any{"type": "tool_search_output", "call_id": "call_empty", "status": "completed"REDACTED,
+			wantOutputExists: false,
+			wantPrivateKeys:  []string{"status"REDACTED,
+	REDACTED,
+		{
+			name: "preexisting string output wins",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_legacy", "output": "legacy",
+				"tools": []any{map[string]any{"type": "function", "name": "ignored"REDACTEDREDACTED, "execution": "client",
+		REDACTED,
+			wantOutput:       "legacy",
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "preexisting object output remains legacy representation",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_object", "output": map[string]any{"groups": []any{"github"REDACTEDREDACTED,
+				"tools": []any{map[string]any{"type": "function", "name": "ignored"REDACTEDREDACTED,
+		REDACTED,
+			wantOutput:       `{"groups":["github"]REDACTED`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "unencodable preexisting output remains visibly malformed",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_bad_output", "output": unencodableOutput,
+				"tools": []any{map[string]any{"type": "function", "name": "retained"REDACTEDREDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput:       unencodableOutput,
+			wantOutputExists: true,
+			wantPrivateKeys:  []string{"tools", "status", "execution"REDACTED,
+	REDACTED,
+		{
+			name: "empty tools array is a valid empty output",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_empty_tools",
+				"tools": []any{REDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput:       `[]`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "non-array tools value is serialized directly",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_malformed",
+				"tools": map[string]any{"unexpected": trueREDACTED, "status": "completed", "execution": "client",
+		REDACTED,
+			wantOutput:       `{"unexpected":trueREDACTED`,
+			wantOutputExists: true,
+			wantExactOutput:  true,
+	REDACTED,
+		{
+			name: "unencodable tools remains visibly malformed",
+			item: map[string]any{
+				"type": "tool_search_output", "call_id": "call_unencodable", "tools": make(chan struct{REDACTED), "status": "completed",
+		REDACTED,
+			wantOutputExists: false,
+			wantPrivateKeys:  []string{"tools", "status"REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := map[string]any{
+				"tools": []any{map[string]any{"type": "tool_search"REDACTEDREDACTED,
+				"input": []any{tt.itemREDACTED,
+		REDACTED
+			_, changed, err := AdaptResponsesClientTools(req)
+		REDACTED
+			require.True(t, changed)
+			input := requireResponsesClientToolValue[[]any](t, req["input"])
+			output := requireResponsesClientToolValue[map[string]any](t, input[0])
+			require.Equal(t, "function_call_output", output["type"])
+			actualOutput, outputExists := output["output"]
+			require.Equal(t, tt.wantOutputExists, outputExists)
+			if tt.wantOutputExists {
+				require.Equal(t, tt.wantOutput, actualOutput)
+		REDACTED
+			if tt.wantExactOutput {
+				require.Equal(t, map[string]any{
+					"type":    "function_call_output",
+					"call_id": output["call_id"],
+					"output":  tt.wantOutput,
+			REDACTED, output)
+		REDACTED
+			if len(tt.wantPrivateKeys) > 0 {
+				for _, key := range tt.wantPrivateKeys {
+					require.Contains(t, output, key)
+			REDACTED
+		REDACTED else {
+				require.NotContains(t, output, "tools")
+				require.NotContains(t, output, "status")
+				require.NotContains(t, output, "execution")
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func requireResponsesClientToolValue[T any](t *testing.T, value any) T {
 REDACTED
 	typed, ok := value.(T)

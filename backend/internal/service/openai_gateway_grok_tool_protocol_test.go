@@ -65,6 +65,39 @@ REDACTED
 	require.False(t, gjson.GetBytes(patched, "input.4.namespace").Exists())
 REDACTED
 
+func TestPatchGrokResponsesBodyWithClientToolsLowersDiscoveredToolsOutput(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.5",
+		"tools":[{"type":"tool_search"REDACTED],
+		"input":[
+			{"type":"tool_search_call","id":"tsc_request_74547","call_id":"call_request_74547","arguments":{"query":"subagent"REDACTED,"execution":"client","status":"completed"REDACTED,
+			{"type":"tool_search_output","id":"tso_request_74547","call_id":"call_request_74547","execution":"client","status":"completed","tools":[
+				{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+				{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+			]REDACTED
+		]
+REDACTED`)
+
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.5")
+REDACTED
+	require.True(t, mapping.ToolSearch)
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.0.type").String())
+	require.Equal(t, "tool_search", gjson.GetBytes(patched, "input.0.name").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.1.type").String())
+	require.Equal(t, "call_request_74547", gjson.GetBytes(patched, "input.1.call_id").String())
+	require.Len(t, gjson.GetBytes(patched, "input.1").Map(), 3)
+	require.False(t, gjson.GetBytes(patched, "input.1.tools").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.1.status").Exists())
+	require.False(t, gjson.GetBytes(patched, "input.1.execution").Exists())
+	output := gjson.GetBytes(patched, "input.1.output").String()
+	require.JSONEq(t, `[
+		{"type":"namespace","name":"codex_app","tools":[{"type":"function","name":"load_workspace_dependencies","parameters":{"type":"object","properties":{REDACTED,"additionalProperties":falseREDACTEDREDACTED]REDACTED,
+		{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object","properties":{"message":{"type":"string"REDACTEDREDACTED,"required":["message"],"additionalProperties":falseREDACTEDREDACTED]REDACTED
+	]`, output)
+REDACTED
+
 func TestPatchGrokResponsesBodyWithClientToolsRewritesEveryToolChoice(t *testing.T) {
 	t.Parallel()
 
