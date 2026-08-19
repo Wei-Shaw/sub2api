@@ -148,6 +148,13 @@ func (c *comboCacheAndStore) ReleaseGrokVideoBilled(_ context.Context, _ string)
 	return nil
 }
 
+func (c *comboCacheAndStore) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *comboCacheAndStore) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
 func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error {
 	return c.store.SetCyberSessionBlocked(ctx, key, ttl)
 }
