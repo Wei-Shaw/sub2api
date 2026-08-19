@@ -1,8 +1,109 @@
 <template>
   <AppLayout>
-    <div class="mx-auto w-full max-w-6xl">
-      <div :class="hasShopLink ? 'grid grid-cols-1 items-start gap-6 md:grid-cols-2' : 'mx-auto max-w-2xl space-y-6'">
-        <section class="space-y-6">
+    <div :class="['mx-auto w-full', hasShopLink ? 'max-w-[1680px]' : 'max-w-2xl']">
+      <div
+        v-if="hasShopLink"
+        class="mb-4 grid h-12 grid-cols-2 gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-dark-700 dark:bg-dark-800 lg:hidden"
+        role="tablist"
+        :aria-label="t('redeem.mobileTabsLabel')"
+      >
+        <button
+          id="redeem-tab-shop"
+          type="button"
+          role="tab"
+          :aria-selected="mobileTab === 'shop'"
+          aria-controls="redeem-panel-shop"
+          :class="[
+            'flex min-w-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+            mobileTab === 'shop'
+              ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+          ]"
+          @click="mobileTab = 'shop'"
+        >
+          <Icon name="creditCard" size="sm" />
+          <span>{{ t('redeem.tabRecharge') }}</span>
+        </button>
+        <button
+          id="redeem-tab-code"
+          type="button"
+          role="tab"
+          :aria-selected="mobileTab === 'redeem'"
+          aria-controls="redeem-panel-code"
+          :class="[
+            'flex min-w-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium transition-colors',
+            mobileTab === 'redeem'
+              ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+          ]"
+          @click="mobileTab = 'redeem'"
+        >
+          <Icon name="gift" size="sm" />
+          <span>{{ t('redeem.tabRedeem') }}</span>
+        </button>
+      </div>
+
+      <div
+        :class="
+          hasShopLink
+            ? 'grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(420px,560px)]'
+            : 'space-y-6'
+        "
+      >
+        <section
+          v-if="hasShopLink"
+          id="redeem-panel-shop"
+          role="tabpanel"
+          aria-labelledby="redeem-tab-shop"
+          :class="[mobileTab === 'shop' ? 'block' : 'hidden', 'lg:sticky lg:top-24 lg:block']"
+        >
+          <div class="card shop-shell flex flex-col overflow-hidden">
+            <div class="flex shrink-0 items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-100 dark:bg-primary-900/30">
+                    <Icon name="link" size="md" class="text-primary-600 dark:text-primary-400" />
+                  </div>
+                  <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">
+                    {{ t('redeem.shopTitle') }}
+                  </h2>
+                </div>
+                <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+                  {{ t('redeem.shopDescription') }}
+                </p>
+              </div>
+              <a
+                :href="shopUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-sm shrink-0"
+                :title="t('redeem.openShop')"
+              >
+                <Icon name="externalLink" size="sm" class="sm:mr-1.5" />
+                <span class="hidden sm:inline">{{ t('redeem.openShop') }}</span>
+              </a>
+            </div>
+            <div class="shop-frame-wrap flex-1 bg-gray-50 p-3 dark:bg-dark-900/40">
+              <iframe
+                :src="shopUrl"
+                :title="t('redeem.shopTitle')"
+                class="shop-frame w-full rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+                loading="lazy"
+                referrerpolicy="strict-origin-when-cross-origin"
+              ></iframe>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="redeem-panel-code"
+          :role="hasShopLink ? 'tabpanel' : undefined"
+          :aria-labelledby="hasShopLink ? 'redeem-tab-code' : undefined"
+          :class="[
+            'space-y-6',
+            hasShopLink && mobileTab !== 'redeem' ? 'hidden lg:block' : 'block'
+          ]"
+        >
       <!-- Current Balance Card -->
       <div class="card overflow-hidden">
         <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-8 text-center">
@@ -340,44 +441,6 @@
         </div>
       </div>
         </section>
-
-        <section v-if="hasShopLink" class="md:sticky md:top-6">
-          <div class="card overflow-hidden">
-            <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-100 dark:bg-primary-900/30">
-                    <Icon name="link" size="md" class="text-primary-600 dark:text-primary-400" />
-                  </div>
-                  <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">
-                    {{ t('redeem.shopTitle') }}
-                  </h2>
-                </div>
-                <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-                  {{ t('redeem.shopDescription') }}
-                </p>
-              </div>
-              <a
-                :href="shopUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="btn btn-secondary btn-sm shrink-0"
-              >
-                <Icon name="externalLink" size="sm" class="mr-1.5" />
-                <span class="hidden sm:inline">{{ t('redeem.openShop') }}</span>
-              </a>
-            </div>
-            <div class="bg-gray-50 p-3 dark:bg-dark-900/40">
-              <iframe
-                :src="shopUrl"
-                :title="t('redeem.shopTitle')"
-                class="h-[min(70vh,720px)] w-full rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
-                loading="lazy"
-                referrerpolicy="strict-origin-when-cross-origin"
-              ></iframe>
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   </AppLayout>
@@ -421,6 +484,7 @@ const history = ref<RedeemHistoryItem[]>([])
 const loadingHistory = ref(false)
 const contactInfo = ref('')
 const publicSettings = ref<PublicSettings | null>(null)
+const mobileTab = ref<'shop' | 'redeem'>('shop')
 
 const shopUrl = computed(() => {
   if (!publicSettings.value?.purchase_subscription_enabled) return ''
@@ -550,5 +614,33 @@ onMounted(async () => {
 .fade-leave-to {
   opacity: 0;
   transform: translateY(-8px);
+}
+
+.shop-shell {
+  height: calc(100dvh - 9.5rem);
+  min-height: 32rem;
+  max-height: 56rem;
+}
+
+.shop-frame-wrap {
+  min-height: 0;
+}
+
+.shop-frame {
+  display: block;
+  height: 100%;
+  min-height: 28rem;
+}
+
+@media (min-width: 1024px) {
+  .shop-shell {
+    height: calc(100dvh - 8rem);
+    min-height: 42.5rem;
+    max-height: 70rem;
+  }
+
+  .shop-frame {
+    min-height: 0;
+  }
 }
 </style>

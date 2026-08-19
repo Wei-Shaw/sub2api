@@ -703,7 +703,10 @@ export default {
     pleaseEnterCode: 'Please enter a redeem code',
     shopTitle: 'Online Shop',
     shopDescription: 'Purchase recharge cards or subscription services',
-    openShop: 'Open shop in new tab'
+    openShop: 'Open shop in new tab',
+    mobileTabsLabel: 'Recharge and redeem',
+    tabRecharge: 'Recharge',
+    tabRedeem: 'Redeem code'
   },
 
   // Profile

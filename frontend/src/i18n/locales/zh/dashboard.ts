@@ -708,7 +708,10 @@ export default {
     pleaseEnterCode: '请输入兑换码',
     shopTitle: '在线店铺',
     shopDescription: '购买充值卡或订阅服务',
-    openShop: '在新窗口打开店铺'
+    openShop: '在新窗口打开店铺',
+    mobileTabsLabel: '充值与兑换',
+    tabRecharge: '充值',
+    tabRedeem: '兑换码'
   },
 
   // Profile
