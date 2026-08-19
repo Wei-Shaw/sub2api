@@ -1,17 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import BulkEditAccountModal from '../BulkEditAccountModal.vue'
 import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
 import { adminAPI } from '@/api/admin'
 
-const { showError } = vi.hoisted(() => ({
-  showError: vi.fn()
+const { showError, showSuccess, translate } = vi.hoisted(() => ({
+  showError: vi.fn(),
+  showSuccess: vi.fn(),
+  translate: vi.fn((key: string) => key)
 }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
-    showSuccess: vi.fn(),
+    showSuccess,
     showInfo: vi.fn()
   })
 }))
@@ -34,7 +37,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: translate
     })
   }
 })
@@ -82,6 +85,8 @@ describe('BulkEditAccountModal', () => {
     vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
     showError.mockReset()
+    showSuccess.mockReset()
+    translate.mockClear()
 
     vi.mocked(adminAPI.accounts.bulkUpdate).mockResolvedValue({
       success: 2,
@@ -401,6 +406,302 @@ describe('BulkEditAccountModal', () => {
         openai_apikey_responses_websockets_v2_enabled: true
       }
     })
+  })
+
+  it('OpenAI 支持类型展示长上下文设置，混合平台隐藏全部新增设置', () => {
+    for (const selectedTypes of [['oauth'], ['setup-token'], ['apikey'], ['oauth', 'setup-token', 'apikey']]) {
+      const wrapper = mountModal({
+        selectedPlatforms: ['openai'],
+        selectedTypes
+      })
+      expect(wrapper.find('#bulk-edit-openai-long-context-billing-enabled').exists()).toBe(true)
+      wrapper.unmount()
+    }
+
+    const mixed = mountModal({
+      selectedPlatforms: ['openai', 'anthropic'],
+      selectedTypes: ['apikey']
+    })
+    expect(mixed.find('#bulk-edit-openai-long-context-billing-enabled').exists()).toBe(false)
+    expect(mixed.find('#bulk-edit-openai-endpoint-capabilities-enabled').exists()).toBe(false)
+    expect(mixed.find('#bulk-edit-openai-responses-mode-enabled').exists()).toBe(false)
+  })
+
+  it('端点能力与 Responses 路由仅对全部 OpenAI API Key 目标展示', () => {
+    const apiKey = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    expect(apiKey.find('#bulk-edit-openai-endpoint-capabilities-enabled').exists()).toBe(true)
+    expect(apiKey.find('#bulk-edit-openai-responses-mode-enabled').exists()).toBe(true)
+    apiKey.unmount()
+
+    const oauth = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    expect(oauth.find('#bulk-edit-openai-endpoint-capabilities-enabled').exists()).toBe(false)
+    expect(oauth.find('#bulk-edit-openai-responses-mode-enabled').exists()).toBe(false)
+  })
+
+  it('长上下文设置独立启用并提交布尔值', async () => {
+    const enabledWrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await enabledWrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await enabledWrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').trigger('click')
+    await enabledWrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      extra: { openai_long_context_billing_enabled: true }
+    })
+    enabledWrapper.unmount()
+
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockClear()
+    const disabledWrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['setup-token']
+    })
+    await disabledWrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await disabledWrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_long_context_billing_enabled: false }
+    })
+  })
+
+  it('端点能力默认值提交 null，表示恢复两个默认端点', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: null }
+    })
+  })
+
+  it('Responses 路由独立启用，auto 提交 null，强制模式提交明确值', async () => {
+    const autoWrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    await autoWrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+    await autoWrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      extra: { openai_responses_mode: null }
+    })
+    autoWrapper.unmount()
+
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockClear()
+    const forcedWrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    await forcedWrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+    await forcedWrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').setValue('force_responses')
+    await forcedWrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_responses_mode: 'force_responses' }
+    })
+  })
+
+  it('仅启用 Embeddings 时恢复 Responses 自动模式并精确提交联动字段', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').setValue('force_chat_completions')
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+
+    expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value)
+      .toBe('auto')
+    expect(wrapper.find('[data-testid="bulk-edit-openai-responses-mode-not-applicable"]').exists()).toBe(true)
+
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['embeddings'] },
+      extra: { openai_responses_mode: null }
+    })
+  })
+
+  it('关闭端点能力修改后 Responses 路由恢复独立可编辑', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(false)
+    await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+
+    const select = wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]')
+    expect(select.attributes('disabled')).toBeUndefined()
+    await select.setValue('force_responses')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_responses_mode: 'force_responses' }
+    })
+  })
+
+  it('目标变化后不提交已经隐藏的 OpenAI 设置', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+    await wrapper.setProps({ selectedPlatforms: ['anthropic'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      status: 'active'
+    })
+  })
+
+  it('至少保留一个端点能力', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
+
+    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').element as HTMLInputElement).checked)
+      .toBe(true)
+  })
+
+  it('关闭弹窗后重置新增设置的启用状态和值', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').trigger('click')
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').setValue(false)
+    await wrapper.get('#bulk-edit-openai-responses-mode-enabled').setValue(true)
+
+    await wrapper.setProps({ show: false })
+    await nextTick()
+
+    expect((wrapper.get('#bulk-edit-openai-long-context-billing-enabled').element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').attributes('aria-checked')).toBe('false')
+    expect((wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').element as HTMLInputElement).checked).toBe(false)
+    expect((wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-chat_completions"]').element as HTMLInputElement).checked).toBe(true)
+    expect((wrapper.get('[data-testid="bulk-edit-openai-responses-mode-select"]').element as HTMLSelectElement).value).toBe('auto')
+  })
+
+  it('筛选全量模式固定展示影子继承说明并按 filters 提交', async () => {
+    const wrapper = mountModal({
+      accountIds: [],
+      selectedPlatforms: [],
+      selectedTypes: [],
+      target: {
+        mode: 'filtered',
+        filters: { platform: 'openai', type: 'oauth', status: 'active' },
+        previewCount: 20,
+        selectedPlatforms: ['openai'],
+        selectedTypes: ['oauth']
+      }
+    })
+
+    expect(wrapper.get('[data-testid="bulk-edit-openai-long-context-shadow-hint"]').text())
+      .toContain('admin.accounts.bulkEdit.longContextShadowHint')
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-long-context-billing-toggle"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({
+      filters: { platform: 'openai', type: 'oauth', status: 'active' },
+      extra: { openai_long_context_billing_enabled: true }
+    })
+  })
+
+  it('成功响应包含影子继承数量时展示专用提示', async () => {
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockResolvedValueOnce({
+      success: 2,
+      failed: 0,
+      long_context_inherited_count: 1,
+      results: []
+    } as any)
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.bulkEdit.successWithInherited')
+    expect(translate).toHaveBeenCalledWith('admin.accounts.bulkEdit.successWithInherited', {
+      count: 2,
+      inherited: 1
+    })
+  })
+
+  it('部分成功且包含影子继承数量时展示组合提示', async () => {
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockResolvedValueOnce({
+      success: 1,
+      failed: 1,
+      long_context_inherited_count: 1,
+      results: []
+    } as any)
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.bulkEdit.partialSuccessWithInherited')
+    expect(translate).toHaveBeenCalledWith('admin.accounts.bulkEdit.partialSuccessWithInherited', {
+      success: 1,
+      failed: 1,
+      inherited: 1
+    })
+  })
+
+  it('全影子长上下文错误使用专用提示并保持弹窗打开', async () => {
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockRejectedValueOnce({
+      status: 400,
+      reason: 'OPENAI_LONG_CONTEXT_PARENT_REQUIRED',
+      message: 'select parent'
+    })
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+    await wrapper.get('#bulk-edit-openai-long-context-billing-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.bulkEdit.longContextParentRequired')
+    expect(wrapper.emitted('close')).toBeUndefined()
   })
 
   it('OpenAI API Key 批量编辑可统一开启上游倍率自动探测', async () => {
