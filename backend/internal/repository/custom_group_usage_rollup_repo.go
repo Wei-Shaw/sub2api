@@ -256,31 +256,8 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 	}
 	nextClosedDate := service.GroupUsageDate(nextClosed)
 
-	if _, err := r.sql.ExecContext(ctx, `
-		DELETE FROM usage_group_daily_rollups
-		WHERE bucket_date >= $1::date AND bucket_date < $2::date
-	`, rebuildStartDate, nextClosedDate); err != nil {
-		return false, fmt.Errorf("清理分组用量日桶: %w", err)
-	}
-
-	if _, err := r.sql.ExecContext(ctx, `
-		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
-		SELECT
-			(created_at AT TIME ZONE $3::text)::date AS bucket_date,
-			group_id,
-			COALESCE(SUM(actual_cost), 0) AS actual_cost,
-			NOW()
-		FROM usage_logs
-		WHERE group_id IS NOT NULL
-			AND created_at >= $1
-			AND created_at < $2
-		GROUP BY 1, 2
-		ON CONFLICT (bucket_date, group_id)
-		DO UPDATE SET
-			actual_cost = EXCLUDED.actual_cost,
-			computed_at = EXCLUDED.computed_at
-	`, rebuildStart.UTC(), nextClosed.UTC(), timezoneName); err != nil {
-		return false, fmt.Errorf("重建分组用量日桶: %w", err)
+	if err := r.rebuildUsageDailyRollupsForDay(ctx, rebuildStartDate, nextClosedDate, rebuildStart, nextClosed, timezoneName); err != nil {
+		return false, err
 	}
 
 	done := nextClosedDate == todayDate
@@ -294,6 +271,80 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context
 		return false, err
 	}
 	return done, nil
+}
+
+// rebuildUsageDailyRollupsForDay 重建一个自然日的用量日桶。
+//
+// group 与 api_key 是同一批原始日志的两个维度，因此用一次 GROUPING SETS 扫描同时产出，
+// 避免为 api_key 再扫一遍 usage_logs（大规模部署下是千万行级别）。两张表在同一事务内更新，
+// 共用 usage_group_rollup_state 的水位与归档屏障。
+func (r *dashboardAggregationRepository) rebuildUsageDailyRollupsForDay(
+	ctx context.Context,
+	rebuildStartDate string,
+	nextClosedDate string,
+	rebuildStart time.Time,
+	nextClosed time.Time,
+	timezoneName string,
+) error {
+	if _, err := r.sql.ExecContext(ctx, `
+		DELETE FROM usage_group_daily_rollups
+		WHERE bucket_date >= $1::date AND bucket_date < $2::date
+	`, rebuildStartDate, nextClosedDate); err != nil {
+		return fmt.Errorf("清理分组用量日桶: %w", err)
+	}
+	if _, err := r.sql.ExecContext(ctx, `
+		DELETE FROM usage_apikey_daily_rollups
+		WHERE bucket_date >= $1::date AND bucket_date < $2::date
+	`, rebuildStartDate, nextClosedDate); err != nil {
+		return fmt.Errorf("清理 API Key 用量日桶: %w", err)
+	}
+
+	// 一次扫描出两个维度：GROUPING SETS 的两组分别落到两张表。
+	if _, err := r.sql.ExecContext(ctx, `
+		WITH agg AS (
+			SELECT
+				(created_at AT TIME ZONE $3::text)::date AS bucket_date,
+				-- GROUPING()=1 表示该列在本分组集里被汇总掉了，用它区分
+				-- "被 rollup 置空" 与 "该列本身就是 NULL"。
+				GROUPING(group_id) AS group_rolled_up,
+				GROUPING(api_key_id) AS apikey_rolled_up,
+				group_id,
+				api_key_id,
+				COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				COUNT(*) AS request_count
+			FROM usage_logs
+			WHERE created_at >= $1
+				AND created_at < $2
+			GROUP BY GROUPING SETS (
+				((created_at AT TIME ZONE $3::text)::date, group_id),
+				((created_at AT TIME ZONE $3::text)::date, api_key_id)
+			)
+		),
+		group_rows AS (
+			INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+			SELECT bucket_date, group_id, actual_cost, NOW()
+			FROM agg
+			WHERE group_rolled_up = 0 AND group_id IS NOT NULL
+			ON CONFLICT (bucket_date, group_id)
+			DO UPDATE SET
+				actual_cost = EXCLUDED.actual_cost,
+				computed_at = EXCLUDED.computed_at
+			RETURNING 1
+		)
+		INSERT INTO usage_apikey_daily_rollups (bucket_date, api_key_id, actual_cost, request_count, computed_at)
+		SELECT bucket_date, api_key_id, actual_cost, request_count, NOW()
+		FROM agg
+		WHERE apikey_rolled_up = 0 AND api_key_id IS NOT NULL
+		ON CONFLICT (bucket_date, api_key_id)
+		DO UPDATE SET
+			actual_cost = EXCLUDED.actual_cost,
+			request_count = EXCLUDED.request_count,
+			computed_at = EXCLUDED.computed_at
+	`, rebuildStart.UTC(), nextClosed.UTC(), timezoneName); err != nil {
+		return fmt.Errorf("重建用量日桶: %w", err)
+	}
+
+	return nil
 }
 
 // publishGroupUsageWatermark 推进发布水位。trimFrom 非空时一并删除该日期及以后的日桶。
@@ -311,6 +362,13 @@ func (r *dashboardAggregationRepository) publishGroupUsageWatermark(
 			WHERE bucket_date >= $1::date
 		`, trimFrom); err != nil {
 			return fmt.Errorf("清理今日及以后的分组用量日桶: %w", err)
+		}
+		// api_key 日桶与 group 日桶共用水位，今日的量同样走原始日志尾段。
+		if _, err := r.sql.ExecContext(ctx, `
+			DELETE FROM usage_apikey_daily_rollups
+			WHERE bucket_date >= $1::date
+		`, trimFrom); err != nil {
+			return fmt.Errorf("清理今日及以后的 API Key 用量日桶: %w", err)
 		}
 	}
 	if _, err := r.sql.ExecContext(ctx, `
