@@ -43,6 +43,107 @@ REDACTED
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning.effort").String())
 REDACTED
 
+func TestPatchGrokResponsesBodyDropsRedundantViewImageForCurrentInlineImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+REDACTED{
+		{
+			name: "top-level tools",
+			body: `{
+				"model":"grok-4.6",
+				"input":[{"type":"message","role":"user","content":[
+					{"type":"input_text","text":"What text is in this image?"REDACTED,
+					{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED
+				]REDACTED],
+				"tools":[
+					{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED,
+					{"type":"function","name":"shell_command","parameters":{"type":"object"REDACTEDREDACTED
+				]
+		REDACTED`,
+	REDACTED,
+		{
+			name: "Responses Lite additional tools",
+			body: `{
+				"model":"grok-4.6",
+				"input":[
+					{"type":"additional_tools","role":"developer","tools":[
+						{"type":"function","name":"view_image","parameters":{"type":"object"REDACTEDREDACTED,
+						{"type":"function","name":"shell_command","parameters":{"type":"object"REDACTEDREDACTED
+					]REDACTED,
+					{"type":"message","role":"user","content":[
+						{"type":"input_text","text":"What text is in this image?"REDACTED,
+						{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED
+					]REDACTED
+				]
+		REDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.6")
+		REDACTED
+			require.False(t, gjson.GetBytes(patched, `tools.#(name=="view_image")`).Exists())
+			require.Equal(t, "shell_command", gjson.GetBytes(patched, "tools.0.name").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPatchGrokResponsesBodyKeepsNonRedundantViewImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+REDACTED{
+		{
+			name: "current turn has no inline image",
+			body: `{"input":[{"role":"user","content":[{"type":"input_text","text":"Inspect a local image"REDACTED]REDACTED],"tools":[{"type":"function","name":"view_image"REDACTED]REDACTED`,
+	REDACTED,
+		{
+			name: "inline image is only historical",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED]REDACTED,{"role":"assistant","content":[{"type":"output_text","text":"Done"REDACTED]REDACTED,{"role":"user","content":[{"type":"input_text","text":"Inspect another local image"REDACTED]REDACTED],"tools":[{"type":"function","name":"view_image"REDACTED]REDACTED`,
+	REDACTED,
+		{
+			name: "view image is explicitly selected",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED]REDACTED],"tools":[{"type":"function","name":"view_image"REDACTED],"tool_choice":{"type":"function","name":"view_image"REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name: "required with view image as the only tool",
+			body: `{"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED]REDACTED],"tools":[{"type":"function","name":"view_image"REDACTED],"tool_choice":"required"REDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.6")
+		REDACTED
+			require.Equal(t, "view_image", gjson.GetBytes(patched, "tools.0.name").String())
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPatchGrokResponsesBodyDropsViewImageOnlyToolMetadata(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"input":[{"role":"user","content":[{"type":"input_image","image_url":"data:image/png;base64,AA=="REDACTED]REDACTED],
+		"tools":[{"type":"function","name":"view_image"REDACTED],
+		"tool_choice":"auto",
+		"parallel_tool_calls":true
+REDACTED`)
+	patched, err := patchGrokResponsesBody(body, "grok-4.6")
+REDACTED
+	require.False(t, gjson.GetBytes(patched, "tools").Exists())
+	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+	require.False(t, gjson.GetBytes(patched, "parallel_tool_calls").Exists())
+REDACTED
+
 func TestPatchGrokResponsesBodySanitizesComposerReasoningParameters(t *testing.T) {
 	t.Parallel()
 
