@@ -130,6 +130,42 @@ REDACTED
 	return adapter, changed, nil
 REDACTED
 
+// AdaptResponsesClientToolsWithInheritedMapping lowers client-tool history on
+// a follow-up request that omits the session-level tools declaration. An
+// explicitly present tools field, including an empty or malformed value,
+// always replaces the inherited mapping and is handled by the ordinary
+// declaration-driven adapter.
+func AdaptResponsesClientToolsWithInheritedMapping(
+	req map[string]any,
+	inherited ResponsesClientToolMapping,
+) (ResponsesClientToolMapping, bool, error) {
+	if req == nil {
+		return ResponsesClientToolMapping{REDACTED, false, nil
+REDACTED
+	if _, toolsPresent := req["tools"]; toolsPresent {
+		return AdaptResponsesClientTools(req)
+REDACTED
+	if len(inherited.CustomTools) == 0 && !inherited.ToolSearch && len(inherited.NamespaceTools) == 0 {
+		return ResponsesClientToolMapping{REDACTED, false, nil
+REDACTED
+
+	changed := rewriteClientToolHistory(req["input"], &inherited)
+	if len(inherited.NamespaceTools) > 0 {
+		before := changed
+		rewriteNamespaceQualifiedCalls(req["input"], inherited.NamespaceTools)
+		// Namespace rewriting does not currently report whether it changed a
+		// value. A retained namespace mapping is only used for follow-up
+		// history, so conservatively rebuild the request when input exists.
+		if _, inputPresent := req["input"]; inputPresent && !before {
+			changed = true
+	REDACTED
+REDACTED
+	if rewriteClientToolChoice(req, &inherited) {
+		changed = true
+REDACTED
+	return inherited, changed, nil
+REDACTED
+
 func copyClientTool(tool map[string]any) map[string]any {
 	copy := make(map[string]any, len(tool))
 	for key, value := range tool {
@@ -155,10 +191,12 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 					typed["type"] = "function_call"
 					typed["arguments"] = customToolCallArguments(stringValue(typed["input"]))
 					delete(typed, "input")
+					dropInvalidLoweredFunctionItemID(typed)
 					changed = true
 			REDACTED
 			case "custom_tool_call_output":
 				typed["type"] = "function_call_output"
+				dropInvalidLoweredFunctionItemID(typed)
 				normalizeClientToolOutput(typed)
 				changed = true
 			case "tool_search_call":
@@ -167,11 +205,13 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 					typed["name"] = toolSearchProxyName
 					typed["arguments"] = rawObjectString(typed["arguments"])
 					delete(typed, "execution")
+					dropInvalidLoweredFunctionItemID(typed)
 					changed = true
 			REDACTED
 			case "tool_search_output":
 				if adapter.ToolSearch {
 					typed["type"] = "function_call_output"
+					dropInvalidLoweredFunctionItemID(typed)
 					normalizeClientToolOutput(typed)
 					changed = true
 			REDACTED
@@ -183,6 +223,17 @@ func rewriteClientToolHistory(value any, adapter *ResponsesClientToolMapping) bo
 REDACTED
 	visit(value)
 	return changed
+REDACTED
+
+// dropInvalidLoweredFunctionItemID removes Codex client-only item IDs such as
+// ctc_*, ctco_*, tsc_*, and tso_* after their item type is lowered to the
+// function protocol. Function upstreams validate these IDs with the fc prefix;
+// call_id, which is preserved separately, is the tool call/output pairing key.
+func dropInvalidLoweredFunctionItemID(item map[string]any) {
+	id := strings.TrimSpace(stringValue(item["id"]))
+	if id != "" && !strings.HasPrefix(id, "fc") {
+		delete(item, "id")
+REDACTED
 REDACTED
 
 func normalizeClientToolOutput(item map[string]any) {
