@@ -285,6 +285,10 @@ REDACTED
 REDACTED
 
 	// Route to platform-specific test method
+	if account.IsCNProvider() && account.GetAPIProtocol() == APIProtocolChatCompletions {
+		return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+REDACTED
+
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 REDACTED
@@ -302,6 +306,27 @@ REDACTED
 REDACTED
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+REDACTED
+
+func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
+REDACTED
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+REDACTED
+
+	baseURL := account.GetOpenAIBaseURL()
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+REDACTED
+
+	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 REDACTED
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
