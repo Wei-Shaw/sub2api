@@ -1150,7 +1150,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 			zap.Strings("available_models", availableModels),
 		)
 		if customModelsList {
-			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
+			availableModels = normalizeCustomModelsList(apiKey.Group.ModelsListConfig.Models)
 			reqLog.Info("gateway.models.response", zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 			writeCustomModelsList(c, service.PlatformComposite, availableModels)
 			return
@@ -1171,7 +1171,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	availableModels := platformModels
 	falModels := []string(nil)
 	if platform == service.PlatformOpenAI {
-		falModels = filterOpenAIExposedFalModelIDs(h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, service.PlatformFal))
+		falModels = h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, service.PlatformFal)
 		if len(platformModels) == 0 {
 			availableModels = mergeModelIDs(defaultModelIDsForPlatform(service.PlatformOpenAI), falModels)
 		} else {
@@ -1187,11 +1187,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		zap.Strings("fal_models", falModels),
 	)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		fallbackModels := defaultModelIDsForPlatform(platform)
-		if platform == service.PlatformOpenAI {
-			fallbackModels = mergeModelIDs(fallbackModels, filterOpenAIExposedFalModelIDs(defaultModelIDsForPlatform(service.PlatformFal)))
-		}
-		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
+		availableModels = normalizeCustomModelsList(apiKey.Group.ModelsListConfig.Models)
 		reqLog.Info("gateway.models.response", zap.Bool("custom_models_list", true), zap.Int("model_count", len(availableModels)), zap.Strings("models", availableModels))
 		writeCustomModelsList(c, platform, availableModels)
 		return
@@ -1373,41 +1369,12 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
-func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
-	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
-		return mergeModelIDs(availableModels, fallbackModels)
-	}
-	return availableModels
-}
-
-func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {
-	if len(selectedModels) == 0 {
-		return availableModels
-	}
-	source := availableModels
-	if len(source) == 0 {
-		source = fallbackModels
-	}
-	if len(source) == 0 {
-		return nil
-	}
-
-	allowed := make([]string, 0, len(source))
-	for _, model := range source {
-		model = strings.TrimSpace(model)
-		if model != "" {
-			allowed = append(allowed, model)
-		}
-	}
-
+func normalizeCustomModelsList(selectedModels []string) []string {
 	seen := make(map[string]struct{}, len(selectedModels))
 	filtered := make([]string, 0, len(selectedModels))
 	for _, model := range selectedModels {
 		model = strings.TrimSpace(model)
 		if model == "" {
-			continue
-		}
-		if !customModelsListAllowsModel(allowed, model) {
 			continue
 		}
 		if _, ok := seen[model]; ok {
@@ -1417,18 +1384,6 @@ func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []
 		filtered = append(filtered, model)
 	}
 	return filtered
-}
-
-func customModelsListAllowsModel(availablePatterns []string, model string) bool {
-	for _, pattern := range availablePatterns {
-		if pattern == model {
-			return true
-		}
-		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
-			return true
-		}
-	}
-	return false
 }
 
 func defaultModelIDsForPlatform(platform string) []string {
@@ -1486,18 +1441,6 @@ func defaultModelIDsForPlatform(platform string) []string {
 		}
 		return ids
 	}
-}
-
-func filterOpenAIExposedFalModelIDs(models []string) []string {
-	filtered := make([]string, 0, len(models))
-	for _, model := range models {
-		model = strings.TrimSpace(model)
-		if model == "" || strings.Contains(model, "/") {
-			continue
-		}
-		filtered = append(filtered, model)
-	}
-	return filtered
 }
 
 func mergeModelIDs(primary, secondary []string) []string {

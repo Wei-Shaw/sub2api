@@ -10,6 +10,7 @@ export interface ModelsListItem {
 
 export interface ModelsListState {
   enabled: boolean
+  draft: string
   savedModels: string[]
   items: ModelsListItem[]
 }
@@ -18,6 +19,7 @@ export const createModelsListState = (
   config?: Partial<ModelsListConfig> | null,
 ): ModelsListState => ({
   enabled: config?.enabled ?? false,
+  draft: '',
   savedModels: normalizeModels(config?.models ?? []),
   items: [],
 })
@@ -66,6 +68,34 @@ export const toggleModelsListItem = (state: ModelsListState, modelID: string) =>
   const item = state.items.find(item => item.id === modelID)
   if (item) {
     item.selected = !item.selected
+  }
+}
+
+export const addModelsListItems = (
+  state: ModelsListState,
+  input: string | string[],
+) => {
+  const models = normalizeModels(
+    Array.isArray(input) ? input : input.split(/[,;\n]+/),
+  )
+  if (models.length === 0) {
+    return
+  }
+
+  if (state.items.length === 0 && state.savedModels.length > 0) {
+    state.items = state.savedModels.map(id => ({ id, selected: true }))
+  }
+
+  const itemsByID = new Map(state.items.map(item => [item.id, item]))
+  for (const id of models) {
+    const existing = itemsByID.get(id)
+    if (existing) {
+      existing.selected = true
+      continue
+    }
+    const item = { id, selected: true }
+    state.items.push(item)
+    itemsByID.set(id, item)
   }
 }
 

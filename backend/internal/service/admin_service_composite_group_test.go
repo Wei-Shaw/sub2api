@@ -191,3 +191,44 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 	require.Contains(t, candidates, "gpt-5.5")
 	require.Contains(t, candidates, "gemini-2.5-flash")
 }
+
+func TestAdminService_OpenAIModelsListCandidatesIncludeFalAccountMappings(t *testing.T) {
+	accountRepo := &accountRepoStubForCompositeModelsList{
+		accounts: []Account{
+			{
+				ID:       1,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-custom": "gpt-5.5"},
+				},
+			},
+			{
+				ID:       2,
+				Platform: PlatformFal,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"openai/gpt-image-2": "openai/gpt-image-2"},
+				},
+			},
+			{
+				ID:       3,
+				Platform: PlatformGemini,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gemini-custom": "gemini-2.5-flash"},
+				},
+			},
+		},
+	}
+	groupRepo := &groupRepoStubForAdmin{
+		getByIDByID: map[int64]*Group{
+			100: {ID: 100, Platform: PlatformOpenAI},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: accountRepo, groupRepo: groupRepo}
+
+	candidates, err := svc.GetGroupModelsListCandidates(context.Background(), 100, PlatformOpenAI)
+
+	require.NoError(t, err)
+	require.Contains(t, candidates, "gpt-custom")
+	require.Contains(t, candidates, "openai/gpt-image-2")
+	require.NotContains(t, candidates, "gemini-custom")
+}

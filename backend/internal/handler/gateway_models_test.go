@@ -265,7 +265,7 @@ func TestGatewayModels_CustomModelsListDisabledKeepsOriginalModels(t *testing.T)
 	require.Equal(t, []string{"gpt-5.4", "gpt-5.5"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_CustomModelsListFiltersAndOrdersMappedModels(t *testing.T) {
+func TestGatewayModels_CustomModelsListUsesConfiguredOrderIncludingManualModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(23)
@@ -309,10 +309,10 @@ func TestGatewayModels_CustomModelsListFiltersAndOrdersMappedModels(t *testing.T
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"gpt-5.5", "gpt-5.4"}, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"gpt-5.5", "missing-model", "gpt-5.4"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_CompositeCustomModelsListFiltersAcrossConcretePlatforms(t *testing.T) {
+func TestGatewayModels_CompositeCustomModelsListIncludesManualModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(33)
@@ -373,7 +373,7 @@ func TestGatewayModels_CompositeCustomModelsListFiltersAcrossConcretePlatforms(t
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"gemini-2.5-flash", "ag-custom-model", "gpt-5.5"}, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"gemini-2.5-flash", "missing-model", "ag-custom-model", "gpt-5.5"}, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_CompositeIncludesFalAccountMappings(t *testing.T) {
@@ -438,9 +438,9 @@ func TestGatewayModels_OpenAIGroupIncludesFalAccountMappings(t *testing.T) {
 	require.Contains(t, ids, "gpt-5.5")
 	require.Contains(t, ids, "gpt-image-2")
 	require.Contains(t, ids, "gpt-image-2-edit")
-	require.NotContains(t, ids, "openai/gpt-image-2")
-	require.NotContains(t, ids, "gpt-image-2/edit")
-	require.NotContains(t, ids, "openai/gpt-image-2/edit")
+	require.Contains(t, ids, "openai/gpt-image-2")
+	require.Contains(t, ids, "gpt-image-2/edit")
+	require.Contains(t, ids, "openai/gpt-image-2/edit")
 }
 
 func TestGatewayModels_OpenAIGroupMergesFalWithOpenAIDefaultFallback(t *testing.T) {
@@ -699,7 +699,7 @@ func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappin
 	require.Equal(t, []string{"claude-opus-4-6-thinking", "claude-sonnet-4-5"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t *testing.T) {
+func TestGatewayModels_CustomModelsListDisplaysConfiguredModelWithoutAvailableAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(24)
@@ -741,10 +741,10 @@ func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Empty(t, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"gpt-5.5"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_CustomModelsListFiltersDefaultFallbackModels(t *testing.T) {
+func TestGatewayModels_CustomModelsListKeepsManualModelsWithDefaultFallbackAccounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(25)
@@ -778,7 +778,7 @@ func TestGatewayModels_CustomModelsListFiltersDefaultFallbackModels(t *testing.T
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"gpt-5.5", "gpt-5.4"}, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"gpt-5.5", "legacy-gpt-2024", "gpt-5.4"}, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_OpenAICustomModelsListKeepsOpenAIResponseShapeForDefaultFallback(t *testing.T) {
@@ -828,14 +828,4 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 		ids = append(ids, model.ID)
 	}
 	return ids
-}
-
-func TestFilterOpenAIExposedFalModelIDsRemovesEndpointSlugs(t *testing.T) {
-	got := filterOpenAIExposedFalModelIDs(defaultModelIDsForPlatform(service.PlatformFal))
-
-	require.Contains(t, got, "gpt-image-2")
-	require.Contains(t, got, "gpt-image-2-edit")
-	require.NotContains(t, got, "openai/gpt-image-2")
-	require.NotContains(t, got, "gpt-image-2/edit")
-	require.NotContains(t, got, "openai/gpt-image-2/edit")
 }

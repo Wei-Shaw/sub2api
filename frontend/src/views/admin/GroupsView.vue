@@ -150,7 +150,13 @@
                         ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
                           : value === 'kiro'
                             ? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        : value === 'kimi'
+                          ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+                          : value === 'zhipu'
+                            ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                            : value === 'deepseek'
+                              ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
@@ -856,6 +862,27 @@
             v-if="createModelsListState.enabled"
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
+            <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
+              <input
+                v-model="createModelsListState.draft"
+                type="text"
+                class="input min-w-0 flex-1"
+                :disabled="createModelsListLoading"
+                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                @keydown.enter.prevent="addModelsListDraft(createModelsListState)"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
+                :disabled="createModelsListLoading || !createModelsListState.draft.trim()"
+                :title="t('admin.groups.modelsList.addModel')"
+                :aria-label="t('admin.groups.modelsList.addModel')"
+                @click="addModelsListDraft(createModelsListState)"
+              >
+                <Icon name="plus" size="md" />
+              </button>
+            </div>
             <div
               v-if="!createModelsListLoading && createModelsListState.items.length > 0"
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
@@ -2735,6 +2762,27 @@
             v-if="editModelsListState.enabled"
             class="overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 dark:border-dark-600 dark:bg-dark-800/40"
           >
+            <div class="flex items-center gap-2 border-b border-gray-200 p-3 dark:border-dark-600">
+              <input
+                v-model="editModelsListState.draft"
+                type="text"
+                class="input min-w-0 flex-1"
+                :disabled="editModelsListLoading"
+                :placeholder="t('admin.groups.modelsList.manualPlaceholder')"
+                :aria-label="t('admin.groups.modelsList.manualPlaceholder')"
+                @keydown.enter.prevent="addModelsListDraft(editModelsListState)"
+              />
+              <button
+                type="button"
+                class="btn btn-secondary h-10 w-10 flex-shrink-0 p-0"
+                :disabled="editModelsListLoading || !editModelsListState.draft.trim()"
+                :title="t('admin.groups.modelsList.addModel')"
+                :aria-label="t('admin.groups.modelsList.addModel')"
+                @click="addModelsListDraft(editModelsListState)"
+              >
+                <Icon name="plus" size="md" />
+              </button>
+            </div>
             <div
               v-if="!editModelsListLoading && editModelsListState.items.length > 0"
               class="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs dark:border-dark-600 dark:bg-dark-800"
@@ -4280,7 +4328,13 @@
                             ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
                           : group.platform === 'kiro'
                             ? 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                            : group.platform === 'kimi'
+                              ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+                              : group.platform === 'zhipu'
+                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                : group.platform === 'deepseek'
+                                  ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ]"
                 >
                   {{ t("admin.groups.platforms." + group.platform) }}
@@ -4753,6 +4807,7 @@ import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
   apiIntervalsToForm,
+  createDefaultTimePricingForm,
   formIntervalsToAPI,
   mTokToPerToken,
   perTokenToMTok,
@@ -4772,6 +4827,7 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import {
+  addModelsListItems,
   buildModelsListConfig,
   createModelsListState as createInitialModelsListState,
   invertModelsListSelection,
@@ -4823,6 +4879,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   image_output_price: null,
   per_request_price: null,
   intervals: [],
+  time_pricing: createDefaultTimePricingForm(),
 });
 
 const addGroupPricing = (entries: PricingFormEntry[]) =>
@@ -4842,6 +4899,7 @@ const groupPricingFromAPI = (
     image_output_price: perTokenToMTok(entry.image_output_price),
     per_request_price: entry.per_request_price,
     intervals: apiIntervalsToForm(entry.intervals || []),
+    time_pricing: createDefaultTimePricingForm(),
   }));
 
 const groupPricingToAPI = (
@@ -4865,6 +4923,7 @@ const groupPricingToAPI = (
         entry.billing_mode === "token"
           ? []
           : formIntervalsToAPI(entry.intervals || []),
+      time_pricing: null,
     }));
 
 const { t } = useI18n();
@@ -5053,6 +5112,9 @@ const platformOptions = computed(() => [
   { value: "fal", label: "fal" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
+  { value: "kimi", label: "Kimi" },
+  { value: "zhipu", label: "Zhipu GLM" },
+  { value: "deepseek", label: "DeepSeek" },
   { value: "composite", label: "Composite" },
 ]);
 
@@ -5065,6 +5127,9 @@ const platformFilterOptions = computed(() => [
   { value: "fal", label: "fal" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
+  { value: "kimi", label: "Kimi" },
+  { value: "zhipu", label: "Zhipu GLM" },
+  { value: "deepseek", label: "DeepSeek" },
   { value: "composite", label: "Composite" },
 ]);
 
@@ -5657,6 +5722,7 @@ const resetModelsListState = (
 ) => {
   const fresh = createInitialModelsListState(config);
   state.enabled = fresh.enabled;
+  state.draft = fresh.draft;
   state.savedModels = fresh.savedModels;
   state.items = fresh.items;
 };
@@ -5687,6 +5753,11 @@ const loadModelsListCandidates = async (
       loadingRef.value = false;
     }
   }
+};
+
+const addModelsListDraft = (state: typeof createModelsListState) => {
+  addModelsListItems(state, state.draft);
+  state.draft = "";
 };
 
 const moveCreateModelsListItem = (fromIndex: number, toIndex: number) => {

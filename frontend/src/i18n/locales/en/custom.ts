@@ -2492,6 +2492,8 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         hint: 'Only changes the /v1/models response. Whitelist model calls and account routing are unchanged.',
         loading: 'Loading model list...',
         empty: 'No displayable models',
+        manualPlaceholder: 'Enter a model ID, e.g. openai/gpt-image-2',
+        addModel: 'Add model',
         selectedSummary: 'Selected {selected} / {total}',
         selectAll: 'Select all',
         invertSelection: 'Invert'

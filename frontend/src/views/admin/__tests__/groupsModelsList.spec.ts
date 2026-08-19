@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addModelsListItems,
   buildModelsListConfig,
   createModelsListState,
   hydrateModelsListState,
@@ -66,6 +67,34 @@ describe("groupsModelsList", () => {
     expect(buildModelsListConfig(state)).toEqual({
       enabled: true,
       models: ["gpt-5.4", "gpt-5.5"],
+    });
+  });
+
+  it("adds manual model IDs, normalizes duplicates, and selects existing candidates", () => {
+    const state = hydrateModelsListState({
+      enabled: true,
+      models: ["gpt-5.5"],
+    }, ["gpt-5.5", "gpt-image-2"]);
+
+    addModelsListItems(state, " openai/gpt-image-2, gpt-image-2 ; openai/gpt-image-2 ");
+
+    expect(buildModelsListConfig(state)).toEqual({
+      enabled: true,
+      models: ["gpt-5.5", "gpt-image-2", "openai/gpt-image-2"],
+    });
+  });
+
+  it("preserves saved selections when a manual model is added before candidates load", () => {
+    const state = createModelsListState({
+      enabled: true,
+      models: ["gpt-5.5"],
+    });
+
+    addModelsListItems(state, "custom-model");
+
+    expect(buildModelsListConfig(state)).toEqual({
+      enabled: true,
+      models: ["gpt-5.5", "custom-model"],
     });
   });
 
