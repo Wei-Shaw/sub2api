@@ -142,7 +142,7 @@ func TestGPT56ExplicitZeroCacheWritePriceIsPreserved(t *testing.T) {
 	})
 
 	t.Run("interval price", func(t *testing.T) {
-		pricing := intervalToModelPricing(&PricingInterval{CacheWritePrice: &zero}, false, nil)
+		pricing := intervalToModelPricing(&PricingInterval{CacheWritePrice: &zero}, false, nil, nil)
 		require.True(t, pricing.CacheCreationPriceExplicit)
 
 		cost, err := bs.CalculateCostUnified(CostInput{
@@ -320,6 +320,48 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	require.NotNil(t, iv2)
 	require.InDelta(t, 4e-6, iv2.InputPricePerToken, 1e-12)
 	require.InDelta(t, 16e-6, iv2.OutputPricePerToken, 1e-12)
+}
+
+func TestResolve_WithChannelOverride_IntervalMissUsesChannelDefaultPrices(t *testing.T) {
+	r := newResolverWithChannel(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModeToken,
+		InputPrice:      testPtrFloat64(10e-6),
+		OutputPrice:     testPtrFloat64(50e-6),
+		CacheWritePrice: testPtrFloat64(12.5e-6),
+		CacheReadPrice:  testPtrFloat64(1e-6),
+		Intervals: []PricingInterval{{
+			MinTokens:       272000,
+			MaxTokens:       nil,
+			InputPrice:      testPtrFloat64(20e-6),
+			OutputPrice:     testPtrFloat64(75e-6),
+			CacheWritePrice: testPtrFloat64(25e-6),
+			CacheReadPrice:  testPtrFloat64(2e-6),
+		}},
+	}})
+
+	resolved := r.Resolve(context.Background(), PricingInput{
+		Model:   "claude-sonnet-4",
+		GroupID: groupIDPtr(),
+	})
+
+	require.Equal(t, PricingSourceChannel, resolved.Source)
+	require.Len(t, resolved.Intervals, 1)
+
+	// Below the only configured interval, the channel's flat/default prices
+	// must win instead of falling back to the model catalog.
+	shortContext := r.GetIntervalPricing(resolved, 100000)
+	require.NotNil(t, shortContext)
+	require.InDelta(t, 10e-6, shortContext.InputPricePerToken, 1e-12)
+	require.InDelta(t, 50e-6, shortContext.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 12.5e-6, shortContext.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 1e-6, shortContext.CacheReadPricePerToken, 1e-12)
+
+	longContext := r.GetIntervalPricing(resolved, 300000)
+	require.NotNil(t, longContext)
+	require.InDelta(t, 20e-6, longContext.InputPricePerToken, 1e-12)
+	require.InDelta(t, 75e-6, longContext.OutputPricePerToken, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {

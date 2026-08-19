@@ -1673,6 +1673,42 @@ func TestGetModelPricingWithChannel_CacheReadPriceAffectsPriority(t *testing.T) 
 	require.InDelta(t, 2e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
 }
 
+func TestGetModelPricingWithChannel_GPT56PreservesPriorityRatio(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice:      testPtrFloat64(0.2e-6),
+		OutputPrice:     testPtrFloat64(1.2e-6),
+		CacheWritePrice: testPtrFloat64(0.25e-6),
+		CacheReadPrice:  testPtrFloat64(0.02e-6),
+	}
+	pricing, err := svc.GetModelPricingWithChannel("gpt-5.6-luna", chPricing)
+	require.NoError(t, err)
+
+	require.InDelta(t, 0.2e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 0.4e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 1.2e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 2.4e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.25e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 0.5e-6, pricing.CacheCreationPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.02e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 0.04e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+}
+
+func TestCalculateCostWithServiceTier_FastAliasUsesPriorityPricing(t *testing.T) {
+	svc := newTestBillingService()
+
+	cost, err := svc.CalculateCostWithServiceTier(
+		"gpt-5.6-luna",
+		UsageTokens{InputTokens: 1000, OutputTokens: 100},
+		1,
+		"fast",
+	)
+	require.NoError(t, err)
+	require.InDelta(t, 1000*0.4e-6, cost.InputCost, 1e-12)
+	require.InDelta(t, 100*2.4e-6, cost.OutputCost, 1e-12)
+}
+
 func TestGetModelPricingWithChannel_UnknownModelReturnsError(t *testing.T) {
 	svc := newTestBillingService()
 
