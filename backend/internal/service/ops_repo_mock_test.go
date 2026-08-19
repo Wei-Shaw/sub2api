@@ -13,6 +13,9 @@ type opsRepoMock struct {
 	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+
+	GetLatestMinuteBucketStartFn   func(ctx context.Context) (time.Time, bool, error)
+	GetEarliestMinuteBucketStartFn func(ctx context.Context) (time.Time, bool, error)
 }
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
@@ -186,6 +189,24 @@ func (m *opsRepoMock) GetLatestHourlyBucketStart(ctx context.Context) (time.Time
 }
 
 func (m *opsRepoMock) GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
+func (m *opsRepoMock) UpsertMinuteMetrics(ctx context.Context, startTime, endTime time.Time) error {
+	return nil
+}
+
+func (m *opsRepoMock) GetLatestMinuteBucketStart(ctx context.Context) (time.Time, bool, error) {
+	if m.GetLatestMinuteBucketStartFn != nil {
+		return m.GetLatestMinuteBucketStartFn(ctx)
+	}
+	return time.Time{}, false, nil
+}
+
+func (m *opsRepoMock) GetEarliestMinuteBucketStart(ctx context.Context) (time.Time, bool, error) {
+	if m.GetEarliestMinuteBucketStartFn != nil {
+		return m.GetEarliestMinuteBucketStartFn(ctx)
+	}
 	return time.Time{}, false, nil
 }
 

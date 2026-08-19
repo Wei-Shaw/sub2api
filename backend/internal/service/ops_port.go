@@ -59,6 +59,12 @@ type OpsRepository interface {
 	UpsertDailyMetrics(ctx context.Context, startTime, endTime time.Time) error
 	GetLatestHourlyBucketStart(ctx context.Context) (time.Time, bool, error)
 	GetLatestDailyBucketDate(ctx context.Context) (time.Time, bool, error)
+
+	// Minute-level pre-aggregation backing the throughput/error trend charts,
+	// which use 60/300/3600s buckets that hourly rollups cannot serve.
+	UpsertMinuteMetrics(ctx context.Context, startTime, endTime time.Time) error
+	GetLatestMinuteBucketStart(ctx context.Context) (time.Time, bool, error)
+	GetEarliestMinuteBucketStart(ctx context.Context) (time.Time, bool, error)
 }
 
 type OpsInsertErrorLogInput struct {
