@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -328,6 +330,15 @@ func (l *openAIWSPassthroughTurnLifecycle) cancelResponseCreate() {
 	l.mu.Lock()
 	l.inFlight = false
 	l.mu.Unlock()
+}
+
+func (l *openAIWSPassthroughTurnLifecycle) hasInFlightTurn() bool {
+	if l == nil {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.inFlight
 }
 
 func (l *openAIWSPassthroughTurnLifecycle) beginTerminalWrite() {
@@ -914,6 +925,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	var activeResponseID atomic.Value
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	var acceptedTurnStartedAt atomic.Pointer[time.Time]
 	clientFrameConn := &openAIWSClientFrameConn{
@@ -1167,6 +1179,11 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			},
 			BeforeClientWrite: func(msgType coderws.MessageType, payload []byte) {
+				if msgType == coderws.MessageText {
+					if responseID := openAIWSPassthroughResponseID(payload); responseID != "" {
+						activeResponseID.Store(responseID)
+					}
+				}
 				if msgType == coderws.MessageText && openAIWSPassthroughIsTerminalOutput(payload) {
 					turnLifecycle.beginTerminalWrite()
 				}
@@ -1183,6 +1200,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				status, reason, ok := openAIWSPassthroughRelayClientClose(exit, int(completedTurns.Load()))
 				if !ok {
 					return
+				}
+				// A raw upstream close while a turn is in flight used to make the
+				// client observe a close frame without a Responses terminal event.
+				// Codex treats that as a transport failure and repeatedly reconnects.
+				// Complete the protocol first, then retain the close frame as a
+				// transport-level signal for clients that need to open a new session.
+				if openAIWSPassthroughShouldEmitFailureEvent(exit) && turnLifecycle.hasInFlightTurn() {
+					responseID, _ := activeResponseID.Load().(string)
+					if eventBytes := buildOpenAIWSPassthroughFailureEvent(responseID, capturedSessionModel); eventBytes != nil {
+						writeCtx, cancelWrite := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+						_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+						cancelWrite()
+					}
 				}
 				_ = clientConn.Close(status, reason)
 				_ = clientConn.CloseNow()
@@ -1382,6 +1412,49 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 		return coderws.StatusInternalError, "upstream websocket proxy failed", true
 	}
 	return 0, "", false
+}
+
+func openAIWSPassthroughShouldEmitFailureEvent(exit openaiwsv2.RelayExit) bool {
+	if exit.Graceful || exit.Stage != "read_upstream" {
+		return false
+	}
+	var closeErr *OpenAIWSClientCloseError
+	return !errors.As(exit.Err, &closeErr)
+}
+
+func openAIWSPassthroughResponseID(payload []byte) string {
+	if responseID := strings.TrimSpace(gjson.GetBytes(payload, "response.id").String()); responseID != "" {
+		return responseID
+	}
+	return strings.TrimSpace(gjson.GetBytes(payload, "response_id").String())
+}
+
+func buildOpenAIWSPassthroughFailureEvent(responseID, model string) []byte {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" {
+		responseID = "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	}
+	response := map[string]any{
+		"id":     responseID,
+		"object": "response",
+		"status": "failed",
+		"output": []any{},
+		"error": map[string]string{
+			"code":    "upstream_error",
+			"message": "upstream websocket disconnected before response.completed",
+		},
+	}
+	if model = strings.TrimSpace(model); model != "" {
+		response["model"] = model
+	}
+	payload, err := json.Marshal(map[string]any{
+		"type":     "response.failed",
+		"response": response,
+	})
+	if err != nil {
+		return nil
+	}
+	return payload
 }
 
 func (s *OpenAIGatewayService) mapOpenAIWSPassthroughDialError(

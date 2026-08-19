@@ -3443,7 +3443,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	require.Empty(t, secondWrites, "不能把会触发 No tool call found 的重放请求发到新上游")
 }
 
-func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeDownstreamRetriesOnce(t *testing.T) {
+func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeDownstreamRetriesWithinBudget(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -3466,13 +3466,15 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeD
 			[]byte(`{"type":"response.completed","response":{"id":"resp_turn_write_retry_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
 		},
 	}
+	staleConn2 := &openAIWSWriteFailAfterFirstTurnConn{failOnWrite: true}
+	staleConn3 := &openAIWSWriteFailAfterFirstTurnConn{failOnWrite: true}
 	secondConn := &openAIWSCaptureConn{
 		events: [][]byte{
 			[]byte(`{"type":"response.completed","response":{"id":"resp_turn_write_retry_2","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`),
 		},
 	}
 	dialer := &openAIWSQueueDialer{
-		conns: []openAIWSClientConn{firstConn, secondConn},
+		conns: []openAIWSClientConn{firstConn, staleConn2, staleConn3, secondConn},
 	}
 	pool := newOpenAIWSConnPool(cfg)
 	pool.setClientDialerForTest(dialer)
@@ -3591,7 +3593,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeD
 	case <-time.After(5 * time.Second):
 		t.Fatal("等待 ingress websocket 结束超时")
 	}
-	require.Equal(t, 2, dialer.DialCount(), "第二轮 turn 上游写失败且未写下游时应自动重试并换连")
+	require.Equal(t, 4, dialer.DialCount(), "第二轮 turn 应在预算内连续淘汰多条失效连接")
 	hooksMu.Lock()
 	beforeTurn1 := beforeTurnCalls[1]
 	beforeTurn2 := beforeTurnCalls[2]

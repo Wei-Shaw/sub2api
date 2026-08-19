@@ -325,6 +325,10 @@ func TestPassthroughLifecycle_ActiveTurnInactivityUsesReadTimeout(t *testing.T) 
 	delta, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(delta, "type").String())
+	failed, err := readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(failed, "type").String())
+	require.Equal(t, "upstream_error", gjson.GetBytes(failed, "response.error.code").String())
 	_, err = readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
 	var websocketCloseErr coderws.CloseError
 	require.ErrorAs(t, err, &websocketCloseErr)
@@ -532,6 +536,10 @@ func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *tes
 	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	failed, err := readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(failed, "type").String())
+	require.Equal(t, "upstream_error", gjson.GetBytes(failed, "response.error.code").String())
 	_, err = readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
 	var websocketCloseErr coderws.CloseError
 	require.ErrorAs(t, err, &websocketCloseErr)
@@ -547,6 +555,45 @@ func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *tes
 		require.Equal(t, "upstream produced no semantic output; please reconnect", closeErr.Reason())
 	case <-time.After(2500 * time.Millisecond):
 		t.Fatal("response.created timeout did not close the passthrough connection")
+	}
+}
+
+func TestPassthroughLifecycle_UpstreamCloseBeforeTerminalEmitsResponseFailed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	server, serverErr := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	require.Equal(t, "response.create", gjson.GetBytes(requirePassthroughUpstreamWrite(t, upstream, 3*time.Second), "type").String())
+	upstream.Send(`{"type":"response.created","response":{"id":"resp_interrupted","model":"gpt-5.1"}}`)
+	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+
+	require.NoError(t, upstream.Close())
+	failed, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(failed, "type").String())
+	require.Equal(t, "failed", gjson.GetBytes(failed, "response.status").String())
+	require.Equal(t, "upstream_error", gjson.GetBytes(failed, "response.error.code").String())
+	require.Equal(t, "gpt-5.1", gjson.GetBytes(failed, "response.model").String())
+	require.Equal(t, "resp_interrupted", gjson.GetBytes(failed, "response.id").String())
+
+	_, err = readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	var websocketCloseErr coderws.CloseError
+	require.ErrorAs(t, err, &websocketCloseErr)
+	require.Equal(t, coderws.StatusInternalError, websocketCloseErr.Code)
+	require.Equal(t, "upstream websocket proxy failed", websocketCloseErr.Reason)
+
+	select {
+	case err := <-serverErr:
+		require.Error(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream close did not terminate the passthrough connection")
 	}
 }
 
@@ -573,6 +620,10 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+	failed, err := readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(failed, "type").String())
+	require.Equal(t, "upstream_error", gjson.GetBytes(failed, "response.error.code").String())
 	_, err = readPassthroughLifecycleFrame(t, clientConn, 2500*time.Millisecond)
 	var websocketCloseErr coderws.CloseError
 	require.ErrorAs(t, err, &websocketCloseErr)
