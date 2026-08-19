@@ -30,7 +30,7 @@
             :key="m.model"
             class="border-b border-gray-100 dark:border-dark-800"
           >
-            <td class="py-2 pr-3 font-medium text-gray-900 dark:text-gray-100">{{ m.model REDACTEDREDACTED</td>
+            <td class="py-2 pr-3 font-medium text-gray-900 dark:text-gray-100">{{ formatMonitorModel(m.model) REDACTEDREDACTED</td>
             <td class="py-2 pr-3">
               <span
                 class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
@@ -83,7 +83,7 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
-const { statusLabel, statusBadgeClass, formatLatency, formatPercent REDACTED = useChannelMonitorFormat()
+const { statusLabel, statusBadgeClass, formatLatency, formatPercent, formatMonitorModel REDACTED = useChannelMonitorFormat()
 
 const detail = ref<UserMonitorDetail | null>(null)
 const loading = ref(false)

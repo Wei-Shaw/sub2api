@@ -406,7 +406,8 @@ REDACTED
 	return nil
 REDACTED
 
-// validateLinkedAccount 校验关联账号存在且平台与监控 provider 一致。
+// validateLinkedAccount 校验关联账号存在、平台与监控 provider 一致、且能充当
+// 配额数据源（能力拦截，见 monitorAccountQuotaCapability）。
 // fetcher 未注入时 fail-closed（拒绝创建配额监控，而不是创建后静默坏）。
 func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provider string, accountID *int64) error {
 	if accountID == nil || *accountID <= 0 {
@@ -422,7 +423,7 @@ REDACTED
 	if account.Platform != provider {
 		return ErrChannelMonitorProviderIncompatible
 REDACTED
-	return nil
+	return monitorAccountQuotaCapability(account)
 REDACTED
 
 // Update 更新监控。APIKey 字段：nil 或空字符串 = 不修改；非空 = 加密后覆盖。
@@ -532,6 +533,15 @@ REDACTED
 	REDACTED
 		m.AccountID = nil
 		return nil
+REDACTED
+	// 能力失配（如 deepseek coding / zhipu payg / API-Key 型海外账号）：
+	// quota 模式显式报错（有该类存量监控时编辑会被拦，出路是换账号或切 probe），
+	// probe 模式账号无用途，静默解绑。
+	if err := monitorAccountQuotaCapability(account); err != nil {
+		if usesQuota {
+			return err
+	REDACTED
+		m.AccountID = nil
 REDACTED
 	return nil
 REDACTED
@@ -886,11 +896,16 @@ REDACTED
 		existing.Provider = *p.Provider
 REDACTED
 	if p.CheckMode != nil {
-		mode := defaultCheckMode(*p.CheckMode)
-		if err := validateCheckMode(existing.Provider, mode); err != nil {
+		existing.CheckMode = defaultCheckMode(*p.CheckMode)
+REDACTED
+	// provider 与 check_mode 任一变化后统一复核组合矩阵：provider-only 更新
+	// （如把 probe 监控的 provider 改成 antigravity）也不得落库非法组合，否则
+	// 运行期恒 error。条件限定避免把存量非法行的 name/enabled-only 更新也判死
+	// （否则连改名/停用都无法操作）。
+	if p.Provider != nil || p.CheckMode != nil {
+		if err := validateCheckMode(existing.Provider, defaultCheckMode(existing.CheckMode)); err != nil {
 			return err
 	REDACTED
-		existing.CheckMode = mode
 REDACTED
 	if p.AccountID != nil {
 		if *p.AccountID > 0 {

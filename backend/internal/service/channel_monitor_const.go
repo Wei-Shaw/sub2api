@@ -162,6 +162,9 @@ var (
 	ErrChannelMonitorProviderIncompatible = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_PROVIDER_INCOMPATIBLE", "monitor provider must match the linked account platform",
 	)
+	ErrChannelMonitorAccountNotSupportable = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_ACCOUNT_NOT_SUPPORTABLE", "linked account cannot serve as a quota data source (cn coding plan must be kimi/zhipu, cn payg must be kimi/deepseek, openai requires an oauth account, anthropic requires oauth or setup-token)",
+	)
 	ErrChannelMonitorInvalidAPIMode = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_INVALID_API_MODE", "api_mode must be chat_completions or responses; responses is only supported for openai",
 	)

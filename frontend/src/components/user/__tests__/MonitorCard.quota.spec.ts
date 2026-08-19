@@ -88,4 +88,16 @@ describe('MonitorCard quota snapshot visibility', () => {
     const wrapper = mountCard(makeItem())
     expect(wrapper.find('[data-testid="monitor-quota-view"]').exists()).toBe(false)
   REDACTED)
+
+  // 占位符 "quota" 是主模型存储值，不得作为假模型名直接透出到用户端。
+  it('shows the localized quota label instead of the raw placeholder model', () => {
+    const wrapper = mountCard(makeItem())
+    expect(wrapper.text()).toContain('monitorCommon.checkMode.quota')
+  REDACTED)
+
+  it('keeps the real model name for probe monitors', () => {
+    const wrapper = mountCard(makeItem({ primary_model: 'claude-sonnet-4-5' REDACTED))
+    expect(wrapper.text()).toContain('claude-sonnet-4-5')
+    expect(wrapper.text()).not.toContain('monitorCommon.checkMode.quota')
+  REDACTED)
 REDACTED)
