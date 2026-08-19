@@ -11,27 +11,43 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func TestStripChatGPTInternalUnsupportedFieldsAtEgress(t *testing.T) {
 	oauthAccount := newOpenAIOAuthNamespaceTestAccount()
 
-	t.Run("strips every unsupported top-level field for OAuth", func(t *testing.T) {
-		body := []byte(`{"model":"gpt-5.6-sol","input":[{"type":"message","role":"user","content":"hi"}],` +
-			`"prompt_cache_retention":"24h","safety_identifier":"sid","user":"u1",` +
-			`"metadata":{"k":"v"},"stream_options":{"include_usage":true}}`)
+	// 用例跟着 openAIChatGPTInternalUnsupportedFields 走而不是硬编码字段名：该清单是
+	// 单一事实来源，往里加字段时这个用例必须自动覆盖到，否则新字段会静默漏测。
+	t.Run("strips every field in the unsupported list for OAuth", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","input":[{"type":"message","role":"user","content":"hi"}]}`)
+		for _, field := range openAIChatGPTInternalUnsupportedFields {
+			next, err := sjson.SetBytes(body, field, map[string]any{"probe": field})
+			require.NoError(t, err)
+			body = next
+		}
+		require.NotEmpty(t, openAIChatGPTInternalUnsupportedFields)
 
 		out, stripped := stripChatGPTInternalUnsupportedFieldsAtEgress(oauthAccount, body)
 
-		require.ElementsMatch(t,
-			[]string{"user", "metadata", "prompt_cache_retention", "safety_identifier", "stream_options"},
-			stripped)
-		for _, field := range stripped {
+		require.ElementsMatch(t, openAIChatGPTInternalUnsupportedFields, stripped)
+		for _, field := range openAIChatGPTInternalUnsupportedFields {
 			require.False(t, gjson.GetBytes(out, field).Exists(), "field %s must be gone", field)
 		}
 		// 语义字段必须保持原样。
 		require.Equal(t, "gpt-5.6-sol", gjson.GetBytes(out, "model").String())
 		require.Equal(t, "hi", gjson.GetBytes(out, "input.0.content").String())
+	})
+
+	// prompt_cache_retention 是 #5803 的字段，单独钉一个显式用例，避免它哪天被从
+	// 清单里挪走时只有上面那个动态用例跟着一起"通过"。
+	t.Run("always strips prompt_cache_retention for OAuth", func(t *testing.T) {
+		body := []byte(`{"model":"gpt-5.6-sol","input":"hi","prompt_cache_retention":"24h"}`)
+
+		out, stripped := stripChatGPTInternalUnsupportedFieldsAtEgress(oauthAccount, body)
+
+		require.Contains(t, stripped, "prompt_cache_retention")
+		require.False(t, gjson.GetBytes(out, "prompt_cache_retention").Exists())
 	})
 
 	t.Run("keeps nested occurrences that merely share the field name", func(t *testing.T) {
