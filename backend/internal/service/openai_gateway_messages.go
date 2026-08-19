@@ -553,6 +553,10 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 
 	finalResponse, usage, acc, err := s.readOpenAICompatBufferedTerminal(resp, "openai messages buffered", requestID)
 	if err != nil {
+		var readErr *openAICompatBufferedReadError
+		if errors.As(err, &readErr) && readErr != nil {
+			return nil, readErr.cause
+	REDACTED
 		return nil, err
 REDACTED
 
@@ -675,6 +679,15 @@ func isOpenAICompatDoneSentinelLine(line string) bool {
 	return ok && strings.TrimSpace(payload) == "[DONE]"
 REDACTED
 
+// openAICompatBufferedReadError 只标记错误发生在上游响应体读取阶段；
+// 具体端点自行决定是否允许重放请求，避免共享读取器扩大重试范围。
+type openAICompatBufferedReadError struct {
+	cause error
+REDACTED
+
+func (e *openAICompatBufferedReadError) Error() string { return e.cause.Error() REDACTED
+func (e *openAICompatBufferedReadError) Unwrap() error { return e.cause REDACTED
+
 func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
 	logPrefix string,
@@ -783,7 +796,7 @@ REDACTED()
 						zap.String("request_id", requestID),
 					)
 			REDACTED
-				return nil, usage, acc, ev.err
+				return nil, usage, acc, &openAICompatBufferedReadError{cause: ev.errREDACTED
 		REDACTED
 
 			if isOpenAICompatDoneSentinelLine(ev.line) {
