@@ -2407,6 +2407,7 @@ export default {
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         fal: 'fal',
+        leonardo: 'Leonardo',
         kiro: 'Kiro',
         grok: 'Grok',
         // Media platforms: also reused by the channel editor's platform toggles and tabs
@@ -3405,6 +3406,7 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
         gemini: 'Gemini',
         antigravity: 'Antigravity',
         fal: 'fal',
+        leonardo: 'Leonardo',
         grok: 'Grok',
         kiro: 'Kiro',
       },
@@ -3714,6 +3716,10 @@ decodeSizeOnRspHint: 'When the upstream response omits the size field or returns
       fal: {
         baseUrlHint: 'Leave empty to use the official fal API (https://fal.run)',
         apiKeyHint: 'Your fal API Key (FAL_KEY) — enter the key itself, without the "Key " prefix',
+      },
+      leonardo: {
+        baseUrlHint: 'Leonardo task proxy URL, default http://127.0.0.1:28080',
+        apiKeyHint: 'Leonardo proxy API key sent in the X-API-Key header',
       },
       // OpenAI specific hints
       openai: {

@@ -94,7 +94,7 @@ func RegisterGatewayRoutes(
 			h.OpenAIGateway.Images(c)
 		case service.PlatformGrok:
 			h.OpenAIGateway.GrokImages(c)
-		case service.PlatformFal:
+		case service.PlatformFal, service.PlatformLeonardo:
 			h.FalGateway.Images(c)
 		default:
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

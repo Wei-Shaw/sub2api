@@ -831,6 +831,10 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("claim affiliate rebate audit: %w", err)
 	}
 	if !claimed {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit affiliate rebate dedup check: %w", err)
+		}
+		s.recoverAffiliateRebateCostCenterExpense(ctx, o)
 		return nil
 	}
 
@@ -865,6 +869,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_APPLIED", map[string]any{
 		"baseAmount":   baseAmount,
 		"rebateAmount": rebateAmount,
+		"inviterID":    inviterID,
 	}); err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -879,10 +884,69 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
 
+	s.recordAffiliateRebateCostCenterExpense(ctx, o, inviterID, baseAmount, rebateAmount)
+
 	// 返利入账成功后，给邀请人发一条通用信箱通知（被邀请人有新充值）。
 	// 用外层 ctx（事务已提交）；fail-open，不影响充值主流程。
 	s.affiliateService.publishInviteeRechargeToInviter(ctx, inviterID, o.UserID, o.ID, baseAmount, rebateAmount)
 	return nil
+}
+
+func (s *PaymentService) recordAffiliateRebateCostCenterExpense(ctx context.Context, o *dbent.PaymentOrder, inviterID int64, baseAmount, rebateAmount float64) {
+	if s.costCenter == nil || o == nil || rebateAmount <= 0 {
+		return
+	}
+	key := fmt.Sprintf("payment-order:%d:affiliate-rebate-expense", o.ID)
+	metadata := map[string]any{
+		"base_amount":     baseAmount,
+		"invitee_user_id": o.UserID,
+		"order_type":      o.OrderType,
+	}
+	var userID *int64
+	if inviterID > 0 {
+		userID = &inviterID
+		metadata["inviter_user_id"] = inviterID
+	}
+	if _, err := s.costCenter.CreateEvent(ctx, &CreateCostCenterEventInput{
+		EventType:      CostEventExpense,
+		Status:         "settled",
+		SourceType:     "affiliate_grant",
+		SourceID:       costCenterStringPtr(strconv.FormatInt(o.ID, 10)),
+		IdempotencyKey: &key,
+		UserID:         userID,
+		Category:       "rebate",
+		AmountUSD:      rebateAmount,
+		OccurredAt:     o.CompletedAt,
+		Note:           "affiliate recharge rebate granted",
+		Metadata:       metadata,
+	}); err != nil {
+		slog.Warn("record affiliate rebate cost-center expense", "orderID", o.ID, "error", err)
+	}
+}
+
+func (s *PaymentService) recoverAffiliateRebateCostCenterExpense(ctx context.Context, o *dbent.PaymentOrder) {
+	if s.costCenter == nil || o == nil {
+		return
+	}
+	audit, err := s.entClient.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(o.ID, 10)),
+			paymentauditlog.ActionEQ("AFFILIATE_REBATE_APPLIED"),
+		).
+		Only(ctx)
+	if err != nil {
+		return
+	}
+	var detail struct {
+		BaseAmount   float64 `json:"baseAmount"`
+		RebateAmount float64 `json:"rebateAmount"`
+		InviterID    int64   `json:"inviterID"`
+	}
+	if err := json.Unmarshal([]byte(audit.Detail), &detail); err != nil {
+		slog.Warn("decode affiliate rebate audit for cost center", "orderID", o.ID, "error", err)
+		return
+	}
+	s.recordAffiliateRebateCostCenterExpense(ctx, o, detail.InviterID, detail.BaseAmount, detail.RebateAmount)
 }
 
 func affiliateRebateBaseAmount(o *dbent.PaymentOrder) float64 {

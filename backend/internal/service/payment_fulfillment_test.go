@@ -950,11 +950,13 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	subscriptionSvc := NewSubscriptionService(&subscriptionGroupRepoStub{
 		group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription},
 	}, subRepo, nil, nil, nil)
+	costCenter := &paymentFulfillmentCostCenterWriterStub{}
 	svc := &PaymentService{
 		entClient:        client,
 		groupRepo:        &subscriptionGroupRepoStub{group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription}},
 		subscriptionSvc:  subscriptionSvc,
 		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil),
+		costCenter:       costCenter,
 	}
 
 	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)
@@ -977,6 +979,24 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, applied.Detail, `"baseAmount":9.99`)
 	require.Contains(t, applied.Detail, `"rebateAmount":1.4985`)
+	require.Contains(t, applied.Detail, `"inviterID":9001`)
+
+	var rebateExpense *CreateCostCenterEventInput
+	for _, event := range costCenter.events {
+		if event.Category == "rebate" {
+			rebateExpense = event
+			break
+		}
+	}
+	require.NotNil(t, rebateExpense)
+	require.Equal(t, CostEventExpense, rebateExpense.EventType)
+	require.Equal(t, "settled", rebateExpense.Status)
+	require.Equal(t, "affiliate_grant", rebateExpense.SourceType)
+	require.InDelta(t, 1.4985, rebateExpense.AmountUSD, 0.00000001)
+	require.Equal(t, inviterID, *rebateExpense.UserID)
+	require.Equal(t, "payment-order:"+strconv.FormatInt(order.ID, 10)+":affiliate-rebate-expense", *rebateExpense.IdempotencyKey)
+	require.Equal(t, user.ID, rebateExpense.Metadata["invitee_user_id"])
+	require.Equal(t, inviterID, rebateExpense.Metadata["inviter_user_id"])
 }
 
 func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAudit(t *testing.T) {
@@ -1022,7 +1042,7 @@ func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAud
 	_, err = client.PaymentAuditLog.Create().
 		SetOrderID(strconv.FormatInt(order.ID, 10)).
 		SetAction("AFFILIATE_REBATE_APPLIED").
-		SetDetail(`{"baseAmount":80,"rebateAmount":16}`).
+		SetDetail(`{"baseAmount":80,"rebateAmount":16,"inviterID":9001}`).
 		SetOperator("system").
 		Save(ctx)
 	require.NoError(t, err)
@@ -1049,11 +1069,13 @@ func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAud
 	subscriptionSvc := NewSubscriptionService(&subscriptionGroupRepoStub{
 		group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription},
 	}, subRepo, nil, nil, nil)
+	costCenter := &paymentFulfillmentCostCenterWriterStub{}
 	svc := &PaymentService{
 		entClient:        client,
 		groupRepo:        &subscriptionGroupRepoStub{group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription}},
 		subscriptionSvc:  subscriptionSvc,
 		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil, nil),
+		costCenter:       costCenter,
 	}
 
 	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)
@@ -1064,6 +1086,16 @@ func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAud
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 	require.Empty(t, affiliateRepo.accrueCalls)
 	require.Zero(t, subRepo.createCalls)
+	var rebateExpense *CreateCostCenterEventInput
+	for _, event := range costCenter.events {
+		if event.Category == "rebate" {
+			rebateExpense = event
+			break
+		}
+	}
+	require.NotNil(t, rebateExpense, "existing rebate audit should recover a missing cost-center expense")
+	require.InDelta(t, 16, rebateExpense.AmountUSD, 1e-9)
+	require.Equal(t, inviterID, *rebateExpense.UserID)
 }
 
 var _ AffiliateRepository = (*paymentFulfillmentAffiliateRepoStub)(nil)

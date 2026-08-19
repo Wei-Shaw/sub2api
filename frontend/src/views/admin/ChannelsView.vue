@@ -802,8 +802,8 @@ let abortController: AbortController | null = null
 // 模型映射与定价。顺序即 UI 展示顺序（文本平台在前，媒体平台在后）。
 // 注意：这里不含 'composite' —— composite 是分组侧的"混合"标记，
 // 渠道按具体平台分 tab，混合分组会通过 getGroupsForPlatform 出现在每个 tab 里。
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal', 'atlascloud', 'apiz', 'kimi', 'zhipu', 'deepseek']
-const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'kiro', 'grok', 'fal', 'leonardo', 'atlascloud', 'apiz', 'kimi', 'zhipu', 'deepseek']
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'leonardo']
 
 // ── Helpers ──
 function formatDate(value: string): string {

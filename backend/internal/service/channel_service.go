@@ -370,7 +370,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // 缓存 key 里带 platform，这里放宽白名单不会跨平台误命中。
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformFal, PlatformAtlasCloud, PlatformApiz}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformFal, PlatformLeonardo, PlatformAtlasCloud, PlatformApiz}
 	}
 	return []string{groupPlatform}
 }

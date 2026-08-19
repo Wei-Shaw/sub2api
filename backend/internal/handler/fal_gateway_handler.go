@@ -252,11 +252,23 @@ func falAPIForOpenAIImages(parsed *service.OpenAIImagesRequest) string {
 	return ""
 }
 
-// selectFalAccount 在当前 API Key 所属分组内强制按 fal 平台选号（兼容 fal 分组与 openai 分组）。
+// selectFalAccount 在当前 API Key 所属分组内按目标媒体平台选号。
+// 组合分组的具体平台由 composite middleware 写入请求上下文；不能只看
+// apiKey.Group.Platform，否则 composite -> Leonardo 会误走 FAL 账号池。
 // api 表示本次请求所需的 fal api 段（edit=图生图 / 编辑，来自 /v1/images/edits 门面；
 // 空串=文生图），用于在选号阶段校验账号是否配置了对应能力的 endpoint；
 // 原生 /fal/* 门面的 slug 已自带 api 段，传空串即可。
 func (h *FalGatewayHandler) selectFalAccount(c *gin.Context, apiKey *service.APIKey, requestedModel string, api string) (*service.Account, error) {
+	if effectiveAPIKeyPlatform(c, apiKey) == service.PlatformLeonardo {
+		account, err := h.gatewayService.SelectImageAccountMixed(c.Request.Context(), apiKey.GroupID, "", requestedModel, nil, service.OpenAIImagesCapabilityBasic, api, service.PlatformLeonardo)
+		if err != nil {
+			return nil, err
+		}
+		if account == nil || account.Platform != service.PlatformLeonardo {
+			return nil, errors.New("no available leonardo account")
+		}
+		return account, nil
+	}
 	account, err := h.gatewayService.SelectFalAccountInGroup(c.Request.Context(), apiKey.GroupID, "", requestedModel, nil, api)
 	if err != nil {
 		return nil, err

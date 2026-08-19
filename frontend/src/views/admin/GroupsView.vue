@@ -4324,6 +4324,8 @@
                           ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
                           : group.platform === 'fal'
                             ? 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400'
+                          : group.platform === 'leonardo'
+                            ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400'
                           : group.platform === 'grok'
                             ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100'
                           : group.platform === 'kiro'
@@ -5110,6 +5112,7 @@ const platformOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
   { value: "fal", label: "fal" },
+  { value: "leonardo", label: "Leonardo" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
   { value: "kimi", label: "Kimi" },
@@ -5125,6 +5128,7 @@ const platformFilterOptions = computed(() => [
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
   { value: "fal", label: "fal" },
+  { value: "leonardo", label: "Leonardo" },
   { value: "kiro", label: "Kiro" },
   { value: "grok", label: "Grok" },
   { value: "kimi", label: "Kimi" },

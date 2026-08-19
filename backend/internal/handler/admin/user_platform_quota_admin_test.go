@@ -106,6 +106,7 @@ func TestUpdateUserPlatformQuotas_Success(t *testing.T) {
 		{"platform":"kiro","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"grok","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"fal","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
+		{"platform":"leonardo","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"atlascloud","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"apiz","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},
 		{"platform":"kimi","daily_limit_usd":null,"weekly_limit_usd":null,"monthly_limit_usd":null},

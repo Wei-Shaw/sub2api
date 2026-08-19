@@ -421,6 +421,8 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 	selectionPolicy := "priority_last_used"
 	if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformFal) {
 		selectionPolicy = "fal_first_then_priority_last_used"
+	} else if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformLeonardo) {
+		selectionPolicy = "leonardo_first_then_priority_last_used"
 	}
 	reqLog := logger.FromContext(ctx)
 	if reqLog.Core().Enabled(zap.DebugLevel) {
@@ -498,6 +500,13 @@ func (s *GatewayService) selectImageAccountMixedSingle(
 		} else {
 			selectionReason = "preferred_fal_pool"
 		}
+	} else if strings.EqualFold(strings.TrimSpace(preferPlatform), PlatformLeonardo) {
+		selected = pick(PlatformLeonardo)
+		if selected == nil {
+			selectionReason = "leonardo_pool_empty"
+		} else {
+			selectionReason = "preferred_leonardo_pool"
+		}
 	} else {
 		selected = pick("")
 	}
@@ -553,6 +562,9 @@ func (s *GatewayService) buildImageSelectionDiagnostic(
 	case PlatformFal:
 		diagnostic.ModelSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, falAPI)
 		diagnostic.CapabilitySupported = true
+	case PlatformLeonardo:
+		diagnostic.ModelSupported = s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
+		diagnostic.CapabilitySupported = !strings.EqualFold(falAPI, FalAPIEdit)
 	}
 	diagnostic.RequestSupported = s.imageAccountSupportsRequest(ctx, account, requestedModel, imageCapability, falAPI)
 	diagnostic.PricingConfigured = s.falAccountPricingConfigured(ctx, account, requestedModel, falAPI, groupID)
@@ -560,9 +572,15 @@ func (s *GatewayService) buildImageSelectionDiagnostic(
 	diagnostic.QuotaOK = s.isAccountSchedulableForQuota(account)
 	diagnostic.WindowCostOK = s.isAccountSchedulableForWindowCost(ctx, account, false)
 	diagnostic.RPMOK = s.isAccountSchedulableForRPM(ctx, account, false)
-	if account.Platform == PlatformFal {
+	switch account.Platform {
+	case PlatformFal:
 		diagnostic.UpstreamModel = resolveFalUpstreamModel(account, requestedModel, falAPI == FalAPIEdit)
-	} else {
+	case PlatformLeonardo:
+		diagnostic.UpstreamModel = strings.TrimSpace(account.GetModelMapping()[requestedModel])
+		if diagnostic.UpstreamModel == "" {
+			diagnostic.UpstreamModel = "gpt-image-2"
+		}
+	default:
 		diagnostic.UpstreamModel = account.GetMappedModel(requestedModel)
 	}
 
@@ -761,7 +779,12 @@ func (s *GatewayService) listSchedulableImageAccounts(ctx context.Context, group
 	if err != nil {
 		return nil, fmt.Errorf("query fal accounts failed: %w", err)
 	}
-	return append(openAIAccounts, falAccounts...), nil
+	leonardoAccounts, _, err := s.listSchedulableAccounts(ctx, groupID, PlatformLeonardo, false)
+	if err != nil {
+		return nil, fmt.Errorf("query leonardo accounts failed: %w", err)
+	}
+	accounts := append(openAIAccounts, falAccounts...)
+	return append(accounts, leonardoAccounts...), nil
 }
 
 func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, account *Account, requestedModel string, capability OpenAIImagesCapability, falAPI string) bool {
@@ -770,19 +793,28 @@ func (s *GatewayService) imageAccountSupportsRequest(ctx context.Context, accoun
 		return (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")) && account.SupportsOpenAIImageCapability(capability)
 	case PlatformFal:
 		return s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, falAPI)
+	case PlatformLeonardo:
+		return !strings.EqualFold(falAPI, FalAPIEdit) &&
+			s.isModelSupportedByAccountWithContext(ctx, account, requestedModel, "")
 	default:
 		return false
 	}
 }
 
 func (s *GatewayService) falAccountPricingConfigured(ctx context.Context, account *Account, requestedModel, falAPI string, groupID *int64) bool {
-	if account == nil || account.Platform != PlatformFal {
+	if account == nil || (account.Platform != PlatformFal && account.Platform != PlatformLeonardo) {
 		return true
 	}
 	if s.resolver == nil {
 		return false
 	}
 	upstreamModel := resolveFalUpstreamModel(account, requestedModel, falAPI == FalAPIEdit)
+	if account.Platform == PlatformLeonardo {
+		upstreamModel = strings.TrimSpace(account.GetModelMapping()[requestedModel])
+		if upstreamModel == "" {
+			upstreamModel = "gpt-image-2"
+		}
+	}
 	resolved := s.resolver.Resolve(ctx, PricingInput{Model: upstreamModel, GroupID: groupID})
 	if resolved != nil && resolved.Source == PricingSourceChannel {
 		return (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) &&

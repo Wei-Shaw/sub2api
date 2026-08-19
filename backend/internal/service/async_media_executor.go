@@ -9,7 +9,9 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/fal"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/leonardo"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -150,6 +152,12 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 	if in.Account == nil {
 		return nil, errors.New("async media: account is required")
 	}
+	if strings.TrimSpace(in.InternalRequestID) == "" {
+		// The Leonardo proxy requires an idempotency key for every submit. Keep
+		// direct service callers safe as well as the HTTP facade, which normally
+		// supplies the client request ID.
+		in.InternalRequestID = uuid.NewString()
+	}
 	if !in.RateMultiplierSet && in.RateMultiplier == 0 {
 		in.RateMultiplier = 1
 	}
@@ -207,7 +215,7 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 		ClientIP:         amStrPtr(in.ClientIP),
 		UserAgent:        amStrPtr(in.UserAgent),
 		InboundEndpoint:  amStrPtr(in.InboundEndpoint),
-		UpstreamEndpoint: amStrPtr(falUpstreamEndpoint(upstreamModel)),
+		UpstreamEndpoint: amStrPtr(asyncImageUpstreamEndpoint(in.Account, upstreamModel)),
 	}
 	if err := s.taskRepo.Create(ctx, task); err != nil {
 		// 落库失败：回滚预扣费，避免漏退。
@@ -215,32 +223,16 @@ func (s *AsyncMediaService) SubmitAsync(ctx context.Context, in *AsyncMediaSubmi
 		return nil, fmt.Errorf("async media: create task: %w", err)
 	}
 
-	client, err := s.newClient(in.Account)
-	if err != nil {
-		s.markFailedAndRefund(ctx, task, in.BillingType, "build fal client: "+err.Error())
-		return task, fmt.Errorf("async media: build client: %w", err)
-	}
-
-	req := fal.BuildRequest(in.Input)
-	submitResp, err := client.Submit(ctx, upstreamModel, req)
+	requestID, statusURL, responseURL, err := s.submitUpstream(ctx, in, upstreamModel)
 	if err != nil {
 		s.markFailedAndRefund(ctx, task, in.BillingType, "submit: "+err.Error())
 		return task, fmt.Errorf("async media: submit: %w", err)
 	}
-
-	statusURL := submitResp.StatusURL
-	if statusURL == "" {
-		statusURL = client.BuildStatusURL(upstreamModel, submitResp.RequestID)
-	}
-	responseURL := submitResp.ResponseURL
-	if responseURL == "" {
-		responseURL = client.BuildResponseURL(upstreamModel, submitResp.RequestID)
-	}
-	if err := s.taskRepo.UpdateUpstreamRef(ctx, task.ID, submitResp.RequestID, statusURL, responseURL); err != nil {
+	if err := s.taskRepo.UpdateUpstreamRef(ctx, task.ID, requestID, statusURL, responseURL); err != nil {
 		logger.L().Warn("async_media.update_upstream_ref_failed",
 			zap.Int64("task_id", task.ID), zap.Error(err))
 	}
-	task.UpstreamRequestID = amStrPtr(submitResp.RequestID)
+	task.UpstreamRequestID = amStrPtr(requestID)
 	task.StatusURL = amStrPtr(statusURL)
 	task.ResponseURL = amStrPtr(responseURL)
 	task.Status = AsyncMediaStatusRunning
@@ -318,7 +310,7 @@ func (s *AsyncMediaService) CancelTask(ctx context.Context, task *AsyncMediaTask
 	if task.IsTerminal() {
 		return nil
 	}
-	if account != nil && task.UpstreamRequestID != nil {
+	if account != nil && account.Platform == PlatformFal && task.UpstreamRequestID != nil {
 		if client, err := s.newClient(account); err == nil {
 			cancelURL := client.BuildCancelURL(amDerefStr(task.UpstreamModel), *task.UpstreamRequestID)
 			if cancelErr := client.Cancel(ctx, cancelURL); cancelErr != nil {
@@ -356,6 +348,9 @@ func (s *AsyncMediaService) ReconcileTask(ctx context.Context, task *AsyncMediaT
 // pollOnce 执行一轮状态查询并在终态时结算/退费。
 // 返回 (最新任务, 是否终态, error)。
 func (s *AsyncMediaService) pollOnce(ctx context.Context, task *AsyncMediaTask, account *Account, billingType int8) (*AsyncMediaTask, bool, error) {
+	if account != nil && account.Platform == PlatformLeonardo {
+		return s.pollLeonardoOnce(ctx, task, account, billingType)
+	}
 	client, err := s.newClient(account)
 	if err != nil {
 		return task, false, fmt.Errorf("async media poll: build client: %w", err)
@@ -827,7 +822,79 @@ func (s *AsyncMediaService) refund(ctx context.Context, billingType int8, billin
 // resolveUpstreamModel 解析客户端模型到 fal 上游 slug。
 // 账号/渠道自定义映射优先，缺失时按是否为编辑请求选择内置默认 slug。
 func (s *AsyncMediaService) resolveUpstreamModel(account *Account, requestedModel string, isEdit bool) string {
+	if account != nil && account.Platform == PlatformLeonardo {
+		if mapped := strings.TrimSpace(account.GetModelMapping()[requestedModel]); mapped != "" {
+			return mapped
+		}
+		return "gpt-image-2"
+	}
 	return resolveFalUpstreamModel(account, requestedModel, isEdit)
+}
+
+func (s *AsyncMediaService) submitUpstream(ctx context.Context, in *AsyncMediaSubmitInput, upstreamModel string) (string, string, string, error) {
+	if in.Account.Platform == PlatformLeonardo {
+		client, err := s.newLeonardoClient(in.Account)
+		if err != nil {
+			return "", "", "", err
+		}
+		request := leonardo.BuildSubmitRequest(upstreamModel, in.Input, in.Account.LeonardoEstimatedCreditCost())
+		idempotencyKey := "sub2api-" + strings.TrimSpace(in.InternalRequestID)
+		task, err := client.Submit(ctx, request, idempotencyKey)
+		if err != nil {
+			return "", "", "", err
+		}
+		taskURL := client.BuildTaskURL(task.TaskUUID)
+		return task.TaskUUID, taskURL, taskURL, nil
+	}
+	client, err := s.newClient(in.Account)
+	if err != nil {
+		return "", "", "", err
+	}
+	request := fal.BuildRequest(in.Input)
+	response, err := client.Submit(ctx, upstreamModel, request)
+	if err != nil {
+		return "", "", "", err
+	}
+	statusURL := response.StatusURL
+	if statusURL == "" {
+		statusURL = client.BuildStatusURL(upstreamModel, response.RequestID)
+	}
+	responseURL := response.ResponseURL
+	if responseURL == "" {
+		responseURL = client.BuildResponseURL(upstreamModel, response.RequestID)
+	}
+	return response.RequestID, statusURL, responseURL, nil
+}
+
+func (s *AsyncMediaService) pollLeonardoOnce(ctx context.Context, task *AsyncMediaTask, account *Account, billingType int8) (*AsyncMediaTask, bool, error) {
+	client, err := s.newLeonardoClient(account)
+	if err != nil {
+		return task, false, fmt.Errorf("async media poll: build leonardo client: %w", err)
+	}
+	requestID := amDerefStr(task.UpstreamRequestID)
+	upstreamTask, err := client.GetTask(ctx, requestID)
+	if err != nil {
+		var apiErr *leonardo.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode >= 400 && apiErr.StatusCode < 500 {
+			s.markFailedAndRefund(ctx, task, billingType, fmt.Sprintf("status %d: %s", apiErr.StatusCode, apiErr.Body))
+			return task, true, nil
+		}
+		return task, false, nil
+	}
+	if upstreamTask.IsFailed() {
+		s.markFailedAndRefund(ctx, task, billingType, upstreamTask.FailureMessage())
+		return task, true, nil
+	}
+	if !upstreamTask.IsCompleted() {
+		return task, false, nil
+	}
+	imageURLs, imageOutputSizes := extractLeonardoImageResult(upstreamTask)
+	if len(imageURLs) == 0 {
+		s.markFailedAndRefund(ctx, task, billingType, "upstream returned no images")
+		return task, true, nil
+	}
+	s.markSucceeded(ctx, task, account.BillingRateMultiplier(), billingType, imageURLs, imageOutputSizes)
+	return task, true, nil
 }
 
 // resolveFalUpstreamModel 解析客户端模型到 fal 上游 slug（账号/渠道自定义映射优先，
@@ -895,6 +962,18 @@ func (s *AsyncMediaService) newClient(account *Account) (*fal.Client, error) {
 	})
 }
 
+func (s *AsyncMediaService) newLeonardoClient(account *Account) (*leonardo.Client, error) {
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	return leonardo.NewClient(leonardo.Config{
+		APIKey:   account.LeonardoAPIKey(),
+		BaseURL:  account.LeonardoBaseURL(),
+		ProxyURL: proxyURL,
+	})
+}
+
 // ----- helpers -----
 
 func extractFalImageResult(resp *fal.Response) ([]string, []string) {
@@ -909,6 +988,25 @@ func extractFalImageResult(resp *fal.Response) ([]string, []string) {
 			size := ""
 			if img.Width > 0 && img.Height > 0 {
 				size = fmt.Sprintf("%dx%d", img.Width, img.Height)
+			}
+			sizes = append(sizes, size)
+		}
+	}
+	return urls, sizes
+}
+
+func extractLeonardoImageResult(task *leonardo.Task) ([]string, []string) {
+	if task == nil {
+		return nil, nil
+	}
+	urls := make([]string, 0, len(task.Output.Media))
+	sizes := make([]string, 0, len(task.Output.Media))
+	for _, media := range task.Output.Media {
+		if url := strings.TrimSpace(media.URL); url != "" {
+			urls = append(urls, url)
+			size := ""
+			if media.Width > 0 && media.Height > 0 {
+				size = fmt.Sprintf("%dx%d", media.Width, media.Height)
 			}
 			sizes = append(sizes, size)
 		}
@@ -973,6 +1071,13 @@ func falUpstreamEndpoint(upstreamModel string) string {
 		slug = "/" + slug
 	}
 	return slug
+}
+
+func asyncImageUpstreamEndpoint(account *Account, upstreamModel string) string {
+	if account != nil && account.Platform == PlatformLeonardo {
+		return strings.TrimRight(account.LeonardoBaseURL(), "/") + "/v1/tasks"
+	}
+	return falUpstreamEndpoint(upstreamModel)
 }
 
 func amDerefStr(p *string) string {

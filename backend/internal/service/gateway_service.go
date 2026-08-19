@@ -1574,7 +1574,7 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 }
 
 func shouldLogModelsListPlatform(platform string) bool {
-	return platform == PlatformOpenAI || platform == PlatformFal
+	return platform == PlatformOpenAI || platform == PlatformFal || platform == PlatformLeonardo
 }
 
 func accountModelMappingLogSummary(accounts []Account) []map[string]any {

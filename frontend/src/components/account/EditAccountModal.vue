@@ -72,8 +72,10 @@
                     ? 'https://cloudcode-pa.googleapis.com'
                     : account.platform === 'kiro'
                       ? 'https://your-relay.example.com'
-                      : account.platform === 'grok'
+                    : account.platform === 'grok'
                         ? 'https://api.x.ai/v1'
+                        : account.platform === 'leonardo'
+                          ? 'http://127.0.0.1:28080'
                         : 'https://api.anthropic.com'
             "
           />
@@ -156,6 +158,8 @@
                     ? 'sk-...'
                     : account.platform === 'fal'
                       ? 'FAL_KEY (xxxxxxxx:xxxxxxxx)'
+                      : account.platform === 'leonardo'
+                        ? 'leo-proxy-api-key'
                       : account.platform === 'grok'
                         ? 'xai-...'
                         : 'sk-ant-...'
@@ -3142,6 +3146,7 @@ const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
+  if (props.account.platform === 'leonardo') return t('admin.accounts.leonardo.baseUrlHint')
   // Kiro 编辑表单仅对中转账号显示 base_url 字段(直连账号隐藏),故用中转提示文案。
   if (props.account.platform === 'kiro') return t('admin.accounts.kiro.relayBaseUrlHint')
   if (props.account.platform === 'grok') return ''
@@ -3735,6 +3740,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   if (props.account?.platform === 'kiro') return ''
   if (props.account?.platform === 'grok') return 'https://api.x.ai/v1'
+  if (props.account?.platform === 'leonardo') return 'http://127.0.0.1:28080'
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
   if (
@@ -4143,6 +4149,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? ''
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
+            : newAccount.platform === 'leonardo'
+              ? 'http://127.0.0.1:28080'
             : newAccount.platform === 'kimi' ||
                 newAccount.platform === 'zhipu' ||
                 newAccount.platform === 'deepseek'
@@ -4234,6 +4242,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           ? 'https://generativelanguage.googleapis.com'
           : newAccount.platform === 'grok'
             ? 'https://api.x.ai/v1'
+            : newAccount.platform === 'leonardo'
+              ? 'http://127.0.0.1:28080'
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 

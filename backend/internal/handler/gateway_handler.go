@@ -1170,12 +1170,14 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	platformModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	availableModels := platformModels
 	falModels := []string(nil)
+	leonardoModels := []string(nil)
 	if platform == service.PlatformOpenAI {
 		falModels = h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, service.PlatformFal)
+		leonardoModels = h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, service.PlatformLeonardo)
 		if len(platformModels) == 0 {
-			availableModels = mergeModelIDs(defaultModelIDsForPlatform(service.PlatformOpenAI), falModels)
+			availableModels = mergeModelIDs(mergeModelIDs(defaultModelIDsForPlatform(service.PlatformOpenAI), falModels), leonardoModels)
 		} else {
-			availableModels = mergeModelIDs(platformModels, falModels)
+			availableModels = mergeModelIDs(mergeModelIDs(platformModels, falModels), leonardoModels)
 		}
 	}
 	reqLog.Info("gateway.models.available",
@@ -1185,6 +1187,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		zap.Strings("available_models", availableModels),
 		zap.Int("fal_model_count", len(falModels)),
 		zap.Strings("fal_models", falModels),
+		zap.Int("leonardo_model_count", len(leonardoModels)),
+		zap.Strings("leonardo_models", leonardoModels),
 	)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		availableModels = normalizeCustomModelsList(apiKey.Group.ModelsListConfig.Models)
@@ -1219,6 +1223,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
+	if platform == service.PlatformLeonardo {
+		writeModelsList(c, platform, defaultModelIDsForPlatform(platform))
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
@@ -1233,7 +1241,7 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal, service.PlatformLeonardo} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			if _, ok := schedulablePlatforms[platform]; ok {
@@ -1421,10 +1429,17 @@ func defaultModelIDsForPlatform(platform string) []string {
 		}
 		sort.Strings(ids)
 		return ids
+	case service.PlatformLeonardo:
+		ids := make([]string, 0, len(domain.DefaultLeonardoModelMapping))
+		for id := range domain.DefaultLeonardoModelMapping {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		return ids
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal} {
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformFal, service.PlatformLeonardo} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue
