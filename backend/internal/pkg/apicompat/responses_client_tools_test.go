@@ -133,7 +133,9 @@ REDACTED
 REDACTED
 	require.False(t, changed)
 	require.Empty(t, mapping)
-	require.Equal(t, "custom_tool_call", req["input"].([]any)[0].(map[string]any)["type"])
+	items := requireResponsesClientToolValue[[]any](t, req["input"])
+	call := requireResponsesClientToolValue[map[string]any](t, items[0])
+	require.Equal(t, "custom_tool_call", call["type"])
 REDACTED
 
 func TestRestoreResponsesClientToolPayload_RestoresClientAndNamespaceCalls(t *testing.T) {
