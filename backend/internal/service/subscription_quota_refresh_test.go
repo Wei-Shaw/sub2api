@@ -12,8 +12,18 @@ type quotaRefreshUserSubRepoStub struct {
 	userSubRepoNoop
 	sub       *UserSubscription
 	refreshed bool
+	deleted   bool
 	period    string
 	newExpiry time.Time
+}
+
+func (r *quotaRefreshUserSubRepoStub) Delete(_ context.Context, id int64) error {
+	if r.sub == nil || r.sub.ID != id {
+		return ErrSubscriptionNotFound
+	}
+	r.deleted = true
+	r.sub = nil
+	return nil
 }
 
 func (r *quotaRefreshUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
@@ -55,9 +65,59 @@ func TestRefreshQuotaAndShortenKeepsRenewalLayer(t *testing.T) {
 
 	require.NoError(t, err)
 	require.True(t, repo.refreshed)
+	require.Equal(t, QuotaRefreshActionRefreshed, result.Action)
+	require.NotNil(t, result.Subscription)
 	require.Equal(t, "monthly", repo.period)
 	require.InDelta(t, now.Add(30*24*time.Hour).Unix(), repo.newExpiry.Unix(), 3)
-	require.Equal(t, float64(0), result.MonthlyUsageUSD)
+	require.Equal(t, float64(0), result.Subscription.MonthlyUsageUSD)
+}
+
+func TestRefreshQuotaAndShortenUsesActualOldWindowRemainder(t *testing.T) {
+	now := time.Now()
+	windowStart := now.Add(-25 * 24 * time.Hour)
+	limit := 39.0
+	repo := &quotaRefreshUserSubRepoStub{sub: &UserSubscription{
+		ID:                 99,
+		UserID:             31,
+		GroupID:            7,
+		Status:             SubscriptionStatusActive,
+		ExpiresAt:          now.Add(95 * 24 * time.Hour),
+		MonthlyWindowStart: &windowStart,
+		MonthlyUsageUSD:    39,
+		Group:              &Group{ID: 7, MonthlyLimitUSD: &limit},
+	}}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+
+	result, err := svc.RefreshQuotaAndShorten(context.Background(), 99, "monthly")
+
+	require.NoError(t, err)
+	require.Equal(t, QuotaRefreshActionRefreshed, result.Action)
+	require.InDelta(t, now.Add(90*24*time.Hour).Unix(), repo.newExpiry.Unix(), 3)
+}
+
+func TestRefreshQuotaAndShortenDeletesWhenNoRenewalTimeRemains(t *testing.T) {
+	now := time.Now()
+	windowStart := now.Add(-25 * 24 * time.Hour)
+	limit := 39.0
+	repo := &quotaRefreshUserSubRepoStub{sub: &UserSubscription{
+		ID:                 99,
+		UserID:             31,
+		GroupID:            7,
+		Status:             SubscriptionStatusActive,
+		ExpiresAt:          now.Add(5 * 24 * time.Hour),
+		MonthlyWindowStart: &windowStart,
+		MonthlyUsageUSD:    39,
+		Group:              &Group{ID: 7, MonthlyLimitUSD: &limit},
+	}}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+
+	result, err := svc.RefreshQuotaAndShorten(context.Background(), 99, "monthly")
+
+	require.NoError(t, err)
+	require.Equal(t, QuotaRefreshActionDeleted, result.Action)
+	require.Nil(t, result.Subscription)
+	require.True(t, repo.deleted)
+	require.False(t, repo.refreshed)
 }
 
 func TestRefreshQuotaAndShortenRejectsQuotaThatIsNotFull(t *testing.T) {

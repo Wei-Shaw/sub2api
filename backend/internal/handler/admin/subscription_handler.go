@@ -261,11 +261,18 @@ func (h *SubscriptionHandler) RefreshQuotaAndShorten(c *gin.Context) {
 		Period         string `json:"period"`
 	}{subscriptionID, req.Period}
 	executeAdminIdempotentJSON(c, "admin.subscriptions.refresh_quota", payload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		subscription, execErr := h.subscriptionService.RefreshQuotaAndShorten(ctx, subscriptionID, req.Period)
+		result, execErr := h.subscriptionService.RefreshQuotaAndShorten(ctx, subscriptionID, req.Period)
 		if execErr != nil {
 			return nil, execErr
 		}
-		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
+		responsePayload := gin.H{
+			"action":          result.Action,
+			"subscription_id": subscriptionID,
+		}
+		if result.Subscription != nil {
+			responsePayload["subscription"] = dto.UserSubscriptionFromServiceAdmin(result.Subscription)
+		}
+		return responsePayload, nil
 	})
 }
 

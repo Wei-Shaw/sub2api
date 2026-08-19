@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -124,6 +125,49 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetNotes(sub.Notes)
 
 	updated, err := builder.Save(ctx)
+	if err == nil {
+		applyUserSubscriptionEntityToService(sub, updated)
+		return nil
+	}
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, service.ErrSubscriptionAlreadyExists)
+}
+
+// RestoreSnapshot restores an existing subscription, including one hidden by
+// soft deletion, while preserving its original ID.
+func (r *userSubscriptionRepository) RestoreSnapshot(ctx context.Context, sub *service.UserSubscription) error {
+	if sub == nil {
+		return service.ErrSubscriptionNilInput
+	}
+
+	client := clientFromContext(ctx, r.client)
+	restoreCtx := mixins.SkipSoftDelete(ctx)
+	existing, err := client.UserSubscription.Query().
+		Where(usersubscription.IDEQ(sub.ID)).
+		Only(restoreCtx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+	}
+	if existing.UserID != sub.UserID || existing.GroupID != sub.GroupID {
+		return service.ErrSubscriptionRestoreMismatch
+	}
+
+	updated, err := client.UserSubscription.UpdateOneID(sub.ID).
+		SetUserID(sub.UserID).
+		SetGroupID(sub.GroupID).
+		SetStartsAt(sub.StartsAt).
+		SetExpiresAt(sub.ExpiresAt).
+		SetStatus(sub.Status).
+		SetNillableDailyWindowStart(sub.DailyWindowStart).
+		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
+		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
+		SetDailyUsageUsd(sub.DailyUsageUSD).
+		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
+		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetNillableAssignedBy(sub.AssignedBy).
+		SetAssignedAt(sub.AssignedAt).
+		SetNotes(sub.Notes).
+		ClearDeletedAt().
+		Save(restoreCtx)
 	if err == nil {
 		applyUserSubscriptionEntityToService(sub, updated)
 		return nil

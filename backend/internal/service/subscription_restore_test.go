@@ -11,8 +11,18 @@ import (
 type subscriptionRestoreRepoStub struct {
 	userSubRepoNoop
 
-	nextID  int64
-	created *UserSubscription
+	nextID   int64
+	created  *UserSubscription
+	restored *UserSubscription
+}
+
+func (r *subscriptionRestoreRepoStub) RestoreSnapshot(_ context.Context, sub *UserSubscription) error {
+	if sub == nil {
+		return ErrSubscriptionNilInput
+	}
+	cp := *sub
+	r.restored = &cp
+	return nil
 }
 
 func newSubscriptionRestoreRepoStub() *subscriptionRestoreRepoStub {
@@ -113,4 +123,26 @@ func TestRestoreSubscriptionSnapshotRequiresUserAndGroup(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, repo.created)
+}
+
+func TestRestoreSubscriptionSnapshotRestoresSoftDeletedID(t *testing.T) {
+	repo := newSubscriptionRestoreRepoStub()
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	startsAt := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	expiresAt := startsAt.AddDate(0, 0, 30)
+
+	sub, err := svc.RestoreSubscriptionSnapshot(context.Background(), RestoreSubscriptionSnapshotInput{
+		SubscriptionID: 99,
+		UserID:         41,
+		GroupID:        9,
+		StartsAt:       startsAt,
+		ExpiresAt:      expiresAt,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(99), sub.ID)
+	require.NotNil(t, repo.restored)
+	require.Equal(t, int64(99), repo.restored.ID)
+	require.Equal(t, int64(41), repo.restored.UserID)
+	require.Equal(t, int64(9), repo.restored.GroupID)
 }

@@ -25,18 +25,19 @@ var MaxExpiresAt = time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
 const MaxValidityDays = 36500
 
 var (
-	ErrSubscriptionNotFound       = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
-	ErrSubscriptionExpired        = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
-	ErrSubscriptionSuspended      = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
-	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
-	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
-	ErrGroupNotSubscriptionType   = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
-	ErrInvalidInput               = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
-	ErrDailyLimitExceeded         = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
-	ErrWeeklyLimitExceeded        = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
-	ErrMonthlyLimitExceeded       = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
-	ErrSubscriptionNilInput       = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
-	ErrAdjustWouldExpire          = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
+	ErrSubscriptionNotFound        = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
+	ErrSubscriptionExpired         = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
+	ErrSubscriptionSuspended       = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
+	ErrSubscriptionAlreadyExists   = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
+	ErrSubscriptionAssignConflict  = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
+	ErrGroupNotSubscriptionType    = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
+	ErrInvalidInput                = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
+	ErrDailyLimitExceeded          = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
+	ErrWeeklyLimitExceeded         = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
+	ErrMonthlyLimitExceeded        = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
+	ErrSubscriptionNilInput        = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
+	ErrSubscriptionRestoreMismatch = infraerrors.BadRequest("INVALID_SUBSCRIPTION_RESTORE", "snapshot identity does not match subscription")
+	ErrAdjustWouldExpire           = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 )
 
 // SubscriptionService 订阅服务
@@ -57,6 +58,20 @@ type SubscriptionService struct {
 
 type quotaRefreshRepository interface {
 	RefreshQuotaAndShorten(ctx context.Context, id int64, period string, newExpiresAt, newWindowStart time.Time) error
+}
+
+type subscriptionSnapshotRestorer interface {
+	RestoreSnapshot(ctx context.Context, sub *UserSubscription) error
+}
+
+const (
+	QuotaRefreshActionRefreshed = "refreshed"
+	QuotaRefreshActionDeleted   = "deleted"
+)
+
+type QuotaRefreshResult struct {
+	Action       string
+	Subscription *UserSubscription
 }
 
 // NewSubscriptionService 创建订阅服务
@@ -216,16 +231,22 @@ func (s *SubscriptionService) RestoreSubscriptionSnapshot(ctx context.Context, i
 	}
 
 	if input.SubscriptionID > 0 {
-		existing, err := s.userSubRepo.GetByID(ctx, input.SubscriptionID)
-		if err != nil {
-			return nil, err
-		}
-		if existing.UserID != input.UserID || existing.GroupID != input.GroupID {
-			return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_RESTORE", "snapshot identity does not match subscription")
-		}
 		sub.ID = input.SubscriptionID
-		if err := s.userSubRepo.Update(ctx, sub); err != nil {
-			return nil, err
+		if restorer, ok := s.userSubRepo.(subscriptionSnapshotRestorer); ok {
+			if err := restorer.RestoreSnapshot(ctx, sub); err != nil {
+				return nil, err
+			}
+		} else {
+			existing, err := s.userSubRepo.GetByID(ctx, input.SubscriptionID)
+			if err != nil {
+				return nil, err
+			}
+			if existing.UserID != input.UserID || existing.GroupID != input.GroupID {
+				return nil, ErrSubscriptionRestoreMismatch
+			}
+			if err := s.userSubRepo.Update(ctx, sub); err != nil {
+				return nil, err
+			}
 		}
 	} else if err := s.userSubRepo.Create(ctx, sub); err != nil {
 		return nil, err
@@ -240,9 +261,9 @@ func (s *SubscriptionService) RestoreSubscriptionSnapshot(ctx context.Context, i
 }
 
 // RefreshQuotaAndShorten validates and applies the renewal-layer quota refresh
-// as one upstream mutation. Only a quota-exhausted subscription with a
-// non-expired original window and a positive renewal remainder is eligible.
-func (s *SubscriptionService) RefreshQuotaAndShorten(ctx context.Context, subscriptionID int64, period string) (*UserSubscription, error) {
+// as one upstream mutation. If the original exhausted window consumes all
+// remaining time, the subscription is deleted instead.
+func (s *SubscriptionService) RefreshQuotaAndShorten(ctx context.Context, subscriptionID int64, period string) (*QuotaRefreshResult, error) {
 	if subscriptionID <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "subscription_id is required")
 	}
@@ -289,7 +310,17 @@ func (s *SubscriptionService) RefreshQuotaAndShorten(ctx context.Context, subscr
 	totalRemaining := sub.ExpiresAt.Sub(now)
 	newRemaining := totalRemaining - oldRemaining
 	if newRemaining <= 0 {
-		return nil, infraerrors.BadRequest("QUOTA_REFRESH_UNAVAILABLE", "no renewal time remains after the original layer")
+		if err := s.userSubRepo.Delete(ctx, sub.ID); err != nil {
+			return nil, err
+		}
+		s.InvalidateSubCache(sub.UserID, sub.GroupID)
+		if s.subCacheL1 != nil {
+			s.subCacheL1.Wait()
+		}
+		if s.billingCacheService != nil {
+			_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+		}
+		return &QuotaRefreshResult{Action: QuotaRefreshActionDeleted}, nil
 	}
 	newExpiresAt := sub.ExpiresAt.Add(-oldRemaining)
 	newWindowStart := startOfDay(now)
@@ -307,7 +338,14 @@ func (s *SubscriptionService) RefreshQuotaAndShorten(ctx context.Context, subscr
 	if s.billingCacheService != nil {
 		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
 	}
-	return s.userSubRepo.GetByID(ctx, subscriptionID)
+	updated, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	return &QuotaRefreshResult{
+		Action:       QuotaRefreshActionRefreshed,
+		Subscription: updated,
+	}, nil
 }
 
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
