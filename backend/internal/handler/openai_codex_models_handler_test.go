@@ -116,6 +116,19 @@ func TestCodexModelsCanceledRequestDoesNotWriteResponse(t *testing.T) {
 	}
 }
 
+func TestCompositeCodexModelsReusesExistingManifestSelection(t *testing.T) {
+	handler, upstream, groupID := newCodexModelsFailoverTestHandler(http.StatusServiceUnavailable)
+
+	recorder := performCodexModelsRequestForPlatform(t, handler, groupID, service.PlatformComposite)
+
+	if got, want := upstream.calls(), []int64{1, 2}; !equalInt64Slices(got, want) {
+		t.Fatalf("upstream account calls: got %v, want %v", got, want)
+	}
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
 func TestCodexModelsFailsOverFromRetryableUpstreamStatus(t *testing.T) {
 	retryableStatuses := []int{
 		http.StatusTooManyRequests,
@@ -287,13 +300,17 @@ func newCodexModelsFailoverTestHandlerWithAccountCount(firstStatus, accountCount
 }
 
 func performCodexModelsRequest(t *testing.T, handler *OpenAIGatewayHandler, groupID int64) *httptest.ResponseRecorder {
+	return performCodexModelsRequestForPlatform(t, handler, groupID, service.PlatformOpenAI)
+}
+
+func performCodexModelsRequestForPlatform(t *testing.T, handler *OpenAIGatewayHandler, groupID int64, platform string) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.144.0", nil)
 	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
 		GroupID: &groupID,
-		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+		Group:   &service.Group{ID: groupID, Platform: platform},
 	})
 
 	handler.CodexModels(c)

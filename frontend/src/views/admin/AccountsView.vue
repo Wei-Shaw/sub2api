@@ -2550,17 +2550,26 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  try {
-    const [p, pg, g] = await Promise.all([
-      adminAPI.proxies.getAll(),
-      adminAPI.proxyGroups.getAll().catch(() => [] as ProxyGroup[]),
-      adminAPI.groups.getAll()
-    ])
-    proxies.value = p
-    proxyGroups.value = pg
-    groups.value = g
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
+  const [proxiesResult, proxyGroupsResult, groupsResult] = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    adminAPI.proxyGroups.getAll(),
+    adminAPI.groups.getAll()
+  ])
+  if (proxiesResult.status === 'fulfilled') {
+    proxies.value = proxiesResult.value
+  } else {
+    console.error('Failed to load proxies:', proxiesResult.reason)
+  }
+  if (proxyGroupsResult.status === 'fulfilled') {
+    proxyGroups.value = proxyGroupsResult.value
+  } else {
+    proxyGroups.value = []
+    console.error('Failed to load proxy groups:', proxyGroupsResult.reason)
+  }
+  if (groupsResult.status === 'fulfilled') {
+    groups.value = groupsResult.value
+  } else {
+    console.error('Failed to load groups:', groupsResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)

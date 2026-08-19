@@ -220,6 +220,7 @@ export interface PublicSettings {
 	email_verify_enabled: boolean;
 	force_email_on_third_party_signup: boolean;
 	registration_email_suffix_whitelist: string[];
+	registration_email_domain_quota_enabled?: boolean;
 	promo_code_enabled: boolean;
 	password_reset_enabled: boolean;
 	invitation_code_enabled: boolean;
@@ -273,18 +274,19 @@ export interface PublicSettings {
 	account_quota_notify_enabled: boolean;
 	balance_low_notify_threshold: number;
 	channel_monitor_enabled: boolean;
+	/** Exclusive mode: v1 active probes or v2 passive aggregation. Default v2. */
+	channel_monitor_mode?: "v1" | "v2";
 	channel_monitor_default_interval_seconds: number;
+	/** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
+	channel_monitor_hide_throughput?: boolean;
+	/** When true, user monitor shows account quota/balance snapshots (default off). */
+	channel_monitor_show_quota?: boolean;
 	available_channels_enabled: boolean;
 	model_plaza_enabled: boolean;
 	model_plaza_require_auth: boolean;
 	service_quota_enabled: boolean;
 	affiliate_enabled: boolean;
 	allow_user_view_error_requests?: boolean;
-	registration_email_domain_quota_enabled?: boolean;
-	/** Exclusive mode: v1 active probes or v2 passive aggregation. Default v2. */
-	channel_monitor_mode?: "v1" | "v2";
-	/** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
-	channel_monitor_hide_throughput?: boolean;
 }
 
 export interface AuthResponse {
@@ -542,6 +544,9 @@ export type GroupPlatform =
 	| "gemini"
 	| "antigravity"
 	| "grok"
+	| "kimi"
+	| "zhipu"
+	| "deepseek"
 	| "composite";
 
 /** Model-family → resolution → USD price overrides for Grok video billing. */
@@ -905,7 +910,10 @@ export type AccountPlatform =
 	| "openai"
 	| "gemini"
 	| "antigravity"
-	| "grok";
+	| "grok"
+	| "kimi"
+	| "zhipu"
+	| "deepseek";
 export type AccountType =
 	| "oauth"
 	| "setup-token"
