@@ -842,7 +842,11 @@ export interface OpsSystemLog {
   extra?: Record<string, any>
 }
 
-export type OpsSystemLogListResponse = PaginatedResponse<OpsSystemLog>
+// total_is_capped：系统日志放弃了精确 COUNT(*)（千万行级别下要数十秒），
+// 命中数超过上限时 total 只是下界，前端显示为「N+」。
+export type OpsSystemLogListResponse = PaginatedResponse<OpsSystemLog> & {
+  total_is_capped?: boolean
+}
 
 export interface OpsSystemLogQuery {
   page?: number

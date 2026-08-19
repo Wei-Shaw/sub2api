@@ -25,6 +25,8 @@ const props = withDefaults(defineProps<{
 const loading = ref(false)
 const logs = ref<OpsSystemLog[]>([])
 const total = ref(0)
+// 服务端对系统日志放弃了精确计数，total 可能只是下界。
+const totalIsCapped = ref(false)
 const page = ref(1)
 const pageSize = ref(20)
 
@@ -210,6 +212,7 @@ const fetchLogs = async () => {
     const res = await opsAPI.listSystemLogs(buildQuery())
     logs.value = res.items || []
     total.value = res.total || 0
+    totalIsCapped.value = res.total_is_capped === true
   } catch (err: any) {
     console.error('[OpsSystemLogTable] Failed to fetch logs', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.systemLogs.loadFailed'))
@@ -561,6 +564,7 @@ onMounted(async () => {
       </div>
       <Pagination
         :total="total"
+        :total-is-capped="totalIsCapped"
         :page="page"
         :page-size="pageSize"
         @update:page="onPageChange"

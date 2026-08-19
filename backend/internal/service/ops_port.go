@@ -241,10 +241,14 @@ type OpsSystemLogCleanupFilter struct {
 }
 
 type OpsSystemLogList struct {
-	Logs     []*OpsSystemLog `json:"logs"`
-	Total    int             `json:"total"`
-	Page     int             `json:"page"`
-	PageSize int             `json:"page_size"`
+	Logs  []*OpsSystemLog `json:"logs"`
+	Total int             `json:"total"`
+	// TotalIsCapped 表示 Total 是封顶值而非精确命中数（实际命中 >= Total）。
+	// 精确计数要扫完全部索引项，在千万行级别的 ops_system_logs 上要数十秒，
+	// 而这个数字只用于渲染分页器，不值这个代价。
+	TotalIsCapped bool `json:"total_is_capped"`
+	Page          int  `json:"page"`
+	PageSize      int  `json:"page_size"`
 }
 
 type OpsSystemLogCleanupAudit struct {

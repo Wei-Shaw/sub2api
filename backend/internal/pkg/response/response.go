@@ -22,11 +22,14 @@ type Response struct {
 
 // PaginatedData 分页数据格式（匹配前端期望）
 type PaginatedData struct {
-	Items    any   `json:"items"`
-	Total    int64 `json:"total"`
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
-	Pages    int   `json:"pages"`
+	Items any   `json:"items"`
+	Total int64 `json:"total"`
+	// TotalIsCapped 为 true 时 Total 是封顶值，实际命中数 >= Total。
+	// 仅放弃精确计数的接口会置位，其余接口序列化时省略。
+	TotalIsCapped bool `json:"total_is_capped,omitempty"`
+	Page          int  `json:"page"`
+	PageSize      int  `json:"page_size"`
+	Pages         int  `json:"pages"`
 }
 
 // Success 返回成功响应
@@ -122,18 +125,29 @@ func InternalError(c *gin.Context, message string) {
 
 // Paginated 返回分页数据
 func Paginated(c *gin.Context, items any, total int64, page, pageSize int) {
+	Success(c, newPaginatedData(items, total, page, pageSize, false))
+}
+
+// PaginatedCapped 与 Paginated 相同，但声明 total 是封顶值而非精确命中数。
+// 用于超大表上放弃精确 COUNT(*) 的列表接口，前端据此显示「N+」。
+func PaginatedCapped(c *gin.Context, items any, total int64, page, pageSize int, capped bool) {
+	Success(c, newPaginatedData(items, total, page, pageSize, capped))
+}
+
+func newPaginatedData(items any, total int64, page, pageSize int, capped bool) PaginatedData {
 	pages := int(math.Ceil(float64(total) / float64(pageSize)))
 	if pages < 1 {
 		pages = 1
 	}
 
-	Success(c, PaginatedData{
-		Items:    items,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-		Pages:    pages,
-	})
+	return PaginatedData{
+		Items:         items,
+		Total:         total,
+		TotalIsCapped: capped,
+		Page:          page,
+		PageSize:      pageSize,
+		Pages:         pages,
+	}
 }
 
 // PaginationResult 分页结果（与pagination.PaginationResult兼容）
