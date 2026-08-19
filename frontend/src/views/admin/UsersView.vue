@@ -70,6 +70,15 @@
                  { value: 'any', label: t('admin.users.tagMatchAny') },
                  { value: 'all', label: t('admin.users.tagMatchAll') }
                ]" @change="applyFilter" />
+               <button
+                 type="button"
+                 class="btn btn-secondary px-3"
+                 :title="t('admin.users.tagManagement.action')"
+                 :aria-label="t('admin.users.tagManagement.action')"
+                 @click="showTagManagementModal = true"
+               >
+                 <Icon name="cog" size="sm" />
+               </button>
              </div>
 
              <!-- API Key Group Filter (visible when enabled) -->
@@ -779,6 +788,11 @@
       @close="showBulkTagsModal = false"
       @success="handleBulkSegmentationSuccess"
     />
+    <UserTagManagementModal
+      :show="showTagManagementModal"
+      @close="showTagManagementModal = false"
+      @changed="handleTagDefinitionsChanged"
+    />
     <BulkEditUserHiddenGroupsModal
       :show="showBulkHiddenGroupsModal"
       :selected-ids="selectedIds"
@@ -834,6 +848,7 @@ import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
 import BulkEditUserTagsModal from '@/components/admin/user/BulkEditUserTagsModal.vue'
+import UserTagManagementModal from '@/components/admin/user/UserTagManagementModal.vue'
 import BulkEditUserHiddenGroupsModal from '@/components/admin/user/BulkEditUserHiddenGroupsModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
@@ -1088,8 +1103,8 @@ const loadAllGroups = async () => {
 // Groups for the API Key group filter — includes disabled groups so admins can
 // filter users whose keys are still bound to a now-disabled group.
 const allTags = ref<NonNullable<AdminUser['tags']>[number][]>([])
-const loadAllTags = async () => {
-  if (allTags.value.length > 0) return
+const loadAllTags = async (force = false) => {
+  if (!force && allTags.value.length > 0) return
   try {
     allTags.value = await adminAPI.users.listTags()
   } catch (e) {
@@ -1373,6 +1388,7 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
 const showBulkTagsModal = ref(false)
+const showTagManagementModal = ref(false)
 const showBulkHiddenGroupsModal = ref(false)
 const showDeleteDialog = ref(false)
 const showApiKeysModal = ref(false)
@@ -1685,6 +1701,14 @@ const handleBulkLimitsSuccess = async () => {
   await loadUsers()
 }
 const handleBulkSegmentationSuccess = handleBulkLimitsSuccess
+
+const handleTagDefinitionsChanged = async () => {
+  await loadAllTags(true)
+  const availableTagIDs = new Set(allTags.value.map(tag => tag.id))
+  filters.tags = filters.tags.filter(tagID => availableTagIDs.has(Number(tagID)))
+  saveFiltersToStorage()
+  await loadUsers()
+}
 
 let searchTimeout: ReturnType<typeof setTimeout>
 const handleSearch = () => {

@@ -439,6 +439,22 @@ export default {
       tagFilter: 'User tags/profile',
        tagMatchAny: 'Any selected tag',
        tagMatchAll: 'All selected tags',
+      tagManagement: {
+        action: 'Manage tags',
+        title: 'Tag management',
+        name: 'Tag name',
+        color: 'Color',
+        description: 'Description',
+        empty: 'No tags yet',
+        created: 'Tag created',
+        updated: 'Tag updated',
+        deleted: 'Tag deleted',
+        deleteTitle: 'Delete tag',
+        deleteConfirm: 'Delete tag “{name}”? It will no longer appear or participate in filtering.',
+        loadFailed: 'Failed to load tags',
+        saveFailed: 'Failed to save tag',
+        deleteFailed: 'Failed to delete tag'
+      },
       bulkTags: { action: 'Manage tags', title: 'Bulk manage user tags/profile', selectedCount: '{count} users selected', add: 'Add tags', remove: 'Remove tags', replace: 'Replace tags (can clear)', selectTag: 'Select tags', newTag: 'New tag', newTagName: 'Tag name', selectionLimit: 'Select no more than {max} users', success: 'Updated tags for {count} users', failed: 'Failed to update user tags' },
       bulkHiddenGroups: { action: 'Model group visibility', title: 'Bulk set model group visibility', hint: 'Check groups to hide. These are model groups (Group Management), not user tags/profile, and this does not change API Key bindings.', selectedCount: '{count} users selected', selectionLimit: 'Select no more than {max} users', success: 'Updated model group visibility for {count} users', failed: 'Failed to update model group visibility' },
       bulkLimits: {

@@ -439,6 +439,22 @@ export default {
       tagFilter: '用户标签/画像',
        tagMatchAny: '任一标签',
        tagMatchAll: '全部标签',
+      tagManagement: {
+        action: '管理标签',
+        title: '标签管理',
+        name: '标签名称',
+        color: '颜色',
+        description: '描述',
+        empty: '暂无标签',
+        created: '标签已创建',
+        updated: '标签已更新',
+        deleted: '标签已删除',
+        deleteTitle: '删除标签',
+        deleteConfirm: '确定删除标签“{name}”吗？该标签将不再显示或参与筛选。',
+        loadFailed: '加载标签失败',
+        saveFailed: '保存标签失败',
+        deleteFailed: '删除标签失败'
+      },
       bulkTags: { action: '管理标签', title: '批量管理用户标签/画像', selectedCount: '已选择 {count} 个用户', add: '新增标签', remove: '移除标签', replace: '替换标签（可清空）', selectTag: '选择标签', newTag: '新建标签', newTagName: '标签名称', selectionLimit: '一次最多选择 {max} 个用户', success: '已更新 {count} 个用户的标签', failed: '批量更新用户标签失败' },
       bulkHiddenGroups: { action: '模型分组可见性', title: '批量设置模型分组可见性', hint: '勾选“不显示”的模型分组。这里是模型分组（分组管理），不是用户标签/画像，也不会修改 API Key 绑定。', selectedCount: '已选择 {count} 个用户', selectionLimit: '一次最多选择 {max} 个用户', success: '已更新 {count} 个用户的模型分组可见性', failed: '批量更新模型分组可见性失败' },
       bulkLimits: {

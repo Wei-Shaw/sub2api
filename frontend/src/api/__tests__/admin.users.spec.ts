@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post } = vi.hoisted(() => ({
+const { post, put, del } = vi.hoisted(() => ({
   post: vi.fn(),
+  put: vi.fn(),
+  del: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => ({
   apiClient: {
     post,
+    put,
+    delete: del,
   },
 }))
 
@@ -15,6 +19,8 @@ import {
   bindUserAuthIdentity,
   batchUpdateTags,
   batchUpdateHiddenGroups,
+  updateTag,
+  deleteTag,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -86,6 +92,8 @@ const batchResponseContractExact: Assert<
 describe('admin users api auth identity binding', () => {
   beforeEach(() => {
     post.mockReset()
+    put.mockReset()
+    del.mockReset()
   })
 
   it('posts the backend-compatible auth identity bind payload and returns the backend response shape', async () => {
@@ -139,6 +147,18 @@ describe('admin users api auth identity binding', () => {
     post.mockResolvedValue({ data: { affected: 4 } })
     await batchUpdateTags(request)
     expect(post).toHaveBeenCalledWith('/admin/users/batch-tags', request)
+  })
+
+  it('updates and deletes user tags through the tag management endpoints', async () => {
+    const input = { name: 'Priority', color: '#ef4444', description: 'High-value users' }
+    put.mockResolvedValue({ data: { id: 3, ...input } })
+    del.mockResolvedValue({ data: undefined })
+
+    await updateTag(3, input)
+    await deleteTag(3)
+
+    expect(put).toHaveBeenCalledWith('/admin/users/tags/3', input)
+    expect(del).toHaveBeenCalledWith('/admin/users/tags/3')
   })
 
   it('posts batch hidden model-group visibility updates without changing key bindings', async () => {
