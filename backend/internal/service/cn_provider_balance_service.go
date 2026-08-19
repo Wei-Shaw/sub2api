@@ -84,14 +84,27 @@ func NewCNProviderBalanceService(
 
 // QueryBalance 探测指定 payg 账号的余额并落 Extra 快照。
 func (s *CNProviderBalanceService) QueryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error) {
+	account, err := s.loadPayGAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return s.QueryBalanceForAccount(ctx, account)
+}
+
+// QueryBalanceForAccount 探测已加载账号（配额监控 fetcher / 周期余额检测复用，
+// 避免二次 GetByID）。singleflight key 与 QueryBalance 相同，按账号 ID 合并。
+func (s *CNProviderBalanceService) QueryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error) {
 	if s == nil || s.accountRepo == nil || s.httpUpstream == nil {
 		return nil, infraerrors.New(http.StatusInternalServerError, "CN_BALANCE_NOT_CONFIGURED", "cn provider balance service is not configured")
 	}
-	key := "cn_balance:" + strconv.FormatInt(accountID, 10)
+	if err := validatePayGAccount(account); err != nil {
+		return nil, err
+	}
+	key := "cn_balance:" + strconv.FormatInt(account.ID, 10)
 	resultCh := s.flight.DoChan(key, func() (any, error) {
 		probeCtx, cancel := context.WithTimeout(context.Background(), cnBalanceUpstreamTimeout+5*time.Second)
 		defer cancel()
-		return s.queryBalance(probeCtx, accountID)
+		return s.queryBalanceForAccount(probeCtx, account)
 	})
 	select {
 	case <-ctx.Done():
@@ -109,11 +122,7 @@ func (s *CNProviderBalanceService) QueryBalance(ctx context.Context, accountID i
 	}
 }
 
-func (s *CNProviderBalanceService) queryBalance(ctx context.Context, accountID int64) (*CNProviderBalanceResult, error) {
-	account, err := s.loadPayGAccount(ctx, accountID)
-	if err != nil {
-		return nil, err
-	}
+func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error) {
 	provider := account.Platform
 	if provider != PlatformKimi && provider != PlatformDeepseek {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "account provider has no balance endpoint")
@@ -230,17 +239,26 @@ func (s *CNProviderBalanceService) loadPayGAccount(ctx context.Context, accountI
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusNotFound, "CN_BALANCE_ACCOUNT_NOT_FOUND", "account not found: %v", err)
 	}
+	if err := validatePayGAccount(account); err != nil {
+		return nil, err
+	}
+	return account, nil
+}
+
+// validatePayGAccount 加载后的非 DB 校验（ForAccount 入口同样复用，
+// 保证直传 account 也不绕过平台/模式检查）。
+func validatePayGAccount(account *Account) error {
 	if account == nil {
-		return nil, infraerrors.New(http.StatusNotFound, "CN_BALANCE_ACCOUNT_NOT_FOUND", "account not found")
+		return infraerrors.New(http.StatusNotFound, "CN_BALANCE_ACCOUNT_NOT_FOUND", "account not found")
 	}
 	if !account.IsCNProvider() {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_INVALID_PLATFORM", "account is not a CN provider account")
+		return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_INVALID_PLATFORM", "account is not a CN provider account")
 	}
 	// coding 账号走额度探测，余额端点不适用。
 	if account.IsCodingPlan() {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_CODING_PLAN", "coding plan account has no balance endpoint; use quota probe")
+		return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_CODING_PLAN", "coding plan account has no balance endpoint; use quota probe")
 	}
-	return account, nil
+	return nil
 }
 
 func (s *CNProviderBalanceService) resolveProxyURL(ctx context.Context, account *Account) string {

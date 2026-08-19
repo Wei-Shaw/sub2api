@@ -290,6 +290,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	upstreamTerminalEvent := ""
 	sawDone := false
 	wroteDownstream := false
+	pendingClientMessages := make([][]byte, 0, 4)
+	pendingClientMessageBytes := int64(0)
+	capacityFailoverSuppressedLogged := false
 	clientDisconnected := false
 	mappedModel := ""
 	needModelReplace := false
@@ -403,15 +406,20 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
-		if eventType == "error" {
-			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
-			errMessage := strings.TrimSpace(errMsgRaw)
+		if eventType == "error" || eventType == "response.failed" {
+			errMessage := extractOpenAISSEErrorMessage(upstreamMessage)
 			if errMessage == "" {
 				errMessage = "upstream error event"
 			}
-			statusCode := openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
-			shouldFailover := s.shouldFailoverOpenAIUpstreamResponse(statusCode, errMessage, upstreamMessage)
-			if account.Platform == PlatformGrok {
+			statusCode := openAIStreamFailureStatus(upstreamMessage, errMessage)
+			shouldFailover := openAIStreamFailedEventShouldFailover(upstreamMessage, errMessage)
+			if eventType == "error" {
+				errCodeRaw, errTypeRaw, _ := parseOpenAIWSErrorEventFields(upstreamMessage)
+				statusCode = openAIWSErrorHTTPStatusFromRaw(errCodeRaw, errTypeRaw)
+				shouldFailover = s.shouldFailoverOpenAIUpstreamResponse(statusCode, errMessage, upstreamMessage)
+			}
+			requestScopedCapacity := isOpenAIUpstreamCapacityShedEvent(upstreamMessage)
+			if account.Platform == PlatformGrok && eventType == "error" {
 				// SSE error events do not carry an HTTP status. The local status
 				// mapper therefore defaults unknown xAI codes (for example
 				// new_sensitive) to 502; classify the body as a request-scoped
@@ -422,7 +430,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 					shouldFailover = s.shouldFailoverGrokUpstreamError(statusCode, upstreamMessage)
 					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
 				}
-			} else if shouldFailover {
+			} else if eventType == "error" && shouldFailover && !requestScopedCapacity {
 				accountStatus := statusCode
 				if transientStatus := openAIWSPayloadTransientStatus(upstreamMessage); transientStatus != 0 {
 					accountStatus = transientStatus
@@ -431,9 +439,18 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				s.handleOpenAIAccountUpstreamError(ctx, account, accountStatus, resp.Header, upstreamMessage, canonicalModel)
 			}
 			if turn == 1 && !wroteDownstream && shouldFailover {
-				return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
+				if account.Platform == PlatformGrok {
+					return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
+				}
+				return nil, s.newOpenAIStreamFailoverError(c, account, true, resp.Header.Get("x-request-id"), upstreamMessage, errMessage, resp.Header)
 			}
-			upstreamEventErr = errors.New(errMessage)
+			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
+				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
+				capacityFailoverSuppressedLogged = true
+			}
+			if eventType == "error" {
+				upstreamEventErr = errors.New(errMessage)
+			}
 		}
 
 		// 客户端写出副本改写容量降载码：Codex 对 error/response.failed 中的
@@ -447,26 +464,50 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			}
 		}
 		if !clientDisconnected {
-			if err := writeClientMessage(clientMessage); err != nil {
-				if isOpenAIWSClientDisconnectError(err) {
-					clientDisconnected = true
-					closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
-					logOpenAIWSModeInfo(
-						"ingress_ws_http_bridge_client_disconnected_drain account_id=%d turn=%d close_status=%s close_reason=%s",
-						account.ID,
-						turn,
-						closeStatus,
-						truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
-					)
-				} else {
-					return nil, wrapOpenAIWSIngressTurnError(
-						"write_client",
-						fmt.Errorf("write client websocket event: %w", err),
-						wroteDownstream,
+			stageBeforeSemanticOutput := turn == 1 && account.Platform == PlatformOpenAI && !wroteDownstream
+			commitStagedMessages := !stageBeforeSemanticOutput ||
+				openAIStreamDataStartsClientOutput(string(clientMessage), eventType) ||
+				isOpenAIWSTerminalEvent(eventType)
+			if stageBeforeSemanticOutput && !commitStagedMessages {
+				if pendingClientMessageBytes+int64(len(clientMessage)) > openAIFirstOutputStageMaxBytes {
+					return nil, s.newOpenAIStreamFailoverError(
+						c,
+						account,
+						true,
+						resp.Header.Get("x-request-id"),
+						nil,
+						"OpenAI WS HTTP bridge first-output staging limit exceeded",
+						resp.Header,
 					)
 				}
+				pendingClientMessages = append(pendingClientMessages, append([]byte(nil), clientMessage...))
+				pendingClientMessageBytes += int64(len(clientMessage))
 			} else {
-				wroteDownstream = true
+				messages := append(pendingClientMessages, clientMessage)
+				pendingClientMessages = nil
+				pendingClientMessageBytes = 0
+				for _, message := range messages {
+					if err := writeClientMessage(message); err != nil {
+						if isOpenAIWSClientDisconnectError(err) {
+							clientDisconnected = true
+							closeStatus, closeReason := summarizeOpenAIWSReadCloseError(err)
+							logOpenAIWSModeInfo(
+								"ingress_ws_http_bridge_client_disconnected_drain account_id=%d turn=%d close_status=%s close_reason=%s",
+								account.ID,
+								turn,
+								closeStatus,
+								truncateOpenAIWSLogValue(closeReason, openAIWSHeaderValueMaxLen),
+							)
+							break
+						}
+						return nil, wrapOpenAIWSIngressTurnError(
+							"write_client",
+							fmt.Errorf("write client websocket event: %w", err),
+							wroteDownstream,
+						)
+					}
+					wroteDownstream = true
+				}
 			}
 		}
 

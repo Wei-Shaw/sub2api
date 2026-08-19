@@ -137,6 +137,7 @@ func TestOpenAIResponsesRequestPathSuffixRejectsNonConformingSubpaths(t *testing
 	for path, want := range map[string]string{
 		"/v1/responses":                        "",
 		"/v1/responses/compact":                "/compact",
+		"/v1/responses/input_tokens":           "/input_tokens",
 		"/responses/compact/":                  "/compact",
 		"/backend-api/codex/responses/compact": "/compact",
 		"/v1/responses/foo/responses/compact":  "/foo/responses/compact",
@@ -161,6 +162,15 @@ func TestOpenAIResponsesRequestPathSuffixUsesMatchedWildcardSubpath(t *testing.T
 	require.True(t, IsForwardableOpenAIResponsesRequestPath(c))
 	require.Equal(t, "/foo/responses/compact", openAIResponsesRequestPathSuffix(c))
 	require.False(t, isOpenAIResponsesCompactPath(c))
+}
+
+func TestIsOpenAIResponsesInputTokensRequestPath(t *testing.T) {
+	for _, path := range []string{"/v1/responses/input_tokens", "/responses/input_tokens", "/backend-api/codex/responses/input_tokens"} {
+		c := newResponsesSuffixTestContext(t, path)
+		require.True(t, IsOpenAIResponsesInputTokensRequestPath(c), "path=%s", path)
+	}
+	c := newResponsesSuffixTestContext(t, "/v1/responses/compact")
+	require.False(t, IsOpenAIResponsesInputTokensRequestPath(c))
 }
 
 func TestIsOpenAIResponsesCompactPathUsesLegacyEndpointShape(t *testing.T) {

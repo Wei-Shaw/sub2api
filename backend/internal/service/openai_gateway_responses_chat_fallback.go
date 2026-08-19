@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -52,7 +53,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	toolSearch := apicompat.HasToolSearchTool(effectiveTools)
 	namespaceTools := apicompat.NamespaceToolNames(effectiveTools)
 
-	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
+	// 自愈回写：历史里带明文 summary 的 reasoning item 刷新进缓存，覆盖 Redis
+	// 被 flush / 跨实例漂移后同 id 的 encrypted-only 副本无法再取明文的情况。
+	s.recacheReasoningItemsFromInput(responsesReq.Input)
+
+	chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(&responsesReq, &apicompat.ResponsesToChatOptions{
+		ReasoningContentByID: s.reasoningContentByID,
+	})
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, fmt.Errorf("convert responses to chat completions: %w", err)
@@ -136,6 +143,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 		return nil, err
 	}
 	responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, customTools, toolSearch, namespaceTools)
+	s.cacheReasoningItemsFromOutput(responsesResp.Output)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -204,7 +212,9 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 
 	scan := s.scanCCStream(resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
-		writeEvents(apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state))
+		events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
+		s.cacheReasoningItemsFromEvents(events)
+		writeEvents(events)
 	})
 
 	if scan.Err != nil {
@@ -222,7 +232,9 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		}, fmt.Errorf("stream usage incomplete: %w", scan.Err)
 	}
 
-	writeEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
+	finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
+	s.cacheReasoningItemsFromEvents(finalEvents)
+	writeEvents(finalEvents)
 	if !clientDisconnected {
 		writeStreamHeaders()
 		if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
@@ -260,4 +272,101 @@ func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool 
 		}
 	}
 	return false
+}
+
+// responsesReasoningCacheTTL 是 reasoning 缓存（按 reasoning item id）的过期时间。
+// Codex 会话可能跨多天恢复历史，取 7 天。
+const responsesReasoningCacheTTL = 7 * 24 * time.Hour
+
+// reasoningContentByID 按 reasoning item id 回查缓存的 reasoning 全文，供
+// Responses→CC 桥接在客户端不回传明文 summary（encrypted-only reasoning
+// item）时回注 reasoning_content。任何失败都 fail-open 返回 ""（维持桥接原
+// 行为），因为缓存只是优化而非正确性前提。
+func (s *OpenAIGatewayService) reasoningContentByID(itemID string) string {
+	if s == nil || s.cache == nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	content, err := s.cache.GetReasoningContent(ctx, itemID)
+	if err != nil {
+		return ""
+	}
+	return content
+}
+
+// recacheReasoningItemsFromInput 把请求历史里带明文 summary 的 reasoning item
+// 重新写入缓存（best-effort）。Codex 多数时候会原样回传明文 summary，借机
+// 刷新 TTL 并自愈 Redis 被 flush / 跨实例漂移造成的缓存缺失。
+func (s *OpenAIGatewayService) recacheReasoningItemsFromInput(inputRaw json.RawMessage) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	inputRaw = bytes.TrimSpace(inputRaw)
+	if len(inputRaw) == 0 || inputRaw[0] != '[' {
+		return
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(inputRaw, &items); err != nil {
+		return
+	}
+	for _, raw := range items {
+		id, text, ok := apicompat.ExtractResponsesReasoningItem(raw)
+		if !ok || id == "" || text == "" {
+			continue
+		}
+		s.setReasoningContent(id, text)
+	}
+}
+
+// cacheReasoningItemsFromEvents 从 Responses 流事件里提取完成的 reasoning
+// item 写入缓存（覆盖一个流中的多个 reasoning item）。
+func (s *OpenAIGatewayService) cacheReasoningItemsFromEvents(events []apicompat.ResponsesStreamEvent) {
+	for _, event := range events {
+		if event.Type != "response.output_item.done" || event.Item == nil {
+			continue
+		}
+		s.cacheReasoningItem(event.Item)
+	}
+}
+
+// cacheReasoningItemsFromOutput 从非流式 Responses 响应的 output 里提取
+// reasoning item 写入缓存。
+func (s *OpenAIGatewayService) cacheReasoningItemsFromOutput(output []apicompat.ResponsesOutput) {
+	for i := range output {
+		s.cacheReasoningItem(&output[i])
+	}
+}
+
+func (s *OpenAIGatewayService) cacheReasoningItem(item *apicompat.ResponsesOutput) {
+	if item == nil || item.Type != "reasoning" || item.ID == "" {
+		return
+	}
+	var parts []string
+	for _, sum := range item.Summary {
+		if t := strings.TrimSpace(sum.Text); t != "" {
+			parts = append(parts, t)
+		}
+	}
+	if len(parts) == 0 {
+		return
+	}
+	s.setReasoningContent(item.ID, strings.Join(parts, "\n"))
+}
+
+// setReasoningContent 写入缓存，使用 detached ctx：客户端断连后仍在 drain
+// 上游流（计费需要），此时的 reasoning 也是后续轮次回注所依赖的，不能随
+// 请求 ctx 一起取消。失败仅记日志，不影响转发。
+func (s *OpenAIGatewayService) setReasoningContent(itemID, content string) {
+	if s == nil || s.cache == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.cache.SetReasoningContent(ctx, itemID, content, responsesReasoningCacheTTL); err != nil {
+		logger.L().Warn("openai responses chat fallback: cache reasoning content failed",
+			zap.Error(err),
+			zap.String("item_id", itemID),
+		)
+	}
 }

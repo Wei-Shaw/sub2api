@@ -15,20 +15,21 @@ import (
 // ──────────────────────────────────────────────────────────
 
 const (
-	EndpointMessages          = "/v1/messages"
-	EndpointChatCompletions   = "/v1/chat/completions"
-	EndpointEmbeddings        = "/v1/embeddings"
-	EndpointAlphaSearch       = "/v1/alpha/search"
-	EndpointResponses         = "/v1/responses"
-	EndpointResponsesCompact  = "/v1/responses/compact"
-	EndpointImagesGenerations = "/v1/images/generations"
-	EndpointImagesEdits       = "/v1/images/edits"
-	EndpointImageTasks        = "/v1/images/tasks"
-	EndpointVideosGenerations = "/v1/videos/generations"
-	EndpointVideosEdits       = "/v1/videos/edits"
-	EndpointVideosExtensions  = "/v1/videos/extensions"
-	EndpointVideos            = "/v1/videos"
-	EndpointGeminiModels      = "/v1beta/models"
+	EndpointMessages             = "/v1/messages"
+	EndpointChatCompletions      = "/v1/chat/completions"
+	EndpointEmbeddings           = "/v1/embeddings"
+	EndpointAlphaSearch          = "/v1/alpha/search"
+	EndpointResponses            = "/v1/responses"
+	EndpointResponsesCompact     = "/v1/responses/compact"
+	EndpointResponsesInputTokens = "/v1/responses/input_tokens"
+	EndpointImagesGenerations    = "/v1/images/generations"
+	EndpointImagesEdits          = "/v1/images/edits"
+	EndpointImageTasks           = "/v1/images/tasks"
+	EndpointVideosGenerations    = "/v1/videos/generations"
+	EndpointVideosEdits          = "/v1/videos/edits"
+	EndpointVideosExtensions     = "/v1/videos/extensions"
+	EndpointVideos               = "/v1/videos"
+	EndpointGeminiModels         = "/v1beta/models"
 )
 
 const EndpointAntigravityGenerateContent = "/v1internal:streamGenerateContent"
@@ -80,6 +81,8 @@ const (
 func NormalizeInboundEndpoint(path string) string {
 	path = strings.TrimSpace(path)
 	switch {
+	case strings.Contains(path, EndpointResponsesInputTokens) || isResponsesInputTokensAliasPath(path):
+		return EndpointResponsesInputTokens
 	case strings.Contains(path, EndpointEmbeddings):
 		return EndpointEmbeddings
 	case strings.Contains(path, EndpointAlphaSearch) || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/alpha/search") || isBareOrSubpathOf(strings.TrimRight(path, "/"), "/backend-api/codex/alpha/search"):
@@ -111,6 +114,15 @@ func NormalizeInboundEndpoint(path string) string {
 	default:
 		return path
 	}
+}
+
+func isResponsesInputTokensAliasPath(path string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(path), "/")
+	if trimmed == "" {
+		return false
+	}
+	return isBareOrSubpathOf(trimmed, "/responses/input_tokens") ||
+		isBareOrSubpathOf(trimmed, "/backend-api/codex/responses/input_tokens")
 }
 
 // isResponsesCompactAliasPath reports whether path is the bare/alias
@@ -185,7 +197,7 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 
 	switch platform {
 	case service.PlatformOpenAI, service.PlatformGrok:
-		if inbound == EndpointEmbeddings || inbound == EndpointAlphaSearch || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideosEdits || inbound == EndpointVideosExtensions || inbound == EndpointVideos {
+		if inbound == EndpointEmbeddings || inbound == EndpointAlphaSearch || inbound == EndpointResponsesInputTokens || inbound == EndpointImagesGenerations || inbound == EndpointImagesEdits || inbound == EndpointVideosGenerations || inbound == EndpointVideosEdits || inbound == EndpointVideosExtensions || inbound == EndpointVideos {
 			return inbound
 		}
 		// OpenAI forwards everything to the Responses API.
