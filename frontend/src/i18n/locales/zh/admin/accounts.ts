@@ -622,6 +622,9 @@ export default {
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        cursorHybridTools: 'Cursor Chat 工具兼容',
+        cursorHybridToolsDesc:
+          '仅当请求头识别为 Cursor 客户端，且其向 /v1/chat/completions 发送 Chat 消息与扁平 Responses 工具定义的混合请求时，网关才会完整保留工具并转发到 OpenAI Responses 上游；包括 ApplyPatch 等 custom 工具。其他客户端不受影响；此兼容处理独立于上方“自动透传”开关。',
         flattenNamespaces: '摊平 Codex namespace 工具（兼容）',
         flattenNamespacesDesc:
           '默认关闭：/responses 上的 namespace 工具声明原样转发，这正是 ChatGPT Codex 后端期望的形态。仅当该 OAuth 账号指向不认识 namespace 的兼容上游时才开启——摊平会把工具改名为 namespace__tool，使按 functions.<命名空间>.<工具> 寻址的模型（如 gpt-5.6 多智能体）无法调用。压缩（compact）请求不受该开关影响，始终摊平。',

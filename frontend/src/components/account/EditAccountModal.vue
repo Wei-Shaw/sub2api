@@ -1601,6 +1601,19 @@
         </div>
       </div>
 
+      <!-- Cursor hybrid Chat/Responses tool compatibility status -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="rounded-lg border border-sky-100 bg-sky-50/60 px-4 py-3 dark:border-sky-900/50 dark:bg-sky-950/20">
+          <label class="input-label mb-0 text-sky-800 dark:text-sky-200">{{ t('admin.accounts.openai.cursorHybridTools') }}</label>
+          <p class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+            {{ t('admin.accounts.openai.cursorHybridToolsDesc') }}
+          </p>
+        </div>
+      </div>
+
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"

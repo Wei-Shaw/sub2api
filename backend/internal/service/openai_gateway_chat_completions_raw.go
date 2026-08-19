@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -92,6 +94,26 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(upstreamBody, upstreamModel); normalized {
 		upstreamBody = normalizedBody
+	}
+	// Cursor currently sends a Chat Completions-shaped request, but declares
+	// ApplyPatch as a Responses-only custom tool. Chat-only upstreams ignore
+	// that declaration, making the model believe the tool is unavailable.
+	// Lower client-only tools to the established function-tool representation
+	// before the raw pass-through. A Chat Completions response expresses calls
+	// as function tool_calls, which is the matching wire format for this client
+	// endpoint.
+	if isCursorClientRequest(c) {
+		adaptedBody, clientToolsAdapted, err := adaptRawChatCompletionsClientTools(upstreamBody)
+		if err != nil {
+			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return nil, fmt.Errorf("adapt raw chat client tools: %w", err)
+		}
+		if clientToolsAdapted {
+			upstreamBody = adaptedBody
+			logger.L().Info("openai chat_completions raw: lowered Cursor client-only tools for chat upstream",
+				zap.Int64("account_id", account.ID),
+			)
+		}
 	}
 
 	// 4. Apply OpenAI fast policy on the CC body
@@ -225,6 +247,26 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		result.UpstreamEndpoint = grokChatRawEndpoint
 	}
 	return result, forwardErr
+}
+
+// adaptRawChatCompletionsClientTools reuses the Responses client-tool lowering
+// rules for Cursor's hybrid Chat Completions payloads. It intentionally only
+// rewrites tool declarations/history owned by the client; messages and all
+// ordinary Chat Completions fields remain unchanged.
+func adaptRawChatCompletionsClientTools(body []byte) ([]byte, bool, error) {
+	var request map[string]any
+	if err := json.Unmarshal(body, &request); err != nil {
+		return body, false, fmt.Errorf("parse request body: %w", err)
+	}
+	_, changed, err := apicompat.AdaptResponsesClientTools(request)
+	if err != nil || !changed {
+		return body, false, err
+	}
+	adapted, err := json.Marshal(request)
+	if err != nil {
+		return body, false, fmt.Errorf("marshal adapted request: %w", err)
+	}
+	return adapted, true, nil
 }
 
 func (s *OpenAIGatewayService) rawChatCompletionsURL(account *Account) (string, error) {
