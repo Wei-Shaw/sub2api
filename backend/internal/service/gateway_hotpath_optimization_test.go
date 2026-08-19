@@ -602,6 +602,97 @@ func TestGetAvailableModels_ErrorAndGlobalListBranches(t *testing.T) {
 	require.Equal(t, int64(1), okRepo.listAllCalls.Load())
 }
 
+func TestGetAvailableModels_OpenAIPassthroughUsesDefaultFallback(t *testing.T) {
+	groupID := int64(10)
+
+	tests := []struct {
+		name     string
+		accounts []Account
+		want     []string
+	}{
+		{
+			name: "passthrough only ignores stale mapping",
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "upstream-model"}},
+					Extra:       map[string]any{"openai_passthrough": true},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "passthrough wins over ordinary account mapping",
+			accounts: []Account{
+				{
+					ID:          2,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"configured-model": "configured-upstream"}},
+				},
+				{
+					ID:          3,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"stale-model": "upstream-model"}},
+					Extra:       map[string]any{"openai_passthrough": true},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "ordinary accounts preserve mapped whitelist",
+			accounts: []Account{
+				{
+					ID:          4,
+					Platform:    PlatformOpenAI,
+					Credentials: map[string]any{"model_mapping": map[string]any{"configured-model": "configured-upstream"}},
+				},
+			},
+			want: []string{"configured-model"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: tt.accounts}}
+			svc := &GatewayService{
+				accountRepo:        repo,
+				modelsListCache:    gocache.New(time.Minute, time.Minute),
+				modelsListCacheTTL: time.Minute,
+			}
+
+			require.Equal(t, tt.want, svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI))
+		})
+	}
+}
+
+func TestGetAvailableModels_GlobalListPreservesMappedModelsWithOpenAIPassthrough(t *testing.T) {
+	groupID := int64(11)
+	repo := &modelsListAccountRepoStub{
+		byGroup: map[int64][]Account{
+			groupID: {
+				{
+					ID:       1,
+					Platform: PlatformOpenAI,
+					Extra:    map[string]any{"openai_passthrough": true},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Credentials: map[string]any{"model_mapping": map[string]any{"claude-mapped": "claude-upstream"}},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{
+		accountRepo:        repo,
+		modelsListCache:    gocache.New(time.Minute, time.Minute),
+		modelsListCacheTTL: time.Minute,
+	}
+
+	require.Equal(t, []string{"claude-mapped"}, svc.GetAvailableModels(context.Background(), &groupID, ""))
+}
+
 func TestGatewayHotpathHelpers_CacheTTLAndStickyContext(t *testing.T) {
 	t.Run("resolve_user_group_rate_cache_ttl", func(t *testing.T) {
 		require.Equal(t, defaultUserGroupRateCacheTTL, resolveUserGroupRateCacheTTL(nil))

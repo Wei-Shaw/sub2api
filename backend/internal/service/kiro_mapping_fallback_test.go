@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -69,7 +70,7 @@ func TestGatewayServiceCalculateTokenCost_KiroAutoUsesConservativeFallback(t *te
 	}, 1.1)
 	require.NoError(t, err)
 
-	cost := svc.calculateTokenCost(context.Background(), result, &APIKey{}, "auto", 1.1, &recordUsageOpts{IsKiroAccount: true})
+	cost := svc.calculateTokenCost(context.Background(), result, &APIKey{}, "auto", 1.1, time.Now(), &recordUsageOpts{IsKiroAccount: true})
 	require.NotNil(t, cost)
 	require.InDelta(t, expected.ActualCost, cost.ActualCost, 1e-12)
 	require.InDelta(t, expected.TotalCost, cost.TotalCost, 1e-12)

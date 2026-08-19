@@ -166,6 +166,9 @@ type AccountBulkUpdate struct {
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
+	// EnsureCodexFingerprintSeed asks the repository to atomically preserve an
+	// existing valid Codex fingerprint seed or create one for eligible rows.
+	EnsureCodexFingerprintSeed bool
 }
 
 // CreateAccountRequest 创建账号请求
@@ -233,7 +236,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Platform:    req.Platform,
 		Type:        req.Type,
 		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       req.Extra,
+		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
@@ -336,7 +339,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
-		account.Extra = extra
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, extra)
+	} else {
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
 
 	if req.ProxyID != nil {

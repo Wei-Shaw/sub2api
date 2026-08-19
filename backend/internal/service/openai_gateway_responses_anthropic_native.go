@@ -377,7 +377,11 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 	}
 
-	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) bool {
+	// 与 CC 姊妹路径（handleCCStreamingFromNativeAnthropic.writeChunk）同语义：
+	// 客户端断开后不再写出，但继续排水上游至流自然结束——Anthropic 的最终
+	// output_tokens 只在末尾 message_delta 携带，提前退出会把整段生成记成 ~1
+	// token，payg 上游照常计费而平台漏记。状态机照常推进以保证 finalize 一致。
+	processAnthropicEvent := func(event *apicompat.AnthropicStreamEvent) {
 		if firstChunk {
 			firstChunk = false
 			ms := int(time.Since(startTime).Milliseconds())
@@ -392,6 +396,9 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 		}
 
 		events := apicompat.AnthropicEventToResponsesEvents(event, state)
+		if clientDisconnected {
+			return
+		}
 		for _, evt := range events {
 			payload, err := json.Marshal(evt)
 			if err != nil {
@@ -406,14 +413,13 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 				eventType := gjson.GetBytes(restored, "type").String()
 				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
 					clientDisconnected = true
-					return true
+					return
 				}
 			}
 		}
 		if len(events) > 0 {
 			c.Writer.Flush()
 		}
-		return false
 	}
 
 	for {
@@ -447,21 +453,39 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 			continue
 		}
 
-		if processAnthropicEvent(&event) {
-			return resultWithUsage(), nil
-		}
+		processAnthropicEvent(&event)
 	}
 
-	// Finalize state machine（客户端已断开时仍执行，保证 usage 汇总完整）。
-	if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 {
+	// Finalize state machine（客户端已断开时仍推进，保证 usage 汇总完整；仅在
+	// 客户端仍连接时写出）。终态帧与逐事件路径一致过工具名反转与客户端工具还原，
+	// 避免流截断时终态帧携带改写后的工具名。
+	if finalEvents := apicompat.FinalizeAnthropicResponsesStream(state); len(finalEvents) > 0 && !clientDisconnected {
+		wrote := false
 		for _, evt := range finalEvents {
-			sse, err := apicompat.ResponsesEventToSSE(evt)
+			payload, err := json.Marshal(evt)
 			if err != nil {
 				continue
 			}
-			fmt.Fprint(c.Writer, sse) //nolint:errcheck
+			payload = reverseToolNamesIfPresent(c, payload)
+			payloads, _, err := clientToolRestorer.RestoreEvent(payload)
+			if err != nil {
+				continue
+			}
+			for _, restored := range payloads {
+				eventType := gjson.GetBytes(restored, "type").String()
+				if _, err := fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", eventType, restored); err != nil {
+					clientDisconnected = true
+					break
+				}
+				wrote = true
+			}
+			if clientDisconnected {
+				break
+			}
 		}
-		c.Writer.Flush()
+		if wrote {
+			c.Writer.Flush()
+		}
 	}
 
 	return resultWithUsage(), nil
