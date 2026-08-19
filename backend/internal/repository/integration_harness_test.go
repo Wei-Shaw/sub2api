@@ -38,6 +38,9 @@ var (
 	integrationDB        *sql.DB
 	integrationEntClient *dbent.Client
 	integrationRedis     *redisclient.Client
+	// integrationDSN 供需要独立连接池的用例开新的 *sql.DB（例如按 schema 隔离、
+	// 或验证跨事务行为——那些场景不能复用共享连接）。
+	integrationDSN string
 
 	redisNamespaceSeq uint64
 )
@@ -91,6 +94,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	integrationDSN = dsn
 	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
 	if err != nil {
 		log.Printf("failed to open sql db: %v", err)

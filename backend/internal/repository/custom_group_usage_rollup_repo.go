@@ -111,28 +111,77 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	return results, nil
 }
 
+// groupUsageSyncMaxDaysPerRun 限制单次同步推进的天数。
+// 回填/时区切换可能横跨很长区间，分块本身不会阻塞写入，但一轮跑太久会挤占
+// 定时器与 leader 锁；余量走下个周期，水位已持久化因而可以续跑。
+const groupUsageSyncMaxDaysPerRun = 400
+
 // SyncGroupUsageRollups 将服务端配置时区今日以前的用量发布为分组日桶。
+//
+// 发布必须持有 usage_group_rollup_state 的 FOR UPDATE：重建 SELECT 要在拿到锁之后
+// 执行，否则并发的未提交写入既不会被本次重建看见，又会在提交时读到旧水位而不触发
+// 失效，那条用量就丢了。而该锁与 INSERT 触发器的 FOR KEY SHARE 冲突，持锁期间
+// usage_logs 写入全部阻塞——所以这里按自然日分块，一天一个短事务，
+// 把锁持有时间从「整个重建区间」压到「单日重建」，写入在块之间得以通过。
 func (r *dashboardAggregationRepository) SyncGroupUsageRollups(ctx context.Context, todayStart time.Time) error {
 	if r == nil || r.sql == nil {
 		return nil
 	}
 	todayStart = service.GroupUsageTodayStart(todayStart)
-	if db, ok := r.sql.(*sql.DB); ok {
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
-		if err := txRepo.syncGroupUsageRollupsInTx(ctx, todayStart); err != nil {
-			_ = tx.Rollback()
-			return err
-		}
-		return tx.Commit()
+	db, ok := r.sql.(*sql.DB)
+	if !ok {
+		// 退化路径（已在外层事务中）：无法分块提交，只能一次性完成。
+		_, err := r.syncGroupUsageRollupDayInTx(ctx, todayStart)
+		return err
 	}
-	return r.syncGroupUsageRollupsInTx(ctx, todayStart)
+
+	for range groupUsageSyncMaxDaysPerRun {
+		// 每块提交后状态行锁即释放，积压的 usage_logs 写入得以通过。
+		done, err := syncGroupUsageRollupDay(ctx, db, todayStart)
+		if err != nil {
+			// 超时/取消属于正常中断：已完成的天数都已提交，下个周期从断点续跑。
+			if ctx.Err() != nil {
+				logger.LegacyPrintf(
+					"repository.group_usage_rollup",
+					"[GroupUsageRollup] 同步中断，余量留待下个周期: %v",
+					err,
+				)
+				return nil
+			}
+			return err
+		}
+		if done {
+			return nil
+		}
+	}
+	logger.LegacyPrintf(
+		"repository.group_usage_rollup",
+		"[GroupUsageRollup] 单轮已推进 %d 天仍未追平，余量留待下个周期",
+		groupUsageSyncMaxDaysPerRun,
+	)
+	return nil
 }
 
-func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.Context, todayStart time.Time) error {
+func syncGroupUsageRollupDay(ctx context.Context, db *sql.DB, todayStart time.Time) (bool, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	txRepo := newDashboardAggregationRepositoryWithSQL(tx)
+	done, err := txRepo.syncGroupUsageRollupDayInTx(ctx, todayStart)
+	if err != nil {
+		_ = tx.Rollback()
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return done, nil
+}
+
+// syncGroupUsageRollupDayInTx 发布水位所指的那一天，并把水位前推一天。
+// 返回 done=true 表示已追平今日，无需继续分块。
+func (r *dashboardAggregationRepository) syncGroupUsageRollupDayInTx(ctx context.Context, todayStart time.Time) (bool, error) {
 	var closedBefore string
 	var previousRetainedFrom time.Time
 	var stateTimezoneName string
@@ -142,34 +191,33 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		WHERE id = 1
 		FOR UPDATE
 	`, nil, &closedBefore, &previousRetainedFrom, &stateTimezoneName); err != nil {
-		return fmt.Errorf("读取分组用量汇总水位: %w", err)
+		return false, fmt.Errorf("读取分组用量汇总水位: %w", err)
 	}
 
 	todayDate := service.GroupUsageDate(todayStart)
+	todayDateTime, err := service.ParseGroupUsageDate(todayDate)
+	if err != nil {
+		return false, err
+	}
 	timezoneName := service.GroupUsageTimezoneName()
 	timezoneChanged := stateTimezoneName != timezoneName
 	var closedTime time.Time
 	if !timezoneChanged {
-		var err error
 		closedTime, err = service.ParseGroupUsageDate(closedBefore)
 		if err != nil {
-			return fmt.Errorf("解析分组用量汇总水位 %q: %w", closedBefore, err)
-		}
-		todayDateTime, err := service.ParseGroupUsageDate(todayDate)
-		if err != nil {
-			return err
+			return false, fmt.Errorf("解析分组用量汇总水位 %q: %w", closedBefore, err)
 		}
 		if closedTime.After(todayDateTime) {
-			return fmt.Errorf("分组用量汇总水位位于未来: %s", closedBefore)
+			return false, fmt.Errorf("分组用量汇总水位位于未来: %s", closedBefore)
 		}
 		if closedBefore == todayDate {
-			return nil
+			return true, nil
 		}
 	}
 
 	var earliest sql.NullTime
 	if err := scanSingleRow(ctx, r.sql, "SELECT MIN(created_at) FROM usage_logs", nil, &earliest); err != nil {
-		return fmt.Errorf("读取最早用量记录: %w", err)
+		return false, fmt.Errorf("读取最早用量记录: %w", err)
 	}
 	retainedFrom := todayStart
 	if earliest.Valid {
@@ -178,13 +226,15 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	retainedDate := service.GroupUsageDate(retainedFrom)
 	retainedDateTime, err := service.ParseGroupUsageDate(retainedDate)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// 重建下界不能早于 retainedDate：更早的原始日志已被清理，
 	// 那段日桶是不可重算的历史沉淀，只能原样保留。
 	rebuildStartDate := retainedDate
+	rebuildStart := retainedDateTime
 	if !timezoneChanged && closedTime.After(retainedDateTime) {
 		rebuildStartDate = closedBefore
+		rebuildStart = closedTime
 	}
 	if timezoneChanged && previousRetainedFrom.Before(retainedFrom) {
 		logger.LegacyPrintf(
@@ -194,16 +244,23 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 			retainedDate,
 		)
 	}
-	rebuildStart, err := service.ParseGroupUsageDate(rebuildStartDate)
-	if err != nil {
-		return err
+	if !rebuildStart.Before(todayDateTime) {
+		// 归档屏障已越过今日：没有可发布的历史日，仅把状态对齐到今日。
+		return true, r.publishGroupUsageWatermark(ctx, todayDate, todayDate, retainedFrom, timezoneName)
 	}
+
+	// 本块只重建 [rebuildStart, nextClosed) 这一个自然日。
+	nextClosed := rebuildStart.AddDate(0, 0, 1)
+	if nextClosed.After(todayDateTime) {
+		nextClosed = todayDateTime
+	}
+	nextClosedDate := service.GroupUsageDate(nextClosed)
 
 	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_group_daily_rollups
-		WHERE bucket_date >= $1::date
-	`, rebuildStartDate); err != nil {
-		return fmt.Errorf("清理分组用量日桶: %w", err)
+		WHERE bucket_date >= $1::date AND bucket_date < $2::date
+	`, rebuildStartDate, nextClosedDate); err != nil {
+		return false, fmt.Errorf("清理分组用量日桶: %w", err)
 	}
 
 	if _, err := r.sql.ExecContext(ctx, `
@@ -222,11 +279,40 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		DO UPDATE SET
 			actual_cost = EXCLUDED.actual_cost,
 			computed_at = EXCLUDED.computed_at
-	`, rebuildStart.UTC(), todayStart.UTC(), timezoneName); err != nil {
-		return fmt.Errorf("重建分组用量日桶: %w", err)
+	`, rebuildStart.UTC(), nextClosed.UTC(), timezoneName); err != nil {
+		return false, fmt.Errorf("重建分组用量日桶: %w", err)
 	}
 
-	// 归档屏障只增不减：迟到的历史写入不得把它拉回，否则会解除已归档日桶的保护。
+	done := nextClosedDate == todayDate
+	// 追平今日时顺带清掉今日及以后的残桶：当天用量走原始日志尾段，
+	// 留着这些桶会与尾段重复计入。
+	trimFrom := ""
+	if done {
+		trimFrom = todayDate
+	}
+	if err := r.publishGroupUsageWatermark(ctx, nextClosedDate, trimFrom, retainedFrom, timezoneName); err != nil {
+		return false, err
+	}
+	return done, nil
+}
+
+// publishGroupUsageWatermark 推进发布水位。trimFrom 非空时一并删除该日期及以后的日桶。
+// 归档屏障只增不减：迟到的历史写入不得把它拉回，否则会解除已归档日桶的保护。
+func (r *dashboardAggregationRepository) publishGroupUsageWatermark(
+	ctx context.Context,
+	closedBefore string,
+	trimFrom string,
+	retainedFrom time.Time,
+	timezoneName string,
+) error {
+	if trimFrom != "" {
+		if _, err := r.sql.ExecContext(ctx, `
+			DELETE FROM usage_group_daily_rollups
+			WHERE bucket_date >= $1::date
+		`, trimFrom); err != nil {
+			return fmt.Errorf("清理今日及以后的分组用量日桶: %w", err)
+		}
+	}
 	if _, err := r.sql.ExecContext(ctx, `
 		UPDATE usage_group_rollup_state
 		SET closed_before = $1::date,
@@ -234,7 +320,7 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 			timezone_name = $3,
 			updated_at = NOW()
 		WHERE id = 1
-	`, todayDate, retainedFrom, timezoneName); err != nil {
+	`, closedBefore, retainedFrom, timezoneName); err != nil {
 		return fmt.Errorf("更新分组用量汇总水位: %w", err)
 	}
 	return nil
