@@ -17,6 +17,9 @@ func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashb
 	if overview == nil {
 		return 0
 	}
+	if thresholds == nil {
+		thresholds = defaultOpsMetricThresholds()
+	}
 
 	// Idle/no-data: avoid showing a "bad" score when there is no traffic.
 	// UI can still render a gray/idle state based on QPS + error rate.
@@ -34,22 +37,29 @@ func computeDashboardHealthScoreWithThresholds(now time.Time, overview *OpsDashb
 
 // computeBusinessHealth calculates business health score (0-100)
 // Components: Error Rate (50%) + TTFT (50%)
-func computeBusinessHealth(overview *OpsDashboardOverview, thresholdArgs ...*OpsMetricThresholds) float64 {
-	var thresholds *OpsMetricThresholds
-	if len(thresholdArgs) > 0 {
-		thresholds = thresholdArgs[0]
-	}
+func computeBusinessHealth(overview *OpsDashboardOverview, thresholds *OpsMetricThresholds) float64 {
 	if thresholds == nil {
 		thresholds = defaultOpsMetricThresholds()
 	}
+	defaults := defaultOpsMetricThresholds()
 
 	// Error rate score scales with configured alert thresholds.
 	// With defaults (5%), this preserves the previous 1% → 100, 10% → 0 curve.
 	errorPct := clampFloat64(overview.ErrorRate*100, 0, 100)
 	upstreamPct := clampFloat64(overview.UpstreamErrorRate*100, 0, 100)
+	requestErrorThreshold := clampFloat64(
+		thresholdOrDefault(thresholds.RequestErrorRatePercentMax, defaults.RequestErrorRatePercentMax),
+		0,
+		100,
+	)
+	upstreamErrorThreshold := clampFloat64(
+		thresholdOrDefault(thresholds.UpstreamErrorRatePercentMax, defaults.UpstreamErrorRatePercentMax),
+		0,
+		100,
+	)
 	errorScore := math.Min(
-		scoreHighIsBad(errorPct, percentThresholdOrDefault(thresholds.RequestErrorRatePercentMax, 5.0)*0.2, percentThresholdOrDefault(thresholds.RequestErrorRatePercentMax, 5.0)*2),
-		scoreHighIsBad(upstreamPct, percentThresholdOrDefault(thresholds.UpstreamErrorRatePercentMax, 5.0)*0.2, percentThresholdOrDefault(thresholds.UpstreamErrorRatePercentMax, 5.0)*2),
+		scoreHighIsBad(errorPct, requestErrorThreshold*0.2, requestErrorThreshold*2),
+		scoreHighIsBad(upstreamPct, upstreamErrorThreshold*0.2, upstreamErrorThreshold*2),
 	)
 
 	// TTFT score scales with configured max threshold.
@@ -57,7 +67,7 @@ func computeBusinessHealth(overview *OpsDashboardOverview, thresholdArgs ...*Ops
 	ttftScore := 100.0
 	if overview.TTFT.P99 != nil {
 		p99 := float64(*overview.TTFT.P99)
-		ttftThreshold := positiveThresholdOrDefault(thresholds.TTFTp99MsMax, 500.0)
+		ttftThreshold := math.Max(0, thresholdOrDefault(thresholds.TTFTp99MsMax, defaults.TTFTp99MsMax))
 		ttftScore = scoreHighIsBad(p99, ttftThreshold*2, ttftThreshold*6)
 	}
 
@@ -67,6 +77,9 @@ func computeBusinessHealth(overview *OpsDashboardOverview, thresholdArgs ...*Ops
 
 func scoreHighIsBad(v float64, goodAtOrBelow float64, zeroAtOrAbove float64) float64 {
 	if zeroAtOrAbove <= goodAtOrBelow {
+		if v >= zeroAtOrAbove {
+			return 0
+		}
 		return 100
 	}
 	if v <= goodAtOrBelow {
@@ -78,16 +91,14 @@ func scoreHighIsBad(v float64, goodAtOrBelow float64, zeroAtOrAbove float64) flo
 	return (zeroAtOrAbove - v) / (zeroAtOrAbove - goodAtOrBelow) * 100
 }
 
-func percentThresholdOrDefault(ptr *float64, fallback float64) float64 {
-	v := positiveThresholdOrDefault(ptr, fallback)
-	return clampFloat64(v, 0.0001, 100)
-}
-
-func positiveThresholdOrDefault(ptr *float64, fallback float64) float64 {
-	if ptr == nil || *ptr <= 0 {
-		return fallback
+func thresholdOrDefault(value *float64, fallback *float64) float64 {
+	if value != nil {
+		return *value
 	}
-	return *ptr
+	if fallback != nil {
+		return *fallback
+	}
+	return 0
 }
 
 // computeInfraHealth calculates infrastructure health score (0-100)

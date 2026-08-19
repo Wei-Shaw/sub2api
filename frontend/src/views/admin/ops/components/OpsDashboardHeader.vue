@@ -546,10 +546,10 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
   }
 
   const ttftP99 = ov.ttft?.p99_ms ?? 0
-  const ttftThreshold = props.thresholds?.ttft_p99_ms_max ?? 500
-  if (ttftThreshold > 0 && ttftP99 >= ttftThreshold) {
+  const ttftLevel = getTTFTThresholdLevel(ttftP99)
+  if (ttftLevel !== 'normal') {
     report.push({
-      type: 'warning',
+      type: ttftLevel,
       message: t('admin.ops.diagnosis.ttftHigh', { ttft: ttftP99.toFixed(0) }),
       impact: t('admin.ops.diagnosis.ttftHighImpact'),
       action: t('admin.ops.diagnosis.ttftHighAction')
@@ -558,16 +558,15 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
 
   // Error rate diagnostics use the same configurable thresholds as the metric cards.
   const upstreamRatePct = (ov.upstream_error_rate ?? 0) * 100
-  const upstreamRateThreshold = props.thresholds?.upstream_error_rate_percent_max ?? 5
-  const upstreamRateWarningThreshold = upstreamRateThreshold * 0.4
-  if (upstreamRateThreshold > 0 && upstreamRatePct >= upstreamRateThreshold) {
+  const upstreamRateLevel = getUpstreamErrorRateThresholdLevel(upstreamRatePct)
+  if (upstreamRateLevel === 'critical') {
     report.push({
       type: 'critical',
       message: t('admin.ops.diagnosis.upstreamCritical', { rate: upstreamRatePct.toFixed(2) }),
       impact: t('admin.ops.diagnosis.upstreamCriticalImpact'),
       action: t('admin.ops.diagnosis.upstreamCriticalAction')
     })
-  } else if (upstreamRateWarningThreshold > 0 && upstreamRatePct >= upstreamRateWarningThreshold) {
+  } else if (upstreamRateLevel === 'warning') {
     report.push({
       type: 'warning',
       message: t('admin.ops.diagnosis.upstreamHigh', { rate: upstreamRatePct.toFixed(2) }),
@@ -577,17 +576,15 @@ const diagnosisReport = computed<DiagnosisItem[]>(() => {
   }
 
   const errorPct = (ov.error_rate ?? 0) * 100
-  const errorRateThreshold = props.thresholds?.request_error_rate_percent_max ?? 5
-  const errorRateCriticalThreshold = errorRateThreshold * 0.6
-  const errorRateWarningThreshold = errorRateThreshold * 0.1
-  if (errorRateCriticalThreshold > 0 && errorPct >= errorRateCriticalThreshold) {
+  const errorRateLevel = getRequestErrorRateThresholdLevel(errorPct)
+  if (errorRateLevel === 'critical') {
     report.push({
       type: 'critical',
       message: t('admin.ops.diagnosis.errorHigh', { rate: errorPct.toFixed(2) }),
       impact: t('admin.ops.diagnosis.errorHighImpact'),
       action: t('admin.ops.diagnosis.errorHighAction')
     })
-  } else if (errorRateWarningThreshold > 0 && errorPct >= errorRateWarningThreshold) {
+  } else if (errorRateLevel === 'warning') {
     report.push({
       type: 'warning',
       message: t('admin.ops.diagnosis.errorElevated', { rate: errorPct.toFixed(2) }),

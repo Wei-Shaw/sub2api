@@ -98,6 +98,30 @@ func TestComputeDashboardHealthScore_UsesConfiguredThresholds(t *testing.T) {
 	require.GreaterOrEqual(t, tunedScore, 90)
 }
 
+func TestComputeDashboardHealthScore_ZeroThresholdsRemainEffective(t *testing.T) {
+	t.Parallel()
+
+	zero := 0.0
+	overview := &OpsDashboardOverview{
+		RequestCountTotal: 1,
+		RequestCountSLA:   1,
+		TTFT:              OpsPercentiles{P99: intPtr(1)},
+		SystemMetrics: &OpsSystemMetricsSnapshot{
+			DBOK:               boolPtr(true),
+			RedisOK:            boolPtr(true),
+			CPUUsagePercent:    float64Ptr(1),
+			MemoryUsagePercent: float64Ptr(1),
+		},
+	}
+
+	score := computeDashboardHealthScoreWithThresholds(time.Now().UTC(), overview, &OpsMetricThresholds{
+		TTFTp99MsMax:                &zero,
+		RequestErrorRatePercentMax:  &zero,
+		UpstreamErrorRatePercentMax: &zero,
+	})
+	require.Less(t, score, 100)
+}
+
 func TestComputeDashboardHealthScore_Comprehensive(t *testing.T) {
 	t.Parallel()
 
@@ -375,7 +399,7 @@ func TestComputeBusinessHealth(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score := computeBusinessHealth(tt.overview)
+			score := computeBusinessHealth(tt.overview, defaultOpsMetricThresholds())
 			require.GreaterOrEqual(t, score, tt.wantMin, "score should be >= %.1f", tt.wantMin)
 			require.LessOrEqual(t, score, tt.wantMax, "score should be <= %.1f", tt.wantMax)
 			require.GreaterOrEqual(t, score, 0.0, "score must be >= 0")
