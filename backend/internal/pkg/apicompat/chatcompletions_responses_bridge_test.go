@@ -17,6 +17,26 @@ REDACTED
 	assert.JSONEq(t, `"follow project instructions"`, string(messages[0].Content))
 REDACTED
 
+func TestResponsesInputToChatMessages_SkipsInvalidHistoricalFunctionCall(t *testing.T) {
+	input := json.RawMessage(`[
+		{"type":"function_call","call_id":"call_bad","name":"exec_command","arguments":"{\"cmd\": \"ssh root@HOST"REDACTED,
+		{"type":"function_call_output","call_id":"call_bad","output":"failed to parse function arguments"REDACTED,
+		{"type":"function_call","call_id":"call_ok","name":"exec_command","arguments":"{REDACTED"REDACTED,
+		{"type":"function_call_output","call_id":"call_ok","output":"ok"REDACTED,
+		{"role":"user","content":"continue"REDACTED
+	]`)
+
+	messages, err := responsesInputToChatMessages("", input)
+REDACTED
+	require.Len(t, messages, 3)
+	require.Equal(t, "assistant", messages[0].Role)
+	require.Len(t, messages[0].ToolCalls, 1)
+	require.Equal(t, "call_ok", messages[0].ToolCalls[0].ID)
+	require.Equal(t, "tool", messages[1].Role)
+	require.Equal(t, "call_ok", messages[1].ToolCallID)
+	require.Equal(t, "user", messages[2].Role)
+REDACTED
+
 func TestResponsesInputToChatMessages_KeepsChatCompletionRoles(t *testing.T) {
 	input := json.RawMessage(`[
 		{"role":"system","content":"system message"REDACTED,
