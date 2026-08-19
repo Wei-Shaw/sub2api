@@ -228,6 +228,7 @@ func TestForwardAsChatCompletions_ResponsesShapeForceChatCompletionsRestoresCust
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "Cursor/1.0")
 
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
