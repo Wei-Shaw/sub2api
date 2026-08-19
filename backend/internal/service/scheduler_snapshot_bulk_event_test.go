@@ -114,6 +114,21 @@ REDACTED
 	require.Empty(t, deleted)
 REDACTED
 
+func TestSchedulerBulkAccountEventScopesCNRebuildToFreshPlatform(t *testing.T) {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseekREDACTED {
+		t.Run(platform, func(t *testing.T) {
+			cache := newBulkEventSnapshotCache()
+			repo := newBulkEventAccountRepo(&Account{ID: 1, Platform: platform, GroupIDs: []int64{12REDACTEDREDACTED)
+			svc := newBulkEventTestService(cache, repo)
+
+			err := svc.handleBulkAccountEvent(context.Background(), bulkEventPayload([]int64{1REDACTED, []int64{11REDACTED), make(map[batchSeenKey]struct{REDACTED))
+
+		REDACTED
+			require.ElementsMatch(t, schedulerBucketsForTest([]int64{11, 12REDACTED, platform), cache.capturedBuckets())
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestSchedulerBulkAccountEventRebuildsOpenAIUngroupedBucket(t *testing.T) {
 	cache := newBulkEventSnapshotCache()
 	repo := newBulkEventAccountRepo(&Account{ID: 6, Platform: PlatformOpenAIREDACTED)

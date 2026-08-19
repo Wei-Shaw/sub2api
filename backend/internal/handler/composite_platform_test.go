@@ -22,18 +22,42 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, platform)
 REDACTED
 
-func TestOpenAICompatibleTextTargetAllowsCompositeGrokModel(t *testing.T) {
+func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, path := range []string{"/v1/messages", "/v1/chat/completions"REDACTED {
-		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		c.Request = httptest.NewRequest("POST", path, nil)
-		apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
+	providers := []struct {
+		model    string
+		platform string
+REDACTED{
+		{model: "grok-4.3", platform: service.PlatformGrokREDACTED,
+		{model: "kimi-k2-thinking", platform: service.PlatformKimiREDACTED,
+		{model: "glm-5.2", platform: service.PlatformZhipuREDACTED,
+		{model: "deepseek-v3.2", platform: service.PlatformDeepseekREDACTED,
+REDACTED
+	for _, path := range []string{"/v1/messages", "/v1/chat/completions", "/v1/responses", "/v1/responses/input_tokens", "/v1/messages/count_tokens"REDACTED {
+		for _, provider := range providers {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", path, nil)
+			apiKey := &service.APIKey{Group: &service.Group{Platform: service.PlatformCompositeREDACTEDREDACTED
 
-		require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, "grok-4.3"), "path=%s", path)
-		platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
-		require.True(t, ok, "path=%s", path)
-		require.Equal(t, service.PlatformGrok, platform, "path=%s", path)
+			require.True(t, openAICompatibleTextTargetAllowed(c, apiKey, provider.model), "path=%s model=%s", path, provider.model)
+			platform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context())
+			require.True(t, ok, "path=%s model=%s", path, provider.model)
+			require.Equal(t, provider.platform, platform, "path=%s model=%s", path, provider.model)
+	REDACTED
+REDACTED
+REDACTED
+
+// WS ingress 对 CN 账号既过不了 transport 过滤、HTTP 桥也没有 Responses 转换，
+// 放行只会把明确的策略拒绝换成 "no available account"，因此 WS 白名单保持 openai+grok。
+func TestResponsesWebSocketCompositePlatformGuardKeepsOpenAIAndGrokOnly(t *testing.T) {
+	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformOpenAI))
+	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformGrok))
+	for _, platform := range []string{
+		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
+		service.PlatformAnthropic, service.PlatformGemini,
+REDACTED {
+		require.False(t, isResponsesWebSocketCompositePlatform(platform), "platform=%s", platform)
 REDACTED
 REDACTED
 
