@@ -45,15 +45,8 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsRebuildsWhenTimezone
 			AddRow("2026-03-02", time.Unix(0, 0).UTC(), "Asia/Shanghai"))
 	mock.ExpectQuery(`SELECT MIN\(created_at\) FROM usage_logs`).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(retainedFrom))
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs("2026-03-01", "2026-03-02").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO usage_group_daily_rollups`).
-		WithArgs(retainedFrom, todayStart, "America/New_York").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs("2026-03-02").
-		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectDailyRollupRebuild(mock, "2026-03-01", "2026-03-02", retainedFrom, todayStart, "America/New_York")
+	expectRollupWatermarkTrim(mock, "2026-03-02")
 	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 		WithArgs("2026-03-02", retainedFrom, "America/New_York").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -77,16 +70,9 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsPublishesWatermarkLa
 			AddRow("2026-08-13", time.Unix(0, 0).UTC(), "Asia/Shanghai"))
 	mock.ExpectQuery(`SELECT MIN\(created_at\) FROM usage_logs`).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(retainedFrom))
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs("2026-08-13", "2026-08-14").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO usage_group_daily_rollups`).
-		WithArgs(rebuildStart, todayStart, "Asia/Shanghai").
-		WillReturnResult(sqlmock.NewResult(0, 2))
+	expectDailyRollupRebuild(mock, "2026-08-13", "2026-08-14", rebuildStart, todayStart, "Asia/Shanghai")
 	// 追平今日时清掉今日残桶，避免与原始日志尾段重复计入。
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs("2026-08-14").
-		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectRollupWatermarkTrim(mock, "2026-08-14")
 	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 		WithArgs("2026-08-14", retainedFrom, "Asia/Shanghai").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -122,16 +108,9 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsSplitsRebuildIntoDai
 				AddRow(day.closedBefore, retainedFrom, "Asia/Shanghai"))
 		mock.ExpectQuery(`SELECT MIN\(created_at\) FROM usage_logs`).
 			WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(retainedFrom))
-		mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-			WithArgs(day.closedBefore, day.nextClosed).
-			WillReturnResult(sqlmock.NewResult(0, 1))
-		mock.ExpectExec(`INSERT INTO usage_group_daily_rollups`).
-			WithArgs(day.rebuildStart, day.rebuildStart.Add(24*time.Hour), "Asia/Shanghai").
-			WillReturnResult(sqlmock.NewResult(0, 1))
+		expectDailyRollupRebuild(mock, day.closedBefore, day.nextClosed, day.rebuildStart, day.rebuildStart.Add(24*time.Hour), "Asia/Shanghai")
 		if day.last {
-			mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-				WithArgs("2026-08-14").
-				WillReturnResult(sqlmock.NewResult(0, 0))
+			expectRollupWatermarkTrim(mock, "2026-08-14")
 		}
 		mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 			WithArgs(day.nextClosed, retainedFrom, "Asia/Shanghai").
@@ -233,15 +212,8 @@ func TestDashboardAggregationRepositoryRecomputeRangeSplitsTransactionsToKeepWri
 			AddRow(startDate, time.Unix(0, 0).UTC(), "Asia/Shanghai"))
 	mock.ExpectQuery(`SELECT MIN\(created_at\) FROM usage_logs`).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(start))
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs(startDate, service.GroupUsageDate(todayStart)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`INSERT INTO usage_group_daily_rollups`).
-		WithArgs(rebuildStart.UTC(), todayStart.UTC(), "Asia/Shanghai").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
-		WithArgs(service.GroupUsageDate(todayStart)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+	expectDailyRollupRebuild(mock, startDate, service.GroupUsageDate(todayStart), rebuildStart.UTC(), todayStart.UTC(), "Asia/Shanghai")
+	expectRollupWatermarkTrim(mock, service.GroupUsageDate(todayStart))
 	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 		WithArgs(service.GroupUsageDate(todayStart), start, "Asia/Shanghai").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -368,4 +340,29 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 func setGroupUsageRollupTestTimezone(t *testing.T) {
 	t.Helper()
 	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+}
+
+// expectDailyRollupRebuild 断言一个自然日的日桶重建序列。
+// group 与 api_key 两张表先各自清空该日区间，再由一条 GROUPING SETS 语句同时写入，
+// 使得一天的原始日志只被扫描一次。
+func expectDailyRollupRebuild(mock sqlmock.Sqlmock, fromDate, toDate string, rebuildStart, rebuildEnd time.Time, tz string) {
+	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
+		WithArgs(fromDate, toDate).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM usage_apikey_daily_rollups`).
+		WithArgs(fromDate, toDate).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`(?s)WITH agg.*INSERT INTO usage_apikey_daily_rollups`).
+		WithArgs(rebuildStart, rebuildEnd, tz).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+}
+
+// expectRollupWatermarkTrim 断言追平当日时对两张表的残桶清理。
+func expectRollupWatermarkTrim(mock sqlmock.Sqlmock, trimFrom string) {
+	mock.ExpectExec(`DELETE FROM usage_group_daily_rollups`).
+		WithArgs(trimFrom).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`DELETE FROM usage_apikey_daily_rollups`).
+		WithArgs(trimFrom).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 }

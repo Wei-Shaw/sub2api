@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	appTimezone "github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -702,6 +703,205 @@ func TestGroupUsageSummaryUsesConfiguredDSTBoundaries(t *testing.T) {
 	require.InDelta(t, 7, result[0].YesterdayCost, 0.0000001)
 }
 
+// 一次分块日结要同时产出 group 与 api_key 两个维度的日桶，且两者都必须与明细对账。
+// 这条用例同时验证 GROUPING SETS + data-modifying CTE 的组合在真实 PostgreSQL 上成立。
+func TestSyncUsageRollupsProducesGroupAndAPIKeyBucketsInOnePass(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	// 2026-08-12 16:00 UTC = 2026-08-13 00:00 +08，故"今日"为 08-13，只结算 08-12。
+	todayStart := time.Date(2026, 8, 12, 16, 0, 0, 0, time.UTC)
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10), (20);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10,  100, 1.5, TIMESTAMPTZ '2026-08-12 09:00:00+08'),
+			(2, 1, 10,  101, 2.5, TIMESTAMPTZ '2026-08-12 10:00:00+08'),
+			(3, 1, 20,  100, 4.0, TIMESTAMPTZ '2026-08-12 11:00:00+08'),
+			-- group_id 为 NULL 的行仍要计入 api_key 维度
+			(4, 1, NULL, 101, 8.0, TIMESTAMPTZ '2026-08-12 12:00:00+08'),
+			-- api_key_id 为 NULL 的行仍要计入 group 维度
+			(5, 1, 10,  NULL, 0.5, TIMESTAMPTZ '2026-08-12 13:00:00+08'),
+			(6, 1, 10,  100, 7.0, TIMESTAMPTZ '2026-08-13 09:00:00+08');
+		UPDATE usage_group_rollup_state
+		SET closed_before = DATE '2026-08-12',
+			retained_from = TIMESTAMPTZ '2026-08-12 00:00:00+08'
+		WHERE id = 1;
+	`)
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	repo := newDashboardAggregationRepositoryWithSQL(scopedDB)
+	require.NoError(t, repo.SyncGroupUsageRollups(ctx, todayStart))
+
+	// group 日桶：08-12 的 group 10 = 1.5+2.5+0.5，group 20 = 4.0；group_id 为 NULL 的不入表。
+	groupBuckets := map[int64]float64{}
+	rows, err := scopedDB.QueryContext(ctx, `
+		SELECT group_id, actual_cost FROM usage_group_daily_rollups WHERE bucket_date = DATE '2026-08-12'
+	`)
+	require.NoError(t, err)
+	for rows.Next() {
+		var id int64
+		var cost float64
+		require.NoError(t, rows.Scan(&id, &cost))
+		groupBuckets[id] = cost
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+	require.Len(t, groupBuckets, 2)
+	require.InDelta(t, 4.5, groupBuckets[10], 0.0000001)
+	require.InDelta(t, 4.0, groupBuckets[20], 0.0000001)
+
+	// api_key 日桶：key 100 = 1.5+4.0，key 101 = 2.5+8.0；api_key_id 为 NULL 的不入表。
+	type keyBucket struct {
+		cost     float64
+		requests int64
+	}
+	keyBuckets := map[int64]keyBucket{}
+	rows, err = scopedDB.QueryContext(ctx, `
+		SELECT api_key_id, actual_cost, request_count
+		FROM usage_apikey_daily_rollups WHERE bucket_date = DATE '2026-08-12'
+	`)
+	require.NoError(t, err)
+	for rows.Next() {
+		var id int64
+		var b keyBucket
+		require.NoError(t, rows.Scan(&id, &b.cost, &b.requests))
+		keyBuckets[id] = b
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+	require.Len(t, keyBuckets, 2)
+	require.InDelta(t, 5.5, keyBuckets[100].cost, 0.0000001)
+	require.Equal(t, int64(2), keyBuckets[100].requests)
+	require.InDelta(t, 10.5, keyBuckets[101].cost, 0.0000001)
+	require.Equal(t, int64(2), keyBuckets[101].requests)
+
+	// 今日（08-13）不应留桶，当天用量走原始日志尾段。
+	var todayBuckets int
+	require.NoError(t, scopedDB.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM usage_apikey_daily_rollups WHERE bucket_date >= DATE '2026-08-13'
+	`).Scan(&todayBuckets))
+	require.Equal(t, 0, todayBuckets, "今日桶会与尾段重复计入")
+}
+
+// GetBatchAPIKeyUsageStats 必须等于「历史日桶 + 当日明细」，不能因为改走日桶而少算或重复计。
+//
+// 这个用例只能用相对日期：查询里的"今天"取自 timezone.Today()（真实墙钟），
+// 写死日期会让尾段永远落空，从而把 bug 测成通过。
+func TestGetBatchAPIKeyUsageStatsMatchesRawAggregate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	today := appTimezone.Today()
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+	`)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 100, 3.0, $1),
+			(2, 1, 10, 100, 5.0, $2),
+			(3, 1, 10, 100, 7.0, $3),
+			(4, 1, 10, 101, 2.0, $2)
+	`,
+		today.AddDate(0, 0, -3).Add(9*time.Hour),
+		today.AddDate(0, 0, -2).Add(9*time.Hour),
+		today, // 当天 00:00，既落在尾段又压到 >= 边界上
+	)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `
+		UPDATE usage_group_rollup_state
+		SET closed_before = ($1::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,
+			retained_from = $1
+		WHERE id = 1
+	`, today.AddDate(0, 0, -3).Add(9*time.Hour))
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	require.NoError(t, newDashboardAggregationRepositoryWithSQL(scopedDB).SyncGroupUsageRollups(ctx, today))
+
+	// 水位追平到今天后，D-3 与 D-2 已入桶，今天仍只在明细里。
+	var closedBefore time.Time
+	require.NoError(t, scopedDB.QueryRowContext(ctx,
+		`SELECT closed_before FROM usage_group_rollup_state WHERE id = 1`).Scan(&closedBefore))
+	require.Equal(t, today.Format("2006-01-02"), closedBefore.Format("2006-01-02"))
+
+	usageRepo := newUsageLogRepositoryWithSQL(nil, scopedDB)
+	stats, err := usageRepo.GetBatchAPIKeyUsageStats(
+		ctx, []int64{100, 101}, today.AddDate(0, 0, -5), today.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	require.Len(t, stats, 2)
+
+	// key 100 = D-3 日桶 3.0 + D-2 日桶 5.0 + 今日尾段 7.0。
+	require.InDelta(t, 15.0, stats[100].TotalActualCost, 0.0000001)
+	require.InDelta(t, 7.0, stats[100].TodayActualCost, 0.0000001)
+	require.InDelta(t, 2.0, stats[101].TotalActualCost, 0.0000001)
+	require.InDelta(t, 0.0, stats[101].TodayActualCost, 0.0000001)
+
+	// 与直接扫明细的口径对账：改造前后总额必须完全一致。
+	rawTotals := map[int64]float64{}
+	rows, err := scopedDB.QueryContext(ctx, `
+		SELECT api_key_id, COALESCE(SUM(actual_cost), 0)
+		FROM usage_logs WHERE api_key_id = ANY($1) AND created_at >= $2 AND created_at < $3
+		GROUP BY api_key_id
+	`, pq.Array([]int64{100, 101}), today.AddDate(0, 0, -5), today.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	for rows.Next() {
+		var id int64
+		var cost float64
+		require.NoError(t, rows.Scan(&id, &cost))
+		rawTotals[id] = cost
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+	for id, raw := range rawTotals {
+		require.InDelta(t, raw, stats[id].TotalActualCost, 0.0000001, "api_key %d 日桶口径偏离明细", id)
+	}
+}
+
+// 水位缺失时不能返回 0：宁可退化成全量扫明细（慢但正确）。
+func TestGetBatchAPIKeyUsageStatsFallsBackWhenWatermarkMissing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+	today := appTimezone.Today()
+
+	schema := createGroupUsageRollupTriggerTestSchema(t, ctx, false)
+	seedTx := beginGroupUsageRollupTriggerTestTx(t, ctx, schema)
+	_, err := seedTx.ExecContext(ctx, `
+		INSERT INTO groups (id) VALUES (10);
+		INSERT INTO users (id) VALUES (1);
+	`)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `
+		INSERT INTO usage_logs (id, user_id, group_id, api_key_id, actual_cost, created_at) VALUES
+			(1, 1, 10, 100, 3.0, $1),
+			(2, 1, 10, 100, 7.0, $2)
+	`, today.AddDate(0, 0, -3).Add(9*time.Hour), today)
+	require.NoError(t, err)
+	_, err = seedTx.ExecContext(ctx, `DELETE FROM usage_group_rollup_state WHERE id = 1`)
+	require.NoError(t, err)
+	require.NoError(t, seedTx.Commit())
+
+	scopedDB := newGroupUsageRollupSchemaDB(t, schema)
+	usageRepo := newUsageLogRepositoryWithSQL(nil, scopedDB)
+	stats, err := usageRepo.GetBatchAPIKeyUsageStats(
+		ctx, []int64{100}, today.AddDate(0, 0, -5), today.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	require.InDelta(t, 10.0, stats[100].TotalActualCost, 0.0000001)
+	require.InDelta(t, 7.0, stats[100].TodayActualCost, 0.0000001)
+}
+
 func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, partitioned bool) string {
 	t.Helper()
 
@@ -723,6 +923,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 			id BIGINT PRIMARY KEY,
 			user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			group_id BIGINT REFERENCES groups(id) ON DELETE SET NULL,
+			api_key_id BIGINT,
 			actual_cost NUMERIC(20, 10) NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL
 		);
@@ -733,6 +934,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 				id BIGINT NOT NULL,
 				user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				group_id BIGINT REFERENCES groups(id) ON DELETE SET NULL,
+				api_key_id BIGINT,
 				actual_cost NUMERIC(20, 10) NOT NULL,
 				created_at TIMESTAMPTZ NOT NULL
 			) PARTITION BY RANGE (created_at);
@@ -750,6 +952,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 		"222_group_usage_daily_rollups.sql",
 		"223_group_usage_rollup_timezone.sql",
 		"227_group_usage_rollup_archival.sql",
+		"229_usage_apikey_daily_rollups.sql",
 	} {
 		migrationSQL, readErr := migrations.FS.ReadFile(migrationName)
 		require.NoError(t, readErr)
