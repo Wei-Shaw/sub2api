@@ -133,7 +133,6 @@ func newOpenAICompactionSchedulerTestService(accounts []Account, advanced bool) 
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactUsesPersistentCandidates(t *testing.T) {
-	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 	now := time.Now()
 	resetAt := now.Add(time.Hour)
 	account := Account{
@@ -143,6 +142,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactUsesPersistentCa
 		Status:           StatusActive,
 		Schedulable:      true,
 		Concurrency:      1,
+		GroupIDs:         []int64{91070},
 		RateLimitResetAt: &resetAt,
 		Extra: map[string]any{
 			"openai_compact_supported":   true,
@@ -152,24 +152,158 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactUsesPersistentCa
 			"codex_usage_updated_at":     now.Format(time.RFC3339),
 		},
 	}
-	svc := newOpenAICompactionSchedulerTestService([]Account{account}, true)
-	ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9})
-	groupID := int64(91070)
+	for _, advanced := range []bool{false, true} {
+		for _, loadBatch := range []bool{false, true} {
+			schedulerMode := "legacy_scheduler"
+			if advanced {
+				schedulerMode = "advanced_scheduler"
+			}
+			loadMode := "load_batch_off"
+			if loadBatch {
+				loadMode = "load_batch_on"
+			}
+			t.Run(schedulerMode+"/"+loadMode, func(t *testing.T) {
+				resetOpenAIAdvancedSchedulerSettingCacheForTest()
+				svc := newOpenAICompactionSchedulerTestService([]Account{account}, advanced)
+				svc.cfg.Gateway.Scheduling.LoadBatchEnabled = loadBatch
+				svc.BlockAccountScheduling(&account, resetAt, "429")
+				ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 0.9})
+				groupID := int64(91070)
 
-	normalSelection, _, normalErr := svc.SelectAccountWithSchedulerForCapability(
-		ctx, &groupID, "", "", "gpt-5.6-sol", nil,
-		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, false,
+				normalSelection, _, normalErr := svc.SelectAccountWithSchedulerForCapability(
+					ctx, &groupID, "", "", "gpt-5.6-sol", nil,
+					OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, false, false, false,
+				)
+				require.Error(t, normalErr)
+				require.Nil(t, normalSelection)
+
+				stale := account
+				stale.RateLimitResetAt = nil
+				stale.Extra = map[string]any{
+					"openai_compact_supported":   false,
+					"openai_responses_supported": true,
+				}
+				svc.schedulerSnapshot = &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{
+					snapshotAccounts: []*Account{&stale},
+					accountsByID:     map[int64]*Account{account.ID: &stale},
+				}}
+
+				compactSelection, compactErr := selectOpenAICompactionSchedulerTestAccount(t, svc, groupID, true)
+				require.NoError(t, compactErr)
+				require.NotNil(t, compactSelection)
+				require.NotNil(t, compactSelection.Account)
+				require.Equal(t, account.ID, compactSelection.Account.ID)
+				require.Equal(t, 2, openAICompactSupportTier(compactSelection.Account), "final hydration must not restore stale compact capability")
+				if compactSelection.ReleaseFunc != nil {
+					compactSelection.ReleaseFunc()
+				}
+			})
+		}
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactStickyBypassesOrdinaryBlocks(t *testing.T) {
+	resetAt := time.Now().Add(time.Hour)
+	for _, advanced := range []bool{false, true} {
+		for _, loadBatch := range []bool{false, true} {
+			schedulerMode := "legacy_scheduler"
+			if advanced {
+				schedulerMode = "advanced_scheduler"
+			}
+			loadMode := "load_batch_off"
+			if loadBatch {
+				loadMode = "load_batch_on"
+			}
+			t.Run(schedulerMode+"/"+loadMode, func(t *testing.T) {
+				resetOpenAIAdvancedSchedulerSettingCacheForTest()
+				groupID := int64(91071)
+				account := Account{
+					ID:               71071,
+					Platform:         PlatformOpenAI,
+					Type:             AccountTypeOAuth,
+					Status:           StatusActive,
+					Schedulable:      true,
+					Concurrency:      1,
+					GroupIDs:         []int64{groupID},
+					RateLimitResetAt: &resetAt,
+					Extra: map[string]any{
+						"openai_compact_supported":   true,
+						"openai_responses_supported": true,
+					},
+				}
+				cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:compact_sticky": account.ID}}
+				svc := newOpenAICompactionSchedulerTestService([]Account{account}, advanced)
+				svc.cache = cache
+				svc.cfg.Gateway.Scheduling.LoadBatchEnabled = loadBatch
+				svc.BlockAccountScheduling(&account, resetAt, "429")
+
+				selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+					context.Background(), &groupID, "", "compact_sticky", "gpt-5.6-sol", nil,
+					OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityResponses, true, false, false,
+				)
+				require.NoError(t, err)
+				require.NotNil(t, selection)
+				require.NotNil(t, selection.Account)
+				require.Equal(t, account.ID, selection.Account.ID)
+				require.Equal(t, account.ID, cache.sessionBindings["openai:compact_sticky"])
+				require.Zero(t, cache.deletedSessions["openai:compact_sticky"])
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+				}
+			})
+		}
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_CompactBypassesOrdinaryBlocks(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(91072)
+	resetAt := time.Now().Add(time.Hour)
+	account := Account{
+		ID:               71072,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		Concurrency:      1,
+		GroupIDs:         []int64{groupID},
+		RateLimitResetAt: &resetAt,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+			"openai_compact_supported":                      true,
+			"openai_responses_supported":                    true,
+		},
+	}
+	stale := account
+	stale.RateLimitResetAt = nil
+	cache := &schedulerTestGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              cache,
+		cfg:                newSchedulerTestOpenAIWSV2Config(),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		openaiWSStateStore: store,
+		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{
+			accountsByID: map[int64]*Account{account.ID: &stale},
+		}},
+	}
+	svc.BlockAccountScheduling(&account, resetAt, "429")
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_compact_blocked", account.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(
+		ctx, &groupID, "resp_compact_blocked", "gpt-5.6-sol", nil, true,
 	)
-	require.Error(t, normalErr)
-	require.Nil(t, normalSelection)
-
-	compactSelection, compactErr := selectOpenAICompactionSchedulerTestAccount(t, svc, groupID, true)
-	require.NoError(t, compactErr)
-	require.NotNil(t, compactSelection)
-	require.NotNil(t, compactSelection.Account)
-	require.Equal(t, account.ID, compactSelection.Account.ID)
-	if compactSelection.ReleaseFunc != nil {
-		compactSelection.ReleaseFunc()
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, 2, openAICompactSupportTier(selection.Account))
+	boundAccountID, bindErr := store.GetResponseAccount(ctx, groupID, "resp_compact_blocked")
+	require.NoError(t, bindErr)
+	require.Equal(t, account.ID, boundAccountID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
 	}
 }
 
@@ -269,40 +403,48 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_NativeCompactionRequire
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LegacyCompactionKeepsCompactEligibility(t *testing.T) {
 	for _, advanced := range []bool{false, true} {
-		t.Run(map[bool]string{false: "legacy_scheduler", true: "advanced_scheduler"}[advanced], func(t *testing.T) {
-			resetOpenAIAdvancedSchedulerSettingCacheForTest()
-			svc := newOpenAICompactionSchedulerTestService([]Account{
-				{
-					ID:          71015,
-					Platform:    PlatformOpenAI,
-					Type:        AccountTypeAPIKey,
-					Status:      StatusActive,
-					Schedulable: true,
-					Concurrency: 1,
-					Extra: map[string]any{
-						"openai_compact_supported":   false,
-						"openai_responses_supported": true,
+		for _, loadBatch := range []bool{false, true} {
+			schedulerMode := map[bool]string{false: "legacy_scheduler", true: "advanced_scheduler"}[advanced]
+			loadMode := map[bool]string{false: "load_batch_off", true: "load_batch_on"}[loadBatch]
+			t.Run(schedulerMode+"/"+loadMode, func(t *testing.T) {
+				resetOpenAIAdvancedSchedulerSettingCacheForTest()
+				resetAt := time.Now().Add(time.Hour)
+				svc := newOpenAICompactionSchedulerTestService([]Account{
+					{
+						ID:               71015,
+						Platform:         PlatformOpenAI,
+						Type:             AccountTypeOAuth,
+						Status:           StatusActive,
+						Schedulable:      true,
+						Concurrency:      1,
+						RateLimitResetAt: &resetAt,
+						Extra: map[string]any{
+							"openai_compact_supported":   false,
+							"openai_responses_supported": true,
+						},
 					},
-				},
-				{
-					ID:          71016,
-					Platform:    PlatformOpenAI,
-					Type:        AccountTypeAPIKey,
-					Status:      StatusActive,
-					Schedulable: true,
-					Concurrency: 1,
-					Extra: map[string]any{
-						"openai_compact_mode":        OpenAICompactModeForceOff,
-						"openai_responses_supported": true,
+					{
+						ID:               71016,
+						Platform:         PlatformOpenAI,
+						Type:             AccountTypeOAuth,
+						Status:           StatusActive,
+						Schedulable:      true,
+						Concurrency:      1,
+						RateLimitResetAt: &resetAt,
+						Extra: map[string]any{
+							"openai_compact_mode":        OpenAICompactModeForceOff,
+							"openai_responses_supported": true,
+						},
 					},
-				},
-			}, advanced)
+				}, advanced)
+				svc.cfg.Gateway.Scheduling.LoadBatchEnabled = loadBatch
 
-			selection, err := selectOpenAICompactionSchedulerTestAccount(t, svc, 91010, true)
-			require.ErrorIs(t, err, ErrNoAvailableCompactAccounts)
-			require.Contains(t, err.Error(), "/responses/compact")
-			require.Nil(t, selection)
-		})
+				selection, err := selectOpenAICompactionSchedulerTestAccount(t, svc, 91010, true)
+				require.ErrorIs(t, err, ErrNoAvailableCompactAccounts)
+				require.Contains(t, err.Error(), "/responses/compact")
+				require.Nil(t, selection)
+			})
+		}
 	}
 }
 

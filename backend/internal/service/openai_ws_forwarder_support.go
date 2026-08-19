@@ -481,7 +481,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		}
 	}
 
-	account, err := s.getSchedulableAccount(ctx, accountID)
+	account, err := s.getOpenAIAccountForScheduling(ctx, accountID, requireCompact)
 	if err != nil || account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
@@ -491,7 +491,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
 		return 0, nil, "", nil
 	}
-	if shouldClearStickySession(account, requestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+	if shouldClearStickySessionForOpenAIRequest(ctx, account, requestedModel, requireCompact) || !account.IsOpenAI() {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
@@ -505,11 +505,16 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		return 0, nil, "", nil
 	}
-	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
-	// account over its 5h/7d threshold keeps serving the same response chain even though
-	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling
-	// without deleting the binding (the window may reset before the next turn).
-	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+	// Ordinary requests must honor quota auto-pause on the previous_response_id
+	// sticky path. Legacy compact deliberately bypasses that account-wide quota.
+	// Pause is transient, so keep the binding for reuse after the window resets.
+	if !requireCompact {
+		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+			return 0, nil, "", nil
+		}
+	}
+	if !requireCompact && s.isOpenAIAccountRequestRuntimeBlocked(account, requestedModel) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return 0, nil, "", nil
 	}
 	// 分组利润控制：与 quota auto-pause 同语义——利润不合格是暂时
@@ -524,7 +529,7 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
-		if shouldClearStickySession(latest, requestedModel) || !latest.IsOpenAI() || !latest.IsSchedulable() {
+		if shouldClearStickySessionForOpenAIRequest(ctx, latest, requestedModel, requireCompact) || !latest.IsOpenAI() {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
@@ -538,14 +543,16 @@ func (s *OpenAIGatewayService) resolveAccountByPreviousResponseIDForCapability(
 		if !latest.SupportsOpenAIEndpointCapability(requiredCapability) {
 			return 0, nil, "", nil
 		}
-		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
-			return 0, nil, "", nil
+		if !requireCompact {
+			if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
+				return 0, nil, "", nil
+			}
 		}
 		// 利润门对最新账号状态复检一次，语义同上：跳过复用、不删绑定。
 		if vetoed, _ := openAIProfitControlVetoReason(ctx, latest); vetoed {
 			return 0, nil, "", nil
 		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+		if !requireCompact && s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return 0, nil, "", nil
 		}
