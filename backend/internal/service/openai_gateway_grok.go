@@ -558,7 +558,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 		if !value.Exists() {
 			continue
 	REDACTED
-		normalized, keep := normalizeGrokReasoningEffortValue(value.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(value.String(), upstreamModel)
 		if !supportsEffort || !keep {
 			out, err = sjson.DeleteBytes(out, field)
 	REDACTED else {
@@ -569,7 +569,7 @@ func normalizeGrokResponsesReasoningEffort(body []byte, upstreamModel string) ([
 	REDACTED
 REDACTED
 	if camel := gjson.GetBytes(out, "reasoningEffort"); camel.Exists() {
-		normalized, keep := normalizeGrokReasoningEffortValue(camel.String())
+		normalized, keep := normalizeGrokReasoningEffortValue(camel.String(), upstreamModel)
 		out, err = sjson.DeleteBytes(out, "reasoningEffort")
 		if err != nil {
 			return nil, fmt.Errorf("remove Grok reasoningEffort: %w", err)
@@ -595,7 +595,7 @@ func normalizeGrokChatReasoningEffort(body []byte, upstreamModel string) ([]byte
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoningEffort").String())
 REDACTED
-	normalized, keep := normalizeGrokReasoningEffortValue(raw)
+	normalized, keep := normalizeGrokReasoningEffortValue(raw, upstreamModel)
 	keep = keep && grokSupportsReasoningEffort(upstreamModel)
 	out := body
 	var err error
@@ -615,18 +615,28 @@ REDACTED
 	return out, err
 REDACTED
 
-func normalizeGrokReasoningEffortValue(raw string) (string, bool) {
+func normalizeGrokReasoningEffortValue(raw, model string) (string, bool) {
 	value := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(strings.TrimSpace(raw)))
 	switch value {
 	case "none", "low", "medium", "high":
 		return value, true
 	case "minimal":
 		return "low", true
-	case "xhigh", "extrahigh", "max", "ultra":
+	case "xhigh", "extrahigh":
+		if grokSupportsXHighReasoningEffort(model) {
+			return "xhigh", true
+	REDACTED
+		return "high", true
+	case "max", "ultra":
 		return "high", true
 	default:
 		return "", false
 REDACTED
+REDACTED
+
+func grokSupportsXHighReasoningEffort(model string) bool {
+	model = strings.ToLower(xai.StripGrokProviderPrefix(strings.TrimSpace(model)))
+	return model == "grok-4.6" || model == "grok-4.6-latest"
 REDACTED
 
 func grokSupportsReasoningEffort(model string) bool {

@@ -157,18 +157,20 @@ func TestPatchGrokResponsesBodyNormalizesReasoningEffortAliases(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		body string
-		path string
-		want string
+		name          string
+		body          string
+		upstreamModel string
+		path          string
+		want          string
 REDACTED{
-		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"REDACTEDREDACTED`, path: "reasoning.effort", want: "low"REDACTED,
-		{name: "xhigh snake", body: `{"input":"hi","reasoning_effort":"xhigh"REDACTED`, path: "reasoning_effort", want: "high"REDACTED,
-		{name: "max camel", body: `{"input":"hi","reasoningEffort":"max"REDACTED`, path: "reasoning_effort", want: "high"REDACTED,
+		{name: "minimal nested", body: `{"input":"hi","reasoning":{"effort":"minimal"REDACTEDREDACTED`, upstreamModel: "grok-4.5", path: "reasoning.effort", want: "low"REDACTED,
+		{name: "xhigh stays high for 4.5", body: `{"input":"hi","reasoning_effort":"xhigh"REDACTED`, upstreamModel: "grok-4.5", path: "reasoning_effort", want: "high"REDACTED,
+		{name: "xhigh nested for 4.6", body: `{"input":"hi","reasoning":{"effort":"xhigh"REDACTEDREDACTED`, upstreamModel: "grok-4.6", path: "reasoning.effort", want: "xhigh"REDACTED,
+		{name: "xhigh snake for 4.6 latest", body: `{"input":"hi","reasoning_effort":"xhigh"REDACTED`, upstreamModel: "grok-4.6-latest", path: "reasoning_effort", want: "xhigh"REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			patched, err := patchGrokResponsesBody([]byte(tt.body), "grok-4.5")
+			patched, err := patchGrokResponsesBody([]byte(tt.body), tt.upstreamModel)
 		REDACTED
 			require.Equal(t, tt.want, gjson.GetBytes(patched, tt.path).String(), string(patched))
 			require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
@@ -193,6 +195,10 @@ func TestNormalizeGrokChatReasoningEffort(t *testing.T) {
 REDACTED
 	require.Equal(t, "high", gjson.GetBytes(patched, "reasoning_effort").String())
 	require.False(t, gjson.GetBytes(patched, "reasoningEffort").Exists())
+
+	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"xhigh"REDACTED`), "grok-4.6")
+REDACTED
+	require.Equal(t, "xhigh", gjson.GetBytes(patched, "reasoning_effort").String())
 
 	patched, err = normalizeGrokChatReasoningEffort([]byte(`{"reasoning_effort":"high"REDACTED`), "grok-composer-2.5-fast")
 REDACTED
